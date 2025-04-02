@@ -10,6 +10,7 @@ export default function HomeScreen() {
       <Text>Welcome to Ourlime!</Text>
       <Button title="Login" onPress={() => router.push('/(auth)/login')} />
       <Button title="Sign Up" onPress={() => router.push('/(auth)/signup')} />
+      <Button title="eLearning" onPress={() => router.push('/eLearning/page')} />
     </View>
   );
 }
