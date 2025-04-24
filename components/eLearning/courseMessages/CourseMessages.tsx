@@ -166,26 +166,36 @@ export const CourseMessages = () => {
   
 
   return (
-    <View className="w-full px-4 mt-4">
+    <View style={{ width: '100%', paddingHorizontal: 16, marginTop: 16 }}>
       {/* Header */}
-      <View className="flex-row justify-between items-center mb-4">
-        <View className="flex-row items-center space-x-2">
+      <View style={{
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16
+      }}>
+        <View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        columnGap: 8
+        }}>
           <MessageSquare size={20} color="#16a34a" />
-          <Text className="text-lg font-semibold text-black">Course Messages</Text>
-          <View className="bg-gray-400 px-5 py-0.5 rounded-full">
+          <Text style={{ fontSize: 18, fontWeight: '600', color: '#000' }}>Course Messages</Text>
+          <View style={{
+            backgroundColor: '#E0F7EC',
+            paddingHorizontal: 12,
+            paddingVertical: 4,
+            borderRadius: 999,
+            marginLeft: 8,
+            alignSelf: 'center',
+            justifyContent: 'center',
+          }}>
             <Text 
               style={{
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                backgroundColor: '#D3D3D3',
                 color: '#00C853',
                 fontSize: 12,
                 fontWeight: '600',
-                borderRadius: 999,
-                marginHorizontal: 2,
-                marginBottom: 2,
-              }}
-            >
+              }}>
               {messages.length} Updates
             </Text>
           </View>
@@ -193,7 +203,11 @@ export const CourseMessages = () => {
       </View>
 
       {/* Actions */}
-      <View className="flex-row items-center mb-4">
+      <View style={{
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 16
+    }}>
         <TouchableOpacity style={{ marginRight: 12 }}>
           <Bell size={16} color="#6b7280" />
         </TouchableOpacity>

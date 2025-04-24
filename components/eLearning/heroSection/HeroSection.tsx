@@ -47,18 +47,18 @@ export const HeroSection = () => {
   }, []);
 
   return (
-    <View className="bg-white shadow-md">
+    <View style={{ backgroundColor: 'white', paddingBottom: 16 }}>
       
       {/* Row: Logo + Slanted Slider */}
-      <View className="flex-row w-full h-[200px]">
+      <View style={{ flexDirection: 'row', width: '100%', height: 200 }}>
         {/* Logo */}
-        <View className="items-center justify-center bg-white px-3" style={{ width: 100 }}>
+        <View style={{ alignItems: 'center', justifyContent: 'center', backgroundColor: 'white', paddingHorizontal: 12, width: 100 }}>
           <Image
             source={require('@/assets/transparentLogo.png')}
             style={{ width: 100, height: 100 }}
             resizeMode="contain"
           />
-          <Text className="text-xs text-gray-600 italic mt-1">e-Learning</Text>
+          <Text style={{ fontSize: 12, color: '#4B5563', fontStyle: 'italic', marginTop: 4 }}>e-Learning</Text>
         </View>
 
         {/* Slanted Slider */}
