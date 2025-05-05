@@ -13,6 +13,7 @@ export default function HomeScreen() {
       <Button title="eLearning" onPress={() => router.push('/eLearning/page')} />
       <Button title="Communities" onPress={() => router.push('/communities/[id]/page')} />
       <Button title="Community" onPress={() => router.push('/communities/page')} />
+      <Button title="Jobs" onPress={() =>router.push('/jobs/page')} />
     </View>
   );
 }

@@ -146,7 +146,7 @@ export default function CommunitiesPage() {
     { name: 'Home', href: '/' },
     { name: 'Blogs', href: '/blogs' },
     { name: 'Events', href: '/events' },
-    { name: 'Jobs', href: '/jobs' },
+    //{ name: 'Jobs', href: '/jobs' },
     { name: 'Communities', href: '/communities' },
     { name: 'Marketplace', href: '/marketplace' }
   ];
