@@ -14,6 +14,7 @@ export default function HomeScreen() {
       <Button title="Communities" onPress={() => router.push('/communities/[id]/page')} />
       <Button title="Community" onPress={() => router.push('/communities/page')} />
       <Button title="Jobs" onPress={() =>router.push('/jobs/page')} />
+      <Button title="Events" onPress={() => router.push('/events/page')} />
     </View>
   );
 }
