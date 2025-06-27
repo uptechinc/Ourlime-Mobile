@@ -3,11 +3,11 @@ import {
   View,
   Text,
   TextInput,
-  FlatList,
   TouchableOpacity,
   Image,
   Dimensions,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import {
   Search,
   Heart,
@@ -101,9 +101,10 @@ export default function EventsContentSection({
       </View>
 
       {/* ───────── Events list ───────── */}
-      <FlatList
+      <FlashList
         data={events}
         keyExtractor={item => item.id!}
+        estimatedItemSize={IMAGE_HEIGHT + 120}
         contentContainerStyle={{ paddingBottom: ITEM_MARGIN }}
         nestedScrollEnabled
         renderItem={({ item: evt }) => (
