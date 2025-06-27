@@ -51,7 +51,7 @@ export default function EventsContentSection({
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [commentEventId, setCommentEventId] = useState<string | null>(null);
   const [createVisible, setCreateVisible] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false); 
+  //const [filterOpen, setFilterOpen] = useState(false);
 
   return (
     <View style={{ flex: 1, paddingTop: ITEM_MARGIN }}>
@@ -250,9 +250,9 @@ export default function EventsContentSection({
             handleRSVP(selectedEvent.id!);
             setSelectedEvent(null);
           }}
-          isRegistered={!!registeredEvents[selectedEvent.id!]}
+          isRegistered={!registeredEvents[selectedEvent.id!]}
           onLike={() => onLike(selectedEvent.id!)}
-          isLiked={!!likedEvents[selectedEvent.id!]}
+          isLiked={!likedEvents[selectedEvent.id!]}
           likeCount={likeCounts[selectedEvent.id!] || 0}
           registrationCount={registrationCounts[selectedEvent.id!] || 0}
           currentUserId={currentUserId}
