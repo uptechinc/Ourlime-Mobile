@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, Image as RNImage, Dimensions, TouchableOpacity } from "react-native";
 import Carousel, { ICarouselInstance, Pagination } from "react-native-reanimated-carousel";
 import { useSharedValue } from "react-native-reanimated";
-import type { Event } from "@/app/types/eventTypes";
+import type { Event } from "@/types/eventTypes";
 
 const { width } = Dimensions.get("window");
 // Use 90% of screen width for cards

@@ -7,7 +7,7 @@ import { CourseMessages } from '@/components/eLearning/courseMessages/CourseMess
 import { LearningMaterials } from '@/components/eLearning/learningMaterials/LearningMaterials';  
 import { Resources } from '@/components/eLearning/resources/Resources';
 import { Tutors } from '@/components/eLearning/tutors/Tutors';
-import { Schedule } from '@/components/eLearning/schedules/Schedules';
+import Schedule from '@/components/eLearning/schedules/Schedules';
 import { useRouter } from 'expo-router';
 
 export default function ELearningScreen() {

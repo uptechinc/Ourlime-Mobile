@@ -17,11 +17,11 @@ import {
   MapPin,
   Heart,
 } from 'lucide-react-native';
-import type { Event } from '@/app/types/eventTypes';
+import type { Event } from '@/types/eventTypes';
 
 
 // ─── Types ─────────────────────────────────
-type Media = { url: string; type: 'image' | 'video' };
+//type Media = { url: string; type: 'image' | 'video' };
 // export interface Event {
 //   id: string;
 //   title: string;

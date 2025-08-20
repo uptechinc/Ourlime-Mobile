@@ -4,12 +4,13 @@ import {
   Image,
   Modal,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Event } from '@/types/eventTypes';
+import {fetchEvents, fetchCommentsForEvent} from '@/helpers/Events';
 
 // ---------------------------------------------------------------------------
 // NOTE: The following Firebase imports and any references to them are commented out.
@@ -21,28 +22,20 @@ import {
 // ---------------------------------------------------------------------------
 
 // Example of your Event type – adapt as needed
-interface EventType {
-  id: string;
-  title: string;
-  image?: string;
-  summary?: string;
-  startDate?: string;
-  endDate?: string;
-  location?: string;
-}
+
 
 // The shape of each comment in your array – adjust as needed
-interface CommentType {
-  id: string;
-  profileImage?: string;
-  userData?: {
-    firstName?: string;
-    lastName?: string;
-    userName?: string;
-  };
-  comment: string;
-  timestamp: Date;
-}
+// interface CommentType {
+//   id: string;
+//   profileImage?: string;
+//   userData?: {
+//     firstName?: string;
+//     lastName?: string;
+//     userName?: string;
+//   };
+//   comment: string;
+//   timestamp: Date;
+// }
 
 // Props for EventCommentModal
 interface EventCommentModalProps {
@@ -52,8 +45,8 @@ interface EventCommentModalProps {
 
 const EventCommentModal: React.FC<EventCommentModalProps> = ({ onClose, eventId }) => {
   const [comment, setComment] = useState('');
-  const [comments, setComments] = useState<CommentType[]>([]);
-  const [event, setEvent] = useState<EventType | null>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
 
   // On mount, fetch event details
@@ -139,77 +132,77 @@ const EventCommentModal: React.FC<EventCommentModalProps> = ({ onClose, eventId 
       onRequestClose={onClose}
     >
       {/* Overlay */}
-      <View style={styles.overlay}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 16 }}>
         {/* Modal container */}
-        <View style={styles.modalContainer}>
+        <View style={{ backgroundColor: '#fff', borderRadius: 8, overflow: 'hidden' }}>
           {/* Close button */}
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <Text style={styles.closeButtonText}>✕</Text>
+          <TouchableOpacity style={{ position: 'absolute', right: 12, top: 12, zIndex: 10 }} onPress={onClose}>
+            <Text style={{ fontSize: 20, color: '#666' }}>✕</Text>
           </TouchableOpacity>
 
           {/* Main content layout */}
-          <View style={styles.contentRow}>
+          <View style={{ flexDirection: 'row', maxHeight: '90%' }}>
             {/* Left side image (only in wide layouts or you can conditionally hide in RN) */}
             {event?.image ? (
-              <View style={[styles.imageContainer, { flex: 1 }]}>
+              <View style={{ display: 'none', flex: 1 }}>
                 <Image
                   source={{ uri: event.image }}
-                  style={styles.eventImage}
+                  style={{ width: '100%', height: '100%' }}
                   resizeMode="cover"
                 />
               </View>
             ) : null}
 
             {/* Right side: details & comments */}
-            <View style={[styles.detailsContainer, { flex: 1 }]}>
+            <View style={{ flex: 1, padding: 16 }}>
               {/* Event details */}
               {loading ? (
-                <Text style={styles.loadingText}>Loading event details...</Text>
+                <Text style={{ color: '#999' }}>Loading event details...</Text>
               ) : event ? (
-                <View style={styles.eventDetails}>
+                <View style={{ marginBottom: 16 }}>
                   {/* If you want to show the image for mobile widths, you can conditionally render again here */}
                   {event?.image && (
-                    <View style={styles.mobileImageWrapper}>
+                    <View style={{ display: 'none', marginBottom: 8 }}>
                       <Image
                         source={{ uri: event.image }}
-                        style={styles.mobileEventImage}
+                        style={{ width: '100%', height: 200, borderRadius: 8 }}
                         resizeMode="cover"
                       />
                     </View>
                   )}
-                  <Text style={styles.eventTitle}>{event.title}</Text>
+                  <Text style={{ fontWeight: '600', fontSize: 16, marginBottom: 4 }}>{event.title}</Text>
                   {event.startDate && event.endDate && (
-                    <Text style={styles.eventDates}>
+                    <Text style={{ color: '#555', fontSize: 12 }}>
                       {new Date(event.startDate).toLocaleDateString()} -{' '}
                       {new Date(event.endDate).toLocaleDateString()}
                     </Text>
                   )}
-                  {event.location && <Text style={styles.eventLocation}>{event.location}</Text>}
-                  {event.summary && <Text style={styles.eventSummary}>{event.summary}</Text>}
+                  {event.location && <Text style={{ color: '#555', fontSize: 12 }}>{event.location}</Text>}
+                  {event.summary && <Text style={{ marginTop: 8, color: '#333', fontSize: 14 }}>{event.summary}</Text>}
                 </View>
               ) : (
-                <Text style={styles.notFoundText}>Event not found</Text>
+                <Text style={{ color: '#999' }}>Event not found</Text>
               )}
 
               {/* Comments list */}
-              <ScrollView style={styles.commentsList}>
+              <ScrollView style={{ flex: 1, marginVertical: 8 }}>
                 {comments.map((c) => (
-                  <View key={c.id} style={styles.commentItem}>
-                    <View style={styles.commentHeader}>
+                  <View key={c.id} style={{ borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 8, marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                       <Image
                         source={{ uri: c.profileImage || 'https://via.placeholder.com/40' }}
-                        style={styles.commentAvatar}
+                        style={{ width: 40, height: 40, borderRadius: 20, marginRight: 8, backgroundColor: '#ccc' }}
                         resizeMode="cover"
                       />
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.commentAuthor}>
+                        <Text style={{ fontWeight: 'bold', fontSize: 14 }}>
                           {c.userData?.firstName} {c.userData?.lastName}{' '}
-                          <Text style={styles.commentUsername}>
+                          <Text style={{ color: '#999', fontSize: 12 }}>
                             @{c.userData?.userName}
                           </Text>
                         </Text>
-                        <Text style={styles.commentText}>{c.comment}</Text>
-                        <Text style={styles.commentTimestamp}>
+                        <Text style={{ color: '#333', fontSize: 14, marginTop: 4 }}>{c.comment}</Text>
+                        <Text style={{ color: '#999', fontSize: 10, marginTop: 2 }}>
                           {c.timestamp?.toLocaleString?.()}
                         </Text>
                       </View>
@@ -219,16 +212,16 @@ const EventCommentModal: React.FC<EventCommentModalProps> = ({ onClose, eventId 
               </ScrollView>
 
               {/* Input area for new comment */}
-              <View style={styles.inputRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 8, marginTop: 8 }}>
                 <TextInput
-                  style={styles.commentInput}
+                  style={{ flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, marginRight: 8, minHeight: 40 }}
                   placeholder="Write your comment..."
                   value={comment}
                   onChangeText={setComment}
                   multiline
                 />
-                <TouchableOpacity style={styles.postButton} onPress={handleCommentSubmit}>
-                  <Text style={styles.postButtonText}>Post</Text>
+                <TouchableOpacity style={{ backgroundColor: '#4CAF50', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 6 }} onPress={handleCommentSubmit}>
+                  <Text style={{ color: '#fff', fontSize: 14 }}>Post</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -240,145 +233,3 @@ const EventCommentModal: React.FC<EventCommentModalProps> = ({ onClose, eventId 
 };
 
 export default EventCommentModal;
-
-// Example styling – customize to fit your design
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  modalContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  closeButton: {
-    position: 'absolute',
-    right: 12,
-    top: 12,
-    zIndex: 10,
-  },
-  closeButtonText: {
-    fontSize: 20,
-    color: '#666',
-  },
-  contentRow: {
-    flexDirection: 'row',
-    maxHeight: '90%',
-  },
-  imageContainer: {
-    display: 'none', // If you want to hide on smaller screens, can do conditionally
-  },
-  eventImage: {
-    width: '100%',
-    height: '100%',
-  },
-  detailsContainer: {
-    padding: 16,
-  },
-  loadingText: {
-    color: '#999',
-  },
-  eventDetails: {
-    marginBottom: 16,
-  },
-  mobileImageWrapper: {
-    display: 'none', // For mobile-only usage, conditionally set this to 'flex'
-    marginBottom: 8,
-  },
-  mobileEventImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-  },
-  eventTitle: {
-    fontWeight: '600',
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  eventDates: {
-    color: '#555',
-    fontSize: 12,
-  },
-  eventLocation: {
-    color: '#555',
-    fontSize: 12,
-  },
-  eventSummary: {
-    marginTop: 8,
-    color: '#333',
-    fontSize: 14,
-  },
-  notFoundText: {
-    color: '#999',
-  },
-  commentsList: {
-    flex: 1,
-    marginVertical: 8,
-  },
-  commentItem: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 8,
-    marginBottom: 8,
-  },
-  commentHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  commentAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 8,
-    backgroundColor: '#ccc',
-  },
-  commentAuthor: {
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  commentUsername: {
-    color: '#999',
-    fontSize: 12,
-  },
-  commentText: {
-    color: '#333',
-    fontSize: 14,
-    marginTop: 4,
-  },
-  commentTimestamp: {
-    color: '#999',
-    fontSize: 10,
-    marginTop: 2,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 8,
-    marginTop: 8,
-  },
-  commentInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginRight: 8,
-    minHeight: 40,
-  },
-  postButton: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-  },
-  postButtonText: {
-    color: '#fff',
-    fontSize: 14,
-  },
-});

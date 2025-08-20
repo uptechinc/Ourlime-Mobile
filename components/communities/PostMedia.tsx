@@ -9,13 +9,14 @@ import {
   Dimensions,
   // Platform
 } from "react-native";
+import { CommunityVariantDetailsSummary } from "@/types/communityTypes";
 // If you need video support, install and import from 'react-native-video'
 // e.g. import Video from 'react-native-video';
 
-interface CommunityVariantDetailsSummary {
-  type: "image" | "video";
-  typeUrl: string;
-}
+// interface CommunityVariantDetailsSummary {
+//   type: "image" | "video";
+//   typeUrl: string;
+// }
 
 interface PostMediaProps {
   media: CommunityVariantDetailsSummary[];
