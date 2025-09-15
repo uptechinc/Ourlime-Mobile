@@ -14,8 +14,9 @@ import {
   Users,
   MessageCircle,
   Plus,
+  Eye,
 } from 'lucide-react-native';
-import type { Event } from '@/app/types/eventTypes';
+import type { Event } from '@/types/eventTypes';
 import EventDetailModal from '@/components/events/eventDetailModal/EventDetailModal';
 import EventCommentModal from '@/components/events/EventCommentModal';
 import CreateEventModal from '@/components/events/createEventModal/CreateEventModal';
@@ -52,6 +53,10 @@ export default function EventsContentSection({
   const [commentEventId, setCommentEventId] = useState<string | null>(null);
   const [createVisible, setCreateVisible] = useState(false);
   //const [filterOpen, setFilterOpen] = useState(false);
+
+  const handleViewDetails = (event:Event) => {
+    setSelectedEvent(event);
+  }
 
   return (
     <View style={{ flex: 1, paddingTop: ITEM_MARGIN }}>
@@ -205,7 +210,7 @@ export default function EventsContentSection({
                   </Text>
                   <Users size={20} color="#6B7280" style={{ marginRight: 8 }} />
                   <Text style={{ fontSize: 16, color: '#374151' }}>
-                    {registrationCounts[evt.id!] || 0}
+                    {registrationCounts[evt.id!]}
                   </Text>
                   <TouchableOpacity
                     onPress={() => setCommentEventId(evt.id!)}
@@ -215,7 +220,56 @@ export default function EventsContentSection({
                   </TouchableOpacity>
                 </View>
 
+                {/* Registration Status Indicator */}
                 {evt.userId !== currentUserId && (
+                  <View 
+                  style={{
+                    backgroundColor: evt.userId === currentUserId 
+                      ? '#3B82F6'  // Blue for events created by current user
+                      : registeredEvents[evt.id!] 
+                        ? '#10B981'  // Green for registered events
+                        : '#6B7280', // Gray for not registered
+                    borderRadius: 6,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '500' }}>
+                    {evt.userId === currentUserId 
+                      ? 'Your Event' 
+                      : registeredEvents[evt.id!] 
+                        ? 'Registered' 
+                        : 'Not Registered'
+                    }
+                  </Text>
+                </View>
+                )}
+
+                {/* View Details Button */}
+                {/* <TouchableOpacity
+                    onPress={() => handleViewDetails(evt)}
+                    style={{
+                      backgroundColor: '#3B82F6',
+                      borderRadius: 6,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      marginRight: 8,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Eye size={16} color="#fff" style={{ marginRight: 4 }} />
+                    <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }}>
+                      Details
+                    </Text>
+                  </TouchableOpacity> */}
+
+
+
+                {/* RSVP Button - only show if not the event creator */}
+                {/* {evt.userId !== currentUserId && (
                   <TouchableOpacity
                     onPress={() => handleRSVP(evt.id!)}
                     style={{
@@ -233,7 +287,7 @@ export default function EventsContentSection({
                         : 'Register'}
                     </Text>
                   </TouchableOpacity>
-                )}
+                )} */}
               </View>
             </View>
           </TouchableOpacity>
@@ -248,18 +302,19 @@ export default function EventsContentSection({
           onClose={() => setSelectedEvent(null)}
           onRSVP={() => {
             handleRSVP(selectedEvent.id!);
-            setSelectedEvent(null);
+            //setSelectedEvent(null);
           }}
-          isRegistered={!registeredEvents[selectedEvent.id!]}
+          isRegistered={registeredEvents[selectedEvent.id!] || false}
           onLike={() => onLike(selectedEvent.id!)}
-          isLiked={!likedEvents[selectedEvent.id!]}
+          isLiked={likedEvents[selectedEvent.id!] || false}
           likeCount={likeCounts[selectedEvent.id!] || 0}
           registrationCount={registrationCounts[selectedEvent.id!] || 0}
           currentUserId={currentUserId}
         />
       )}
+      
 
-      {/* ───────── Comment modal ───────── */}
+      {/*───────── Comment modal ───────── */}
       {commentEventId && (
         <EventCommentModal
           eventId={commentEventId}
