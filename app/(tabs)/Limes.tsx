@@ -382,7 +382,7 @@ export default function LimesScreen() {
         }}
       >
         <LinearGradient
-          colors={["#10b981", "#059669"]}
+          colors={["#ffffff", "#ffffff"]}
           style={{ paddingHorizontal: 20, paddingVertical: 16 }}
         >
           <View
@@ -398,15 +398,15 @@ export default function LimesScreen() {
                   width: 40,
                   height: 40,
                   borderRadius: 20,
-                  backgroundColor: "rgba(16, 185, 129, 0.2)",
+                  backgroundColor: "rgba(16, 185, 129, 0.5)",
                   alignItems: "center",
                   justifyContent: "center",
                   marginRight: 12,
                 }}
               >
-                <Icon name="film" size={24} color="#ffffff" />
+                <Icon name="film" size={24} color="#000000" />
               </View>
-              <Text style={{ fontSize: 24, fontWeight: "bold", color: "#fff" }}>
+              <Text style={{ fontSize: 24, fontWeight: "bold", color: "#000000" }}>
                 Limes
               </Text>
             </View>
@@ -414,7 +414,7 @@ export default function LimesScreen() {
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <View style={{ marginRight: 16 }}>
                 <Text
-                  style={{ color: "#ffffff", fontSize: 14, fontWeight: "600" }}
+                  style={{ color: "#000000", fontSize: 14, fontWeight: "600" }}
                 >
                   {reels.length} Limes
                 </Text>
@@ -428,19 +428,19 @@ export default function LimesScreen() {
                   <Icon
                     name={showTrendingReels ? "grid" : "play"}
                     size={20}
-                    color="#fff"
+                    color="#000000"
                   />
                 </TouchableOpacity>
                 <Icon
                   name="search"
                   size={20}
-                  color="#fff"
+                  color="#000000"
                   style={{ marginLeft: 16 }}
                 />
                 <Icon
                   name="bell"
                   size={20}
-                  color="#fff"
+                  color="#000000"
                   style={{ marginLeft: 16 }}
                 />
               </View>
@@ -701,7 +701,7 @@ export default function LimesScreen() {
           </View> */}
 
           {/* Stats Section */}
-          <View style={{ marginHorizontal: 16, marginBottom: 24 }}>
+          {/* <View style={{ marginHorizontal: 16, marginBottom: 24 }}>
             <View
               style={{
                 backgroundColor: "#ffffff",
@@ -844,7 +844,7 @@ export default function LimesScreen() {
                 </Text>
               </View>
             </View>
-          </View>
+          </View> */}
         </ScrollView>
       )}
 
@@ -853,7 +853,7 @@ export default function LimesScreen() {
         <View
           style={{
             flex: 1,
-            backgroundColor: "#ffffff",
+            backgroundColor: "#000000",
             marginTop: 80,
             marginBottom: 80,
           }}
@@ -861,26 +861,34 @@ export default function LimesScreen() {
           <ScrollView
             style={{ flex: 1 }}
             showsVerticalScrollIndicator={false}
-            snapToInterval={SCREEN_HEIGHT - 160} // reels media content adjusted for header and footer
+            snapToInterval={SCREEN_HEIGHT - 160} // Account for both margins
             snapToAlignment="start"
             decelerationRate="fast"
             pagingEnabled
+            contentContainerStyle={{ paddingBottom: 0 }}
           >
             {reels.map((reel, index) => (
               <View
                 key={reel.id}
                 style={{
-                  width: SCREEN_WIDTH - 20,
-                  height: SCREEN_HEIGHT - 160,
+                  width: SCREEN_WIDTH,
+                  height: SCREEN_HEIGHT - 160, // Account for both margins
                   position: "relative",
-                  borderRadius: 20,
-                  overflow: "hidden",
                   alignSelf: "center",
+                  marginBottom: 0,
+                  backgroundColor: "#000000",
                 }}
               >
-                {/* reels media content adjusted for header and footer */}
-                {/* Media Content */}
-                <View style={{ flex: 1, position: "relative" }}> 
+                {/* Media Content with proper spacing */}
+                <View style={{ 
+                  width: SCREEN_WIDTH,
+                  height: SCREEN_HEIGHT - 100, // Shrink to create black borders
+                  position: "relative",
+                  borderRadius: 0,
+                  overflow: "hidden",
+                  marginTop: 0, // Top black border
+                  marginBottom: 0, // Bottom black border
+                }}> 
                   {reel.media.type === "video" ? (
                     <Video
                       source={{ uri: reel.media.typeUrl }}
@@ -910,6 +918,7 @@ export default function LimesScreen() {
                     }}
                   />
                 </View>
+                
                 {/* User Info - Bottom Left */}
                 <View
                   style={{
@@ -970,12 +979,13 @@ export default function LimesScreen() {
                     {reel.caption}
                   </Text>
                 </View>
+                
                 {/* Action Buttons - Right Side */}
                 <View
                   style={{
                     position: "absolute",
                     right: 16,
-                    bottom: 100,
+                    bottom: 120, // Move up to avoid bottom nav
                     alignItems: "center",
                     zIndex: 10,
                   }}
