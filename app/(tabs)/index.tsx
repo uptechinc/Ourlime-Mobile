@@ -74,6 +74,12 @@ export default function FeedsScreen() {
       onPress: () => router.push("/eLearning/page"),
     },
     {
+      id: "7",
+      title: "Community Detail Demo",
+      icon: "people-circle",
+      onPress: () => router.push("/community-detail"),
+    },
+    {
       id: "divider1",
       title: "",
       icon: "",
