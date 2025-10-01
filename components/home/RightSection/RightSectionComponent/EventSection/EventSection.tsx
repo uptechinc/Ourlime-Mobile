@@ -21,30 +21,50 @@ export const EventsSection = () => {
         const loadPopularEvents = async () => {
             try {
                 setIsLoading(true);
-                // Mock data for now - replace with actual API call
-                const mockEvents: EventWithAttendees[] = [
+                // Temporary mock data for development
+                const mockEvents = [
                     {
                         id: '1',
-                        title: 'Tech Meetup 2024',
-                        startDate: '2024-01-15',
-                        attendees: 45,
-                        image: 'https://example.com/event1.jpg'
+                        title: 'Tech Conference 2024',
+                        summary: 'Join us for the biggest tech conference of the year featuring industry leaders and cutting-edge innovations.',
+                        image: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1470&q=80',
+                        startDate: new Date(Date.now() + 86400000 * 7).toISOString(),
+                        endDate: new Date(Date.now() + 86400000 * 8).toISOString(),
+                        location: 'Convention Center, Downtown',
+                        userId: 'user123',
+                        recurrence: 'none',
+                        likeCount: 42
                     },
                     {
                         id: '2',
-                        title: 'Design Workshop',
-                        startDate: '2024-01-20',
-                        attendees: 32,
-                        image: 'https://example.com/event2.jpg'
+                        title: 'Weekly Community Meetup',
+                        summary: 'A casual meetup for community members to network, share ideas, and build connections.',
+                        image: 'https://images.unsplash.com/photo-1511578314322-379afb476865?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1469&q=80',
+                        startDate: new Date(Date.now() + 86400000 * 3).toISOString(),
+                        endDate: new Date(Date.now() + 86400000 * 3 + 7200000).toISOString(),
+                        location: 'Community Center',
+                        userId: 'user456',
+                        recurrence: 'weekly',
+                        likeCount: 18
                     },
                     {
                         id: '3',
-                        title: 'Startup Networking',
-                        startDate: '2024-01-25',
-                        attendees: 28
+                        title: 'Art Workshop',
+                        summary: 'Explore your creativity in this hands-on art workshop suitable for all skill levels.',
+                        image: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1470&q=80',
+                        startDate: new Date(Date.now() + 86400000 * 14).toISOString(),
+                        endDate: new Date(Date.now() + 86400000 * 14 + 14400000).toISOString(),
+                        location: 'Art Studio, Main Street',
+                        userId: 'user789',
+                        recurrence: 'monthly',
+                        likeCount: 25
                     }
                 ];
-                setEvents(mockEvents);
+                
+                setEvents(mockEvents.map(event => ({
+                    ...event,
+                    attendees: 0 // Adding required attendees property with default value
+                })));
             } catch (err) {
                 console.error('Error loading popular events:', err);
                 setError('Failed to load events');
