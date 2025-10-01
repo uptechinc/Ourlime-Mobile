@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-    View, 
-    Text, 
-    TouchableOpacity, 
-    ScrollView, 
-    Image, 
-    TextInput, 
-    Modal, 
+import { useRouter } from 'expo-router';
+import {
+    View,
+    Text,
+    TouchableOpacity,
+    ScrollView,
+    Image,
+    TextInput,
+    Modal,
     Alert,
     Dimensions,
     ActivityIndicator
@@ -23,6 +24,8 @@ import {
 import CreateBlogModal from '@/components/blogs/CreateBlogModal';
 import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesService';
 import { useProfileStore } from '@/src/store/useProfileStore';
+
+const router = useRouter();
 
 // Sample data for static display
 const SAMPLE_BLOGS = [
@@ -203,7 +206,7 @@ export default function Blogs() {
     // const router = useRouter();
     const { id: userId } = useProfileStore();
     const scrollViewRef = useRef<ScrollView>(null);
-    
+
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -227,7 +230,7 @@ export default function Blogs() {
             // const service = BlogsAndArticlesService.getInstance();
             // const data = await service.getPosts();
             // setBlogs(data);
-            
+
             // Mock data for now
             setBlogs(SAMPLE_BLOGS);
         } catch (err) {
@@ -318,7 +321,7 @@ export default function Blogs() {
     const getPageNumbers = () => {
         const pages = [];
         const maxVisiblePages = 5;
-        
+
         if (totalPages <= maxVisiblePages) {
             for (let i = 1; i <= totalPages; i++) {
                 pages.push(i);
@@ -346,7 +349,7 @@ export default function Blogs() {
                 pages.push(totalPages);
             }
         }
-        
+
         return pages;
     };
 
@@ -387,7 +390,7 @@ export default function Blogs() {
     useEffect(() => {
         if (featuredBlogs.length > 1) {
             const interval = setInterval(() => {
-                setCurrentFeaturedIndex((prev) => 
+                setCurrentFeaturedIndex((prev) =>
                     prev === featuredBlogs.length - 1 ? 0 : prev + 1
                 );
             }, 5000); // Change every 5 seconds
@@ -399,7 +402,7 @@ export default function Blogs() {
     // Navigate to next featured blog
     const nextFeaturedBlog = () => {
         if (featuredBlogs.length > 1) {
-            setCurrentFeaturedIndex((prev) => 
+            setCurrentFeaturedIndex((prev) =>
                 prev === featuredBlogs.length - 1 ? 0 : prev + 1
             );
         }
@@ -408,7 +411,7 @@ export default function Blogs() {
     // Navigate to previous featured blog
     const prevFeaturedBlog = () => {
         if (featuredBlogs.length > 1) {
-            setCurrentFeaturedIndex((prev) => 
+            setCurrentFeaturedIndex((prev) =>
                 prev === 0 ? featuredBlogs.length - 1 : prev - 1
             );
         }
@@ -431,9 +434,9 @@ export default function Blogs() {
         const categoryHeight = 80; // Category navigation height
         const controlsHeight = 100; // Controls section height
         const spacing = 100; // Additional spacing
-        
+
         const scrollPosition = heroHeight + categoryHeight + controlsHeight + spacing;
-        
+
         scrollViewRef.current?.scrollTo({
             x: 0,
             y: scrollPosition,
@@ -445,6 +448,7 @@ export default function Blogs() {
     const navigateToBlog = (blogId: string) => {
         // TODO: Replace with React Native navigation when Firebase is implemented
         // router.push(`/blogs/${blogId}`);
+        router.push('/blogs/[id]/page');
         Alert.alert('Navigation', `Navigating to blog ${blogId} - functionality coming soon!`);
     };
 
@@ -452,15 +456,15 @@ export default function Blogs() {
 
     return (
         <View style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
-            <ScrollView 
+            <ScrollView
                 ref={scrollViewRef}
                 style={{ flex: 1, paddingTop: 48, paddingHorizontal: 8 }}
                 contentContainerStyle={{ paddingBottom: 100 }}
             >
                 {/* Hero Section with Featured Blogs */}
                 <View style={{ marginBottom: 48 }}>
-                    <View style={{ 
-                        flexDirection: 'column', 
+                    <View style={{
+                        flexDirection: 'column',
                         marginBottom: 24,
                         alignItems: 'flex-start'
                     }}>
@@ -472,9 +476,9 @@ export default function Blogs() {
                                 Discover trending insights, stories, and knowledge based on community engagement
                             </Text>
                         </View>
-                        <View style={{ 
-                            marginTop: 16, 
-                            flexDirection: 'row', 
+                        <View style={{
+                            marginTop: 16,
+                            flexDirection: 'row',
                             gap: 12,
                             width: '100%'
                         }}>
@@ -514,16 +518,16 @@ export default function Blogs() {
                     </View>
 
                     {isLoading ? (
-                        <View style={{ 
-                            height: 320, 
-                            backgroundColor: '#e5e7eb', 
+                        <View style={{
+                            height: 320,
+                            backgroundColor: '#e5e7eb',
                             borderRadius: 12,
                             opacity: 0.7
                         }} />
                     ) : error ? (
-                        <View style={{ 
-                            backgroundColor: '#fef2f2', 
-                            padding: 16, 
+                        <View style={{
+                            backgroundColor: '#fef2f2',
+                            padding: 16,
                             borderRadius: 12,
                             borderWidth: 1,
                             borderColor: '#fecaca'
@@ -531,11 +535,11 @@ export default function Blogs() {
                             <Text style={{ color: '#dc2626' }}>{error}</Text>
                         </View>
                     ) : (
-                        <View style={{ 
-                            position: 'relative', 
-                            height: 320, 
-                            borderRadius: 12, 
-                            overflow: 'hidden' 
+                        <View style={{
+                            position: 'relative',
+                            height: 320,
+                            borderRadius: 12,
+                            overflow: 'hidden'
                         }}>
                             {/* For simplicity, just showing the first featured blog */}
                             {featuredBlogs.length > 0 && (
@@ -553,7 +557,7 @@ export default function Blogs() {
                                         }}
                                         resizeMode="cover"
                                     />
-                                    
+
                                     {/* Navigation arrows for multiple featured blogs */}
                                     {featuredBlogs.length > 1 && (
                                         <>
@@ -593,7 +597,7 @@ export default function Blogs() {
                                             </TouchableOpacity>
                                         </>
                                     )}
-                                    
+
                                     {/* Featured blog indicators */}
                                     {featuredBlogs.length > 1 && (
                                         <View style={{
@@ -610,15 +614,15 @@ export default function Blogs() {
                                                         width: 8,
                                                         height: 8,
                                                         borderRadius: 4,
-                                                        backgroundColor: index === currentFeaturedIndex 
-                                                            ? '#ffffff' 
+                                                        backgroundColor: index === currentFeaturedIndex
+                                                            ? '#ffffff'
                                                             : 'rgba(255,255,255,0.3)'
                                                     }}
                                                 />
                                             ))}
                                         </View>
                                     )}
-                                    
+
                                     <View style={{
                                         position: 'absolute',
                                         bottom: 0,
@@ -697,8 +701,8 @@ export default function Blogs() {
 
                 {/* Category Navigation */}
                 <View style={{ marginBottom: 32 }}>
-                    <ScrollView 
-                        horizontal 
+                    <ScrollView
+                        horizontal
                         showsHorizontalScrollIndicator={false}
                         contentContainerStyle={{ paddingBottom: 8 }}
                     >
@@ -748,8 +752,8 @@ export default function Blogs() {
                             shadowRadius: 2,
                             elevation: 2
                         }}>
-                            <View style={{ 
-                                flexDirection: 'row', 
+                            <View style={{
+                                flexDirection: 'row',
                                 alignItems: 'center',
                                 width: '100%',
                                 justifyContent: 'space-between'
@@ -757,7 +761,7 @@ export default function Blogs() {
                                 <Text style={{ color: '#6b7280', marginRight: 8 }}>
                                     {filteredBlogs.length} {filteredBlogs.length === 1 ? 'blog' : 'blogs'} found
                                 </Text>
-                                
+
                                 {/* Sort Button */}
                                 <TouchableOpacity
                                     style={{
@@ -785,19 +789,19 @@ export default function Blogs() {
                         {/* Blog Grid/List */}
                         {isLoading ? (
                             <View style={{ gap: 16 }}>
-                            {[1, 2, 3, 4].map((item) => (
-                                <View key={item} style={{
-                                    backgroundColor: '#e5e7eb',
-                                    borderRadius: 12,
-                                    height: 120,
-                                    width: '100%'
-                                }} />
-                            ))}
-                        </View>
+                                {[1, 2, 3, 4].map((item) => (
+                                    <View key={item} style={{
+                                        backgroundColor: '#e5e7eb',
+                                        borderRadius: 12,
+                                        height: 120,
+                                        width: '100%'
+                                    }} />
+                                ))}
+                            </View>
                         ) : error ? (
-                            <View style={{ 
-                                backgroundColor: '#fef2f2', 
-                                padding: 16, 
+                            <View style={{
+                                backgroundColor: '#fef2f2',
+                                padding: 16,
                                 borderRadius: 12,
                                 borderWidth: 1,
                                 borderColor: '#fecaca'
@@ -971,35 +975,35 @@ export default function Blogs() {
                         {!isLoading && filteredBlogs.length > 0 && (
                             <View style={{ marginTop: 32, alignItems: 'center' }}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                    <TouchableOpacity 
+                                    <TouchableOpacity
                                         style={{
-                                        paddingHorizontal: 16,
-                                        paddingVertical: 8,
-                                        borderRadius: 6,
-                                        borderWidth: 1,
+                                            paddingHorizontal: 16,
+                                            paddingVertical: 8,
+                                            borderRadius: 6,
+                                            borderWidth: 1,
                                             borderColor: currentPage > 1 ? '#d1d5db' : '#e5e7eb',
                                             backgroundColor: currentPage > 1 ? '#ffffff' : '#f9fafb'
-                                        }} 
+                                        }}
                                         onPress={handlePreviousPage}
                                         disabled={currentPage <= 1}
                                     >
-                                        <Text style={{ 
+                                        <Text style={{
                                             color: currentPage > 1 ? '#374151' : '#9ca3af',
                                             fontWeight: currentPage > 1 ? '500' : '400'
                                         }}>
                                             Previous
                                         </Text>
                                     </TouchableOpacity>
-                                    
+
                                     {getPageNumbers().map((page, index) => (
                                         <TouchableOpacity
                                             key={index}
                                             style={{
-                                        paddingHorizontal: 16,
-                                        paddingVertical: 8,
-                                        borderRadius: 6,
+                                                paddingHorizontal: 16,
+                                                paddingVertical: 8,
+                                                borderRadius: 6,
                                                 backgroundColor: page === currentPage ? '#10b981' : '#ffffff',
-                                        borderWidth: 1,
+                                                borderWidth: 1,
                                                 borderColor: page === currentPage ? '#10b981' : '#d1d5db',
                                                 minWidth: 40,
                                                 alignItems: 'center'
@@ -1007,28 +1011,28 @@ export default function Blogs() {
                                             onPress={() => typeof page === 'number' ? handlePageChange(page) : null}
                                             disabled={page === '...'}
                                         >
-                                            <Text style={{ 
+                                            <Text style={{
                                                 color: page === currentPage ? '#ffffff' : '#374151',
                                                 fontWeight: page === currentPage ? '600' : '500'
                                             }}>
                                                 {page}
                                             </Text>
-                                    </TouchableOpacity>
+                                        </TouchableOpacity>
                                     ))}
-                                    
-                                    <TouchableOpacity 
+
+                                    <TouchableOpacity
                                         style={{
-                                        paddingHorizontal: 16,
-                                        paddingVertical: 8,
-                                        borderRadius: 6,
-                                        borderWidth: 1,
+                                            paddingHorizontal: 16,
+                                            paddingVertical: 8,
+                                            borderRadius: 6,
+                                            borderWidth: 1,
                                             borderColor: currentPage < totalPages ? '#d1d5db' : '#e5e7eb',
                                             backgroundColor: currentPage < totalPages ? '#ffffff' : '#f9fafb'
                                         }}
                                         onPress={handleNextPage}
                                         disabled={currentPage >= totalPages}
                                     >
-                                        <Text style={{ 
+                                        <Text style={{
                                             color: currentPage < totalPages ? '#374151' : '#9ca3af',
                                             fontWeight: currentPage < totalPages ? '500' : '400'
                                         }}>
@@ -1036,12 +1040,12 @@ export default function Blogs() {
                                         </Text>
                                     </TouchableOpacity>
                                 </View>
-                                
+
                                 {/* Page info */}
-                                <Text style={{ 
-                                    marginTop: 12, 
-                                    color: '#6b7280', 
-                                    fontSize: 14 
+                                <Text style={{
+                                    marginTop: 12,
+                                    color: '#6b7280',
+                                    fontSize: 14
                                 }}>
                                     Page {currentPage} of {totalPages} • Showing {startIndex + 1}-{Math.min(endIndex, filteredBlogs.length)} of {filteredBlogs.length} blogs
                                 </Text>
@@ -1322,7 +1326,7 @@ export default function Blogs() {
                             }}>
                                 Sort Options
                             </Text>
-                            
+
                             {SORT_OPTIONS.map((option, index) => (
                                 <TouchableOpacity
                                     key={option.value}
@@ -1342,7 +1346,7 @@ export default function Blogs() {
                                         <Text style={{ fontSize: 16 }}>
                                             {option.icon}
                                         </Text>
-                                        <Text style={{ 
+                                        <Text style={{
                                             color: sortBy === option.value ? '#0369a1' : '#374151',
                                             fontWeight: sortBy === option.value ? '500' : '400',
                                             flex: 1,
