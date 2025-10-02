@@ -177,7 +177,7 @@ type Reel = {
     id: string;
     userId: string;
     media: {
-        type: 'video';
+        type: 'video' | 'image'; // Support both video and image content
         typeUrl: string;
         fileName: string;
         duration: number;
