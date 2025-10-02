@@ -43,10 +43,9 @@ export default function PopularEvents({ events }: PopularEventsProps) {
       marginVertical: 16,
     }}>
       <Text style={{
-        fontSize: 20,
-        fontWeight: "800",
+        fontSize: 22,
+        fontWeight: "700",
         marginBottom: 12,
-        alignSelf: "flex-start",
         color: "#222",
       }}>Popular Events</Text>
 

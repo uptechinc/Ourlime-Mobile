@@ -16,24 +16,22 @@ import {
   Clock,
   MapPin,
   Heart,
-  Calendar,
-  User,
 } from 'lucide-react-native';
 import type { Event } from '@/types/eventTypes';
 
-interface Comment {
-  id: string;
-  profileImage: string;
-  userDate?: {
-    firstName: string;
-    lastname: string;
-    username: string;
-  };
-  comment: string;
-  timestamp: Date;
-  replies: Comment[]
-}
 
+// ─── Types ─────────────────────────────────
+//type Media = { url: string; type: 'image' | 'video' };
+// export interface Event {
+//   id: string;
+//   title: string;
+//   summary?: string;
+//   startDate: string;
+//   endDate: string;
+//   location?: string;
+//   userId?: string;
+//   media?: Media[];
+// }
 
 interface Props {
   visible: boolean;
@@ -62,317 +60,194 @@ export default function EventDetailModal({
   currentUserId,
 }: Props) {
   const media = selectedEvent.media?.[0];
-  const { width, height } = Dimensions.get('window');
-  const modalWidth = Math.min(width, 350);
-  const maxHeight = height * 0.9;
+  const { width } = Dimensions.get('window');
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="slide">
       {/* Overlay */}
       <Pressable
         onPress={onClose}
         style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: 20,
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          backgroundColor: 'rgba(0,0,0,0.3)',
+        }}
+      />
+
+      {/* Bottom-sheet card */}
+      <View
+        style={{
+          marginTop: 'auto',
+          backgroundColor: '#fff',
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          maxHeight: '85%',
+          overflow: 'hidden',
+          width: '100%',
         }}
       >
-        {/* Modal Content */}
-        <Pressable
-          onPress={(e) => e.stopPropagation()}
+        {/* Close */}
+        <TouchableOpacity
+          onPress={onClose}
+          hitSlop={12}
           style={{
-            width: modalWidth,
-            maxHeight: maxHeight,
-            backgroundColor: '#fff',
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            zIndex: 10,
+            backgroundColor: 'rgba(0,0,0,0.05)',
             borderRadius: 16,
-            overflow: 'hidden',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 10 },
-            shadowOpacity: 0.25,
-            shadowRadius: 20,
-            elevation: 10,
+            padding: 4,
           }}
         >
-          {/* Header with close button */}
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: 16,
-              borderBottomWidth: 1,
-              borderBottomColor: '#E5E7EB',
-            }}
-          >
-            <Text style={{ fontSize: 18, fontWeight: '600', color: '#111827' }}>
-              Event Details
-            </Text>
-            <TouchableOpacity
-              onPress={onClose}
-              hitSlop={8}
+          <X size={20} color="#4b5563" />
+        </TouchableOpacity>
+
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}>
+          {/* Media header */}
+          <View style={{ width, height: 200, alignSelf: 'center' }}>
+            {/* Green diagonal
+            <View
               style={{
-                backgroundColor: '#F3F4F6',
-                borderRadius: 20,
-                padding: 6,
+                position: 'absolute',
+                top: -40,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: '#16a34a',
+                transform: [{ skewY: '-10deg' }],
               }}
-            >
-              <X size={20} color="#6B7280" />
-            </TouchableOpacity>
+            /> */}
+            {media?.type === 'image' && (
+              <Image
+                source={{ uri: media.url }}
+                resizeMode="cover"
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  width: '100%',
+                  height: '100%',
+                  borderTopLeftRadius: 20,
+                  borderTopRightRadius: 20,
+                }}
+              />
+            )}
+            {media?.type === 'video' && (
+              <Video
+                source={{ uri: media.url }}
+                resizeMode={ResizeMode.COVER}
+                useNativeControls
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  width: '100%',
+                  height: '100%',
+                  borderTopLeftRadius: 20,
+                  borderTopRightRadius: 20,
+                }}
+              />
+            )}
           </View>
 
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 20 }}
-          >
-            {/* Event Image */}
-            <View style={{ height: 200, width: '100%' }}>
-              {media?.type === 'image' && (
-                <Image
-                  source={{ uri: media.url }}
-                  resizeMode="cover"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                  }}
-                />
-              )}
-              {media?.type === 'video' && (
-                <Video
-                  source={{ uri: media.url }}
-                  resizeMode={ResizeMode.COVER}
-                  useNativeControls
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                  }}
-                />
-              )}
-              {!media && (
-                <View
-                  style={{
-                    flex: 1,
-                    backgroundColor: '#F3F4F6',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Calendar size={48} color="#9CA3AF" />
-                  <Text style={{ color: '#6B7280', marginTop: 8, fontSize: 16 }}>
-                    No Image
-                  </Text>
-                </View>
-              )}
-            </View>
+          {/* Title */}
+          <Text style={{ marginTop: 16, fontSize: 20, fontWeight: '700', color: '#111827' }}>
+            {selectedEvent.title}
+          </Text>
 
-            {/* Event Content */}
-            <View style={{ padding: 20 }}>
-              {/* Title */}
+          {/* Dates */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
+            <Clock size={16} color="#6b7280" />
+            <Text style={{ marginLeft: 6, fontSize: 14, color: '#6b7280' }}>
+              {new Date(selectedEvent.startDate).toLocaleDateString()} –{' '}
+              {new Date(selectedEvent.endDate).toLocaleDateString()}
+            </Text>
+          </View>
+
+          {/* Location */}
+          {selectedEvent.location && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
+              <MapPin size={16} color="#6b7280" />
+              <Text style={{ marginLeft: 6, fontSize: 14, color: '#6b7280' }}>
+                {selectedEvent.location}
+              </Text>
+            </View>
+          )}
+
+          {/* Summary */}
+          {selectedEvent.summary && (
+            <Text
+              style={{
+                marginTop: 10,
+                fontSize: 14,
+                lineHeight: 20,
+                color: '#374151',
+              }}
+            >
+              {selectedEvent.summary}
+            </Text>
+          )}
+
+          {/* Likes & registrations */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
+            <TouchableOpacity
+              onPress={onLike}
+              hitSlop={8}
+              style={{ flexDirection: 'row', alignItems: 'center' }}
+            >
+              <Heart
+                size={20}
+                color={isLiked ? '#16a34a' : '#6b7280'}
+                fill={isLiked ? '#16a34a' : 'none'}
+              />
               <Text
                 style={{
-                  fontSize: 24,
-                  fontWeight: '700',
-                  color: '#111827',
-                  marginBottom: 8,
+                  marginLeft: 6,
+                  fontSize: 14,
+                  color: isLiked ? '#16a34a' : '#6b7280',
                 }}
               >
-                {selectedEvent.title}
+                {likeCount} {likeCount === 1 ? 'Like' : 'Likes'}
               </Text>
+            </TouchableOpacity>
 
-              {/* Date and Time */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  marginBottom: 12,
-                  backgroundColor: '#F8FAFC',
-                  padding: 12,
-                  borderRadius: 8,
-                }}
-              >
-                <Clock size={18} color="#3B82F6" />
-                <View style={{ marginLeft: 8, flex: 1 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#1F2937' }}>
-                    Event Date
-                  </Text>
-                  <Text style={{ fontSize: 14, color: '#6B7280', marginTop: 2 }}>
-                    {new Date(selectedEvent.startDate).toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                    {selectedEvent.time && ` at ${selectedEvent.time}`}
-                  </Text>
-                  {selectedEvent.endDate !== selectedEvent.startDate && (
-                    <Text style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>
-                      Ends: {new Date(selectedEvent.endDate).toLocaleDateString()}
-                    </Text>
-                  )}
-                </View>
-              </View>
-
-              {/* Location */}
-              {selectedEvent.location && (
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    marginBottom: 12,
-                    backgroundColor: '#F8FAFC',
-                    padding: 12,
-                    borderRadius: 8,
-                  }}
-                >
-                  <MapPin size={18} color="#10B981" />
-                  <View style={{ marginLeft: 8, flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#1F2937' }}>
-                      Location
-                    </Text>
-                    <Text style={{ fontSize: 14, color: '#6B7280', marginTop: 2 }}>
-                      {selectedEvent.location}
-                    </Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Description */}
-              {selectedEvent.summary && (
-                <View style={{ marginBottom: 16 }}>
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      fontWeight: '600',
-                      color: '#1F2937',
-                      marginBottom: 8,
-                    }}
-                  >
-                    About this event
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      lineHeight: 22,
-                      color: '#4B5563',
-                    }}
-                  >
-                    {selectedEvent.summary}
-                  </Text>
-                </View>
-              )}
-
-              {/* Event Stats */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-around',
-                  marginBottom: 20,
-                  backgroundColor: '#F8FAFC',
-                  padding: 16,
-                  borderRadius: 12,
-                }}
-              >
-                <TouchableOpacity
-                  onPress={onLike}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    padding: 8,
-                    borderRadius: 8,
-                    backgroundColor: isLiked ? '#FEF2F2' : 'transparent',
-                  }}
-                >
-                  <Heart
-                    size={20}
-                    color={isLiked ? '#EF4444' : '#6B7280'}
-                    fill={isLiked ? '#EF4444' : 'none'}
-                  />
-                  <Text
-                    style={{
-                      marginLeft: 6,
-                      fontSize: 14,
-                      fontWeight: '600',
-                      color: isLiked ? '#EF4444' : '#6B7280',
-                    }}
-                  >
-                    {likeCount}
-                  </Text>
-                </TouchableOpacity>
-
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    padding: 8,
-                  }}
-                >
-                  <Users size={20} color="#6B7280" />
-                  <Text
-                    style={{
-                      marginLeft: 6,
-                      fontSize: 14,
-                      fontWeight: '600',
-                      color: '#6B7280',
-                    }}
-                  >
-                    {registrationCount} registered
-                  </Text>
-                </View>
-              </View>
-
-              {/* Register/Unregister Button */}
-              {currentUserId !== selectedEvent.userId && (
-                <TouchableOpacity
-                  onPress={onRSVP}
-                  //disabled={isRegistered}
-                  style={{
-                    backgroundColor: isRegistered ? '#EF4444' : '#3B82F6',
-                    paddingVertical: 14,
-                    paddingHorizontal: 24,
-                    borderRadius: 12,
-                    alignItems: 'center',
-                    shadowColor: isRegistered ? '#EF4444' : '#3B82F6',
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.3,
-                    shadowRadius: 8,
-                    elevation: 4,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: '#fff',
-                      fontSize: 16,
-                      fontWeight: '600',
-                    }}
-                  >
-                    {isRegistered ? 'Unregister' : 'Register for Event'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              {/* Event Creator Info */}
-              {selectedEvent.userId === currentUserId && (
-                <View
-                  style={{
-                    backgroundColor: '#F0FDF4',
-                    padding: 12,
-                    borderRadius: 8,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    marginTop: 12,
-                  }}
-                >
-                  <User size={16} color="#10B981" />
-                  <Text style={{ marginLeft: 8, fontSize: 14, color: '#065F46' }}>
-                    You created this event
-                  </Text>
-                </View>
-              )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 24 }}>
+              <Users size={16} color="#6b7280" />
+              <Text style={{ marginLeft: 6, fontSize: 14, color: '#6b7280' }}>
+                {registrationCount} Registered
+              </Text>
             </View>
-          </ScrollView>
-        </Pressable>
-      </Pressable>
+          </View>
+
+          {/* RSVP */}
+          {currentUserId !== selectedEvent.userId && (
+            <TouchableOpacity
+              disabled={isRegistered}
+              onPress={onRSVP}
+              style={{
+                marginTop: 18,
+                alignSelf: 'flex-end',
+                backgroundColor: isRegistered ? '#6ee7b7' : '#01eb53',
+                paddingHorizontal: 22,
+                paddingVertical: 10,
+                borderRadius: 8,
+              }}
+            >
+              <Text style={{ fontWeight: '600', fontSize: 14, color: '#fff' }}>
+                {isRegistered ? 'Registered' : 'Register'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      </View>
     </Modal>
   );
 }
