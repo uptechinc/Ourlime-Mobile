@@ -36,3 +36,4 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+.idea/material_theme_project_new.xml
