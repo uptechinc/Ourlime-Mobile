@@ -64,65 +64,24 @@ const PostCardSection = ({ post, onCommentClick }: PostCardSectionProps) => {
     };
 
     return (
-      <View
-        style={{
-            backgroundColor: '#fff', 
-            borderRadius: 20, 
-            padding: 20, 
-            marginBottom: 20, 
-            marginHorizontal: 0,
-            shadowColor: '#000', 
-            shadowOffset: {
-                width: 0,
-                height: 4,
-            },
-            shadowOpacity: 0.08, 
-            shadowRadius: 12,
-            elevation: 8,
-            borderWidth: 1,
-            borderColor: 'rgba(0, 0, 0, 0.05)',
-        }}
-      >
-        {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 8 }}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ 
-                        width: 48, 
-                        height: 48, 
-                        borderRadius: 24, 
-                        overflow: 'hidden', 
-                        backgroundColor: '#f3f4f6', 
-                        marginRight: 12, 
-                        alignItems: 'center', 
-                        justifyContent: 'center',
-                        borderWidth: 2,
-                        borderColor: '#fff',
-                        shadowColor: '#000',
-                        shadowOffset: {
-                            width: 0,
-                            height: 2,
-                        },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 4,
-                        elevation: 3,
-                    }}>
-                        {post.user.profileImage ? (
-                            <Image
+                    <View style={{ width: 48, height: 48, borderRadius: 24, overflow: 'hidden', backgroundColor: '#e5e7eb', marginRight: 12, alignItems: 'center', justifyContent: 'center' }}>
+                            {post.user.profileImage ? (
+                                <Image
                                 source={{ uri: post.user.profileImage }}
                                 style={{ width: 48, height: 48, borderRadius: 24 }}
                                 resizeMode="cover"
-                            />
-                        ) : (
-                            <Text style={{ fontSize: 20, color: '#6b7280', fontWeight: 'bold' }}>
-                                {post.user.firstName?.charAt(0)}
-                            </Text>
-                        )}
+                                />
+                            ) : (
+                            <Text style={{ fontSize: 20, color: '#6b7280', fontWeight: 'bold' }}>{post.user.firstName?.charAt(0)}</Text>
+                            )}
                     </View>
                     <View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#111827' }}>
-                                {post.user.firstName} {post.user.lastName}
-                            </Text>
+                            <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#111827' }}>{post.user.firstName} {post.user.lastName}</Text>
                             {post.user.emailVerified && (
                                 <Icon name="check-circle" size={16} color="#10b981" style={{ marginLeft: 4 }} />
                             )}
@@ -133,132 +92,61 @@ const PostCardSection = ({ post, onCommentClick }: PostCardSectionProps) => {
                         <Text style={{ fontSize: 13, color: '#6b7280' }}>@{post.user.userName}</Text>
                     </View>
                 </View>
-                {/* Three Dots Menu */}
-                <TouchableOpacity 
-                    onPress={() => setIsMenuOpen(!isMenuOpen)} 
-                    style={{ 
-                        padding: 8, 
-                        borderRadius: 20,
-                        backgroundColor: '#f8f9fa',
-                    }}
-                >
+                {/* Three Dots Menu (stubbed) */}
+                <TouchableOpacity onPress={() => setIsMenuOpen(!isMenuOpen)} style={{ padding: 8, borderRadius: 9999 }}>
                     <Icon name="more-horizontal" size={22} color="#6b7280" />
                 </TouchableOpacity>
+                {/* TODO: Implement menu actions */}
             </View>
-
             {/* Content */}
-            <View style={{ gap: 12 }}>
+            <View style={{ gap: 8 }}>
                 {post.caption ? (
-                    <Text style={{ 
-                        fontSize: 18, 
-                        fontWeight: '600', 
-                        color: '#111827', 
-                        lineHeight: 24,
-                        marginBottom: 4 
-                    }}>
-                        {post.caption}
-                    </Text>
+                    <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#111827', marginBottom: 4 }}>{post.caption}</Text>
                 ) : null}
                 {post.description ? (
-                    <Text style={{ 
-                        color: '#374151', 
-                        fontSize: 15,
-                        lineHeight: 22,
-                        marginBottom: 4 
-                    }}>
-                        {post.description}
-                    </Text>
+                    <Text style={{ color: '#374151', marginBottom: 4 }}>{post.description}</Text>
                 ) : null}
                 {post.hashtags && post.hashtags.length > 0 && (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
                         {post.hashtags.map((tag, index) => (
-                            <Text key={index} style={{ 
-                                color: '#10b981', 
-                                fontSize: 14,
-                                fontWeight: '500',
-                            }}>
-                                #{tag}
-                            </Text>
+                            <Text key={index} style={{ color: '#10b981', fontSize: 13 }}>#{tag}</Text>
                         ))}
                     </View>
                 )}
                 {post.media && post.media.length > 0 && (
-                    <View style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 8 }}>
-                        <ImageAndVideoPostSection media={post.media} />
-                    </View>
+                    <ImageAndVideoPostSection media={post.media} />
                 )}
             </View>
-
             {/* Interaction Bar */}
-            <View style={{ 
-                flexDirection: 'row', 
-                alignItems: 'center', 
-                justifyContent: 'space-between', 
-                marginTop: 20,
-                paddingTop: 16,
-                borderTopWidth: 1,
-                borderTopColor: '#f3f4f6',
-            }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 24 }}>
                     <TouchableOpacity
                         onPress={directHeartClick}
-                        style={{ 
-                            flexDirection: 'row', 
-                            alignItems: 'center', 
-                            gap: 8,
-                            paddingVertical: 8,
-                            paddingHorizontal: 12,
-                            borderRadius: 20,
-                            backgroundColor: isLiked ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
-                        }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
                         activeOpacity={0.7}
                     >
                         <Icon name="heart" size={24} color={isLiked ? '#ef4444' : '#6b7280'} />
-                        <Text style={{ 
-                            fontSize: 14, 
-                            color: isLiked ? '#ef4444' : '#6b7280', 
-                            fontWeight: '600' 
-                        }}>
-                            {localLikeCount}
-                        </Text>
+                        <Text style={{ fontSize: 14, color: isLiked ? '#ef4444' : '#6b7280', fontWeight: 'bold' }}>{localLikeCount}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         onPress={() => onCommentClick(post.id)}
-                        style={{ 
-                            flexDirection: 'row', 
-                            alignItems: 'center', 
-                            gap: 8,
-                            paddingVertical: 8,
-                            paddingHorizontal: 12,
-                            borderRadius: 20,
-                        }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
                         activeOpacity={0.7}
                     >
                         <Icon name="message-circle" size={24} color="#6b7280" />
-                        <Text style={{ fontSize: 14, color: '#6b7280', fontWeight: '600' }}>
-                            {post.stats?.comments || 0}
-                        </Text>
+                        <Text style={{ fontSize: 14, color: '#6b7280', fontWeight: 'bold' }}>{post.stats?.comments || 0}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         onPress={() => setIsShareMenuOpen(!isShareMenuOpen)}
-                        style={{ 
-                            flexDirection: 'row', 
-                            alignItems: 'center', 
-                            gap: 8,
-                            paddingVertical: 8,
-                            paddingHorizontal: 12,
-                            borderRadius: 20,
-                        }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
                         activeOpacity={0.7}
                     >
                         <Icon name="share" size={24} color="#6b7280" />
-                        <Text style={{ fontSize: 14, color: '#6b7280', fontWeight: '600' }}>
-                            {post.stats?.shares || 0}
-                        </Text>
+                        <Text style={{ fontSize: 14, color: '#6b7280', fontWeight: 'bold' }}>{post.stats?.shares || 0}</Text>
                     </TouchableOpacity>
                 </View>
                 {/* Liked Users Display */}
-                {/* {localLikedUsers.length > 0 && (
+                {localLikedUsers.length > 0 && (
                     <TouchableOpacity
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                         onPress={() => setIsLikesModalOpen(true)}
@@ -277,14 +165,6 @@ const PostCardSection = ({ post, onCommentClick }: PostCardSectionProps) => {
                                         borderColor: '#fff',
                                         marginLeft: idx === 0 ? 0 : -10,
                                         backgroundColor: '#e5e7eb',
-                                        shadowColor: '#000',
-                                        shadowOffset: {
-                                            width: 0,
-                                            height: 1,
-                                        },
-                                        shadowOpacity: 0.1,
-                                        shadowRadius: 2,
-                                        elevation: 2,
                                     }}
                                 >
                                     <Image
@@ -295,22 +175,22 @@ const PostCardSection = ({ post, onCommentClick }: PostCardSectionProps) => {
                                 </View>
                             ))}
                         </View>
-                        <Text style={{ color: '#6b7280', fontSize: 13, fontWeight: '500' }}>
+                        <Text style={{ color: '#6b7280', fontSize: 13 }}>
                             {localLikedUsers.length === 1 ? '1 like' : `${localLikedUsers.length} likes`}
                         </Text>
                     </TouchableOpacity>
-                )} */}
+                )}
             </View>
-        <LikesModal
-          isOpen={isLikesModalOpen}
-          onClose={() => setIsLikesModalOpen(false)}
-          likedUsers={localLikedUsers}
-          onFollowClick={handleFollowClick}
-          onFriendRequestClick={handleFriendRequestClick}
-          followingStatus={followingStatus}
-          friendshipStatus={friendshipStatus}
-        />
-      </View>
+            <LikesModal
+                isOpen={isLikesModalOpen}
+                onClose={() => setIsLikesModalOpen(false)}
+                likedUsers={localLikedUsers}
+                onFollowClick={handleFollowClick}
+                onFriendRequestClick={handleFriendRequestClick}
+                followingStatus={followingStatus}
+                friendshipStatus={friendshipStatus}
+            />
+        </View>
     );
 };
 
