@@ -63,7 +63,7 @@ export default function FeedsScreen() {
     },
     {
       id: "5",
-      title: "Blogs",
+      title: "Blogs",//blogs page
       icon: "book",
       onPress: () => router.push("/blogs/page"),
     },
@@ -78,6 +78,19 @@ export default function FeedsScreen() {
       title: "Community Detail Demo",
       icon: "people-circle",
       onPress: () => router.push("/community-detail"),
+    },
+    {
+      id: "8",
+      title: "Chat", 
+      icon: "chatbubbles",
+      onPress: () => router.push("/chat/page"),
+
+    },
+    {
+      id: "9",
+      title: "Blogs", //Redo blogs (id: 5)
+      icon: "book",
+      onPress: () => router.push("/blogs/[id]/page"),
     },
     {
       id: "divider1",

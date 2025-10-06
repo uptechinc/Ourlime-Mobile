@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { 
-    View, 
-    Text, 
-    TouchableOpacity, 
-    ScrollView, 
-    Image, 
-    TextInput, 
-    Modal, 
+import {
+    View,
+    Text,
+    TouchableOpacity,
+    ScrollView,
+    Image,
+    TextInput,
+    Modal,
     Alert,
     Dimensions,
     ActivityIndicator
 } from 'react-native';
+// import { MessageSquare, User, Clock, Calendar, Eye, Bookmark, Heart, Share2 } from 'lucide-react-native';
 // TODO: Comment out Firebase setup for later implementation
 // import { useParams, useRouter } from 'next/navigation';
 // import Image from 'next/image';
@@ -206,7 +207,7 @@ export default function BlogDetail() {
                 return (
                     <View key={index} style={{ marginVertical: 32 }}>
                         <Image
-                            source={{ uri: block.src || 'https://via.placeholder.com/400x200' }}
+                            source={{ uri: 'https://imgv3.fotor.com/images/videoImage/wonderland-girl-generated-by-Fotor-ai-art-generator.jpg' }}
                             style={{
                                 width: '100%',
                                 height: block.position === 'center' ? 400 : 300,
@@ -346,8 +347,8 @@ export default function BlogDetail() {
                     {/* Category and metadata */}
                     <View style={{ padding: 24, paddingTop: 24 }}>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                            <View style={{ backgroundColor: '#3b82f6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}>
-                                <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '500' }}>{blog.category}</Text>
+                            <View style={{ backgroundColor: '#e5e7eb', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}>
+                                <Text style={{ color: '#005bc4', fontSize: 12, fontWeight: '400' }}>{blog.category}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                 <Text style={{ fontSize: 14, marginRight: 4 }}>🕒</Text>
@@ -372,27 +373,30 @@ export default function BlogDetail() {
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                 <Image
-                                    source={{ uri: author?.avatar }}
+                                    source={{ uri: 'https://www.w3schools.com/w3images/avatar2.png' }}
                                     style={{ width: 48, height: 48, borderRadius: 24, marginRight: 12 }}
                                 />
                                 <View>
                                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                         <Text style={{ fontWeight: '600', color: '#111827' }}>{author?.name}</Text>
-                                        <View style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: '#dbeafe', borderRadius: 12 }}>
-                                            <Text style={{ color: '#1e40af', fontSize: 12 }}>Author</Text>
+                                        <View style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: '#e1effe', borderRadius: 12 }}>
+                                            <Text style={{ color: '#1e429f', fontSize: 12 }}>Author</Text>
                                         </View>
                                     </View>
                                     {(author?.role || author?.company) && (
-                                        <Text style={{ color: '#6b7280', marginTop: 3 }}>
+                                        <Text style={{ color: '#cfd1d4', marginTop: 3 }}>
                                             {author?.role}{author?.role && author?.company ? ' at ' : ''}{author?.company}
                                         </Text>
                                     )}
                                 </View>
                             </View>
                             <TouchableOpacity
-                                style={{ backgroundColor: '#3b82f6', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 }}
+                                style={{ backgroundColor: '#cfd1d4', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 }}
                             >
-                                <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '500' }}>Follow</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Text style={{ fontSize: 14, marginRight: 4 }}>👤</Text>
+                                    <Text style={{ color: '#005bc4', fontSize: 14, fontWeight: '400' }}> Follow</Text>
+                                </View>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -400,7 +404,7 @@ export default function BlogDetail() {
                     {/* Cover Image */}
                     <View style={{ height: 320, width: '100%', marginBottom: 32 }}>
                         <Image
-                            source={{ uri: blog.coverImage || 'https://via.placeholder.com/800x400' }}
+                            source={{ uri: 'https://imgv3.fotor.com/images/videoImage/wonderland-girl-generated-by-Fotor-ai-art-generator.jpg' }}
                             style={{ width: '100%', height: '100%' }}
                             resizeMode="cover"
                         />
@@ -420,10 +424,10 @@ export default function BlogDetail() {
                         {/* Article content */}
                         <View style={{ maxWidth: '100%' }}>
                             {Array.isArray(blog.content)
-                              ? blog.content.map((block: any, index: number) => renderContentBlock(block, index))
-                              : blog.content
-                                ? <Text style={{ color: '#374151', marginBottom: 24, lineHeight: 24 }}>{blog.content}</Text>
-                                : null
+                                ? blog.content.map((block: any, index: number) => renderContentBlock(block, index))
+                                : blog.content
+                                    ? <Text style={{ color: '#374151', marginBottom: 24, lineHeight: 24 }}>{blog.content}</Text>
+                                    : null
                             }
                         </View>
 
@@ -448,7 +452,7 @@ export default function BlogDetail() {
                                             <View key={index} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                                                 <Text style={{ color: '#6b7280', marginRight: 8, marginTop: 2 }}>{index + 1}.</Text>
                                                 <View style={{ flex: 1 }}>
-                                                    <Text style={{ fontWeight: '500', color: '#374151' }}>{source.title}</Text>
+                                                    <Text style={{ fontWeight: '200', color: '#374151' }}>{source.title}</Text>
                                                     <Text style={{ color: '#6b7280' }}> by {source.author}. </Text>
                                                     <Text style={{ color: '#6b7280' }}>{source.publisher}, {source.year}. </Text>
                                                     {source.url && (
@@ -476,16 +480,15 @@ export default function BlogDetail() {
                                             width: 40,
                                             height: 40,
                                             borderRadius: 20,
-                                            backgroundColor: isLiked ? '#3b82f6' : 'transparent',
+                                            backgroundColor: isLiked ? '#01eb53' : 'transparent',
                                             borderWidth: 1,
-                                            borderColor: isLiked ? '#3b82f6' : '#d1d5db',
+                                            borderColor: isLiked ? '#01eb53' : '#d1d5db',
                                             justifyContent: 'center',
                                             alignItems: 'center'
                                         }}
                                     >
-                                        <Text style={{ color: isLiked ? '#ffffff' : '#6b7280', fontSize: 16 }}>
-                                            {isLiked ? '❤️' : '🤍'}
-                                        </Text>
+                                        <Text style={{ fontSize: 20, color: isLiked ? '#01eb53' : '#6b7280' }}>❤️</Text>
+
                                     </TouchableOpacity>
                                     <Text style={{ color: '#374151' }}>{likesCount}</Text>
 
@@ -495,16 +498,15 @@ export default function BlogDetail() {
                                             width: 40,
                                             height: 40,
                                             borderRadius: 20,
-                                            backgroundColor: isBookmarked ? '#3b82f6' : 'transparent',
+                                            backgroundColor: isBookmarked ? '#01eb53' : 'transparent',
                                             borderWidth: 1,
-                                            borderColor: isBookmarked ? '#3b82f6' : '#d1d5db',
+                                            borderColor: isBookmarked ? '#01eb53' : '#d1d5db',
                                             justifyContent: 'center',
                                             alignItems: 'center'
                                         }}
                                     >
-                                        <Text style={{ color: isBookmarked ? '#ffffff' : '#6b7280', fontSize: 16 }}>
-                                            {isBookmarked ? '🔖' : '📖'}
-                                        </Text>
+                                        <Text style={{ fontSize: 20, color: isBookmarked ? '#01eb53' : '#6b7280' }}>🔖</Text>
+
                                     </TouchableOpacity>
 
                                     <TouchableOpacity
@@ -531,15 +533,18 @@ export default function BlogDetail() {
                                             alignItems: 'center'
                                         }}
                                     >
-                                        <Text style={{ color: '#6b7280', fontSize: 16 }}>📤</Text>
+                                        <Text style={{ fontSize: 16 }}>📤</Text>
                                     </TouchableOpacity>
                                 </View>
 
                                 <TouchableOpacity
-                                    style={{ backgroundColor: '#3b82f6', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 }}
+                                    style={{ backgroundColor: '#cfd1d4', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 }}
                                     onPress={() => setShowCommentForm(!showCommentForm)}
                                 >
-                                    <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '500' }}>💬 Add Comment</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Text style={{ fontSize: 16, color: '#01eb53', marginRight: 4 }}>💬</Text>
+                                        <Text style={{ color: '#01eb53', fontSize: 14, fontWeight: '200', flexDirection: 'row' }}> Add Comment</Text>
+                                    </View>
                                 </TouchableOpacity>
                             </View>
 
@@ -573,13 +578,14 @@ export default function BlogDetail() {
                                             style={{
                                                 paddingVertical: 12,
                                                 paddingHorizontal: 16,
-                                                backgroundColor: commentText.trim() ? '#3b82f6' : '#9ca3af',
+                                                backgroundColor: '#01eb53',
+                                                opacity: commentText.trim() ? 1 : 0.5,
                                                 borderRadius: 8
                                             }}
                                             onPress={handleSubmitComment}
                                             disabled={!commentText.trim()}
                                         >
-                                            <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '500' }}>Post Comment</Text>
+                                            <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '400' }}>Post Comment</Text>
                                         </TouchableOpacity>
                                     </View>
                                 </View>
@@ -593,7 +599,7 @@ export default function BlogDetail() {
                     <Text style={{ fontSize: 20, fontWeight: '600', color: '#111827', marginBottom: 16 }}>About the Author</Text>
                     <View style={{ flexDirection: 'row', gap: 24 }}>
                         <Image
-                            source={{ uri: author?.avatar || 'https://via.placeholder.com/100x100' }}
+                            source={{ uri: 'https://www.w3schools.com/w3images/avatar2.png' }}
                             style={{ width: 96, height: 96, borderRadius: 48 }}
                         />
                         <View style={{ flex: 1 }}>
@@ -605,9 +611,9 @@ export default function BlogDetail() {
                                     <Text style={{ fontWeight: '600', color: '#111827' }}>{author?.followersCount}</Text> followers
                                 </Text>
                                 <TouchableOpacity
-                                    style={{ backgroundColor: '#3b82f6', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 }}
+                                    style={{ backgroundColor: '#01eb53', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 }}
                                 >
-                                    <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '500' }}>Follow</Text>
+                                    <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '200' }}>Follow</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -730,7 +736,7 @@ export default function BlogDetail() {
                         </View>
                     )}
                 </View>
-            </ScrollView>
-        </View>
+            </ScrollView >
+        </View >
     );
 }
