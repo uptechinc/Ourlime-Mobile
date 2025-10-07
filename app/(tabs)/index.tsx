@@ -125,7 +125,7 @@ export default function FeedsScreen() {
         backgroundColor: "#F2F2F7",
       }}
     >
-      <AppHeader title="OurLime" onMenuPress={handleMenuPress} />
+      <AppHeader showLogo={true} logoType="both" onMenuPress={handleMenuPress} />
 
       <MiddleSection
         onCommentClick={handleCommentClick}

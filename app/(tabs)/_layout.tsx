@@ -3,6 +3,7 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { View, Platform } from "react-native";
 import { BlurView } from "expo-blur";
+import {Image} from "react-native";
 
 const TabLayout = () => {
   return (
@@ -96,11 +97,15 @@ const TabLayout = () => {
         options={{
           title: "Limes",
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? "heart" : "heart-outline"}
-              size={size}
-              color={focused ? "#10B981" : "#8E8E93"}
+            <Image
+              source={require('@/assets/images/logo.png')}
+              style={{ width: 32, height: 32 }}
             />
+            // <Ionicons
+            //   name={focused ? "heart" : "heart-outline"}
+            //   size={size}
+            //   color={focused ? "#10B981" : "#8E8E93"}
+            // />
           ),
         }}
       />
