@@ -88,7 +88,7 @@ export default function FeedsScreen() {
     },
     {
       id: "9",
-      title: "Blogs", //Redo blogs (id: 5)
+      title: "Blogs Demo", //Redo blogs (id: 5)
       icon: "book",
       onPress: () => router.push("/blogs/[id]/page"),
     },

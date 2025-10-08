@@ -443,7 +443,7 @@ export default function SlideOutMenu({
                                 shadowRadius: 10,
                                 elevation: 5,
                             }}>
-                                <TouchableOpacity style={{
+                                {/* <TouchableOpacity style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
                                     paddingVertical: 12,
@@ -462,7 +462,7 @@ export default function SlideOutMenu({
                                     }}>
                                         Help
                                     </Text>
-                                </TouchableOpacity>
+                                </TouchableOpacity> */}
                                 <TouchableOpacity style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
