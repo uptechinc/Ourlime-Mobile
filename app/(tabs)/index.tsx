@@ -129,6 +129,12 @@ export default function FeedsScreen() {
       icon: "person",
       onPress: () => router.push("/(tabs)/Profile"),
     },
+    {
+      id: "10",
+      title: "Register Demo",
+      icon: "person-add",
+      onPress: () => router.push("/(auth)/register"),
+    },
   ];
 
   return (
