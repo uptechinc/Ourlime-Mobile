@@ -11,16 +11,16 @@ import {
     Dimensions,
     ActivityIndicator
 } from 'react-native';
-import { MessageSquare, User, Clock, Calendar, Eye, Bookmark, Heart, Share2 } from 'lucide-react-native';
+// import { MessageSquare, User, Clock, Calendar, Eye, Bookmark, Heart, Share2 } from 'lucide-react-native';
 // TODO: Comment out Firebase setup for later implementation
 // import { useParams, useRouter } from 'next/navigation';
 // import Image from 'next/image';
 // import Link from 'next/link';
-// import {
-//     ArrowLeft, Clock, Heart, Bookmark, Share2, MessageSquare,
-//     Facebook, Twitter, Linkedin, Link2, ChevronDown, ChevronUp,
-//     User, Calendar, Eye, ThumbsUp, Send
-// } from 'lucide-react';
+import {
+    ArrowLeft, Clock, Heart, Bookmark, Share2, MessageSquare,
+    Facebook, Twitter, Linkedin, Link2, ChevronDown, ChevronUp,
+    User, Calendar, Eye, ThumbsUp, Send
+} from 'lucide-react-native';
 // import { motion, AnimatePresence } from 'framer-motion';
 // import { Avatar, Button, Chip, Tooltip, Textarea, Divider, Dropdown, DropdownTrigger, DropdownItem, DropdownMenu } from "@nextui-org/react";
 // import { db } from '@/lib/firebaseConfig';
@@ -394,7 +394,7 @@ export default function BlogDetail() {
                                 style={{ backgroundColor: '#cfd1d4', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 }}
                             >
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <User size={14} color={'#005bc4'} />
+                                    <Text style={{ fontSize: 14, marginRight: 4 }}>👤</Text>
                                     <Text style={{ color: '#005bc4', fontSize: 14, fontWeight: '400' }}> Follow</Text>
                                 </View>
                             </TouchableOpacity>
@@ -487,7 +487,7 @@ export default function BlogDetail() {
                                             alignItems: 'center'
                                         }}
                                     >
-                                        <Heart size={20} className={isLiked ? "fill-current" : ""} />
+                                        <Text style={{ fontSize: 20, color: isLiked ? '#01eb53' : '#6b7280' }}>❤️</Text>
 
                                     </TouchableOpacity>
                                     <Text style={{ color: '#374151' }}>{likesCount}</Text>
@@ -505,7 +505,7 @@ export default function BlogDetail() {
                                             alignItems: 'center'
                                         }}
                                     >
-                                        <Bookmark size={20} className={isBookmarked ? "fill-current" : ""} />
+                                        <Text style={{ fontSize: 20, color: isBookmarked ? '#01eb53' : '#6b7280' }}>🔖</Text>
 
                                     </TouchableOpacity>
 
@@ -533,7 +533,7 @@ export default function BlogDetail() {
                                             alignItems: 'center'
                                         }}
                                     >
-                                        <Text style={{ fontSize: 16 }}><Share2 size={20} /></Text>
+                                        <Text style={{ fontSize: 16 }}>📤</Text>
                                     </TouchableOpacity>
                                 </View>
 
@@ -542,7 +542,7 @@ export default function BlogDetail() {
                                     onPress={() => setShowCommentForm(!showCommentForm)}
                                 >
                                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                        <MessageSquare size={16} color='#01eb53' />
+                                        <Text style={{ fontSize: 16, color: '#01eb53', marginRight: 4 }}>💬</Text>
                                         <Text style={{ color: '#01eb53', fontSize: 14, fontWeight: '200', flexDirection: 'row' }}> Add Comment</Text>
                                     </View>
                                 </TouchableOpacity>

@@ -24,6 +24,7 @@ import {
 import CreateBlogModal from '@/components/blogs/CreateBlogModal';
 import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesService';
 import { useProfileStore } from '@/src/store/useProfileStore';
+import PageHeader from '@/components/ui/PageHeader';
 
 const router = useRouter();
 
@@ -203,7 +204,7 @@ const SORT_OPTIONS = [
 
 export default function Blogs() {
     // TODO: Replace with React Native navigation when Firebase is implemented
-    // const router = useRouter();
+    const router = useRouter();
     const { id: userId } = useProfileStore();
     const scrollViewRef = useRef<ScrollView>(null);
 
@@ -448,7 +449,7 @@ export default function Blogs() {
     const navigateToBlog = (blogId: string) => {
         // TODO: Replace with React Native navigation when Firebase is implemented
         // router.push(`/blogs/${blogId}`);
-        router.push('/blogs/[id]/page');
+        router.push(`/blogs/${blogId}` as any);
         Alert.alert('Navigation', `Navigating to blog ${blogId} - functionality coming soon!`);
     };
 
@@ -456,6 +457,10 @@ export default function Blogs() {
 
     return (
         <View style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
+            <PageHeader
+                title="Blogs"
+                onBackPress={() => router.back()}
+            />
             <ScrollView
                 ref={scrollViewRef}
                 style={{ flex: 1, paddingTop: 48, paddingHorizontal: 8 }}
@@ -545,7 +550,7 @@ export default function Blogs() {
                             {featuredBlogs.length > 0 && (
                                 <>
                                     <Image
-                                        source={{ uri: featuredBlogs[currentFeaturedIndex].coverImage || 'https://via.placeholder.com/400x200' }}
+                                        source={{ uri: featuredBlogs[currentFeaturedIndex].coverImage || '<https://via.placeholder.com/400x200>' }}
                                         style={{
                                             position: 'absolute',
                                             top: 0,
@@ -660,7 +665,7 @@ export default function Blogs() {
                                         </Text>
                                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                             <Image
-                                                source={{ uri: featuredBlogs[currentFeaturedIndex].author?.avatar || 'https://via.placeholder.com/40x40' }}
+                                                source={{ uri: featuredBlogs[currentFeaturedIndex].author?.avatar || '<https://via.placeholder.com/40x40>' }}
                                                 style={{
                                                     width: 40,
                                                     height: 40,
@@ -867,7 +872,7 @@ export default function Blogs() {
                                             height: viewMode === 'list' ? 120 : 192
                                         }}>
                                             <Image
-                                                source={{ uri: blog.coverImage || 'https://via.placeholder.com/300x200' }}
+                                                source={{ uri: blog.coverImage || '<https://via.placeholder.com/300x200>' }}
                                                 style={{
                                                     width: '100%',
                                                     height: '100%'
@@ -933,7 +938,7 @@ export default function Blogs() {
                                             }}>
                                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                                     <Image
-                                                        source={{ uri: blog.author?.avatar || 'https://via.placeholder.com/32x32' }}
+                                                        source={{ uri: blog.author?.avatar || '<https://via.placeholder.com/32x32>' }}
                                                         style={{
                                                             width: 32,
                                                             height: 32,
@@ -1132,7 +1137,7 @@ export default function Blogs() {
                                         onPress={() => navigateToBlog(blog.id)}
                                     >
                                         <Image
-                                            source={{ uri: blog.coverImage || 'https://via.placeholder.com/64x64' }}
+                                            source={{ uri: blog.coverImage || '<https://via.placeholder.com/64x64>' }}
                                             style={{
                                                 width: 64,
                                                 height: 64,

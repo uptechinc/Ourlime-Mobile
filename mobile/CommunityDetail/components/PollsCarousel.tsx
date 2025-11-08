@@ -157,3 +157,4 @@ export default function PollsCarousel({ onPollPress, onVote, onShare }: PollsCar
     </View>
   );
 }
+

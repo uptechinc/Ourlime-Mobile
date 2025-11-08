@@ -26,5 +26,14 @@ export type SlideOutMenuProps = {
     userProfile?: UserProfile;
 };
 
+export type PageHeaderProps = {
+    title: string;
+    showBackButton?: boolean;
+    onBackPress?: () => void;
+    backgroundColor?: string;
+    borderBottomColor?: string;
+    rightComponent?: React.ReactNode;
+}
+
 // Message-related types
 export * from './message';

@@ -272,7 +272,7 @@ export default function ProductFilter({
                     paddingTop: 32
                 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                        <Text style={{ fontSize: 20, fontWeight: 'bold' }}>Hi Filters</Text>
+                        <Text style={{ fontSize: 20, fontWeight: 'bold' }}>Filters</Text>
                         <TouchableOpacity
                             onPress={onMobileClose}
                             style={{ padding: 8 }}

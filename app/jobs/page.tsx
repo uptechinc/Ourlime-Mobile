@@ -33,6 +33,8 @@ import { ProfessionalJobsList } from '@/components/jobs/ProfessionalJobsList';
 import { QuickTasksList } from '@/components/jobs/QuickTasksList';
 import { FreelanceProjectsList } from '@/components/jobs/FreelanceProjectsList';
 import JobCreationModal from '@/components/jobs/createJobsModal/jobCreationModal';
+import PageHeader from '@/components/ui/PageHeader';
+import {useRouter} from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
@@ -112,6 +114,7 @@ const dummyJobs = [
 ];
 
 export default function JobsPage() {
+  const router = useRouter();
   const [jobs] = useState(dummyJobs);
   const [filtered, setFiltered] = useState(dummyJobs);
   const [categories, setCategories] = useState<
@@ -184,6 +187,10 @@ export default function JobsPage() {
   return (
     <>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        <PageHeader 
+        title="Jobs"
+        onBackPress={() => router.back()}
+        />
         {/* Hero */}
         <View style={{ paddingHorizontal: 20, paddingTop: 40, alignItems: 'center' }}>
           <Text style={{ fontSize: 24, fontWeight: '700', color: '#111827', textAlign: 'center' }}>

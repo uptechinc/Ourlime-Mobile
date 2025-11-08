@@ -30,3 +30,4 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2F2F7',
   },
 });
+

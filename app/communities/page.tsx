@@ -35,7 +35,7 @@ import {
   ChevronUp,
   Search, } from 'lucide-react-native';
 
-
+import PageHeader from '@/components/ui/PageHeader';
 
 //import {Community} from '@/app/types/communityTypes';
 
@@ -89,6 +89,7 @@ type CategoryType = {
 };
 
 export default function CommunitiesPage() {
+  const router = useRouter();
   // Navigation / Routing in React Native can be handled by React Navigation or Expo Router, but
   // for now we'll just stub out the logic that used next/router:
   const routerPush = (path: string) => {
@@ -847,6 +848,11 @@ export default function CommunitiesPage() {
     <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
       {/* Create community modal */}
       {isModalOpen && <CreateCommunityModal />}
+
+      <PageHeader 
+      title="Community"
+      onBackPress={() => router.back()}
+      />
       
       <FlatList
         data={filteredCommunities}

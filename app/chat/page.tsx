@@ -1,11 +1,14 @@
 import React, { useState } from "react";
 import { View, TextInput, Text, Pressable } from "react-native";
 import { Users, Globe, Briefcase } from 'lucide-react-native';
-import FriendChats from "@/components/chat/FriendChat";
-import BusinessChats from "@/components/chat/businessChat";
+import FriendChats from "@/components/chat/friendChat/friendChat";
+import BusinessChats from "@/components/chat/businessChat/businessChat";
+import { useRouter } from "expo-router";
 
 export default function Chat() {
+
     const [activeTab, setActiveTab] = useState<'friends' | 'businesses' | 'discover'>('friends');
+    const router = useRouter();
 
     return (
         <View>

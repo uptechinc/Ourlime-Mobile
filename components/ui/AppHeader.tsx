@@ -5,6 +5,7 @@ import {
     TouchableOpacity,
     SafeAreaView,
     StatusBar,
+    Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -15,6 +16,8 @@ type AppHeaderProps = {
     onBackPress?: () => void;
     rightIcon?: string;
     onRightIconPress?: () => void;
+    showLogo?: boolean;
+    logoType?: 'logo' | 'logo-long' | 'both';
 };
 
 export default function AppHeader({ 
@@ -23,8 +26,61 @@ export default function AppHeader({
     showBackButton = false, 
     onBackPress,
     rightIcon,
-    onRightIconPress
+    onRightIconPress,
+    showLogo = true,
+    logoType = 'both'
 }: AppHeaderProps) {
+    const renderLogo = () => {
+        if (logoType === 'both') {
+            return (
+                <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    
+                }}>
+                    <Image
+                        source={require('@/assets/images/logo.png')}
+                        style={{
+                            height: 32,
+                            width: 32,
+                            resizeMode: 'contain',
+                        }}
+                    />
+                    <Image
+                        source={require('@/assets/images/logo-long.png')}
+                        style={{
+                            height: 32,
+                            width: 120,
+                            resizeMode: 'contain',
+                        }}
+                    />
+                </View>
+            );
+        } else if (logoType === 'logo-long') {
+            return (
+                <Image
+                    source={require('@/assets/images/logo-long.png')}
+                    style={{
+                        height: 32,
+                        width: 120,
+                        resizeMode: 'contain',
+                    }}
+                />
+            );
+        } else {
+            return (
+                <Image
+                    source={require('@/assets/images/logo.png')}
+                    style={{
+                        height: 28,
+                        width: 28,
+                        resizeMode: 'contain',
+                    }}
+                />
+            );
+        }
+    };
+
     return (
         <>
             <StatusBar barStyle="dark-content" backgroundColor="#fff" />
@@ -32,7 +88,7 @@ export default function AppHeader({
                 <View style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
+                    //justifyContent: 'space-between',
                     paddingHorizontal: 16,
                     paddingVertical: 12,
                     backgroundColor: '#fff',
@@ -47,10 +103,11 @@ export default function AppHeader({
                     shadowRadius: 2,
                     elevation: 3,
                 }}>
-                    {/* Left side */}
+                    {/* Left side - Logo or Back Button */}
                     <View style={{
-                        width: 40,
-                        alignItems: 'flex-start',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        flex: 1,
                     }}>
                         {showBackButton ? (
                             <TouchableOpacity 
@@ -58,32 +115,25 @@ export default function AppHeader({
                                 style={{
                                     padding: 8,
                                     borderRadius: 8,
+                                    marginRight: 16,
                                 }}
                                 activeOpacity={0.7}
                             >
                                 <Ionicons name="arrow-back" size={24} color="#333" />
                             </TouchableOpacity>
+                        ) : null}
+                        
+                        {showLogo ? (
+                            renderLogo()
                         ) : (
-                            <View
-                                style={{
-                                    padding: 8,
-                                    borderRadius: 8,
-                                }} />
+                            <Text style={{
+                                fontSize: 18,
+                                fontWeight: '600',
+                                color: '#333',
+                            }}>
+                                {title}
+                            </Text>
                         )}
-                    </View>
-
-                    {/* Center - Title */}
-                    <View style={{
-                        flex: 1,
-                        alignItems: 'flex-start',
-                    }}>
-                        <Text style={{
-                            fontSize: 18,
-                            fontWeight: '600',
-                            color: '#333',
-                        }}>
-                            {title}
-                        </Text>
                     </View>
 
                     {/* Right side - Menu */}
