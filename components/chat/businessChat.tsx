@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import React from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
@@ -13,10 +14,13 @@ const mockBusinesses = [
 ];
 
 export default function BusinessChats() {
+
+    const router = useRouter();
+
     return (
         mockBusinesses.map((business) => (
             <View>
-                <TouchableOpacity style={{
+                <TouchableOpacity onPress={() => router.push('/chat/[id]/page')} style={{
                     display: 'flex', flexDirection: 'row', justifyContent: "flex-start", alignItems: 'center',
                     marginTop: 3, marginBottom: 3
                 }}>

@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import React from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
@@ -12,11 +13,18 @@ const mockFriends = [
     }
 ];
 
+// const openChat = () => {
+//     router.push('chat/demo' as any)
+// }
+
 export default function FriendChats() {
+
+    const router = useRouter();
+
     return (
         mockFriends.map((friend) => (
             <View>
-                <TouchableOpacity style={{
+                <TouchableOpacity onPress={() => router.push('/chat/[id]/page')} style={{
                     display: 'flex', flexDirection: 'row', justifyContent: "flex-start", alignItems: 'center',
                     marginTop: 3, marginBottom: 3
                 }}>
@@ -26,7 +34,7 @@ export default function FriendChats() {
                     />
                     <Text style={{ fontSize: 24, fontWeight: "bold" }}>{friend.name}</Text>
                 </TouchableOpacity>
-            </View>
+            </View >
         ))
     );
 }
