@@ -6,12 +6,14 @@ import { Reel } from "@/types/userTypes";
 import SlideOutMenu from "@/components/ui/SlideOutMenu";
 import { MenuItem } from "../../lib/types/componentProps";
 import AppHeader from "@/components/ui/AppHeader";
+import CreatePostModal from "@/components/home/MiddleSection/MiddleSectionComponent/CreatePostModal";
 
 export default function FeedsScreen() {
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
   const [activePostId, setActivePostId] = useState<string | null>(null);
   const [selectedReel, setSelectedReel] = useState<Reel | null>(null);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
+  const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
 
   const handleCommentClick = (postId: string) => {
     setActivePostId(postId);
@@ -25,8 +27,19 @@ export default function FeedsScreen() {
 
   const handleCreatePost = () => {
     // TODO: Implement create post navigation
+    setIsCreatePostModalOpen(true);
     console.log("Create post clicked");
   };
+
+  const handleCloseCreatePostModal = () => {
+    setIsCreatePostModalOpen(false)
+  }
+
+  const handlePostCreated = () => {
+    setIsCreatePostModalOpen(false);
+    //TODO: Refresh posts list
+    console.log("Post created successfully");
+  }
 
   const handleMenuPress = () => {
     setIsMenuVisible(true);
@@ -125,7 +138,11 @@ export default function FeedsScreen() {
         backgroundColor: "#F2F2F7",
       }}
     >
-      <AppHeader showLogo={true} logoType="both" onMenuPress={handleMenuPress} />
+      <AppHeader
+        showLogo={true}
+        logoType="both"
+        onMenuPress={handleMenuPress}
+      />
 
       <MiddleSection
         onCommentClick={handleCommentClick}
@@ -136,6 +153,14 @@ export default function FeedsScreen() {
         onCreatePost={handleCreatePost}
         setSelectedReel={setSelectedReel}
       />
+
+      {isCreatePostModalOpen && (
+        <CreatePostModal
+          setTogglePostForm={setIsCreatePostModalOpen}
+          profilePicture="https://ui-avatars.com/api/?name=User&background=10b981&color=fff"
+          onCreatePost={handlePostCreated}
+        />
+      )}
 
       <SlideOutMenu
         isVisible={isMenuVisible}

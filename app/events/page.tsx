@@ -8,12 +8,14 @@ import {
   Dimensions,
   Modal,
 } from 'react-native';
-import type { Event } from '@/app/types/eventTypes';
+import type { Event } from '@/types/eventTypes';
 import PopularEvents from '@/components/events/PopularEvents';
 import EventsFilterSection from '@/components/events/FilterSection';
 import EventsContentSection from '@/components/events/ContentSection';
 import CreateEventModal from '@/components/events/createEventModal/CreateEventModal';
 import { Svg, Path } from 'react-native-svg';
+import PageHeader from '@/components/ui/PageHeader';
+import {useRouter} from 'expo-router';
 
 // Firebase imports are commented out until backend is ready
 // import { auth, db } from '@/lib/firebaseConfig';
@@ -159,7 +161,6 @@ const dummyEvents: Event[] = [
 ];
 
 
-
 export default function EventsPage() {
   const [events] = useState<Event[]>(dummyEvents);
   const [searchQuery, setSearchQuery] = useState('');
@@ -167,6 +168,7 @@ export default function EventsPage() {
   const [selectedTag, setSelectedTag] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const router = useRouter();
   //console.log('📦 EventsPage render, isCreateModalOpen =', isCreateModalOpen)
 
   const [likedEvents, setLikedEvents] = useState<Record<string, boolean>>({});
@@ -248,6 +250,11 @@ export default function EventsPage() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
+      <PageHeader
+       title="Events"
+       onBackPress={() => router.back()}
+       />
+
       <ScrollView
         style={{ flex: 1 }}
         scrollEnabled={!isFilterOpen && !isCreateModalOpen}

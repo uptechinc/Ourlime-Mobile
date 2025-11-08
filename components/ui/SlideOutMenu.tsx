@@ -313,28 +313,29 @@ export default function SlideOutMenu({
                                 start={{ x: 0, y: 0 }}
                                 end={{ x: 1, y: 1 }}
                                 style={{
-                                    paddingHorizontal: 24,
-                                    paddingVertical: 32,
-                                    borderBottomLeftRadius: 24,
-                                    borderBottomRightRadius: 24,
+                                    paddingHorizontal: 20,
+                                    paddingVertical: 20,
+                                    borderBottomLeftRadius: 20,
+                                    borderBottomRightRadius: 20,
                                 }}
                             >
                                 <View style={{
                                     flexDirection: 'row',
                                     justifyContent: 'space-between',
                                     alignItems: 'center',
-                                    marginBottom: 20,
+                                    //marginBottom: 20,
                                 }}>
                                     <TouchableOpacity 
                                         onPress={onClose} 
                                         style={{
-                                            width: 40,
-                                            height: 40,
-                                            borderRadius: 20,
+                                            width: 36,
+                                            height: 36,
+                                            borderRadius: 18,
                                             backgroundColor: 'rgba(255,255,255,0.2)',
                                             justifyContent: 'center',
                                             alignItems: 'center',
                                             backdropFilter: 'blur(10px)',
+                                            marginTop: 20,
                                         }}
                                     >
                                         <Ionicons name="close" size={20} color="#fff" />
@@ -346,34 +347,35 @@ export default function SlideOutMenu({
                                     }}>
                                         <View style={{
                                             marginRight: 12,
+                                            marginTop: 25,
                                         }}>
                                             {userProfile?.avatar ? (
                                                 <Image 
                                                     source={{ uri: userProfile.avatar }} 
                                                     style={{
-                                                        width: 60,
-                                                        height: 60,
-                                                        borderRadius: 30,
-                                                        borderWidth: 3,
+                                                        width: 50,
+                                                        height: 50,
+                                                        borderRadius: 25,
+                                                        borderWidth: 2,
                                                         borderColor: 'rgba(255,255,255,0.3)',
                                                     }}
                                                 />
                                             ) : (
                                                 <View style={{
-                                                    width: 60,
-                                                    height: 60,
-                                                    borderRadius: 30,
+                                                    width: 50,
+                                                    height: 50,
+                                                    borderRadius: 25,
                                                     backgroundColor: 'rgba(255,255,255,0.2)',
                                                     justifyContent: 'center',
                                                     alignItems: 'center',
-                                                    borderWidth: 3,
+                                                    borderWidth: 2,
                                                     borderColor: 'rgba(255,255,255,0.3)',
                                                 }}>
                                                     <Ionicons name="person" size={28} color="#fff" />
                                                 </View>
                                             )}
                                         </View>
-                                        <View style={{
+                                        {/* <View style={{
                                             alignItems: 'flex-start',
                                         }}>
                                             <Text style={{
@@ -385,7 +387,7 @@ export default function SlideOutMenu({
                                                 textShadowOffset: { width: 0, height: 1 },
                                                 textShadowRadius: 2,
                                             }}>
-                                                {userProfile?.name || 'Welcome'}
+                                                {userProfile?.name || 'Welcome Back'}
                                             </Text>
                                             <Text style={{
                                                 fontSize: 14,
@@ -394,7 +396,7 @@ export default function SlideOutMenu({
                                             }}>
                                                 {userProfile?.email || 'Tap to sign in'}
                                             </Text>
-                                        </View>
+                                        </View> */}
                                     </View>
                                 </View>
                             </LinearGradient>
@@ -443,44 +445,31 @@ export default function SlideOutMenu({
                                 shadowRadius: 10,
                                 elevation: 5,
                             }}>
-                                {/* <TouchableOpacity style={{
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    paddingVertical: 12,
-                                    paddingHorizontal: 20,
-                                    borderRadius: 16,
-                                    backgroundColor: '#f8f9ff',
-                                    borderWidth: 1,
-                                    borderColor: '#e5e7eb',
-                                }}>
-                                    <Ionicons name="help-circle-outline" size={18} color="#6b7280" />
+                                <TouchableOpacity 
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        paddingVertical: 12,
+                                        paddingHorizontal: 20,
+                                        borderRadius: 16,
+                                        backgroundColor: '#fef2f2', // Light red background
+                                        borderWidth: 1,
+                                        borderColor: '#fecaca', // Light red border
+                                    }}
+                                    onPress={() => {
+                                        // Add your logout logic here
+                                        console.log('Logout pressed');
+                                        onClose();
+                                    }}
+                                >
+                                    <Ionicons name="log-out-outline" size={18} color="#dc2626" />
                                     <Text style={{
                                         marginLeft: 8,
                                         fontSize: 14,
-                                        color: '#6b7280',
+                                        color: '#dc2626', // Red text color
                                         fontWeight: '600',
                                     }}>
-                                        Help
-                                    </Text>
-                                </TouchableOpacity> */}
-                                <TouchableOpacity style={{
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    paddingVertical: 12,
-                                    paddingHorizontal: 20,
-                                    borderRadius: 16,
-                                    backgroundColor: '#f8f9ff',
-                                    borderWidth: 1,
-                                    borderColor: '#e5e7eb',
-                                }}>
-                                    <Ionicons name="settings-outline" size={18} color="#6b7280" />
-                                    <Text style={{
-                                        marginLeft: 8,
-                                        fontSize: 14,
-                                        color: '#6b7280',
-                                        fontWeight: '600',
-                                    }}>
-                                        Settings
+                                        Logout
                                     </Text>
                                 </TouchableOpacity>
                             </View>

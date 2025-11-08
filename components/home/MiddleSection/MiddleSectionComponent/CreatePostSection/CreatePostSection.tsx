@@ -12,19 +12,6 @@ export const CreatePostSection = ({ onCreatePost, profileImageUrl }: CreatePostS
         <TouchableOpacity
             onPress={onCreatePost}
             activeOpacity={0.85}
-            style={{
-                borderWidth: 1,
-                borderColor: '#e5e7eb',
-                borderRadius: 16,
-                padding: 16,
-                backgroundColor: '#fff',
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.07,
-                shadowRadius: 8,
-                elevation: 2,
-                marginBottom: 16,
-            }}
         >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                 <View style={{ width: 64, height: 64, borderRadius: 32, overflow: 'hidden', backgroundColor: '#e5e7eb', flexShrink: 0, marginRight: 16 }}>

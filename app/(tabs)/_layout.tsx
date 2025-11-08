@@ -71,7 +71,7 @@ const TabLayout = () => {
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "home" : "home-outline"}
-              size={size}
+              size={focused ? size * 1.15 : size}
               color={focused ? "#10B981" : "#8E8E93"}
             />
           ),
@@ -85,7 +85,7 @@ const TabLayout = () => {
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "search" : "search-outline"}
-              size={size}
+              size={focused ? size * 1.15 : size}
               color={focused ? "#10B981" : "#8E8E93"}
             />
           ),
@@ -99,7 +99,11 @@ const TabLayout = () => {
           tabBarIcon: ({ color, size, focused }) => (
             <Image
               source={require('@/assets/images/logo.png')}
-              style={{ width: 32, height: 32 }}
+              style=
+              {{ 
+                width: focused ? 36 : 32, 
+                height: focused ? 36 : 32
+              }}
             />
             // <Ionicons
             //   name={focused ? "heart" : "heart-outline"}
@@ -117,7 +121,7 @@ const TabLayout = () => {
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "compass" : "compass-outline"}
-              size={size}
+              size={focused ? size * 1.15 : size}
               color={focused ? "#10B981" : "#8E8E93"}
             />
           ),
@@ -131,7 +135,7 @@ const TabLayout = () => {
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "person" : "person-outline"}
-              size={size}
+              size={focused ? size * 1.15 : size}
               color={focused ? "#10B981" : "#8E8E93"}
             />
           ),

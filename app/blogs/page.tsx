@@ -24,8 +24,7 @@ ActivityIndicator
 import CreateBlogModal from '@/components/blogs/CreateBlogModal';
 import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesService';
 import { useProfileStore } from '@/src/store/useProfileStore';
-
-const router = useRouter();
+import PageHeader from '@/components/ui/PageHeader';
 
 // Sample data for static display
 const SAMPLE_BLOGS = [
@@ -203,7 +202,7 @@ const SORT_OPTIONS = [
 
 export default function Blogs() {
 // TODO: Replace with React Native navigation when Firebase is implemented
-// const router = useRouter();
+const router = useRouter();
 const { id: userId } = useProfileStore();
 const scrollViewRef = useRef<ScrollView>(null);
 
@@ -456,6 +455,10 @@ const screenWidth = Dimensions.get('window').width;
 
 return (
     <View style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
+        <PageHeader 
+        title="Blogs"
+        onBackPress={() => router.back()}
+        />
         <ScrollView
             ref={scrollViewRef}
             style={{ flex: 1, paddingTop: 48, paddingHorizontal: 8 }}
