@@ -18,9 +18,7 @@ export default function HomeScreen() {
         <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Login</Text>
       </TouchableOpacity>
 
-      {/*<TouchableOpacity style={{ backgroundColor: '#007AFF', padding: 15, borderRadius: 8, marginBottom: 15, width: 200, alignItems: 'center' }} onPress={() => router.push('/(auth)/signup')}>
-        <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Sign Up</Text>
-      </TouchableOpacity>*/} //todo: add signup
+      {/* todo: add signup */}
 
       <TouchableOpacity
         style={{ backgroundColor: '#34C759', padding: 15, borderRadius: 8, marginBottom: 15, width: 200, alignItems: 'center' }}
