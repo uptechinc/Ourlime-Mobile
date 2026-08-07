@@ -1,298 +1,355 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, Image, ScrollView, TextInput, Modal, Dimensions } from "react-native";
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
-import ImageAndVideoPostSection from '../PostCardSection/ImageAndVideoPostSection/ImageAndVideoPostSection';
+import UserAvatar from '@/components/ui/UserAvatar';
+import {
+  CommentService,
+  type PostComment,
+  type PostReply,
+} from '@/lib/services/CommentService';
+import type { PostItem } from '@/lib/services/PostService';
 
-interface UserData {
-    id: string;
-    firstName: string;
-    lastName: string;
-    userName: string;
-    profileImage?: string;
-}
-
-interface Reply {
-    id: string;
-    reply: string;
-    createdAt: string;
-    userData: UserData;
-}
-
-interface Comment {
-    id: string;
-    comment: string;
-    createdAt: string;
-    userData: UserData;
-}
-
-interface Post {
-    id: string;
-    user: UserData;
-    caption?: string;
-    media?: { type: 'image' | 'video'; typeUrl: string; id?: string }[];
-}
-
-interface CommentModalProps {
-    postId: string;
-    userId: string;
-    onClose: () => void;
-}
-
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-
-const CommentsModal: React.FC<CommentModalProps> = ({ postId, userId, onClose }) => {
-    const [comment, setComment] = useState("");
-    const [reply, setReply] = useState("");
-    const [replies, setReplies] = useState<{ [key: string]: Reply[] }>({});
-    const [expandedReplies, setExpandedReplies] = useState<{ [key: string]: boolean }>({});
-    const [postDetails, setPostDetails] = useState<Post | null>(null);
-    const [comments, setComments] = useState<Comment[]>([]);
-    const [isLoadingComments, setIsLoadingComments] = useState(false);
-    const [hasFetched, setHasFetched] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
-    const [replyingTo, setReplyingTo] = useState<string | null>(null);
-
-    // TODO: Replace with actual data fetching logic
-    useEffect(() => {
-        // Simulate loading post details
-        setTimeout(() => {
-            setPostDetails({
-                id: postId,
-                user: {
-                    id: '1',
-                    firstName: 'John',
-                    lastName: 'Doe',
-                    userName: 'johndoe',
-                    profileImage: undefined,
-                },
-                caption: 'Sample post caption',
-                media: [],
-            });
-            setIsLoading(false);
-        }, 500);
-    }, [postId]);
-
-    useEffect(() => {
-        // Simulate loading comments
-        setTimeout(() => {
-            setComments([
-                {
-                    id: 'c1',
-                    comment: 'This is a comment!',
-                    createdAt: new Date().toISOString(),
-                    userData: {
-                        id: '2',
-                        firstName: 'Alice',
-                        lastName: 'Smith',
-                        userName: 'alicesmith',
-                        profileImage: undefined,
-                    },
-                },
-            ]);
-            setReplies({
-                c1: [
-                    {
-                        id: 'r1',
-                        reply: 'This is a reply!',
-                        createdAt: new Date().toISOString(),
-                        userData: {
-                            id: '3',
-                            firstName: 'Bob',
-                            lastName: 'Brown',
-                            userName: 'bobbrown',
-                            profileImage: undefined,
-                        },
-                    },
-                ],
-            });
-            setIsLoadingComments(false);
-            setHasFetched(true);
-        }, 500);
-    }, [postId]);
-
-    const handleSubmit = () => {
-        if (comment.trim()) {
-            // TODO: Implement comment submission logic
-            setComment("");
-        }
-    };
-
-    const handleReply = (commentId: string) => {
-        if (reply.trim()) {
-            // TODO: Implement reply submission logic
-            setReply("");
-            setReplyingTo(null);
-        }
-    };
-
-    return (
-        <Modal
-            visible={true}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={onClose}
-        >
-            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 8 }}>
-                <View style={{ width: '100%', maxWidth: 800, height: SCREEN_HEIGHT * 0.9, backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', flexDirection: 'row' }}>
-                    {/* Close Button */}
-                    <TouchableOpacity
-                        onPress={onClose}
-                        style={{ position: 'absolute', right: 12, top: 12, zIndex: 10, padding: 8, borderRadius: 9999, backgroundColor: 'rgba(0,0,0,0.08)' }}
-                    >
-                        <Icon name="x" size={20} color="#6b7280" />
-                    </TouchableOpacity>
-                    {/* Media Section */}
-                    {postDetails?.media && postDetails.media.length > 0 && (
-                        <View style={{ width: '60%', height: '100%', backgroundColor: '#f0fdf4', alignItems: 'center', justifyContent: 'center' }}>
-                            <ImageAndVideoPostSection media={postDetails.media} />
-                        </View>
-                    )}
-                    {/* Comments Section */}
-                    <View style={{ flex: 1, backgroundColor: '#fff', paddingVertical: 0, borderTopRightRadius: 20, borderBottomRightRadius: 20 }}>
-                        <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#e5e7eb', backgroundColor: '#f0fdf4' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <View style={{ width: 36, height: 36, borderRadius: 18, overflow: 'hidden', borderWidth: 2, borderColor: '#bbf7d0', backgroundColor: '#e5e7eb', marginRight: 8 }}>
-                                    <Image
-                                        source={{ uri: postDetails?.user?.profileImage || 'https://ui-avatars.com/api/?name=User' }}
-                                        style={{ width: 36, height: 36, borderRadius: 18 }}
-                                        resizeMode="cover"
-                                    />
-                                </View>
-                                <View>
-                                    <Text style={{ fontWeight: 'bold', color: '#10b981', fontSize: 15 }}>{postDetails?.user?.firstName} {postDetails?.user?.lastName}</Text>
-                                    <Text style={{ color: '#6b7280', fontSize: 12 }}>@{postDetails?.user?.userName}</Text>
-                                </View>
-                            </View>
-                            {postDetails?.caption && (
-                                <Text style={{ marginTop: 8, color: '#374151', fontSize: 14 }}>{postDetails.caption}</Text>
-                            )}
-                        </View>
-                        <ScrollView style={{ flex: 1, backgroundColor: '#fff' }} contentContainerStyle={{ paddingBottom: 24 }}>
-                            {comments.length === 0 ? (
-                                <View style={{ alignItems: 'center', justifyContent: 'center', height: 200, padding: 24 }}>
-                                    <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#bbf7d0', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                                        <Icon name="message-circle" size={32} color="#10b981" />
-                                    </View>
-                                    <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#111827', marginBottom: 4 }}>No comments yet</Text>
-                                    <Text style={{ color: '#6b7280', fontSize: 13 }}>Be the first to share your thoughts!</Text>
-                                </View>
-                            ) : (
-                                comments.map((comment) => (
-                                    <View key={comment.id} style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-                                        <View style={{ flexDirection: 'row', gap: 8 }}>
-                                            <View style={{ width: 32, height: 32, borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: '#bbf7d0', backgroundColor: '#e5e7eb', marginRight: 8 }}>
-                                                <Image
-                                                    source={{ uri: comment.userData?.profileImage || 'https://ui-avatars.com/api/?name=User' }}
-                                                    style={{ width: 32, height: 32, borderRadius: 16 }}
-                                                    resizeMode="cover"
-                                                />
-                                            </View>
-                                            <View style={{ flex: 1 }}>
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                                                    <Text style={{ fontWeight: 'bold', fontSize: 14, color: '#10b981' }}>{comment.userData?.firstName} {comment.userData?.lastName}</Text>
-                                                    <Text style={{ color: '#6b7280', fontSize: 12 }}>@{comment.userData?.userName}</Text>
-                                                    {/* <Text style={{ color: '#9ca3af', fontSize: 12 }}>• {formatDate(comment.createdAt)}</Text> */}
-                                                </View>
-                                                <Text style={{ marginTop: 4, color: '#374151', fontSize: 14 }}>{comment.comment}</Text>
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                                                    <TouchableOpacity
-                                                        onPress={() => setReplyingTo(comment.id === replyingTo ? null : comment.id)}
-                                                    >
-                                                        <Text style={{ color: '#10b981', fontSize: 12 }}>Reply</Text>
-                                                    </TouchableOpacity>
-                                                    {replies[comment.id]?.length > 0 && (
-                                                        <TouchableOpacity
-                                                            onPress={() => setExpandedReplies(prev => ({
-                                                                ...prev,
-                                                                [comment.id]: !prev[comment.id]
-                                                            }))}
-                                                        >
-                                                            <Text style={{ color: '#6b7280', fontSize: 12 }}>
-                                                                {expandedReplies[comment.id] ? 'Hide replies' : `View ${replies[comment.id].length} ${replies[comment.id].length === 1 ? 'reply' : 'replies'}`}
-                                                            </Text>
-                                                        </TouchableOpacity>
-                                                    )}
-                                                </View>
-                                                {replyingTo === comment.id && (
-                                                    <View style={{ marginTop: 8 }}>
-                                                        <TextInput
-                                                            value={reply}
-                                                            onChangeText={setReply}
-                                                            style={{ width: '100%', paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, backgroundColor: '#fff', marginBottom: 4 }}
-                                                            multiline
-                                                            numberOfLines={2}
-                                                            placeholder="Write a reply..."
-                                                        />
-                                                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
-                                                            <TouchableOpacity
-                                                                onPress={() => setReplyingTo(null)}
-                                                                style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, backgroundColor: '#f3f4f6' }}
-                                                            >
-                                                                <Text style={{ fontSize: 12, color: '#6b7280' }}>Cancel</Text>
-                                                            </TouchableOpacity>
-                                                            <TouchableOpacity
-                                                                onPress={() => handleReply(comment.id)}
-                                                                disabled={!reply.trim()}
-                                                                style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, backgroundColor: '#10b981', opacity: !reply.trim() ? 0.5 : 1 }}
-                                                            >
-                                                                <Text style={{ fontSize: 12, color: '#fff' }}>Reply</Text>
-                                                            </TouchableOpacity>
-                                                        </View>
-                                                    </View>
-                                                )}
-                                                {replies[comment.id]?.length > 0 && expandedReplies[comment.id] && (
-                                                    <View style={{ marginTop: 8, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: '#bbf7d0' }}>
-                                                        {replies[comment.id].map((reply) => (
-                                                            <View key={reply.id} style={{ marginTop: 8, flexDirection: 'row', gap: 8 }}>
-                                                                <View style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', backgroundColor: '#e5e7eb', marginRight: 4 }}>
-                                                                    <Image
-                                                                        source={{ uri: reply.userData?.profileImage || 'https://ui-avatars.com/api/?name=User' }}
-                                                                        style={{ width: 28, height: 28, borderRadius: 14 }}
-                                                                        resizeMode="cover"
-                                                                    />
-                                                                </View>
-                                                                <View style={{ flex: 1 }}>
-                                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                                                                        <Text style={{ fontWeight: 'bold', fontSize: 13, color: '#10b981' }}>{reply.userData?.firstName} {reply.userData?.lastName}</Text>
-                                                                        <Text style={{ color: '#6b7280', fontSize: 11 }}>@{reply.userData?.userName}</Text>
-                                                                        {/* <Text style={{ color: '#9ca3af', fontSize: 11 }}>• {formatDate(reply.createdAt)}</Text> */}
-                                                                    </View>
-                                                                    <Text style={{ marginTop: 2, color: '#374151', fontSize: 13 }}>{reply.reply}</Text>
-                                                                </View>
-                                                            </View>
-                                                        ))}
-                                                    </View>
-                                                )}
-                                            </View>
-                                        </View>
-                                    </View>
-                                ))
-                            )}
-                        </ScrollView>
-                        <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: '#f0fdf4' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <TextInput
-                                    value={comment}
-                                    onChangeText={setComment}
-                                    style={{ flex: 1, backgroundColor: '#fff', fontSize: 14, borderRadius: 9999, paddingHorizontal: 16, paddingVertical: 8, borderWidth: 1, borderColor: '#e5e7eb' }}
-                                    placeholder="Write a comment..."
-                                    multiline
-                                    numberOfLines={1}
-                                />
-                                <TouchableOpacity
-                                    onPress={handleSubmit}
-                                    style={{ backgroundColor: '#10b981', borderRadius: 9999, paddingHorizontal: 16, paddingVertical: 8, marginLeft: 8 }}
-                                    activeOpacity={0.8}
-                                >
-                                    <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>Post</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    </View>
-                </View>
-            </View>
-        </Modal>
-    );
+type ReplyThread = {
+  items: PostReply[];
+  expanded: boolean;
+  loading: boolean;
+  hasMore: boolean;
+  nextCursor: number | null;
 };
 
-export default CommentsModal;
+type ReplyTarget = {
+  commentId: string;
+  parentReplyId?: string;
+  userName: string;
+};
+
+type EditTarget = {
+  type: 'comment' | 'reply';
+  id: string;
+  rootCommentId: string;
+};
+
+type CommentsModalProps = {
+  post: PostItem;
+  userId: string;
+  onClose: () => void;
+  onPostUpdate: (post: PostItem) => void;
+};
+
+const commentService = CommentService.getInstance();
+
+const formatTimestamp = (milliseconds: number): string => {
+  const elapsed = Math.max(0, Date.now() - milliseconds);
+  const minutes = Math.floor(elapsed / 60000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(milliseconds).toLocaleDateString();
+};
+
+export default function CommentsModal({ post, userId, onClose, onPostUpdate }: CommentsModalProps) {
+  const [comments, setComments] = useState<PostComment[]>([]);
+  const [replyThreads, setReplyThreads] = useState<Record<string, ReplyThread>>({});
+  const [commentText, setCommentText] = useState('');
+  const [replyText, setReplyText] = useState('');
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+  const [editText, setEditText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const loadComments = useCallback(async (cursor?: number | null, append = false) => {
+    append ? setLoadingMore(true) : setLoading(true);
+    setErrorMessage(null);
+    try {
+      const page = await commentService.fetchComments(post.id, cursor);
+      setComments((current) => append
+        ? [...current, ...page.items.filter((item) => !current.some((existing) => existing.id === item.id))]
+        : page.items);
+      setHasMore(page.hasMore);
+      setNextCursor(page.nextCursor);
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not load comments');
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [post.id]);
+
+  useEffect(() => {
+    void loadComments();
+  }, [loadComments]);
+
+  const handleToggleReplies = async (commentId: string) => {
+    const existing = replyThreads[commentId];
+    if (existing) {
+      setReplyThreads((current) => ({
+        ...current,
+        [commentId]: { ...existing, expanded: !existing.expanded },
+      }));
+      return;
+    }
+    setReplyThreads((current) => ({
+      ...current,
+      [commentId]: { items: [], expanded: true, loading: true, hasMore: false, nextCursor: null },
+    }));
+    try {
+      const page = await commentService.fetchReplies(commentId);
+      setReplyThreads((current) => ({
+        ...current,
+        [commentId]: { items: page.items, expanded: true, loading: false, hasMore: page.hasMore, nextCursor: page.nextCursor },
+      }));
+    } catch (error: unknown) {
+      Alert.alert('Replies unavailable', error instanceof Error ? error.message : 'Could not load replies');
+      setReplyThreads((current) => ({
+        ...current,
+        [commentId]: { items: [], expanded: true, loading: false, hasMore: false, nextCursor: null },
+      }));
+    }
+  };
+
+  const handleLoadMoreReplies = async (commentId: string) => {
+    const thread = replyThreads[commentId];
+    if (!thread?.nextCursor || thread.loading) return;
+    setReplyThreads((current) => ({ ...current, [commentId]: { ...thread, loading: true } }));
+    try {
+      const page = await commentService.fetchReplies(commentId, thread.nextCursor);
+      setReplyThreads((current) => ({
+        ...current,
+        [commentId]: {
+          items: [...thread.items, ...page.items.filter((item) => !thread.items.some((existing) => existing.id === item.id))],
+          expanded: true,
+          loading: false,
+          hasMore: page.hasMore,
+          nextCursor: page.nextCursor,
+        },
+      }));
+    } catch (error: unknown) {
+      setReplyThreads((current) => ({ ...current, [commentId]: { ...thread, loading: false } }));
+      Alert.alert('Replies unavailable', error instanceof Error ? error.message : 'Could not load more replies');
+    }
+  };
+
+  const handleSubmitComment = async () => {
+    if (!commentText.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      const created = await commentService.createComment(post.id, commentText);
+      setComments((current) => [created, ...current]);
+      setCommentText('');
+      onPostUpdate({ ...post, stats: { ...post.stats, comments: post.stats.comments + 1 } });
+    } catch (error: unknown) {
+      Alert.alert('Comment not posted', error instanceof Error ? error.message : 'Please try again');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmitReply = async () => {
+    if (!replyTarget || !replyText.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      const created = await commentService.createReply({
+        commentId: replyTarget.commentId,
+        content: replyText,
+        parentReplyId: replyTarget.parentReplyId,
+        replyToUserName: replyTarget.userName,
+      });
+      const thread = replyThreads[replyTarget.commentId];
+      setReplyThreads((current) => ({
+        ...current,
+        [replyTarget.commentId]: {
+          items: [...(thread?.items ?? []), created],
+          expanded: true,
+          loading: false,
+          hasMore: thread?.hasMore ?? false,
+          nextCursor: thread?.nextCursor ?? null,
+        },
+      }));
+      setComments((current) => current.map((comment) => comment.id === replyTarget.commentId
+        ? { ...comment, replyCount: comment.replyCount + 1 }
+        : comment));
+      setReplyText('');
+      setReplyTarget(null);
+    } catch (error: unknown) {
+      Alert.alert('Reply not posted', error instanceof Error ? error.message : 'Please try again');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleToggleLike = async (type: 'comment' | 'reply', targetId: string, rootCommentId: string) => {
+    const updateItem = <TItem extends { id: string; isLiked: boolean; likeCount: number },>(item: TItem): TItem => item.id === targetId
+      ? { ...item, isLiked: !item.isLiked, likeCount: Math.max(0, item.likeCount + (item.isLiked ? -1 : 1)) }
+      : item;
+    if (type === 'comment') {
+      setComments((current) => current.map(updateItem));
+    } else {
+      setReplyThreads((current) => ({
+        ...current,
+        [rootCommentId]: { ...current[rootCommentId], items: (current[rootCommentId]?.items ?? []).map(updateItem) },
+      }));
+    }
+    try {
+      await commentService.toggleLike(type, targetId);
+    } catch (error: unknown) {
+      if (type === 'comment') {
+        setComments((current) => current.map(updateItem));
+      } else {
+        setReplyThreads((current) => ({
+          ...current,
+          [rootCommentId]: { ...current[rootCommentId], items: (current[rootCommentId]?.items ?? []).map(updateItem) },
+        }));
+      }
+      Alert.alert('Like not updated', error instanceof Error ? error.message : 'Please try again');
+    }
+  };
+
+  const handleSubmitEdit = async () => {
+    if (!editTarget || !editText.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      const editedAtMs = editTarget.type === 'comment'
+        ? await commentService.editComment(post.id, editTarget.id, editText)
+        : await commentService.editReply(editTarget.rootCommentId, editTarget.id, editText);
+      if (editTarget.type === 'comment') {
+        setComments((current) => current.map((item) => item.id === editTarget.id
+          ? { ...item, content: editText.trim(), editedAtMs }
+          : item));
+      } else {
+        setReplyThreads((current) => ({
+          ...current,
+          [editTarget.rootCommentId]: {
+            ...current[editTarget.rootCommentId],
+            items: (current[editTarget.rootCommentId]?.items ?? []).map((item) => item.id === editTarget.id
+              ? { ...item, content: editText.trim(), editedAtMs }
+              : item),
+          },
+        }));
+      }
+      setEditTarget(null);
+      setEditText('');
+    } catch (error: unknown) {
+      Alert.alert('Edit not saved', error instanceof Error ? error.message : 'Please try again');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const renderContent = (content: string) => content.split(/(@[\w.-]+)/g).map((part, index) => (
+    <Text key={`${part}-${index}`} style={part.startsWith('@') ? { color: '#047857', fontWeight: '700' } : undefined}>{part}</Text>
+  ));
+
+  const renderActions = (item: PostComment | PostReply, type: 'comment' | 'reply', rootCommentId: string) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 7 }}>
+      <TouchableOpacity onPress={() => void handleToggleLike(type, item.id, rootCommentId)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 16 }}>
+        <Icon name="heart" size={14} color={item.isLiked ? '#ef4444' : '#6b7280'} />
+        <Text style={{ marginLeft: 4, color: item.isLiked ? '#ef4444' : '#6b7280', fontSize: 12, fontWeight: '600' }}>{item.likeCount || 'Like'}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => { setReplyTarget({ commentId: rootCommentId, parentReplyId: type === 'reply' ? item.id : undefined, userName: item.author.userName }); setReplyText(''); }}>
+        <Text style={{ marginRight: 16, color: '#6b7280', fontSize: 12, fontWeight: '600' }}>Reply</Text>
+      </TouchableOpacity>
+      {item.author.id === userId ? (
+        <TouchableOpacity onPress={() => { setEditTarget({ type, id: item.id, rootCommentId }); setEditText(item.content); setReplyTarget(null); }}>
+          <Text style={{ marginRight: 16, color: '#6b7280', fontSize: 12, fontWeight: '600' }}>Edit</Text>
+        </TouchableOpacity>
+      ) : null}
+      <Text style={{ color: '#9ca3af', fontSize: 11 }}>{formatTimestamp(item.createdAtMs)}{item.editedAtMs ? ' · Edited' : ''}</Text>
+    </View>
+  );
+
+  const renderReply = (reply: PostReply, rootCommentId: string) => (
+    <View key={reply.id} style={{ flexDirection: 'row', marginTop: 12 }}>
+      <UserAvatar profileImage={reply.author.profileImage} firstName={reply.author.firstName || reply.author.userName} size={30} />
+      <View style={{ flex: 1, marginLeft: 9 }}>
+        <View style={{ borderRadius: 16, borderTopLeftRadius: 5, backgroundColor: '#ecfdf5', paddingHorizontal: 12, paddingVertical: 9 }}>
+          <Text style={{ color: '#111827', fontWeight: '700', fontSize: 12 }}>{reply.author.firstName} {reply.author.lastName} <Text style={{ color: '#6b7280', fontWeight: '400' }}>@{reply.author.userName}</Text></Text>
+          <Text style={{ marginTop: 4, color: '#374151', fontSize: 13 }}>{reply.replyToUserName ? <Text style={{ color: '#047857', fontWeight: '700' }}>@{reply.replyToUserName} </Text> : null}{renderContent(reply.content)}</Text>
+        </View>
+        {renderActions(reply, 'reply', rootCommentId)}
+      </View>
+    </View>
+  );
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }}>
+          <Text style={{ flex: 1, fontSize: 18, color: '#111827', fontWeight: '800' }}>Comments</Text>
+          <TouchableOpacity onPress={onClose} accessibilityLabel="Close comments" style={{ padding: 8 }}><Icon name="x" size={23} color="#374151" /></TouchableOpacity>
+        </View>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, paddingBottom: 28 }} keyboardShouldPersistTaps="handled">
+            <View style={{ marginBottom: 16, borderRadius: 18, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#f9fafb', padding: 13 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <UserAvatar profileImage={post.user.profileImage} firstName={post.user.firstName || post.user.userName} size={38} />
+                <View style={{ marginLeft: 10, flex: 1 }}><Text style={{ color: '#111827', fontWeight: '700' }}>{post.user.firstName} {post.user.lastName}</Text><Text style={{ color: '#6b7280', fontSize: 12 }}>@{post.user.userName}</Text></View>
+              </View>
+              {post.caption || post.description ? <Text numberOfLines={4} style={{ marginTop: 10, color: '#374151' }}>{post.caption || post.description}</Text> : null}
+            </View>
+
+            {loading && comments.length === 0 ? <ActivityIndicator color="#10b981" size="large" style={{ marginTop: 60 }} /> : null}
+            {errorMessage && comments.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 55 }}><Icon name="alert-triangle" size={30} color="#c64d53" /><Text style={{ marginTop: 10, color: '#991b1b', textAlign: 'center' }}>{errorMessage}</Text><TouchableOpacity onPress={() => void loadComments()} style={{ marginTop: 14, borderRadius: 16, backgroundColor: '#10b981', paddingHorizontal: 18, paddingVertical: 9 }}><Text style={{ color: '#ffffff', fontWeight: '700' }}>Retry</Text></TouchableOpacity></View>
+            ) : null}
+            {!loading && !errorMessage && comments.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 60 }}><View style={{ width: 62, height: 62, borderRadius: 31, alignItems: 'center', justifyContent: 'center', backgroundColor: '#d1fae5' }}><Icon name="message-circle" size={29} color="#10b981" /></View><Text style={{ marginTop: 14, color: '#111827', fontSize: 17, fontWeight: '800' }}>Start the conversation</Text><Text style={{ marginTop: 5, color: '#6b7280' }}>Be the first to leave a thoughtful comment.</Text></View>
+            ) : null}
+
+            {comments.map((comment) => {
+              const thread = replyThreads[comment.id];
+              return (
+                <View key={comment.id} style={{ flexDirection: 'row', marginBottom: 20 }}>
+                  <UserAvatar profileImage={comment.author.profileImage} firstName={comment.author.firstName || comment.author.userName} size={38} />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <View style={{ borderRadius: 18, borderTopLeftRadius: 5, backgroundColor: '#f3f4f6', paddingHorizontal: 13, paddingVertical: 10 }}>
+                      <Text style={{ color: '#111827', fontWeight: '700', fontSize: 13 }}>{comment.author.firstName} {comment.author.lastName} <Text style={{ color: '#6b7280', fontWeight: '400' }}>@{comment.author.userName}</Text></Text>
+                      <Text style={{ marginTop: 5, color: '#374151', fontSize: 14 }}>{renderContent(comment.content)}</Text>
+                    </View>
+                    {renderActions(comment, 'comment', comment.id)}
+                    {comment.replyCount > 0 ? <TouchableOpacity onPress={() => void handleToggleReplies(comment.id)} style={{ marginTop: 11 }}><Text style={{ color: '#047857', fontSize: 12, fontWeight: '700' }}>{thread?.expanded ? 'Hide replies' : `View ${comment.replyCount} ${comment.replyCount === 1 ? 'reply' : 'replies'}`}</Text></TouchableOpacity> : null}
+                    {thread?.expanded ? <View style={{ marginTop: 5, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: '#d1fae5' }}>{thread.items.map((reply) => renderReply(reply, comment.id))}{thread.loading ? <ActivityIndicator color="#10b981" style={{ marginTop: 12 }} /> : null}{thread.hasMore && !thread.loading ? <TouchableOpacity onPress={() => void handleLoadMoreReplies(comment.id)} style={{ marginTop: 12 }}><Text style={{ color: '#047857', fontWeight: '700', fontSize: 12 }}>Load 20 more replies</Text></TouchableOpacity> : null}</View> : null}
+                  </View>
+                </View>
+              );
+            })}
+            {hasMore ? <TouchableOpacity disabled={loadingMore} onPress={() => void loadComments(nextCursor, true)} style={{ alignItems: 'center', paddingVertical: 14 }}>{loadingMore ? <ActivityIndicator color="#10b981" /> : <Text style={{ color: '#047857', fontWeight: '700' }}>Load 20 more comments</Text>}</TouchableOpacity> : null}
+          </ScrollView>
+
+          {editTarget ? (
+            <View style={{ padding: 12, borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: '#f9fafb' }}>
+              <Text style={{ marginBottom: 7, color: '#6b7280', fontSize: 12, fontWeight: '700' }}>Editing your {editTarget.type}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}><TextInput value={editText} onChangeText={setEditText} maxLength={2000} multiline style={{ flex: 1, maxHeight: 110, borderRadius: 18, borderWidth: 1, borderColor: '#d1d5db', backgroundColor: '#ffffff', paddingHorizontal: 14, paddingVertical: 10 }} /><TouchableOpacity onPress={() => { setEditTarget(null); setEditText(''); }} style={{ marginLeft: 8, padding: 10 }}><Text style={{ color: '#6b7280' }}>Cancel</Text></TouchableOpacity><TouchableOpacity disabled={!editText.trim() || submitting} onPress={() => void handleSubmitEdit()} style={{ marginLeft: 5, borderRadius: 16, backgroundColor: '#10b981', paddingHorizontal: 15, paddingVertical: 10 }}><Text style={{ color: '#ffffff', fontWeight: '700' }}>Save</Text></TouchableOpacity></View>
+            </View>
+          ) : replyTarget ? (
+            <View style={{ padding: 12, borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: '#ecfdf5' }}>
+              <Text style={{ marginBottom: 7, color: '#047857', fontSize: 12 }}>Replying to <Text style={{ fontWeight: '800' }}>@{replyTarget.userName}</Text></Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}><TextInput value={replyText} onChangeText={setReplyText} maxLength={2000} multiline placeholder="Write a reply..." style={{ flex: 1, maxHeight: 110, borderRadius: 18, borderWidth: 1, borderColor: '#a7f3d0', backgroundColor: '#ffffff', paddingHorizontal: 14, paddingVertical: 10 }} /><TouchableOpacity onPress={() => { setReplyTarget(null); setReplyText(''); }} style={{ marginLeft: 8, padding: 10 }}><Text style={{ color: '#6b7280' }}>Cancel</Text></TouchableOpacity><TouchableOpacity disabled={!replyText.trim() || submitting} onPress={() => void handleSubmitReply()} style={{ marginLeft: 5, borderRadius: 16, backgroundColor: '#10b981', paddingHorizontal: 15, paddingVertical: 10 }}><Text style={{ color: '#ffffff', fontWeight: '700' }}>Reply</Text></TouchableOpacity></View>
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', padding: 12, borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: '#ffffff' }}><TextInput value={commentText} onChangeText={setCommentText} maxLength={2000} multiline placeholder="Write a comment..." style={{ flex: 1, maxHeight: 110, borderRadius: 20, borderWidth: 1, borderColor: '#d1d5db', backgroundColor: '#f9fafb', paddingHorizontal: 15, paddingVertical: 10 }} /><TouchableOpacity disabled={!commentText.trim() || submitting} onPress={() => void handleSubmitComment()} style={{ marginLeft: 9, width: 43, height: 43, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: commentText.trim() ? '#10b981' : '#d1d5db' }}>{submitting ? <ActivityIndicator color="#ffffff" size="small" /> : <Icon name="send" size={19} color="#ffffff" />}</TouchableOpacity></View>
+          )}
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+}

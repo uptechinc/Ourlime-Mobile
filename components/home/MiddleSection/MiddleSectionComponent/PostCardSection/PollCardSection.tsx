@@ -1,455 +1,167 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Image, ScrollView } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Alert, Share, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { useRouter } from 'expo-router';
+import { AuthService } from '@/lib/services/AuthService';
+import { PostService, type PostItem } from '@/lib/services/PostService';
 import ImageAndVideoPostSection from './ImageAndVideoPostSection/ImageAndVideoPostSection';
+import UserAvatar from '@/components/ui/UserAvatar';
+import PostOptionsSheet from './PostOptionsSheet';
+import LikesModal from './LikesModal';
+import IdentityBadges from './IdentityBadges';
 
-interface User {
-    id: string;
-    firstName: string;
-    lastName: string;
-    profileImage?: string;
-    userName: string;
-    emailVerified?: boolean;
-}
-
-interface PollOption {
-    id: string;
-    text: string;
-}
-
-interface Post {
-    id: string;
-    user: User;
-    userId: string;
-    caption?: string;
-    createdAt?: string;
-    pollDuration?: number;
-    pollOptions?: PollOption[];
-    media?: { type: 'image' | 'video'; typeUrl: string; id?: string }[];
-    stats: { likes: number; comments: number; shares: number };
-    likedUsers: User[];
-}
-
-interface PollCardSectionProps {
-    post: Post;
-    onCommentClick: (postId: string) => void;
-}
-
-const PollCardSection = ({ post, onCommentClick }: PollCardSectionProps) => {
-    const [localLikeCount, setLocalLikeCount] = useState<number>(post.stats.likes);
-    const [localLikedUsers, setLocalLikedUsers] = useState<User[]>(post.likedUsers);
-    const currentUserId = 'TODO_USER_ID';
-    const [isLiked, setIsLiked] = useState<boolean>(() => {
-        return post.likedUsers.some((user: User) => user.id === currentUserId);
-    });
-    const [timeRemaining, setTimeRemaining] = useState<string>('');
-    const [pollEnded, setPollEnded] = useState<boolean>(false);
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-    useEffect(() => {
-        const calculateTimeRemaining = () => {
-            if (!post.createdAt || !post.pollDuration) {
-                setTimeRemaining('Time unknown');
-                return;
-            }
-            const creationDate = new Date(post.createdAt);
-            const endTime = new Date(creationDate.getTime() + post.pollDuration * 60 * 60 * 1000);
-            const now = new Date();
-            if (now >= endTime) {
-                setPollEnded(true);
-                setTimeRemaining('Poll ended');
-                return;
-            }
-            const diffMs = endTime.getTime() - now.getTime();
-            const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
-            const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-            if (diffHrs > 0) {
-                setTimeRemaining(`${diffHrs}h ${diffMins}m remaining`);
-            } else {
-                setTimeRemaining(`${diffMins}m remaining`);
-            }
-        };
-        calculateTimeRemaining();
-        const timerId = setInterval(calculateTimeRemaining, 60000);
-        return () => clearInterval(timerId);
-    }, [post.createdAt, post.pollDuration]);
-
-    const handleLike = () => {
-        const wasLiked = isLiked;
-        setIsLiked(!wasLiked);
-        setLocalLikeCount((prev: number) => (wasLiked ? prev - 1 : prev + 1));
-        if (wasLiked) {
-            setLocalLikedUsers((prev: User[]) => prev.filter((user: User) => user.id !== currentUserId));
-        } else {
-            const currentUserData: User = {
-                id: currentUserId,
-                firstName: 'You',
-                lastName: '',
-                userName: 'you',
-                profileImage: undefined,
-            };
-            setLocalLikedUsers((prev: User[]) => [currentUserData, ...prev]);
-        }
-    };
-
-    const handleVote = (optionId: string) => {
-        if (pollEnded || !currentUserId) return;
-        // Would implement actual voting functionality here
-    };
-
-    return (
-        <View style={{ 
-            backgroundColor: '#fff', 
-            borderRadius: 20, 
-            padding: 20, 
-            marginBottom: 20, 
-            marginHorizontal: 4,
-            shadowColor: '#000', 
-            shadowOffset: {
-                width: 0,
-                height: 4,
-            },
-            shadowOpacity: 0.08, 
-            shadowRadius: 12,
-            elevation: 8,
-            borderWidth: 1,
-            borderColor: 'rgba(0, 0, 0, 0.05)',
-        }}>
-            {/* Header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ 
-                        width: 48, 
-                        height: 48, 
-                        borderRadius: 24, 
-                        overflow: 'hidden', 
-                        backgroundColor: '#f3f4f6', 
-                        marginRight: 12, 
-                        alignItems: 'center', 
-                        justifyContent: 'center',
-                        borderWidth: 2,
-                        borderColor: '#fff',
-                        shadowColor: '#000',
-                        shadowOffset: {
-                            width: 0,
-                            height: 2,
-                        },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 4,
-                        elevation: 3,
-                    }}>
-                        {post.user.profileImage ? (
-                            <Image
-                                source={{ uri: post.user.profileImage }}
-                                style={{ width: 48, height: 48, borderRadius: 24 }}
-                                resizeMode="cover"
-                            />
-                        ) : (
-                            <Text style={{ fontSize: 20, color: '#6b7280', fontWeight: 'bold' }}>
-                                {post.user.firstName?.charAt(0)}
-                            </Text>
-                        )}
-                    </View>
-                    <View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#111827' }}>
-                                {post.user.firstName} {post.user.lastName}
-                            </Text>
-                            {post.user.emailVerified && (
-                                <Icon name="check-circle" size={16} color="#10b981" style={{ marginLeft: 4 }} />
-                            )}
-                        </View>
-                        <Text style={{ fontSize: 13, color: '#6b7280' }}>@{post.user.userName}</Text>
-                    </View>
-                </View>
-                {/* Three Dots Menu */}
-                <TouchableOpacity 
-                    onPress={() => setIsMenuOpen(!isMenuOpen)} 
-                    style={{ 
-                        padding: 8, 
-                        borderRadius: 20,
-                        backgroundColor: '#f8f9fa',
-                    }}
-                >
-                    <Icon name="more-horizontal" size={22} color="#6b7280" />
-                </TouchableOpacity>
-            </View>
-
-            {/* Poll Content */}
-            <View style={{ gap: 12 }}>
-                {post.caption ? (
-                    <Text style={{ 
-                        fontSize: 18, 
-                        fontWeight: '600', 
-                        color: '#111827', 
-                        lineHeight: 24,
-                        marginBottom: 4 
-                    }}>
-                        {post.caption}
-                    </Text>
-                ) : null}
-                {post.media && post.media.length > 0 && (
-                    <View style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 8 }}>
-                        <ImageAndVideoPostSection media={post.media} />
-                    </View>
-                )}
-                
-                {/* Poll Timer */}
-                <View style={{ 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between', 
-                    borderBottomWidth: 1, 
-                    borderBottomColor: '#f3f4f6', 
-                    paddingBottom: 12, 
-                    marginBottom: 12 
-                }}>
-                    <View style={{ 
-                        flexDirection: 'row', 
-                        alignItems: 'center', 
-                        gap: 6,
-                        backgroundColor: '#f8f9fa',
-                        paddingHorizontal: 12,
-                        paddingVertical: 6,
-                        borderRadius: 16,
-                    }}>
-                        <Icon name="clock" size={16} color="#6b7280" />
-                        <Text style={{ color: '#6b7280', fontSize: 13, fontWeight: '500' }}>
-                            {timeRemaining}
-                        </Text>
-                    </View>
-                    <View style={{
-                        backgroundColor: '#10b981',
-                        paddingHorizontal: 12,
-                        paddingVertical: 6,
-                        borderRadius: 16,
-                    }}>
-                        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>
-                            {post.pollOptions?.length || 0} options
-                        </Text>
-                    </View>
-                </View>
-
-                {/* Poll Options */}
-                <View style={{ gap: 12 }}>
-                    {post.pollOptions?.map((option: PollOption, index: number) => {
-                        const percentage = 0; // This would come from actual votes
-                        return (
-                            <TouchableOpacity
-                                key={option.id}
-                                onPress={() => handleVote(option.id)}
-                                disabled={pollEnded}
-                                style={{
-                                    padding: 16,
-                                    borderRadius: 16,
-                                    borderWidth: 1,
-                                    borderColor: '#e5e7eb',
-                                    marginBottom: 4,
-                                    backgroundColor: '#fff',
-                                    opacity: pollEnded ? 0.7 : 1,
-                                    shadowColor: '#000',
-                                    shadowOffset: {
-                                        width: 0,
-                                        height: 2,
-                                    },
-                                    shadowOpacity: 0.05,
-                                    shadowRadius: 4,
-                                    elevation: 2,
-                                }}
-                                activeOpacity={pollEnded ? 1 : 0.8}
-                            >
-                                {/* Progress bar background */}
-                                <View style={{
-                                    position: 'absolute',
-                                    left: 0,
-                                    top: 0,
-                                    bottom: 0,
-                                    width: `${percentage}%`,
-                                    backgroundColor: 'rgba(16,185,129,0.1)',
-                                    borderRadius: 16,
-                                }} />
-                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <Text style={{ fontWeight: '600', fontSize: 15, color: '#111827' }}>
-                                        {option.text}
-                                    </Text>
-                                    <Text style={{ color: '#6b7280', fontSize: 13, fontWeight: '500' }}>
-                                        0 votes
-                                    </Text>
-                                </View>
-                                {percentage > 0 && (
-                                    <Text style={{ 
-                                        color: '#10b981', 
-                                        fontSize: 12, 
-                                        marginTop: 4, 
-                                        textAlign: 'right', 
-                                        fontWeight: 'bold' 
-                                    }}>
-                                        {percentage}%
-                                    </Text>
-                                )}
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
-
-                {/* Poll Info */}
-                <View style={{ 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between', 
-                    marginTop: 12,
-                    paddingTop: 12,
-                    borderTopWidth: 1,
-                    borderTopColor: '#f3f4f6',
-                }}>
-                    <Text style={{ color: '#6b7280', fontSize: 13, fontWeight: '500' }}>
-                        0 total votes
-                    </Text>
-                    {pollEnded ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <View style={{ 
-                                width: 8, 
-                                height: 8, 
-                                borderRadius: 4, 
-                                backgroundColor: '#ef4444',
-                            }} />
-                            <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 13 }}>
-                                Poll ended
-                            </Text>
-                        </View>
-                    ) : (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <View style={{ 
-                                width: 8, 
-                                height: 8, 
-                                borderRadius: 4, 
-                                backgroundColor: '#10b981',
-                            }} />
-                            <Text style={{ color: '#10b981', fontWeight: 'bold', fontSize: 13 }}>
-                                Poll active
-                            </Text>
-                        </View>
-                    )}
-                </View>
-            </View>
-
-            {/* Interaction Bar */}
-            <View style={{ 
-                flexDirection: 'row', 
-                alignItems: 'center', 
-                justifyContent: 'space-between', 
-                marginTop: 20,
-                paddingTop: 16,
-                borderTopWidth: 1,
-                borderTopColor: '#f3f4f6',
-            }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 24 }}>
-                    <TouchableOpacity
-                        onPress={handleLike}
-                        style={{ 
-                            flexDirection: 'row', 
-                            alignItems: 'center', 
-                            gap: 8,
-                            paddingVertical: 8,
-                            paddingHorizontal: 12,
-                            borderRadius: 20,
-                            backgroundColor: isLiked ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
-                        }}
-                        activeOpacity={0.7}
-                    >
-                        <Icon name="heart" size={24} color={isLiked ? '#10b981' : '#6b7280'} />
-                        <Text style={{ 
-                            fontSize: 14, 
-                            color: isLiked ? '#10b981' : '#6b7280', 
-                            fontWeight: '600' 
-                        }}>
-                            {localLikeCount}
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        onPress={() => onCommentClick(post.id)}
-                        style={{ 
-                            flexDirection: 'row', 
-                            alignItems: 'center', 
-                            gap: 8,
-                            paddingVertical: 8,
-                            paddingHorizontal: 12,
-                            borderRadius: 20,
-                        }}
-                        activeOpacity={0.7}
-                    >
-                        <Icon name="message-circle" size={24} color="#6b7280" />
-                        <Text style={{ fontSize: 14, color: '#6b7280', fontWeight: '600' }}>
-                            {post.stats.comments || 0}
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={{ 
-                            flexDirection: 'row', 
-                            alignItems: 'center', 
-                            gap: 8,
-                            paddingVertical: 8,
-                            paddingHorizontal: 12,
-                            borderRadius: 20,
-                        }}
-                        activeOpacity={0.7}
-                    >
-                        <Icon name="share" size={24} color="#6b7280" />
-                        <Text style={{ fontSize: 14, color: '#6b7280', fontWeight: '600' }}>
-                            {post.stats.shares || 0}
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-                {/* Liked Users Display */}
-                {/* {localLikedUsers.length > 0 && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <View style={{ flexDirection: 'row', marginRight: 4 }}>
-                            {localLikedUsers.slice(0, 3).map((user: User, idx: number) => (
-                                <View
-                                    key={user.id}
-                                    style={{
-                                        width: 32,
-                                        height: 32,
-                                        borderRadius: 16,
-                                        overflow: 'hidden',
-                                        borderWidth: 2,
-                                        borderColor: '#fff',
-                                        marginLeft: idx === 0 ? 0 : -10,
-                                        backgroundColor: '#e5e7eb',
-                                        shadowColor: '#000',
-                                        shadowOffset: {
-                                            width: 0,
-                                            height: 1,
-                                        },
-                                        shadowOpacity: 0.1,
-                                        shadowRadius: 2,
-                                        elevation: 2,
-                                    }}
-                                >
-                                    {user.profileImage ? (
-                                        <Image
-                                            source={{ uri: user.profileImage }}
-                                            style={{ width: 32, height: 32, borderRadius: 16 }}
-                                            resizeMode="cover"
-                                        />
-                                    ) : (
-                                        <Text style={{ fontSize: 14, color: '#6b7280', fontWeight: 'bold' }}>
-                                            {user.firstName?.charAt(0)}
-                                        </Text>
-                                    )}
-                                </View>
-                            ))}
-                        </View>
-                        {localLikedUsers.length > 3 && (
-                            <Text style={{ color: '#6b7280', fontSize: 13, fontWeight: '500' }}>
-                                +{localLikedUsers.length - 3} more
-                            </Text>
-                        )}
-                    </View>
-                )} */}
-            </View>
-        </View>
-    );
+type PollCardSectionProps = {
+  post: PostItem;
+  onCommentClick: (postId: string) => void;
+  onPostDelete: (postId: string) => void;
+  onAuthorBlocked: (userId: string) => void;
+  onPostUpdate: (post: PostItem) => void;
 };
 
-export default PollCardSection;
+const authService = AuthService.getInstance();
+const postService = PostService.getInstance();
+
+const getTimeRemaining = (endTime?: string): string => {
+  if (!endTime) return 'Poll duration unavailable';
+  const difference = new Date(endTime).getTime() - Date.now();
+  if (difference <= 0) return 'Poll ended';
+  const hours = Math.floor(difference / 3_600_000);
+  const minutes = Math.floor((difference % 3_600_000) / 60_000);
+  return hours > 0 ? `${hours}h ${minutes}m remaining` : `${minutes}m remaining`;
+};
+
+export default function PollCardSection({ post, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PollCardSectionProps) {
+  const router = useRouter();
+  const currentUserId = authService.getCurrentUser()?.uid;
+  const [isLiked, setIsLiked] = useState(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
+  const [likeCount, setLikeCount] = useState(post.stats.likes);
+  const [shareCount, setShareCount] = useState(post.stats.shares);
+  const [hasShared, setHasShared] = useState(false);
+  const [optionsVisible, setOptionsVisible] = useState(false);
+  const [likesVisible, setLikesVisible] = useState(false);
+  const [selectedOptionId, setSelectedOptionId] = useState(currentUserId ? post.pollVotes?.[currentUserId] : undefined);
+  const [voteCounts, setVoteCounts] = useState<Record<string, number>>(
+    Object.fromEntries((post.pollOptions ?? []).map((option) => [option.id, option.votes]))
+  );
+  const timeRemaining = getTimeRemaining(post.pollEndTime);
+  const pollEnded = timeRemaining === 'Poll ended';
+  const totalVotes = useMemo(() => Object.values(voteCounts).reduce((total, votes) => total + votes, 0), [voteCounts]);
+
+  const handleNavigateProfile = () => {
+    if (post.user.userName) {
+      router.push(`/profile/${post.user.userName}` as any);
+    }
+  };
+
+  const handleLike = async () => {
+    if (!currentUserId) return Alert.alert('Sign in required', 'Sign in to like posts.');
+    const previousLiked = isLiked;
+    setIsLiked(!previousLiked);
+    setLikeCount((count) => Math.max(0, count + (previousLiked ? -1 : 1)));
+    try {
+      const result = await postService.toggleLike(post.id, currentUserId, previousLiked);
+      setIsLiked(result.liked);
+      setLikeCount(result.likeCount);
+      onPostUpdate({ ...post, stats: { ...post.stats, likes: result.likeCount }, likedUserIds: result.liked ? [currentUserId] : [] });
+    } catch (error: unknown) {
+      setIsLiked(previousLiked);
+      setLikeCount((count) => Math.max(0, count + (previousLiked ? 1 : -1)));
+      console.error('[PollCardSection.handleLike]', error);
+    }
+  };
+
+  const handleVote = async (optionId: string) => {
+    if (!currentUserId) return Alert.alert('Sign in required', 'Sign in to vote in polls.');
+    if (pollEnded || selectedOptionId === optionId) return;
+    const previousOptionId = selectedOptionId;
+    setSelectedOptionId(optionId);
+    setVoteCounts((current) => ({
+      ...current,
+      ...(previousOptionId ? { [previousOptionId]: Math.max(0, (current[previousOptionId] ?? 1) - 1) } : {}),
+      [optionId]: (current[optionId] ?? 0) + 1,
+    }));
+    try {
+      const result = await postService.voteOnPoll(post.id, currentUserId, optionId);
+      setSelectedOptionId(result.selectedOptionId);
+      setVoteCounts(result.counts);
+      onPostUpdate({ ...post, pollVotes: { ...(post.pollVotes ?? {}), [currentUserId]: result.selectedOptionId } });
+    } catch (error: unknown) {
+      setSelectedOptionId(previousOptionId);
+      setVoteCounts((current) => ({
+        ...current,
+        [optionId]: Math.max(0, (current[optionId] ?? 1) - 1),
+        ...(previousOptionId ? { [previousOptionId]: (current[previousOptionId] ?? 0) + 1 } : {}),
+      }));
+      console.error('[PollCardSection.handleVote]', error);
+    }
+  };
+
+  const handleShare = async () => {
+    try {
+      if (!hasShared) {
+        const result = await postService.recordShare(post.id);
+        setShareCount(result.shareCount);
+        setHasShared(true);
+        onPostUpdate({ ...post, stats: { ...post.stats, shares: result.shareCount } });
+      }
+      await Share.share({ message: `${post.caption || post.description || 'Vote on this poll in Ourlime'}\n\n${postService.getPostUrl(post.id)}` });
+    } catch (error: unknown) {
+      Alert.alert('Poll not shared', error instanceof Error ? error.message : 'Please try again');
+    }
+  };
+
+  return (
+    <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 18, shadowColor: '#000000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <TouchableOpacity onPress={handleNavigateProfile} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <UserAvatar profileImage={post.user.profileImage} firstName={post.user.firstName || post.user.userName} size={48} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ color: '#111827', fontSize: 16, fontWeight: '700' }}>{post.user.firstName} {post.user.lastName}</Text><IdentityBadges user={post.user} /></View>
+            <Text style={{ marginTop: 2, color: '#6b7280', fontSize: 13 }}>@{post.user.userName} · Poll</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setOptionsVisible(true)} style={{ padding: 8 }}><Icon name="more-horizontal" size={21} color="#6b7280" /></TouchableOpacity>
+      </View>
+
+      {post.location ? <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}><Icon name="map-pin" size={14} color="#10b981" /><Text style={{ marginLeft: 5, color: '#6b7280' }}>{post.location.name}</Text></View> : null}
+      {post.caption ? <Text style={{ marginTop: 15, color: '#111827', fontSize: 18, lineHeight: 24, fontWeight: '700' }}>{post.caption}</Text> : null}
+      {post.description && post.description !== post.caption ? <Text style={{ marginTop: 7, color: '#4b5563', lineHeight: 21 }}>{post.description}</Text> : null}
+
+      {post.media && post.media.length > 0 ? (
+        <View style={{ marginTop: 12 }}>
+          <ImageAndVideoPostSection media={post.media} />
+        </View>
+      ) : null}
+
+      <View style={{ marginTop: 16 }}>
+        {(post.pollOptions ?? []).map((option) => {
+          const votes = voteCounts[option.id] ?? 0;
+          const percentage = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+          const isSelected = selectedOptionId === option.id;
+          return (
+            <TouchableOpacity key={option.id} onPress={() => void handleVote(option.id)} disabled={pollEnded} style={{ marginBottom: 10, padding: 14, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: isSelected ? '#10b981' : '#e5e7eb', backgroundColor: '#ffffff' }}>
+              <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${percentage}%`, backgroundColor: '#d1fae5' }} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ color: '#111827', fontWeight: isSelected ? '700' : '600' }}>{option.text}</Text>
+                <Text style={{ color: '#6b7280', fontSize: 13 }}>{percentage}% · {votes}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 3 }}>
+        <Text style={{ color: '#6b7280', fontSize: 13 }}>{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}</Text>
+        <Text style={{ color: pollEnded ? '#c64d53' : '#059669', fontSize: 13, fontWeight: '600' }}>{timeRemaining}</Text>
+      </View>
+      {post.hashtags.length > 0 ? <Text style={{ marginTop: 12, color: '#059669', fontWeight: '600' }}>{post.hashtags.map((tag) => `#${tag}`).join(' ')}</Text> : null}
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 13, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
+        <TouchableOpacity onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="heart" size={22} color={isLiked ? '#c64d53' : '#6b7280'} /></TouchableOpacity><TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 26, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#c64d53' : '#6b7280', fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 26, paddingVertical: 6 }}><Icon name="message-circle" size={22} color="#6b7280" /><Text style={{ marginLeft: 7, color: '#6b7280', fontWeight: '600' }}>{post.stats.comments}</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="share-2" size={22} color="#6b7280" /><Text style={{ marginLeft: 7, color: '#6b7280', fontWeight: '600' }}>{shareCount}</Text></TouchableOpacity>
+      </View>
+      <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} />
+      <LikesModal visible={likesVisible} postId={post.id} onClose={() => setLikesVisible(false)} />
+    </View>
+  );
+}

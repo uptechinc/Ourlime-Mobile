@@ -109,7 +109,7 @@ export class ChatService {
 
                 if (chatDoc.exists()) {
                     const chatData = chatDoc.data();
-                    unreadCount = chatData.messages.filter(msg =>
+                    unreadCount = chatData.messages.filter((msg: { receiverId: string; status: string }) =>
                         msg.receiverId === currentUserId &&
                         msg.status === 'sent'
                     ).length;
@@ -150,7 +150,7 @@ export class ChatService {
         const tempChatsData = await Promise.all(
             tempChatsSnapshot.docs.map(async (chatDoc) => {
                 const chatData = chatDoc.data();
-                const otherUserId = chatData.participants.find(id => id !== currentUserId);
+                const otherUserId = chatData.participants.find((id: string) => id !== currentUserId);
 
                 const userDoc = await getDoc(doc(this.db, 'users', otherUserId));
                 if (!userDoc.exists()) return null;

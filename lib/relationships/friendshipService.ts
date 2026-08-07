@@ -74,6 +74,13 @@ export class FriendshipService {
     
             const docRef = await addDoc(collection(this.db, 'friendship'), friendshipData);
             
+            // Create notification for receiver
+            try {
+                await notificationHelpers.createFriendRequestNotification(receiverId, senderId);
+            } catch (notifErr) {
+                console.error('Error creating friend request notification:', notifErr);
+            }
+
             const newFriendship: Friendship = {
                 id: docRef.id,
                 ...friendshipData

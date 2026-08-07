@@ -9,7 +9,14 @@ import {
   Image,
   Dimensions,
 } from 'react-native';
-import { ResizeMode, Video } from 'expo-av'; // expo install expo-av
+import { useVideoPlayer, VideoView } from 'expo-video';
+
+function EventMediaVideo({ url }: { url: string }) {
+  const player = useVideoPlayer(url, (p) => {
+    p.loop = true;
+  });
+  return <VideoView player={player} style={{ width: '100%', height: '100%' }} allowsFullscreen />;
+}
 import {
   X,
   Users,
@@ -139,15 +146,7 @@ export default function EventDetailModal({
                 />
               )}
               {media?.type === 'video' && (
-                <Video
-                  source={{ uri: media.url }}
-                  resizeMode={ResizeMode.COVER}
-                  useNativeControls
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                  }}
-                />
+                <EventMediaVideo url={media.url} />
               )}
               {!media && (
                 <View

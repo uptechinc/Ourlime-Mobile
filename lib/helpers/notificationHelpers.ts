@@ -1,25 +1,18 @@
 import { db } from '@/lib/firebaseConfig';
 import { 
   collection, 
-  addDoc, 
-  query, 
-  where, 
-  orderBy, 
-  limit, 
-  getDocs, 
   doc, 
   updateDoc, 
   Timestamp, 
   getDoc,
   serverTimestamp,
-  writeBatch,
   increment,
+  setDoc,
   deleteDoc,
-  setDoc
+  deleteField
 } from 'firebase/firestore';
 import { NotificationData, NotificationType } from '@/lib/types/notification';
-import { formatDistanceToNow } from 'date-fns';
-import { Bell, UserPlus, Heart, MessageCircle, AtSign, Users } from 'lucide-react';
+import { pushNotificationService } from '@/lib/services/PushNotificationService';
 
 export const notificationHelpers = {
   createNotification(data: Partial<NotificationData>): NotificationData {
@@ -35,56 +28,74 @@ export const notificationHelpers = {
     };
   },
 
+  // Ensure user has notification fields
+  async ensureUserHasNotificationFields(userId: string): Promise<void> {
+    try {
+      const userNotifRef = doc(db, 'userNotifications', userId);
+      const userNotifDoc = await getDoc(userNotifRef);
+      if (!userNotifDoc.exists()) {
+        await setDoc(userNotifRef, {
+          notificationsMap: {},
+          notificationCount: 0,
+          unreadCount: 0,
+          documentSize: 0,
+        });
+      }
+    } catch (e) {
+      console.error('[notificationHelpers.ensureUserHasNotificationFields]', e);
+    }
+  },
+
   // Add a notification to the database
   async addNotification(notification: NotificationData): Promise<boolean> {
     try {
-      // Ensure user has notification fields first
       await this.ensureUserHasNotificationFields(notification.userId);
       
-      console.log('Adding notification to database:', notification);
-      
-      // Get a reference to the user's notification document
       const userNotifRef = doc(db, 'userNotifications', notification.userId);
-      
-      // Generate a unique ID for this notification
-      const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      // Get current document to check size
+      const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const userNotifDoc = await getDoc(userNotifRef);
       
+      const notifObj = {
+        ...notification,
+        id: notificationId,
+        createdAt: Timestamp.now(),
+      };
+
       if (!userNotifDoc.exists()) {
-        // Create new document if it doesn't exist
         await setDoc(userNotifRef, {
           notificationsMap: {
-            [notificationId]: {
-              ...notification,
-              id: notificationId, // Add the ID to the notification object
-              createdAt: serverTimestamp()
-            }
+            [notificationId]: notifObj
           },
           notificationCount: 1,
           unreadCount: notification.isRead ? 0 : 1,
-          documentSize: JSON.stringify(notification).length + 50 // Rough estimate
+          documentSize: JSON.stringify(notification).length + 50
         });
-        console.log('Created new notification document for user:', notification.userId);
-        return true;
       } else {
-        // Add to current document
         await updateDoc(userNotifRef, {
-          [`notificationsMap.${notificationId}`]: {
-            ...notification,
-            id: notificationId,
-            createdAt: serverTimestamp()
-          },
+          [`notificationsMap.${notificationId}`]: notifObj,
           notificationCount: increment(1),
           unreadCount: increment(notification.isRead ? 0 : 1)
         });
-        console.log('Added notification to existing document for user:', notification.userId);
-        return true;
       }
+
+      // Also write to items subcollection for query parity with web
+      try {
+        await setDoc(doc(db, 'userNotifications', notification.userId, 'items', notificationId), notifObj);
+      } catch (subErr) {
+        console.warn('[addNotification] items subcollection write notice:', subErr);
+      }
+
+      // Dispatch high priority device push notification to receiver's device
+      void pushNotificationService.sendPushNotification(notification.userId, {
+        title: notification.title || 'Ourlime Notification',
+        body: notification.message || 'You have a new notification',
+        type: 'message',
+        senderId: (notification.userDetails as any)?.uid || (notification.userDetails as any)?.userId || '',
+      });
+
+      return true;
     } catch (error) {
       console.error('Error adding notification:', error);
-      console.error('Notification data that failed:', notification);
       return false;
     }
   },
@@ -92,7 +103,6 @@ export const notificationHelpers = {
   // Get notifications for a user
   async getUserNotifications(userId: string, limitCount: number = 20): Promise<NotificationData[]> {
     try {
-      // Get the user's notification document
       const userNotifRef = doc(db, 'userNotifications', userId);
       const userNotifDoc = await getDoc(userNotifRef);
       
@@ -103,16 +113,15 @@ export const notificationHelpers = {
       const data = userNotifDoc.data();
       const notificationsMap = data.notificationsMap || {};
       
-      // Convert the map to an array, sort by createdAt, and limit to the requested count
       const notifications = Object.entries(notificationsMap)
         .map(([id, notif]: [string, any]) => ({
           ...notif,
-          id
+          id: notif.id || id,
+          isRead: notif.isRead === true || notif.isRead === 'true' || notif.isRead === 1,
         }))
         .sort((a, b) => {
-          // Sort in descending order (newest first)
-          const timeA = a.createdAt ? (a.createdAt.toMillis ? a.createdAt.toMillis() : a.createdAt) : 0;
-          const timeB = b.createdAt ? (b.createdAt.toMillis ? b.createdAt.toMillis() : b.createdAt) : 0;
+          const timeA = a.createdAt ? (a.createdAt.toMillis ? a.createdAt.toMillis() : (a.createdAt.seconds ? a.createdAt.seconds * 1000 : 0)) : 0;
+          const timeB = b.createdAt ? (b.createdAt.toMillis ? b.createdAt.toMillis() : (b.createdAt.seconds ? b.createdAt.seconds * 1000 : 0)) : 0;
           return timeB - timeA;
         })
         .slice(0, limitCount);
@@ -124,14 +133,12 @@ export const notificationHelpers = {
     }
   },
 
-  // Get unread notification count for a user
+  // Get unread notification count
   async getUnreadCount(userId: string): Promise<number> {
     try {
       const userNotifRef = doc(db, 'userNotifications', userId);
       const userNotifDoc = await getDoc(userNotifRef);
-      
       if (!userNotifDoc.exists()) return 0;
-      
       const data = userNotifDoc.data();
       return data.unreadCount || 0;
     } catch (error) {
@@ -145,23 +152,15 @@ export const notificationHelpers = {
     try {
       const userNotifRef = doc(db, 'userNotifications', userId);
       const userNotifDoc = await getDoc(userNotifRef);
-      
       if (!userNotifDoc.exists()) return false;
-      
+
       const data = userNotifDoc.data();
-      const notif = data.notificationsMap?.[notificationId];
-      
-      if (!notif) return false;
-      
-      // Only update if it's unread
-      if (!notif.isRead) {
-        // Update notification
-        await updateDoc(userNotifRef, {
-          [`notificationsMap.${notificationId}.isRead`]: true,
-          unreadCount: increment(-1)
-        });
-      }
-      
+      const currentUnread = data.unreadCount || 0;
+
+      await updateDoc(userNotifRef, {
+        [`notificationsMap.${notificationId}.isRead`]: true,
+        unreadCount: Math.max(0, currentUnread - 1)
+      });
       return true;
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -169,33 +168,46 @@ export const notificationHelpers = {
     }
   },
 
+  // Mark a notification as unread
+  async markAsUnread(userId: string, notificationId: string): Promise<boolean> {
+    try {
+      const userNotifRef = doc(db, 'userNotifications', userId);
+      const userNotifDoc = await getDoc(userNotifRef);
+      if (!userNotifDoc.exists()) return false;
+
+      const data = userNotifDoc.data();
+      const currentUnread = data.unreadCount || 0;
+
+      await updateDoc(userNotifRef, {
+        [`notificationsMap.${notificationId}.isRead`]: false,
+        unreadCount: currentUnread + 1
+      });
+      return true;
+    } catch (error) {
+      console.error('Error marking notification as unread:', error);
+      return false;
+    }
+  },
+
   // Mark all notifications as read
   async markAllAsRead(userId: string): Promise<boolean> {
     try {
-      const notificationsRef = collection(db, 'notifications');
-      const q = query(
-        notificationsRef,
-        where('userId', '==', userId),
-        where('isRead', '==', false)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      
-      if (querySnapshot.empty) return true;
-      
-      const batch = writeBatch(db);
-      
-      querySnapshot.forEach((doc) => {
-        batch.update(doc.ref, { isRead: true });
+      const userNotifRef = doc(db, 'userNotifications', userId);
+      const userNotifDoc = await getDoc(userNotifRef);
+      if (!userNotifDoc.exists()) return false;
+
+      const data = userNotifDoc.data();
+      const notificationsMap = data.notificationsMap || {};
+
+      const updatedMap = { ...notificationsMap };
+      Object.keys(updatedMap).forEach(id => {
+        updatedMap[id] = { ...updatedMap[id], isRead: true };
       });
-      
-      // Update user's unread count
-      const userRef = doc(db, 'users', userId);
-      batch.update(userRef, {
-        unreadNotificationCount: 0
+
+      await updateDoc(userNotifRef, {
+        notificationsMap: updatedMap,
+        unreadCount: 0
       });
-      
-      await batch.commit();
       return true;
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
@@ -203,11 +215,22 @@ export const notificationHelpers = {
     }
   },
 
-  // Delete a notification
-  async deleteNotification(notificationId: string): Promise<boolean> {
+  // Delete individual notification
+  async deleteNotification(userId: string, notificationId: string): Promise<boolean> {
     try {
-      const notificationRef = doc(db, 'notifications', notificationId);
-      await deleteDoc(notificationRef);
+      const userNotifRef = doc(db, 'userNotifications', userId);
+      const userNotifDoc = await getDoc(userNotifRef);
+      if (!userNotifDoc.exists()) return false;
+
+      const data = userNotifDoc.data();
+      const notifItem = data.notificationsMap?.[notificationId];
+      const wasUnread = notifItem && (notifItem.isRead === false || notifItem.isRead === 'false' || notifItem.isRead === 0);
+      
+      await updateDoc(userNotifRef, {
+        [`notificationsMap.${notificationId}`]: deleteField(),
+        notificationCount: Math.max(0, (data.notificationCount || 1) - 1),
+        unreadCount: wasUnread ? Math.max(0, (data.unreadCount || 1) - 1) : (data.unreadCount || 0)
+      });
       return true;
     } catch (error) {
       console.error('Error deleting notification:', error);
@@ -215,62 +238,35 @@ export const notificationHelpers = {
     }
   },
 
-  // Fix the notification creation for likes
-  async createLikeNotification(targetUserId: string, postId: string, sourceUserId: string): Promise<boolean> {
+  // Clear all notifications
+  async clearAllNotifications(userId: string): Promise<boolean> {
     try {
-      // Get source user details
-      const sourceUserDoc = await getDoc(doc(db, 'users', sourceUserId));
-      if (!sourceUserDoc.exists()) return false;
-      
-      const sourceUser = sourceUserDoc.data();
-      const senderName = `${sourceUser.firstName || ''} ${sourceUser.lastName || ''}`.trim() || sourceUser.userName || 'Someone';
-      
-      // Create notification data
-      const notificationData: Partial<NotificationData> = {
-        userId: targetUserId,
-        type: 'like',
-        title: 'New Like',
-        message: `${senderName} liked your post`,
-        isRead: false,
-        metadata: {
-          sourceUserId: sourceUserId,
-          postId: postId,
-          actionUrl: `/limes?reel=${postId}`,
-        },
-        userDetails: {
-          profileImage: sourceUser.profileImage || '',
-          firstName: sourceUser.firstName || '',
-          lastName: sourceUser.lastName || '',
-          userName: sourceUser.userName || ''
-        }
-      };
-      
-      // Create and add the notification
-      const notification = this.createNotification(notificationData);
-      return await this.addNotification(notification);
+      const userNotifRef = doc(db, 'userNotifications', userId);
+      await updateDoc(userNotifRef, {
+        notificationsMap: {},
+        notificationCount: 0,
+        unreadCount: 0
+      });
+      return true;
     } catch (error) {
-      console.error('Error creating like notification:', error);
+      console.error('Error clearing notifications:', error);
       return false;
     }
   },
 
-  // Fix the notification creation for friend requests
+  // Create friend request notification
   async createFriendRequestNotification(targetUserId: string, sourceUserId: string): Promise<boolean> {
-    // Check for existing notification
     const existing = await this.getUserNotifications(targetUserId, 20);
     const alreadyExists = existing.some(n => n.type === 'friend_request' && n.metadata?.sourceUserId === sourceUserId && !n.isRead);
-    if (alreadyExists) {
-      return false;
-    }
+    if (alreadyExists) return false;
+
     try {
-      // Get source user details
       const sourceUserDoc = await getDoc(doc(db, 'users', sourceUserId));
       if (!sourceUserDoc.exists()) return false;
-      
+
       const sourceUser = sourceUserDoc.data();
       const senderName = `${sourceUser.firstName || ''} ${sourceUser.lastName || ''}`.trim() || sourceUser.userName || 'Someone';
-      
-      // Create notification data
+
       const notificationData: Partial<NotificationData> = {
         userId: targetUserId,
         type: 'friend_request',
@@ -280,7 +276,7 @@ export const notificationHelpers = {
         metadata: {
           sourceId: sourceUserId,
           sourceUserId: sourceUserId,
-          actionUrl: `/profile/viewOtherProfile/${sourceUser.userName || sourceUserId}`,
+          actionUrl: `/profile/${sourceUser.userName || sourceUserId}`,
         },
         userDetails: {
           profileImage: sourceUser.profileImage || '',
@@ -289,8 +285,7 @@ export const notificationHelpers = {
           userName: sourceUser.userName || ''
         }
       };
-      
-      // Create and add the notification
+
       const notification = this.createNotification(notificationData);
       return await this.addNotification(notification);
     } catch (error) {
@@ -299,153 +294,24 @@ export const notificationHelpers = {
     }
   },
 
-  // Format notification title
-  formatNotificationTitle(type: NotificationType): string {
-    const titles = {
-      friend_request: 'New Friend Request',
-      friend_accepted: 'Friend Request Accepted',
-      follow: 'New Follower',
-      like: 'New Like',
-      comment: 'New Comment',
-      mention: 'New Mention',
-      community_invite: 'Community Invitation'
-    };
-    return titles[type] || 'New Notification';
-  },
-
-  // Format notification message
-  formatNotificationMessage(type: NotificationType, actorName: string): string {
-    const messages = {
-      friend_request: `${actorName} sent you a friend request`,
-      friend_accepted: `${actorName} accepted your friend request`,
-      follow: `${actorName} started following you`,
-      like: `${actorName} liked your post`,
-      comment: `${actorName} commented on your post`,
-      mention: `${actorName} mentioned you in a post`,
-      community_invite: `${actorName} invited you to join a community`
-    };
-    return messages[type] || `${actorName} interacted with you`;
-  },
-
-  // Get notification icon as a string
-  getNotificationIcon(type: NotificationType): string {
-    switch (type) {
-      case 'friend_request':
-      case 'friend_accepted':
-        return 'user-plus';
-      case 'like':
-        return 'heart';
-      case 'comment':
-        return 'message-circle';
-      case 'mention':
-        return 'at-sign';
-      case 'follow':
-        return 'user-plus';
-      case 'community_invite':
-        return 'users';
-      default:
-        return 'bell';
-    }
-  },
-
-  // Format time ago
-  getTimeAgo(timestamp: any): string {
-    if (!timestamp) return 'recently';
-    
+  // Create friend request accepted notification
+  async createFriendAcceptedNotification(targetUserId: string, sourceUserId: string): Promise<boolean> {
     try {
-      // Handle Firestore Timestamp
-      if (typeof timestamp.toDate === 'function') {
-        return formatDistanceToNow(timestamp.toDate(), { addSuffix: true });
-      }
-      
-      // Handle Date object
-      if (timestamp instanceof Date) {
-        return formatDistanceToNow(timestamp, { addSuffix: true });
-      }
-      
-      // Handle numeric timestamp
-      if (typeof timestamp === 'number') {
-        return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
-      }
-      
-      return 'recently';
-    } catch (error) {
-      console.error('Error formatting time:', error);
-      return 'recently';
-    }
-  },
-
-  // Create notification for comments
-  async createCommentNotification(targetUserId: string, postId: string, sourceUserId: string, commentText: string): Promise<boolean> {
-    try {
-      // Get source user details
       const sourceUserDoc = await getDoc(doc(db, 'users', sourceUserId));
       if (!sourceUserDoc.exists()) return false;
-      
+
       const sourceUser = sourceUserDoc.data();
       const senderName = `${sourceUser.firstName || ''} ${sourceUser.lastName || ''}`.trim() || sourceUser.userName || 'Someone';
-      
-      // Create a shorter comment preview if needed
-      const commentPreview = commentText.length > 30 
-        ? `${commentText.substring(0, 30)}...` 
-        : commentText;
-      
-      // Create notification data
+
       const notificationData: Partial<NotificationData> = {
         userId: targetUserId,
-        type: 'comment',
-        title: 'New Comment',
-        message: `${senderName} commented: "${commentPreview}"`,
-        isRead: false,
-        metadata: {
-          sourceUserId: sourceUserId,
-          postId: postId,
-          commentText: commentText,
-          actionUrl: `/post/${postId}`,
-        },
-        userDetails: {
-          profileImage: sourceUser.profileImage || '',
-          firstName: sourceUser.firstName || '',
-          lastName: sourceUser.lastName || '',
-          userName: sourceUser.userName || ''
-        }
-      };
-      
-      // Create and add the notification
-      const notification = this.createNotification(notificationData);
-      return await this.addNotification(notification);
-    } catch (error) {
-      console.error('Error creating comment notification:', error);
-      return false;
-    }
-  },
-
-  // Create notification for when a friend request is accepted
-  async createFriendAcceptedNotification(targetUserId: string, sourceUserId: string): Promise<boolean> {
-    // Check for existing notification
-    const existing = await this.getUserNotifications(targetUserId, 20);
-    const alreadyExists = existing.some(n => n.type === 'friend_accepted' && n.metadata?.sourceUserId === sourceUserId && !n.isRead);
-    if (alreadyExists) {
-      return false;
-    }
-    try {
-      // Get source user details (the user who accepted the request)
-      const sourceUserDoc = await getDoc(doc(db, 'users', sourceUserId));
-      if (!sourceUserDoc.exists()) return false;
-      
-      const sourceUser = sourceUserDoc.data();
-      const senderName = `${sourceUser.firstName || ''} ${sourceUser.lastName || ''}`.trim() || sourceUser.userName || 'Someone';
-      
-      // Create notification data
-      const notificationData: Partial<NotificationData> = {
-        userId: targetUserId, // The original requester gets notified
         type: 'friend_accepted',
         title: 'Friend Request Accepted',
         message: `${senderName} accepted your friend request`,
         isRead: false,
         metadata: {
           sourceUserId: sourceUserId,
-          actionUrl: `/profile/viewOtherProfile/${sourceUser.userName || sourceUserId}`,
+          actionUrl: `/profile/${sourceUser.userName || sourceUserId}`,
         },
         userDetails: {
           profileImage: sourceUser.profileImage || '',
@@ -454,8 +320,7 @@ export const notificationHelpers = {
           userName: sourceUser.userName || ''
         }
       };
-      
-      // Create and add the notification
+
       const notification = this.createNotification(notificationData);
       return await this.addNotification(notification);
     } catch (error) {
@@ -464,26 +329,23 @@ export const notificationHelpers = {
     }
   },
 
-  // Create notification for when a friend request is declined
+  // Create friend request declined notification
   async createFriendRequestDeclinedNotification(targetUserId: string, sourceUserId: string): Promise<boolean> {
     try {
-      // Get source user details (the user who declined the request)
       const sourceUserDoc = await getDoc(doc(db, 'users', sourceUserId));
       if (!sourceUserDoc.exists()) return false;
-      
+
       const sourceUser = sourceUserDoc.data();
       const senderName = `${sourceUser.firstName || ''} ${sourceUser.lastName || ''}`.trim() || sourceUser.userName || 'Someone';
-      
-      // Create notification data
+
       const notificationData: Partial<NotificationData> = {
-        userId: targetUserId, // The original requester gets notified
+        userId: targetUserId,
         type: 'friend_declined',
         title: 'Friend Request Declined',
         message: `${senderName} declined your friend request`,
         isRead: false,
         metadata: {
           sourceUserId: sourceUserId,
-          actionUrl: `/profile/viewOtherProfile/${sourceUser.userName || sourceUserId}`,
         },
         userDetails: {
           profileImage: sourceUser.profileImage || '',
@@ -492,8 +354,7 @@ export const notificationHelpers = {
           userName: sourceUser.userName || ''
         }
       };
-      
-      // Create and add the notification
+
       const notification = this.createNotification(notificationData);
       return await this.addNotification(notification);
     } catch (error) {
@@ -502,27 +363,85 @@ export const notificationHelpers = {
     }
   },
 
-  async ensureUserHasNotificationFields(userId: string): Promise<boolean> {
+  // Format notification title
+  formatNotificationTitle(type: NotificationType): string {
+    const titles: Record<string, string> = {
+      friend_request: 'New Friend Request',
+      friend_accepted: 'Friend Request Accepted',
+      friend_declined: 'Friend Request Declined',
+      follow: 'New Follower',
+      like: 'New Like',
+      comment: 'New Comment',
+      mention: 'New Mention',
+      community_invite: 'Community Invitation',
+      role_change: 'Role Changed',
+      report_action: 'Report Update',
+      community_accepted: 'Join Request Accepted',
+      community_rejected: 'Join Request Declined',
+      community_removed: 'Removed from Community'
+    };
+    return titles[type] || 'New Notification';
+  },
+
+  // Format notification message
+  formatNotificationMessage(type: NotificationType, actorName: string): string {
+    const messages: Record<string, string> = {
+      friend_request: `${actorName} sent you a friend request`,
+      friend_accepted: `${actorName} accepted your friend request`,
+      friend_declined: `${actorName} declined your friend request`,
+      follow: `${actorName} started following you`,
+      like: `${actorName} liked your post`,
+      comment: `${actorName} commented on your post`,
+      mention: `${actorName} mentioned you in a post`,
+      community_invite: `${actorName} invited you to join a community`,
+      role_change: `${actorName} changed your role`,
+      report_action: `${actorName} took action on a report`,
+      community_accepted: `Your request to join has been accepted`,
+      community_rejected: `Your request to join has been declined`,
+      community_removed: `You have been removed from the community`
+    };
+    return messages[type] || `${actorName} interacted with you`;
+  },
+
+  // Format time ago (pure JavaScript without external libraries)
+  getTimeAgo(timestamp: any): string {
+    if (!timestamp) return 'recently';
+    
     try {
-      const userRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userRef);
-      
-      if (!userDoc.exists()) return false;
-      
-      const userData = userDoc.data();
-      
-      // Check if unreadNotificationCount field is undefined
-      if (userData.unreadNotificationCount === undefined) {
-        await updateDoc(userRef, {
-          unreadNotificationCount: 0
-        });
-        console.log(`Added unreadNotificationCount field to user ${userId}`);
+      let millis = 0;
+      if (typeof timestamp.toMillis === 'function') {
+        millis = timestamp.toMillis();
+      } else if (typeof timestamp.toDate === 'function') {
+        millis = timestamp.toDate().getTime();
+      } else if (typeof timestamp?.seconds === 'number') {
+        millis = timestamp.seconds * 1000;
+      } else if (timestamp instanceof Date) {
+        millis = timestamp.getTime();
+      } else if (typeof timestamp === 'number') {
+        millis = timestamp;
+      } else if (typeof timestamp === 'string') {
+        millis = new Date(timestamp).getTime();
       }
-      
-      return true;
-    } catch (error) {
-      console.error('Error ensuring user has notification fields:', error);
-      return false;
+
+      if (!millis || Number.isNaN(millis)) return 'recently';
+
+      const secondsAgo = Math.max(0, Math.floor((Date.now() - millis) / 1000));
+      if (secondsAgo < 10) return 'Just now';
+      if (secondsAgo < 60) return `${secondsAgo}s ago`;
+      const minutesAgo = Math.floor(secondsAgo / 60);
+      if (minutesAgo < 60) return `${minutesAgo}m ago`;
+      const hoursAgo = Math.floor(minutesAgo / 60);
+      if (hoursAgo < 24) return `${hoursAgo}h ago`;
+      const daysAgo = Math.floor(hoursAgo / 24);
+      if (daysAgo < 30) return `${daysAgo}d ago`;
+      const monthsAgo = Math.floor(daysAgo / 30);
+      if (monthsAgo < 12) return `${monthsAgo}mo ago`;
+      const yearsAgo = Math.floor(monthsAgo / 12);
+      return `${yearsAgo}y ago`;
+    } catch {
+      return 'recently';
     }
   }
-}; 
+};
+
+export default notificationHelpers;

@@ -1,691 +1,613 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   TextInput,
-  Pressable,
-  ScrollView,
-  SafeAreaView,
+  TouchableOpacity,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
   Image,
   Modal,
   Alert,
+  ScrollView,
+  Pressable,
+  StatusBar,
   Dimensions,
-  PixelRatio,
 } from 'react-native';
-import { styles } from './styles';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { authService } from '@/lib/services/AuthService';
 import { mockData } from './data.mock';
 
-// Responsive breakpoints
-const TABLET_MIN = 768;
-const LARGE_TABLET_MIN = 1024;
+// ─── Constants ────────────────────────────────────────────────────────────────
+const GREEN = '#01eb53';
+const GREEN_DARK = '#10b981';
+const TOTAL_STEPS = 5;
 
-// Get device dimensions
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const { width: screenWidth } = Dimensions.get('window');
+const isTablet = screenWidth >= 768;
 
-// Responsive tokens
-const isTablet = screenWidth >= TABLET_MIN;
-const isLargeTablet = screenWidth >= LARGE_TABLET_MIN;
-const fontScale = Math.min(PixelRatio.getFontScale(), isTablet ? 1.2 : 1.0);
-const contentMaxWidth = isLargeTablet ? 800 : isTablet ? 600 : screenWidth;
+// ─── Types ────────────────────────────────────────────────────────────────────
+type AvatarType = 'cartoon' | 'realistic';
 
-// Types
 type FormData = {
   firstName: string;
   lastName: string;
   userName: string;
   email: string;
-  gender: string;
-  birthday: string;
   password: string;
   confirmPassword: string;
+  accountType: 'student' | 'regular' | '';
+  gender: string;
+  dateOfBirth: string;
   country: string;
   phone: string;
   city: string;
-  address: string;
-  postalCode: string;
-  zipCode: string;
   profilePicture: string | null;
   selectedInterests: string[];
 };
 
-type AvatarType = 'cartoon' | 'realistic';
+// ─── Interests ────────────────────────────────────────────────────────────────
+const INTERESTS = [
+  'Technology', 'Music', 'Sports', 'Art', 'Travel', 'Food', 'Gaming',
+  'Fitness', 'Photography', 'Fashion', 'Education', 'Business',
+  'Environment', 'Health', 'Science', 'Politics', 'Entertainment',
+];
 
+// ─── Main Component ───────────────────────────────────────────────────────────
 const Register: React.FC = () => {
-  // State management
+  const router = useRouter();
+
+  // Step state
   const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState<FormData>(mockData.formData);
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Avatar tab
   const [activeTab, setActiveTab] = useState<AvatarType>('cartoon');
+
+  // Legal modals
   const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [isTermsAccepted, setIsTermsAccepted] = useState(false);
   const [isPrivacyAccepted, setIsPrivacyAccepted] = useState(false);
 
-  // File refs (stubbed for mobile)
-  // const idFaceRef = useRef<any>(null);
-  // const idFrontRef = useRef<any>(null);
-  // const idBackRef = useRef<any>(null);
+  // Form data
+  const [formData, setFormData] = useState<FormData>({
+    firstName: '',
+    lastName: '',
+    userName: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    accountType: '',
+    gender: '',
+    dateOfBirth: '',
+    country: '',
+    phone: '',
+    city: '',
+    profilePicture: null,
+    selectedInterests: [],
+  });
 
-  // Validation functions (stubbed)
-  // const validateStep1 = (): boolean => {
-  //   console.log('TODO: Validate step 1');
-  //   return true;
-  // };
+  // Errors
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // const validateStep3 = (): boolean => {
-  //   console.log('TODO: Validate step 3');
-  //   return true;
-  // };
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const updateField = (field: keyof FormData, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
+  };
 
-  // Event handlers (stubbed)
-  const handleNextStep = () => {
-    console.log('TODO: Navigate to next step');
-    if (step < 6) {
-      setStep(step + 1);
+  const setError = (field: string, msg: string) => {
+    setErrors(prev => ({ ...prev, [field]: msg }));
+  };
+
+  // ── Step Validation ────────────────────────────────────────────────────────
+  const validateStep = (): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    if (step === 1) {
+      // Account type
+      if (!formData.accountType) newErrors.accountType = 'Please select an account type.';
+    }
+
+    if (step === 2) {
+      if (!formData.firstName.trim()) newErrors.firstName = 'First name is required.';
+      if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required.';
+      if (!formData.userName.trim()) newErrors.userName = 'Username is required.';
+      if (!formData.email.trim()) {
+        newErrors.email = 'Email is required.';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        newErrors.email = 'Please enter a valid email address.';
+      }
+      if (formData.password.length < 8) newErrors.password = 'Password must be at least 8 characters.';
+      if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match.';
+      if (!isTermsAccepted) newErrors.terms = 'You must accept the Terms and Conditions.';
+      if (!isPrivacyAccepted) newErrors.privacy = 'You must accept the Privacy Policy.';
+    }
+
+    if (step === 3) {
+      if (!formData.profilePicture) newErrors.profilePicture = 'Please select an avatar.';
+    }
+
+    if (step === 4) {
+      if (!formData.country.trim()) newErrors.country = 'Country is required.';
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return false;
+    }
+    return true;
+  };
+
+  const handleNext = () => {
+    if (validateStep()) {
+      setStep(s => Math.min(s + 1, TOTAL_STEPS));
     }
   };
 
-  const handlePreviousStep = () => {
-    console.log('TODO: Navigate to previous step');
-    if (step > 1) {
-      setStep(step - 1);
-    }
+  const handleBack = () => {
+    setErrors({});
+    setStep(s => Math.max(s - 1, 1));
   };
 
-  const handleSubmit = () => {
-    console.log('TODO: Submit registration form');
+  const handleSubmit = async () => {
+    if (!validateStep()) return;
     setIsSubmitting(true);
-    // Simulate submission
-    setTimeout(() => {
+    try {
+      await authService.register(formData);
+      Alert.alert('🎉 Welcome to Ourlime!', 'Your account has been created successfully.', [
+        { text: 'Continue to App', onPress: () => router.replace('/(tabs)') },
+      ]);
+    } catch (error: any) {
+      const errorMsg = error?.message || 'Failed to create account. Please try again.';
+      Alert.alert('Registration Error', errorMsg);
+    } finally {
       setIsSubmitting(false);
-      Alert.alert('Success', 'Registration completed!');
-    }, 2000);
-  };
-
-  const handleAvatarSelection = (avatar: string) => {
-    console.log('TODO: Select avatar', avatar);
-    setFormData({ ...formData, profilePicture: avatar });
-  };
-
-  const handleInputChange = (field: keyof FormData, value: string) => {
-    setFormData({ ...formData, [field]: value });
-    // Clear error when user starts typing
-    if (errors[field]) {
-      setErrors({ ...errors, [field]: '' });
     }
   };
 
-  // Render step content
-  const renderStepContent = () => {
-    switch (step) {
-      case 1:
-        return renderStep1();
-      case 2:
-        return renderStep2();
-      case 3:
-        return renderStep3();
-      case 4:
-        return renderStep4();
-      case 5:
-        return renderStep5();
-      case 6:
-        return renderStep6();
-      default:
-        return renderStep1();
-    }
-  };
+  // ── Progress indicator ─────────────────────────────────────────────────────
+  const progress = step / TOTAL_STEPS;
 
+  // ── Step labels ────────────────────────────────────────────────────────────
+  const stepLabels = ['Account Type', 'Your Info', 'Avatar', 'Location', 'Interests'];
+
+  // ── STEP 1: Account Type ───────────────────────────────────────────────────
   const renderStep1 = () => (
-    <View style={styles.stepContainer}>
-      <View style={styles.headerContainer}>
-        <Text style={[styles.title, { fontSize: 18 * fontScale }]}>
-          Welcome to <Text style={styles.greenText}>Ourlime</Text>
-        </Text>
-        <Text style={[styles.subtitle, { fontSize: 16 * fontScale }]}>
-          Create your new account
-        </Text>
-        <Pressable onPress={() => console.log('TODO: Navigate to login')}>
-          <Text style={styles.linkText}>
-            Already have an account? <Text style={styles.greenText}>Sign In</Text>
-          </Text>
-        </Pressable>
+    <View>
+      <Text style={styles.stepTitle}>Welcome to <Text style={styles.green}>Ourlime</Text></Text>
+      <Text style={styles.stepSubtitle}>What type of account would you like?</Text>
+
+      {/* Account Type Cards */}
+      <View style={{ gap: 14, marginTop: 8 }}>
+        {(['regular', 'student'] as const).map((type) => (
+          <Pressable
+            key={type}
+            onPress={() => updateField('accountType', type)}
+            style={[
+              styles.accountTypeCard,
+              formData.accountType === type && styles.accountTypeCardActive,
+            ]}
+          >
+            <Text style={styles.accountTypeIcon}>
+              {type === 'regular' ? '🌟' : '🎓'}
+            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.accountTypeTitle, formData.accountType === type && { color: GREEN }]}>
+                {type === 'regular' ? 'Regular Account' : 'Student Account'}
+              </Text>
+              <Text style={styles.accountTypeDesc}>
+                {type === 'regular'
+                  ? 'Standard access to all Ourlime features'
+                  : 'Special features for students & academic communities'}
+              </Text>
+            </View>
+            {formData.accountType === type && (
+              <View style={styles.radioActive}><Text style={{ color: '#fff', fontSize: 10 }}>✓</Text></View>
+            )}
+          </Pressable>
+        ))}
       </View>
 
-      <View style={styles.formContainer}>
-        {/* Name fields */}
-        <View style={isTablet ? styles.rowContainer : styles.columnContainer}>
-          <View style={[styles.inputContainer, isTablet ? { flex: 1 } : {}]}>
-            <TextInput
-              style={[styles.input, { fontSize: isTablet ? 18 : 16 }]}
-              placeholder="First Name"
-              value={formData.firstName}
-              onChangeText={(value: string) => handleInputChange('firstName', value)}
-              autoCapitalize="words"
-              returnKeyType="next"
-            />
-            {errors.firstName && <Text style={styles.errorText}>{errors.firstName}</Text>}
-          </View>
-          <View style={[styles.inputContainer, isTablet ? { flex: 1 } : {}]}>
-            <TextInput
-              style={[styles.input, { fontSize: isTablet ? 18 : 16 }]}
-              placeholder="Last Name"
-              value={formData.lastName}
-              onChangeText={(value: string) => handleInputChange('lastName', value)}
-              autoCapitalize="words"
-              returnKeyType="next"
-            />
-            {errors.lastName && <Text style={styles.errorText}>{errors.lastName}</Text>}
-          </View>
-        </View>
+      {errors.accountType ? <Text style={styles.errorText}>{errors.accountType}</Text> : null}
 
-        {/* Username */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={[styles.input, { fontSize: isTablet ? 18 : 16 }]}
-            placeholder="Username"
-            value={formData.userName}
-            onChangeText={(value: string) => handleInputChange('userName', value)}
-            autoCapitalize="none"
-            returnKeyType="next"
-          />
-          {errors.userName && <Text style={styles.errorText}>{errors.userName}</Text>}
-        </View>
-
-        {/* Email */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={[styles.input, { fontSize: isTablet ? 18 : 16 }]}
-            placeholder="Email Address"
-            value={formData.email}
-            onChangeText={(value: string) => handleInputChange('email', value)}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            returnKeyType="next"
-          />
-          {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
-        </View>
-
-        {/* Gender */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={[styles.input, { fontSize: isTablet ? 18 : 16 }]}
-            placeholder="Gender (Male/Female/Other)"
-            value={formData.gender}
-            onChangeText={(value: string) => handleInputChange('gender', value)}
-            returnKeyType="next"
-          />
-          {errors.gender && <Text style={styles.errorText}>{errors.gender}</Text>}
-        </View>
-
-        {/* Birthday */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={[styles.input, { fontSize: isTablet ? 18 : 16 }]}
-            placeholder="Date of Birth (MM/DD/YYYY)"
-            value={formData.birthday}
-            onChangeText={(value: string) => handleInputChange('birthday', value)}
-            returnKeyType="next"
-          />
-          {errors.birthday && <Text style={styles.errorText}>{errors.birthday}</Text>}
-        </View>
-
-        {/* Password fields */}
-        <View style={isTablet ? styles.rowContainer : styles.columnContainer}>
-          <View style={[styles.inputContainer, isTablet ? { flex: 1 } : {}]}>
-            <TextInput
-              style={[styles.input, { fontSize: isTablet ? 18 : 16 }]}
-              placeholder="Password"
-              value={formData.password}
-              onChangeText={(value: string) => handleInputChange('password', value)}
-              secureTextEntry
-              returnKeyType="next"
-            />
-            {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
-          </View>
-          <View style={[styles.inputContainer, isTablet ? { flex: 1 } : {}]}>
-            <TextInput
-              style={[styles.input, { fontSize: isTablet ? 18 : 16 }]}
-              placeholder="Confirm Password"
-              value={formData.confirmPassword}
-              onChangeText={(value: string) => handleInputChange('confirmPassword', value)}
-              secureTextEntry
-              returnKeyType="done"
-            />
-            {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
-          </View>
-        </View>
-
-        {/* Terms and Privacy */}
-        <View style={styles.checkboxContainer}>
-          <Pressable
-            style={styles.checkboxRow}
-            onPress={() => setIsTermsAccepted(!isTermsAccepted)}
-          >
-            <View style={[styles.checkbox, isTermsAccepted && styles.checkboxSelected]}>
-              {isTermsAccepted && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-            <Text style={styles.checkboxText}>
-              I accept Ourlime{' '}
-              <Text style={styles.greenText} onPress={() => setIsTermsOpen(true)}>
-                Terms and Conditions
-              </Text>
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.checkboxRow}
-            onPress={() => setIsPrivacyAccepted(!isPrivacyAccepted)}
-          >
-            <View style={[styles.checkbox, isPrivacyAccepted && styles.checkboxSelected]}>
-              {isPrivacyAccepted && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-            <Text style={styles.checkboxText}>
-              I accept Ourlime{' '}
-              <Text style={styles.greenText} onPress={() => setIsPrivacyOpen(true)}>
-                Privacy Policy
-              </Text>
-            </Text>
-          </Pressable>
-        </View>
+      {/* Already have an account */}
+      <View style={styles.authLink}>
+        <Text style={styles.authLinkText}>Already have an account?</Text>
+        <TouchableOpacity onPress={() => router.replace('/(auth)/login')}>
+          <Text style={styles.authLinkGreen}> Sign In</Text>
+        </TouchableOpacity>
       </View>
-
-      <Pressable
-        style={[
-          styles.button,
-          styles.primaryButton,
-          (!isTermsAccepted || !isPrivacyAccepted) && styles.buttonDisabled,
-        ]}
-        onPress={handleNextStep}
-        disabled={!isTermsAccepted || !isPrivacyAccepted}
-      >
-        <Text style={[styles.buttonText, styles.primaryButtonText]}>Next Step</Text>
-      </Pressable>
     </View>
   );
 
+  // ── STEP 2: Personal Info ──────────────────────────────────────────────────
   const renderStep2 = () => (
-    <View style={styles.stepContainer}>
-      <View style={styles.headerContainer}>
-        <Text style={[styles.title, { fontSize: 18 * fontScale }]}>Select your avatar</Text>
+    <View>
+      <Text style={styles.stepTitle}>Create your account</Text>
+      <Text style={styles.stepSubtitle}>Fill in your personal information below</Text>
+
+      {/* Name Row */}
+      <View style={{ flexDirection: isTablet ? 'row' : 'column', gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>First Name *</Text>
+          <TextInput
+            style={[styles.input, errors.firstName && styles.inputError]}
+            placeholder="First Name"
+            placeholderTextColor="rgba(0,0,0,0.35)"
+            value={formData.firstName}
+            onChangeText={v => updateField('firstName', v)}
+            autoCapitalize="words"
+          />
+          {errors.firstName ? <Text style={styles.errorText}>{errors.firstName}</Text> : null}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Last Name *</Text>
+          <TextInput
+            style={[styles.input, errors.lastName && styles.inputError]}
+            placeholder="Last Name"
+            placeholderTextColor="rgba(0,0,0,0.35)"
+            value={formData.lastName}
+            onChangeText={v => updateField('lastName', v)}
+            autoCapitalize="words"
+          />
+          {errors.lastName ? <Text style={styles.errorText}>{errors.lastName}</Text> : null}
+        </View>
       </View>
 
-      {/* Tabs */}
-      <View style={styles.tabContainer}>
-        <Pressable
-          style={[styles.tab, activeTab === 'cartoon' && styles.activeTab]}
-          onPress={() => setActiveTab('cartoon')}
-        >
-          <Text style={[styles.tabText, activeTab === 'cartoon' && styles.activeTabText]}>
-            Cartoon
+      {/* Username */}
+      <Text style={styles.label}>Username *</Text>
+      <TextInput
+        style={[styles.input, errors.userName && styles.inputError]}
+        placeholder="@username"
+        placeholderTextColor="rgba(0,0,0,0.35)"
+        value={formData.userName}
+        onChangeText={v => updateField('userName', v)}
+        autoCapitalize="none"
+      />
+      {errors.userName ? <Text style={styles.errorText}>{errors.userName}</Text> : null}
+
+      {/* Email */}
+      <Text style={styles.label}>Email Address *</Text>
+      <TextInput
+        style={[styles.input, errors.email && styles.inputError]}
+        placeholder="your@email.com"
+        placeholderTextColor="rgba(0,0,0,0.35)"
+        value={formData.email}
+        onChangeText={v => updateField('email', v)}
+        keyboardType="email-address"
+        autoCapitalize="none"
+      />
+      {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
+
+      {/* Password */}
+      <Text style={styles.label}>Password *</Text>
+      <TextInput
+        style={[styles.input, errors.password && styles.inputError]}
+        placeholder="Minimum 8 characters"
+        placeholderTextColor="rgba(0,0,0,0.35)"
+        value={formData.password}
+        onChangeText={v => updateField('password', v)}
+        secureTextEntry
+      />
+      {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
+
+      {/* Confirm Password */}
+      <Text style={styles.label}>Confirm Password *</Text>
+      <TextInput
+        style={[styles.input, errors.confirmPassword && styles.inputError]}
+        placeholder="Repeat your password"
+        placeholderTextColor="rgba(0,0,0,0.35)"
+        value={formData.confirmPassword}
+        onChangeText={v => updateField('confirmPassword', v)}
+        secureTextEntry
+      />
+      {errors.confirmPassword ? <Text style={styles.errorText}>{errors.confirmPassword}</Text> : null}
+
+      {/* Terms */}
+      <View style={{ marginTop: 16, gap: 10 }}>
+        <Pressable style={styles.checkRow} onPress={() => setIsTermsAccepted(!isTermsAccepted)}>
+          <View style={[styles.checkbox, isTermsAccepted && styles.checkboxChecked]}>
+            {isTermsAccepted && <Text style={{ color: '#fff', fontSize: 11 }}>✓</Text>}
+          </View>
+          <Text style={styles.checkLabel}>
+            I accept Ourlime{' '}
+            <Text style={styles.green} onPress={() => setIsTermsOpen(true)}>Terms & Conditions</Text>
           </Text>
         </Pressable>
-        <Pressable
-          style={[styles.tab, activeTab === 'realistic' && styles.activeTab]}
-          onPress={() => setActiveTab('realistic')}
-        >
-          <Text style={[styles.tabText, activeTab === 'realistic' && styles.activeTabText]}>
-            Realistic
+
+        <Pressable style={styles.checkRow} onPress={() => setIsPrivacyAccepted(!isPrivacyAccepted)}>
+          <View style={[styles.checkbox, isPrivacyAccepted && styles.checkboxChecked]}>
+            {isPrivacyAccepted && <Text style={{ color: '#fff', fontSize: 11 }}>✓</Text>}
+          </View>
+          <Text style={styles.checkLabel}>
+            I accept Ourlime{' '}
+            <Text style={styles.green} onPress={() => setIsPrivacyOpen(true)}>Privacy Policy</Text>
           </Text>
         </Pressable>
+      </View>
+
+      {(errors.terms || errors.privacy) ? (
+        <Text style={styles.errorText}>{errors.terms || errors.privacy}</Text>
+      ) : null}
+    </View>
+  );
+
+  // ── STEP 3: Avatar ─────────────────────────────────────────────────────────
+  const renderStep3 = () => (
+    <View>
+      <Text style={styles.stepTitle}>Choose your avatar</Text>
+      <Text style={styles.stepSubtitle}>Pick one that represents you</Text>
+
+      {/* Tab Toggle */}
+      <View style={styles.tabBar}>
+        {(['cartoon', 'realistic'] as const).map(tab => (
+          <Pressable
+            key={tab}
+            style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Text style={[styles.tabBtnText, activeTab === tab && styles.tabBtnTextActive]}>
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
       {/* Avatar Grid */}
       <View style={styles.avatarGrid}>
-        {activeTab === 'cartoon' ? (
-          <View style={isTablet ? styles.avatarRow : styles.avatarColumn}>
-            {mockData.cartoonAvatars.map((avatar: any) => (
-              <Pressable
-                key={avatar.id}
-                style={styles.avatarItem}
-                onPress={() => handleAvatarSelection(avatar.id)}
-              >
-                <Image source={avatar.image} style={styles.avatarImage} />
-                {formData.profilePicture === avatar.id && (
-                  <View style={styles.checkOverlay}>
-                    <Image source={mockData.checkIcon} style={styles.checkIcon} />
-                  </View>
-                )}
-              </Pressable>
-            ))}
-          </View>
-        ) : (
-          <View style={isTablet ? styles.avatarRow : styles.avatarColumn}>
-            {mockData.realisticAvatars.map((avatar: any) => (
-              <Pressable
-                key={avatar.id}
-                style={styles.avatarItem}
-                onPress={() => handleAvatarSelection(avatar.id)}
-              >
-                <Image source={avatar.image} style={styles.avatarImage} />
-                {formData.profilePicture === avatar.id && (
-                  <View style={styles.checkOverlay}>
-                    <Image source={mockData.checkIcon} style={styles.checkIcon} />
-                  </View>
-                )}
-              </Pressable>
-            ))}
-          </View>
-        )}
+        {(activeTab === 'cartoon' ? mockData.cartoonAvatars : mockData.realisticAvatars).map((avatar: any) => (
+          <Pressable
+            key={avatar.id}
+            onPress={() => updateField('profilePicture', avatar.id)}
+            style={[
+              styles.avatarItem,
+              formData.profilePicture === avatar.id && styles.avatarItemActive,
+            ]}
+          >
+            <Image source={avatar.image} style={styles.avatarImg} />
+            {formData.profilePicture === avatar.id && (
+              <View style={styles.avatarCheck}>
+                <Text style={{ color: '#fff', fontSize: 14 }}>✓</Text>
+              </View>
+            )}
+          </Pressable>
+        ))}
       </View>
 
-      <Pressable onPress={() => console.log('TODO: Navigate to custom image upload')}>
-        <Text style={styles.linkText}>Use your own picture</Text>
-      </Pressable>
+      {errors.profilePicture ? <Text style={styles.errorText}>{errors.profilePicture}</Text> : null}
 
-      <View style={styles.buttonRow}>
-        <Pressable style={[styles.button, styles.secondaryButton]} onPress={handlePreviousStep}>
-          <Text style={[styles.buttonText, styles.secondaryButtonText]}>Previous Step</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.button, styles.primaryButton, !formData.profilePicture && styles.buttonDisabled]}
-          onPress={handleNextStep}
-          disabled={!formData.profilePicture}
-        >
-          <Text style={[styles.buttonText, styles.primaryButtonText]}>Next Step!</Text>
-        </Pressable>
-      </View>
+      <Text style={[styles.green, { textAlign: 'center', marginTop: 12, fontWeight: '600' }]}>
+        Use your own photo (coming soon)
+      </Text>
     </View>
   );
 
-  const renderStep3 = () => (
-    <View style={styles.stepContainer}>
-      <View style={styles.headerContainer}>
-        <Text style={[styles.title, { fontSize: 18 * fontScale }]}>Tell us about your location</Text>
-      </View>
-
-      <View style={styles.formContainer}>
-        {/* Phone */}
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Phone Number *</Text>
-          <TextInput
-            style={[styles.input, { fontSize: 16 * fontScale }]}
-            placeholder="Enter your phone number"
-            value={formData.phone}
-            onChangeText={(value: string) => handleInputChange('phone', value)}
-            keyboardType="phone-pad"
-          />
-          {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
-        </View>
-
-        {/* Country */}
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Country *</Text>
-          <TextInput
-            style={[styles.input, { fontSize: 16 * fontScale }]}
-            placeholder="Select your country"
-            value={formData.country}
-            onChangeText={(value: string) => handleInputChange('country', value)}
-          />
-          {errors.country && <Text style={styles.errorText}>{errors.country}</Text>}
-        </View>
-
-        {/* Optional fields */}
-        <View style={isTablet ? styles.rowContainer : styles.columnContainer}>
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>City</Text>
-            <TextInput
-              style={[styles.input, { fontSize: 16 * fontScale }]}
-              placeholder="Enter your city"
-              value={formData.city}
-              onChangeText={(value: string) => handleInputChange('city', value)}
-            />
-          </View>
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Region</Text>
-            <TextInput
-              style={[styles.input, { fontSize: 16 * fontScale }]}
-              placeholder="Enter your region"
-              value={formData.address}
-              onChangeText={(value: string) => handleInputChange('address', value)}
-            />
-          </View>
-        </View>
-
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Address</Text>
-          <TextInput
-            style={[styles.input, { fontSize: 16 * fontScale }]}
-            placeholder="Enter your address"
-            value={formData.address}
-            onChangeText={(value: string) => handleInputChange('address', value)}
-          />
-        </View>
-
-        <View style={isTablet ? styles.rowContainer : styles.columnContainer}>
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Zip Code</Text>
-            <TextInput
-              style={[styles.input, { fontSize: 16 * fontScale }]}
-              placeholder="Enter zip code"
-              value={formData.zipCode}
-              onChangeText={(value: string) => handleInputChange('zipCode', value)}
-            />
-          </View>
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Postal Code</Text>
-            <TextInput
-              style={[styles.input, { fontSize: 16 * fontScale }]}
-              placeholder="Enter postal code"
-              value={formData.postalCode}
-              onChangeText={(value: string) => handleInputChange('postalCode', value)}
-            />
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.buttonRow}>
-        <Pressable style={[styles.button, styles.secondaryButton]} onPress={handlePreviousStep}>
-          <Text style={[styles.buttonText, styles.secondaryButtonText]}>Previous Step</Text>
-        </Pressable>
-        <Pressable style={[styles.button, styles.primaryButton]} onPress={handleNextStep}>
-          <Text style={[styles.buttonText, styles.primaryButtonText]}>Next Step</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-
+  // ── STEP 4: Location / Demographics ───────────────────────────────────────
   const renderStep4 = () => (
-    <View style={styles.stepContainer}>
-      <View style={styles.headerContainer}>
-        <Text style={[styles.title, { fontSize: 18 * fontScale }]}>Interests & Verification</Text>
-        <Text style={[styles.subtitle, { fontSize: 16 * fontScale }]}>
-          Tell us about your interests
-        </Text>
+    <View>
+      <Text style={styles.stepTitle}>Tell us about yourself</Text>
+      <Text style={styles.stepSubtitle}>Location and demographics</Text>
+
+      {/* Gender */}
+      <Text style={styles.label}>Gender</Text>
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+        {['Male', 'Female', 'Other'].map(g => (
+          <Pressable
+            key={g}
+            onPress={() => updateField('gender', g)}
+            style={[
+              styles.chipBtn,
+              formData.gender === g && styles.chipBtnActive,
+            ]}
+          >
+            <Text style={[styles.chipText, formData.gender === g && { color: '#fff' }]}>{g}</Text>
+          </Pressable>
+        ))}
       </View>
 
-      <View style={styles.formContainer}>
-        <Text style={styles.label}>Select your interests (optional)</Text>
-        <View style={styles.interestsGrid}>
-          {mockData.interests.map((interest: string) => (
+      {/* Date of Birth */}
+      <Text style={styles.label}>Date of Birth</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="MM/DD/YYYY"
+        placeholderTextColor="rgba(0,0,0,0.35)"
+        value={formData.dateOfBirth}
+        onChangeText={v => updateField('dateOfBirth', v)}
+      />
+
+      {/* Country */}
+      <Text style={styles.label}>Country *</Text>
+      <TextInput
+        style={[styles.input, errors.country && styles.inputError]}
+        placeholder="Your country"
+        placeholderTextColor="rgba(0,0,0,0.35)"
+        value={formData.country}
+        onChangeText={v => updateField('country', v)}
+      />
+      {errors.country ? <Text style={styles.errorText}>{errors.country}</Text> : null}
+
+      {/* City */}
+      <Text style={styles.label}>City</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Your city"
+        placeholderTextColor="rgba(0,0,0,0.35)"
+        value={formData.city}
+        onChangeText={v => updateField('city', v)}
+      />
+
+      {/* Phone */}
+      <Text style={styles.label}>Phone Number</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="+1 (123) 456-7890"
+        placeholderTextColor="rgba(0,0,0,0.35)"
+        value={formData.phone}
+        onChangeText={v => updateField('phone', v)}
+        keyboardType="phone-pad"
+      />
+    </View>
+  );
+
+  // ── STEP 5: Interests ──────────────────────────────────────────────────────
+  const renderStep5 = () => (
+    <View>
+      <Text style={styles.stepTitle}>Your interests</Text>
+      <Text style={styles.stepSubtitle}>Select topics you care about (optional)</Text>
+
+      <View style={styles.interestsGrid}>
+        {INTERESTS.map(interest => {
+          const selected = formData.selectedInterests.includes(interest);
+          return (
             <Pressable
               key={interest}
-              style={[
-                styles.interestChip,
-                formData.selectedInterests.includes(interest) && styles.interestChipSelected,
-              ]}
-                onPress={() => {
-                  const newInterests = formData.selectedInterests.includes(interest)
-                    ? formData.selectedInterests.filter((i: string) => i !== interest)
-                    : [...formData.selectedInterests, interest];
-                  setFormData({ ...formData, selectedInterests: newInterests });
-                }}
+              onPress={() => {
+                const updated = selected
+                  ? formData.selectedInterests.filter(i => i !== interest)
+                  : [...formData.selectedInterests, interest];
+                updateField('selectedInterests', updated);
+              }}
+              style={[styles.interestChip, selected && styles.interestChipActive]}
             >
-              <Text
-                style={[
-                  styles.interestChipText,
-                  formData.selectedInterests.includes(interest) && styles.interestChipTextSelected,
-                ]}
-              >
-                {interest}
-              </Text>
+              <Text style={[styles.interestText, selected && { color: '#fff' }]}>{interest}</Text>
             </Pressable>
-          ))}
-        </View>
+          );
+        })}
       </View>
 
-      <View style={styles.buttonRow}>
-        <Pressable style={[styles.button, styles.secondaryButton]} onPress={handlePreviousStep}>
-          <Text style={[styles.buttonText, styles.secondaryButtonText]}>Previous Step</Text>
-        </Pressable>
-        <Pressable style={[styles.button, styles.primaryButton]} onPress={handleNextStep}>
-          <Text style={[styles.buttonText, styles.primaryButtonText]}>Next Step</Text>
-        </Pressable>
-      </View>
+      <Text style={[styles.stepSubtitle, { textAlign: 'center', marginTop: 20 }]}>
+        {formData.selectedInterests.length} selected
+      </Text>
     </View>
   );
 
-  const renderStep5 = () => (
-    <View style={styles.stepContainer}>
-      <View style={styles.headerContainer}>
-        <Text style={[styles.title, { fontSize: 18 * fontScale }]}>Authentication</Text>
-        <Text style={[styles.subtitle, { fontSize: 16 * fontScale }]}>
-          Complete your registration
-        </Text>
-      </View>
-
-      <View style={styles.formContainer}>
-        <Text style={styles.infoText}>
-          Your account will be created and you'll receive a verification email.
-        </Text>
-      </View>
-
-      <View style={styles.buttonRow}>
-        <Pressable style={[styles.button, styles.secondaryButton]} onPress={handlePreviousStep}>
-          <Text style={[styles.buttonText, styles.secondaryButtonText]}>Previous Step</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.button, styles.primaryButton, isSubmitting && styles.buttonDisabled]}
-          onPress={handleSubmit}
-          disabled={isSubmitting}
-        >
-          <Text style={[styles.buttonText, styles.primaryButtonText]}>
-            {isSubmitting ? 'Creating Account...' : 'Create Account'}
-          </Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-
-  const renderStep6 = () => (
-    <View style={styles.stepContainer}>
-      <View style={styles.headerContainer}>
-        <Text style={[styles.title, { fontSize: 18 * fontScale }]}>Identity Verification</Text>
-        <Text style={[styles.subtitle, { fontSize: 16 * fontScale }]}>
-          Upload your ID documents for verification
-        </Text>
-      </View>
-
-      <View style={styles.formContainer}>
-        <Text style={styles.infoText}>
-          This step is required for account verification. Your documents will be securely processed.
-        </Text>
-
-        {/* File upload placeholders */}
-        <View style={styles.uploadContainer}>
-          <Pressable style={styles.uploadButton}>
-            <Text style={styles.uploadText}>Upload Face Photo</Text>
-          </Pressable>
-          <Pressable style={styles.uploadButton}>
-            <Text style={styles.uploadText}>Upload ID Front</Text>
-          </Pressable>
-          <Pressable style={styles.uploadButton}>
-            <Text style={styles.uploadText}>Upload ID Back</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.buttonRow}>
-        <Pressable style={[styles.button, styles.secondaryButton]} onPress={handlePreviousStep}>
-          <Text style={[styles.buttonText, styles.secondaryButtonText]}>Previous Step</Text>
-        </Pressable>
-        <Pressable style={[styles.button, styles.primaryButton]} onPress={handleSubmit}>
-          <Text style={[styles.buttonText, styles.primaryButtonText]}>Complete Registration</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
+  const renderStep = () => {
+    switch (step) {
+      case 1: return renderStep1();
+      case 2: return renderStep2();
+      case 3: return renderStep3();
+      case 4: return renderStep4();
+      case 5: return renderStep5();
+      default: return renderStep1();
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView 
-        style={styles.scrollView} 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={[styles.contentContainer, { maxWidth: contentMaxWidth, alignSelf: 'center' }]}>
-          {/* Progress Bar */}
-          <View style={styles.progressContainer}>
-            <View style={[styles.progressBar, { width: `${(step / 6) * 100}%` }]}>
-              <View style={styles.progressLogo}>
-                <Text style={styles.progressLogoText}>O</Text>
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#ffffff' }}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        {/* Back arrow button */}
+        <TouchableOpacity
+          onPress={() => router.back()}
+          activeOpacity={0.6}
+          style={styles.backArrowBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text style={{ fontSize: 24, fontWeight: '700', color: '#111827', marginTop: -2 }}>‹</Text>
+        </TouchableOpacity>
+
+        {/* Center brand logo */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', marginRight: 40 }}>
+          <Image
+            source={require('./images/transparentLogo.png')}
+            style={{ width: 26, height: 26, marginRight: 6 }}
+            resizeMode="contain"
+          />
+          <Text style={styles.headerBrand}>Ourlime</Text>
+        </View>
+      </View>
+
+      {/* ── Content Container with background fill ── */}
+      <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+        {/* ── Progress Bar ── */}
+        <View style={[styles.progressContainer, { paddingHorizontal: 20, marginTop: 14, marginBottom: 0 }]}>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+          </View>
+          <Text style={styles.progressLabel}>Step {step} of {TOTAL_STEPS} — {stepLabels[step - 1]}</Text>
+        </View>
+
+        {/* ── KeyboardAvoidingView ── */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1 }}
+        >
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.container}>
+              {/* ── Step Content ── */}
+              <View style={styles.card}>
+                {renderStep()}
+              </View>
+
+              {/* ── Navigation Buttons ── */}
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 24, marginBottom: 16 }}>
+                {step > 1 && (
+                  <TouchableOpacity
+                    style={styles.backBtn}
+                    onPress={handleBack}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.backBtnText}>← Back</Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.nextBtn, { flex: 1 }]}
+                  onPress={step === TOTAL_STEPS ? handleSubmit : handleNext}
+                  disabled={isSubmitting}
+                  activeOpacity={0.85}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.nextBtnText}>
+                      {step === TOTAL_STEPS ? 'Create Account 🎉' : 'Next Step →'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </View>
 
-          {/* Step Content */}
-          <View style={styles.stepContent}>
-            {renderStepContent()}
-          </View>
-        </View>
-      </ScrollView>
-
-      {/* Modals */}
+      {/* ── Terms Modal ── */}
       <Modal visible={isTermsOpen} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Pressable 
-              style={styles.modalCloseButton} 
-              onPress={() => setIsTermsOpen(false)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.modalCloseButtonText}>×</Text>
-            </Pressable>
-            <Text style={styles.modalTitle}>Terms and Conditions</Text>
-            <ScrollView 
-              style={{ flex: 1 }} 
-              showsVerticalScrollIndicator={true}
-              contentContainerStyle={{ paddingBottom: 10 }}
-            >
-              <Text style={styles.modalText}>{mockData.termsText}</Text>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Terms & Conditions</Text>
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator>
+              <Text style={styles.modalBody}>{mockData.termsText}</Text>
             </ScrollView>
-            <Pressable 
-              style={styles.modalButton} 
-              onPress={() => setIsTermsOpen(false)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.modalButtonText}>Close</Text>
-            </Pressable>
+            <TouchableOpacity style={styles.modalBtn} onPress={() => { setIsTermsAccepted(true); setIsTermsOpen(false); }}>
+              <Text style={styles.modalBtnText}>Accept & Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
+      {/* ── Privacy Modal ── */}
       <Modal visible={isPrivacyOpen} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Pressable 
-              style={styles.modalCloseButton} 
-              onPress={() => setIsPrivacyOpen(false)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.modalCloseButtonText}>×</Text>
-            </Pressable>
+          <View style={styles.modalBox}>
             <Text style={styles.modalTitle}>Privacy Policy</Text>
-            <ScrollView 
-              style={{ flex: 1 }} 
-              showsVerticalScrollIndicator={true}
-              contentContainerStyle={{ paddingBottom: 10 }}
-            >
-              <Text style={styles.modalText}>{mockData.privacyText}</Text>
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator>
+              <Text style={styles.modalBody}>{mockData.privacyText}</Text>
             </ScrollView>
-            <Pressable 
-              style={styles.modalButton} 
-              onPress={() => setIsPrivacyOpen(false)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.modalButtonText}>Close</Text>
-            </Pressable>
+            <TouchableOpacity style={styles.modalBtn} onPress={() => { setIsPrivacyAccepted(true); setIsPrivacyOpen(false); }}>
+              <Text style={styles.modalBtnText}>Accept & Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -694,3 +616,384 @@ const Register: React.FC = () => {
 };
 
 export default Register;
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  // Layout
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    minHeight: 56,
+  },
+  backArrowBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f3f4f6',
+    marginRight: 4,
+  },
+  headerBrand: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#10b981',
+  },
+  container: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 20,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
+  },
+
+  // Progress
+  progressContainer: {
+    marginBottom: 12,
+  },
+  progressTrack: {
+    height: 6,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 99,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: GREEN,
+    borderRadius: 99,
+  },
+  progressLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontWeight: '600',
+  },
+
+  // Card
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+
+  // Step Typography
+  stepTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 6,
+  },
+  stepSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  green: {
+    color: GREEN_DARK,
+  },
+
+  // Input
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 15,
+    color: '#111827',
+    backgroundColor: '#fafafa',
+    marginBottom: 2,
+  },
+  inputError: {
+    borderColor: '#ef4444',
+    backgroundColor: '#fff5f5',
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#ef4444',
+    marginTop: 4,
+    marginBottom: 4,
+  },
+
+  // Account Type Cards
+  accountTypeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fafafa',
+    gap: 12,
+  },
+  accountTypeCardActive: {
+    borderColor: GREEN,
+    backgroundColor: 'rgba(1,235,83,0.06)',
+  },
+  accountTypeIcon: {
+    fontSize: 28,
+  },
+  accountTypeTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 2,
+  },
+  accountTypeDesc: {
+    fontSize: 12,
+    color: '#6b7280',
+    lineHeight: 16,
+  },
+  radioActive: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: GREEN,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Auth link
+  authLink: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 24,
+  },
+  authLinkText: {
+    color: '#6b7280',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  authLinkGreen: {
+    color: GREEN_DARK,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  // Checkboxes
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  checkboxChecked: {
+    backgroundColor: GREEN,
+    borderColor: GREEN,
+  },
+  checkLabel: {
+    fontSize: 13,
+    color: '#374151',
+    flex: 1,
+    lineHeight: 18,
+  },
+
+  // Avatar tab
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  tabBtnActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tabBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  tabBtnTextActive: {
+    color: '#111827',
+  },
+  avatarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    justifyContent: 'center',
+  },
+  avatarItem: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 3,
+    borderColor: '#e5e7eb',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  avatarItemActive: {
+    borderColor: GREEN,
+    shadowColor: GREEN,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarCheck: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: GREEN,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Chips (gender)
+  chipBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#fafafa',
+  },
+  chipBtnActive: {
+    backgroundColor: GREEN_DARK,
+    borderColor: GREEN_DARK,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+  },
+
+  // Interests
+  interestsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  interestChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#f9fafb',
+  },
+  interestChipActive: {
+    backgroundColor: GREEN_DARK,
+    borderColor: GREEN_DARK,
+  },
+  interestText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#374151',
+  },
+
+  // Buttons
+  nextBtn: {
+    backgroundColor: GREEN,
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+    shadowColor: GREEN,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  nextBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  backBtn: {
+    borderRadius: 14,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#d1d5db',
+    backgroundColor: '#fff',
+  },
+  backBtnText: {
+    color: '#374151',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalBox: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 16,
+  },
+  modalBody: {
+    fontSize: 13,
+    color: '#374151',
+    lineHeight: 20,
+  },
+  modalBtn: {
+    backgroundColor: GREEN,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  modalBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+});

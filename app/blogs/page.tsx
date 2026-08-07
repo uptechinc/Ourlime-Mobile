@@ -26,8 +26,6 @@ import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesSe
 import { useProfileStore } from '@/src/store/useProfileStore';
 import PageHeader from '@/components/ui/PageHeader';
 
-const router = useRouter();
-
 // Sample data for static display
 const SAMPLE_BLOGS = [
     {

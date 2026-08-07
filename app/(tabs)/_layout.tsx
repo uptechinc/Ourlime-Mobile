@@ -1,9 +1,6 @@
-import React from "react";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { View, Platform } from "react-native";
-import { BlurView } from "expo-blur";
-import {Image} from "react-native";
+import { Image, Platform } from "react-native";
 
 const TabLayout = () => {
   return (
@@ -11,105 +8,40 @@ const TabLayout = () => {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: "#10B981",
-        tabBarInactiveTintColor: "#8E8E93",
+        tabBarInactiveTintColor: "#6B7280",
         tabBarStyle: {
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 75,
-          backgroundColor: "transparent",
-          borderTopWidth: 0,
-          elevation: 0,
-          shadowOpacity: 0,
-          // backgroundColor: "#FFFFFF",
-          // borderTopWidth: 1,
-          // borderTopColor: "#E5E5EA",
-        },
-        tabBarBackground: () => (
-          <BlurView
-            intensity={0}
-            tint="dark"
-            style={{
-              flex: 1,
-              backgroundColor: "rgba(0, 0, 0, 0.6)",
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: "rgba(255, 255, 255, 0.1)",
-              // shadowColor: "#000",
-              // shadowOffset: {
-              //   width: 0,
-              //   height: 8,
-              // },
-              // shadowOpacity: 0.3,
-              // shadowRadius: 20,
-              // elevation: 15,
-            }}
-          />
-        ),
-        tabBarItemStyle: {
-          paddingVertical: 2,
-          borderRadius: 20,
-          marginHorizontal: 4,
-          marginVertical: 2,
+          backgroundColor: "#FFFFFF",
+          borderTopWidth: 1,
+          borderTopColor: "#E5E7EB",
+          height: Platform.OS === 'ios' ? 84 : 64,
+          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+          paddingTop: 8,
+          elevation: 8,
+          shadowColor: "#000000",
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 8,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: "600",
-          marginTop: 6,
-          color: "#FFFFFF",
+          marginTop: 2,
         },
         tabBarIconStyle: {
-          marginTop: 4,
+          marginTop: 0,
         },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: "Feed",
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
-              name={focused ? "home" : "home-outline"}
-              size={focused ? size * 1.15 : size}
-              color={focused ? "#10B981" : "#8E8E93"}
+              name={focused ? "grid" : "grid-outline"}
+              size={focused ? 23 : 21}
+              color={color}
             />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="Search"
-        options={{
-          title: "Search",
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? "search" : "search-outline"}
-              size={focused ? size * 1.15 : size}
-              color={focused ? "#10B981" : "#8E8E93"}
-            />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="Limes"
-        options={{
-          title: "Limes",
-          tabBarIcon: ({ color, size, focused }) => (
-            <Image
-              source={require('@/assets/images/logo.png')}
-              style=
-              {{ 
-                width: focused ? 36 : 32, 
-                height: focused ? 36 : 32
-              }}
-            />
-            // <Ionicons
-            //   name={focused ? "heart" : "heart-outline"}
-            //   size={size}
-            //   color={focused ? "#10B981" : "#8E8E93"}
-            // />
           ),
         }}
       />
@@ -121,8 +53,39 @@ const TabLayout = () => {
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "compass" : "compass-outline"}
-              size={focused ? size * 1.15 : size}
-              color={focused ? "#10B981" : "#8E8E93"}
+              size={focused ? 24 : 22}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="Limes"
+        options={{
+          title: "Limes",
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={require('@/assets/images/logo.png')}
+              style={{
+                width: focused ? 30 : 26,
+                height: focused ? 30 : 26,
+                resizeMode: 'contain',
+              }}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="Chat"
+        options={{
+          title: "Chat",
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? "chatbubbles" : "chatbubbles-outline"}
+              size={focused ? 24 : 22}
+              color={color}
             />
           ),
         }}
@@ -135,10 +98,18 @@ const TabLayout = () => {
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "person" : "person-outline"}
-              size={focused ? size * 1.15 : size}
-              color={focused ? "#10B981" : "#8E8E93"}
+              size={focused ? 24 : 22}
+              color={color}
             />
           ),
+        }}
+      />
+
+      {/* Hide Search from bottom tabs layout, accessible via router */}
+      <Tabs.Screen
+        name="Search"
+        options={{
+          href: null,
         }}
       />
     </Tabs>

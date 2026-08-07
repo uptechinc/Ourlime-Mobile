@@ -1,13 +1,13 @@
-import React from 'react';
 import {
     View,
     Text,
     TouchableOpacity,
-    SafeAreaView,
     StatusBar,
     Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNotifications } from '@/lib/contexts/NotificationContext';
 
 type AppHeaderProps = {
     title?: string;
@@ -16,6 +16,7 @@ type AppHeaderProps = {
     onBackPress?: () => void;
     rightIcon?: string;
     onRightIconPress?: () => void;
+    onNotificationPress?: () => void;
     showLogo?: boolean;
     logoType?: 'logo' | 'logo-long' | 'both';
 };
@@ -27,16 +28,17 @@ export default function AppHeader({
     onBackPress,
     rightIcon,
     onRightIconPress,
+    onNotificationPress,
     showLogo = true,
     logoType = 'both'
 }: AppHeaderProps) {
+    const { unreadCount } = useNotifications();
     const renderLogo = () => {
         if (logoType === 'both') {
             return (
                 <View style={{
                     flexDirection: 'row',
                     alignItems: 'flex-start',
-                    
                 }}>
                     <Image
                         source={require('@/assets/images/logo.png')}
@@ -84,11 +86,10 @@ export default function AppHeader({
     return (
         <>
             <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-            <SafeAreaView style={{ backgroundColor: '#fff' }}>
+            <SafeAreaView style={{ backgroundColor: '#fff' }} edges={['top', 'left', 'right']}>
                 <View style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    //justifyContent: 'space-between',
                     paddingHorizontal: 16,
                     paddingVertical: 12,
                     backgroundColor: '#fff',
@@ -136,11 +137,47 @@ export default function AppHeader({
                         )}
                     </View>
 
-                    {/* Right side - Menu */}
+                    {/* Right side - Notifications & Menu */}
                     <View style={{
-                        width: 40,
-                        alignItems: 'flex-end',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
                     }}>
+                        {onNotificationPress && (
+                            <TouchableOpacity 
+                                onPress={onNotificationPress} 
+                                style={{
+                                    padding: 8,
+                                    borderRadius: 8,
+                                    backgroundColor: '#f8f9fa',
+                                    position: 'relative',
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <Ionicons name="notifications-outline" size={22} color="#333" />
+                                {unreadCount > 0 && (
+                                    <View style={{
+                                        position: 'absolute',
+                                        top: -2,
+                                        right: -2,
+                                        backgroundColor: '#10b981',
+                                        borderRadius: 10,
+                                        minWidth: 20,
+                                        height: 20,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        paddingHorizontal: 4,
+                                        borderWidth: 2,
+                                        borderColor: '#ffffff',
+                                        elevation: 3,
+                                    }}>
+                                        <Text style={{ color: '#ffffff', fontSize: 10, fontWeight: '800' }}>
+                                            {unreadCount > 99 ? '99+' : unreadCount}
+                                        </Text>
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+                        )}
                         <TouchableOpacity 
                             onPress={onMenuPress} 
                             style={{

@@ -7,12 +7,12 @@ import {
   Pressable,
   TouchableOpacity,
   FlatList,
-  SafeAreaView,
   Modal,
   TextInput,
   Alert,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { styles } from './styles';
 import { mockCommunityData, mockPosts, mockMembers, mockCategories, mockPolls } from './data.mock';
 import CreatePostModal from './components/CreatePostModal';

@@ -1,45 +1,73 @@
-import React, { useState } from "react";
+import { useState, useEffect } from "react";
 import { router } from "expo-router";
-import { View, StyleSheet } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import MiddleSection from "@/components/home/MiddleSection";
-import { Reel } from "@/types/userTypes";
 import SlideOutMenu from "@/components/ui/SlideOutMenu";
 import { MenuItem } from "../../lib/types/componentProps";
 import AppHeader from "@/components/ui/AppHeader";
 import CreatePostModal from "@/components/home/MiddleSection/MiddleSectionComponent/CreatePostModal";
+import NotificationsModal from "@/components/home/NotificationsModal";
+import { AuthService, type UserProfile } from "@/lib/services/AuthService";
+import type { PostItem } from "@/lib/services/PostService";
+import { DiagnosticLogService } from "@/lib/services/DiagnosticLogService";
+
+const authService = AuthService.getInstance();
+const diagnosticLogService = DiagnosticLogService.getInstance();
 
 export default function FeedsScreen() {
-  const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
-  const [activePostId, setActivePostId] = useState<string | null>(null);
-  const [selectedReel, setSelectedReel] = useState<Reel | null>(null);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
+  const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [createdPost, setCreatedPost] = useState<PostItem | null>(null);
 
-  const handleCommentClick = (postId: string) => {
-    setActivePostId(postId);
-    setIsCommentModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsCommentModalOpen(false);
-    setActivePostId(null);
-  };
+  useEffect(() => {
+    return authService.subscribeToAuthState((currentUser) => {
+      if (!currentUser) {
+        setUserProfile(null);
+        setProfileError('Firebase Auth did not return an authenticated user.');
+        diagnosticLogService.warn('FeedsScreen', 'profile:no-auth-user');
+        return;
+      }
+      setProfileError(null);
+      diagnosticLogService.info('FeedsScreen', 'profile:start', { uid: currentUser.uid });
+      void authService.getUserProfile(currentUser.uid)
+        .then((profile) => {
+          const resolvedProfile = profile ?? {
+            uid: currentUser.uid,
+            firstName: currentUser.displayName?.split(' ')[0] || 'Ourlime',
+            lastName: currentUser.displayName?.split(' ').slice(1).join(' ') || 'User',
+            userName: currentUser.email?.split('@')[0] || 'ourlime_user',
+            email: currentUser.email || '',
+            accountType: 'regular',
+            profilePicture: currentUser.photoURL,
+          };
+          setUserProfile(resolvedProfile);
+          diagnosticLogService.success('FeedsScreen', 'profile', {
+            uid: currentUser.uid,
+            source: profile ? 'firestore' : 'firebase-auth-fallback',
+            hasProfilePicture: Boolean(resolvedProfile.profilePicture),
+            firstName: resolvedProfile.firstName,
+          });
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : 'Unknown profile query error';
+          setProfileError(message);
+          diagnosticLogService.error('FeedsScreen', 'profile', error, { uid: currentUser.uid });
+        });
+    });
+  }, []);
 
   const handleCreatePost = () => {
-    // TODO: Implement create post navigation
     setIsCreatePostModalOpen(true);
-    console.log("Create post clicked");
   };
 
-  const handleCloseCreatePostModal = () => {
-    setIsCreatePostModalOpen(false)
-  }
-
-  const handlePostCreated = () => {
+  const handlePostCreated = (post: PostItem) => {
+    setCreatedPost(post);
     setIsCreatePostModalOpen(false);
-    //TODO: Refresh posts list
-    console.log("Post created successfully");
-  }
+  };
 
   const handleMenuPress = () => {
     setIsMenuVisible(true);
@@ -76,7 +104,7 @@ export default function FeedsScreen() {
     },
     {
       id: "5",
-      title: "Blogs",//blogs page
+      title: "Blogs",
       icon: "book",
       onPress: () => router.push("/blogs/page"),
     },
@@ -88,22 +116,9 @@ export default function FeedsScreen() {
     },
     {
       id: "7",
-      title: "Community Detail Demo",
-      icon: "people-circle",
-      onPress: () => router.push("/community-detail"),
-    },
-    {
-      id: "8",
-      title: "Chat", 
+      title: "Chat",
       icon: "chatbubbles",
       onPress: () => router.push("/chat/page"),
-
-    },
-    {
-      id: "9",
-      title: "Blogs Demo", //Redo blogs (id: 5)
-      icon: "book",
-      onPress: () => router.push("/blogs/[id]/page"),
     },
     {
       id: "divider1",
@@ -111,31 +126,54 @@ export default function FeedsScreen() {
       icon: "",
       isDivider: true,
     },
-    // {
-    //   id: "7",
-    //   title: "Notifications",
-    //   icon: "notifications",
-    //   onPress: () => console.log("Notifications pressed"),
-    // },
-    // {
-    //   id: "8",
-    //   title: "Messages",
-    //   icon: "chatbubbles",
-    //   onPress: () => console.log("Messages pressed"),
-    // },
+    {
+      id: "8",
+      title: "Settings",
+      icon: "settings",
+      onPress: () => router.push("/(tabs)/Profile"),
+    },
     {
       id: "9",
+      title: "Saved Items",
+      icon: "bookmark",
+      onPress: () => router.push("/(tabs)/Profile"),
+    },
+    {
+      id: "10",
       title: "Profile",
       icon: "person",
       onPress: () => router.push("/(tabs)/Profile"),
     },
     {
-      id: "10",
-      title: "Register Demo",
-      icon: "person-add",
-      onPress: () => router.push("/(auth)/register"),
+      id: "divider2",
+      title: "",
+      icon: "",
+      isDivider: true,
+    },
+    {
+      id: "11",
+      title: "Log Out",
+      icon: "log-out",
+      onPress: async () => {
+        await authService.logout();
+        router.replace("/(auth)/login");
+      },
     },
   ];
+
+  if (!userProfile) {
+    return (
+      <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
+        {profileError ? (
+          <View style={{ paddingHorizontal: 28, alignItems: 'center' }}>
+            <Text style={{ color: '#991b1b', fontSize: 18, fontWeight: '700', textAlign: 'center' }}>Could not load your profile</Text>
+            <Text style={{ marginTop: 8, color: '#7f1d1d', textAlign: 'center' }}>{profileError}</Text>
+            <Text style={{ marginTop: 8, color: '#6b7280', fontSize: 12, textAlign: 'center' }}>Check Metro for [Ourlime.Mobile][AuthService] logs.</Text>
+          </View>
+        ) : <ActivityIndicator size="large" color="#10b981" />}
+      </SafeAreaView>
+    );
+  }
 
   return (
     <View
@@ -148,25 +186,27 @@ export default function FeedsScreen() {
         showLogo={true}
         logoType="both"
         onMenuPress={handleMenuPress}
+        onNotificationPress={() => setIsNotificationsModalOpen(true)}
       />
 
       <MiddleSection
-        onCommentClick={handleCommentClick}
-        isCommentModalOpen={isCommentModalOpen}
-        activePostId={activePostId}
-        currentUserId="TODO_USER_ID" // TODO: Get from auth context
-        onCloseModal={handleCloseModal}
+        userProfile={userProfile}
+        createdPost={createdPost}
         onCreatePost={handleCreatePost}
-        setSelectedReel={setSelectedReel}
       />
 
       {isCreatePostModalOpen && (
         <CreatePostModal
           setTogglePostForm={setIsCreatePostModalOpen}
-          profilePicture="https://ui-avatars.com/api/?name=User&background=10b981&color=fff"
+          userProfile={userProfile}
           onCreatePost={handlePostCreated}
         />
       )}
+
+      <NotificationsModal
+        visible={isNotificationsModalOpen}
+        onClose={() => setIsNotificationsModalOpen(false)}
+      />
 
       <SlideOutMenu
         isVisible={isMenuVisible}

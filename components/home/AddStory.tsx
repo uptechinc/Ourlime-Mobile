@@ -3,9 +3,9 @@ import {
 	View,
 	Text,
 	TouchableOpacity,
-	SafeAreaView,
 	Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 

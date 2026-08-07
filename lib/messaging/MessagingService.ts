@@ -1,4 +1,5 @@
-import { db } from '@/lib/firebaseConfig';
+import { db, storage } from '@/lib/firebaseConfig';
+import { pushNotificationService } from '@/lib/services/PushNotificationService';
 import {
     collection,
     doc,
@@ -7,13 +8,64 @@ import {
     updateDoc,
     arrayUnion,
     Timestamp,
-    query,
-    where,
-    getDocs,
-    writeBatch,
     onSnapshot
 } from 'firebase/firestore';
-import { MessageData, ChatRoom, ReplyReference } from '@/lib/types';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { readAsStringAsync, EncodingType, getInfoAsync } from 'expo-file-system/legacy';
+import type { MessageData, ChatRoom, ReplyReference } from '@/lib/types/message';
+
+// Extended types for full parity with web MessagingService
+export type Attachment = {
+    url: string;
+    fileName: string;
+    fileType: string;
+    fileSize: number;
+};
+
+export type StickerData = {
+    type: 'sticker';
+    stickerId: string;
+    stickerUrl: string;
+    packId: string;
+    stickerWidth: number;
+    stickerHeight: number;
+};
+
+export type VoiceNoteData = {
+    type: 'voiceNote';
+    audioUrl: string;
+    audioDuration: number;
+};
+
+export type FullMessage = MessageData & {
+    id?: string;
+    attachment?: Attachment;
+    stickerData?: StickerData;
+    voiceNoteData?: VoiceNoteData;
+    isForwarded?: boolean;
+    reactions?: Record<string, string[]>;
+    deletedFor?: string[];
+    type?: 'text' | 'sticker' | 'voiceNote';
+    stickerId?: string;
+    stickerUrl?: string;
+    packId?: string;
+    stickerWidth?: number;
+    stickerHeight?: number;
+    audioUrl?: string;
+    audioDuration?: number;
+};
+
+/**
+ * Convert a base64 string to a Uint8Array (avoids all Blob issues in React Native)
+ */
+function base64ToUint8Array(base64: string): Uint8Array {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+}
 
 export class MessagingService {
     private static instance: MessagingService;
@@ -30,40 +82,137 @@ export class MessagingService {
         return MessagingService.instance;
     }
 
-    private getChatRoomId(userId1: string, userId2: string): string {
+    public getChatRoomId(userId1: string, userId2: string): string {
         return [userId1, userId2].sort().join('_');
     }
 
     /**
-     * Send a message with optional reply reference
+     * Upload a file (image/video/doc/voice note) to Firebase Storage
+    /**
+     * Converts a local file://, content://, or ph:// URI to a native Blob via XMLHttpRequest.
+     * In React Native, XMLHttpRequest natively reads local file URIs and produces a native Blob
+     * backed by C++/Java memory that Firebase JS SDK uploadBytes can consume directly.
+     */
+    private async uriToBlob(uri: string): Promise<Blob> {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.onload = () => {
+                resolve(xhr.response as Blob);
+            };
+            xhr.onerror = (e) => {
+                console.error('[uriToBlob] XHR Error', e);
+                reject(new TypeError(`Network request failed for URI: ${uri}`));
+            };
+            xhr.responseType = 'blob';
+            xhr.open('GET', uri, true);
+            xhr.send(null);
+        });
+    }
+
+    /**
+     * Uploads a local file to Firebase Storage.
+     * Uses XMLHttpRequest to safely convert the local file URI into a native RN Blob,
+     * avoiding fetch() 404s and Hermes base64/ArrayBuffer Blob construction bugs.
+     */
+    public async uploadFile(
+        uri: string,
+        fileName: string,
+        mimeType: string,
+        userId: string
+    ): Promise<Attachment> {
+        const timestamp = Date.now();
+        const storagePath = `chats/${userId}/${timestamp}_${fileName}`;
+        const storageRef = ref(storage, storagePath);
+
+        console.log('[uploadFile] START', { uri, fileName, mimeType, userId, storagePath });
+
+        let blob: Blob | null = null;
+        let fileSize = 0;
+
+        try {
+            console.log('[uploadFile] Converting URI to native Blob via XHR...');
+            blob = await this.uriToBlob(uri);
+            fileSize = blob.size;
+            console.log('[uploadFile] Native Blob created', { size: blob.size, type: blob.type });
+
+            console.log('[uploadFile] Uploading to Firebase Storage via uploadBytes...');
+            await uploadBytes(storageRef, blob, { contentType: mimeType });
+            console.log('[uploadFile] uploadBytes completed successfully');
+        } catch (xhrError) {
+            console.warn('[uploadFile] XHR Blob upload failed, attempting fallback to base64 Uint8Array:', xhrError);
+            // Fallback: Read base64 via FileSystem and convert to Uint8Array
+            const base64 = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
+            const uint8Array = base64ToUint8Array(base64);
+            fileSize = uint8Array.byteLength;
+            await uploadBytes(storageRef, uint8Array, { contentType: mimeType });
+        } finally {
+            // Clean up native Blob memory if close() method exists
+            if (blob && typeof (blob as any).close === 'function') {
+                try {
+                    (blob as any).close();
+                } catch {}
+            }
+        }
+
+        console.log('[uploadFile] Getting download URL...');
+        const url = await getDownloadURL(storageRef);
+        console.log('[uploadFile] Download URL obtained:', url);
+
+        const attachment: Attachment = {
+            url,
+            fileName,
+            fileType: mimeType,
+            fileSize,
+        };
+        console.log('[uploadFile] SUCCESS', attachment);
+        return attachment;
+    }
+
+    /**
+     * Send a message with optional reply, attachment, sticker, or voice note
      */
     public async sendMessage(
-        receiverId: string, 
-        message: string, 
-        senderId: string, 
-        replyTo?: ReplyReference
-    ) {
+        receiverId: string,
+        message: string,
+        senderId: string,
+        replyTo?: ReplyReference,
+        attachment?: Attachment,
+        stickerData?: StickerData,
+        voiceNoteData?: VoiceNoteData,
+        isForwarded?: boolean
+    ): Promise<FullMessage> {
         const chatRoomId = this.getChatRoomId(senderId, receiverId);
         const chatRef = doc(db, 'chats', chatRoomId);
 
-        const messageData: MessageData = {
+        const messageData: FullMessage = {
             senderId,
             receiverId,
             message,
             status: 'sent',
             timestamp: Timestamp.now(),
-            ...(replyTo && { replyTo })
+            ...(replyTo && { replyTo }),
+            ...(attachment && { attachment }),
+            ...(stickerData && {
+                type: 'sticker',
+                stickerId: stickerData.stickerId,
+                stickerUrl: stickerData.stickerUrl,
+                packId: stickerData.packId,
+                stickerWidth: stickerData.stickerWidth,
+                stickerHeight: stickerData.stickerHeight,
+            }),
+            ...(voiceNoteData && { voiceNoteData }),
+            ...(isForwarded && { isForwarded }),
         };
 
         const chatDoc = await getDoc(chatRef);
-        
+
         if (!chatDoc.exists()) {
             const chatRoom: ChatRoom = {
                 participants: [senderId, receiverId],
                 lastMessageTime: messageData.timestamp,
-                messages: [messageData],
+                messages: [messageData as MessageData],
                 unreadCount: 1,
-                lastMessage: message
+                lastMessage: message,
             };
             await setDoc(chatRef, chatRoom);
         } else {
@@ -72,80 +221,140 @@ export class MessagingService {
                 messages: arrayUnion(messageData),
                 lastMessageTime: messageData.timestamp,
                 unreadCount: (currentData.unreadCount || 0) + 1,
-                lastMessage: message
+                lastMessage: message || (stickerData ? '🎨 Sticker' : voiceNoteData ? '🎤 Voice note' : attachment?.fileName || 'Attachment'),
             });
         }
 
-        return {
-            id: chatRoomId,
-            ...messageData
-        };
+        // Dispatch push notification (handles calls, messages, and mute check)
+        const isCall = message === '[SYS:VIDEO_CALL_INVITE]' || message === '[SYS:VOICE_CALL_INVITE]';
+        const isVideoCall = message === '[SYS:VIDEO_CALL_INVITE]';
+        void pushNotificationService.sendPushNotification(receiverId, {
+            title: isCall ? 'Incoming Call' : 'New Message',
+            body: isVideoCall ? 'Incoming video call...' : isCall ? 'Incoming voice call...' : (message || attachment?.fileName || 'Sent a sticker'),
+            type: isVideoCall ? 'video_call' : isCall ? 'voice_call' : 'message',
+            senderId,
+        });
+
+        return messageData;
     }
 
     /**
-     * Mark messages as read
+     * Toggle an emoji reaction on a message
      */
-    public async markMessagesAsRead(receiverId: string, senderId: string) {
-        const chatRoomId = this.getChatRoomId(senderId, receiverId);
+    public async toggleReaction(
+        chatRoomId: string,
+        messageTimestamp: number,
+        emoji: string,
+        userId: string
+    ): Promise<void> {
         const chatRef = doc(this.db, 'chats', chatRoomId);
         const chatDoc = await getDoc(chatRef);
-
         if (!chatDoc.exists()) return;
 
         const chatData = chatDoc.data();
-        const updatedMessages = chatData.messages.map(msg => {
+        const updatedMessages: FullMessage[] = chatData.messages.map((msg: FullMessage) => {
+            if (msg.timestamp.seconds !== messageTimestamp) return msg;
+            const reactions: Record<string, string[]> = { ...(msg.reactions ?? {}) };
+            const users = reactions[emoji] ?? [];
+            if (users.includes(userId)) {
+                reactions[emoji] = users.filter((u) => u !== userId);
+                if (reactions[emoji].length === 0) delete reactions[emoji];
+            } else {
+                reactions[emoji] = [...users, userId];
+            }
+            return { ...msg, reactions };
+        });
+
+        await updateDoc(chatRef, { messages: updatedMessages });
+    }
+
+    /**
+     * Mark messages as read for the given user
+     */
+    public async markMessagesAsRead(receiverId: string, senderId: string): Promise<void> {
+        const chatRoomId = this.getChatRoomId(senderId, receiverId);
+        const chatRef = doc(this.db, 'chats', chatRoomId);
+        const chatDoc = await getDoc(chatRef);
+        if (!chatDoc.exists()) return;
+
+        const chatData = chatDoc.data();
+        const updatedMessages = chatData.messages.map((msg: MessageData) => {
             if (msg.receiverId === senderId && msg.status !== 'read') {
                 return { ...msg, status: 'read' };
             }
             return msg;
         });
 
-        await updateDoc(chatRef, { 
-            messages: updatedMessages,
-            unreadCount: 0 // Reset unread count when messages are read
-        });
+        await updateDoc(chatRef, { messages: updatedMessages, unreadCount: 0 });
     }
 
     /**
-     * Get all messages for a chat
+     * Delete a message (for me or for everyone)
      */
-    public async getMessages(receiverId: string, senderId: string) {
-        const chatRoomId = this.getChatRoomId(senderId, receiverId);
-        const chatRef = doc(db, 'chats', chatRoomId);
-                
-        const chatDoc = await getDoc(chatRef);
-        
-        if (!chatDoc.exists()) {
-            return [];
-        }
-    
-        const chatData = chatDoc.data();
-        console.log('Chat data:', chatData);
-    
-        const updatedMessages = chatData.messages.map(msg => {
-            if (msg.receiverId === senderId && msg.status === 'sent') {
-                return { ...msg, status: 'delivered' };
+    public async deleteMessage(
+        receiverId: string,
+        senderId: string,
+        messageTimestamp: number,
+        deleteForEveryone: boolean
+    ): Promise<boolean> {
+        try {
+            const chatRoomId = this.getChatRoomId(senderId, receiverId);
+            const chatRef = doc(this.db, 'chats', chatRoomId);
+            const chatDoc = await getDoc(chatRef);
+            if (!chatDoc.exists()) return false;
+
+            const chatData = chatDoc.data();
+            let updatedMessages: FullMessage[];
+
+            if (deleteForEveryone) {
+                updatedMessages = chatData.messages.map((msg: FullMessage) => {
+                    if (msg.timestamp?.seconds !== messageTimestamp) return msg;
+                    const cleanedMsg: Record<string, any> = {
+                        ...msg,
+                        isDeletedForEveryone: true,
+                        message: 'This message was deleted',
+                        type: 'text',
+                    };
+                    delete cleanedMsg.attachment;
+                    delete cleanedMsg.stickerUrl;
+                    delete cleanedMsg.stickerId;
+                    delete cleanedMsg.packId;
+                    delete cleanedMsg.stickerWidth;
+                    delete cleanedMsg.stickerHeight;
+                    delete cleanedMsg.audioUrl;
+                    delete cleanedMsg.audioDuration;
+                    return cleanedMsg as FullMessage;
+                });
+            } else {
+                updatedMessages = chatData.messages.map((msg: FullMessage) => {
+                    if (msg.timestamp?.seconds !== messageTimestamp) return msg;
+                    return { ...msg, deletedFor: [...(msg.deletedFor ?? []), senderId] };
+                });
             }
-            return msg;
-        });
 
-        if (JSON.stringify(updatedMessages) !== JSON.stringify(chatData.messages)) {
-            await updateDoc(chatRef, { messages: updatedMessages });
+            await updateDoc(chatRef, {
+                messages: updatedMessages,
+                lastMessage: updatedMessages.length > 0 ? updatedMessages[updatedMessages.length - 1].message : '',
+                lastMessageTime: updatedMessages.length > 0 ? updatedMessages[updatedMessages.length - 1].timestamp : Timestamp.now(),
+            });
+            return true;
+        } catch (error) {
+            console.error('[MessagingService.deleteMessage]', error);
+            return false;
         }
-    
-        return updatedMessages;
     }
 
     /**
-     * Get unread message count
+     * Clear all messages in a chat room
      */
-    public async getUnreadCount(userId: string, friendId: string): Promise<number> {
-        const chatRoomId = this.getChatRoomId(userId, friendId);
+    public async clearChatHistory(chatRoomId: string): Promise<void> {
         const chatRef = doc(this.db, 'chats', chatRoomId);
-        const chatDoc = await getDoc(chatRef);
-        
-        if (!chatDoc.exists()) return 0;
-        return chatDoc.data().unreadCount || 0;
+        await updateDoc(chatRef, {
+            messages: [],
+            lastMessage: '',
+            lastMessageTime: Timestamp.now(),
+            unreadCount: 0,
+        });
     }
 
     /**
@@ -154,49 +363,23 @@ export class MessagingService {
     public subscribeToMessages(
         receiverId: string,
         senderId: string,
-        callback: (messages: any[]) => void
+        callback: (messages: FullMessage[]) => void
     ): () => void {
         const chatRoomId = this.getChatRoomId(senderId, receiverId);
         const chatRef = doc(this.db, 'chats', chatRoomId);
 
-        return onSnapshot(chatRef, (doc) => {
-            if (doc.exists()) {
-                const chatData = doc.data();
-                callback(chatData.messages || []);
+        return onSnapshot(chatRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const chatData = snapshot.data();
+                const msgs: FullMessage[] = (chatData.messages || []).sort(
+                    (a: FullMessage, b: FullMessage) => (a.timestamp?.seconds ?? 0) - (b.timestamp?.seconds ?? 0)
+                );
+                callback(msgs);
             } else {
                 callback([]);
             }
         });
     }
-
-    /**
-     * Delete a message from the chat
-     */
-    public async deleteMessage(receiverId: string, senderId: string, messageTimestamp: number): Promise<boolean> {
-        try {
-            const chatRoomId = this.getChatRoomId(senderId, receiverId);
-            const chatRef = doc(this.db, 'chats', chatRoomId);
-            const chatDoc = await getDoc(chatRef);
-
-            if (!chatDoc.exists()) {
-                return false;
-            }
-
-            const chatData = chatDoc.data();
-            const updatedMessages = chatData.messages.filter(
-                (msg: MessageData) => msg.timestamp.seconds !== messageTimestamp
-            );
-
-            await updateDoc(chatRef, {
-                messages: updatedMessages,
-                lastMessage: updatedMessages.length > 0 ? updatedMessages[updatedMessages.length - 1].message : '',
-                lastMessageTime: updatedMessages.length > 0 ? updatedMessages[updatedMessages.length - 1].timestamp : Timestamp.now()
-            });
-
-            return true;
-        } catch (error) {
-            console.error('Error deleting message:', error);
-            return false;
-        }
-    }
 }
+
+export const messagingService = MessagingService.getInstance();

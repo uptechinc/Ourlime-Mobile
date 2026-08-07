@@ -44,7 +44,13 @@ export class RelationshipQueries {
     }
 
     async getCommonConnections(userId1: string, userId2: string) {
-        const commonData = {
+        const commonData: {
+            mutualFriends: any[];
+            mutualFollowers: any[];
+            mutualFollowing: any[];
+            commonCommunities: any[];
+            commonEvents: any[];
+        } = {
             mutualFriends: [],
             mutualFollowers: [],
             mutualFollowing: [],

@@ -7,15 +7,25 @@
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Ourlime requires camera access for video calls.",
+        "NSMicrophoneUsageDescription": "Ourlime requires microphone access for voice and video calls."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "INTERNET",
+        "BLUETOOTH"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -31,6 +41,13 @@
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Ourlime requires camera access for video calls.",
+          "microphonePermission": "Ourlime requires microphone access for voice and video calls."
         }
       ]
     ],

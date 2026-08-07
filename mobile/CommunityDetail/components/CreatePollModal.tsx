@@ -5,9 +5,9 @@ import {
   TextInput,
   Pressable,
   Modal,
-  SafeAreaView,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { styles } from '../styles';
 
 interface CreatePollModalProps {
