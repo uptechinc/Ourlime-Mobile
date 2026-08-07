@@ -5,6 +5,32 @@
 
 ---
 
+## 🗺️ Web Route Directory (`Ourlime-Web/app`) to Mobile Screen Mapping
+
+Below is the complete breakdown of every page/folder in `Ourlime-Web/app` and its corresponding target screen/module in `Ourlime-Mobile`:
+
+| Web Route Folder (`Ourlime-Web/app/`) | Feature Description | Target Mobile Path (`Ourlime-Mobile/app/`) | Implementation Status |
+| :--- | :--- | :--- | :--- |
+| **`login/`**, **`register/`**, **`forgot-password/`**, **`reset-password/`**, **`verify/`**, **`verify-email/`** | Auth & multi-step onboarding | `app/(auth)/login.tsx`, `app/(auth)/register.tsx`, `mobile/Register/` | ✅ Complete |
+| **`page.tsx`** | Main Home Feed, Post Creation, Likes, Comments, Reposts | `app/(tabs)/index.tsx` | ✅ Complete |
+| **`notifications/`** | Notifications panel with filters, sorting, bulk actions, friend requests | `components/home/NotificationsModal.tsx` | ✅ Complete (Web Parity) |
+| **`limes/`** | Short vertical video reels (Limes), audio track, likes, comments, sharing | `app/(tabs)/Limes.tsx`, `components/limes/` | ✅ Complete |
+| **`chat/`** | Real-time direct messaging, stickers, voice notes, voice & video calling | `app/(tabs)/Chat.tsx`, `app/chat/[id].tsx`, `components/chat/` | ✅ Complete (WhatsApp Parity) |
+| **`discover/`** | Global discovery feed, trending limes, suggested friends | `app/(tabs)/Discover.tsx` | ✅ Complete |
+| **`search/`** | Global search across users, posts, limes, and communities | `app/(tabs)/Search.tsx` | ✅ Complete |
+| **`profile/`** | User profile wall, friends list, photos, videos, edit profile, block user | `app/(tabs)/Profile.tsx`, `app/profile/[username].tsx` | ✅ Complete |
+| **`communities/`** | Communities listing, group posts, member management | `app/communities/index.tsx`, `app/community-detail.tsx` | ✅ Complete |
+| **`events/`** | Event creation, RSVP management, location picker | `app/events/index.tsx` | ✅ Complete |
+| **`market/`** | Buy & sell marketplace, product listings, category filters | `app/market/index.tsx` | ✅ Complete |
+| **`jobs/`** | Career job board, job search, application submit | `app/jobs/index.tsx` | ✅ Complete |
+| **`eLearning/`** | Course catalog, video lessons, quiz module | `app/eLearning/index.tsx` | ✅ Complete |
+| **`blogs/`** | Blog articles, reader view, comments | `app/blogs/index.tsx` | ✅ Complete |
+| **`eWallet/`**, **`ehub/`**, **`ads/`** | Electronic wallet, advertising hub, promo dashboard | Specialized Hub Modals & Profile Settings | 🔄 Parity In Progress |
+| **`games/`**, **`wordle-game/`**, **`triniGeoGuesser/`** | Mini-games (Wordle, Trini GeoGuesser) | Embedded Native Webview / Game Sheets | 🔄 Parity In Progress |
+| **`terms-and-conditions/`**, **`privacy-policy/`** | Terms of service & privacy policies | Settings & Profile Info Sheets | ✅ Complete |
+
+---
+
 ## 🏗️ Architecture & Core Discipline
 
 ### 1. Service-Oriented OOP Architecture

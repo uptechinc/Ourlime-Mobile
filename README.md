@@ -1,88 +1,223 @@
-# Welcome to your Expo app 👋
+# Ourlime Communities Network — Mobile (`Ourlime-Mobile`)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+<div align="center">
+  <h2>📱 React Native & Expo Router Mobile App</h2>
+  <p><b>Expo SDK 57 · React Native 0.86 · React 19 · TypeScript · NativeWind (Tailwind CSS) · Firebase</b></p>
+</div>
 
-## Get started
+---
 
-1. Install dependencies
+## 📌 Application Intent & Architecture
 
-   ```bash
-   npm install
-   ```
+`Ourlime-Mobile` is the native mobile companion to the Ourlime web platform, delivering the same social networking, community, marketplace, and real-time communication features as a high-end native iOS/Android experience (Expo Go + dev builds).
 
-2. Start the app
+### Core Architecture
 
-   ```bash
-    npx expo start
-   ```
+The app follows a **Service-Oriented Object-Oriented Programming (OOP)** architecture:
 
-In the output, you'll find options to open the app in a
+- **UI Components** (`components/`, `mobile/`) — Pure presentation views, no business logic
+- **Custom Hooks** (`lib/hooks/`) — Manage React lifecycle, delegate to services
+- **Service Classes** (`lib/services/`, `lib/messaging/`, `lib/sticker/`) — Own API calls, caching, validation, and data formatting
+- **State Management** (`lib/store/`, `zustand`) — Centralized state via Zustand
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+### Navigation Structure (`app/_layout.tsx`, `app/(tabs)/`)
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- **Auth Routes** (`app/(auth)/`) — Login, registration, email verification
+- **Tab Navigation** (`app/(tabs)/`) — Home feed, Search, Limes, Discover, Profile
+- **Stack Routes** (`app/chat/[id]/`, `app/profile/[username]`, etc.) — Deep-linked detail screens
+- **Multi-step Flows** (`mobile/Register/`) — Wizard-style registration flow
 
-## Get a fresh project
+---
 
-When you're ready, run:# Ourlime Communities Network
+## 🚀 Complete Feature Matrix
 
+### 1. 📱 Social Feed (`app/(tabs)/index.tsx`, `components/home/`)
+- Infinite-scrolling feed of posts with image/video/gallery support (`MiddleSectionComponent/PostCardSection/`)
+- Post interactions: like/heart reactions, emoji reaction picker, comments, shares
+- Reply-to-message threading with visual reply banners
+- Post options sheet (delete, report, forward)
+- **Create post modal** (`CreatePostModal/`) — Text, images, videos, events, polls, location tagging
+- Media cropping (`MediaCropModal.tsx`) with aspect ratio presets
+- Location picker integration
+- Hashtag and mention detection
 
-## Getting Started
-These instructions will get you a copy of the project up and running on your local machine for development and testing. For clarity on standards,
-please see the [Ourlime Documentation](https://ourlime-documentation.vercel.app/)
+### 2. 💬 Real-Time Chat (`app/chat/[id]/page.tsx`, `components/chat/`)
+- One-on-one direct messaging with real-time Firebase Firestore subscriptions
+- Sticker packs with search and favorites (`components/sticker/StickerPicker.tsx`)
+- Voice note recording and playback (`components/chat/VoiceNotePlayer.tsx`)
+- Image/video/document attachments with previews
+- Message reactions with emoji picker
+- Reply references with quoted message context
+- Long-press action menu (reply, forward, react, delete)
+- **Video calling** via Agora RTC (`components/chat/VideoCallModal.tsx`)
+- Message status indicators (sent, delivered, read)
+- Delete for me / delete for everyone
+- Message search and pagination
 
+### 3. 👥 Friends & Social Graph (`lib/relationships/friendshipService.ts`)
+- Friend requests with accept/decline
+- Follow/unfollow with real-time relationship status
+- Friendship management (block, report, remove)
+- User profile pages with custom tabs
+
+### 4. 🤝 Communities (`mobile/CommunityDetail/`, `components/communities/`)
+- Community creation and discovery
+- Community feeds with discussion threads
+- Role-based membership (Owner, Admin, Moderator, Member)
+- Polls, events, and file sharing within communities
+- Sidebar navigation with community management tools
+
+### 5. 🎓 E-Learning (`components/eLearning/`)
+- Class schedules and course materials
+- Study groups and discussion boards
+- Tutor/student discovery
+
+### 6. 🛒 Marketplace (`app/market/`, `components/market/`)
+- Product listings with image carousels
+- Category filters (Electronics, Vehicles, Real Estate, Fashion, Services)
+- Product detail pages with seller info
+- Direct chat inquiry to sellers
+
+### 7. 📅 Events (`app/events/`, `components/events/`)
+- Event creation with cover images and venue details
+- RSVP tracking (Going, Interested, Not Going)
+- Map view integration for venue directions
+
+### 8. 📰 Blogs (`app/blogs/`, `components/blog/`)
+- Article publishing with rich text and cover images
+- Reader experience with author bios and related posts
+- Social sharing and estimated reading time
+
+### 9. 💼 Jobs (`app/jobs/`, `components/jobs/`)
+- Job listings (full-time, part-time, remote, freelance)
+- Application flow with resume attachment
+- Employer dashboard
+
+### 10. 💰 Wallets & Lime Points (`app/eLearning/`, `components/limes/`)
+- Lime points economy for platform engagement
+- eWallet dashboard for balance and transfers
+
+### 11. 📢 Notifications (`components/home/NotificationsModal.tsx`)
+- Real-time notification feed via Firestore onSnapshot
+- Friend requests, likes, comments, mentions, community invites
+- Bulk selection and actions (mark read, mark unread, delete)
+- Filter by category (all, unread, friends, likes, comments, mentions, communities)
+- Sort by unread-first or newest-first
+
+### 12. 🛡️ Admin & Moderation (`components/admin/`, `components/moderation/`)
+- Content moderation dashboard
+- Reported post review
+- User management
+
+---
+
+## 🛠️ Technology Stack
+
+| Component | Technology | Description |
+|---|---|---|
+| **Core Framework** | Expo SDK 57 | Managed workflow with Expo Router |
+| **UI Layer** | React Native 0.86 | Cross-platform native rendering |
+| **Language** | TypeScript | Strict typing across codebase |
+| **Styling** | NativeWind (Tailwind CSS) | Tailwind classes with `tailwind-rn` |
+| **State** | Zustand | Centralized state management |
+| **Navigation** | Expo Router + React Navigation | File-based routing with stack & tab navigators |
+| **Backend** | Firebase Auth, Firestore, Storage | Real-time database, authentication, media storage |
+| **Realtime** | Firebase Firestore `onSnapshot` | Real-time message/friendship/notification listeners |
+| **Video Calls** | Agora RTC SDK | Voice & video calling |
+| **Image Picker** | expo-image-picker | Photo/video selection from library |
+| **File Picker** | expo-document-picker | Document attachment selection |
+| **Maps** | react-native-maps | Map rendering |
+| **Animations** | react-native-reanimated | Native animations & transitions |
+| **Safe Areas** | react-native-safe-area-context | Status bar / notch safe spacing |
+| **Package Manager** | npm | Standard package management |
+
+---
+
+## 💻 Installation & Running Locally
 
 ### Prerequisites
 - [Git](https://git-scm.com/)
-- [PNPM](https://pnpm.io/). Do not use any other package manager to ensure a consistant lockfile
+- [Node.js](https://nodejs.org/) (v18+)
+- [npm](https://docs.npmjs.com/cli/v10/configuring/configuring-npm) or [Expo Go](https://expo.dev/go) app on your device
 
-### Installing
-1. **Clone the Repository**  
-   Clone this repository to your local machine:
-```sh
-git clone https://github.com/uptech2021/Ourlime
-cd Ourlime
-```
-2. *Install Dependencies*
-
-- Install the project dependencies using PNPM:
-  ```sh
-  pnpm install
-  ```
-
-4. *Set Up Environment Variables*
-
-- Create a .env file in the root directory and add the necessary environment variables. Contact [Aaron](https://github.com/A-Hazzard) for the variables
-
-6. *Run the Development Server*
-
-- Start the development server:
-  ```sh
-  pnpm dev
-  ```
-
-7. Before creating a pull request, run ```pnpm build``` to ensure there are no issues
-
+### Commands
 
 ```bash
-npm run reset-project
+# 1. Clone the repository
+git clone https://github.com/uptech2021/Ourlime
+cd Ourlime-Mobile
+
+# 2. Install dependencies
+npm install
+
+# 3. Start the development server
+npm run start
+# or
+npx expo start
+
+# 4. Run TypeScript type check
+npx tsc --noEmit
+
+# 5. Run linter
+npm run lint
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### Running on a Device
 
-## Learn more
+- **Expo Go (fastest):** Scan the QR code from `npx expo start` with the Expo Go app
+- **Android emulator:** Run `npm run android` (requires Android Studio)
+- **iOS simulator:** Run `npm run ios` (requires Xcode + CocoaPods)
 
-To learn more about developing your project with Expo, look at the following resources:
+### Environment Variables
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Create a `.env` file in the root directory. Contact [Aaron](https://github.com/A-Hazzard) for the required Firebase configuration variables.
 
-## Join the community
+---
 
-Join our community of developers creating universal apps.
+## 📱 Project Structure
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```
+Ourlime-Mobile/
+├── app/                          # Expo Router file-based pages
+│   ├── (auth)/                   # Authentication routes (login, register)
+│   ├── (tabs)/                   # Main tab navigation
+│   │   ├── index.tsx             # Home feed
+│   │   ├── Chat.tsx              # Chats list
+│   │   ├── Limes.tsx             # Limes/points
+│   │   ├── Search.tsx            # Search
+│   │   ├── Discover.tsx          # Discover
+│   │   └── Profile.tsx           # Profile
+│   ├── _layout.tsx               # Root layout with Stack config
+│   └── globals.css               # NativeWind entry
+├── components/                   # Reusable UI components
+│   ├── chat/                     # Chat-specific components
+│   ├── home/                     # Home/feed components
+│   ├── ui/                       # Shared UI (AppHeader, SlideOutMenu, etc.)
+│   ├── sticker/                  # Sticker picker
+│   ├── communities/              # Community components
+│   ├── market/                   # Marketplace components
+│   └── eLearning/                # Education components
+├── mobile/                       # Specialized screen containers
+│   ├── Register/                 # Multi-step registration
+│   └── CommunityDetail/          # Community detail screen
+├── lib/                          # Services, hooks, store, types
+│   ├── services/                 # OOP service classes
+│   ├── hooks/                    # Custom React hooks
+│   ├── store/                    # Zustand stores
+│   ├── types/                    # TypeScript type definitions
+│   ├── messaging/                # MessagingService singleton
+│   └── sticker/                  # StickerService singleton
+├── assets/                       # Static images, icons, SVGs
+└── AGENTS.md                     # AI agent rules and conventions
+```
+
+---
+
+## 📏 Coding Standards
+
+- **Strict TypeScript** — No `any`, explicit `type` definitions only
+- **OOP Services** — All business logic lives in service classes (encapsulated, SRP)
+- **Direct React Imports** — `import { useState } from 'react'` (no `import React`)
+- **Safe Areas** — `SafeAreaView` from `react-native-safe-area-context` with explicit `edges`
+- **Navigation** — `slide_from_right` transitions with gesture enabled
+- **No comments** in code unless explicitly requested
