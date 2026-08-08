@@ -64,6 +64,17 @@ const TabLayout = () => {
         name="Limes"
         options={{
           title: "Limes",
+          tabBarStyle: {
+            backgroundColor: "#0f172a",
+            borderTopWidth: 1,
+            borderTopColor: "#1e293b",
+            height: Platform.OS === 'ios' ? 84 : 64,
+            paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+            paddingTop: 8,
+            elevation: 10,
+          },
+          tabBarActiveTintColor: "#10B981",
+          tabBarInactiveTintColor: "#94A3B8",
           tabBarIcon: ({ focused }) => (
             <Image
               source={require('@/assets/images/logo.png')}

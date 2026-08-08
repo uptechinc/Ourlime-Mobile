@@ -70,10 +70,15 @@ const mockLimes: Reel[] = [
 
 export default function LimesScreen() {
   const [limesList, setLimesList] = useState<Reel[]>(mockLimes);
+  const [feedTab, setFeedTab] = useState<'forYou' | 'following'>('forYou');
   const [activeIndex, setActiveIndex] = useState(0);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [commentReelId, setCommentReelId] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
+
+  const displayedLimes = feedTab === 'following'
+    ? limesList.filter((l) => l.category === 'Following' || (l.likes?.length ?? 0) > 0)
+    : limesList;
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
@@ -87,22 +92,33 @@ export default function LimesScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
-      {/* Top Header Overlay */}
+      {/* Top Header Overlay with For You & Following tabs on top left */}
       <SafeAreaView style={styles.topHeader} edges={['top', 'left', 'right']}>
-        <Text style={styles.headerTitle}>Limes</Text>
+        <View style={styles.tabToggleRow}>
+          <TouchableOpacity onPress={() => setFeedTab('forYou')} style={styles.tabBtn}>
+            <Text style={[styles.tabText, feedTab === 'forYou' && styles.activeTabText]}>For You</Text>
+            {feedTab === 'forYou' && <View style={styles.activeTabIndicator} />}
+          </TouchableOpacity>
+          <View style={styles.tabDivider} />
+          <TouchableOpacity onPress={() => setFeedTab('following')} style={styles.tabBtn}>
+            <Text style={[styles.tabText, feedTab === 'following' && styles.activeTabText]}>Following</Text>
+            {feedTab === 'following' && <View style={styles.activeTabIndicator} />}
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity
           onPress={() => setIsCreateModalOpen(true)}
           style={styles.createButton}
           activeOpacity={0.8}
         >
-          <Icon name="camera" size={20} color="#ffffff" />
+          <Icon name="camera" size={18} color="#ffffff" />
           <Text style={styles.createButtonText}>Create</Text>
         </TouchableOpacity>
       </SafeAreaView>
 
       {/* Vertical Reel Pager */}
       <FlatList
-        data={limesList}
+        data={displayedLimes}
         keyExtractor={(item) => item.id}
         pagingEnabled
         showsVerticalScrollIndicator={false}
@@ -329,11 +345,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '900',
+  tabToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  tabBtn: {
+    position: 'relative',
+    paddingVertical: 4,
+  },
+  tabText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.65)',
+  },
+  activeTabText: {
     color: '#ffffff',
-    letterSpacing: 0.5,
+    fontWeight: '900',
+  },
+  activeTabIndicator: {
+    position: 'absolute',
+    bottom: -4,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: '#10b981',
+    borderRadius: 2,
+  },
+  tabDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   createButton: {
     flexDirection: 'row',
