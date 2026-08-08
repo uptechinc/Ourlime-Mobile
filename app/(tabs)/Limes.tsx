@@ -75,6 +75,44 @@ export default function LimesScreen() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [commentReelId, setCommentReelId] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadRealLimes() {
+      try {
+        const { collection, getDocs, query, limit, orderBy } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebaseConfig');
+        const reelsSnap = await getDocs(query(collection(db, 'reels'), limit(30)));
+        if (!reelsSnap.empty && isMounted) {
+          const loaded = reelsSnap.docs.map((doc) => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              userId: data.userId || '',
+              media: data.media || { type: 'video', typeUrl: '', fileName: 'reel.mp4', duration: 0 },
+              visibility: data.visibility || 'public',
+              category: data.category || 'Lifestyle',
+              caption: data.caption || '',
+              createdAt: data.createdAt ? new Date() : new Date(),
+              user: data.user || { firstName: 'Lime', lastName: 'Creator', userName: 'lime_user', profileImage: undefined },
+              stats: data.stats || { likes: 0, comments: 0, shares: 0 },
+              likes: data.likes || [],
+            } as Reel;
+          });
+          setLimesList(loaded);
+        }
+      } catch (err) {
+        console.log('[LimesScreen] Real limes fetch error, keeping default items:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    void loadRealLimes();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const displayedLimes = feedTab === 'following'
     ? limesList.filter((l) => l.category === 'Following' || (l.likes?.length ?? 0) > 0)
