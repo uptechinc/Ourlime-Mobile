@@ -21,55 +21,9 @@ import { Reel } from '@/types/userTypes';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const mockLimes: Reel[] = [
-  {
-    id: 'lime_1',
-    userId: 'user_1',
-    media: {
-      type: 'video',
-      typeUrl: 'https://assets.mixkit.co/videos/preview/mixkit-tree-with-yellow-flowers-1173-large.mp4',
-      fileName: 'caribbean_lime.mp4',
-      duration: 15,
-    },
-    visibility: 'public',
-    category: 'Lifestyle',
-    caption: 'Chilling in Trinidad! Pure Caribbean vibes 🌴☀️ #Lime #Trinidad #Ourlime',
-    createdAt: new Date(),
-    user: {
-      firstName: 'Rishi',
-      lastName: 'Persad',
-      userName: 'rishi',
-      profileImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-    },
-    stats: { likes: 142, comments: 28, shares: 12 },
-    likes: ['user_2'],
-  },
-  {
-    id: 'lime_2',
-    userId: 'user_2',
-    media: {
-      type: 'video',
-      typeUrl: 'https://assets.mixkit.co/videos/preview/mixkit-waves-in-the-water-1164-large.mp4',
-      fileName: 'tobago_beach.mp4',
-      duration: 12,
-    },
-    visibility: 'public',
-    category: 'Travel',
-    caption: 'Pigeon Point beach day in Tobago 🏖️🌊 #Tobago #Paradise #Lime',
-    createdAt: new Date(),
-    user: {
-      firstName: 'Aaron',
-      lastName: 'Hazzard',
-      userName: 'aaron',
-      profileImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
-    },
-    stats: { likes: 289, comments: 45, shares: 33 },
-    likes: [],
-  },
-];
-
 export default function LimesScreen() {
-  const [limesList, setLimesList] = useState<Reel[]>(mockLimes);
+  const [limesList, setLimesList] = useState<Reel[]>([]);
+  const [followingUserIds, setFollowingUserIds] = useState<Set<string>>(new Set());
   const [feedTab, setFeedTab] = useState<'forYou' | 'following'>('forYou');
   const [activeIndex, setActiveIndex] = useState(0);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -81,29 +35,64 @@ export default function LimesScreen() {
     let isMounted = true;
     async function loadRealLimes() {
       try {
-        const { collection, getDocs, query, limit, orderBy } = await import('firebase/firestore');
-        const { db } = await import('@/lib/firebaseConfig');
-        const reelsSnap = await getDocs(query(collection(db, 'reels'), limit(30)));
+        const { collection, getDocs, doc, getDoc, query, where, limit } = await import('firebase/firestore');
+        const { db, auth } = await import('@/lib/firebaseConfig');
+        
+        // 1. Fetch user's following list
+        if (auth.currentUser) {
+          try {
+            const followSnap = await getDocs(query(collection(db, 'followers'), where('followerId', '==', auth.currentUser.uid)));
+            const followSet = new Set(followSnap.docs.map((d) => d.data().followeeId as string));
+            if (isMounted) setFollowingUserIds(followSet);
+          } catch (e) {
+            console.log('[LimesScreen] Following fetch notice:', e);
+          }
+        }
+
+        // 2. Fetch real reels from 'reels' collection
+        const reelsSnap = await getDocs(query(collection(db, 'reels'), limit(50)));
         if (!reelsSnap.empty && isMounted) {
-          const loaded = reelsSnap.docs.map((doc) => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              userId: data.userId || '',
-              media: data.media || { type: 'video', typeUrl: '', fileName: 'reel.mp4', duration: 0 },
-              visibility: data.visibility || 'public',
-              category: data.category || 'Lifestyle',
-              caption: data.caption || '',
-              createdAt: data.createdAt ? new Date() : new Date(),
-              user: data.user || { firstName: 'Lime', lastName: 'Creator', userName: 'lime_user', profileImage: undefined },
-              stats: data.stats || { likes: 0, comments: 0, shares: 0 },
-              likes: data.likes || [],
-            } as Reel;
-          });
-          setLimesList(loaded);
+          const loaded = await Promise.all(
+            reelsSnap.docs.map(async (reelDoc) => {
+              const data = reelDoc.data();
+              const creatorId = data.userId || '';
+              
+              let userDetails = data.user;
+              if ((!userDetails || !userDetails.userName || userDetails.userName === 'lime_user') && creatorId) {
+                try {
+                  const userDoc = await getDoc(doc(db, 'users', creatorId));
+                  if (userDoc.exists()) {
+                    const u = userDoc.data();
+                    userDetails = {
+                      firstName: u.firstName || 'Lime',
+                      lastName: u.lastName || 'Creator',
+                      userName: u.userName || 'creator',
+                      profileImage: u.profileImage || undefined,
+                    };
+                  }
+                } catch {
+                  // Fallback
+                }
+              }
+
+              return {
+                id: reelDoc.id,
+                userId: creatorId,
+                media: data.media || { type: 'video', typeUrl: '', fileName: 'reel.mp4', duration: 0 },
+                visibility: data.visibility || 'public',
+                category: data.category || 'Lifestyle',
+                caption: data.caption || '',
+                createdAt: data.createdAt ? new Date() : new Date(),
+                user: userDetails || { firstName: 'Lime', lastName: 'User', userName: 'user', profileImage: undefined },
+                stats: data.stats || { likes: Array.isArray(data.likes) ? data.likes.length : 0, comments: 0, shares: 0 },
+                likes: Array.isArray(data.likes) ? data.likes : [],
+              } as Reel;
+            })
+          );
+          if (isMounted) setLimesList(loaded);
         }
       } catch (err) {
-        console.log('[LimesScreen] Real limes fetch error, keeping default items:', err);
+        console.error('[LimesScreen] Error loading real limes:', err);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -115,7 +104,7 @@ export default function LimesScreen() {
   }, []);
 
   const displayedLimes = feedTab === 'following'
-    ? limesList.filter((l) => l.category === 'Following' || (l.likes?.length ?? 0) > 0)
+    ? limesList.filter((l) => followingUserIds.has(l.userId) || (l.likes?.length ?? 0) > 0)
     : limesList;
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
