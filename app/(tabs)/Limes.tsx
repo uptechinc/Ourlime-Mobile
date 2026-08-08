@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { auth } from '@/lib/firebaseConfig';
 import CreateLimeModal from '@/components/limes/CreateLimeModal';
 import CommentModal from '@/components/limes/CommentModal';
 import { Reel } from '@/types/userTypes';
@@ -103,9 +104,22 @@ export default function LimesScreen() {
     };
   }, []);
 
-  const displayedLimes = feedTab === 'following'
-    ? limesList.filter((l) => followingUserIds.has(l.userId) || (l.likes?.length ?? 0) > 0)
-    : limesList;
+  const currentUserId = auth.currentUser?.uid || '';
+
+  const displayedLimes = limesList.filter((l) => {
+    const isOwner = currentUserId === l.userId;
+    if (l.visibility === 'private' || l.visibility === 'only_me') {
+      if (!isOwner) return false;
+    }
+    if (l.visibility === 'friends') {
+      if (!isOwner && !followingUserIds.has(l.userId)) return false;
+    }
+
+    if (feedTab === 'following') {
+      return followingUserIds.has(l.userId) || isOwner;
+    }
+    return true;
+  });
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {

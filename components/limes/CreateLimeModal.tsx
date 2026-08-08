@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,17 @@ import {
   ActivityIndicator,
   StyleSheet,
   Dimensions,
+  Animated,
+  PanResponder,
+  Image,
 } from 'react-native';
-import { X, Upload, Globe, Users, Lock, Film, Sparkles, Laugh, Lightbulb, Video as VideoIcon, Music2, Compass, Check } from 'lucide-react-native';
+import { X, Upload, Globe, Users, Lock, Film, Sparkles, Laugh, Lightbulb, Video as VideoIcon, Music2, Compass, AtSign } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { auth, db, storage } from '@/lib/firebaseConfig';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, getDocs, query, limit } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const CATEGORIES = [
   { name: 'Comedy', icon: Laugh, color: '#f59e0b' },
@@ -34,6 +37,14 @@ const PRIVACY_OPTIONS = [
   { key: 'private', label: 'Only me', icon: Lock },
 ];
 
+interface UserSuggestion {
+  id: string;
+  userName: string;
+  firstName: string;
+  lastName: string;
+  profileImage?: string;
+}
+
 interface CreateLimeModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -48,17 +59,108 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
+  /* ── Mention Autocomplete State ── */
+  const [userSuggestions, setUserSuggestions] = useState<UserSuggestion[]>([]);
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+
+  /* ── Swipe-Down PanResponder ── */
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          translateY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+          Animated.timing(translateY, {
+            toValue: SCREEN_HEIGHT,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            translateY.setValue(0);
+            onClose();
+          });
+        } else {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  /* Reset translateY when modal opens */
+  useEffect(() => {
+    if (isOpen) translateY.setValue(0);
+  }, [isOpen, translateY]);
+
+  /* ── Mention Search Handler ── */
+  const handleCaptionChange = async (text: string) => {
+    setCaption(text);
+    const lastAtIndex = text.lastIndexOf('@');
+    if (lastAtIndex !== -1) {
+      const queryText = text.slice(lastAtIndex + 1);
+      if (!queryText.includes(' ')) {
+        setMentionQuery(queryText.toLowerCase());
+        setShowMentionDropdown(true);
+
+        try {
+          const snap = await getDocs(query(collection(db, 'users'), limit(20)));
+          const users: UserSuggestion[] = snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              userName: data.userName || data.username || 'user',
+              firstName: data.firstName || '',
+              lastName: data.lastName || '',
+              profileImage: data.profileImage || undefined,
+            };
+          });
+
+          const filtered = users
+            .filter((u) => u.userName.toLowerCase().includes(queryText.toLowerCase()) || u.firstName.toLowerCase().includes(queryText.toLowerCase()))
+            .slice(0, 8);
+
+          setUserSuggestions(filtered);
+        } catch {
+          // ignore
+        }
+        return;
+      }
+    }
+    setShowMentionDropdown(false);
+  };
+
+  const handleSelectMentionUser = (username: string) => {
+    const lastAtIndex = caption.lastIndexOf('@');
+    if (lastAtIndex !== -1) {
+      const newCaption = caption.slice(0, lastAtIndex) + `@${username} `;
+      setCaption(newCaption);
+    }
+    setShowMentionDropdown(false);
+  };
+
+  /* ── Video Picker with 9:16 Instagram Crop Aspect Ratio ── */
   const handlePickVideo = async () => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permission required', 'Please grant media library access to pick a video for your Lime.');
+        Alert.alert('Permission required', 'Please grant media library access to pick a video.');
         return;
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
         allowsEditing: true,
+        aspect: [9, 16], // Instagram Reels standard 9:16 portrait ratio
         quality: 0.8,
         videoMaxDuration: 60,
       });
@@ -92,11 +194,9 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
     setUploadProgress(10);
 
     try {
-      // 1. Fetch blob from picked URI
       const response = await fetch(selectedAsset.uri);
       const blob = await response.blob();
 
-      // 2. Upload video file to Firebase Storage
       const fileName = `limes/${user.uid}/${Date.now()}_reel.mp4`;
       const storageRef = ref(storage, fileName);
       const uploadTask = uploadBytesResumable(storageRef, blob);
@@ -115,7 +215,9 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
 
       const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
 
-      // 3. Create document in Firestore 'reels' collection
+      // Extract @mentions from caption
+      const mentions = (caption.match(/@([a-zA-Z0-9._]+)/g) || []).map((m) => m.replace('@', ''));
+
       await addDoc(collection(db, 'reels'), {
         userId: user.uid,
         media: {
@@ -123,10 +225,12 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
           typeUrl: downloadUrl,
           fileName: fileName,
           duration: selectedAsset.duration ? Math.round(selectedAsset.duration / 1000) : 15,
+          aspectRatio: '9:16',
         },
         visibility: visibility,
         category: category,
         caption: caption.trim(),
+        mentions: mentions,
         createdAt: serverTimestamp(),
         stats: { likes: 0, comments: 0, shares: 0 },
         likes: [],
@@ -134,8 +238,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
 
       setUploadProgress(100);
       Alert.alert('Success 🎉', 'Your Lime reel was posted successfully!');
-      
-      // Reset form state
+
       setSelectedAsset(null);
       setCaption('');
       setCategory('Lifestyle');
@@ -143,7 +246,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
       onClose();
     } catch (error: any) {
       console.error('[CreateLimeModal] Submit error:', error);
-      Alert.alert('Upload Failed', error?.message || 'Could not upload your Lime reel. Please try again.');
+      Alert.alert('Upload Failed', error?.message || 'Could not upload your Lime reel.');
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -153,10 +256,15 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
   return (
     <Modal visible={isOpen} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <View style={styles.modalCard}>
+        <Animated.View style={[styles.modalCard, { transform: [{ translateY }] }]}>
           
+          {/* Top Drag Handle Bar for Swipe-Down to Dismiss */}
+          <View style={styles.dragHandleWrapper} {...panResponder.panHandlers}>
+            <View style={styles.dragHandleBar} />
+          </View>
+
           {/* Header */}
-          <View style={styles.headerRow}>
+          <View style={styles.headerRow} {...panResponder.panHandlers}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Film size={22} color="#10b981" />
               <Text style={styles.modalTitle}>Create a Lime</Text>
@@ -187,7 +295,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
               })}
             </View>
 
-            {/* Category Chips */}
+            {/* Category Chips with Fixed Readable Contrast */}
             <Text style={styles.sectionLabel}>Category</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll} contentContainerStyle={{ gap: 8 }}>
               {CATEGORIES.map((cat) => {
@@ -206,34 +314,60 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
               })}
             </ScrollView>
 
-            {/* Caption Input Area */}
+            {/* Caption Input Area & Mention Autocomplete */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, marginBottom: 6 }}>
               <Text style={styles.sectionLabel}>Caption</Text>
               <Text style={styles.charCount}>{caption.length}/150</Text>
             </View>
-            <TextInput
-              value={caption}
-              onChangeText={setCaption}
-              placeholder="Add a caption to your lime… #Lime #Trinidad"
-              placeholderTextColor="#94a3b8"
-              maxLength={150}
-              multiline
-              numberOfLines={3}
-              style={styles.captionInput}
-            />
+            
+            <View style={{ position: 'relative' }}>
+              <TextInput
+                value={caption}
+                onChangeText={handleCaptionChange}
+                placeholder="Add a caption to your lime… Use @username to mention #Lime"
+                placeholderTextColor="#94a3b8"
+                maxLength={150}
+                multiline
+                numberOfLines={3}
+                style={styles.captionInput}
+              />
 
-            {/* Video Picker Drop Zone */}
-            <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Upload video</Text>
+              {/* Mention Suggestions Dropdown */}
+              {showMentionDropdown && userSuggestions.length > 0 && (
+                <View style={styles.mentionDropdown}>
+                  <Text style={styles.mentionDropdownHeader}>Mention user</Text>
+                  {userSuggestions.map((u) => (
+                    <TouchableOpacity
+                      key={u.id}
+                      onPress={() => handleSelectMentionUser(u.userName)}
+                      style={styles.mentionItem}
+                    >
+                      <Image
+                        source={{ uri: u.profileImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100' }}
+                        style={styles.mentionAvatar}
+                      />
+                      <View>
+                        <Text style={styles.mentionUsername}>@{u.userName}</Text>
+                        <Text style={styles.mentionName}>{u.firstName} {u.lastName}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* Video Picker Drop Zone (Instagram 9:16 Portrait Ratio) */}
+            <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Upload video (9:16 Portrait)</Text>
             {selectedAsset ? (
               <View style={styles.previewContainer}>
                 <View style={styles.previewBadge}>
                   <Film size={28} color="#10b981" />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.previewFileName} numberOfLines={1}>
-                      {selectedAsset.fileName || 'Selected Video'}
+                      {selectedAsset.fileName || 'Selected Video (9:16)'}
                     </Text>
                     <Text style={styles.previewMeta}>
-                      {selectedAsset.duration ? `${Math.round(selectedAsset.duration / 1000)}s` : 'Video Reel'} • Ready to upload
+                      {selectedAsset.duration ? `${Math.round(selectedAsset.duration / 1000)}s` : 'Video Reel'} • Instagram 9:16 ratio
                     </Text>
                   </View>
                   <TouchableOpacity onPress={handleRemoveVideo} style={styles.removeBtn}>
@@ -247,7 +381,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
                   <Upload size={24} color="#10b981" />
                 </View>
                 <Text style={styles.uploadTitle}>Tap to select a video</Text>
-                <Text style={styles.uploadSubtitle}>MP4, MOV up to 60 seconds</Text>
+                <Text style={styles.uploadSubtitle}>Instagram 9:16 Portrait • Up to 60s</Text>
               </TouchableOpacity>
             )}
 
@@ -288,7 +422,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
             </TouchableOpacity>
           </View>
 
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -297,29 +431,40 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'flex-end',
   },
   modalCard: {
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    maxHeight: '90%',
+    maxHeight: '92%',
     minHeight: '75%',
-    paddingTop: 20,
+    paddingTop: 10,
     paddingHorizontal: 20,
     paddingBottom: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 20,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 18,
+    elevation: 24,
+  },
+  dragHandleWrapper: {
+    width: '100%',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  dragHandleBar: {
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#cbd5e1',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingBottom: 16,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
   },
@@ -378,8 +523,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 20,
     backgroundColor: '#f8fafc',
     borderWidth: 1,
@@ -396,6 +541,7 @@ const styles = StyleSheet.create({
   },
   categoryTextActive: {
     color: '#ffffff',
+    fontWeight: '800',
   },
   charCount: {
     fontSize: 11,
@@ -413,6 +559,47 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     textAlignVertical: 'top',
     minHeight: 80,
+  },
+  mentionDropdown: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 16,
+    marginTop: 6,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  mentionDropdownHeader: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    paddingHorizontal: 8,
+    paddingBottom: 4,
+  },
+  mentionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 8,
+    borderRadius: 10,
+  },
+  mentionAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  mentionUsername: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#10b981',
+  },
+  mentionName: {
+    fontSize: 10,
+    color: '#64748b',
   },
   uploadDropZone: {
     borderWidth: 2,

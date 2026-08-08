@@ -11,9 +11,9 @@ import {
   ActivityIndicator,
   Image,
   Dimensions,
+  Animated,
+  PanResponder,
 } from 'react-native';
-// import { auth } from '@/lib/firebaseConfig'; // TODO: Setup Firebase later
-// import toast from 'react-hot-toast'; // TODO: Setup toast notifications later
 import { X, Send, Smile } from 'lucide-react-native';
 
 interface Comment {
@@ -67,60 +67,62 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: 4,
-    borderRadius: 20,
   },
   debugInfo: {
     padding: 8,
-    backgroundColor: '#fef3c7',
+    backgroundColor: '#f3f4f6',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
   },
   debugText: {
-    fontSize: 12,
-    color: '#374151',
+    fontSize: 10,
+    color: '#6b7280',
+    fontFamily: 'monospace',
   },
   commentsContainer: {
     flex: 1,
     padding: 16,
   },
   loadingContainer: {
-    justifyContent: 'center',
+    padding: 32,
     alignItems: 'center',
-    height: 128,
   },
   emptyContainer: {
-    flexDirection: 'column',
+    padding: 32,
     alignItems: 'center',
-    justifyContent: 'center',
-    height: 160,
   },
   emptyText: {
-    color: '#6b7280',
     fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 4,
   },
   emptySubtext: {
-    color: '#6b7280',
     fontSize: 14,
-    marginTop: 4,
+    color: '#6b7280',
   },
   commentItem: {
+    marginBottom: 16,
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 24,
   },
   commentAvatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
+    marginRight: 12,
   },
   commentContent: {
     flex: 1,
   },
   commentHeader: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   commentUsername: {
+    fontSize: 14,
     fontWeight: '600',
+    color: '#111827',
     marginRight: 8,
   },
   commentTime: {
@@ -128,8 +130,9 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   commentText: {
-    color: '#1f2937',
-    marginTop: 4,
+    fontSize: 14,
+    color: '#374151',
+    marginBottom: 8,
   },
   commentActions: {
     flexDirection: 'row',
@@ -222,8 +225,45 @@ export default function CommentModal({ reelId, isOpen, onClose }: CommentModalPr
     const [submitting, setSubmitting] = useState(false);
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [userProfileImage, setUserProfileImage] = useState<string>('');
-    const commentInputRef = useRef<TextInput>(null);
     const commentsContainerRef = useRef<ScrollView>(null);
+    const commentInputRef = useRef<TextInput>(null);
+
+    /* ── Swipe-Down PanResponder ── */
+    const translateY = useRef(new Animated.Value(0)).current;
+
+    const panResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+            onPanResponderMove: (_, gestureState) => {
+                if (gestureState.dy > 0) {
+                    translateY.setValue(gestureState.dy);
+                }
+            },
+            onPanResponderRelease: (_, gestureState) => {
+                if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+                    Animated.timing(translateY, {
+                        toValue: screenHeight,
+                        duration: 200,
+                        useNativeDriver: true,
+                    }).start(() => {
+                        translateY.setValue(0);
+                        onClose();
+                    });
+                } else {
+                    Animated.spring(translateY, {
+                        toValue: 0,
+                        useNativeDriver: true,
+                        bounciness: 4,
+                    }).start();
+                }
+            },
+        })
+    ).current;
+
+    useEffect(() => {
+        if (isOpen) translateY.setValue(0);
+    }, [isOpen, translateY]);
 
     // TODO: Monitor auth state changes when Firebase is setup
     // useEffect(() => {
@@ -423,9 +463,12 @@ export default function CommentModal({ reelId, isOpen, onClose }: CommentModalPr
             onRequestClose={onClose}
         >
             <View style={styles.overlay}>
-                <View style={styles.modal}>
+                <Animated.View style={[styles.modal, { transform: [{ translateY }] }]}>
+                    <View style={{ width: '100%', alignItems: 'center', paddingVertical: 8 }} {...panResponder.panHandlers}>
+                        <View style={{ width: 42, height: 5, borderRadius: 3, backgroundColor: '#cbd5e1' }} />
+                    </View>
                     {/* Header */}
-                    <View style={styles.header}>
+                    <View style={styles.header} {...panResponder.panHandlers}>
                         <Text style={styles.headerTitle}>Comments</Text>
                         <TouchableOpacity 
                             onPress={onClose}
@@ -592,7 +635,7 @@ export default function CommentModal({ reelId, isOpen, onClose }: CommentModalPr
                             </Text>
                         )}
                     </View>
-                </View>
+                </Animated.View>
             </View>
         </Modal>
     );

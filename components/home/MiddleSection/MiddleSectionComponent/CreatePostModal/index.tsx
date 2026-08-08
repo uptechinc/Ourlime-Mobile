@@ -3,9 +3,11 @@ import type { Dispatch, SetStateAction } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Image,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   ScrollView,
   Text,
@@ -261,6 +263,37 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
     });
   };
 
+  const translateY = useRef(new Animated.Value(0)).current;
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          translateY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+          Animated.timing(translateY, {
+            toValue: 600,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            translateY.setValue(0);
+            handleClose();
+          });
+        } else {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
   const getPollDurationHours = (): number => {
     if (pollDurationChoice !== 'custom') return pollDurationChoice;
     const value = Math.max(1, Number(customPollDuration) || 1);
@@ -311,7 +344,10 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
   return (
     <Modal visible animationType="slide" onRequestClose={handleClose}>
       <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }}>
+        <View style={{ width: '100%', alignItems: 'center', paddingVertical: 8 }} {...panResponder.panHandlers}>
+          <View style={{ width: 42, height: 5, borderRadius: 3, backgroundColor: '#d1d5db' }} />
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }} {...panResponder.panHandlers}>
           <TouchableOpacity onPress={handleClose} disabled={isSubmitting} style={{ padding: 8 }}><Icon name="x" size={24} color="#374151" /></TouchableOpacity>
           <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: '#111827' }}>{postType === 'poll' ? 'Create poll' : 'Create post'}</Text>
           <TouchableOpacity onPress={() => void handleSubmit()} disabled={isPostDisabled} style={{ minWidth: 68, alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 18, backgroundColor: isPostDisabled ? '#d1d5db' : '#10b981' }}>
