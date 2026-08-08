@@ -7,7 +7,10 @@ import "./globals.css";
 LogBox.ignoreLogs([
   'SafeAreaView has been deprecated',
   'SafeAreaView has been deprecated and will be removed in a future release',
-  '@firebase/firestore: WebChannelConnection RPC',
+  '@firebase/firestore',
+  'WebChannelConnection',
+  "RPC 'Listen' stream",
+  'transport errored',
   'Cannot connect to Expo CLI',
 ]);
 

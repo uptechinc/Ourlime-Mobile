@@ -5,8 +5,17 @@ import * as FirebaseAuth from 'firebase/auth';
 import type { Persistence } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { Platform, LogBox } from 'react-native';
 import { DiagnosticLogService } from './services/DiagnosticLogService';
+
+if (Platform.OS !== 'web') {
+  LogBox.ignoreLogs([
+    '@firebase/firestore',
+    'WebChannelConnection',
+    "RPC 'Listen' stream",
+    'transport errored',
+  ]);
+}
 
 type ReactNativeAuthModule = typeof FirebaseAuth & {
   getReactNativePersistence: (storage: typeof AsyncStorage) => Persistence;
