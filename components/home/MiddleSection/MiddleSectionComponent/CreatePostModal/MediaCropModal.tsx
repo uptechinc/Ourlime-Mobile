@@ -25,10 +25,22 @@ export default function MediaCropModal({ pending, queueLength, onCancel, onCompl
   const [zoom, setZoom] = useState(1);
   const [saving, setSaving] = useState(false);
 
+  const getAspectRatio = (p: CropPreset) => {
+    if (p === 'square') return 1;
+    if (p === 'portrait') return 4 / 5;
+    if (p === 'landscape') return 1.91;
+    const w = pending.asset.width || 1;
+    const h = pending.asset.height || 1;
+    return w / h;
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      onComplete(await mediaService.cropImage(pending, preset, zoom));
+      const cropped = await mediaService.cropImage(pending, preset, zoom);
+      onComplete(cropped);
+    } catch (error) {
+      console.error('[MediaCropModal] Error cropping image:', error);
     } finally {
       setSaving(false);
     }
@@ -47,19 +59,46 @@ export default function MediaCropModal({ pending, queueLength, onCancel, onCompl
           <View style={{ width: 40 }} />
         </View>
 
-        <View style={{ flex: 1, margin: 16, overflow: 'hidden', borderRadius: 18, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}>
-          <Image source={{ uri: pending.asset.uri }} resizeMode="contain" style={{ width: '100%', height: '100%', transform: [{ scale: zoom }] }} />
-          <View pointerEvents="none" style={{ position: 'absolute', inset: 0, borderWidth: 2, borderColor: '#ffffffcc' }} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', margin: 16 }}>
+          <View style={{
+            width: '100%',
+            aspectRatio: getAspectRatio(preset),
+            maxHeight: '85%',
+            overflow: 'hidden',
+            borderRadius: 18,
+            backgroundColor: '#000000',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 2,
+            borderColor: '#10b981',
+          }}>
+            <Image
+              source={{ uri: pending.asset.uri }}
+              resizeMode={preset === 'fit' ? 'contain' : 'cover'}
+              style={{ width: '100%', height: '100%', transform: [{ scale: zoom }] }}
+            />
+          </View>
         </View>
 
         <View style={{ paddingHorizontal: 18, paddingBottom: 20 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 16 }}>
             {presets.map((item) => (
-              <TouchableOpacity key={item.value} onPress={() => setPreset(item.value)} style={{ marginHorizontal: 4, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 18, backgroundColor: preset === item.value ? '#10b981' : '#374151' }}>
+              <TouchableOpacity
+                key={item.value}
+                onPress={() => setPreset(item.value)}
+                style={{
+                  marginHorizontal: 4,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  borderRadius: 18,
+                  backgroundColor: preset === item.value ? '#10b981' : '#374151',
+                }}
+              >
                 <Text style={{ color: '#ffffff', fontWeight: '700' }}>{item.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
+
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
             <TouchableOpacity onPress={() => setZoom((value) => Math.max(1, Number((value - 0.25).toFixed(2))))} style={{ padding: 12 }}>
               <Icon name="minus-circle" size={28} color="#ffffff" />
@@ -69,6 +108,7 @@ export default function MediaCropModal({ pending, queueLength, onCancel, onCompl
               <Icon name="plus-circle" size={28} color="#ffffff" />
             </TouchableOpacity>
           </View>
+
           <TouchableOpacity onPress={() => void handleSave()} disabled={saving} style={{ height: 50, borderRadius: 15, backgroundColor: '#10b981', alignItems: 'center', justifyContent: 'center' }}>
             {saving ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: '#ffffff', fontWeight: '800' }}>{queueLength > 1 ? 'Use photo and crop next' : 'Use photo'}</Text>}
           </TouchableOpacity>

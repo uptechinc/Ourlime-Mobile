@@ -4,6 +4,7 @@ import { ActivityIndicator, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MiddleSection from "@/components/home/MiddleSection";
 import SlideOutMenu from "@/components/ui/SlideOutMenu";
+import GameWebViewModal from "@/components/home/GameWebViewModal";
 import { MenuItem } from "../../lib/types/componentProps";
 import AppHeader from "@/components/ui/AppHeader";
 import CreatePostModal from "@/components/home/MiddleSection/MiddleSectionComponent/CreatePostModal";
@@ -73,6 +74,8 @@ export default function FeedsScreen() {
     setIsMenuVisible(true);
   };
 
+  const [activeGameModal, setActiveGameModal] = useState<{ id: string; name: string } | null>(null);
+
   const handleCloseMenu = () => {
     setIsMenuVisible(false);
   };
@@ -121,34 +124,76 @@ export default function FeedsScreen() {
       onPress: () => router.push("/chat/page"),
     },
     {
+      id: "12",
+      title: "E-Projects",
+      icon: "folder",
+      onPress: () => router.push("/projectManagement/page" as any),
+    },
+    {
+      id: "17",
+      title: "Games",
+      icon: "game-controller",
+      onPress: () => setActiveGameModal({ id: 'wordle', name: 'Games' }),
+    },
+    {
       id: "divider1",
       title: "",
       icon: "",
       isDivider: true,
     },
     {
+      id: "10",
+      title: "Profile",
+      icon: "person",
+      onPress: () => router.push("/(tabs)/Profile" as any),
+    },
+    {
       id: "8",
       title: "Settings",
       icon: "settings",
-      onPress: () => router.push("/(tabs)/Profile"),
+      onPress: () => router.push("/(tabs)/Profile" as any),
+    },
+    {
+      id: "13",
+      title: "Wallet",
+      icon: "wallet",
+      onPress: () => router.push("/eWallet/page" as any),
     },
     {
       id: "9",
       title: "Saved Items",
       icon: "bookmark",
-      onPress: () => router.push("/(tabs)/Profile"),
-    },
-    {
-      id: "10",
-      title: "Profile",
-      icon: "person",
-      onPress: () => router.push("/(tabs)/Profile"),
+      onPress: () => router.push("/(tabs)/Profile" as any),
     },
     {
       id: "divider2",
       title: "",
       icon: "",
       isDivider: true,
+    },
+    {
+      id: "14",
+      title: "Create Ad",
+      icon: "megaphone",
+      onPress: () => router.push("/ads/page" as any),
+    },
+    {
+      id: "15",
+      title: "Manage Ads",
+      icon: "bar-chart",
+      onPress: () => router.push("/ads/page" as any),
+    },
+    {
+      id: "divider3",
+      title: "",
+      icon: "",
+      isDivider: true,
+    },
+    {
+      id: "16",
+      title: "Help & Support",
+      icon: "help-circle",
+      onPress: () => router.push("/help/page" as any),
     },
     {
       id: "11",
@@ -187,6 +232,7 @@ export default function FeedsScreen() {
         logoType="both"
         onMenuPress={handleMenuPress}
         onNotificationPress={() => setIsNotificationsModalOpen(true)}
+        profilePictureUrl={userProfile.profilePicture}
       />
 
       <MiddleSection
@@ -212,7 +258,25 @@ export default function FeedsScreen() {
         isVisible={isMenuVisible}
         onClose={handleCloseMenu}
         menuItems={menuItems}
+        userProfile={{
+          name: `${userProfile.firstName} ${userProfile.lastName}`.trim(),
+          email: userProfile.email,
+          avatar: userProfile.profilePicture ?? undefined,
+          firstName: userProfile.firstName,
+          lastName: userProfile.lastName,
+          userName: userProfile.userName,
+          profilePicture: userProfile.profilePicture,
+        }}
       />
+
+      {activeGameModal && (
+        <GameWebViewModal
+          gameId={activeGameModal.id}
+          gameName={activeGameModal.name}
+          isVisible={true}
+          onClose={() => setActiveGameModal(null)}
+        />
+      )}
     </View>
   );
 }

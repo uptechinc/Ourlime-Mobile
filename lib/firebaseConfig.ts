@@ -1,5 +1,6 @@
+import 'expo-blob';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore } from 'firebase/firestore';
 import * as FirebaseAuth from 'firebase/auth';
 import type { Persistence } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
@@ -28,7 +29,10 @@ const firebaseConfig = {
 // Initialize Firebase App
 const isNewApp = getApps().length === 0;
 const app = isNewApp ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
+// Configure Firestore with long polling to stabilize WebChannel stream transport on React Native
+const db = isNewApp
+  ? initializeFirestore(app, { experimentalForceLongPolling: true })
+  : getFirestore(app);
 const auth = Platform.OS === 'web' || !isNewApp
   ? FirebaseAuth.getAuth(app)
   : FirebaseAuth.initializeAuth(app, {

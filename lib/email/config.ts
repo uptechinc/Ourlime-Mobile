@@ -49,5 +49,5 @@ export const getEmailConfig = (): EmailConfig => {
  * Always returns https://ourlime.vercel.app/
  */
 export const getDomain = (): string => {
-  return 'https://ourlime.vercel.app/';
+  return process.env.EXPO_PUBLIC_WEB_API_URL || 'https://ourlime.com/';
 }; 

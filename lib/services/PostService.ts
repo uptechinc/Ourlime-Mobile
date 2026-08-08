@@ -86,6 +86,8 @@ export type PostItem = {
   repostedFrom?: RepostedFrom;
   repostedByViewer?: boolean;
   relationshipStatus?: PostRelationshipStatus;
+  communityId?: string;
+  communityName?: string;
   eventId?: string;
   startDate?: string;
   endDate?: string;
@@ -702,6 +704,8 @@ export class PostService {
         isFollowing: relationshipRecord.isFollowing === true,
         friendshipStatus: this.readFriendshipStatus(relationshipRecord.friendshipStatus),
       } : undefined,
+      communityId: readString(value.communityId) || undefined,
+      communityName: readString(value.communityName) || readString(value.communityTitle) || undefined,
       eventId: readString(value.eventId) || undefined,
       startDate: readString(value.startDate) || undefined,
       endDate: readString(value.endDate) || undefined,
@@ -760,6 +764,14 @@ export class PostService {
       pollEndTime: record.pollEndTime ? readDate(record.pollEndTime) : undefined,
       pollOptions,
       pollVotes,
+      communityId: readString(record.communityId)
+        || readString(record.community_id)
+        || (isRecord(record.community) ? readString(record.community.id) : undefined),
+      communityName: readString(record.communityName)
+        || readString(record.community_name)
+        || readString(record.communityTitle)
+        || readString(record.community_title)
+        || (isRecord(record.community) ? readString(record.community.name, readString(record.community.title)) : undefined),
       location: locationName ? {
         name: locationName,
         address: locationRecord ? readString(locationRecord.address) || undefined : undefined,

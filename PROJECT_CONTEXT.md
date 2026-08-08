@@ -31,6 +31,52 @@ Below is the complete breakdown of every page/folder in `Ourlime-Web/app` and it
 
 ---
 
+## 📰 Feeds Rules & Design Conventions
+
+These rules govern the behaviour and layout of the main Feed screen (`app/(tabs)/index.tsx` → `components/home/MiddleSection/index.tsx`).
+
+### Feed Source Toggle
+The feed has a **3-segment pill toggle** above the content-type filters:
+
+| Segment | Behaviour |
+| :--- | :--- |
+| **Home** | Shows the default mixed feed — most recent posts from all communities the user is a member of, interleaved randomly but sorted newest-first overall |
+| **Friends** | Scoped to posts created by the user's confirmed friends only |
+| **Communities** | Scoped to posts from community groups the user belongs to |
+
+> ⚠️ **Backend TODO**: `PostService.fetchFeedPage` currently maps all three sources to the `all` API filter. When the Firestore query layer gains `source: 'friends' | 'communities'` support, update `MiddleSection/index.tsx` where `activeFeedSource` is passed to `fetchFeedPage`.
+
+### Content-Type Filters
+Below the feed source toggle is the existing horizontal chip row: **All · Photos · Videos · Sound · Polls · Events**.
+
+### Post List Widget Injection Points
+Widgets are injected into the post stream at the following positions (0-indexed post index):
+
+| After post index | Component | Purpose |
+| :--- | :--- | :--- |
+| 1 | `PromotedCarousel` | Promoted communities / sponsored jobs |
+| 2 | `ActivityCard` | "Activity This Week" — likes/comments/posts stats |
+| 4 | `SuggestedUsersSection` | Suggested users to follow |
+| 6 | `GamesCard` | Playable mini-games from `/games` |
+
+### Feed Post Ordering
+Posts are expected to arrive from Firestore in **most-recent-first** order (`orderBy('createdAt', 'desc')`). The MiddleSection prepends newly-created posts to the top of the list on `createdPost` change.
+
+### AppHeader Profile Avatar
+`AppHeader` accepts an optional `profilePictureUrl` prop. When provided it renders a 34×34 circular avatar (green border `#10b981`) in the header right zone. Defaults to a green tinted person icon placeholder.
+
+### Side Menu (SlideOutMenu) Structure
+The hamburger menu (`≡`) opens a right-to-left slide-out drawer structured as:
+
+1. **Profile Header** — gradient background, avatar, full name, `@username`
+2. **My Account** section — Profile · Settings · Saved Items
+3. **Explore** section — Communities · Events · Jobs · Market · Blogs · E-Learning · Chat
+4. **Log Out** — single red button at the bottom footer (no duplicate in the list)
+
+
+
+---
+
 ## 🏗️ Architecture & Core Discipline
 
 ### 1. Service-Oriented OOP Architecture

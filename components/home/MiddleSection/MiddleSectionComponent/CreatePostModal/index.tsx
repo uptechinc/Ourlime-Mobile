@@ -16,6 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import Icon from 'react-native-vector-icons/Feather';
+import { collection, query, where, limit, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebaseConfig';
 import type { UserProfile } from '@/lib/services/AuthService';
 import {
   PostService,
@@ -82,25 +84,120 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
   const [uploadProgress, setUploadProgress] = useState(0);
   const [friends, setFriends] = useState<RelationshipUser[]>([]);
 
+  const [searchedUsers, setSearchedUsers] = useState<RelationshipUser[]>([]);
+  const SUGGESTED_HASHTAGS = ['Ourlime', 'Trinidad', 'Tobago', 'Caribbean', 'Lime', 'Events', 'Lifestyle', 'Trending', 'Music', 'Food'];
+
   useEffect(() => {
     void relationshipService.getFriends(userProfile.uid).then(setFriends).catch((error: unknown) => {
       console.warn('[CreatePostModal.friends]', error instanceof Error ? error.message : 'Could not load friends');
     });
   }, [userProfile.uid]);
 
+  const [taggedMentions, setTaggedMentions] = useState<string[]>([]);
+  const [mentionInput, setMentionInput] = useState('');
+
   const mentions = useMemo(
-    () => Array.from(new Set(`${caption} ${description}`.match(/@[\w.-]+/g)?.map((mention) => mention.slice(1)) ?? [])),
-    [caption, description]
+    () => Array.from(new Set([
+      ...taggedMentions,
+      ...(`${caption} ${description}`.match(/@[\w.-]+/g)?.map((m) => m.slice(1)) ?? [])
+    ])),
+    [caption, description, taggedMentions]
   );
-  const validPollOptions = pollOptions.filter((option) => option.text.trim());
-  const mentionQuery = useMemo(() => {
+
+  const activeMentionQuery = useMemo(() => {
+    const cleanMentionInput = mentionInput.trim().replace(/^@/, '').toLowerCase();
+    if (cleanMentionInput.length > 0) return cleanMentionInput;
+
+    const beforeCaptionCursor = caption.slice(0, captionSelection.start);
+    const captionMatch = beforeCaptionCursor.match(/(?:^|\s)@?([\w.-]{1,30})$/);
+    if (captionMatch && beforeCaptionCursor.includes('@')) {
+      return captionMatch[1].toLowerCase();
+    }
+
+    const descMatch = description.match(/(?:^|\s)@?([\w.-]{1,30})$/);
+    if (descMatch && description.includes('@')) {
+      return descMatch[1].toLowerCase();
+    }
+
+    return null;
+  }, [caption, captionSelection.start, description, mentionInput]);
+
+  // Query Firestore users collection dynamically when typing query
+  useEffect(() => {
+    if (!activeMentionQuery || activeMentionQuery.length < 1) {
+      setSearchedUsers([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const usersRef = collection(db, 'users');
+        const q = query(
+          usersRef,
+          where('userName', '>=', activeMentionQuery),
+          where('userName', '<=', activeMentionQuery + '\uf8ff'),
+          limit(10)
+        );
+        const snap = await getDocs(q);
+        const found: RelationshipUser[] = snap.docs.map((docSnap) => {
+          const d = docSnap.data();
+          return {
+            id: docSnap.id,
+            userName: d.userName || 'user',
+            firstName: d.firstName || '',
+            lastName: d.lastName || '',
+            profileImage: d.profileImage || undefined,
+            isFollowing: false,
+            friendshipStatus: 'none',
+          };
+        });
+
+        const extraLocal = friends.filter((f) =>
+          `${f.userName} ${f.firstName} ${f.lastName}`.toLowerCase().includes(activeMentionQuery)
+        );
+
+        const merged = [...found];
+        for (const item of extraLocal) {
+          if (!merged.some((m) => m.id === item.id)) {
+            merged.push(item);
+          }
+        }
+        setSearchedUsers(merged.slice(0, 10));
+      } catch (_) {}
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [activeMentionQuery, friends]);
+
+  const mentionSuggestions = useMemo(() => activeMentionQuery === null ? [] : searchedUsers, [activeMentionQuery, searchedUsers]);
+
+  const handleAddMentionTag = (usernameToAdd: string) => {
+    const clean = usernameToAdd.trim().replace(/^@/, '').toLowerCase();
+    if (clean && !taggedMentions.includes(clean)) {
+      setTaggedMentions((prev) => [...prev, clean]);
+    }
+    setMentionInput('');
+  };
+
+  const handleInsertMention = (targetUser: RelationshipUser) => {
+    handleAddMentionTag(targetUser.userName);
     const beforeCursor = caption.slice(0, captionSelection.start);
-    return beforeCursor.match(/(?:^|\s)@([\w.-]*)$/)?.[1]?.toLowerCase() ?? null;
-  }, [caption, captionSelection.start]);
-  const mentionSuggestions = useMemo(() => mentionQuery === null ? [] : friends.filter((friend) => `${friend.userName} ${friend.firstName} ${friend.lastName}`.toLowerCase().includes(mentionQuery)).slice(0, 5), [friends, mentionQuery]);
+    const match = beforeCursor.match(/(?:^|\s)@?([\w.-]*)$/);
+    if (match) {
+      const matchText = match[0];
+      const start = captionSelection.start - matchText.length;
+      const prefix = matchText.startsWith(' ') ? ' ' : '';
+      const inserted = `${prefix}@${targetUser.userName} `;
+      const updated = `${caption.slice(0, start)}${inserted}${caption.slice(captionSelection.end)}`;
+      const cursor = start + inserted.length;
+      setCaption(updated);
+      setCaptionSelection({ start: cursor, end: cursor });
+    }
+  };
+
+  const validPollOptions = pollOptions.filter((option) => option.text.trim());
+  const hasNonMentionContent = caption.replace(/@[\w.-]+/g, '').trim().length > 0;
   const isPostDisabled = isSubmitting || cropQueue.length > 0 || (postType === 'poll'
-    ? validPollOptions.length < 2 || (!caption.trim() && !description.trim())
-    : !caption.trim() && !description.trim() && media.length === 0);
+    ? validPollOptions.length < 2 || !hasNonMentionContent
+    : !hasNonMentionContent && media.length === 0);
 
   const handleClose = () => {
     if (!isSubmitting) setTogglePostForm(false);
@@ -119,7 +216,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: postType === 'poll' ? ImagePicker.MediaTypeOptions.Images : ImagePicker.MediaTypeOptions.All,
+      mediaTypes: postType === 'poll' ? ['images'] : ['images', 'videos'],
       allowsMultipleSelection: true,
       quality: 1,
       selectionLimit: availableSlots,
@@ -152,18 +249,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
     requestAnimationFrame(() => captionInputRef.current?.focus());
   };
 
-  const handleInsertMention = (friend: RelationshipUser) => {
-    const beforeCursor = caption.slice(0, captionSelection.start);
-    const match = beforeCursor.match(/@([\w.-]*)$/);
-    if (!match) return;
-    const start = captionSelection.start - match[0].length;
-    const inserted = `@${friend.userName} `;
-    const updated = `${caption.slice(0, start)}${inserted}${caption.slice(captionSelection.end)}`;
-    const cursor = start + inserted.length;
-    setCaption(updated);
-    setCaptionSelection({ start: cursor, end: cursor });
-    requestAnimationFrame(() => captionInputRef.current?.focus());
-  };
+
 
   const handleMoveMedia = (index: number, direction: -1 | 1) => {
     const target = index + direction;
@@ -268,8 +354,9 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
             </View>
 
             <View>
-              <TextInput ref={captionInputRef} value={caption} onChangeText={setCaption} selection={captionSelection} onSelectionChange={(event) => setCaptionSelection(event.nativeEvent.selection)} placeholder="Tell us what's on your mind" placeholderTextColor="#9ca3af" multiline maxLength={500} style={{ minHeight: 112, padding: 16, paddingRight: 48, borderRadius: 16, backgroundColor: '#f9fafb', color: '#111827', fontSize: 17, textAlignVertical: 'top' }} />
-              <TouchableOpacity onPress={() => setShowEmojiPicker((value) => !value)} style={{ position: 'absolute', right: 10, bottom: 10, padding: 8 }}><Icon name="smile" size={22} color="#10b981" /></TouchableOpacity>
+              <TextInput ref={captionInputRef} value={caption} onChangeText={setCaption} selection={captionSelection} onSelectionChange={(event) => setCaptionSelection(event.nativeEvent.selection)} placeholder="Tell us what's on your mind (use @ to mention friends)" placeholderTextColor="#9ca3af" multiline maxLength={2200} style={{ minHeight: 112, padding: 16, paddingRight: 48, borderRadius: 16, backgroundColor: '#f9fafb', color: '#111827', fontSize: 17, textAlignVertical: 'top' }} />
+              <TouchableOpacity onPress={() => setShowEmojiPicker((value) => !value)} style={{ position: 'absolute', right: 10, bottom: 28, padding: 8 }}><Icon name="smile" size={22} color="#10b981" /></TouchableOpacity>
+              <Text style={{ textAlign: 'right', fontSize: 11, color: caption.length > 2100 ? '#ef4444' : '#9ca3af', marginTop: 4, marginRight: 6 }}>{caption.length}/2200</Text>
             </View>
             {mentionSuggestions.length > 0 ? (
               <View style={{ marginTop: 7, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 13, overflow: 'hidden' }}>
@@ -281,7 +368,40 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
                 {emojis.map((emoji) => <TouchableOpacity key={emoji} onPress={() => handleInsertEmoji(emoji)} style={{ width: '20%', paddingVertical: 8, alignItems: 'center' }}><Text style={{ fontSize: 24 }}>{emoji}</Text></TouchableOpacity>)}
               </View>
             ) : null}
-            <TextInput value={description} onChangeText={setDescription} placeholder="Add more details or mention friends with @username" placeholderTextColor="#9ca3af" multiline maxLength={2000} style={{ minHeight: 78, marginTop: 12, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#e5e7eb', color: '#374151', textAlignVertical: 'top' }} />
+
+
+            <View style={{ marginTop: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 14, paddingHorizontal: 13, backgroundColor: '#ffffff' }}>
+                <Icon name="at-sign" size={18} color="#10b981" />
+                <TextInput
+                  value={mentionInput}
+                  onChangeText={setMentionInput}
+                  onSubmitEditing={() => handleAddMentionTag(mentionInput)}
+                  returnKeyType="done"
+                  placeholder="Mention friends (e.g. rishi or @rishi)"
+                  placeholderTextColor="#9ca3af"
+                  style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 12, color: '#111827' }}
+                />
+                <TouchableOpacity onPress={() => handleAddMentionTag(mentionInput)} disabled={!mentionInput.trim()}>
+                  <Icon name="plus-circle" size={21} color={mentionInput.trim() ? '#10b981' : '#9ca3af'} />
+                </TouchableOpacity>
+              </View>
+
+              {taggedMentions.length > 0 ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
+                  {taggedMentions.map((tag) => (
+                    <TouchableOpacity
+                      key={tag}
+                      onPress={() => setTaggedMentions((curr) => curr.filter((t) => t !== tag))}
+                      style={{ flexDirection: 'row', alignItems: 'center', marginRight: 7, marginBottom: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 15, backgroundColor: '#d1fae5' }}
+                    >
+                      <Text style={{ color: '#047857', fontWeight: '700' }}>@{tag}</Text>
+                      <Icon name="x" size={13} color="#047857" style={{ marginLeft: 4 }} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
+            </View>
 
             {postType === 'poll' ? (
               <View style={{ marginTop: 18 }}>
@@ -331,6 +451,39 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
             )}
 
             <View style={{ marginTop: 18 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#6b7280', marginBottom: 6 }}>Suggested Hashtags</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                {SUGGESTED_HASHTAGS.map((tag) => {
+                  const tagLower = tag.toLowerCase();
+                  const isSelected = hashtags.includes(tagLower);
+                  return (
+                    <TouchableOpacity
+                      key={tag}
+                      onPress={() => {
+                        if (isSelected) {
+                          setHashtags((curr) => curr.filter((t) => t !== tagLower));
+                        } else {
+                          setHashtags((curr) => [...curr, tagLower]);
+                        }
+                      }}
+                      style={{
+                        marginRight: 6,
+                        paddingHorizontal: 11,
+                        paddingVertical: 6,
+                        borderRadius: 14,
+                        backgroundColor: isSelected ? '#10b981' : '#f1f5f9',
+                        borderWidth: 1,
+                        borderColor: isSelected ? '#10b981' : '#e2e8f0',
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: isSelected ? '#ffffff' : '#334155' }}>
+                        #{tag}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
               <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 14, paddingHorizontal: 13 }}>
                 <Icon name="hash" size={19} color="#10b981" />
                 <TextInput value={hashtagInput} onChangeText={setHashtagInput} onSubmitEditing={handleAddHashtag} returnKeyType="done" placeholder="Add a hashtag" style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 13 }} />

@@ -68,9 +68,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               return bTime - aTime;
             });
 
-          const unreadFromDoc = typeof data.unreadCount === 'number' ? data.unreadCount : null;
           const calculatedUnread = parsedList.filter((n) => !n.isRead).length;
-          const finalUnread = unreadFromDoc !== null ? Math.max(unreadFromDoc, calculatedUnread) : calculatedUnread;
+          const finalUnread = calculatedUnread;
 
           setNotifications(parsedList);
           setUnreadCount(finalUnread);

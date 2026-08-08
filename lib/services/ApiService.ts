@@ -30,7 +30,7 @@ export class ApiServiceError extends Error {
   }
 }
 
-const DEFAULT_API_BASE_URL = 'https://ourlime.vercel.app';
+const DEFAULT_API_BASE_URL = process.env.EXPO_PUBLIC_WEB_API_URL || 'https://ourlime.com';
 
 export class ApiService {
   private static instance: ApiService;
@@ -38,7 +38,7 @@ export class ApiService {
   private readonly baseUrl: string;
 
   private constructor() {
-    const configuredUrl = process.env.EXPO_PUBLIC_OURLIME_API_BASE_URL?.trim();
+    const configuredUrl = process.env.EXPO_PUBLIC_OURLIME_API_BASE_URL?.trim() || process.env.EXPO_PUBLIC_WEB_API_URL?.trim();
     this.baseUrl = (configuredUrl || DEFAULT_API_BASE_URL).replace(/\/$/, '');
     this.logger.info('ApiService', 'initialize', { baseUrl: this.baseUrl });
   }

@@ -19,6 +19,7 @@ type AppHeaderProps = {
     onNotificationPress?: () => void;
     showLogo?: boolean;
     logoType?: 'logo' | 'logo-long' | 'both';
+    profilePictureUrl?: string | null;
 };
 
 export default function AppHeader({ 
@@ -30,7 +31,8 @@ export default function AppHeader({
     onRightIconPress,
     onNotificationPress,
     showLogo = true,
-    logoType = 'both'
+    logoType = 'both',
+    profilePictureUrl,
 }: AppHeaderProps) {
     const { unreadCount } = useNotifications();
     const renderLogo = () => {
@@ -137,12 +139,38 @@ export default function AppHeader({
                         )}
                     </View>
 
-                    {/* Right side - Notifications & Menu */}
+                    {/* Right side - Profile avatar, Notifications & Menu */}
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
                         gap: 8,
                     }}>
+                        {/* Profile avatar */}
+                        {profilePictureUrl ? (
+                            <Image
+                                source={{ uri: profilePictureUrl }}
+                                style={{
+                                    width: 34,
+                                    height: 34,
+                                    borderRadius: 17,
+                                    borderWidth: 2,
+                                    borderColor: '#10b981',
+                                }}
+                            />
+                        ) : (
+                            <View style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 17,
+                                backgroundColor: '#d1fae5',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                borderWidth: 2,
+                                borderColor: '#10b981',
+                            }}>
+                                <Ionicons name="person" size={18} color="#10b981" />
+                            </View>
+                        )}
                         {onNotificationPress && (
                             <TouchableOpacity 
                                 onPress={onNotificationPress} 

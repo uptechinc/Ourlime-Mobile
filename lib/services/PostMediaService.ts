@@ -1,4 +1,3 @@
-import * as FileSystem from 'expo-file-system';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
@@ -180,6 +179,21 @@ export class PostMediaService {
     }));
   }
 
+  private uriToBlob(uri: string): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.onload = function () {
+        resolve(xhr.response as Blob);
+      };
+      xhr.onerror = function () {
+        reject(new TypeError(`Failed to read local media file: ${uri}`));
+      };
+      xhr.responseType = 'blob';
+      xhr.open('GET', uri, true);
+      xhr.send(null);
+    });
+  }
+
   private async uploadMedia(options: {
     postId: string;
     userId: string;
@@ -189,9 +203,7 @@ export class PostMediaService {
     onItemProgress: (bytes: number) => void;
   }): Promise<{ media: PostMedia; storagePath: string }> {
     if (options.signal?.aborted) throw new Error('Media upload cancelled.');
-    const response = await fetch(options.item.uri, { signal: options.signal });
-    if (!response.ok) throw new Error(`Unable to read selected media: ${options.item.fileName}`);
-    const blob = await response.blob();
+    const blob = await this.uriToBlob(options.item.uri);
     const safeFileName = options.item.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     const mediaReference = ref(storage, `posts/${options.userId}/regular/${options.postId}-${options.index}-${safeFileName}`);
     const task = uploadBytesResumable(mediaReference, blob, options.item.mimeType ? { contentType: options.item.mimeType } : undefined);
@@ -219,7 +231,12 @@ export class PostMediaService {
   }
 
   private async getFileSize(uri: string): Promise<number> {
-    const info = await FileSystem.getInfoAsync(uri, { size: true });
-    return info.exists && typeof info.size === 'number' ? info.size : 0;
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      return blob.size || 0;
+    } catch {
+      return 0;
+    }
   }
 }

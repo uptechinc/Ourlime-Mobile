@@ -17,209 +17,284 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import type { SlideOutMenuProps } from '../../lib/types/componentProps';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const { width: screenWidth } = Dimensions.get('window');
 const MENU_WIDTH = screenWidth * 0.88;
-const HEADER_HEIGHT = 120;
 
-export default function SlideOutMenu({ 
-    isVisible, 
-    onClose, 
-    menuItems, 
-    userProfile 
+type SectionItem = {
+    id: string;
+    title: string;
+    subtitle?: string;
+    icon: string;
+    iconColor: string;
+    iconBgColor: string;
+    onPress?: () => void;
+    badge?: string | number;
+};
+
+export default function SlideOutMenu({
+    isVisible,
+    onClose,
+    menuItems,
+    userProfile,
 }: SlideOutMenuProps) {
     const slideAnim = React.useRef(new Animated.Value(MENU_WIDTH)).current;
     const overlayOpacity = React.useRef(new Animated.Value(0)).current;
     const scaleAnim = React.useRef(new Animated.Value(0.95)).current;
-    const headerOpacity = React.useRef(new Animated.Value(0)).current;
+    const contentOpacity = React.useRef(new Animated.Value(0)).current;
 
     React.useEffect(() => {
         if (isVisible) {
             Animated.parallel([
-                //Spring animation for the slide animation
                 Animated.spring(slideAnim, {
-                    toValue: 0, //Slide from right edge to final position 
-                    tension: 85, //How "bouncy" the spring is
-                    friction: 15, //How quickly it settles
-                    useNativeDriver: true, //Use native thread for better performance
-                }),
-                //Fade in the dark overlay
-                Animated.timing(overlayOpacity, {
-                    toValue: 1, //Fade from transparent to opaque
-                    duration: 300, 
-                    useNativeDriver: true, 
-                }),
-                //Scale effect for the menu container
-                Animated.spring(scaleAnim, {
-                    toValue: 1, //Scale from 95% to 100%
+                    toValue: 0,
                     tension: 85,
                     friction: 15,
                     useNativeDriver: true,
                 }),
-                //Delayed header content fade-in
-                Animated.timing(headerOpacity, {
-                    toValue: 1, //Fade in header content
+                Animated.timing(overlayOpacity, {
+                    toValue: 1,
                     duration: 300,
-                    delay: 50,
+                    useNativeDriver: true,
+                }),
+                Animated.spring(scaleAnim, {
+                    toValue: 1,
+                    tension: 85,
+                    friction: 15,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(contentOpacity, {
+                    toValue: 1,
+                    duration: 350,
+                    delay: 80,
                     useNativeDriver: true,
                 }),
             ]).start();
         } else {
             Animated.parallel([
-                //Slide menu back off-screen 
                 Animated.timing(slideAnim, {
-                    toValue: MENU_WIDTH, //Slide back to right edge
+                    toValue: MENU_WIDTH,
                     duration: 250,
                     useNativeDriver: true,
                 }),
-                //Fade out overlay
                 Animated.timing(overlayOpacity, {
-                    toValue: 0, //Fade to transparent
+                    toValue: 0,
                     duration: 250,
                     useNativeDriver: true,
                 }),
-                //Scale down menu container
                 Animated.timing(scaleAnim, {
-                    toValue: 0.95, //Scale down to 95%
+                    toValue: 0.95,
                     duration: 250,
                     useNativeDriver: true,
                 }),
-                //Fade out header content
-                Animated.timing(headerOpacity, {
-                    toValue: 0, //Fade out header
+                Animated.timing(contentOpacity, {
+                    toValue: 0,
                     duration: 200,
                     useNativeDriver: true,
                 }),
             ]).start();
         }
-    }, [isVisible, slideAnim, overlayOpacity, scaleAnim, headerOpacity]);
+    }, [isVisible, slideAnim, overlayOpacity, scaleAnim, contentOpacity]);
 
-    const renderMenuItem = (item: any, index: number) => {
-        if (item.isDivider) {
-            return (
-                <View 
-                    key={item.id} 
-                    style={{
-                        height: 1,
-                        backgroundColor: 'rgba(0,0,0,0.08)',
-                        marginVertical: 12,
-                        marginHorizontal: 24,
-                    }} 
-                />
-            );
-        }
+    // Separate account items from feature items from logout from the menuItems prop
+    const accountIds = ['8', '9', '10', '13'];      // Settings, Saved Items, Profile, Wallet
+    const logoutId = '11';
+    const featureIds = ['1', '2', '3', '4', '5', '6', '7', '12', '17'];
+    const adsIds = ['14', '15'];
+    const supportIds = ['16'];
 
-        return (
-            <Animated.View
-                key={item.id}
-                style={{
-                    opacity: headerOpacity,
-                    transform: [{
-                        translateY: headerOpacity.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [20, 0],
-                        })
-                    }]
-                }}
-            >
-                <TouchableOpacity
-                    style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingHorizontal: 24,
-                        paddingVertical: 16,
-                        marginHorizontal: 16,
-                        marginVertical: 2,
-                        borderRadius: 16,
-                        backgroundColor: '#fff',
-                        shadowColor: '#000',
-                        shadowOffset: {
-                            width: 0,
-                            height: 1,
-                        },
-                        shadowOpacity: 0.05,
-                        shadowRadius: 3,
-                        elevation: 2,
-                    }}
-                    onPress={() => {
-                        item.onPress?.();
-                        onClose();
-                    }}
-                    activeOpacity={0.7}
-                >
-                    <View style={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: 24,
-                        backgroundColor: item.iconBgColor || '#f8f9ff',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        marginRight: 16,
-                        shadowColor: item.iconColor || '#667eea',
-                        shadowOffset: {
-                            width: 0,
-                            height: 2,
-                        },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 4,
-                        elevation: 3,
-                    }}>
-                        <Ionicons 
-                            name={item.icon as any} 
-                            size={22} 
-                            color={item.iconColor || '#667eea'} 
-                        />
-                    </View>
-                    <View style={{
-                        flex: 1,
-                    }}>
-                        <Text style={{
-                            fontSize: 16,
-                            color: '#1a1a1a',
-                            fontWeight: '600',
-                            marginBottom: 2,
-                        }}>
-                            {item.title}
-                        </Text>
-                        {item.subtitle && (
-                            <Text style={{
-                                fontSize: 13,
-                                color: '#6b7280',
-                                fontWeight: '400',
-                            }}>
-                                {item.subtitle}
-                            </Text>
-                        )}
-                    </View>
-                    
-                    <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                    }}>
-                        {item.badge && (
-                            <View style={{
-                                backgroundColor: '#ef4444',
-                                borderRadius: 10,
-                                paddingHorizontal: 8,
-                                paddingVertical: 4,
-                                marginRight: 12,
-                                minWidth: 20,
-                                alignItems: 'center',
-                            }}>
-                                <Text style={{
-                                    color: '#fff',
-                                    fontSize: 11,
-                                    fontWeight: '700',
-                                }}>
-                                    {item.badge}
-                                </Text>
-                            </View>
-                        )}
-                        <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
-                    </View>
-                </TouchableOpacity>
-            </Animated.View>
-        );
+    const accountItems = menuItems.filter(m => accountIds.includes(m.id));
+    const featureItems = menuItems.filter(m => featureIds.includes(m.id));
+    const adsItems = menuItems.filter(m => adsIds.includes(m.id));
+    const supportItems = menuItems.filter(m => supportIds.includes(m.id));
+    const logoutItem = menuItems.find(m => m.id === logoutId);
+
+    // Build section config: Account section first
+    const accountSection: SectionItem[] = [
+        {
+            id: '10',
+            title: 'My Profile',
+            subtitle: 'View and edit your profile',
+            icon: 'person-circle-outline',
+            iconColor: '#10b981',
+            iconBgColor: '#d1fae5',
+            onPress: accountItems.find(m => m.id === '10')?.onPress,
+        },
+        {
+            id: '8',
+            title: 'Settings',
+            subtitle: 'Preferences & privacy',
+            icon: 'settings-outline',
+            iconColor: '#6366f1',
+            iconBgColor: '#ede9fe',
+            onPress: accountItems.find(m => m.id === '8')?.onPress,
+        },
+        {
+            id: '13',
+            title: 'Wallet',
+            subtitle: 'Your e-wallet & balance',
+            icon: 'wallet-outline',
+            iconColor: '#0ea5e9',
+            iconBgColor: '#e0f2fe',
+            onPress: accountItems.find(m => m.id === '13')?.onPress,
+        },
+        {
+            id: '9',
+            title: 'Saved Items',
+            subtitle: 'Posts & content you saved',
+            icon: 'bookmark-outline',
+            iconColor: '#f59e0b',
+            iconBgColor: '#fef3c7',
+            onPress: accountItems.find(m => m.id === '9')?.onPress,
+        },
+    ];
+
+    // Feature section
+    const featureIconMap: Record<string, { icon: string; iconColor: string; iconBgColor: string }> = {
+        '1':  { icon: 'people-outline',      iconColor: '#3b82f6', iconBgColor: '#dbeafe' },
+        '2':  { icon: 'calendar-outline',    iconColor: '#8b5cf6', iconBgColor: '#ede9fe' },
+        '3':  { icon: 'briefcase-outline',   iconColor: '#0ea5e9', iconBgColor: '#e0f2fe' },
+        '4':  { icon: 'storefront-outline',  iconColor: '#f97316', iconBgColor: '#ffedd5' },
+        '5':  { icon: 'book-outline',        iconColor: '#ec4899', iconBgColor: '#fce7f3' },
+        '6':  { icon: 'school-outline',      iconColor: '#14b8a6', iconBgColor: '#ccfbf1' },
+        '7':  { icon: 'chatbubbles-outline', iconColor: '#10b981', iconBgColor: '#d1fae5' },
+        '12': { icon: 'folder-outline',      iconColor: '#7c3aed', iconBgColor: '#ede9fe' },
+        '17': { icon: 'game-controller-outline', iconColor: '#f59e0b', iconBgColor: '#fef3c7' },
     };
+
+    const featureSection: SectionItem[] = featureItems.map(m => ({
+        id: m.id,
+        title: m.title,
+        icon: featureIconMap[m.id]?.icon ?? 'apps-outline',
+        iconColor: featureIconMap[m.id]?.iconColor ?? '#6b7280',
+        iconBgColor: featureIconMap[m.id]?.iconBgColor ?? '#f3f4f6',
+        onPress: m.onPress,
+        badge: m.badge,
+    }));
+
+    // Ads section
+    const adsIconMap: Record<string, { icon: string; iconColor: string; iconBgColor: string }> = {
+        '14': { icon: 'megaphone-outline',   iconColor: '#f97316', iconBgColor: '#ffedd5' },
+        '15': { icon: 'bar-chart-outline',   iconColor: '#6366f1', iconBgColor: '#ede9fe' },
+    };
+    const adsSection: SectionItem[] = adsItems.map(m => ({
+        id: m.id,
+        title: m.title,
+        icon: adsIconMap[m.id]?.icon ?? 'megaphone-outline',
+        iconColor: adsIconMap[m.id]?.iconColor ?? '#6b7280',
+        iconBgColor: adsIconMap[m.id]?.iconBgColor ?? '#f3f4f6',
+        onPress: m.onPress,
+    }));
+
+    // Support section
+    const supportSection: SectionItem[] = supportItems.map(m => ({
+        id: m.id,
+        title: m.title,
+        icon: 'help-circle-outline',
+        iconColor: '#64748b',
+        iconBgColor: '#f1f5f9',
+        onPress: m.onPress,
+    }));
+
+    const displayName = userProfile
+        ? `${userProfile.firstName ?? ''} ${userProfile.lastName ?? ''}`.trim() || userProfile.name || 'Ourlime User'
+        : 'Ourlime User';
+    const displayHandle = userProfile?.userName
+        ? `@${userProfile.userName}`
+        : userProfile?.email ?? '';
+    const avatarUrl = userProfile?.profilePicture ?? userProfile?.avatar ?? null;
+
+    const renderSectionItem = (item: SectionItem, index: number) => (
+        <Animated.View
+            key={item.id}
+            style={{
+                opacity: contentOpacity,
+                transform: [{
+                    translateX: contentOpacity.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [30, 0],
+                    }),
+                }],
+            }}
+        >
+            <TouchableOpacity
+                style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 16,
+                    paddingVertical: 13,
+                    marginHorizontal: 12,
+                    marginVertical: 2,
+                    borderRadius: 14,
+                    backgroundColor: '#ffffff',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 1 },
+                    shadowOpacity: 0.04,
+                    shadowRadius: 4,
+                    elevation: 1,
+                }}
+                onPress={() => {
+                    item.onPress?.();
+                    onClose();
+                }}
+                activeOpacity={0.7}
+            >
+                <View style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 12,
+                    backgroundColor: item.iconBgColor,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    marginRight: 14,
+                }}>
+                    <Ionicons name={item.icon as any} size={20} color={item.iconColor} />
+                </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, color: '#111827', fontWeight: '600' }}>
+                        {item.title}
+                    </Text>
+                    {item.subtitle ? (
+                        <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>
+                            {item.subtitle}
+                        </Text>
+                    ) : null}
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {item.badge != null ? (
+                        <View style={{
+                            backgroundColor: '#ef4444',
+                            borderRadius: 10,
+                            paddingHorizontal: 7,
+                            paddingVertical: 3,
+                            marginRight: 8,
+                            minWidth: 20,
+                            alignItems: 'center',
+                        }}>
+                            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>
+                                {item.badge}
+                            </Text>
+                        </View>
+                    ) : null}
+                    <Ionicons name="chevron-forward" size={14} color="#d1d5db" />
+                </View>
+            </TouchableOpacity>
+        </Animated.View>
+    );
+
+    const renderSectionLabel = (label: string) => (
+        <Text style={{
+            fontSize: 11,
+            fontWeight: '700',
+            color: '#9ca3af',
+            textTransform: 'uppercase',
+            letterSpacing: 0.8,
+            marginHorizontal: 24,
+            marginTop: 20,
+            marginBottom: 6,
+        }}>
+            {label}
+        </Text>
+    );
 
     return (
         <Modal
@@ -228,252 +303,199 @@ export default function SlideOutMenu({
             animationType="none"
             statusBarTranslucent
         >
-            <StatusBar backgroundColor="rgba(0,0,0,0.6)" barStyle="light-content" />
-            <View style={{
-                flex: 1,
-                flexDirection: 'row',
-                justifyContent: 'flex-end',
-            }}>
-                {/* Enhanced Overlay with Blur */}
+            <StatusBar backgroundColor="rgba(0,0,0,0.5)" barStyle="light-content" />
+            <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'flex-end' }}>
+
+                {/* Overlay */}
                 <Animated.View
                     style={{
                         position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
+                        top: 0, left: 0, right: 0, bottom: 0,
                         opacity: overlayOpacity,
                     }}
                 >
                     {Platform.OS === 'ios' ? (
-                        <BlurView
-                            intensity={20}
-                            tint="dark"
-                            style={{
-                                flex: 1,
-                            }}
-                        >
-                            <TouchableOpacity
-                                style={{
-                                    flex: 1,
-                                }}
-                                onPress={onClose}
-                                activeOpacity={1}
-                            />
+                        <BlurView intensity={20} tint="dark" style={{ flex: 1 }}>
+                            <TouchableOpacity style={{ flex: 1 }} onPress={onClose} activeOpacity={1} />
                         </BlurView>
                     ) : (
                         <TouchableOpacity
-                            style={{
-                                flex: 1,
-                                backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                            }}
+                            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }}
                             onPress={onClose}
                             activeOpacity={1}
                         />
                     )}
                 </Animated.View>
 
-                {/* Modern Menu Container */}
+                {/* Menu Panel */}
                 <Animated.View
                     style={{
                         width: MENU_WIDTH,
                         height: '100%',
-                        backgroundColor: '#fafafa',
+                        backgroundColor: '#f4f6f8',
                         shadowColor: '#000',
-                        shadowOffset: {
-                            width: -4,
-                            height: 0,
-                        },
-                        shadowOpacity: 0.15,
+                        shadowOffset: { width: -4, height: 0 },
+                        shadowOpacity: 0.18,
                         shadowRadius: 20,
                         elevation: 20,
                         transform: [
                             { translateX: slideAnim },
-                            { scale: scaleAnim }
+                            { scale: scaleAnim },
                         ],
                     }}
                 >
-                    <SafeAreaView style={{
-                        flex: 1,
-                    }}>
-                        {/* Modern Header with Gradient */}
-                        <Animated.View
-                            style={{
-                                opacity: headerOpacity,
-                                transform: [{
-                                    translateY: headerOpacity.interpolate({
-                                        inputRange: [0, 1],
-                                        outputRange: [-20, 0],
-                                    })
-                                }]
-                            }}
-                        >
-                            <LinearGradient
-                                colors={['#10b981', '#059669', '#047857']}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 1 }}
-                                style={{
-                                    paddingHorizontal: 20,
-                                    paddingVertical: 20,
-                                    borderBottomLeftRadius: 20,
-                                    borderBottomRightRadius: 20,
-                                }}
-                            >
-                                <View style={{
-                                    flexDirection: 'row',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    //marginBottom: 20,
-                                }}>
-                                    <TouchableOpacity 
-                                        onPress={onClose} 
-                                        style={{
-                                            width: 36,
-                                            height: 36,
-                                            borderRadius: 18,
-                                            backgroundColor: 'rgba(255,255,255,0.2)',
-                                            justifyContent: 'center',
-                                            alignItems: 'center',
-                                            backdropFilter: 'blur(10px)',
-                                            marginTop: 20,
-                                        }}
-                                    >
-                                        <Ionicons name="close" size={20} color="#fff" />
-                                    </TouchableOpacity>
-                                    
-                                    <View style={{
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                    }}>
-                                        <View style={{
-                                            marginRight: 12,
-                                            marginTop: 25,
-                                        }}>
-                                            {userProfile?.avatar ? (
-                                                <Image 
-                                                    source={{ uri: userProfile.avatar }} 
-                                                    style={{
-                                                        width: 50,
-                                                        height: 50,
-                                                        borderRadius: 25,
-                                                        borderWidth: 2,
-                                                        borderColor: 'rgba(255,255,255,0.3)',
-                                                    }}
-                                                />
-                                            ) : (
-                                                <View style={{
-                                                    width: 50,
-                                                    height: 50,
-                                                    borderRadius: 25,
-                                                    backgroundColor: 'rgba(255,255,255,0.2)',
-                                                    justifyContent: 'center',
-                                                    alignItems: 'center',
-                                                    borderWidth: 2,
-                                                    borderColor: 'rgba(255,255,255,0.3)',
-                                                }}>
-                                                    <Ionicons name="person" size={28} color="#fff" />
-                                                </View>
-                                            )}
-                                        </View>
-                                        {/* <View style={{
-                                            alignItems: 'flex-start',
-                                        }}>
-                                            <Text style={{
-                                                fontSize: 20,
-                                                fontWeight: '700',
-                                                color: '#fff',
-                                                marginBottom: 4,
-                                                textShadowColor: 'rgba(0,0,0,0.1)',
-                                                textShadowOffset: { width: 0, height: 1 },
-                                                textShadowRadius: 2,
-                                            }}>
-                                                {userProfile?.name || 'Welcome Back'}
-                                            </Text>
-                                            <Text style={{
-                                                fontSize: 14,
-                                                color: 'rgba(255,255,255,0.9)',
-                                                fontWeight: '400',
-                                            }}>
-                                                {userProfile?.email || 'Tap to sign in'}
-                                            </Text>
-                                        </View> */}
-                                    </View>
-                                </View>
-                            </LinearGradient>
-                        </Animated.View>
+                    <SafeAreaView style={{ flex: 1 }}>
 
-                        {/* Enhanced Menu Items */}
-                        <ScrollView 
+                        {/* ─── Profile Header ─── */}
+                        <LinearGradient
+                            colors={['#059669', '#10b981', '#34d399']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
                             style={{
-                                flex: 1,
+                                paddingHorizontal: 20,
                                 paddingTop: 16,
-                            }} 
-                            showsVerticalScrollIndicator={false}
-                            contentContainerStyle={{
-                                paddingBottom: 20,
+                                paddingBottom: 24,
                             }}
                         >
-                            {menuItems.map((item, index) => renderMenuItem(item, index))}
-                        </ScrollView>
-
-                        {/* Modern Footer */}
-                        <Animated.View
-                            style={{
-                                opacity: headerOpacity,
-                                transform: [{
-                                    translateY: headerOpacity.interpolate({
-                                        inputRange: [0, 1],
-                                        outputRange: [20, 0],
-                                    })
-                                }]
-                            }}
-                        >
-                            <View style={{
-                                flexDirection: 'row',
-                                justifyContent: 'space-around',
-                                paddingVertical: 20,
-                                paddingHorizontal: 24,
-                                backgroundColor: '#fff',
-                                borderTopLeftRadius: 24,
-                                borderTopRightRadius: 24,
-                                shadowColor: '#000',
-                                shadowOffset: {
-                                    width: 0,
-                                    height: -2,
-                                },
-                                shadowOpacity: 0.05,
-                                shadowRadius: 10,
-                                elevation: 5,
-                            }}>
-                                <TouchableOpacity 
+                            {/* Close button row */}
+                            <View style={{ flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 16 }}>
+                                <TouchableOpacity
+                                    onPress={onClose}
                                     style={{
-                                        flexDirection: 'row',
+                                        width: 34,
+                                        height: 34,
+                                        borderRadius: 17,
+                                        backgroundColor: 'rgba(255,255,255,0.22)',
+                                        justifyContent: 'center',
                                         alignItems: 'center',
-                                        paddingVertical: 12,
-                                        paddingHorizontal: 20,
-                                        borderRadius: 16,
-                                        backgroundColor: '#fef2f2', // Light red background
-                                        borderWidth: 1,
-                                        borderColor: '#fecaca', // Light red border
-                                    }}
-                                    onPress={() => {
-                                        // Add your logout logic here
-                                        console.log('Logout pressed');
-                                        onClose();
                                     }}
                                 >
-                                    <Ionicons name="log-out-outline" size={18} color="#dc2626" />
-                                    <Text style={{
-                                        marginLeft: 8,
-                                        fontSize: 14,
-                                        color: '#dc2626', // Red text color
-                                        fontWeight: '600',
-                                    }}>
-                                        Logout
-                                    </Text>
+                                    <Ionicons name="close" size={18} color="#fff" />
                                 </TouchableOpacity>
                             </View>
+
+                            {/* Avatar + Name */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                {avatarUrl ? (
+                                    <Image
+                                        source={{ uri: avatarUrl }}
+                                        style={{
+                                            width: 62,
+                                            height: 62,
+                                            borderRadius: 31,
+                                            borderWidth: 2.5,
+                                            borderColor: 'rgba(255,255,255,0.8)',
+                                        }}
+                                    />
+                                ) : (
+                                    <View style={{
+                                        width: 62,
+                                        height: 62,
+                                        borderRadius: 31,
+                                        backgroundColor: 'rgba(255,255,255,0.25)',
+                                        justifyContent: 'center',
+                                        alignItems: 'center',
+                                        borderWidth: 2.5,
+                                        borderColor: 'rgba(255,255,255,0.6)',
+                                    }}>
+                                        <Ionicons name="person" size={30} color="#fff" />
+                                    </View>
+                                )}
+
+                                <View style={{ marginLeft: 14, flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 18,
+                                        fontWeight: '800',
+                                        color: '#ffffff',
+                                        letterSpacing: -0.3,
+                                    }} numberOfLines={1}>
+                                        {displayName}
+                                    </Text>
+                                    {displayHandle ? (
+                                        <Text style={{
+                                            fontSize: 13,
+                                            color: 'rgba(255,255,255,0.82)',
+                                            marginTop: 2,
+                                            fontWeight: '500',
+                                        }} numberOfLines={1}>
+                                            {displayHandle}
+                                        </Text>
+                                    ) : null}
+                                </View>
+                            </View>
+                        </LinearGradient>
+
+                        {/* ─── Scrollable Menu Body ─── */}
+                        <ScrollView
+                            style={{ flex: 1 }}
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={{ paddingTop: 8, paddingBottom: 16 }}
+                        >
+                            {/* Account section */}
+                            {renderSectionLabel('My Account')}
+                            {accountSection.map((item, i) => renderSectionItem(item, i))}
+
+                            {/* Explore section */}
+                            {renderSectionLabel('Explore')}
+                            {featureSection.map((item, i) => renderSectionItem(item, i))}
+
+                            {/* Advertising section */}
+                            {adsSection.length > 0 && (
+                                <>
+                                    {renderSectionLabel('Advertising')}
+                                    {adsSection.map((item, i) => renderSectionItem(item, i))}
+                                </>
+                            )}
+
+                            {/* Support section */}
+                            {supportSection.length > 0 && (
+                                <>
+                                    {renderSectionLabel('Support')}
+                                    {supportSection.map((item, i) => renderSectionItem(item, i))}
+                                </>
+                            )}
+                        </ScrollView>
+
+                        {/* ─── Logout Footer ─── */}
+                        <Animated.View
+                            style={{
+                                opacity: contentOpacity,
+                                paddingHorizontal: 16,
+                                paddingVertical: 16,
+                                borderTopWidth: 1,
+                                borderTopColor: '#e5e7eb',
+                                backgroundColor: '#f4f6f8',
+                            }}
+                        >
+                            <TouchableOpacity
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    paddingVertical: 14,
+                                    borderRadius: 14,
+                                    backgroundColor: '#fef2f2',
+                                    borderWidth: 1,
+                                    borderColor: '#fecaca',
+                                }}
+                                onPress={() => {
+                                    logoutItem?.onPress?.();
+                                    onClose();
+                                }}
+                                activeOpacity={0.75}
+                            >
+                                <Ionicons name="log-out-outline" size={18} color="#dc2626" />
+                                <Text style={{
+                                    marginLeft: 8,
+                                    fontSize: 15,
+                                    color: '#dc2626',
+                                    fontWeight: '700',
+                                }}>
+                                    Log Out
+                                </Text>
+                            </TouchableOpacity>
                         </Animated.View>
+
                     </SafeAreaView>
                 </Animated.View>
             </View>

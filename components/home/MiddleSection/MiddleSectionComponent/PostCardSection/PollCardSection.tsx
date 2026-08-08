@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Alert, Share, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useRouter } from 'expo-router';
@@ -21,13 +21,26 @@ type PollCardSectionProps = {
 const authService = AuthService.getInstance();
 const postService = PostService.getInstance();
 
-const getTimeRemaining = (endTime?: string): string => {
-  if (!endTime) return 'Poll duration unavailable';
-  const difference = new Date(endTime).getTime() - Date.now();
+const getTimeRemaining = (endTime?: string, createdAt?: string, pollDuration?: number): string => {
+  let targetMs: number | null = null;
+  if (endTime) {
+    targetMs = new Date(endTime).getTime();
+  }
+  if ((!targetMs || isNaN(targetMs)) && createdAt) {
+    const durationHours = typeof pollDuration === 'number' && pollDuration > 0 ? pollDuration : 24;
+    targetMs = new Date(createdAt).getTime() + durationHours * 3600 * 1000;
+  }
+  if (!targetMs || isNaN(targetMs)) return 'Active poll';
+  const difference = targetMs - Date.now();
   if (difference <= 0) return 'Poll ended';
-  const hours = Math.floor(difference / 3_600_000);
+  const days = Math.floor(difference / (24 * 3600 * 1000));
+  const hours = Math.floor((difference % (24 * 3600 * 1000)) / 3_600_000);
   const minutes = Math.floor((difference % 3_600_000) / 60_000);
-  return hours > 0 ? `${hours}h ${minutes}m remaining` : `${minutes}m remaining`;
+  const seconds = Math.floor((difference % 60_000) / 1000);
+  if (days > 0) return `${days}d ${hours}h remaining`;
+  if (hours > 0) return `${hours}h ${minutes}m remaining`;
+  if (minutes > 0) return `${minutes}m ${seconds}s remaining`;
+  return `${seconds}s remaining`;
 };
 
 export default function PollCardSection({ post, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PollCardSectionProps) {
@@ -43,7 +56,17 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
   const [voteCounts, setVoteCounts] = useState<Record<string, number>>(
     Object.fromEntries((post.pollOptions ?? []).map((option) => [option.id, option.votes]))
   );
-  const timeRemaining = getTimeRemaining(post.pollEndTime);
+
+  const [nowMs, setNowMs] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const timeRemaining = useMemo(
+    () => getTimeRemaining(post.pollEndTime, post.createdAt, post.pollDuration),
+    [post.pollEndTime, post.createdAt, post.pollDuration, nowMs]
+  );
   const pollEnded = timeRemaining === 'Poll ended';
   const totalVotes = useMemo(() => Object.values(voteCounts).reduce((total, votes) => total + votes, 0), [voteCounts]);
 

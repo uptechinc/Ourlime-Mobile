@@ -13,6 +13,7 @@ import { EventService } from '@/lib/services/EventService';
 
 type PostCardSectionProps = {
   post: PostItem;
+  isVisible?: boolean;
   onCommentClick: (postId: string) => void;
   onPostDelete: (postId: string) => void;
   onAuthorBlocked: (userId: string) => void;
@@ -33,7 +34,7 @@ const formatTimestamp = (createdAt: string): string => {
   return createdDate.toLocaleDateString();
 };
 
-export default function PostCardSection({ post, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PostCardSectionProps) {
+export default function PostCardSection({ post, isVisible = false, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PostCardSectionProps) {
   const router = useRouter();
   const currentUserId = authService.getCurrentUser()?.uid;
   const [isLiked, setIsLiked] = useState(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
@@ -121,6 +122,31 @@ export default function PostCardSection({ post, onCommentClick, onPostDelete, on
 
   return (
     <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 18, shadowColor: '#000000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 4 }}>
+      {/* Community Post Header Badge */}
+      {post.communityName ? (
+        <TouchableOpacity
+          onPress={() => {
+            if (post.communityId) router.push(`/communities/${post.communityId}` as any);
+          }}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginBottom: 12,
+            paddingHorizontal: 11,
+            paddingVertical: 5,
+            borderRadius: 12,
+            backgroundColor: '#ecfdf5',
+            alignSelf: 'flex-start',
+            gap: 6,
+          }}
+        >
+          <Icon name="users" size={13} color="#059669" />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#059669' }}>
+            Posted in {post.communityName}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <TouchableOpacity onPress={() => handleNavigateProfile()} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
           <UserAvatar profileImage={post.user.profileImage} firstName={post.user.firstName || post.user.userName} size={48} />
@@ -172,7 +198,7 @@ export default function PostCardSection({ post, onCommentClick, onPostDelete, on
           {post.hashtags.map((tag) => <Text key={tag} style={{ marginRight: 8, marginBottom: 4, color: '#059669', fontWeight: '600' }}>#{tag}</Text>)}
         </View>
       ) : null}
-      {post.media.length > 0 ? <View style={{ marginTop: 14 }}><ImageAndVideoPostSection media={post.media} /></View> : null}
+      {post.media.length > 0 ? <View style={{ marginTop: 14 }}><ImageAndVideoPostSection media={post.media} isParentVisible={isVisible} onLike={() => void handleLike()} /></View> : null}
 
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 13, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
         <TouchableOpacity onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
