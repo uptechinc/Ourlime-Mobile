@@ -362,7 +362,7 @@ function ReelVideoPlayer({ url, isActive, muted }: { url: string; isActive: bool
   useEffect(() => {
     const sub = player.addListener('statusChange', (status) => {
       if (status.status === 'error') {
-        console.error('[ReelVideoPlayer] Player error:', status.error?.message ?? 'unknown');
+        console.warn('[ReelVideoPlayer] Video error (skipping):', status.error?.message ?? 'unknown');
         setHasError(true);
       } else if (status.status === 'readyToPlay') {
         setHasError(false);
