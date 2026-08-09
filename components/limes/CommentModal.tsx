@@ -4,7 +4,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
+  FlatList,
   Modal,
   StyleSheet,
   Alert,
@@ -32,7 +32,7 @@ import {
   serverTimestamp,
   arrayUnion,
   arrayRemove,
-  DocumentSnapshot,
+  type DocumentSnapshot,
 } from 'firebase/firestore';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -43,13 +43,14 @@ export interface LimeComment {
   userId: string;
   content: string;
   userName: string;
-  firstName?: string;
+  firstName: string;
   profileImage?: string;
   likes: string[];
   replyCount: number;
-  parentCommentId?: string;
-  replyToUserName?: string;
-  createdAt: any;
+  parentCommentId?: string | null;
+  replyToUserName?: string | null;
+  createdAt: number;
+  editedAt?: number;
 }
 
 interface CommentModalProps {
@@ -62,6 +63,68 @@ interface CommentModalProps {
 
 const EMOJI_PILLS = ['❤️', '🔥', '😂', '👏', '🚀', '🙌'];
 const PAGE_SIZE = 50;
+
+function safeParse(raw: any): LimeComment | null {
+  try {
+    if (!raw || typeof raw !== 'object') return null;
+    const id = typeof raw.id === 'string' ? raw.id : '';
+    if (!id) return null;
+    return {
+      id,
+      reelId: typeof raw.reelId === 'string' ? raw.reelId : '',
+      userId: typeof raw.userId === 'string' ? raw.userId : '',
+      content: typeof raw.content === 'string' ? raw.content : '',
+      userName: typeof raw.userName === 'string' && raw.userName ? raw.userName : 'user',
+      firstName: typeof raw.firstName === 'string' && raw.firstName ? raw.firstName : 'User',
+      profileImage: typeof raw.profileImage === 'string' && raw.profileImage ? raw.profileImage : undefined,
+      likes: Array.isArray(raw.likes) ? raw.likes.filter((u: unknown) => typeof u === 'string') : [],
+      replyCount: typeof raw.replyCount === 'number' ? raw.replyCount : 0,
+      parentCommentId: typeof raw.parentCommentId === 'string' ? raw.parentCommentId : null,
+      replyToUserName: typeof raw.replyToUserName === 'string' ? raw.replyToUserName : null,
+      createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
+      editedAt: typeof raw.editedAt === 'number' ? raw.editedAt : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseFirestoreDoc(d: any, reelId: string): LimeComment | null {
+  try {
+    const data = d.data();
+    if (!data) return null;
+    const createdAt = data.createdAt
+      ? typeof data.createdAt.seconds === 'number'
+        ? data.createdAt.seconds * 1000
+        : typeof data.createdAt === 'number'
+        ? data.createdAt
+        : Date.now()
+      : Date.now();
+    return safeParse({
+      id: d.id,
+      reelId,
+      userId: data.userId || '',
+      content: data.content || '',
+      userName: data.userName || data.user?.userName || 'user',
+      firstName: data.firstName || data.user?.firstName || 'User',
+      profileImage: data.profileImage || data.user?.profileImage || null,
+      likes: Array.isArray(data.likes) ? data.likes : [],
+      replyCount: data.replyCount || 0,
+      parentCommentId: data.parentCommentId || null,
+      replyToUserName: data.replyToUserName || null,
+      createdAt,
+      editedAt: data.editedAt
+        ? typeof data.editedAt.seconds === 'number'
+          ? data.editedAt.seconds * 1000
+          : typeof data.editedAt === 'number'
+          ? data.editedAt
+          : undefined
+        : undefined,
+    });
+  } catch {
+    return null;
+  }
+}
 
 function CommentSkeletonRow() {
   return (
@@ -76,62 +139,79 @@ function CommentSkeletonRow() {
   );
 }
 
-export default function CommentModal({ reelId, isOpen, initialComments = [], onClose, onCommentCountUpdate }: CommentModalProps) {
-  const [comments, setComments] = useState<LimeComment[]>(initialComments);
-  const [commentText, setCommentText] = useState('');
-  const [loading, setLoading] = useState(initialComments.length === 0);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [lastDocSnap, setLastDocSnap] = useState<DocumentSnapshot | null>(null);
+function renderContent(content: string): React.ReactNode {
+  if (!content || typeof content !== 'string') return null;
+  const parts = content.split(/(@[a-zA-Z0-9._]+)/g);
+  return parts.map((part, i) =>
+    part.startsWith('@') ? (
+      <Text key={i} style={styles.mentionText}>{part}</Text>
+    ) : (
+      <Text key={i} style={styles.normalText}>{part}</Text>
+    )
+  );
+}
 
+function formatTime(ms: number): string {
+  const elapsed = Math.max(0, Date.now() - ms);
+  const minutes = Math.floor(elapsed / 60000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+export default function CommentModal({
+  reelId,
+  isOpen,
+  initialComments = [],
+  onClose,
+  onCommentCountUpdate,
+}: CommentModalProps) {
+  const [comments, setComments] = useState<LimeComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const lastDocRef = useRef<DocumentSnapshot | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [replyTarget, setReplyTarget] = useState<{ id: string; userName: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
-
-  /* Limit sub-comment replies initially visible per thread */
   const [visibleRepliesLimitMap, setVisibleRepliesLimitMap] = useState<Record<string, number>>({});
 
-  const currentUserId = auth.currentUser?.uid || '';
-  const currentUserName = auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || 'user';
+  const currentUserId = auth.currentUser?.uid ?? '';
+  const currentUserName =
+    auth.currentUser?.displayName?.trim() || auth.currentUser?.email?.split('@')[0] || 'user';
+  const currentFirstName =
+    auth.currentUser?.displayName?.split(' ')[0] || 'User';
 
   /* ── Swipe-Down PanResponder ── */
   const translateY = useRef(new Animated.Value(0)).current;
-
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) {
-          translateY.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          Animated.timing(translateY, {
-            toValue: SCREEN_HEIGHT,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => {
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 5,
+      onPanResponderMove: (_, g) => { if (g.dy > 0) translateY.setValue(g.dy); },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 100 || g.vy > 0.5) {
+          Animated.timing(translateY, { toValue: SCREEN_HEIGHT, duration: 200, useNativeDriver: true }).start(() => {
             translateY.setValue(0);
             onClose();
           });
         } else {
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 4,
-          }).start();
+          Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
         }
       },
     })
   ).current;
 
-  /* ── Fetch Initial Batch (50 comments) ── */
-  const fetchComments = useCallback(async () => {
+  /* ── Load 50 comments from Firestore ── */
+  const fetchComments = useCallback(async (replace = true) => {
     if (!reelId) return;
-    if (initialComments.length === 0) setLoading(true);
+    if (replace) setLoading(true);
     try {
       const q = query(
         collection(db, 'reels', reelId, 'comments'),
@@ -139,180 +219,169 @@ export default function CommentModal({ reelId, isOpen, initialComments = [], onC
         limit(PAGE_SIZE)
       );
       const snap = await getDocs(q);
-      const loaded: LimeComment[] = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          reelId,
-          userId: data.userId || '',
-          content: data.content || '',
-          userName: data.userName || data.user?.userName || 'user',
-          firstName: data.firstName || data.user?.firstName || 'User',
-          profileImage: data.profileImage || data.user?.profileImage || undefined,
-          likes: Array.isArray(data.likes) ? data.likes : [],
-          replyCount: data.replyCount || 0,
-          parentCommentId: data.parentCommentId || undefined,
-          replyToUserName: data.replyToUserName || undefined,
-          createdAt: data.createdAt ? (data.createdAt.seconds ? data.createdAt.seconds * 1000 : Date.now()) : Date.now(),
-        };
-      });
-      setComments(loaded);
-      if (snap.docs.length > 0) {
-        setLastDocSnap(snap.docs[snap.docs.length - 1]);
+      const loaded = snap.docs.map((d) => parseFirestoreDoc(d, reelId)).filter(Boolean) as LimeComment[];
+      if (replace) {
+        setComments(loaded);
+      } else {
+        setComments((prev) => {
+          const ids = new Set(prev.map((c) => c.id));
+          return [...prev, ...loaded.filter((c) => !ids.has(c.id))];
+        });
       }
+      lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
       setHasMore(snap.docs.length >= PAGE_SIZE);
       if (onCommentCountUpdate) onCommentCountUpdate(loaded.length);
-    } catch (error) {
-      console.error('[LimeCommentModal] Error fetching comments:', error);
+    } catch (err) {
+      console.error('[LimeCommentModal] fetchComments error:', err);
     } finally {
       setLoading(false);
     }
-  }, [reelId, initialComments.length, onCommentCountUpdate]);
+  }, [reelId, onCommentCountUpdate]);
 
-  /* ── On-Scroll Pagination: Fetch Next 50 Comments ── */
-  const fetchMoreComments = async () => {
-    if (loadingMore || !hasMore || !lastDocSnap || !reelId) return;
+  /* ── Paginate next batch ── */
+  const fetchMoreComments = useCallback(async () => {
+    if (loadingMore || !hasMore || !lastDocRef.current || !reelId) return;
     setLoadingMore(true);
     try {
       const q = query(
         collection(db, 'reels', reelId, 'comments'),
         orderBy('createdAt', 'desc'),
-        startAfter(lastDocSnap),
+        startAfter(lastDocRef.current),
         limit(PAGE_SIZE)
       );
       const snap = await getDocs(q);
       if (!snap.empty) {
-        const nextBatch: LimeComment[] = snap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            reelId,
-            userId: data.userId || '',
-            content: data.content || '',
-            userName: data.userName || data.user?.userName || 'user',
-            firstName: data.firstName || data.user?.firstName || 'User',
-            profileImage: data.profileImage || data.user?.profileImage || undefined,
-            likes: Array.isArray(data.likes) ? data.likes : [],
-            replyCount: data.replyCount || 0,
-            parentCommentId: data.parentCommentId || undefined,
-            replyToUserName: data.replyToUserName || undefined,
-            createdAt: data.createdAt ? (data.createdAt.seconds ? data.createdAt.seconds * 1000 : Date.now()) : Date.now(),
-          };
-        });
-
+        const nextBatch = snap.docs.map((d) => parseFirestoreDoc(d, reelId)).filter(Boolean) as LimeComment[];
         setComments((prev) => {
-          const existingIds = new Set(prev.map((c) => c.id));
-          const uniqueNew = nextBatch.filter((c) => !existingIds.has(c.id));
-          return [...prev, ...uniqueNew];
+          const ids = new Set(prev.map((c) => c.id));
+          return [...prev, ...nextBatch.filter((c) => !ids.has(c.id))];
         });
-        setLastDocSnap(snap.docs[snap.docs.length - 1]);
+        lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
         setHasMore(snap.docs.length >= PAGE_SIZE);
       } else {
         setHasMore(false);
       }
-    } catch (error) {
-      console.error('[LimeCommentModal] Load more comments error:', error);
+    } catch (err) {
+      console.error('[LimeCommentModal] fetchMoreComments error:', err);
     } finally {
       setLoadingMore(false);
     }
-  };
+  }, [loadingMore, hasMore, reelId]);
 
+  /* ── Seed initialComments immediately, then fetch real data ── */
   useEffect(() => {
+    if (!isOpen) return;
+    translateY.setValue(0);
+    // Show pre-fetched data immediately
     if (initialComments && initialComments.length > 0) {
-      setComments(initialComments);
-      setLoading(false);
+      const safe = initialComments.map((c) => safeParse(c)).filter(Boolean) as LimeComment[];
+      if (safe.length > 0) {
+        setComments(safe);
+        setLoading(false);
+        // Still refresh in background
+        fetchComments(false);
+        return;
+      }
     }
-  }, [initialComments]);
+    void fetchComments(true);
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (isOpen) {
-      translateY.setValue(0);
-      void fetchComments();
-    }
-  }, [isOpen, fetchComments, translateY]);
-
-  /* ── Add Comment / Reply ── */
-  const handleSubmitComment = async () => {
-    if (!commentText.trim() || submitting || !currentUserId) return;
+  /* ── Submit comment or reply ── */
+  const handleSubmit = useCallback(async () => {
+    const text = commentText.trim();
+    if (!text || submitting || !currentUserId) return;
     setSubmitting(true);
+    const optimisticId = `temp_${Date.now()}`;
+    const newComment: LimeComment = {
+      id: optimisticId,
+      reelId,
+      userId: currentUserId,
+      content: text,
+      userName: currentUserName,
+      firstName: currentFirstName,
+      profileImage: auth.currentUser?.photoURL ?? undefined,
+      likes: [],
+      replyCount: 0,
+      parentCommentId: replyTarget?.id ?? null,
+      replyToUserName: replyTarget?.userName ?? null,
+      createdAt: Date.now(),
+    };
+    setComments((prev) => [newComment, ...prev]);
+    setCommentText('');
+    setReplyTarget(null);
+    if (onCommentCountUpdate) onCommentCountUpdate(comments.length + 1);
     try {
-      const newCommentData = {
+      const docRef = await addDoc(collection(db, 'reels', reelId, 'comments'), {
         userId: currentUserId,
         userName: currentUserName,
-        firstName: auth.currentUser?.displayName?.split(' ')[0] || 'User',
-        profileImage: auth.currentUser?.photoURL || null,
-        content: commentText.trim(),
+        firstName: currentFirstName,
+        profileImage: auth.currentUser?.photoURL ?? null,
+        content: text,
         likes: [],
         replyCount: 0,
-        parentCommentId: replyTarget ? replyTarget.id : null,
-        replyToUserName: replyTarget ? replyTarget.userName : null,
+        parentCommentId: replyTarget?.id ?? null,
+        replyToUserName: replyTarget?.userName ?? null,
         createdAt: serverTimestamp(),
-      };
-
-      const docRef = await addDoc(collection(db, 'reels', reelId, 'comments'), newCommentData);
-
-      const localItem: LimeComment = {
-        id: docRef.id,
-        reelId,
-        userId: currentUserId,
-        content: commentText.trim(),
-        userName: currentUserName,
-        firstName: auth.currentUser?.displayName?.split(' ')[0] || 'User',
-        profileImage: auth.currentUser?.photoURL || undefined,
-        likes: [],
-        replyCount: 0,
-        parentCommentId: replyTarget ? replyTarget.id : undefined,
-        replyToUserName: replyTarget ? replyTarget.userName : undefined,
-        createdAt: Date.now(),
-      };
-
-      setComments((prev) => [localItem, ...prev]);
-      setCommentText('');
-      setReplyTarget(null);
-      if (onCommentCountUpdate) onCommentCountUpdate(comments.length + 1);
-    } catch (error) {
-      console.error('[LimeCommentModal] Submit error:', error);
-      Alert.alert('Error', 'Could not post comment.');
+      });
+      // Replace temp with real ID
+      setComments((prev) =>
+        prev.map((c) => (c.id === optimisticId ? { ...c, id: docRef.id } : c))
+      );
+    } catch (err) {
+      console.error('[LimeCommentModal] submit error:', err);
+      // Roll back optimistic add
+      setComments((prev) => prev.filter((c) => c.id !== optimisticId));
+      Alert.alert('Error', 'Could not post comment. Please try again.');
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [commentText, submitting, currentUserId, currentUserName, currentFirstName, reelId, replyTarget, comments.length, onCommentCountUpdate]);
 
-  /* ── Toggle Like / Reaction with Bright Red Fill ── */
-  const handleToggleLike = async (commentId: string, isLiked: boolean) => {
-    if (!currentUserId) return;
+  /* ── Toggle like ── */
+  const handleToggleLike = useCallback(async (commentId: string) => {
+    if (!currentUserId || !commentId) return;
     setComments((prev) =>
-      prev.map((c) =>
-        c.id === commentId
-          ? { ...c, likes: isLiked ? c.likes.filter((u) => u !== currentUserId) : [...c.likes, currentUserId] }
-          : c
-      )
+      prev.map((c) => {
+        if (c.id !== commentId) return c;
+        const safeL = Array.isArray(c.likes) ? c.likes : [];
+        const liked = safeL.includes(currentUserId);
+        return { ...c, likes: liked ? safeL.filter((u) => u !== currentUserId) : [...safeL, currentUserId] };
+      })
     );
-
     try {
       const commentRef = doc(db, 'reels', reelId, 'comments', commentId);
+      const liked = comments.find((c) => c.id === commentId)?.likes?.includes(currentUserId) ?? false;
       await updateDoc(commentRef, {
-        likes: isLiked ? arrayRemove(currentUserId) : arrayUnion(currentUserId),
+        likes: liked ? arrayRemove(currentUserId) : arrayUnion(currentUserId),
       });
-    } catch (error) {
-      console.error('[LimeCommentModal] Like error:', error);
+    } catch (err) {
+      console.error('[LimeCommentModal] toggleLike error:', err);
     }
-  };
+  }, [currentUserId, reelId, comments]);
 
-  /* ── Edit Comment ── */
-  const handleSaveEdit = async (commentId: string) => {
-    if (!editText.trim()) return;
-    setComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, content: editText.trim() } : c)));
+  /* ── Save edit ── */
+  const handleSaveEdit = useCallback(async () => {
+    const text = editText.trim();
+    if (!editingId || !text) return;
+    const now = Date.now();
+    setComments((prev) =>
+      prev.map((c) => (c.id === editingId ? { ...c, content: text, editedAt: now } : c))
+    );
     setEditingId(null);
+    setEditText('');
     try {
-      await updateDoc(doc(db, 'reels', reelId, 'comments', commentId), { content: editText.trim() });
-    } catch (error) {
-      console.error('[LimeCommentModal] Edit error:', error);
+      await updateDoc(doc(db, 'reels', reelId, 'comments', editingId), {
+        content: text,
+        editedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error('[LimeCommentModal] saveEdit error:', err);
+      Alert.alert('Error', 'Could not save edit.');
     }
-  };
+  }, [editingId, editText, reelId]);
 
-  /* ── Delete Comment ── */
-  const handleDeleteComment = async (commentId: string) => {
+  /* ── Delete comment ── */
+  const handleDelete = useCallback((commentId: string) => {
     Alert.alert('Delete comment', 'Are you sure you want to delete this comment?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -322,36 +391,205 @@ export default function CommentModal({ reelId, isOpen, initialComments = [], onC
           setComments((prev) => prev.filter((c) => c.id !== commentId));
           try {
             await deleteDoc(doc(db, 'reels', reelId, 'comments', commentId));
-          } catch (error) {
-            console.error('[LimeCommentModal] Delete error:', error);
+          } catch (err) {
+            console.error('[LimeCommentModal] delete error:', err);
           }
         },
       },
     ]);
-  };
+  }, [reelId]);
 
-  const renderContent = (content: string) =>
-    content.split(/(@[a-zA-Z0-9._]+)/g).map((part, index) => (
-      <Text key={`${part}-${index}`} style={part.startsWith('@') ? styles.mentionText : styles.normalText}>
-        {part}
-      </Text>
-    ));
-
-  // Separate root comments from sub-comment replies
-  const rootComments = comments.filter((c) => !c.parentCommentId);
-  const repliesByParentMap: Record<string, LimeComment[]> = {};
+  /* ── Split root / replies ── */
+  const rootComments = comments.filter(
+    (c) => !c.parentCommentId || c.parentCommentId === 'null'
+  );
+  const repliesByParent: Record<string, LimeComment[]> = {};
   comments.forEach((c) => {
-    if (c.parentCommentId) {
-      if (!repliesByParentMap[c.parentCommentId]) repliesByParentMap[c.parentCommentId] = [];
-      repliesByParentMap[c.parentCommentId].push(c);
+    if (c.parentCommentId && c.parentCommentId !== 'null') {
+      if (!repliesByParent[c.parentCommentId]) repliesByParent[c.parentCommentId] = [];
+      repliesByParent[c.parentCommentId].push(c);
     }
   });
+
+  const renderComment = ({ item: comment }: { item: LimeComment }) => {
+    const safeL = Array.isArray(comment.likes) ? comment.likes : [];
+    const isLiked = currentUserId ? safeL.includes(currentUserId) : false;
+    const isOwner = currentUserId && comment.userId === currentUserId;
+    const isEditing = editingId === comment.id;
+
+    const subReplies = repliesByParent[comment.id] ?? [];
+    const visibleLimit = visibleRepliesLimitMap[comment.id] ?? 50;
+    const visibleSubReplies = subReplies.slice(0, visibleLimit);
+    const canLoadMoreReplies = subReplies.length > visibleSubReplies.length;
+
+    return (
+      <View style={styles.commentItem}>
+        <UserAvatar
+          profileImage={comment.profileImage}
+          firstName={comment.firstName || comment.userName || 'U'}
+          size={36}
+        />
+        <View style={styles.commentBody}>
+          <View style={styles.commentMetaRow}>
+            <Text style={styles.commentUser}>
+              {comment.userName ? `@${comment.userName}` : 'Unknown'}
+            </Text>
+            <Text style={styles.commentTime}>{formatTime(comment.createdAt)}</Text>
+            {comment.editedAt && (
+              <Text style={styles.editedLabel}>· edited</Text>
+            )}
+          </View>
+
+          {isEditing ? (
+            <View style={styles.editRow}>
+              <TextInput
+                value={editText}
+                onChangeText={setEditText}
+                style={styles.editInput}
+                autoFocus
+                multiline
+              />
+              <View style={styles.editActions}>
+                <TouchableOpacity
+                  onPress={() => { setEditingId(null); setEditText(''); }}
+                  style={styles.editCancelBtn}
+                >
+                  <Text style={styles.editCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveEdit}
+                  style={styles.saveEditBtn}
+                  disabled={!editText.trim()}
+                >
+                  <Text style={styles.saveEditBtnText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.commentContent}>
+              {renderContent(comment.content ?? '')}
+            </Text>
+          )}
+
+          <View style={styles.actionsRow}>
+            <TouchableOpacity onPress={() => handleToggleLike(comment.id)} style={styles.actionBtn}>
+              <Heart
+                size={14}
+                color={isLiked ? '#ef4444' : '#64748b'}
+                fill={isLiked ? '#ef4444' : 'none'}
+              />
+              <Text style={[styles.actionText, isLiked && { color: '#ef4444' }]}>
+                {safeL.length > 0 ? safeL.length : 'Like'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                setReplyTarget({ id: comment.id, userName: comment.userName });
+                setCommentText(`@${comment.userName} `);
+              }}
+              style={styles.actionBtn}
+            >
+              <CornerDownRight size={14} color="#64748b" />
+              <Text style={styles.actionText}>Reply</Text>
+            </TouchableOpacity>
+
+            {isOwner && (
+              <>
+                <TouchableOpacity
+                  onPress={() => { setEditingId(comment.id); setEditText(comment.content ?? ''); }}
+                  style={styles.actionBtn}
+                >
+                  <Edit2 size={13} color="#64748b" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDelete(comment.id)} style={styles.actionBtn}>
+                  <Trash2 size={13} color="#ef4444" />
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+
+          {/* Sub-replies */}
+          {visibleSubReplies.length > 0 && (
+            <View style={styles.subRepliesThread}>
+              {visibleSubReplies.map((reply) => {
+                const replyL = Array.isArray(reply.likes) ? reply.likes : [];
+                const replyLiked = currentUserId ? replyL.includes(currentUserId) : false;
+                const replyOwner = currentUserId && reply.userId === currentUserId;
+                return (
+                  <View key={reply.id} style={styles.subReplyItem}>
+                    <UserAvatar
+                      profileImage={reply.profileImage}
+                      firstName={reply.firstName || reply.userName || 'U'}
+                      size={26}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.commentMetaRow}>
+                        <Text style={styles.commentUser}>
+                          {reply.userName ? `@${reply.userName}` : 'Unknown'}
+                        </Text>
+                        {reply.replyToUserName && (
+                          <Text style={styles.replyingTo}>
+                            → <Text style={styles.mentionText}>@{reply.replyToUserName}</Text>
+                          </Text>
+                        )}
+                        <Text style={styles.commentTime}>{formatTime(reply.createdAt)}</Text>
+                        {reply.editedAt && (
+                          <Text style={styles.editedLabel}>· edited</Text>
+                        )}
+                      </View>
+                      <Text style={styles.commentContent}>{renderContent(reply.content ?? '')}</Text>
+                      <View style={styles.actionsRow}>
+                        <TouchableOpacity onPress={() => handleToggleLike(reply.id)} style={styles.actionBtn}>
+                          <Heart
+                            size={13}
+                            color={replyLiked ? '#ef4444' : '#64748b'}
+                            fill={replyLiked ? '#ef4444' : 'none'}
+                          />
+                          <Text style={[styles.actionText, replyLiked && { color: '#ef4444' }]}>
+                            {replyL.length > 0 ? replyL.length : 'Like'}
+                          </Text>
+                        </TouchableOpacity>
+                        {replyOwner && (
+                          <TouchableOpacity onPress={() => handleDelete(reply.id)} style={styles.actionBtn}>
+                            <Trash2 size={12} color="#ef4444" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+              {canLoadMoreReplies && (
+                <TouchableOpacity
+                  onPress={() =>
+                    setVisibleRepliesLimitMap((prev) => ({
+                      ...prev,
+                      [comment.id]: (prev[comment.id] ?? 50) + 50,
+                    }))
+                  }
+                  style={styles.loadMoreRepliesBtn}
+                >
+                  <ChevronDown size={14} color="#10b981" />
+                  <Text style={styles.loadMoreRepliesText}>
+                    Load {subReplies.length - visibleSubReplies.length} more replies
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  const keyExtractor = (item: LimeComment, index: number) =>
+    item.id ? item.id : `comment-${index}`;
 
   return (
     <Modal visible={isOpen} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <Animated.View style={[styles.modalCard, { transform: [{ translateY }] }]}>
-          
           {/* Top Drag Handle Bar */}
           <View style={styles.dragHandleWrapper} {...panResponder.panHandlers}>
             <View style={styles.dragHandleBar} />
@@ -359,15 +597,17 @@ export default function CommentModal({ reelId, isOpen, initialComments = [], onC
 
           {/* Header */}
           <View style={styles.headerRow} {...panResponder.panHandlers}>
-            <Text style={styles.headerTitle}>Comments ({comments.length})</Text>
+            <Text style={styles.headerTitle}>
+              Comments {comments.length > 0 ? `(${comments.length})` : ''}
+            </Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <X size={20} color="#64748b" />
             </TouchableOpacity>
           </View>
 
-          {/* Comments Feed List with Skeleton Loaders & On-Scroll Pagination */}
+          {/* Content */}
           {loading && comments.length === 0 ? (
-            <View style={styles.commentsList}>
+            <View style={styles.skeletonContainer}>
               <CommentSkeletonRow />
               <CommentSkeletonRow />
               <CommentSkeletonRow />
@@ -380,176 +620,37 @@ export default function CommentModal({ reelId, isOpen, initialComments = [], onC
               <Text style={styles.emptySubtitle}>Be the first to share your thoughts on this Lime!</Text>
             </View>
           ) : (
-            <ScrollView
+            <FlatList
+              data={rootComments}
+              keyExtractor={keyExtractor}
+              renderItem={renderComment}
               style={styles.commentsList}
+              contentContainerStyle={{ paddingBottom: 8 }}
               showsVerticalScrollIndicator={false}
-              onScroll={({ nativeEvent }) => {
-                const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
-                const isNearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 60;
-                if (isNearBottom && hasMore && !loadingMore) {
-                  void fetchMoreComments();
-                }
-              }}
-              scrollEventThrottle={200}
-            >
-              {rootComments.map((comment) => {
-                const likesArray = Array.isArray(comment.likes) ? comment.likes : [];
-                const isLiked = likesArray.includes(currentUserId);
-                const isOwner = comment.userId === currentUserId;
-                const isEditing = editingId === comment.id;
-
-                const allSubReplies = repliesByParentMap[comment.id] || [];
-                const repliesVisibleLimit = visibleRepliesLimitMap[comment.id] || 50;
-                const visibleSubReplies = allSubReplies.slice(0, repliesVisibleLimit);
-                const hasMoreSubReplies = allSubReplies.length > visibleSubReplies.length;
-
-                return (
-                  <View key={comment.id || String(Math.random())} style={styles.commentItem}>
-                    <UserAvatar profileImage={comment.profileImage} firstName={comment.firstName || comment.userName} size={36} />
-                    <View style={styles.commentBody}>
-                      
-                      <View style={styles.commentMetaRow}>
-                        <Text style={styles.commentUser}>@{comment.userName}</Text>
-                      </View>
-
-                      {isEditing ? (
-                        <View style={styles.editRow}>
-                          <TextInput
-                            value={editText}
-                            onChangeText={setEditText}
-                            style={styles.editInput}
-                            autoFocus
-                          />
-                          <TouchableOpacity onPress={() => handleSaveEdit(comment.id)} style={styles.saveEditBtn}>
-                            <Text style={styles.saveEditBtnText}>Save</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <Text style={styles.commentContent}>{renderContent(comment.content)}</Text>
-                      )}
-
-                      {/* Comment Actions (Like, Reply, Edit, Delete) */}
-                      <View style={styles.actionsRow}>
-                        <TouchableOpacity onPress={() => handleToggleLike(comment.id, isLiked)} style={styles.actionBtn}>
-                          <Heart size={14} color={isLiked ? '#ef4444' : '#64748b'} fill={isLiked ? '#ef4444' : 'none'} />
-                          <Text style={[styles.actionText, isLiked && { color: '#ef4444' }]}>
-                            {likesArray.length > 0 ? likesArray.length : 'Like'}
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => {
-                            setReplyTarget({ id: comment.id, userName: comment.userName });
-                            setCommentText(`@${comment.userName} `);
-                          }}
-                          style={styles.actionBtn}
-                        >
-                          <CornerDownRight size={14} color="#64748b" />
-                          <Text style={styles.actionText}>Reply</Text>
-                        </TouchableOpacity>
-
-                        {isOwner && (
-                          <>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setEditingId(comment.id);
-                                setEditText(comment.content);
-                              }}
-                              style={styles.actionBtn}
-                            >
-                              <Edit2 size={13} color="#64748b" />
-                            </TouchableOpacity>
-
-                            <TouchableOpacity onPress={() => handleDeleteComment(comment.id)} style={styles.actionBtn}>
-                              <Trash2 size={13} color="#ef4444" />
-                            </TouchableOpacity>
-                          </>
-                        )}
-                      </View>
-
-                      {/* Sub-Comments / Replies Thread */}
-                      {visibleSubReplies.length > 0 && (
-                        <View style={styles.subRepliesThread}>
-                          {visibleSubReplies.map((reply) => {
-                            const replyLikesArray = Array.isArray(reply.likes) ? reply.likes : [];
-                            const isReplyLiked = replyLikesArray.includes(currentUserId);
-                            const isReplyOwner = reply.userId === currentUserId;
-                            return (
-                              <View key={reply.id || String(Math.random())} style={styles.subReplyItem}>
-                                <UserAvatar profileImage={reply.profileImage} firstName={reply.firstName || reply.userName} size={26} />
-                                <View style={{ flex: 1 }}>
-                                  <View style={styles.commentMetaRow}>
-                                    <Text style={styles.commentUser}>@{reply.userName}</Text>
-                                    <Text style={styles.replyingTo}>
-                                      replying to <Text style={{ color: '#10b981', fontWeight: '700' }}>@{reply.replyToUserName || comment.userName}</Text>
-                                    </Text>
-                                  </View>
-
-                                  <Text style={styles.commentContent}>{renderContent(reply.content)}</Text>
-
-                                  <View style={styles.actionsRow}>
-                                    <TouchableOpacity onPress={() => handleToggleLike(reply.id, isReplyLiked)} style={styles.actionBtn}>
-                                      <Heart size={13} color={isReplyLiked ? '#ef4444' : '#64748b'} fill={isReplyLiked ? '#ef4444' : 'none'} />
-                                      <Text style={[styles.actionText, isReplyLiked && { color: '#ef4444' }]}>
-                                        {replyLikesArray.length > 0 ? replyLikesArray.length : 'Like'}
-                                      </Text>
-                                    </TouchableOpacity>
-                                    {isReplyOwner && (
-                                      <TouchableOpacity onPress={() => handleDeleteComment(reply.id)} style={styles.actionBtn}>
-                                        <Trash2 size={12} color="#ef4444" />
-                                      </TouchableOpacity>
-                                    )}
-                                  </View>
-                                </View>
-                              </View>
-                            );
-                          })}
-
-                          {/* Load More Sub-Comments Button */}
-                          {hasMoreSubReplies && (
-                            <TouchableOpacity
-                              onPress={() =>
-                                setVisibleRepliesLimitMap((prev) => ({
-                                  ...prev,
-                                  [comment.id]: (prev[comment.id] || 50) + 50,
-                                }))
-                              }
-                              style={styles.loadMoreRepliesBtn}
-                            >
-                              <ChevronDown size={14} color="#10b981" />
-                              <Text style={styles.loadMoreRepliesText}>
-                                Load more replies ({allSubReplies.length - visibleSubReplies.length})
-                              </Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      )}
-
-                    </View>
+              onEndReached={() => { if (hasMore && !loadingMore) void fetchMoreComments(); }}
+              onEndReachedThreshold={0.3}
+              ListFooterComponent={
+                loadingMore ? (
+                  <View style={{ paddingVertical: 14, alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#10b981" />
                   </View>
-                );
-              })}
-
-              {/* On-Scroll Infinite Loading Spinner */}
-              {loadingMore && (
-                <View style={{ paddingVertical: 14, alignItems: 'center' }}>
-                  <ActivityIndicator size="small" color="#10b981" />
-                </View>
-              )}
-            </ScrollView>
+                ) : null
+              }
+              keyboardShouldPersistTaps="handled"
+            />
           )}
 
           {/* Reply Target Banner */}
           {replyTarget && (
             <View style={styles.replyBanner}>
               <Text style={styles.replyBannerText}>Replying to @{replyTarget.userName}</Text>
-              <TouchableOpacity onPress={() => setReplyTarget(null)}>
+              <TouchableOpacity onPress={() => { setReplyTarget(null); setCommentText(''); }}>
                 <X size={16} color="#047857" />
               </TouchableOpacity>
             </View>
           )}
 
-          {/* Quick Emoji Bar */}
+          {/* Emoji Bar */}
           <View style={styles.emojiRow}>
             {EMOJI_PILLS.map((emoji) => (
               <TouchableOpacity
@@ -568,21 +669,34 @@ export default function CommentModal({ reelId, isOpen, initialComments = [], onC
               <TextInput
                 value={commentText}
                 onChangeText={setCommentText}
-                placeholder={replyTarget ? `Reply to @${replyTarget.userName}…` : 'Add a comment…'}
+                placeholder={
+                  replyTarget
+                    ? `Reply to @${replyTarget.userName}…`
+                    : 'Add a comment…'
+                }
                 placeholderTextColor="#94a3b8"
                 style={styles.inputField}
                 multiline
+                returnKeyType="send"
+                blurOnSubmit={false}
+                onSubmitEditing={handleSubmit}
               />
               <TouchableOpacity
-                onPress={handleSubmitComment}
+                onPress={handleSubmit}
                 disabled={!commentText.trim() || submitting}
-                style={[styles.sendBtn, (!commentText.trim() || submitting) && styles.sendBtnDisabled]}
+                style={[
+                  styles.sendBtn,
+                  (!commentText.trim() || submitting) && styles.sendBtnDisabled,
+                ]}
               >
-                {submitting ? <ActivityIndicator size="small" color="#ffffff" /> : <Send size={16} color="#ffffff" />}
+                {submitting ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Send size={16} color="#ffffff" />
+                )}
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
-
         </Animated.View>
       </View>
     </Modal>
@@ -632,6 +746,10 @@ const styles = StyleSheet.create({
     padding: 6,
     borderRadius: 20,
     backgroundColor: '#f1f5f9',
+  },
+  skeletonContainer: {
+    flex: 1,
+    paddingTop: 12,
   },
   skeletonRow: {
     flexDirection: 'row',
@@ -683,12 +801,12 @@ const styles = StyleSheet.create({
   },
   commentsList: {
     flex: 1,
-    paddingVertical: 12,
+    paddingTop: 12,
   },
   commentItem: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 16,
+    marginBottom: 18,
   },
   commentBody: {
     flex: 1,
@@ -696,12 +814,24 @@ const styles = StyleSheet.create({
   commentMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    flexWrap: 'wrap',
+    gap: 5,
+    marginBottom: 2,
   },
   commentUser: {
     fontSize: 13,
     fontWeight: '700',
     color: '#0f172a',
+  },
+  commentTime: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+  editedLabel: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontStyle: 'italic',
   },
   replyingTo: {
     fontSize: 11,
@@ -710,7 +840,6 @@ const styles = StyleSheet.create({
   commentContent: {
     fontSize: 13,
     color: '#334155',
-    marginTop: 2,
     lineHeight: 18,
   },
   mentionText: {
@@ -730,6 +859,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    paddingVertical: 2,
   },
   actionText: {
     fontSize: 11,
@@ -741,7 +871,7 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
     borderLeftWidth: 2,
     borderLeftColor: '#e2e8f0',
-    gap: 10,
+    gap: 12,
   },
   subReplyItem: {
     flexDirection: 'row',
@@ -752,7 +882,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingVertical: 4,
-    marginTop: 4,
+    marginTop: 2,
   },
   loadMoreRepliesText: {
     fontSize: 12,
@@ -760,26 +890,41 @@ const styles = StyleSheet.create({
     color: '#10b981',
   },
   editRow: {
-    flexDirection: 'row',
-    gap: 8,
     marginTop: 4,
+    gap: 6,
   },
   editInput: {
-    flex: 1,
     backgroundColor: '#f8fafc',
     borderWidth: 1,
     borderColor: '#cbd5e1',
     borderRadius: 12,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 8,
     fontSize: 13,
+    color: '#0f172a',
+    minHeight: 38,
   },
-  saveEditBtn: {
+  editActions: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'flex-end',
+  },
+  editCancelBtn: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9',
+  },
+  editCancelText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  saveEditBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 10,
     backgroundColor: '#10b981',
-    justifyContent: 'center',
   },
   saveEditBtnText: {
     fontSize: 12,
@@ -792,9 +937,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: '#ecfdf5',
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: 12,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   replyBannerText: {
     fontSize: 12,
@@ -805,7 +950,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: 6,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   emojiPill: {
     padding: 6,
@@ -827,7 +972,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 13,
     color: '#0f172a',
-    maxHeight: 80,
+    maxHeight: 90,
   },
   sendBtn: {
     width: 40,
