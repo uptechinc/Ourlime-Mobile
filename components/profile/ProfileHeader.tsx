@@ -1,6 +1,7 @@
 import { View, Text, Image, TouchableOpacity, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import type { UserProfile } from '@/lib/services/AuthService';
 
 type ProfileHeaderProps = {
@@ -20,6 +21,7 @@ export default function ProfileHeader({
   onEditProfile,
   onCustomize,
 }: ProfileHeaderProps) {
+  const router = useRouter();
   const displayName = `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() || profile.userName || 'Ourlime User';
   const handle = `@${profile.userName || 'user'}`;
   const isAdmin = profile.accountType === 'admin' || (profile as any).isAdmin === true;
@@ -152,14 +154,21 @@ export default function ProfileHeader({
             <Ionicons name="checkmark-circle" size={20} color="#10b981" />
           )}
           {isAdmin && (
-            <View style={{
-              backgroundColor: '#fee2e2',
-              paddingHorizontal: 8,
-              paddingVertical: 2,
-              borderRadius: 8,
-            }}>
-              <Text style={{ color: '#dc2626', fontSize: 11, fontWeight: '800' }}>ADMIN</Text>
-            </View>
+            <TouchableOpacity
+              onPress={() => router.push('/admin' as any)}
+              style={{
+                backgroundColor: '#fee2e2',
+                paddingHorizontal: 10,
+                paddingVertical: 3,
+                borderRadius: 10,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <Ionicons name="shield-checkmark" size={13} color="#dc2626" />
+              <Text style={{ color: '#dc2626', fontSize: 11, fontWeight: '800' }}>ADMIN PORTAL</Text>
+            </TouchableOpacity>
           )}
         </View>
 

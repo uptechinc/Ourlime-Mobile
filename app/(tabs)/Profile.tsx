@@ -19,6 +19,7 @@ import AboutTab from '@/components/profile/AboutTab';
 import GalleryTab from '@/components/profile/GalleryTab';
 import AdminTab from '@/components/profile/AdminTab';
 import AppDrawerNav from '@/components/navigation/AppDrawerNav';
+import EditProfileModal from '@/components/profile/EditProfileModal';
 
 type ProfileTab = 'timeline' | 'about' | 'gallery' | 'admin';
 
@@ -28,6 +29,7 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<ProfileTab>('timeline');
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
@@ -154,8 +156,14 @@ export default function ProfileScreen() {
             postsCount={0}
             friendsCount={0}
             followingCount={0}
-            onEditProfile={() => Alert.alert('Edit Profile', 'Edit profile modal')}
+            onEditProfile={() => setEditModalOpen(true)}
             onCustomize={() => Alert.alert('Customization', 'Profile theme customization')}
+          />
+          <EditProfileModal
+            visible={editModalOpen}
+            profile={profile}
+            onClose={() => setEditModalOpen(false)}
+            onProfileUpdated={() => void loadProfile()}
           />
 
           {/* ── Tab Selector Row ── */}

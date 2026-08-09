@@ -42,28 +42,18 @@ import PageHeader from '@/components/ui/PageHeader';
 import { useRouter } from 'expo-router';
 import Layout from '../_layout';
 
-// ---------------------------------------------------------------------------
-// NOTE: The following Firebase imports are commented out ("hashed out")
-// to avoid errors in a pure React Native environment. Uncomment and
-// configure them in your project when ready.
-//
-// import {
-//   getDocs,
-//   collection,
-//   addDoc,
-//   setDoc,
-//   getDoc,
-//   doc,
-//   serverTimestamp,
-//   query,
-//   where,
-//   updateDoc,
-//   increment
-// } from 'firebase/firestore';
-// import { db, auth } from '@/lib/firebaseConfig';
-// import { signOut } from 'firebase/auth';
-// import { doc as firestoreDoc } from 'firebase/firestore';
-// ---------------------------------------------------------------------------
+import {
+  getDocs,
+  collection,
+  addDoc,
+  doc,
+  serverTimestamp,
+  query as fsQuery,
+  where,
+  updateDoc,
+  increment
+} from 'firebase/firestore';
+import { db, auth } from '@/lib/firebaseConfig';
 
 // These types are placeholders to mirror your original code
 type Community = {
@@ -314,67 +304,24 @@ export default function CommunitiesPage() {
   useEffect(() => {
     const fetchCommunities = async () => {
       try {
-        // const communityRef = collection(db, 'communityVariant');
-        // const querySnapshot = await getDocs(communityRef);
-        // if (querySnapshot.empty) {
-        //   setCommunities([]);
-        // } else {
-        //   const communityData = querySnapshot.docs.map(doc => ({
-        //     id: doc.id,
-        //     ...doc.data()
-        //   })) as Community[];
-        //   setCommunities(communityData);
-        // }
-        // Hardcoded for example:
-        setCommunities([
-          {
-            id: '123',
-            title: 'React Native Fans',
-            description: 'All about React Native, Expo & Tailwind.',
-            imageUrl:
-              'https://picsum.photos/id/1025/300/100',
-            categoryId: 'cat1',
-            creatorName: 'John Doe',
-            isPrivate: false,
-            requestStatus: null,
-            membershipCount: 777,
-            membershipLikes: 99
-          },
-          {
-            id: '456',
-            title: 'Music Lovers',
-            description: 'Join and jam together',
-            imageUrl:
-              'https://picsum.photos/id/100/300/100',
-            categoryId: 'cat2',
-            creatorName: 'Jane Smith',
-            isPrivate: true,
-            requestStatus: null,
-            membershipCount: 225,
-            membershipLikes: 24
-          },
-          {
-            id: '789',
-            title: 'Entertainment Central',
-            description: 'Movies, TV shows, memes & celebrity drama!',
-            imageUrl: 'https://picsum.photos/id/237/300/100',
-            categoryId: 'cat3',
-            creatorName: 'Ava Blaze',
-            isPrivate: false,
-            requestStatus: null,
-            membershipCount: 512,
-            membershipLikes: 64
-          }          
-        ]);
+        const snap = await getDocs(collection(db, 'communities'));
+        if (snap.empty) {
+          // fallback to communityVariant if empty
+          const snap2 = await getDocs(collection(db, 'communityVariant'));
+          const list2 = snap2.docs.map((d) => ({ id: d.id, ...d.data() } as Community));
+          setCommunities(list2);
+        } else {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Community));
+          setCommunities(list);
+        }
       } catch (error) {
         console.error('Error fetching communities:', error);
-        setCommunities([]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchCommunities();
+    void fetchCommunities();
   }, []);
 
   // Filter logic
@@ -473,18 +420,46 @@ export default function CommunitiesPage() {
     const [isPrivate, setIsPrivate] = useState(false);
 
     const handleSubmit = async () => {
-      // if (!auth.currentUser?.uid) { ... }
-      // Create the community doc
-      // setDoc(...);
+      if (!title.trim()) return Alert.alert('Error', 'Please enter a community title');
+      try {
+        const user = auth.currentUser;
+        const newDoc = await addDoc(collection(db, 'communities'), {
+          title: title.trim(),
+          description: description.trim(),
+          imageUrl: imageUrl.trim() || 'https://picsum.photos/id/1025/300/100',
+          categoryId: selCategory || 'general',
+          creatorId: user?.uid || '',
+          creatorName: user?.displayName || user?.email?.split('@')[0] || 'User',
+          creatorProfileImage: user?.photoURL || null,
+          isPrivate,
+          membershipCount: 1,
+          createdAt: serverTimestamp(),
+        });
 
-      Alert.alert('Community Created', `Created: ${title}`);
-      // Reset
-      setTitle('');
-      setDescription('');
-      setImageUrl('');
-      setSelCategory('');
-      setIsPrivate(false);
-      setIsModalOpen(false);
+        Alert.alert('Community Created', `Created: ${title}`);
+        setCommunities((prev) => [
+          {
+            id: newDoc.id,
+            title: title.trim(),
+            description: description.trim(),
+            imageUrl: imageUrl.trim() || 'https://picsum.photos/id/1025/300/100',
+            categoryId: selCategory || 'general',
+            creatorName: user?.displayName || user?.email?.split('@')[0] || 'User',
+            isPrivate,
+            membershipCount: 1,
+          },
+          ...prev,
+        ]);
+        setTitle('');
+        setDescription('');
+        setImageUrl('');
+        setSelCategory('');
+        setIsPrivate(false);
+        setIsModalOpen(false);
+      } catch (err) {
+        console.error('Error creating community:', err);
+        Alert.alert('Error', 'Could not create community.');
+      }
     };
 
     return (

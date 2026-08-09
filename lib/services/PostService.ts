@@ -499,6 +499,24 @@ export class PostService {
       { method: 'POST', authenticated: true }
     );
     if (!response.success || !response.data?.postId) throw new Error(response.error || 'Failed to repost');
+
+    if (auth.currentUser) {
+      void this.fetchPost(postId).then((post) => {
+        if (post && post.userId !== auth.currentUser?.uid) {
+          addDoc(collection(db, `users/${post.userId}/notifications`), {
+            type: 'repost',
+            actorUserId: auth.currentUser.uid,
+            actorName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'User',
+            actorProfileImage: auth.currentUser.photoURL || null,
+            content: 'reposted your post',
+            postId,
+            createdAt: serverTimestamp(),
+            read: false,
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    }
+
     return response.data.postId;
   }
 

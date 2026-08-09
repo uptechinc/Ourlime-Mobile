@@ -1,8 +1,29 @@
+import { useState, useEffect } from "react";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image, Platform } from "react-native";
+import { auth, db } from "@/lib/firebaseConfig";
+import { doc, getDoc } from "firebase/firestore";
 
 const TabLayout = () => {
+  const [isDeveloperOrAdmin, setIsDeveloperOrAdmin] = useState(false);
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+    getDoc(doc(db, 'users', user.uid)).then((snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const allowed =
+          data.accountType === 'developer' ||
+          data.accountType === 'admin' ||
+          data.isDeveloper === true ||
+          data.isAdmin === true;
+        setIsDeveloperOrAdmin(allowed);
+      }
+    }).catch(() => {});
+  }, []);
+
   return (
     <Tabs
       screenOptions={{
@@ -64,6 +85,7 @@ const TabLayout = () => {
         name="Limes"
         options={{
           title: "Limes",
+          href: isDeveloperOrAdmin ? undefined : null,
           tabBarStyle: {
             backgroundColor: "#0f172a",
             borderTopWidth: 1,

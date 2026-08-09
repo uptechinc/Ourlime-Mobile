@@ -9,6 +9,8 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import PostOptionsSheet from './PostOptionsSheet';
 import LikesModal from './LikesModal';
 import IdentityBadges from './IdentityBadges';
+import MentionText from '@/components/ui/MentionText';
+import PostLocationMap from './PostLocationMap';
 import { EventService } from '@/lib/services/EventService';
 
 type PostCardSectionProps = {
@@ -172,10 +174,7 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
       ) : null}
 
       {post.location ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
-          <Icon name="map-pin" size={14} color="#10b981" />
-          <Text style={{ marginLeft: 5, color: '#6b7280', fontSize: 13 }}>{post.location.name}</Text>
-        </View>
+        <PostLocationMap location={post.location} />
       ) : null}
       {post.type === 'event' ? (
         <View style={{ marginTop: 12, padding: 13, borderRadius: 14, backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#bbf7d0' }}>
@@ -191,8 +190,18 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
           </View>
         </View>
       ) : null}
-      {post.caption ? <Text style={{ marginTop: 14, color: '#111827', fontSize: 17, lineHeight: 23, fontWeight: '600' }}>{post.caption}</Text> : null}
-      {post.description && post.description !== post.caption ? <Text style={{ marginTop: 8, color: '#374151', fontSize: 15, lineHeight: 22 }}>{post.description}</Text> : null}
+      {post.caption ? (
+        <MentionText
+          content={post.caption}
+          style={{ marginTop: 14, color: '#111827', fontSize: 17, lineHeight: 23, fontWeight: '600' }}
+        />
+      ) : null}
+      {post.description && post.description !== post.caption ? (
+        <MentionText
+          content={post.description}
+          style={{ marginTop: 8, color: '#374151', fontSize: 15, lineHeight: 22 }}
+        />
+      ) : null}
       {post.hashtags.length > 0 ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 }}>
           {post.hashtags.map((tag) => <Text key={tag} style={{ marginRight: 8, marginBottom: 4, color: '#059669', fontWeight: '600' }}>#{tag}</Text>)}
