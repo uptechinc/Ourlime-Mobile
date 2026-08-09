@@ -33,6 +33,7 @@ import {
   arrayRemove,
   type DocumentSnapshot,
 } from 'firebase/firestore';
+import { dispatchMentionNotifications } from '@/lib/services/dispatchMentionNotifications';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -356,6 +357,15 @@ export default function CommentModal({
       setComments((prev) =>
         prev.map((c) => (c.id === optimisticId ? { ...c, id: docRef.id } : c))
       );
+      dispatchMentionNotifications({
+        actorUserId: currentUserId,
+        actorName: currentUserName,
+        actorProfileImage: auth.currentUser?.photoURL ?? undefined,
+        content: text,
+        contentType: 'lime',
+        postId: reelId,
+        commentId: docRef.id,
+      });
     } catch (err) {
       console.error('[LimeCommentModal] submit error:', err);
       // Roll back optimistic add

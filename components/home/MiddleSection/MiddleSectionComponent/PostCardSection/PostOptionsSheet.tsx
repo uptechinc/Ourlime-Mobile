@@ -103,21 +103,84 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
   return (
     <>
       <Modal visible={visible && !reportVisible} transparent animationType="fade" onRequestClose={onClose}>
-        <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000080' }}>
-          <TouchableOpacity activeOpacity={1} onPress={() => undefined}>
-            <SafeAreaView edges={['top', 'left', 'right']} style={{ borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: '#ffffff', paddingTop: 8, paddingBottom: 20 }}>
-              <View style={{ alignSelf: 'center', width: 42, height: 5, borderRadius: 3, backgroundColor: '#d1d5db', marginBottom: 8 }} />
-              <View style={{ paddingHorizontal: 18, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}><Text style={{ color: '#111827', fontSize: 16, fontWeight: '800' }}>{isOwner ? 'Manage post' : `@${post.user.userName}`}</Text></View>
-              {isOwner ? renderRow('trash-2', 'Delete Post', handleDelete, { destructive: true, action: 'delete' }) : (
+        <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <TouchableOpacity activeOpacity={1} onPress={() => undefined} style={{ width: '85%', maxWidth: 320 }}>
+            <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 16, elevation: 10 }}>
+              {!isOwner ? (
                 <>
-                  {renderRow(following ? 'user-check' : 'user-plus', following ? 'Unfollow' : 'Follow', handleFollow, { action: 'follow' })}
-                  {renderRow('users', friendshipStatus === 'accepted' ? 'Already Friends' : friendshipStatus === 'pending' ? 'Request Pending' : 'Add Friend', handleFriendRequest, { disabled: friendshipStatus !== 'none', action: 'friend' })}
-                  {renderRow('flag', 'Report Post', () => setReportVisible(true), { destructive: true })}
-                  {renderRow('user-x', 'Block User', handleBlock, { destructive: true, action: 'block' })}
+                  {/* 1. Add Friend */}
+                  <TouchableOpacity
+                    disabled={friendshipStatus !== 'none' || Boolean(busyAction)}
+                    onPress={handleFriendRequest}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, opacity: friendshipStatus !== 'none' ? 0.5 : 1 }}
+                  >
+                    <Icon name="user-plus" size={20} color="#334155" />
+                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: '#1e293b' }}>
+                      {friendshipStatus === 'accepted' ? 'Friends' : friendshipStatus === 'pending' ? 'Request Pending' : 'Add Friend'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* 2. Follow */}
+                  <TouchableOpacity
+                    disabled={Boolean(busyAction)}
+                    onPress={handleFollow}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12 }}
+                  >
+                    <Icon name={following ? 'user-check' : 'user'} size={20} color="#334155" />
+                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: '#1e293b' }}>
+                      {following ? 'Unfollow' : 'Follow'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* 3. Report Post */}
+                  <TouchableOpacity
+                    onPress={() => setReportVisible(true)}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12 }}
+                  >
+                    <Icon name="flag" size={20} color="#ef4444" />
+                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: '#ef4444' }}>
+                      Report Post
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* 4. Block User (Prominent Red Solid Button) */}
+                  <TouchableOpacity
+                    disabled={Boolean(busyAction)}
+                    onPress={handleBlock}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14, backgroundColor: '#dc2626', marginTop: 4, marginBottom: 8 }}
+                  >
+                    <Icon name="user-x" size={20} color="#ffffff" />
+                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '800', color: '#ffffff' }}>
+                      Block User
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View style={{ height: 1, backgroundColor: '#f1f5f9', marginVertical: 4 }} />
                 </>
-              )}
-              {renderRow('x', 'Cancel', onClose)}
-            </SafeAreaView>
+              ) : null}
+
+              {/* 5. Delete Post / Remove Repost */}
+              {isOwner ? (
+                <TouchableOpacity
+                  disabled={Boolean(busyAction)}
+                  onPress={handleDelete}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12 }}
+                >
+                  <Icon name="trash-2" size={20} color="#ef4444" />
+                  <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: '#ef4444' }}>
+                    Delete Post
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {/* Close Button */}
+              <TouchableOpacity
+                onPress={onClose}
+                style={{ marginTop: 8, paddingVertical: 10, alignItems: 'center', borderRadius: 12, backgroundColor: '#f8fafc' }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#64748b' }}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>

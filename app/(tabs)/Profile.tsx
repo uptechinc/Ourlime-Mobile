@@ -18,6 +18,7 @@ import TimelineTab from '@/components/profile/TimelineTab';
 import AboutTab from '@/components/profile/AboutTab';
 import GalleryTab from '@/components/profile/GalleryTab';
 import AdminTab from '@/components/profile/AdminTab';
+import AppDrawerNav from '@/components/navigation/AppDrawerNav';
 
 type ProfileTab = 'timeline' | 'about' | 'gallery' | 'admin';
 
@@ -27,6 +28,7 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<ProfileTab>('timeline');
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -90,6 +92,24 @@ export default function ProfileScreen() {
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#ffffff' }}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
+      {/* App Drawer Navigation */}
+      <AppDrawerNav
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        userProfile={
+          profile
+            ? {
+                uid: profile.uid,
+                userName: profile.userName,
+                firstName: profile.firstName,
+                lastName: profile.lastName,
+                profilePicture: profile.profilePicture || undefined,
+                isAdmin,
+              }
+            : undefined
+        }
+      />
+
       {/* ── Top Header Bar ── */}
       <View style={{
         flexDirection: 'row',
@@ -101,9 +121,12 @@ export default function ProfileScreen() {
         borderBottomColor: '#f1f5f9',
         backgroundColor: '#ffffff',
       }}>
+        <TouchableOpacity onPress={() => setDrawerOpen(true)} style={{ padding: 6 }}>
+          <Ionicons name="menu-outline" size={26} color="#0f172a" />
+        </TouchableOpacity>
         <Text style={{ fontSize: 20, fontWeight: '800', color: '#0f172a' }}>Profile</Text>
-        <TouchableOpacity onPress={handleLogout} style={{ padding: 6 }}>
-          <Ionicons name="log-out-outline" size={22} color="#ef4444" />
+        <TouchableOpacity onPress={() => router.push('/settings' as any)} style={{ padding: 6 }}>
+          <Ionicons name="settings-outline" size={22} color="#334155" />
         </TouchableOpacity>
       </View>
 

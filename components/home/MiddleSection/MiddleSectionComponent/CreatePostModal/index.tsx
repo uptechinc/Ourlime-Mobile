@@ -18,7 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import Icon from 'react-native-vector-icons/Feather';
-import { collection, query, where, limit, getDocs } from 'firebase/firestore';
+import { collection, query, where, limit, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import type { UserProfile } from '@/lib/services/AuthService';
 import {
@@ -34,6 +34,7 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import LocationPickerModal from './LocationPickerModal';
 import MediaCropModal from './MediaCropModal';
 import { RelationshipService, type RelationshipUser } from '@/lib/services/RelationshipService';
+import { dispatchMentionNotifications } from '@/lib/services/dispatchMentionNotifications';
 
 type DraftPollOption = { id: string; text: string };
 type TextSelection = { start: number; end: number };
@@ -65,7 +66,7 @@ const normalizeHashtag = (value: string): string => value.trim().replace(/^#+/, 
 
 export default function CreatePostModal({ setTogglePostForm, userProfile, onCreatePost }: CreatePostModalProps) {
   const captionInputRef = useRef<TextInput>(null);
-  const uploadControllerRef = useRef<AbortController>();
+  const uploadControllerRef = useRef<AbortController | undefined>(undefined);
   const [postType, setPostType] = useState<PostType>('regular');
   const [visibility, setVisibility] = useState<PostVisibility>('public');
   const [caption, setCaption] = useState('');
@@ -195,10 +196,19 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
     }
   };
 
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventStartDate, setEventStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [eventStartTime, setEventStartTime] = useState('18:00');
+  const [eventEndDate, setEventEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [eventEndTime, setEventEndTime] = useState('20:00');
+  const [eventRecurrence, setEventRecurrence] = useState<'none' | 'weekly' | 'monthly' | 'yearly'>('none');
+
   const validPollOptions = pollOptions.filter((option) => option.text.trim());
-  const hasNonMentionContent = caption.replace(/@[\w.-]+/g, '').trim().length > 0;
+  const hasNonMentionContent = caption.replace(/@[\w.-]+/g, '').trim().length > 0 || eventTitle.trim().length > 0;
   const isPostDisabled = isSubmitting || cropQueue.length > 0 || (postType === 'poll'
     ? validPollOptions.length < 2 || !hasNonMentionContent
+    : postType === 'event'
+    ? !eventTitle.trim() && !hasNonMentionContent
     : !hasNonMentionContent && media.length === 0);
 
   const handleClose = () => {
@@ -307,6 +317,32 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
     const controller = new AbortController();
     uploadControllerRef.current = controller;
     try {
+      let createdEventId: string | undefined;
+      if (postType === 'event') {
+        const eventDoc = await addDoc(collection(db, 'events'), {
+          title: eventTitle.trim() || caption.trim(),
+          description: caption.trim() || description.trim(),
+          summary: caption.trim(),
+          startDate: eventStartDate,
+          startTime: eventStartTime,
+          endDate: eventEndDate,
+          endTime: eventEndTime,
+          location: location?.name || location?.address || 'Location TBD',
+          recurrence: eventRecurrence,
+          creatorId: userProfile.uid,
+          userId: userProfile.uid,
+          createdAt: serverTimestamp(),
+          user: {
+            id: userProfile.uid,
+            firstName: userProfile.firstName,
+            lastName: userProfile.lastName,
+            userName: userProfile.userName,
+            profileImage: userProfile.profilePicture ?? null,
+          },
+        });
+        createdEventId = eventDoc.id;
+      }
+
       const createdPost = await postService.createPost({
         userId: userProfile.uid,
         user: {
@@ -317,7 +353,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
           profileImage: userProfile.profilePicture ?? undefined,
         },
         type: postType,
-        caption: caption.trim(),
+        caption: postType === 'event' && eventTitle.trim() ? `📅 Event: ${eventTitle.trim()}\n\n${caption.trim()}` : caption.trim(),
         description: description.trim(),
         visibility,
         hashtags,
@@ -326,11 +362,19 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
         friendReferences: mentions.map((mention) => `@${mention}`),
         pollOptions: postType === 'poll' ? validPollOptions : undefined,
         pollDuration: postType === 'poll' ? getPollDurationHours() : undefined,
-        location: postType === 'regular' ? location : undefined,
+        location: postType === 'regular' || postType === 'event' ? location : undefined,
         signal: controller.signal,
         onUploadProgress: (progress) => setUploadProgress(progress.percentage),
       });
       onCreatePost(createdPost);
+      dispatchMentionNotifications({
+        actorUserId: userProfile.uid,
+        actorName: userProfile.userName || userProfile.firstName,
+        actorProfileImage: userProfile.profilePicture ?? undefined,
+        content: caption.trim(),
+        contentType: 'post',
+        postId: createdPost.id,
+      });
       setTogglePostForm(false);
     } catch (error: unknown) {
       console.error('[CreatePostModal.handleSubmit]', error);
@@ -382,12 +426,79 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
             </View>
 
             <View style={{ flexDirection: 'row', backgroundColor: '#f3f4f6', borderRadius: 14, padding: 4, marginBottom: 16 }}>
-              {(['regular', 'poll'] as const).map((option) => (
+              {(['regular', 'poll', 'event'] as const).map((option) => (
                 <TouchableOpacity key={option} onPress={() => setPostType(option)} style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 11, backgroundColor: postType === option ? '#ffffff' : 'transparent' }}>
-                  <Text style={{ color: postType === option ? '#10b981' : '#6b7280', fontWeight: '700' }}>{option === 'regular' ? 'Post' : 'Poll'}</Text>
+                  <Text style={{ color: postType === option ? '#10b981' : '#6b7280', fontWeight: '700', textTransform: 'capitalize' }}>
+                    {option === 'regular' ? 'Post' : option === 'poll' ? 'Poll' : '📅 Event'}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
+
+            {postType === 'event' ? (
+              <View style={{ marginBottom: 16, padding: 14, borderRadius: 16, backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#bbf7d0', gap: 10 }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: '#166534' }}>Event Details</Text>
+                <TextInput
+                  value={eventTitle}
+                  onChangeText={setEventTitle}
+                  placeholder="Event Title (e.g. Lime Party @ Maracas)"
+                  placeholderTextColor="#9ca3af"
+                  style={{ backgroundColor: '#ffffff', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#cbd5e1', color: '#0f172a', fontWeight: '600' }}
+                />
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155', marginBottom: 4 }}>Start Date</Text>
+                    <TextInput
+                      value={eventStartDate}
+                      onChangeText={setEventStartDate}
+                      placeholder="YYYY-MM-DD"
+                      style={{ backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#cbd5e1', fontSize: 13, color: '#0f172a' }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155', marginBottom: 4 }}>Start Time</Text>
+                    <TextInput
+                      value={eventStartTime}
+                      onChangeText={setEventStartTime}
+                      placeholder="HH:MM"
+                      style={{ backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#cbd5e1', fontSize: 13, color: '#0f172a' }}
+                    />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155', marginBottom: 4 }}>End Date</Text>
+                    <TextInput
+                      value={eventEndDate}
+                      onChangeText={setEventEndDate}
+                      placeholder="YYYY-MM-DD"
+                      style={{ backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#cbd5e1', fontSize: 13, color: '#0f172a' }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155', marginBottom: 4 }}>End Time</Text>
+                    <TextInput
+                      value={eventEndTime}
+                      onChangeText={setEventEndTime}
+                      placeholder="HH:MM"
+                      style={{ backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#cbd5e1', fontSize: 13, color: '#0f172a' }}
+                    />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155' }}>Recurrence:</Text>
+                  {(['none', 'weekly', 'monthly', 'yearly'] as const).map((r) => (
+                    <TouchableOpacity
+                      key={r}
+                      onPress={() => setEventRecurrence(r)}
+                      style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: eventRecurrence === r ? '#10b981' : '#e2e8f0' }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: eventRecurrence === r ? '#ffffff' : '#475569', textTransform: 'capitalize' }}>{r}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : null}
 
             <View>
               <TextInput ref={captionInputRef} value={caption} onChangeText={setCaption} selection={captionSelection} onSelectionChange={(event) => setCaptionSelection(event.nativeEvent.selection)} placeholder="Tell us what's on your mind (use @ to mention friends)" placeholderTextColor="#9ca3af" multiline maxLength={2200} style={{ minHeight: 112, padding: 16, paddingRight: 48, borderRadius: 16, backgroundColor: '#f9fafb', color: '#111827', fontSize: 17, textAlignVertical: 'top' }} />
