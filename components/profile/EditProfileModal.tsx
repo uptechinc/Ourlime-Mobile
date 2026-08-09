@@ -15,6 +15,7 @@ import Icon from 'react-native-vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
 import { db } from '@/lib/firebaseConfig';
 import { doc, updateDoc } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { UserProfile } from '@/lib/services/AuthService';
 
 type EditProfileModalProps = {
@@ -63,18 +64,45 @@ export default function EditProfileModal({
     }
   };
 
+  const uploadToStorage = async (uri: string, path: string): Promise<string> => {
+    if (!uri || uri.startsWith('http://') || uri.startsWith('https://')) return uri;
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const storageInstance = getStorage();
+      const storageRef = ref(storageInstance, path);
+      await uploadBytes(storageRef, blob);
+      return await getDownloadURL(storageRef);
+    } catch (err) {
+      console.error('[EditProfileModal] Storage upload error:', err);
+      return uri;
+    }
+  };
+
   const handleSave = async () => {
     if (!profile.uid) return;
     setSaving(true);
     try {
+      let finalAvatar = profilePicture;
+      let finalCover = coverPhoto;
+
+      if (profilePicture && profilePicture.startsWith('file:')) {
+        finalAvatar = await uploadToStorage(profilePicture, `users/${profile.uid}/avatar_${Date.now()}.jpg`);
+      }
+      if (coverPhoto && coverPhoto.startsWith('file:')) {
+        finalCover = await uploadToStorage(coverPhoto, `users/${profile.uid}/cover_${Date.now()}.jpg`);
+      }
+
       await updateDoc(doc(db, 'users', profile.uid), {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         userName: userName.trim().toLowerCase(),
         bio: bio.trim(),
         location: location.trim(),
-        profilePicture: profilePicture || null,
-        coverPhoto: coverPhoto || null,
+        profilePicture: finalAvatar || null,
+        coverPhoto: finalCover || null,
+        coverImage: finalCover || null,
+        coverPicture: finalCover || null,
       });
 
       Alert.alert('Profile Updated', 'Your profile details have been saved successfully.');

@@ -6,22 +6,24 @@ import { auth, db } from "@/lib/firebaseConfig";
 import { doc, getDoc } from "firebase/firestore";
 
 const TabLayout = () => {
-  const [isDeveloperOrAdmin, setIsDeveloperOrAdmin] = useState(false);
+  const [isDeveloper, setIsDeveloper] = useState(false);
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-    getDoc(doc(db, 'users', user.uid)).then((snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        const allowed =
-          data.accountType === 'developer' ||
-          data.accountType === 'admin' ||
-          data.isDeveloper === true ||
-          data.isAdmin === true;
-        setIsDeveloperOrAdmin(allowed);
+    const unsub = auth.onAuthStateChanged((user) => {
+      if (!user) {
+        setIsDeveloper(false);
+        return;
       }
-    }).catch(() => {});
+      getDoc(doc(db, 'users', user.uid)).then((snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          const role = (data.accountType || data.role || '').toLowerCase();
+          const allowed = role === 'developer' || role === 'dev' || data.isDeveloper === true;
+          setIsDeveloper(allowed);
+        }
+      }).catch(() => {});
+    });
+    return () => unsub();
   }, []);
 
   return (
@@ -85,7 +87,7 @@ const TabLayout = () => {
         name="Limes"
         options={{
           title: "Limes",
-          href: isDeveloperOrAdmin ? undefined : null,
+          href: isDeveloper ? undefined : null,
           tabBarStyle: {
             backgroundColor: "#0f172a",
             borderTopWidth: 1,

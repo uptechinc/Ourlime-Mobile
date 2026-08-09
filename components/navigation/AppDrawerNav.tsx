@@ -37,16 +37,22 @@ export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawer
 
   if (!isOpen) return null;
 
-  const isDevOrAdmin = Boolean(
-    userProfile?.isAdmin ||
-    (userProfile as any)?.isDeveloper ||
+  const isDev = Boolean(
+    (userProfile as any)?.isDeveloper === true ||
     (userProfile as any)?.accountType === 'developer' ||
-    (userProfile as any)?.accountType === 'admin'
+    (userProfile as any)?.role === 'developer'
+  );
+
+  const isAdmin = Boolean(
+    userProfile?.isAdmin === true ||
+    (userProfile as any)?.accountType === 'admin' ||
+    (userProfile as any)?.role === 'admin' ||
+    isDev
   );
 
   const navItems = [
     { label: 'Home Feed', icon: 'home', route: '/(tabs)' },
-    ...(isDevOrAdmin ? [{ label: 'Limes (Reels)', icon: 'video', route: '/(tabs)/Limes' }] : []),
+    ...(isDev ? [{ label: 'Limes (Reels)', icon: 'video', route: '/(tabs)/Limes' }] : []),
     { label: 'Events', icon: 'calendar', route: '/events' },
     { label: 'E-Learning', icon: 'book-open', route: '/eLearning' },
     { label: 'Blogs', icon: 'file-text', route: '/blogs' },
@@ -58,7 +64,7 @@ export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawer
     { label: 'Settings', icon: 'settings', route: '/settings' },
   ];
 
-  if (isDevOrAdmin) {
+  if (isAdmin) {
     navItems.push({ label: 'Admin Portal', icon: 'shield', route: '/admin' });
   }
 
