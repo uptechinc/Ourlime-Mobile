@@ -5,6 +5,9 @@ import PostCardSection from '@/components/home/MiddleSection/MiddleSectionCompon
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
 import { FeedsFilterSection } from '@/components/home/MiddleSection/MiddleSectionComponent/FeedsFilterSection/FeedsFilterSection';
 
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebaseConfig';
+
 type TimelineTabProps = {
   userId: string;
 };
@@ -24,7 +27,41 @@ export default function TimelineTab({ userId }: TimelineTabProps) {
         authorId: userId,
         limit: 20,
       });
-      setPosts(page.posts);
+
+      try {
+        const reelsSnap = await getDocs(query(collection(db, 'reels'), where('userId', '==', userId)));
+        const reelPosts: PostItem[] = reelsSnap.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            userId: userId,
+            type: 'regular',
+            caption: data.caption || '',
+            description: '',
+            visibility: data.visibility || 'public',
+            hashtags: [],
+            media: [
+              {
+                id: d.id,
+                type: 'video',
+                typeUrl: data.media?.typeUrl || '',
+                fileName: data.media?.fileName || 'reel.mp4',
+              },
+            ],
+            user: data.user || { id: userId, firstName: 'Lime', lastName: 'Creator', userName: 'user' },
+            stats: data.stats || { likes: Array.isArray(data.likes) ? data.likes.length : 0, comments: 0, shares: 0 },
+            likedUserIds: Array.isArray(data.likes) ? data.likes : [],
+            mentions: data.mentions || [],
+            friendReferences: [],
+            createdAt: data.createdAt ? new Date().toISOString() : new Date().toISOString(),
+          };
+        });
+
+        const combined = [...reelPosts, ...page.posts];
+        setPosts(combined);
+      } catch {
+        setPosts(page.posts);
+      }
     } catch {
       setPosts([]);
     } finally {
