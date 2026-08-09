@@ -42,11 +42,16 @@ const app = isNewApp ? initializeApp(firebaseConfig) : getApp();
 const db = isNewApp
   ? initializeFirestore(app, { experimentalForceLongPolling: true })
   : getFirestore(app);
-const auth = Platform.OS === 'web' || !isNewApp
-  ? FirebaseAuth.getAuth(app)
-  : FirebaseAuth.initializeAuth(app, {
-      persistence: reactNativeAuth.getReactNativePersistence(AsyncStorage),
-    });
+let auth: FirebaseAuth.Auth;
+try {
+  auth = Platform.OS === 'web'
+    ? FirebaseAuth.getAuth(app)
+    : FirebaseAuth.initializeAuth(app, {
+        persistence: reactNativeAuth.getReactNativePersistence(AsyncStorage),
+      });
+} catch {
+  auth = FirebaseAuth.getAuth(app);
+}
 const storage = getStorage(app);
 
 diagnosticLogService.info('Firebase', 'initialize', {

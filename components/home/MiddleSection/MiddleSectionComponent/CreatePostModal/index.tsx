@@ -491,9 +491,9 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
                     <TouchableOpacity
                       key={r}
                       onPress={() => setEventRecurrence(r)}
-                      style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: eventRecurrence === r ? '#10b981' : '#e2e8f0' }}
+                      style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: eventRecurrence === r ? '#065f46' : '#e2e8f0' }}
                     >
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: eventRecurrence === r ? '#ffffff' : '#475569', textTransform: 'capitalize' }}>{r}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: eventRecurrence === r ? '#ffffff' : '#334155', textTransform: 'capitalize' }}>{r}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
