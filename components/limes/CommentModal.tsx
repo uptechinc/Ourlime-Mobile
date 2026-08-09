@@ -15,7 +15,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { X, Send, Heart, CornerDownRight, Edit2, Trash2, Smile } from 'lucide-react-native';
+import { X, Send, Heart, CornerDownRight, Edit2, Trash2, Smile, ChevronDown } from 'lucide-react-native';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { auth, db } from '@/lib/firebaseConfig';
 import {
@@ -27,14 +27,17 @@ import {
   deleteDoc,
   query,
   orderBy,
+  limit,
+  startAfter,
   serverTimestamp,
   arrayUnion,
   arrayRemove,
+  DocumentSnapshot,
 } from 'firebase/firestore';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-interface LimeComment {
+export interface LimeComment {
   id: string;
   reelId: string;
   userId: string;
@@ -52,20 +55,42 @@ interface LimeComment {
 interface CommentModalProps {
   reelId: string;
   isOpen: boolean;
+  initialComments?: LimeComment[];
   onClose: () => void;
   onCommentCountUpdate?: (count: number) => void;
 }
 
 const EMOJI_PILLS = ['❤️', '🔥', '😂', '👏', '🚀', '🙌'];
+const PAGE_SIZE = 50;
 
-export default function CommentModal({ reelId, isOpen, onClose, onCommentCountUpdate }: CommentModalProps) {
-  const [comments, setComments] = useState<LimeComment[]>([]);
+function CommentSkeletonRow() {
+  return (
+    <View style={styles.skeletonRow}>
+      <View style={styles.skeletonAvatar} />
+      <View style={{ flex: 1, gap: 6 }}>
+        <View style={styles.skeletonName} />
+        <View style={styles.skeletonText} />
+        <View style={styles.skeletonMeta} />
+      </View>
+    </View>
+  );
+}
+
+export default function CommentModal({ reelId, isOpen, initialComments = [], onClose, onCommentCountUpdate }: CommentModalProps) {
+  const [comments, setComments] = useState<LimeComment[]>(initialComments);
   const [commentText, setCommentText] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialComments.length === 0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [lastDocSnap, setLastDocSnap] = useState<DocumentSnapshot | null>(null);
+
   const [submitting, setSubmitting] = useState(false);
   const [replyTarget, setReplyTarget] = useState<{ id: string; userName: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+
+  /* Limit sub-comment replies initially visible per thread */
+  const [visibleRepliesLimitMap, setVisibleRepliesLimitMap] = useState<Record<string, number>>({});
 
   const currentUserId = auth.currentUser?.uid || '';
   const currentUserName = auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || 'user';
@@ -103,12 +128,16 @@ export default function CommentModal({ reelId, isOpen, onClose, onCommentCountUp
     })
   ).current;
 
-  /* ── Fetch Real Comments from Firestore ── */
+  /* ── Fetch Initial Batch (50 comments) ── */
   const fetchComments = useCallback(async () => {
     if (!reelId) return;
-    setLoading(true);
+    if (initialComments.length === 0) setLoading(true);
     try {
-      const q = query(collection(db, 'reels', reelId, 'comments'), orderBy('createdAt', 'desc'));
+      const q = query(
+        collection(db, 'reels', reelId, 'comments'),
+        orderBy('createdAt', 'desc'),
+        limit(PAGE_SIZE)
+      );
       const snap = await getDocs(q);
       const loaded: LimeComment[] = snap.docs.map((d) => {
         const data = d.data();
@@ -128,13 +157,65 @@ export default function CommentModal({ reelId, isOpen, onClose, onCommentCountUp
         };
       });
       setComments(loaded);
+      if (snap.docs.length > 0) {
+        setLastDocSnap(snap.docs[snap.docs.length - 1]);
+      }
+      setHasMore(snap.docs.length >= PAGE_SIZE);
       if (onCommentCountUpdate) onCommentCountUpdate(loaded.length);
     } catch (error) {
       console.error('[LimeCommentModal] Error fetching comments:', error);
     } finally {
       setLoading(false);
     }
-  }, [reelId, onCommentCountUpdate]);
+  }, [reelId, initialComments.length, onCommentCountUpdate]);
+
+  /* ── On-Scroll Pagination: Fetch Next 50 Comments ── */
+  const fetchMoreComments = async () => {
+    if (loadingMore || !hasMore || !lastDocSnap || !reelId) return;
+    setLoadingMore(true);
+    try {
+      const q = query(
+        collection(db, 'reels', reelId, 'comments'),
+        orderBy('createdAt', 'desc'),
+        startAfter(lastDocSnap),
+        limit(PAGE_SIZE)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const nextBatch: LimeComment[] = snap.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            reelId,
+            userId: data.userId || '',
+            content: data.content || '',
+            userName: data.userName || data.user?.userName || 'user',
+            firstName: data.firstName || data.user?.firstName || 'User',
+            profileImage: data.profileImage || data.user?.profileImage || undefined,
+            likes: Array.isArray(data.likes) ? data.likes : [],
+            replyCount: data.replyCount || 0,
+            parentCommentId: data.parentCommentId || undefined,
+            replyToUserName: data.replyToUserName || undefined,
+            createdAt: data.createdAt ? (data.createdAt.seconds ? data.createdAt.seconds * 1000 : Date.now()) : Date.now(),
+          };
+        });
+
+        setComments((prev) => {
+          const existingIds = new Set(prev.map((c) => c.id));
+          const uniqueNew = nextBatch.filter((c) => !existingIds.has(c.id));
+          return [...prev, ...uniqueNew];
+        });
+        setLastDocSnap(snap.docs[snap.docs.length - 1]);
+        setHasMore(snap.docs.length >= PAGE_SIZE);
+      } else {
+        setHasMore(false);
+      }
+    } catch (error) {
+      console.error('[LimeCommentModal] Load more comments error:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -190,7 +271,7 @@ export default function CommentModal({ reelId, isOpen, onClose, onCommentCountUp
     }
   };
 
-  /* ── Toggle Like / Reaction ── */
+  /* ── Toggle Like / Reaction with Bright Red Fill ── */
   const handleToggleLike = async (commentId: string, isLiked: boolean) => {
     if (!currentUserId) return;
     setComments((prev) =>
@@ -249,6 +330,16 @@ export default function CommentModal({ reelId, isOpen, onClose, onCommentCountUp
       </Text>
     ));
 
+  // Separate root comments from sub-comment replies
+  const rootComments = comments.filter((c) => !c.parentCommentId);
+  const repliesByParentMap: Record<string, LimeComment[]> = {};
+  comments.forEach((c) => {
+    if (c.parentCommentId) {
+      if (!repliesByParentMap[c.parentCommentId]) repliesByParentMap[c.parentCommentId] = [];
+      repliesByParentMap[c.parentCommentId].push(c);
+    }
+  });
+
   return (
     <Modal visible={isOpen} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -267,24 +358,42 @@ export default function CommentModal({ reelId, isOpen, onClose, onCommentCountUp
             </TouchableOpacity>
           </View>
 
-          {/* Comments Feed List */}
-          {loading ? (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator size="small" color="#10b981" />
-              <Text style={styles.loadingText}>Loading comments…</Text>
+          {/* Comments Feed List with Skeleton Loaders & On-Scroll Pagination */}
+          {loading && comments.length === 0 ? (
+            <View style={styles.commentsList}>
+              <CommentSkeletonRow />
+              <CommentSkeletonRow />
+              <CommentSkeletonRow />
+              <CommentSkeletonRow />
             </View>
-          ) : comments.length === 0 ? (
+          ) : rootComments.length === 0 ? (
             <View style={styles.emptyBox}>
               <Smile size={36} color="#94a3b8" />
               <Text style={styles.emptyTitle}>No comments yet</Text>
               <Text style={styles.emptySubtitle}>Be the first to share your thoughts on this Lime!</Text>
             </View>
           ) : (
-            <ScrollView style={styles.commentsList} showsVerticalScrollIndicator={false}>
-              {comments.map((comment) => {
+            <ScrollView
+              style={styles.commentsList}
+              showsVerticalScrollIndicator={false}
+              onScroll={({ nativeEvent }) => {
+                const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+                const isNearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 60;
+                if (isNearBottom && hasMore && !loadingMore) {
+                  void fetchMoreComments();
+                }
+              }}
+              scrollEventThrottle={200}
+            >
+              {rootComments.map((comment) => {
                 const isLiked = comment.likes.includes(currentUserId);
                 const isOwner = comment.userId === currentUserId;
                 const isEditing = editingId === comment.id;
+
+                const allSubReplies = repliesByParentMap[comment.id] || [];
+                const repliesVisibleLimit = visibleRepliesLimitMap[comment.id] || 50;
+                const visibleSubReplies = allSubReplies.slice(0, repliesVisibleLimit);
+                const hasMoreSubReplies = allSubReplies.length > visibleSubReplies.length;
 
                 return (
                   <View key={comment.id} style={styles.commentItem}>
@@ -293,11 +402,6 @@ export default function CommentModal({ reelId, isOpen, onClose, onCommentCountUp
                       
                       <View style={styles.commentMetaRow}>
                         <Text style={styles.commentUser}>@{comment.userName}</Text>
-                        {comment.replyToUserName && (
-                          <Text style={styles.replyingTo}>
-                            replying to <Text style={{ color: '#10b981', fontWeight: '700' }}>@{comment.replyToUserName}</Text>
-                          </Text>
-                        )}
                       </View>
 
                       {isEditing ? (
@@ -355,14 +459,78 @@ export default function CommentModal({ reelId, isOpen, onClose, onCommentCountUp
                         )}
                       </View>
 
+                      {/* Sub-Comments / Replies Thread */}
+                      {visibleSubReplies.length > 0 && (
+                        <View style={styles.subRepliesThread}>
+                          {visibleSubReplies.map((reply) => {
+                            const isReplyLiked = reply.likes.includes(currentUserId);
+                            const isReplyOwner = reply.userId === currentUserId;
+                            return (
+                              <View key={reply.id} style={styles.subReplyItem}>
+                                <UserAvatar profileImage={reply.profileImage} firstName={reply.firstName || reply.userName} size={26} />
+                                <View style={{ flex: 1 }}>
+                                  <View style={styles.commentMetaRow}>
+                                    <Text style={styles.commentUser}>@{reply.userName}</Text>
+                                    <Text style={styles.replyingTo}>
+                                      replying to <Text style={{ color: '#10b981', fontWeight: '700' }}>@{reply.replyToUserName || comment.userName}</Text>
+                                    </Text>
+                                  </View>
+
+                                  <Text style={styles.commentContent}>{renderContent(reply.content)}</Text>
+
+                                  <View style={styles.actionsRow}>
+                                    <TouchableOpacity onPress={() => handleToggleLike(reply.id, isReplyLiked)} style={styles.actionBtn}>
+                                      <Heart size={13} color={isReplyLiked ? '#ef4444' : '#64748b'} fill={isReplyLiked ? '#ef4444' : 'none'} />
+                                      <Text style={[styles.actionText, isReplyLiked && { color: '#ef4444' }]}>
+                                        {reply.likes.length > 0 ? reply.likes.length : 'Like'}
+                                      </Text>
+                                    </TouchableOpacity>
+                                    {isReplyOwner && (
+                                      <TouchableOpacity onPress={() => handleDeleteComment(reply.id)} style={styles.actionBtn}>
+                                        <Trash2 size={12} color="#ef4444" />
+                                      </TouchableOpacity>
+                                    )}
+                                  </View>
+                                </View>
+                              </View>
+                            );
+                          })}
+
+                          {/* Load More Sub-Comments Button */}
+                          {hasMoreSubReplies && (
+                            <TouchableOpacity
+                              onPress={() =>
+                                setVisibleRepliesLimitMap((prev) => ({
+                                  ...prev,
+                                  [comment.id]: (prev[comment.id] || 50) + 50,
+                                }))
+                              }
+                              style={styles.loadMoreRepliesBtn}
+                            >
+                              <ChevronDown size={14} color="#10b981" />
+                              <Text style={styles.loadMoreRepliesText}>
+                                Load more replies ({allSubReplies.length - visibleSubReplies.length})
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      )}
+
                     </View>
                   </View>
                 );
               })}
+
+              {/* On-Scroll Infinite Loading Spinner */}
+              {loadingMore && (
+                <View style={{ paddingVertical: 14, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color="#10b981" />
+                </View>
+              )}
             </ScrollView>
           )}
 
-          {/* Reply Target Badge */}
+          {/* Reply Target Banner */}
           {replyTarget && (
             <View style={styles.replyBanner}>
               <Text style={styles.replyBannerText}>Replying to @{replyTarget.userName}</Text>
@@ -422,7 +590,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    height: '82%',
+    height: '84%',
     paddingTop: 8,
     paddingHorizontal: 20,
     paddingBottom: 20,
@@ -456,16 +624,35 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#f1f5f9',
   },
-  loadingBox: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+  skeletonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 18,
+    paddingHorizontal: 4,
   },
-  loadingText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748b',
+  skeletonAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f1f5f9',
+  },
+  skeletonName: {
+    width: 120,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#f1f5f9',
+  },
+  skeletonText: {
+    width: '85%',
+    height: 14,
+    borderRadius: 6,
+    backgroundColor: '#f8fafc',
+  },
+  skeletonMeta: {
+    width: '40%',
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#f1f5f9',
   },
   emptyBox: {
     flex: 1,
@@ -539,6 +726,29 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#64748b',
+  },
+  subRepliesThread: {
+    marginTop: 10,
+    paddingLeft: 12,
+    borderLeftWidth: 2,
+    borderLeftColor: '#e2e8f0',
+    gap: 10,
+  },
+  subReplyItem: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  loadMoreRepliesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+  loadMoreRepliesText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#10b981',
   },
   editRow: {
     flexDirection: 'row',

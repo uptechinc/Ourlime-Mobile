@@ -14,11 +14,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
+import { Heart, MessageCircle, Send, Volume2, VolumeX, Play, Plus } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { auth, db } from '@/lib/firebaseConfig';
-import { collection, query, where, getDocs, getDoc, doc, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, doc, limit, orderBy } from 'firebase/firestore';
 import CreateLimeModal from '@/components/limes/CreateLimeModal';
-import CommentModal from '@/components/limes/CommentModal';
+import CommentModal, { LimeComment } from '@/components/limes/CommentModal';
 import { Reel } from '@/types/userTypes';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -32,6 +33,9 @@ export default function LimesScreen() {
   const [commentReelId, setCommentReelId] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  /* Pre-fetched comments map by reelId */
+  const [preloadedCommentsMap, setPreloadedCommentsMap] = useState<Record<string, LimeComment[]>>({});
 
   const loadRealLimes = useCallback(async () => {
     setLoading(true);
@@ -72,6 +76,31 @@ export default function LimesScreen() {
               } catch {
                 // Fallback
               }
+            }
+
+            // Pre-fetch first 50 comments per reel ahead of time
+            try {
+              const commentsSnap = await getDocs(query(collection(db, 'reels', reelDoc.id, 'comments'), orderBy('createdAt', 'desc'), limit(50)));
+              const firstComments: LimeComment[] = commentsSnap.docs.map((cd) => {
+                const cData = cd.data();
+                return {
+                  id: cd.id,
+                  reelId: reelDoc.id,
+                  userId: cData.userId || '',
+                  content: cData.content || '',
+                  userName: cData.userName || cData.user?.userName || 'user',
+                  firstName: cData.firstName || cData.user?.firstName || 'User',
+                  profileImage: cData.profileImage || cData.user?.profileImage || undefined,
+                  likes: Array.isArray(cData.likes) ? cData.likes : [],
+                  replyCount: cData.replyCount || 0,
+                  parentCommentId: cData.parentCommentId || undefined,
+                  replyToUserName: cData.replyToUserName || undefined,
+                  createdAt: cData.createdAt ? (cData.createdAt.seconds ? cData.createdAt.seconds * 1000 : Date.now()) : Date.now(),
+                };
+              });
+              setPreloadedCommentsMap((prev) => ({ ...prev, [reelDoc.id]: firstComments }));
+            } catch {
+              // ignore
             }
 
             return {
@@ -130,7 +159,7 @@ export default function LimesScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
-      {/* Top Header Overlay with For You & Following tabs on top left */}
+      {/* Top Header Overlay */}
       <SafeAreaView style={styles.topHeader} edges={['top', 'left', 'right']}>
         <View style={styles.tabToggleRow}>
           <TouchableOpacity onPress={() => setFeedTab('forYou')} style={styles.tabBtn}>
@@ -149,7 +178,7 @@ export default function LimesScreen() {
           style={styles.createButton}
           activeOpacity={0.8}
         >
-          <Icon name="camera" size={18} color="#ffffff" />
+          <Plus size={16} color="#ffffff" />
           <Text style={styles.createButtonText}>Create</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -188,11 +217,12 @@ export default function LimesScreen() {
         />
       )}
 
-      {/* Comments Modal */}
+      {/* Comments Modal with Instant Preloaded Comments */}
       {commentReelId && (
         <CommentModal
           isOpen={Boolean(commentReelId)}
           reelId={commentReelId}
+          initialComments={preloadedCommentsMap[commentReelId] || []}
           onClose={() => setCommentReelId(null)}
           onCommentCountUpdate={(count) => {
             setLimesList((prev) =>
@@ -263,10 +293,11 @@ function ReelItem({ reel, isActive, muted, onToggleMute, onCommentPress }: ReelI
     setIsLiked(nextLiked);
     setLikeCount((c) => Math.max(0, c + (nextLiked ? 1 : -1)));
 
+    // Pop-out heart animation on double-tap or like press
     Animated.sequence([
-      Animated.spring(heartAnim, { toValue: 1, useNativeDriver: true }),
-      Animated.delay(400),
-      Animated.timing(heartAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.spring(heartAnim, { toValue: 1, useNativeDriver: true, bounciness: 12 }),
+      Animated.delay(450),
+      Animated.timing(heartAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
     ]).start();
   };
 
@@ -304,11 +335,11 @@ function ReelItem({ reel, isActive, muted, onToggleMute, onCommentPress }: ReelI
         {/* Mute Indicator / Tap to Pause Overlay */}
         {paused && (
           <View style={styles.pauseOverlay}>
-            <Icon name="play" size={48} color="#ffffff" />
+            <Play size={48} color="#ffffff" />
           </View>
         )}
 
-        {/* Animated Pop-out Heart on Double Tap */}
+        {/* Animated Red Popped Heart in Center on Double Tap */}
         <Animated.View
           style={[
             styles.heartPop,
@@ -319,31 +350,31 @@ function ReelItem({ reel, isActive, muted, onToggleMute, onCommentPress }: ReelI
           ]}
           pointerEvents="none"
         >
-          <Icon name="heart" size={100} color="#ef4444" />
+          <Heart size={110} color="#ef4444" fill="#ef4444" />
         </Animated.View>
 
         {/* Right Sidebar Controls */}
         <View style={styles.rightSidebar}>
           {/* Mute Button */}
           <TouchableOpacity onPress={onToggleMute} style={styles.actionBtn}>
-            <Icon name={muted ? 'volume-x' : 'volume-2'} size={24} color="#ffffff" />
+            {muted ? <VolumeX size={26} color="#ffffff" /> : <Volume2 size={26} color="#ffffff" />}
           </TouchableOpacity>
 
-          {/* Like Button */}
+          {/* Like Button with Red Inside Fill */}
           <TouchableOpacity onPress={triggerLike} style={styles.actionBtn}>
-            <Icon name="heart" size={28} color={isLiked ? '#ef4444' : '#ffffff'} />
+            <Heart size={28} color={isLiked ? '#ef4444' : '#ffffff'} fill={isLiked ? '#ef4444' : 'none'} />
             <Text style={styles.actionCount}>{likeCount}</Text>
           </TouchableOpacity>
 
           {/* Comment Button */}
           <TouchableOpacity onPress={onCommentPress} style={styles.actionBtn}>
-            <Icon name="message-circle" size={28} color="#ffffff" />
+            <MessageCircle size={28} color="#ffffff" />
             <Text style={styles.actionCount}>{reel.stats?.comments ?? 0}</Text>
           </TouchableOpacity>
 
           {/* Share Button */}
           <TouchableOpacity onPress={handleShare} style={styles.actionBtn}>
-            <Icon name="send" size={26} color="#ffffff" />
+            <Send size={26} color="#ffffff" />
             <Text style={styles.actionCount}>{reel.stats?.shares ?? 0}</Text>
           </TouchableOpacity>
         </View>
@@ -391,7 +422,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 50,
+    zIndex: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -404,26 +435,22 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   tabBtn: {
-    position: 'relative',
     paddingVertical: 4,
   },
   tabText: {
+    color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 16,
     fontWeight: '700',
-    color: 'rgba(255, 255, 255, 0.65)',
   },
   activeTabText: {
     color: '#ffffff',
-    fontWeight: '900',
+    fontWeight: '800',
   },
   activeTabIndicator: {
-    position: 'absolute',
-    bottom: -4,
-    left: 0,
-    right: 0,
     height: 3,
     backgroundColor: '#10b981',
     borderRadius: 2,
+    marginTop: 4,
   },
   tabDivider: {
     width: 1,
@@ -433,16 +460,20 @@ const styles = StyleSheet.create({
   createButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
     backgroundColor: '#10b981',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    gap: 6,
+    shadowColor: '#10b981',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   createButtonText: {
     color: '#ffffff',
-    fontWeight: '800',
     fontSize: 13,
+    fontWeight: '800',
   },
   reelContainer: {
     width: SCREEN_WIDTH,
@@ -456,28 +487,31 @@ const styles = StyleSheet.create({
   },
   pauseOverlay: {
     position: 'absolute',
-    top: '45%',
-    left: '42%',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 40,
-    padding: 16,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
   },
   heartPop: {
     position: 'absolute',
-    top: '40%',
-    left: '37%',
-    zIndex: 40,
+    alignSelf: 'center',
+    top: SCREEN_HEIGHT / 2 - 55,
+    zIndex: 30,
   },
   rightSidebar: {
     position: 'absolute',
-    right: 14,
+    right: 16,
     bottom: 120,
     alignItems: 'center',
     gap: 20,
-    zIndex: 40,
+    zIndex: 10,
   },
   actionBtn: {
     alignItems: 'center',
+    justifyContent: 'center',
   },
   actionCount: {
     color: '#ffffff',
@@ -487,54 +521,58 @@ const styles = StyleSheet.create({
   },
   bottomOverlay: {
     position: 'absolute',
-    bottom: 30,
     left: 16,
-    right: 70,
-    zIndex: 40,
+    bottom: 40,
+    right: 80,
+    zIndex: 10,
   },
   creatorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    borderColor: '#10b981',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
   },
   creatorName: {
     color: '#ffffff',
+    fontSize: 14,
     fontWeight: '800',
-    fontSize: 15,
   },
   handle: {
-    color: '#cbd5e1',
+    color: 'rgba(255, 255, 255, 0.75)',
     fontSize: 12,
+    fontWeight: '600',
   },
   followBtn: {
-    backgroundColor: '#10b981',
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 16,
+    backgroundColor: '#10b981',
   },
   followingBtn: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   followText: {
     color: '#ffffff',
-    fontWeight: '800',
     fontSize: 12,
+    fontWeight: '700',
   },
   followingText: {
-    color: '#cbd5e1',
+    color: '#ffffff',
   },
   caption: {
     color: '#ffffff',
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
     marginBottom: 8,
   },
   soundRow: {
