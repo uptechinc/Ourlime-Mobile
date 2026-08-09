@@ -344,32 +344,16 @@ export default function LimesScreen() {
 }
 
 /* ─────────────────────────────────────────────────────────────────── */
-/* Video Player — isolated so VideoPlayer hook rules are respected     */
+/* Video /* ─────────────────────────────────────────────────────────────────── */
+/* Video Player — isolated & rock solid like Feed Post videos          */
 /* ─────────────────────────────────────────────────────────────────── */
 function ReelVideoPlayer({ url, isActive, muted }: { url: string; isActive: boolean; muted: boolean }) {
   const safeUrl = url && url.length > 4 ? url : undefined;
-  const [hasError, setHasError] = useState(false);
 
   const player = useVideoPlayer(safeUrl ?? null, (p) => {
     p.loop = true;
     p.muted = muted;
-    if (isActive && safeUrl) {
-      try { p.play(); } catch { /* ignore */ }
-    }
   });
-
-  // Catch player errors — prevents crash when video source fails or ends unexpectedly
-  useEffect(() => {
-    const sub = player.addListener('statusChange', (status) => {
-      if (status.status === 'error') {
-        // Video format not supported by device decoder — show placeholder silently
-        setHasError(true);
-      } else if (status.status === 'readyToPlay') {
-        setHasError(false);
-      }
-    });
-    return () => sub.remove();
-  }, [player]);
 
   useEffect(() => {
     try {
@@ -380,7 +364,6 @@ function ReelVideoPlayer({ url, isActive, muted }: { url: string; isActive: bool
   }, [player, muted]);
 
   useEffect(() => {
-    if (hasError) return; // Don't attempt play on errored player
     try {
       if (isActive && safeUrl) {
         player.play();
@@ -390,32 +373,29 @@ function ReelVideoPlayer({ url, isActive, muted }: { url: string; isActive: bool
     } catch {
       // ignore
     }
-  }, [player, isActive, safeUrl, hasError]);
-
-  if (!safeUrl || hasError) {
-    return (
-      <View style={[styles.videoPlayer, { backgroundColor: '#0a0a0a', alignItems: 'center', justifyContent: 'center' }]}>
-        <Text style={{ fontSize: 32, marginBottom: 8 }}>🎬</Text>
-        <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '600' }}>
-          {hasError ? 'Video unavailable' : 'No video'}
-        </Text>
-      </View>
-    );
-  }
+  }, [player, isActive, safeUrl]);
 
   return (
-    <VideoView
-      player={player}
-      style={styles.videoPlayer}
-      nativeControls={false}
-      contentFit="cover"
-    />
+    <View style={styles.videoPlayer}>
+      {safeUrl ? (
+        <VideoView
+          player={player}
+          style={{ width: '100%', height: '100%' }}
+          nativeControls={false}
+          contentFit="cover"
+        />
+      ) : (
+        <View style={{ flex: 1, backgroundColor: '#0a0a0a', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 32, marginBottom: 8 }}>🎬</Text>
+          <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '600' }}>No video</Text>
+        </View>
+      )}
+    </View>
   );
 }
 
 /* ─────────────────────────────────────────────────────────────────── */
-/* ReelItem — the core card. Double-tap zone sits on top of video       */
-/* but BELOW all interactive buttons.                                   */
+/* ReelItem — core reel card with feed-matching double-tap heart anim  */
 /* ─────────────────────────────────────────────────────────────────── */
 type ReelItemProps = {
   reel: Reel;
@@ -433,10 +413,42 @@ function ReelItem({ reel, isActive, muted, currentUserId, onToggleMute, onCommen
   const [isLiked, setIsLiked] = useState(likedByMe);
   const [likeCount, setLikeCount] = useState(reel.stats?.likes ?? 0);
   const [isFollowing, setIsFollowing] = useState(false);
-  const heartAnim = useRef(new Animated.Value(0)).current;
-  const heartScale = heartAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 1.3, 1] });
+
+  // Feed-matching Heart animation values
+  const heartScale = useRef(new Animated.Value(0)).current;
+  const heartOpacity = useRef(new Animated.Value(0)).current;
+  const heartTranslateY = useRef(new Animated.Value(0)).current;
+
   const lastTapRef = useRef<number | null>(null);
   const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerHeartAnim = useCallback(() => {
+    heartScale.setValue(0.3);
+    heartOpacity.setValue(1);
+    heartTranslateY.setValue(0);
+
+    Animated.parallel([
+      Animated.spring(heartScale, {
+        toValue: 1.35,
+        friction: 3,
+        tension: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(heartTranslateY, {
+        toValue: -30,
+        duration: 650,
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.delay(350),
+        Animated.timing(heartOpacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, [heartScale, heartOpacity, heartTranslateY]);
 
   const triggerLike = useCallback(() => {
     if (!isLiked) {
@@ -450,24 +462,8 @@ function ReelItem({ reel, isActive, muted, currentUserId, onToggleMute, onCommen
         }).catch(() => {});
       }
     }
-    // Animate heart — pop in with bounce, hold, fade out
-    heartAnim.stopAnimation();
-    heartAnim.setValue(0);
-    Animated.sequence([
-      Animated.spring(heartAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        bounciness: 22,
-        speed: 40,
-      }),
-      Animated.delay(500),
-      Animated.timing(heartAnim, {
-        toValue: 0,
-        duration: 280,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [isLiked, heartAnim, reel.id, currentUserId, onLikeUpdate]);
+    triggerHeartAnim();
+  }, [isLiked, reel.id, currentUserId, onLikeUpdate, triggerHeartAnim]);
 
   const toggleLikeButton = useCallback(() => {
     const nextLiked = !isLiked;
@@ -479,9 +475,12 @@ function ReelItem({ reel, isActive, muted, currentUserId, onToggleMute, onCommen
         likes: nextLiked ? arrayUnion(currentUserId) : arrayRemove(currentUserId),
       }).catch(() => {});
     }
-  }, [isLiked, reel.id, currentUserId, onLikeUpdate]);
+    if (nextLiked) {
+      triggerHeartAnim();
+    }
+  }, [isLiked, reel.id, currentUserId, onLikeUpdate, triggerHeartAnim]);
 
-  /* Tap handler: only on the central video zone (not sidebar or overlay) */
+  /* Tap handler: double tap likes & animates heart; single tap toggles pause */
   const handleDoubleTapZoneTap = useCallback(() => {
     const now = Date.now();
     if (lastTapRef.current !== null && now - lastTapRef.current < 320) {
@@ -525,26 +524,26 @@ function ReelItem({ reel, isActive, muted, currentUserId, onToggleMute, onCommen
       {/* 1. Video player — bottom layer */}
       <ReelVideoPlayer url={reel.media.typeUrl} isActive={isActive && !paused} muted={muted} />
 
-      {/* 2. Double-tap + single-tap zone — transparent, sits above video but BELOW UI elements */}
+      {/* 2. Double-tap + single-tap zone — full screen, sits behind controls */}
       <Pressable
         style={styles.doubleTapZone}
         onPress={handleDoubleTapZoneTap}
       />
 
-      {/* 3. Pause indicator — rendered above tap zone, below sidebar */}
+      {/* 3. Pause indicator — overlay */}
       {paused && (
         <View style={styles.pauseOverlay} pointerEvents="none">
           <Play size={56} color="rgba(255,255,255,0.9)" />
         </View>
       )}
 
-      {/* 4. Heart pop animation — above everything, non-interactive */}
+      {/* 4. Animated Red Popped Heart on Double Tap */}
       <Animated.View
         style={[
           styles.heartPop,
           {
-            opacity: heartAnim,
-            transform: [{ scale: heartScale }],
+            opacity: heartOpacity,
+            transform: [{ scale: heartScale }, { translateY: heartTranslateY }],
           },
         ]}
         pointerEvents="none"
@@ -578,7 +577,7 @@ function ReelItem({ reel, isActive, muted, currentUserId, onToggleMute, onCommen
         </TouchableOpacity>
       </View>
 
-      {/* 6. Bottom overlay (creator info + caption) — non-interactive container */}
+      {/* 6. Bottom overlay (creator info + caption) */}
       <View style={styles.bottomOverlay} pointerEvents="box-none">
         <View style={styles.creatorRow} pointerEvents="box-none">
           <Image
@@ -703,14 +702,13 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  /* Transparent double-tap zone: full screen but NOT covering sidebar or bottom bar controls */
+  /* Transparent double-tap zone: full screen behind sidebar controls */
   doubleTapZone: {
     position: 'absolute',
     top: 0,
     left: 0,
-    /* Stop short of the right sidebar (80px) and bottom overlay (140px) */
-    right: 70,
-    bottom: 130,
+    right: 0,
+    bottom: 0,
     zIndex: 10,
     backgroundColor: 'transparent',
   },
@@ -727,16 +725,9 @@ const styles = StyleSheet.create({
   },
   heartPop: {
     position: 'absolute',
-    // Pixel-exact center of the screen — percentages are unreliable with absolute positioning
-    top: SCREEN_HEIGHT * 0.38,
-    left: SCREEN_WIDTH / 2 - 55,
-    zIndex: 50,
-    // Shadow glow effect
-    shadowColor: '#ef4444',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-    elevation: 20,
+    alignSelf: 'center',
+    top: '40%',
+    zIndex: 99,
   },
   rightSidebar: {
     position: 'absolute',
@@ -744,7 +735,7 @@ const styles = StyleSheet.create({
     bottom: 110,
     alignItems: 'center',
     gap: 22,
-    zIndex: 80,
+    zIndex: 99,
   },
   actionBtn: {
     alignItems: 'center',
