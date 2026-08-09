@@ -20,6 +20,7 @@ import GalleryTab from '@/components/profile/GalleryTab';
 import AdminTab from '@/components/profile/AdminTab';
 import AppDrawerNav from '@/components/navigation/AppDrawerNav';
 import EditProfileModal from '@/components/profile/EditProfileModal';
+import ProfileSkeleton from '@/components/profile/ProfileSkeleton';
 
 type ProfileTab = 'timeline' | 'about' | 'gallery' | 'admin';
 
@@ -133,9 +134,7 @@ export default function ProfileScreen() {
       </View>
 
       {isLoading ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#10b981" />
-        </View>
+        <ProfileSkeleton />
       ) : profile ? (
         <ScrollView
           style={{ flex: 1, backgroundColor: '#f8fafc' }}
@@ -167,15 +166,12 @@ export default function ProfileScreen() {
           />
 
           {/* ── Tab Selector Row ── */}
-          <View style={{
-            flexDirection: 'row',
-            backgroundColor: '#ffffff',
-            paddingHorizontal: 16,
-            paddingVertical: 8,
-            borderBottomWidth: 1,
-            borderBottomColor: '#e2e8f0',
-            gap: 8,
-          }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}
+          >
             {tabs.map((t) => {
               const isActive = activeTab === t.key;
               return (
@@ -183,12 +179,11 @@ export default function ProfileScreen() {
                   key={t.key}
                   onPress={() => setActiveTab(t.key)}
                   style={{
-                    flex: 1,
                     flexDirection: 'row',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    paddingVertical: 9,
-                    borderRadius: 12,
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 20,
                     backgroundColor: isActive ? '#10b981' : '#f1f5f9',
                     gap: 6,
                   }}
@@ -201,7 +196,7 @@ export default function ProfileScreen() {
                   />
                   <Text style={{
                     fontSize: 13,
-                    fontWeight: isActive ? '700' : '500',
+                    fontWeight: isActive ? '800' : '600',
                     color: isActive ? '#ffffff' : '#64748b',
                   }}>
                     {t.label}
@@ -209,7 +204,7 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               );
             })}
-          </View>
+          </ScrollView>
 
           {/* ── Active Tab Content ── */}
           {activeTab === 'timeline' && <TimelineTab userId={profile.uid} />}

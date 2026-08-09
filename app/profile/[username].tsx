@@ -25,6 +25,8 @@ import GalleryTab from '@/components/profile/GalleryTab';
 import { SkeletonBox, SkeletonCircle, SkeletonText } from '@/components/ui/Skeleton';
 import { SkeletonPostCard } from '@/components/home/SkeletonLoaders';
 
+import ProfileSkeleton from '@/components/profile/ProfileSkeleton';
+
 const authService = AuthService.getInstance();
 const postService = PostService.getInstance();
 const relationshipService = RelationshipService.getInstance();
@@ -57,6 +59,15 @@ export default function UserProfileScreen() {
         const feedPage = await postService.fetchFeedPage({ limit: 50 });
         const filtered = feedPage.posts.filter((p) => p.userId === userProf.uid || p.user.userName?.toLowerCase() === username.toLowerCase());
         setUserPosts(filtered);
+
+        if (currentUserId && currentUserId !== userProf.uid) {
+          const [isFol, fStatus] = await Promise.all([
+            relationshipService.checkFollowStatus(currentUserId, userProf.uid).catch(() => false),
+            relationshipService.checkFriendshipStatus(currentUserId, userProf.uid).catch(() => 'none' as const),
+          ]);
+          setIsFollowing(isFol);
+          setFriendshipStatus(fStatus);
+        }
       } else {
         setProfile({
           uid: username,
@@ -73,7 +84,7 @@ export default function UserProfileScreen() {
       setIsLoading(false);
       setRefreshing(false);
     }
-  }, [username]);
+  }, [username, currentUserId]);
 
   useEffect(() => {
     void loadData();
@@ -149,168 +160,163 @@ export default function UserProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        style={{ flex: 1, backgroundColor: '#f8fafc' }}
-        contentContainerStyle={{ paddingBottom: 60 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
-      >
-        {isLoading ? (
-          <View style={{ padding: 16 }}>
-            <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 20, alignItems: 'center', marginBottom: 16 }}>
-              <SkeletonCircle size={84} />
-              <SkeletonText width={160} height={20} style={{ marginTop: 12 }} />
-              <SkeletonText width={100} height={14} style={{ marginTop: 6 }} />
-              <SkeletonBox width={120} height={36} borderRadius={16} style={{ marginTop: 16 }} />
-            </View>
-            <SkeletonPostCard />
+      {isLoading ? (
+        <ProfileSkeleton />
+      ) : (
+        <ScrollView
+          style={{ flex: 1, backgroundColor: '#f8fafc' }}
+          contentContainerStyle={{ paddingBottom: 60 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
+        >
+          {/* ── Cover Photo Banner ── */}
+          <View style={{ height: 130, width: '100%', position: 'relative' }}>
+            {(profile as any)?.coverImage || (profile as any)?.coverPicture ? (
+              <Image source={{ uri: (profile as any).coverImage || (profile as any).coverPicture }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            ) : (
+              <LinearGradient colors={['#059669', '#10b981', '#34d399']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: '100%', height: '100%' }} />
+            )}
           </View>
-        ) : (
-          <>
-            {/* ── Cover Photo Banner ── */}
-            <View style={{ height: 130, width: '100%', position: 'relative' }}>
-              {(profile as any)?.coverImage || (profile as any)?.coverPicture ? (
-                <Image source={{ uri: (profile as any).coverImage || (profile as any).coverPicture }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-              ) : (
-                <LinearGradient colors={['#059669', '#10b981', '#34d399']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: '100%', height: '100%' }} />
-              )}
-            </View>
 
-            {/* ── Profile Header Body ── */}
-            <View style={{ backgroundColor: '#ffffff', paddingHorizontal: 20, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: -40, marginBottom: 12 }}>
-                <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: '#ffffff', padding: 3, elevation: 4 }}>
-                  <UserAvatar profileImage={profile?.profilePicture} firstName={profile?.firstName || username} size={78} />
-                </View>
-
-                {/* Public Actions (Follow, Add Friend, Message) */}
-                {!isOwnProfile && (
-                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                    <TouchableOpacity
-                      onPress={() => void handleFollowToggle()}
-                      disabled={actionLoading}
-                      style={{
-                        paddingHorizontal: 16,
-                        paddingVertical: 8,
-                        borderRadius: 20,
-                        backgroundColor: isFollowing ? '#f1f5f9' : '#10b981',
-                        borderWidth: 1,
-                        borderColor: isFollowing ? '#cbd5e1' : '#10b981',
-                      }}
-                    >
-                      <Text style={{ color: isFollowing ? '#475569' : '#ffffff', fontWeight: '800', fontSize: 13 }}>
-                        {isFollowing ? 'Following' : '+ Follow'}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => void handleFriendRequest()}
-                      disabled={actionLoading || friendshipStatus !== 'none'}
-                      style={{
-                        paddingHorizontal: 14,
-                        paddingVertical: 8,
-                        borderRadius: 20,
-                        backgroundColor: friendshipStatus === 'accepted' ? '#ecfdf5' : friendshipStatus === 'pending' ? '#fef3c7' : '#047857',
-                      }}
-                    >
-                      <Text style={{ color: friendshipStatus === 'accepted' ? '#047857' : friendshipStatus === 'pending' ? '#b45309' : '#ffffff', fontWeight: '700', fontSize: 13 }}>
-                        {friendshipStatus === 'accepted' ? 'Friends' : friendshipStatus === 'pending' ? 'Pending' : 'Add Friend'}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={handleMessage}
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 18,
-                        backgroundColor: '#f1f5f9',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Ionicons name="chatbubble-ellipses-outline" size={18} color="#334155" />
-                    </TouchableOpacity>
-                  </View>
-                )}
+          {/* ── Profile Header Body ── */}
+          <View style={{ backgroundColor: '#ffffff', paddingHorizontal: 20, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: -40, marginBottom: 12 }}>
+              <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: '#ffffff', padding: 3, elevation: 4 }}>
+                <UserAvatar profileImage={profile?.profilePicture} firstName={profile?.firstName || username} size={78} />
               </View>
 
-              <Text style={{ fontSize: 22, fontWeight: '800', color: '#0f172a' }}>{displayName}</Text>
-              <Text style={{ fontSize: 14, color: '#64748b', marginTop: 2 }}>@{profile?.userName || username}</Text>
-              {(profile as any)?.bio ? <Text style={{ fontSize: 14, color: '#334155', marginTop: 8, lineHeight: 20 }}>{(profile as any).bio}</Text> : null}
-
-              {/* Stats Bar */}
-              <View style={{ flexDirection: 'row', marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#f1f5f9' }}>
-                <View style={{ marginRight: 24, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a' }}>{userPosts.length}</Text>
-                  <Text style={{ fontSize: 12, color: '#64748b' }}>Posts</Text>
-                </View>
-                <View style={{ marginRight: 24, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a' }}>{(profile as any)?.followersCount ?? 0}</Text>
-                  <Text style={{ fontSize: 12, color: '#64748b' }}>Followers</Text>
-                </View>
-                <View style={{ alignItems: 'center' }}>
-                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a' }}>{(profile as any)?.friendsCount ?? 0}</Text>
-                  <Text style={{ fontSize: 12, color: '#64748b' }}>Friends</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* ── Public Tab Selection Bar ── */}
-            <View style={{ flexDirection: 'row', backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', paddingHorizontal: 12 }}>
-              {(['timeline', 'friends', 'communities', 'about', 'gallery'] as const).map((tab) => {
-                const isActive = activeTab === tab;
-                const label = tab === 'timeline' ? 'Posts' : tab.charAt(0).toUpperCase() + tab.slice(1);
-                return (
+              {/* Public Actions (Follow, Add Friend, Message) */}
+              {!isOwnProfile && (
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                   <TouchableOpacity
-                    key={tab}
-                    onPress={() => setActiveTab(tab)}
+                    onPress={() => void handleFollowToggle()}
+                    disabled={actionLoading}
                     style={{
-                      flex: 1,
-                      paddingVertical: 14,
-                      alignItems: 'center',
-                      borderBottomWidth: 3,
-                      borderBottomColor: isActive ? '#10b981' : 'transparent',
+                      paddingHorizontal: 16,
+                      paddingVertical: 8,
+                      borderRadius: 20,
+                      backgroundColor: isFollowing ? '#f1f5f9' : '#10b981',
+                      borderWidth: 1,
+                      borderColor: isFollowing ? '#cbd5e1' : '#10b981',
                     }}
                   >
-                    <Text style={{ color: isActive ? '#10b981' : '#64748b', fontWeight: isActive ? '800' : '600', fontSize: 13 }}>
-                      {label}
+                    <Text style={{ color: isFollowing ? '#475569' : '#ffffff', fontWeight: '800', fontSize: 13 }}>
+                      {isFollowing ? 'Following' : '+ Follow'}
                     </Text>
                   </TouchableOpacity>
-                );
-              })}
-            </View>
 
-            {/* ── Tab Content Views ── */}
-            <View style={{ marginTop: 12 }}>
-              {activeTab === 'timeline' && (
-                <TimelineTab userId={profile ? profile.uid : username} />
-              )}
+                  <TouchableOpacity
+                    onPress={() => void handleFriendRequest()}
+                    disabled={actionLoading || friendshipStatus !== 'none'}
+                    style={{
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderRadius: 20,
+                      backgroundColor: friendshipStatus === 'accepted' ? '#ecfdf5' : friendshipStatus === 'pending' ? '#fef3c7' : '#047857',
+                    }}
+                  >
+                    <Text style={{ color: friendshipStatus === 'accepted' ? '#047857' : friendshipStatus === 'pending' ? '#b45309' : '#ffffff', fontWeight: '700', fontSize: 13 }}>
+                      {friendshipStatus === 'accepted' ? 'Friends' : friendshipStatus === 'pending' ? 'Pending' : 'Add Friend'}
+                    </Text>
+                  </TouchableOpacity>
 
-              {activeTab === 'friends' && (
-                <View style={{ padding: 16, backgroundColor: '#ffffff', borderRadius: 16, marginHorizontal: 16 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a', marginBottom: 12 }}>Friends</Text>
-                  <Text style={{ fontSize: 13, color: '#64748b' }}>User's friends list will appear here.</Text>
+                  <TouchableOpacity
+                    onPress={handleMessage}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      backgroundColor: '#f1f5f9',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="chatbubble-ellipses-outline" size={18} color="#334155" />
+                  </TouchableOpacity>
                 </View>
               )}
-
-              {activeTab === 'communities' && (
-                <View style={{ padding: 16, backgroundColor: '#ffffff', borderRadius: 16, marginHorizontal: 16 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a', marginBottom: 12 }}>Joined Communities</Text>
-                  <Text style={{ fontSize: 13, color: '#64748b' }}>Communities joined by this user will appear here.</Text>
-                </View>
-              )}
-
-              {activeTab === 'about' && (
-                <AboutTab profile={profile ?? ({ uid: username, firstName: username, lastName: '', userName: username, email: '', accountType: 'regular' } as UserProfile)} />
-              )}
-
-              {activeTab === 'gallery' && (
-                <GalleryTab userId={profile ? profile.uid : username} />
-              )}
             </View>
-          </>
-        )}
-      </ScrollView>
+
+            <Text style={{ fontSize: 22, fontWeight: '800', color: '#0f172a' }}>{displayName}</Text>
+            <Text style={{ fontSize: 14, color: '#64748b', marginTop: 2 }}>@{profile?.userName || username}</Text>
+            {(profile as any)?.bio ? <Text style={{ fontSize: 14, color: '#334155', marginTop: 8, lineHeight: 20 }}>{(profile as any).bio}</Text> : null}
+
+            {/* Stats Bar */}
+            <View style={{ flexDirection: 'row', marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#f1f5f9' }}>
+              <View style={{ marginRight: 24, alignItems: 'center' }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a' }}>{userPosts.length}</Text>
+                <Text style={{ fontSize: 12, color: '#64748b' }}>Posts</Text>
+              </View>
+              <View style={{ marginRight: 24, alignItems: 'center' }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a' }}>{(profile as any)?.followersCount ?? 0}</Text>
+                <Text style={{ fontSize: 12, color: '#64748b' }}>Followers</Text>
+              </View>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a' }}>{(profile as any)?.friendsCount ?? 0}</Text>
+                <Text style={{ fontSize: 12, color: '#64748b' }}>Friends</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* ── Public Sliding Tab Selection Bar ── */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}
+          >
+            {(['timeline', 'friends', 'communities', 'about', 'gallery'] as const).map((tab) => {
+              const isActive = activeTab === tab;
+              const label = tab === 'timeline' ? 'Posts' : tab.charAt(0).toUpperCase() + tab.slice(1);
+              return (
+                <TouchableOpacity
+                  key={tab}
+                  onPress={() => setActiveTab(tab)}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                    backgroundColor: isActive ? '#10b981' : '#f1f5f9',
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={{ color: isActive ? '#ffffff' : '#64748b', fontWeight: isActive ? '800' : '600', fontSize: 13 }}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* ── Tab Content Views ── */}
+          <View style={{ marginTop: 12 }}>
+            {activeTab === 'timeline' && (
+              <TimelineTab userId={profile ? profile.uid : username} />
+            )}
+
+            {activeTab === 'friends' && (
+              <View style={{ padding: 16, backgroundColor: '#ffffff', borderRadius: 16, marginHorizontal: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a', marginBottom: 12 }}>Friends</Text>
+                <Text style={{ fontSize: 13, color: '#64748b' }}>User's friends list will appear here.</Text>
+              </View>
+            )}
+
+            {activeTab === 'communities' && (
+              <View style={{ padding: 16, backgroundColor: '#ffffff', borderRadius: 16, marginHorizontal: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a', marginBottom: 12 }}>Joined Communities</Text>
+                <Text style={{ fontSize: 13, color: '#64748b' }}>Communities joined by this user will appear here.</Text>
+              </View>
+            )}
+
+            {activeTab === 'about' && (
+              <AboutTab profile={profile ?? ({ uid: username, firstName: username, lastName: '', userName: username, email: '', accountType: 'regular' } as UserProfile)} />
+            )}
+
+            {activeTab === 'gallery' && (
+              <GalleryTab userId={profile ? profile.uid : username} />
+            )}
+          </View>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }

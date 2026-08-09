@@ -143,5 +143,32 @@ export class RelationshipService {
       if (!id) return [];
       return [{ id, firstName, lastName, userName, profileImage }];
     });
+  public async checkFollowStatus(followerId: string, followeeId: string): Promise<boolean> {
+    try {
+      const q = query(
+        collection(db, 'followers'),
+        where('followerId', '==', followerId),
+        where('followeeId', '==', followeeId)
+      );
+      const snap = await getDocs(q);
+      return !snap.empty;
+    } catch {
+      return false;
+    }
+  }
+
+  public async checkFriendshipStatus(userId1: string, userId2: string): Promise<'none' | 'pending' | 'accepted'> {
+    try {
+      const q1 = query(collection(db, 'friendship'), where('userId1', '==', userId1), where('userId2', '==', userId2));
+      const q2 = query(collection(db, 'friendship'), where('userId1', '==', userId2), where('userId2', '==', userId1));
+      const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+      const docs = [...snap1.docs, ...snap2.docs];
+      if (docs.length === 0) return 'none';
+      const data = docs[0].data();
+      if (data.status === 'accepted') return 'accepted';
+      return 'pending';
+    } catch {
+      return 'none';
+    }
   }
 }

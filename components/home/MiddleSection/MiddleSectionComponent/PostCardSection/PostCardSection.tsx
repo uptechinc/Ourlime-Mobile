@@ -173,9 +173,36 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
         </TouchableOpacity>
       ) : null}
 
+      {/* 1. Text */}
+      {post.caption ? (
+        <MentionText
+          content={post.caption}
+          style={{ marginTop: 14, color: '#111827', fontSize: 17, lineHeight: 23, fontWeight: '600' }}
+        />
+      ) : null}
+      {post.description && post.description !== post.caption ? (
+        <MentionText
+          content={post.description}
+          style={{ marginTop: 8, color: '#374151', fontSize: 15, lineHeight: 22 }}
+        />
+      ) : null}
+
+      {/* 2. Hashtags */}
+      {post.hashtags.length > 0 ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 }}>
+          {post.hashtags.map((tag) => <Text key={tag} style={{ marginRight: 8, marginBottom: 4, color: '#059669', fontWeight: '600' }}>#{tag}</Text>)}
+        </View>
+      ) : null}
+
+      {/* 3. Media (Images & Videos) */}
+      {post.media.length > 0 ? <View style={{ marginTop: 14 }}><ImageAndVideoPostSection media={post.media} isParentVisible={isVisible} onLike={() => void handleLike()} /></View> : null}
+
+      {/* 4. Location Map */}
       {post.location ? (
         <PostLocationMap location={post.location} />
       ) : null}
+
+      {/* 5. Event Card */}
       {post.type === 'event' ? (
         <View style={{ marginTop: 12, padding: 13, borderRadius: 14, backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#bbf7d0' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}><Icon name="calendar" size={17} color="#047857" /><Text style={{ marginLeft: 8, color: '#047857', fontWeight: '800' }}>{post.startDate ? new Date(post.startDate).toLocaleString() : 'Event date to be announced'}</Text></View>
@@ -190,24 +217,6 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
           </View>
         </View>
       ) : null}
-      {post.caption ? (
-        <MentionText
-          content={post.caption}
-          style={{ marginTop: 14, color: '#111827', fontSize: 17, lineHeight: 23, fontWeight: '600' }}
-        />
-      ) : null}
-      {post.description && post.description !== post.caption ? (
-        <MentionText
-          content={post.description}
-          style={{ marginTop: 8, color: '#374151', fontSize: 15, lineHeight: 22 }}
-        />
-      ) : null}
-      {post.hashtags.length > 0 ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 }}>
-          {post.hashtags.map((tag) => <Text key={tag} style={{ marginRight: 8, marginBottom: 4, color: '#059669', fontWeight: '600' }}>#{tag}</Text>)}
-        </View>
-      ) : null}
-      {post.media.length > 0 ? <View style={{ marginTop: 14 }}><ImageAndVideoPostSection media={post.media} isParentVisible={isVisible} onLike={() => void handleLike()} /></View> : null}
 
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 13, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
         <TouchableOpacity onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>

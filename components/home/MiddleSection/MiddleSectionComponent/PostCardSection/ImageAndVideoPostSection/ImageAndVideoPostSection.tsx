@@ -398,14 +398,32 @@ export default function ImageAndVideoPostSection({
   onLike,
 }: ImageAndVideoPostSectionProps) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
 
   const handleMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setActiveIndex(Math.round(event.nativeEvent.contentOffset.x / MEDIA_WIDTH));
   };
 
+  const handlePrevSlide = () => {
+    if (activeIndex > 0) {
+      const nextIndex = activeIndex - 1;
+      scrollRef.current?.scrollTo({ x: nextIndex * MEDIA_WIDTH, animated: true });
+      setActiveIndex(nextIndex);
+    }
+  };
+
+  const handleNextSlide = () => {
+    if (activeIndex < media.length - 1) {
+      const nextIndex = activeIndex + 1;
+      scrollRef.current?.scrollTo({ x: nextIndex * MEDIA_WIDTH, animated: true });
+      setActiveIndex(nextIndex);
+    }
+  };
+
   return (
-    <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: '#111827' }}>
+    <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: '#111827', position: 'relative' }}>
       <ScrollView
+        ref={scrollRef}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
@@ -433,6 +451,51 @@ export default function ImageAndVideoPostSection({
           </View>
         ))}
       </ScrollView>
+
+      {/* Left Arrow Button */}
+      {media.length > 1 && activeIndex > 0 ? (
+        <TouchableOpacity
+          onPress={handlePrevSlide}
+          style={{
+            position: 'absolute',
+            left: 10,
+            top: '46%',
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            backgroundColor: 'rgba(0, 0, 0, 0.55)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 30,
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="chevron-back" size={20} color="#ffffff" />
+        </TouchableOpacity>
+      ) : null}
+
+      {/* Right Arrow Button */}
+      {media.length > 1 && activeIndex < media.length - 1 ? (
+        <TouchableOpacity
+          onPress={handleNextSlide}
+          style={{
+            position: 'absolute',
+            right: 10,
+            top: '46%',
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            backgroundColor: 'rgba(0, 0, 0, 0.55)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 30,
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="chevron-forward" size={20} color="#ffffff" />
+        </TouchableOpacity>
+      ) : null}
+
       {media.length > 1 ? (
         <View style={{
           position: 'absolute',
@@ -442,6 +505,7 @@ export default function ImageAndVideoPostSection({
           paddingVertical: 5,
           borderRadius: 12,
           backgroundColor: '#111827b3',
+          zIndex: 30,
         }}>
           <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>
             {activeIndex + 1}/{media.length}

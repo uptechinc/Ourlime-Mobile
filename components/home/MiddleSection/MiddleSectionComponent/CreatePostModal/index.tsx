@@ -364,7 +364,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
         pollDuration: postType === 'poll' ? getPollDurationHours() : undefined,
         location: postType === 'regular' || postType === 'event' ? location : undefined,
         signal: controller.signal,
-        onUploadProgress: (progress) => setUploadProgress(progress.percentage),
+        onUploadProgress: (progress) => setUploadProgress(Math.min(100, Math.max(0, Math.round(progress.percentage)))),
       });
       onCreatePost(createdPost);
       dispatchMentionNotifications({
