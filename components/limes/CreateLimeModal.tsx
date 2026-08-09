@@ -148,7 +148,9 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
     setShowMentionDropdown(false);
   };
 
-  /* ── Video Picker with 9:16 Instagram Crop Aspect Ratio ── */
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  /* ── Video Picker with 9:16 Instagram Crop Aspect Ratio (Non-deprecated) ── */
   const handlePickVideo = async () => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -158,7 +160,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        mediaTypes: ['videos'],
         allowsEditing: true,
         aspect: [9, 16], // Instagram Reels standard 9:16 portrait ratio
         quality: 0.8,
@@ -237,20 +239,23 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
       });
 
       setUploadProgress(100);
-      Alert.alert('Success 🎉', 'Your Lime reel was posted successfully!');
-
-      setSelectedAsset(null);
-      setCaption('');
-      setCategory('Lifestyle');
-      onSuccess();
-      onClose();
+      setIsUploading(false);
+      setShowSuccessModal(true);
     } catch (error: any) {
       console.error('[CreateLimeModal] Submit error:', error);
-      Alert.alert('Upload Failed', error?.message || 'Could not upload your Lime reel.');
-    } finally {
       setIsUploading(false);
       setUploadProgress(0);
+      Alert.alert('Upload Failed', error?.message || 'Could not upload your Lime reel.');
     }
+  };
+
+  const handleFinishSuccess = () => {
+    setShowSuccessModal(false);
+    setSelectedAsset(null);
+    setCaption('');
+    setCategory('Lifestyle');
+    onSuccess();
+    onClose();
   };
 
   return (
@@ -424,6 +429,22 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
 
         </Animated.View>
       </View>
+
+      {/* Modern Custom Success Overlay Card */}
+      {showSuccessModal && (
+        <View style={styles.successOverlay}>
+          <View style={styles.successCard}>
+            <View style={styles.successIconCircle}>
+              <Sparkles size={36} color="#10b981" />
+            </View>
+            <Text style={styles.successTitle}>Lime Reel Live! 🚀 🎉</Text>
+            <Text style={styles.successSubtitle}>Your Lime has been published and is now available in your feed!</Text>
+            <TouchableOpacity onPress={handleFinishSuccess} style={styles.successBtn}>
+              <Text style={styles.successBtnText}>View My Lime</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </Modal>
   );
 }
@@ -725,6 +746,71 @@ const styles = StyleSheet.create({
   },
   submitBtnText: {
     fontSize: 14,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  successOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    zIndex: 9999,
+  },
+  successCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  successIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#ecfdf5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  successTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  successSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  successBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    shadowColor: '#10b981',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  successBtnText: {
+    fontSize: 15,
     fontWeight: '800',
     color: '#ffffff',
   },

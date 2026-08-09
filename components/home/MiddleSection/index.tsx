@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -10,6 +10,8 @@ import {
   type ViewToken,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebaseConfig';
 import type { UserProfile } from '@/lib/services/AuthService';
 import { PostService, type FeedFilter as ApiFeedFilter, type PostItem } from '@/lib/services/PostService';
 import { DiagnosticLogService } from '@/lib/services/DiagnosticLogService';
@@ -93,6 +95,70 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
   // TODO: When PostService supports per-source queries, pass activeFeedSource to fetchFeedPage
   const [activeFeedSource, setActiveFeedSource] = useState<FeedSource>('home');
   const [activePostId, setActivePostId] = useState<string | null>(null);
+
+  /* ── Communities & Friends Filter State ── */
+  const [joinedCommunityIds, setJoinedCommunityIds] = useState<Set<string>>(new Set());
+  const [friendUserIds, setFriendUserIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const userId = auth.currentUser?.uid;
+    if (!userId) return;
+
+    const fetchUserCommunitiesAndFriends = async () => {
+      try {
+        const comSnap = await getDocs(query(collection(db, 'communityVariantMembership'), where('userId', '==', userId)));
+        const cSet = new Set<string>();
+        comSnap.docs.forEach((d) => {
+          const data = d.data();
+          if (data.communityVariantId) cSet.add(data.communityVariantId);
+          if (data.communityId) cSet.add(data.communityId);
+        });
+
+        const comSnap2 = await getDocs(query(collection(db, 'communityVariantMembershipAndLikeCount'), where('userId', '==', userId)));
+        comSnap2.docs.forEach((d) => {
+          if (d.data().communityVariantId) cSet.add(d.data().communityVariantId);
+          if (d.data().communityId) cSet.add(d.data().communityId);
+        });
+
+        setJoinedCommunityIds(cSet);
+
+        const friendSnap = await getDocs(query(collection(db, 'friendships'), where('users', 'array-contains', userId)));
+        const fSet = new Set<string>();
+        friendSnap.docs.forEach((d) => {
+          const users: string[] = d.data().users || [];
+          users.forEach((u) => { if (u !== userId) fSet.add(u); });
+        });
+        setFriendUserIds(fSet);
+      } catch (err) {
+        console.error('[MiddleSection] Error loading communities/friends filter data:', err);
+      }
+    };
+
+    void fetchUserCommunitiesAndFriends();
+  }, []);
+
+  const displayedPosts = useMemo(() => {
+    const userId = auth.currentUser?.uid || '';
+    return posts.filter((post) => {
+      if (activeFeedSource === 'communities') {
+        if (!post.communityId) return false;
+        if (joinedCommunityIds.size > 0) {
+          return joinedCommunityIds.has(post.communityId);
+        }
+        return true;
+      }
+
+      if (activeFeedSource === 'friends') {
+        if (post.communityId) return false;
+        if (friendUserIds.size > 0) {
+          return friendUserIds.has(post.userId) || post.userId === userId;
+        }
+        return true;
+      }
+
+      return true;
+    });
+  }, [posts, activeFeedSource, joinedCommunityIds, friendUserIds]);
 
   // Track which post IDs are currently visible in the viewport (for video play/pause)
   const [visiblePostIds, setVisiblePostIds] = useState<Set<string>>(new Set());
@@ -283,9 +349,9 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
       ? [{ kind: 'loading' as const }]
       : feedError
       ? [{ kind: 'error' as const, message: feedError }]
-      : posts.length === 0
+      : displayedPosts.length === 0
       ? [{ kind: 'empty' as const }]
-      : posts.flatMap<FeedRow>((post, index) => {
+      : displayedPosts.flatMap<FeedRow>((post, index) => {
           const rows: FeedRow[] = [{ kind: 'post', post, index }];
           if (index === 1)  rows.push({ kind: 'promoted' });
           if (index === 2)  rows.push({ kind: 'activity' });
