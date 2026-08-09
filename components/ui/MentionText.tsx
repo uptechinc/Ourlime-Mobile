@@ -54,3 +54,5 @@ export default function MentionText({
     </Text>
   );
 }
+
+export { MentionText };
