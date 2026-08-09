@@ -218,6 +218,13 @@ export default function CommentModal({ reelId, isOpen, initialComments = [], onC
   };
 
   useEffect(() => {
+    if (initialComments && initialComments.length > 0) {
+      setComments(initialComments);
+      setLoading(false);
+    }
+  }, [initialComments]);
+
+  useEffect(() => {
     if (isOpen) {
       translateY.setValue(0);
       void fetchComments();
@@ -386,7 +393,8 @@ export default function CommentModal({ reelId, isOpen, initialComments = [], onC
               scrollEventThrottle={200}
             >
               {rootComments.map((comment) => {
-                const isLiked = comment.likes.includes(currentUserId);
+                const likesArray = Array.isArray(comment.likes) ? comment.likes : [];
+                const isLiked = likesArray.includes(currentUserId);
                 const isOwner = comment.userId === currentUserId;
                 const isEditing = editingId === comment.id;
 
@@ -396,7 +404,7 @@ export default function CommentModal({ reelId, isOpen, initialComments = [], onC
                 const hasMoreSubReplies = allSubReplies.length > visibleSubReplies.length;
 
                 return (
-                  <View key={comment.id} style={styles.commentItem}>
+                  <View key={comment.id || String(Math.random())} style={styles.commentItem}>
                     <UserAvatar profileImage={comment.profileImage} firstName={comment.firstName || comment.userName} size={36} />
                     <View style={styles.commentBody}>
                       
@@ -425,7 +433,7 @@ export default function CommentModal({ reelId, isOpen, initialComments = [], onC
                         <TouchableOpacity onPress={() => handleToggleLike(comment.id, isLiked)} style={styles.actionBtn}>
                           <Heart size={14} color={isLiked ? '#ef4444' : '#64748b'} fill={isLiked ? '#ef4444' : 'none'} />
                           <Text style={[styles.actionText, isLiked && { color: '#ef4444' }]}>
-                            {comment.likes.length > 0 ? comment.likes.length : 'Like'}
+                            {likesArray.length > 0 ? likesArray.length : 'Like'}
                           </Text>
                         </TouchableOpacity>
 
@@ -463,10 +471,11 @@ export default function CommentModal({ reelId, isOpen, initialComments = [], onC
                       {visibleSubReplies.length > 0 && (
                         <View style={styles.subRepliesThread}>
                           {visibleSubReplies.map((reply) => {
-                            const isReplyLiked = reply.likes.includes(currentUserId);
+                            const replyLikesArray = Array.isArray(reply.likes) ? reply.likes : [];
+                            const isReplyLiked = replyLikesArray.includes(currentUserId);
                             const isReplyOwner = reply.userId === currentUserId;
                             return (
-                              <View key={reply.id} style={styles.subReplyItem}>
+                              <View key={reply.id || String(Math.random())} style={styles.subReplyItem}>
                                 <UserAvatar profileImage={reply.profileImage} firstName={reply.firstName || reply.userName} size={26} />
                                 <View style={{ flex: 1 }}>
                                   <View style={styles.commentMetaRow}>
@@ -482,7 +491,7 @@ export default function CommentModal({ reelId, isOpen, initialComments = [], onC
                                     <TouchableOpacity onPress={() => handleToggleLike(reply.id, isReplyLiked)} style={styles.actionBtn}>
                                       <Heart size={13} color={isReplyLiked ? '#ef4444' : '#64748b'} fill={isReplyLiked ? '#ef4444' : 'none'} />
                                       <Text style={[styles.actionText, isReplyLiked && { color: '#ef4444' }]}>
-                                        {reply.likes.length > 0 ? reply.likes.length : 'Like'}
+                                        {replyLikesArray.length > 0 ? replyLikesArray.length : 'Like'}
                                       </Text>
                                     </TouchableOpacity>
                                     {isReplyOwner && (

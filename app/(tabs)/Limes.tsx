@@ -289,22 +289,27 @@ function ReelItem({ reel, isActive, muted, onToggleMute, onCommentPress }: ReelI
   const lastTapRef = useRef<number | null>(null);
 
   const triggerLike = () => {
-    const nextLiked = !isLiked;
-    setIsLiked(nextLiked);
-    setLikeCount((c) => Math.max(0, c + (nextLiked ? 1 : -1)));
+    setIsLiked(true);
+    setLikeCount((c) => (isLiked ? c : c + 1));
 
-    // Pop-out heart animation on double-tap or like press
+    heartAnim.setValue(0);
     Animated.sequence([
-      Animated.spring(heartAnim, { toValue: 1, useNativeDriver: true, bounciness: 12 }),
+      Animated.spring(heartAnim, { toValue: 1, useNativeDriver: true, bounciness: 14 }),
       Animated.delay(450),
       Animated.timing(heartAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
     ]).start();
   };
 
+  const toggleLikeButton = () => {
+    const nextLiked = !isLiked;
+    setIsLiked(nextLiked);
+    setLikeCount((c) => Math.max(0, c + (nextLiked ? 1 : -1)));
+  };
+
   const handleTap = () => {
     const now = Date.now();
-    if (lastTapRef.current && now - lastTapRef.current < 300) {
-      if (!isLiked) triggerLike();
+    if (lastTapRef.current && now - lastTapRef.current < 350) {
+      triggerLike();
     } else {
       setPaused((p) => !p);
     }
@@ -361,7 +366,7 @@ function ReelItem({ reel, isActive, muted, onToggleMute, onCommentPress }: ReelI
           </TouchableOpacity>
 
           {/* Like Button with Red Inside Fill */}
-          <TouchableOpacity onPress={triggerLike} style={styles.actionBtn}>
+          <TouchableOpacity onPress={toggleLikeButton} style={styles.actionBtn}>
             <Heart size={28} color={isLiked ? '#ef4444' : '#ffffff'} fill={isLiked ? '#ef4444' : 'none'} />
             <Text style={styles.actionCount}>{likeCount}</Text>
           </TouchableOpacity>
@@ -507,17 +512,26 @@ const styles = StyleSheet.create({
     bottom: 120,
     alignItems: 'center',
     gap: 20,
-    zIndex: 10,
+    zIndex: 99,
+    elevation: 20,
   },
   actionBtn: {
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.9,
+    shadowRadius: 5,
+    elevation: 10,
   },
   actionCount: {
     color: '#ffffff',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     marginTop: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.9)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   bottomOverlay: {
     position: 'absolute',
