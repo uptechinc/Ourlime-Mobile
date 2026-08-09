@@ -523,28 +523,37 @@ export class PostService {
   }
 
   public async deletePost(postId: string): Promise<void> {
+    let apiError: string | null = null;
     try {
       const response = await this.apiService.request<{ success: boolean; error?: string }>(
         `/api/posts/${encodeURIComponent(postId)}`,
         { method: 'DELETE', authenticated: true }
       );
       if (response.success) return;
-    } catch {
-      // ignore & proceed to direct Firestore fallback
+      if (response.error) apiError = response.error;
+    } catch (err) {
+      apiError = err instanceof Error ? err.message : 'API delete request failed';
     }
 
+    // Direct Firestore deletion fallback for reels/posts/limes
+    let deletedDirectly = false;
     try {
-      const collections = ['posts', 'reels', 'limes', 'feedPosts', 'communityVariantDetails'];
+      const collections = ['reels', 'posts', 'limes', 'feedPosts', 'communityVariantDetails'];
       for (const col of collections) {
         const docRef = doc(db, col, postId);
         const snap = await getDoc(docRef);
         if (snap.exists()) {
           await deleteDoc(docRef);
-          return;
+          deletedDirectly = true;
+          break;
         }
       }
     } catch (err) {
-      console.error('[PostService] deletePost fallback error:', err);
+      console.error('[PostService] deletePost direct fallback error:', err);
+    }
+
+    if (!deletedDirectly && apiError) {
+      throw new Error(apiError || 'Could not find post or lime to delete.');
     }
   }
 
