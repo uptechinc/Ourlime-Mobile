@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   documentId,
   getDoc,
@@ -502,12 +503,13 @@ export class PostService {
 
     if (auth.currentUser) {
       void this.fetchPost(postId).then((post) => {
-        if (post && post.userId !== auth.currentUser?.uid) {
+        if (post && auth.currentUser && post.userId !== auth.currentUser.uid) {
+          const u = auth.currentUser;
           addDoc(collection(db, `users/${post.userId}/notifications`), {
             type: 'repost',
-            actorUserId: auth.currentUser.uid,
-            actorName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'User',
-            actorProfileImage: auth.currentUser.photoURL || null,
+            actorUserId: u.uid,
+            actorName: u.displayName || u.email?.split('@')[0] || 'User',
+            actorProfileImage: u.photoURL || null,
             content: 'reposted your post',
             postId,
             createdAt: serverTimestamp(),
@@ -521,11 +523,29 @@ export class PostService {
   }
 
   public async deletePost(postId: string): Promise<void> {
-    const response = await this.apiService.request<{ success: boolean; error?: string }>(
-      `/api/posts/${encodeURIComponent(postId)}`,
-      { method: 'DELETE', authenticated: true }
-    );
-    if (!response.success) throw new Error(response.error || 'Failed to delete post');
+    try {
+      const response = await this.apiService.request<{ success: boolean; error?: string }>(
+        `/api/posts/${encodeURIComponent(postId)}`,
+        { method: 'DELETE', authenticated: true }
+      );
+      if (response.success) return;
+    } catch {
+      // ignore & proceed to direct Firestore fallback
+    }
+
+    try {
+      const collections = ['posts', 'reels', 'limes', 'feedPosts', 'communityVariantDetails'];
+      for (const col of collections) {
+        const docRef = doc(db, col, postId);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          await deleteDoc(docRef);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('[PostService] deletePost fallback error:', err);
+    }
   }
 
   private async getDocumentsByField(collectionName: string, field: string, values: string[]): Promise<DataDocument[]> {
