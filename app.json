@@ -24,7 +24,9 @@
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS",
         "INTERNET",
-        "BLUETOOTH"
+        "BLUETOOTH",
+        "READ_EXTERNAL_STORAGE",
+        "READ_MEDIA_VIDEO"
       ]
     },
     "web": {
