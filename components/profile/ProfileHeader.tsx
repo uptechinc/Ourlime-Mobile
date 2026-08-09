@@ -41,9 +41,9 @@ export default function ProfileHeader({
     <View style={{ backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
       {/* ── Cover Photo Banner ── */}
       <View style={{ height: 140, width: '100%', position: 'relative' }}>
-        {(profile as any).coverImage || (profile as any).coverPicture ? (
+        {(profile as any).coverPhoto || (profile as any).coverImage || (profile as any).coverPicture ? (
           <Image
-            source={{ uri: (profile as any).coverImage || (profile as any).coverPicture }}
+            source={{ uri: (profile as any).coverPhoto || (profile as any).coverImage || (profile as any).coverPicture }}
             style={{ width: '100%', height: '100%' }}
             resizeMode="cover"
           />

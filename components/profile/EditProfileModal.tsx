@@ -37,8 +37,9 @@ export default function EditProfileModal({
   const [bio, setBio] = useState((profile as any).bio || '');
   const [location, setLocation] = useState((profile as any).location || '');
   const [profilePicture, setProfilePicture] = useState(profile.profilePicture || '');
-  const [coverPhoto, setCoverPhoto] = useState((profile as any).coverPhoto || '');
+  const [coverPhoto, setCoverPhoto] = useState((profile as any).coverPhoto || (profile as any).coverImage || '');
   const [saving, setSaving] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   useEffect(() => {
     setFirstName(profile.firstName || '');
@@ -47,12 +48,12 @@ export default function EditProfileModal({
     setBio((profile as any).bio || '');
     setLocation((profile as any).location || '');
     setProfilePicture(profile.profilePicture || '');
-    setCoverPhoto((profile as any).coverPhoto || '');
+    setCoverPhoto((profile as any).coverPhoto || (profile as any).coverImage || '');
   }, [profile]);
 
   const handlePickImage = async (type: 'avatar' | 'cover') => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.8,
       allowsEditing: true,
       aspect: type === 'avatar' ? [1, 1] : [16, 9],
@@ -67,8 +68,16 @@ export default function EditProfileModal({
   const uploadToStorage = async (uri: string, path: string): Promise<string> => {
     if (!uri || uri.startsWith('http://') || uri.startsWith('https://')) return uri;
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
+      // Use XMLHttpRequest to construct a clean Blob without Expo/RN Response.blob() warnings
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.onload = () => resolve(xhr.response);
+        xhr.onerror = () => reject(new TypeError('Network request failed'));
+        xhr.responseType = 'blob';
+        xhr.open('GET', uri, true);
+        xhr.send(null);
+      });
+
       const storageInstance = getStorage();
       const storageRef = ref(storageInstance, path);
       await uploadBytes(storageRef, blob);
@@ -86,10 +95,10 @@ export default function EditProfileModal({
       let finalAvatar = profilePicture;
       let finalCover = coverPhoto;
 
-      if (profilePicture && profilePicture.startsWith('file:')) {
+      if (profilePicture && (profilePicture.startsWith('file:') || profilePicture.startsWith('content:'))) {
         finalAvatar = await uploadToStorage(profilePicture, `users/${profile.uid}/avatar_${Date.now()}.jpg`);
       }
-      if (coverPhoto && coverPhoto.startsWith('file:')) {
+      if (coverPhoto && (coverPhoto.startsWith('file:') || coverPhoto.startsWith('content:'))) {
         finalCover = await uploadToStorage(coverPhoto, `users/${profile.uid}/cover_${Date.now()}.jpg`);
       }
 
@@ -105,15 +114,19 @@ export default function EditProfileModal({
         coverPicture: finalCover || null,
       });
 
-      Alert.alert('Profile Updated', 'Your profile details have been saved successfully.');
-      onProfileUpdated();
-      onClose();
+      setShowSuccessModal(true);
     } catch (err) {
       console.error('[EditProfileModal] Save error:', err);
       Alert.alert('Error', 'Failed to update profile. Please try again.');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSuccessClose = () => {
+    setShowSuccessModal(false);
+    onProfileUpdated();
+    onClose();
   };
 
   if (!visible) return null;
@@ -139,68 +152,115 @@ export default function EditProfileModal({
               <Text style={styles.label}>Cover Banner</Text>
               <TouchableOpacity onPress={() => handlePickImage('cover')} style={styles.coverFrame}>
                 {coverPhoto ? (
-                  <Image source={{ uri: coverPhoto }} style={styles.coverImage} />
+                  <Image source={{ uri: coverPhoto }} style={styles.coverPreview} />
                 ) : (
                   <View style={styles.coverPlaceholder}>
                     <Icon name="image" size={24} color="#94a3b8" />
-                    <Text style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Add Cover Photo</Text>
+                    <Text style={styles.placeholderText}>Choose Cover Photo</Text>
                   </View>
                 )}
-              </TouchableOpacity>
-            </View>
-
-            {/* Profile Avatar Picker */}
-            <View style={styles.imagePickerSection}>
-              <Text style={styles.label}>Profile Picture</Text>
-              <TouchableOpacity onPress={() => handlePickImage('avatar')} style={styles.avatarRow}>
-                <Image
-                  source={{ uri: profilePicture || 'https://via.placeholder.com/150' }}
-                  style={styles.avatarImage}
-                />
-                <View style={styles.changeBadge}>
+                <View style={styles.cameraBadge}>
                   <Icon name="camera" size={14} color="#ffffff" />
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#ffffff', marginLeft: 6 }}>Change Photo</Text>
                 </View>
               </TouchableOpacity>
             </View>
 
-            {/* First Name & Last Name */}
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.label}>First Name</Text>
-                <TextInput value={firstName} onChangeText={setFirstName} style={styles.input} />
-              </View>
-              <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.label}>Last Name</Text>
-                <TextInput value={lastName} onChangeText={setLastName} style={styles.input} />
-              </View>
+            {/* Profile Avatar Picker */}
+            <View style={styles.avatarSection}>
+              <Text style={styles.label}>Profile Avatar</Text>
+              <TouchableOpacity onPress={() => handlePickImage('avatar')} style={styles.avatarFrame}>
+                {profilePicture ? (
+                  <Image source={{ uri: profilePicture }} style={styles.avatarPreview} />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Icon name="user" size={32} color="#94a3b8" />
+                  </View>
+                )}
+                <View style={styles.cameraBadgeAvatar}>
+                  <Icon name="camera" size={12} color="#ffffff" />
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {/* First Name */}
+            <View>
+              <Text style={styles.label}>First Name</Text>
+              <TextInput
+                style={styles.input}
+                value={firstName}
+                onChangeText={setFirstName}
+                placeholder="First name"
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+
+            {/* Last Name */}
+            <View>
+              <Text style={styles.label}>Last Name</Text>
+              <TextInput
+                style={styles.input}
+                value={lastName}
+                onChangeText={setLastName}
+                placeholder="Last name"
+                placeholderTextColor="#94a3b8"
+              />
             </View>
 
             {/* Username */}
-            <View style={styles.inputGroup}>
+            <View>
               <Text style={styles.label}>Username</Text>
-              <TextInput value={userName} onChangeText={setUserName} autoCapitalize="none" style={styles.input} />
+              <TextInput
+                style={styles.input}
+                value={userName}
+                onChangeText={setUserName}
+                placeholder="Username"
+                placeholderTextColor="#94a3b8"
+                autoCapitalize="none"
+              />
             </View>
 
             {/* Bio */}
-            <View style={styles.inputGroup}>
+            <View>
               <Text style={styles.label}>Bio</Text>
               <TextInput
+                style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
                 value={bio}
                 onChangeText={setBio}
+                placeholder="Tell others about yourself..."
+                placeholderTextColor="#94a3b8"
                 multiline
-                numberOfLines={3}
-                style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
               />
             </View>
 
             {/* Location */}
-            <View style={styles.inputGroup}>
+            <View>
               <Text style={styles.label}>Location</Text>
-              <TextInput value={location} onChangeText={setLocation} placeholder="e.g. Port of Spain, Trinidad" style={styles.input} />
+              <TextInput
+                style={styles.input}
+                value={location}
+                onChangeText={setLocation}
+                placeholder="e.g. San Francisco, CA"
+                placeholderTextColor="#94a3b8"
+              />
             </View>
           </ScrollView>
         </View>
+
+        {/* Modern Success Dialog Modal */}
+        <Modal visible={showSuccessModal} transparent animationType="fade" onRequestClose={handleSuccessClose}>
+          <View style={styles.successOverlay}>
+            <View style={styles.successCard}>
+              <View style={styles.successIconBadge}>
+                <Icon name="check" size={32} color="#ffffff" />
+              </View>
+              <Text style={styles.successTitle}>Profile Updated!</Text>
+              <Text style={styles.successMessage}>Your profile information and images have been saved successfully.</Text>
+              <TouchableOpacity onPress={handleSuccessClose} style={styles.successBtn}>
+                <Text style={styles.successBtnText}>Great!</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
     </Modal>
   );
@@ -209,7 +269,7 @@ export default function EditProfileModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'flex-end',
   },
   card: {
@@ -217,6 +277,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '90%',
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
@@ -231,76 +292,174 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '700',
     color: '#0f172a',
   },
   saveBtn: {
+    backgroundColor: '#10b981',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#10b981',
   },
   saveText: {
     color: '#ffffff',
-    fontWeight: '800',
-    fontSize: 13,
-  },
-  body: {
-    flexGrow: 0,
-  },
-  imagePickerSection: {
-    gap: 8,
-  },
-  label: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#334155',
+  },
+  body: {
+    flex: 1,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0f172a',
+  },
+  imagePickerSection: {
+    gap: 6,
   },
   coverFrame: {
-    height: 120,
+    height: 110,
     borderRadius: 16,
     backgroundColor: '#f1f5f9',
     overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  coverImage: {
+  coverPreview: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
   coverPlaceholder: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 4,
   },
-  avatarRow: {
-    flexDirection: 'row',
+  placeholderText: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '600',
+  },
+  cameraBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
-    gap: 16,
+    justifyContent: 'center',
   },
-  avatarImage: {
+  avatarSection: {
+    alignItems: 'flex-start',
+  },
+  avatarFrame: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#f1f5f9',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  avatarPreview: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 36,
+  },
+  avatarPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraBadgeAvatar: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#10b981',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  /* Modern Success Modal Styles */
+  successOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  successCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  successIconBadge: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#cbd5e1',
-  },
-  changeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
     backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
   },
-  inputGroup: {
-    gap: 6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 15,
+  successTitle: {
+    fontSize: 20,
+    fontWeight: '800',
     color: '#0f172a',
+    marginBottom: 8,
+  },
+  successMessage: {
+    fontSize: 13,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  successBtn: {
+    width: '100%',
+    backgroundColor: '#10b981',
+    paddingVertical: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  successBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
