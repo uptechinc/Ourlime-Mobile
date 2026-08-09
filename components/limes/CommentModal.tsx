@@ -7,7 +7,6 @@ import {
   FlatList,
   Modal,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   Dimensions,
   Animated,
@@ -188,21 +187,46 @@ export default function CommentModal({
   const currentFirstName =
     auth.currentUser?.displayName?.split(' ')[0] || 'User';
 
-  /* ── Swipe-Down PanResponder ── */
-  const translateY = useRef(new Animated.Value(0)).current;
+  /* ── Swipe-Down — we own the animation (animationType=none) ── */
+  const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+
+  const closeSheet = useCallback(() => {
+    Animated.timing(translateY, {
+      toValue: SCREEN_HEIGHT,
+      duration: 260,
+      useNativeDriver: true,
+    }).start(() => {
+      translateY.setValue(SCREEN_HEIGHT);
+      onClose();
+    });
+  }, [translateY, onClose]);
+
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => g.dy > 5,
-      onPanResponderMove: (_, g) => { if (g.dy > 0) translateY.setValue(g.dy); },
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 8 && g.dy > 0,
+      onPanResponderGrant: () => { translateY.setOffset(0); },
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) translateY.setValue(g.dy);
+      },
       onPanResponderRelease: (_, g) => {
-        if (g.dy > 100 || g.vy > 0.5) {
-          Animated.timing(translateY, { toValue: SCREEN_HEIGHT, duration: 200, useNativeDriver: true }).start(() => {
-            translateY.setValue(0);
+        translateY.flattenOffset();
+        if (g.dy > 120 || g.vy > 0.6) {
+          Animated.timing(translateY, {
+            toValue: SCREEN_HEIGHT,
+            duration: 220,
+            useNativeDriver: true,
+          }).start(() => {
+            translateY.setValue(SCREEN_HEIGHT);
             onClose();
           });
         } else {
-          Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 3,
+          }).start();
         }
       },
     })
@@ -271,14 +295,19 @@ export default function CommentModal({
   /* ── Seed initialComments immediately, then fetch real data ── */
   useEffect(() => {
     if (!isOpen) return;
-    translateY.setValue(0);
+    // Slide-in animation
+    Animated.spring(translateY, {
+      toValue: 0,
+      useNativeDriver: true,
+      bounciness: 3,
+      speed: 16,
+    }).start();
     // Show pre-fetched data immediately
     if (initialComments && initialComments.length > 0) {
       const safe = initialComments.map((c) => safeParse(c)).filter(Boolean) as LimeComment[];
       if (safe.length > 0) {
         setComments(safe);
         setLoading(false);
-        // Still refresh in background
         fetchComments(false);
         return;
       }
@@ -331,7 +360,6 @@ export default function CommentModal({
       console.error('[LimeCommentModal] submit error:', err);
       // Roll back optimistic add
       setComments((prev) => prev.filter((c) => c.id !== optimisticId));
-      Alert.alert('Error', 'Could not post comment. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -376,28 +404,25 @@ export default function CommentModal({
       });
     } catch (err) {
       console.error('[LimeCommentModal] saveEdit error:', err);
-      Alert.alert('Error', 'Could not save edit.');
     }
   }, [editingId, editText, reelId]);
 
   /* ── Delete comment ── */
   const handleDelete = useCallback((commentId: string) => {
-    Alert.alert('Delete comment', 'Are you sure you want to delete this comment?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          setComments((prev) => prev.filter((c) => c.id !== commentId));
-          try {
-            await deleteDoc(doc(db, 'reels', reelId, 'comments', commentId));
-          } catch (err) {
-            console.error('[LimeCommentModal] delete error:', err);
-          }
-        },
-      },
-    ]);
-  }, [reelId]);
+    setDeleteTargetId(commentId);
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTargetId) return;
+    const idToDelete = deleteTargetId;
+    setDeleteTargetId(null);
+    setComments((prev) => prev.filter((c) => c.id !== idToDelete));
+    try {
+      await deleteDoc(doc(db, 'reels', reelId, 'comments', idToDelete));
+    } catch (err) {
+      console.error('[LimeCommentModal] delete error:', err);
+    }
+  }, [deleteTargetId, reelId]);
 
   /* ── Split root / replies ── */
   const rootComments = comments.filter(
@@ -587,7 +612,7 @@ export default function CommentModal({
     item.id ? item.id : `comment-${index}`;
 
   return (
-    <Modal visible={isOpen} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={isOpen} animationType="none" transparent onRequestClose={closeSheet}>
       <View style={styles.overlay}>
         <Animated.View style={[styles.modalCard, { transform: [{ translateY }] }]}>
           {/* Top Drag Handle Bar */}
@@ -600,7 +625,7 @@ export default function CommentModal({
             <Text style={styles.headerTitle}>
               Comments {comments.length > 0 ? `(${comments.length})` : ''}
             </Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity onPress={closeSheet} style={styles.closeBtn}>
               <X size={20} color="#64748b" />
             </TouchableOpacity>
           </View>
@@ -699,6 +724,36 @@ export default function CommentModal({
           </KeyboardAvoidingView>
         </Animated.View>
       </View>
+
+      {/* Custom Delete Confirmation Sheet */}
+      <Modal
+        visible={deleteTargetId !== null}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setDeleteTargetId(null)}
+      >
+        <View style={styles.deleteOverlay}>
+          <View style={styles.deleteSheet}>
+            <View style={styles.deleteIconCircle}>
+              <Trash2 size={28} color="#ef4444" />
+            </View>
+            <Text style={styles.deleteTitle}>Delete comment?</Text>
+            <Text style={styles.deleteSubtitle}>
+              This will permanently remove your comment. This action cannot be undone.
+            </Text>
+            <TouchableOpacity onPress={confirmDelete} style={styles.deleteConfirmBtn} activeOpacity={0.85}>
+              <Text style={styles.deleteConfirmText}>Yes, delete it</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setDeleteTargetId(null)}
+              style={styles.deleteCancelBtn}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.deleteCancelText}>Keep comment</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -984,5 +1039,74 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: {
     backgroundColor: '#cbd5e1',
+  },
+  /* Delete confirmation */
+  deleteOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  deleteSheet: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    alignItems: 'center',
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 20,
+  },
+  deleteIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#fee2e2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  deleteTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  deleteSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 24,
+  },
+  deleteConfirmBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  deleteConfirmText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  deleteCancelBtn: {
+    width: '100%',
+    paddingVertical: 13,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+  },
+  deleteCancelText: {
+    color: '#334155',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
