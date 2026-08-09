@@ -348,14 +348,28 @@ export default function LimesScreen() {
 /* ─────────────────────────────────────────────────────────────────── */
 function ReelVideoPlayer({ url, isActive, muted }: { url: string; isActive: boolean; muted: boolean }) {
   const safeUrl = url && url.length > 4 ? url : undefined;
+  const [hasError, setHasError] = useState(false);
 
   const player = useVideoPlayer(safeUrl ?? null, (p) => {
     p.loop = true;
     p.muted = muted;
     if (isActive && safeUrl) {
-      p.play();
+      try { p.play(); } catch { /* ignore */ }
     }
   });
+
+  // Catch player errors — prevents crash when video source fails or ends unexpectedly
+  useEffect(() => {
+    const sub = player.addListener('statusChange', (status) => {
+      if (status.status === 'error') {
+        console.error('[ReelVideoPlayer] Player error:', status.error?.message ?? 'unknown');
+        setHasError(true);
+      } else if (status.status === 'readyToPlay') {
+        setHasError(false);
+      }
+    });
+    return () => sub.remove();
+  }, [player]);
 
   useEffect(() => {
     try {
@@ -366,6 +380,7 @@ function ReelVideoPlayer({ url, isActive, muted }: { url: string; isActive: bool
   }, [player, muted]);
 
   useEffect(() => {
+    if (hasError) return; // Don't attempt play on errored player
     try {
       if (isActive && safeUrl) {
         player.play();
@@ -375,12 +390,15 @@ function ReelVideoPlayer({ url, isActive, muted }: { url: string; isActive: bool
     } catch {
       // ignore
     }
-  }, [player, isActive, safeUrl]);
+  }, [player, isActive, safeUrl, hasError]);
 
-  if (!safeUrl) {
+  if (!safeUrl || hasError) {
     return (
-      <View style={[styles.videoPlayer, { backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' }]}>
-        <Text style={{ color: '#64748b', fontSize: 12 }}>No video</Text>
+      <View style={[styles.videoPlayer, { backgroundColor: '#0a0a0a', alignItems: 'center', justifyContent: 'center' }]}>
+        <Text style={{ fontSize: 32, marginBottom: 8 }}>🎬</Text>
+        <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '600' }}>
+          {hasError ? 'Video unavailable' : 'No video'}
+        </Text>
       </View>
     );
   }
@@ -432,12 +450,22 @@ function ReelItem({ reel, isActive, muted, currentUserId, onToggleMute, onCommen
         }).catch(() => {});
       }
     }
-    // Animate heart
+    // Animate heart — pop in with bounce, hold, fade out
+    heartAnim.stopAnimation();
     heartAnim.setValue(0);
     Animated.sequence([
-      Animated.spring(heartAnim, { toValue: 1, useNativeDriver: true, bounciness: 18 }),
-      Animated.delay(420),
-      Animated.timing(heartAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
+      Animated.spring(heartAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        bounciness: 22,
+        speed: 40,
+      }),
+      Animated.delay(500),
+      Animated.timing(heartAnim, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }),
     ]).start();
   }, [isLiked, heartAnim, reel.id, currentUserId, onLikeUpdate]);
 
@@ -699,11 +727,16 @@ const styles = StyleSheet.create({
   },
   heartPop: {
     position: 'absolute',
-    alignSelf: 'center',
-    top: '40%',
-    left: '50%',
-    marginLeft: -55,
+    // Pixel-exact center of the screen — percentages are unreliable with absolute positioning
+    top: SCREEN_HEIGHT * 0.38,
+    left: SCREEN_WIDTH / 2 - 55,
     zIndex: 50,
+    // Shadow glow effect
+    shadowColor: '#ef4444',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    elevation: 20,
   },
   rightSidebar: {
     position: 'absolute',
