@@ -143,6 +143,8 @@ export class RelationshipService {
       if (!id) return [];
       return [{ id, firstName, lastName, userName, profileImage }];
     });
+  }
+
   public async checkFollowStatus(followerId: string, followeeId: string): Promise<boolean> {
     try {
       const q = query(
