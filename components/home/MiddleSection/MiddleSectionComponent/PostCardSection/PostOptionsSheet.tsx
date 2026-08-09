@@ -5,6 +5,7 @@ import Icon from 'react-native-vector-icons/Feather';
 import { PostService, type PostItem } from '@/lib/services/PostService';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import ReportPostModal from './ReportPostModal';
+import DeletePostModal from './DeletePostModal';
 
 type PostOptionsSheetProps = {
   visible: boolean;
@@ -23,6 +24,7 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
   const [following, setFollowing] = useState(post.relationshipStatus?.isFollowing === true);
   const [friendshipStatus, setFriendshipStatus] = useState(post.relationshipStatus?.friendshipStatus ?? 'none');
   const [reportVisible, setReportVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const isOwner = Boolean(currentUserId && currentUserId === post.userId);
 
   useEffect(() => {
@@ -44,18 +46,12 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
   };
 
   const handleDelete = () => {
-    Alert.alert('Delete this post?', 'This action cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => void runAction('delete', async () => {
-          await postService.deletePost(post.id);
-          onDelete(post.id);
-          onClose();
-        }, 'Post deleted'),
-      },
-    ]);
+    setDeleteModalVisible(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    await postService.deletePost(post.id);
+    onDelete(post.id);
   };
 
   const handleFollow = () => {
@@ -185,6 +181,14 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
         </TouchableOpacity>
       </Modal>
       <ReportPostModal visible={reportVisible} post={post} onClose={() => { setReportVisible(false); onClose(); }} />
+      <DeletePostModal
+        visible={deleteModalVisible}
+        onClose={() => {
+          setDeleteModalVisible(false);
+          onClose();
+        }}
+        onConfirmDelete={handleConfirmDelete}
+      />
     </>
   );
 }
