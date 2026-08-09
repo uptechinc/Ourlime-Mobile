@@ -194,6 +194,15 @@ export default function LimesScreen() {
           isOpen={Boolean(commentReelId)}
           reelId={commentReelId}
           onClose={() => setCommentReelId(null)}
+          onCommentCountUpdate={(count) => {
+            setLimesList((prev) =>
+              prev.map((item) =>
+                item.id === commentReelId
+                  ? ({ ...item, stats: { ...item.stats, comments: count } } as Reel)
+                  : item
+              )
+            );
+          }}
         />
       )}
     </View>
@@ -273,8 +282,13 @@ function ReelItem({ reel, isActive, muted, onToggleMute, onCommentPress }: ReelI
 
   const handleShare = async () => {
     try {
+      const shareUrl = `https://ourlime.com/limes/${reel.id}`;
+      const title = reel.caption || `Lime Reel by @${reel.user.userName}`;
+      const message = `${reel.caption ? `"${reel.caption}"\n\n` : ''}Watch @${reel.user.userName}'s Lime reel on Ourlime:\n${shareUrl}`;
       await Share.share({
-        message: `Watch ${reel.user.firstName}'s Lime on Ourlime: https://ourlime.com/limes/${reel.id}`,
+        title,
+        message,
+        url: shareUrl,
       });
     } catch {
       // ignore

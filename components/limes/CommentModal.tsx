@@ -9,634 +9,616 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  Image,
   Dimensions,
   Animated,
   PanResponder,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { X, Send, Smile } from 'lucide-react-native';
+import { X, Send, Heart, CornerDownRight, Edit2, Trash2, Smile } from 'lucide-react-native';
+import UserAvatar from '@/components/ui/UserAvatar';
+import { auth, db } from '@/lib/firebaseConfig';
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
+  query,
+  orderBy,
+  serverTimestamp,
+  arrayUnion,
+  arrayRemove,
+} from 'firebase/firestore';
 
-interface Comment {
-    id: string;
-    content: string;
-    userId: string;
-    reelId: string;
-    createdAt: any;
-    user: {
-        id: string;
-        userName: string;
-        profileImage?: string;
-    };
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+interface LimeComment {
+  id: string;
+  reelId: string;
+  userId: string;
+  content: string;
+  userName: string;
+  firstName?: string;
+  profileImage?: string;
+  likes: string[];
+  replyCount: number;
+  parentCommentId?: string;
+  replyToUserName?: string;
+  createdAt: any;
 }
 
 interface CommentModalProps {
-    reelId: string;
-    isOpen: boolean;
-    onClose: () => void;
+  reelId: string;
+  isOpen: boolean;
+  onClose: () => void;
+  onCommentCountUpdate?: (count: number) => void;
 }
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const EMOJI_PILLS = ['❤️', '🔥', '😂', '👏', '🚀', '🙌'];
+
+export default function CommentModal({ reelId, isOpen, onClose, onCommentCountUpdate }: CommentModalProps) {
+  const [comments, setComments] = useState<LimeComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<{ id: string; userName: string } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+
+  const currentUserId = auth.currentUser?.uid || '';
+  const currentUserName = auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || 'user';
+
+  /* ── Swipe-Down PanResponder ── */
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          translateY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+          Animated.timing(translateY, {
+            toValue: SCREEN_HEIGHT,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            translateY.setValue(0);
+            onClose();
+          });
+        } else {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  /* ── Fetch Real Comments from Firestore ── */
+  const fetchComments = useCallback(async () => {
+    if (!reelId) return;
+    setLoading(true);
+    try {
+      const q = query(collection(db, 'reels', reelId, 'comments'), orderBy('createdAt', 'desc'));
+      const snap = await getDocs(q);
+      const loaded: LimeComment[] = snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          reelId,
+          userId: data.userId || '',
+          content: data.content || '',
+          userName: data.userName || data.user?.userName || 'user',
+          firstName: data.firstName || data.user?.firstName || 'User',
+          profileImage: data.profileImage || data.user?.profileImage || undefined,
+          likes: Array.isArray(data.likes) ? data.likes : [],
+          replyCount: data.replyCount || 0,
+          parentCommentId: data.parentCommentId || undefined,
+          replyToUserName: data.replyToUserName || undefined,
+          createdAt: data.createdAt ? (data.createdAt.seconds ? data.createdAt.seconds * 1000 : Date.now()) : Date.now(),
+        };
+      });
+      setComments(loaded);
+      if (onCommentCountUpdate) onCommentCountUpdate(loaded.length);
+    } catch (error) {
+      console.error('[LimeCommentModal] Error fetching comments:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [reelId, onCommentCountUpdate]);
+
+  useEffect(() => {
+    if (isOpen) {
+      translateY.setValue(0);
+      void fetchComments();
+    }
+  }, [isOpen, fetchComments, translateY]);
+
+  /* ── Add Comment / Reply ── */
+  const handleSubmitComment = async () => {
+    if (!commentText.trim() || submitting || !currentUserId) return;
+    setSubmitting(true);
+    try {
+      const newCommentData = {
+        userId: currentUserId,
+        userName: currentUserName,
+        firstName: auth.currentUser?.displayName?.split(' ')[0] || 'User',
+        profileImage: auth.currentUser?.photoURL || null,
+        content: commentText.trim(),
+        likes: [],
+        replyCount: 0,
+        parentCommentId: replyTarget ? replyTarget.id : null,
+        replyToUserName: replyTarget ? replyTarget.userName : null,
+        createdAt: serverTimestamp(),
+      };
+
+      const docRef = await addDoc(collection(db, 'reels', reelId, 'comments'), newCommentData);
+
+      const localItem: LimeComment = {
+        id: docRef.id,
+        reelId,
+        userId: currentUserId,
+        content: commentText.trim(),
+        userName: currentUserName,
+        firstName: auth.currentUser?.displayName?.split(' ')[0] || 'User',
+        profileImage: auth.currentUser?.photoURL || undefined,
+        likes: [],
+        replyCount: 0,
+        parentCommentId: replyTarget ? replyTarget.id : undefined,
+        replyToUserName: replyTarget ? replyTarget.userName : undefined,
+        createdAt: Date.now(),
+      };
+
+      setComments((prev) => [localItem, ...prev]);
+      setCommentText('');
+      setReplyTarget(null);
+      if (onCommentCountUpdate) onCommentCountUpdate(comments.length + 1);
+    } catch (error) {
+      console.error('[LimeCommentModal] Submit error:', error);
+      Alert.alert('Error', 'Could not post comment.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /* ── Toggle Like / Reaction ── */
+  const handleToggleLike = async (commentId: string, isLiked: boolean) => {
+    if (!currentUserId) return;
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === commentId
+          ? { ...c, likes: isLiked ? c.likes.filter((u) => u !== currentUserId) : [...c.likes, currentUserId] }
+          : c
+      )
+    );
+
+    try {
+      const commentRef = doc(db, 'reels', reelId, 'comments', commentId);
+      await updateDoc(commentRef, {
+        likes: isLiked ? arrayRemove(currentUserId) : arrayUnion(currentUserId),
+      });
+    } catch (error) {
+      console.error('[LimeCommentModal] Like error:', error);
+    }
+  };
+
+  /* ── Edit Comment ── */
+  const handleSaveEdit = async (commentId: string) => {
+    if (!editText.trim()) return;
+    setComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, content: editText.trim() } : c)));
+    setEditingId(null);
+    try {
+      await updateDoc(doc(db, 'reels', reelId, 'comments', commentId), { content: editText.trim() });
+    } catch (error) {
+      console.error('[LimeCommentModal] Edit error:', error);
+    }
+  };
+
+  /* ── Delete Comment ── */
+  const handleDeleteComment = async (commentId: string) => {
+    Alert.alert('Delete comment', 'Are you sure you want to delete this comment?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setComments((prev) => prev.filter((c) => c.id !== commentId));
+          try {
+            await deleteDoc(doc(db, 'reels', reelId, 'comments', commentId));
+          } catch (error) {
+            console.error('[LimeCommentModal] Delete error:', error);
+          }
+        },
+      },
+    ]);
+  };
+
+  const renderContent = (content: string) =>
+    content.split(/(@[a-zA-Z0-9._]+)/g).map((part, index) => (
+      <Text key={`${part}-${index}`} style={part.startsWith('@') ? styles.mentionText : styles.normalText}>
+        {part}
+      </Text>
+    ));
+
+  return (
+    <Modal visible={isOpen} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <Animated.View style={[styles.modalCard, { transform: [{ translateY }] }]}>
+          
+          {/* Top Drag Handle Bar */}
+          <View style={styles.dragHandleWrapper} {...panResponder.panHandlers}>
+            <View style={styles.dragHandleBar} />
+          </View>
+
+          {/* Header */}
+          <View style={styles.headerRow} {...panResponder.panHandlers}>
+            <Text style={styles.headerTitle}>Comments ({comments.length})</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+              <X size={20} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Comments Feed List */}
+          {loading ? (
+            <View style={styles.loadingBox}>
+              <ActivityIndicator size="small" color="#10b981" />
+              <Text style={styles.loadingText}>Loading comments…</Text>
+            </View>
+          ) : comments.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Smile size={36} color="#94a3b8" />
+              <Text style={styles.emptyTitle}>No comments yet</Text>
+              <Text style={styles.emptySubtitle}>Be the first to share your thoughts on this Lime!</Text>
+            </View>
+          ) : (
+            <ScrollView style={styles.commentsList} showsVerticalScrollIndicator={false}>
+              {comments.map((comment) => {
+                const isLiked = comment.likes.includes(currentUserId);
+                const isOwner = comment.userId === currentUserId;
+                const isEditing = editingId === comment.id;
+
+                return (
+                  <View key={comment.id} style={styles.commentItem}>
+                    <UserAvatar profileImage={comment.profileImage} firstName={comment.firstName || comment.userName} size={36} />
+                    <View style={styles.commentBody}>
+                      
+                      <View style={styles.commentMetaRow}>
+                        <Text style={styles.commentUser}>@{comment.userName}</Text>
+                        {comment.replyToUserName && (
+                          <Text style={styles.replyingTo}>
+                            replying to <Text style={{ color: '#10b981', fontWeight: '700' }}>@{comment.replyToUserName}</Text>
+                          </Text>
+                        )}
+                      </View>
+
+                      {isEditing ? (
+                        <View style={styles.editRow}>
+                          <TextInput
+                            value={editText}
+                            onChangeText={setEditText}
+                            style={styles.editInput}
+                            autoFocus
+                          />
+                          <TouchableOpacity onPress={() => handleSaveEdit(comment.id)} style={styles.saveEditBtn}>
+                            <Text style={styles.saveEditBtnText}>Save</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <Text style={styles.commentContent}>{renderContent(comment.content)}</Text>
+                      )}
+
+                      {/* Comment Actions (Like, Reply, Edit, Delete) */}
+                      <View style={styles.actionsRow}>
+                        <TouchableOpacity onPress={() => handleToggleLike(comment.id, isLiked)} style={styles.actionBtn}>
+                          <Heart size={14} color={isLiked ? '#ef4444' : '#64748b'} fill={isLiked ? '#ef4444' : 'none'} />
+                          <Text style={[styles.actionText, isLiked && { color: '#ef4444' }]}>
+                            {comment.likes.length > 0 ? comment.likes.length : 'Like'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => {
+                            setReplyTarget({ id: comment.id, userName: comment.userName });
+                            setCommentText(`@${comment.userName} `);
+                          }}
+                          style={styles.actionBtn}
+                        >
+                          <CornerDownRight size={14} color="#64748b" />
+                          <Text style={styles.actionText}>Reply</Text>
+                        </TouchableOpacity>
+
+                        {isOwner && (
+                          <>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setEditingId(comment.id);
+                                setEditText(comment.content);
+                              }}
+                              style={styles.actionBtn}
+                            >
+                              <Edit2 size={13} color="#64748b" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity onPress={() => handleDeleteComment(comment.id)} style={styles.actionBtn}>
+                              <Trash2 size={13} color="#ef4444" />
+                            </TouchableOpacity>
+                          </>
+                        )}
+                      </View>
+
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          {/* Reply Target Badge */}
+          {replyTarget && (
+            <View style={styles.replyBanner}>
+              <Text style={styles.replyBannerText}>Replying to @{replyTarget.userName}</Text>
+              <TouchableOpacity onPress={() => setReplyTarget(null)}>
+                <X size={16} color="#047857" />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Quick Emoji Bar */}
+          <View style={styles.emojiRow}>
+            {EMOJI_PILLS.map((emoji) => (
+              <TouchableOpacity
+                key={emoji}
+                onPress={() => setCommentText((prev) => prev + emoji)}
+                style={styles.emojiPill}
+              >
+                <Text style={{ fontSize: 16 }}>{emoji}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Input Footer */}
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <View style={styles.inputRow}>
+              <TextInput
+                value={commentText}
+                onChangeText={setCommentText}
+                placeholder={replyTarget ? `Reply to @${replyTarget.userName}…` : 'Add a comment…'}
+                placeholderTextColor="#94a3b8"
+                style={styles.inputField}
+                multiline
+              />
+              <TouchableOpacity
+                onPress={handleSubmitComment}
+                disabled={!commentText.trim() || submitting}
+                style={[styles.sendBtn, (!commentText.trim() || submitting) && styles.sendBtnDisabled]}
+              >
+                {submitting ? <ActivityIndicator size="small" color="#ffffff" /> : <Send size={16} color="#ffffff" />}
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
+    justifyContent: 'flex-end',
   },
-  modal: {
-    backgroundColor: 'white',
+  modalCard: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    height: '82%',
+    paddingTop: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  dragHandleWrapper: {
     width: '100%',
-    maxHeight: screenHeight * 0.8,
-    borderRadius: 12,
-    overflow: 'hidden',
-    flexDirection: 'column',
+    alignItems: 'center',
+    paddingVertical: 8,
   },
-  header: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+  dragHandleBar: {
+    width: 42,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#cbd5e1',
+  },
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  debugInfo: {
-    padding: 8,
-    backgroundColor: '#f3f4f6',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  debugText: {
-    fontSize: 10,
-    color: '#6b7280',
-    fontFamily: 'monospace',
-  },
-  commentsContainer: {
-    flex: 1,
-    padding: 16,
-  },
-  loadingContainer: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  emptyContainer: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  emptyText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 4,
+    fontWeight: '800',
+    color: '#0f172a',
   },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#6b7280',
+  closeBtn: {
+    padding: 6,
+    borderRadius: 20,
+    backgroundColor: '#f1f5f9',
   },
-  commentItem: {
-    marginBottom: 16,
-    flexDirection: 'row',
-  },
-  commentAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginRight: 12,
-  },
-  commentContent: {
+  loadingBox: {
     flex: 1,
-  },
-  commentHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
-  },
-  commentUsername: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    marginRight: 8,
-  },
-  commentTime: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  commentText: {
-    fontSize: 14,
-    color: '#374151',
-    marginBottom: 8,
-  },
-  commentActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    marginTop: 8,
-  },
-  commentAction: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  debugButtons: {
-    padding: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    backgroundColor: '#f9fafb',
-    flexDirection: 'row',
+    justifyContent: 'center',
     gap: 8,
   },
-  debugButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  debugButtonText: {
+  loadingText: {
     fontSize: 12,
-    color: 'white',
+    fontWeight: '600',
+    color: '#64748b',
   },
-  inputContainer: {
-    padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+  emptyBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 30,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#334155',
+    marginTop: 6,
+  },
+  emptySubtitle: {
+    fontSize: 12,
+    color: '#94a3b8',
+    textAlign: 'center',
+  },
+  commentsList: {
+    flex: 1,
+    paddingVertical: 12,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  commentBody: {
+    flex: 1,
+  },
+  commentMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  commentUser: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  replyingTo: {
+    fontSize: 11,
+    color: '#64748b',
+  },
+  commentContent: {
+    fontSize: 13,
+    color: '#334155',
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  mentionText: {
+    color: '#10b981',
+    fontWeight: '700',
+  },
+  normalText: {
+    color: '#334155',
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 6,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  actionText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  editRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  editInput: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 13,
+  },
+  saveEditBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#10b981',
+    justifyContent: 'center',
+  },
+  saveEditBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  replyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  replyBannerText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#047857',
+  },
+  emojiRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 6,
+    marginBottom: 6,
+  },
+  emojiPill: {
+    padding: 6,
+    borderRadius: 14,
+    backgroundColor: '#f8fafc',
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
-  inputAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
-  inputWrapper: {
+  inputField: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: '#f8fafc',
     borderWidth: 1,
+    borderColor: '#e2e8f0',
     borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#f9fafb',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: '#0f172a',
+    maxHeight: 80,
   },
-  textInput: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    fontSize: 14,
+  sendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  emojiButton: {
-    marginRight: 8,
-  },
-  submitButton: {
-    padding: 4,
-  },
-  submitButtonDisabled: {
-    opacity: 0.5,
-  },
-  loginPrompt: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  spinner: {
-    width: 20,
-    height: 20,
-    borderWidth: 2,
-    borderColor: '#3b82f6',
-    borderTopColor: 'transparent',
-    borderRadius: 10,
+  sendBtnDisabled: {
+    backgroundColor: '#cbd5e1',
   },
 });
-
-export default function CommentModal({ reelId, isOpen, onClose }: CommentModalProps) {
-    console.log('🔥 CommentModal component loaded!', { reelId, isOpen });
-    
-    const [comments, setComments] = useState<Comment[]>([]);
-    const [newComment, setNewComment] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
-    const [currentUser, setCurrentUser] = useState<any>(null);
-    const [userProfileImage, setUserProfileImage] = useState<string>('');
-    const commentsContainerRef = useRef<ScrollView>(null);
-    const commentInputRef = useRef<TextInput>(null);
-
-    /* ── Swipe-Down PanResponder ── */
-    const translateY = useRef(new Animated.Value(0)).current;
-
-    const panResponder = useRef(
-        PanResponder.create({
-            onStartShouldSetPanResponder: () => true,
-            onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
-            onPanResponderMove: (_, gestureState) => {
-                if (gestureState.dy > 0) {
-                    translateY.setValue(gestureState.dy);
-                }
-            },
-            onPanResponderRelease: (_, gestureState) => {
-                if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-                    Animated.timing(translateY, {
-                        toValue: screenHeight,
-                        duration: 200,
-                        useNativeDriver: true,
-                    }).start(() => {
-                        translateY.setValue(0);
-                        onClose();
-                    });
-                } else {
-                    Animated.spring(translateY, {
-                        toValue: 0,
-                        useNativeDriver: true,
-                        bounciness: 4,
-                    }).start();
-                }
-            },
-        })
-    ).current;
-
-    useEffect(() => {
-        if (isOpen) translateY.setValue(0);
-    }, [isOpen, translateY]);
-
-    // TODO: Monitor auth state changes when Firebase is setup
-    // useEffect(() => {
-    //     const unsubscribe = auth.onAuthStateChanged((user) => {
-    //         setCurrentUser(user);
-    //         if (user) {
-    //             // Fetch user profile image from Firestore
-    //             fetchUserProfileImage(user.uid);
-    //         }
-    //     });
-
-    //     return () => unsubscribe();
-    // }, []);
-
-    // TODO: Implement when Firebase is setup
-    // const fetchUserProfileImage = async (userId: string) => {
-    //     try {
-    //         const response = await fetch(`/api/profile/header?userId=${userId}`);
-    //         const data = await response.json();
-    //         if (data.success && data.profileImage) {
-    //             setUserProfileImage(data.profileImage);
-    //         }
-    //     } catch (error) {
-    //         console.error('Error fetching user profile image:', error);
-    //     }
-    // };
-
-    // Focus input when modal opens
-    useEffect(() => {
-        if (isOpen && commentInputRef.current) {
-            setTimeout(() => {
-                commentInputRef.current?.focus();
-            }, 100);
-        }
-    }, [isOpen]);
-
-    const fetchComments = useCallback(async () => {
-        if (!reelId) return;
-        
-        try {
-            setLoading(true);
-            console.log('Fetching comments for reel:', reelId);
-            
-            const response = await fetch(`/api/reels/${reelId}/comments`);
-            const data = await response.json();
-            
-            console.log('Comments API response:', data);
-            
-            if (data.success) {
-                setComments(data.comments || []);
-            } else {
-                console.error('Failed to fetch comments:', data.message);
-                Alert.alert('Error', 'Failed to load comments');
-            }
-        } catch (error) {
-            console.error('Error fetching comments:', error);
-            Alert.alert('Error', 'Failed to load comments');
-        } finally {
-            setLoading(false);
-        }
-    }, [reelId]);
-
-    // Fetch comments when modal opens
-    useEffect(() => {
-        if (isOpen && reelId) {
-            fetchComments();
-        }
-    }, [isOpen, reelId, fetchComments]);
-
-    // Scroll to bottom when new comments are added
-    useEffect(() => {
-        if (commentsContainerRef.current) {
-            commentsContainerRef.current.scrollToEnd({ animated: true });
-        }
-    }, [comments]);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        console.log('🔥 FORM SUBMIT TRIGGERED!'); // This should always show if form submit works
-        e.preventDefault();
-        
-        console.log('🚀 Submitting comment...', { 
-            currentUser: !!currentUser, 
-            currentUserUid: currentUser?.uid,
-            newComment: newComment.trim(), 
-            reelId,
-            commentLength: newComment.trim().length
-        });
-        
-        if (!currentUser) {
-            console.error('❌ No current user');
-            Alert.alert('Error', 'Please log in to comment');
-            return;
-        }
-
-        if (!newComment.trim()) {
-            console.error('❌ Empty comment');
-            Alert.alert('Error', 'Please enter a comment');
-            return;
-        }
-
-        if (!reelId) {
-            console.error('❌ No reel ID');
-            Alert.alert('Error', 'Invalid reel ID');
-            return;
-        }
-
-        setSubmitting(true);
-
-        try {
-            const apiUrl = `/api/reels/${reelId}/comments`;
-            const payload = {
-                content: newComment.trim(),
-                userId: currentUser.uid,
-            };
-
-            console.log('📡 Making API request to:', apiUrl);
-            console.log('📦 Request payload:', payload);
-
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload),
-            });
-
-            console.log('📬 API response status:', response.status);
-            console.log('📬 API response ok:', response.ok);
-            
-            let data;
-            try {
-                data = await response.json();
-                console.log('📄 API response data:', data);
-            } catch (parseError) {
-                console.error('❌ Failed to parse response JSON:', parseError);
-                throw new Error('Invalid response format from server');
-            }
-
-            if (!response.ok) {
-                console.error('❌ API response not ok:', response.status, data);
-                throw new Error(data.message || `Failed to add comment (${response.status})`);
-            }
-
-            if (!data.success) {
-                console.error('❌ API returned success: false:', data);
-                throw new Error(data.message || 'Server returned success: false');
-            }
-
-            console.log('✅ Comment added successfully');
-            setNewComment('');
-            Alert.alert('Success', 'Comment added!');
-            
-            // Refresh comments to get the latest data
-            await fetchComments();
-
-        } catch (error) {
-            console.error('❌ Error adding comment:', error);
-            
-            // More specific error messages
-            if (error instanceof TypeError && error.message.includes('fetch')) {
-                Alert.alert('Error', 'Network error: Unable to connect to server');
-            } else if (error instanceof Error) {
-                Alert.alert('Error', `Failed to add comment: ${error.message}`);
-            } else {
-                Alert.alert('Error', 'Unknown error occurred while adding comment');
-            }
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    const formatTimeAgo = (timestamp: any) => {
-        if (!timestamp) return 'Just now';
-        
-        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-        const now = new Date();
-        const diff = now.getTime() - date.getTime();
-        
-        const minutes = Math.floor(diff / 60000);
-        const hours = Math.floor(diff / 3600000);
-        const days = Math.floor(diff / 86400000);
-        
-        if (minutes < 1) return 'Just now';
-        if (minutes < 60) return `${minutes}m ago`;
-        if (hours < 24) return `${hours}h ago`;
-        if (days < 7) return `${days}d ago`;
-        return date.toLocaleDateString();
-    };
-
-    if (!isOpen) return null;
-
-    return (
-        <Modal
-            visible={isOpen}
-            transparent={true}
-            animationType="slide"
-            onRequestClose={onClose}
-        >
-            <View style={styles.overlay}>
-                <Animated.View style={[styles.modal, { transform: [{ translateY }] }]}>
-                    <View style={{ width: '100%', alignItems: 'center', paddingVertical: 8 }} {...panResponder.panHandlers}>
-                        <View style={{ width: 42, height: 5, borderRadius: 3, backgroundColor: '#cbd5e1' }} />
-                    </View>
-                    {/* Header */}
-                    <View style={styles.header} {...panResponder.panHandlers}>
-                        <Text style={styles.headerTitle}>Comments</Text>
-                        <TouchableOpacity 
-                            onPress={onClose}
-                            style={styles.closeButton}
-                        >
-                            <X size={24} color="#374151" />
-                        </TouchableOpacity>
-                    </View>
-                
-                    {/* Debug Info - ALWAYS SHOW FOR TESTING */}
-                    <View style={styles.debugInfo}>
-                        <Text style={styles.debugText}>
-                            User: {currentUser ? 'Logged in' : 'Not logged in'} |
-                            UID: {currentUser?.uid} |
-                            Email: {currentUser?.email} |
-                            Reel ID: {reelId} | 
-                            Comments: {comments.length} |
-                            Modal Version: 2.0
-                        </Text>
-                    </View>
-                
-                    {/* Comments List */}
-                    <ScrollView 
-                        ref={commentsContainerRef}
-                        style={styles.commentsContainer}
-                        showsVerticalScrollIndicator={false}
-                    >
-                        {loading ? (
-                            <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color="#10b981" />
-                            </View>
-                        ) : comments.length === 0 ? (
-                            <View style={styles.emptyContainer}>
-                                <Text style={styles.emptyText}>No comments yet</Text>
-                                <Text style={styles.emptySubtext}>Be the first to comment!</Text>
-                            </View>
-                        ) : (
-                            comments.map((comment) => (
-                                <View key={comment.id} style={styles.commentItem}>
-                                    {/* <Image 
-                                        source={{ uri: comment.user.profileImage || '/images/avatar.jpg' }} 
-                                        style={styles.commentAvatar}
-                                        defaultSource={require('@/assets/images/avatar.jpg')}
-                                    /> */}
-                                    <View style={styles.commentContent}>
-                                        <View style={styles.commentHeader}>
-                                            <Text style={styles.commentUsername}>
-                                                {comment.user.userName || 'Anonymous'}
-                                            </Text>
-                                            <Text style={styles.commentTime}>
-                                                {formatTimeAgo(comment.createdAt)}
-                                            </Text>
-                                        </View>
-                                        <Text style={styles.commentText}>{comment.content}</Text>
-                                        
-                                        {/* Like and Reply buttons */}
-                                        <View style={styles.commentActions}>
-                                            <TouchableOpacity>
-                                                <Text style={styles.commentAction}>Like</Text>
-                                            </TouchableOpacity>
-                                            <TouchableOpacity>
-                                                <Text style={styles.commentAction}>Reply</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    </View>
-                                </View>
-                            ))
-                        )}
-                    </ScrollView>
-
-                    {/* Debug Test Button - ALWAYS SHOW FOR TESTING */}
-                    <View style={styles.debugButtons}>
-                        <TouchableOpacity
-                            onPress={() => {
-                                console.log('🧪 Simple click test works!');
-                                Alert.alert('Success', 'JavaScript click handler working!');
-                            }}
-                            style={[styles.debugButton, { backgroundColor: '#10b981' }]}
-                        >
-                            <Text style={styles.debugButtonText}>Test Click</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            onPress={async () => {
-                                try {
-                                    console.log('🧪 Testing API endpoint...');
-                                    const response = await fetch(`/api/reels/${reelId}/comments`);
-                                    const data = await response.json();
-                                    console.log('🧪 API test result:', data);
-                                    Alert.alert('Success', 'API test completed - check console');
-                                } catch (error) {
-                                    console.error('🧪 API test failed:', error);
-                                    Alert.alert('Error', 'API test failed - check console');
-                                }
-                            }}
-                            style={[styles.debugButton, { backgroundColor: '#3b82f6' }]}
-                        >
-                            <Text style={styles.debugButtonText}>Test API</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            onPress={() => {
-                                console.log('🧪 Testing handleSubmit directly...');
-                                const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-                                handleSubmit(fakeEvent);
-                            }}
-                            style={[styles.debugButton, { backgroundColor: '#ef4444' }]}
-                        >
-                            <Text style={styles.debugButtonText}>Test Submit</Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* Comment Input */}
-                    <View style={styles.inputContainer}>
-                        <View style={styles.inputRow}>
-                            {/* <Image 
-                                source={{ uri: userProfileImage || currentUser?.photoURL || '/images/avatar.jpg' }} 
-                                style={styles.inputAvatar}
-                                defaultSource={require('@/assets/images/avatar.jpg')}
-                            /> */}
-                            <View style={styles.inputWrapper}>
-                                <TextInput
-                                    ref={commentInputRef}
-                                    value={newComment}
-                                    onChangeText={setNewComment}
-                                    placeholder={currentUser ? "Add a comment..." : "Please log in to comment"}
-                                    style={styles.textInput}
-                                    editable={!loading && !submitting && !!currentUser}
-                                    multiline={false}
-                                />
-                                <TouchableOpacity 
-                                    style={styles.emojiButton}
-                                    disabled={!currentUser}
-                                >
-                                    <Smile size={20} color="#6b7280" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    onPress={() => {
-                                        console.log('🔍 Button clicked!', {
-                                            disabled: loading || !newComment.trim() || submitting || !currentUser,
-                                            loading,
-                                            hasComment: !!newComment.trim(),
-                                            submitting,
-                                            hasUser: !!currentUser,
-                                        });
-                                        const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-                                        handleSubmit(fakeEvent);
-                                    }}
-                                    disabled={loading || !newComment.trim() || submitting || !currentUser}
-                                    style={[
-                                        styles.submitButton,
-                                        (loading || !newComment.trim() || submitting || !currentUser) && styles.submitButtonDisabled
-                                    ]}
-                                >
-                                    {submitting ? (
-                                        <ActivityIndicator size="small" color="#3b82f6" />
-                                    ) : (
-                                        <Send size={20} color="#3b82f6" />
-                                    )}
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                        {!currentUser && (
-                            <Text style={styles.loginPrompt}>
-                                Please log in to post comments
-                            </Text>
-                        )}
-                    </View>
-                </Animated.View>
-            </View>
-        </Modal>
-    );
-} 
