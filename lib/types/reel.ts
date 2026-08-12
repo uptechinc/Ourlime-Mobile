@@ -17,8 +17,8 @@ export type Reel = {
     type: 'video' | 'image';
   };
   likes?: string[];
-  comments?: any[];
+  comments?: unknown[];
   views?: number;
-  createdAt: any;
+  createdAt: unknown;
   // other properties...
-}; 
+};

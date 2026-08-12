@@ -1,9 +1,9 @@
-export function debounce<T extends (...args: any[]) => void>(
-    func: T,
+export function debounce<TArgs extends unknown[]>(
+    func: (...args: TArgs) => void,
     delay: number
-): (...args: Parameters<T>) => void {
+): (...args: TArgs) => void {
     let timeoutId: NodeJS.Timeout;
-    return (...args: Parameters<T>) => {
+    return (...args: TArgs) => {
         clearTimeout(timeoutId);
         timeoutId = setTimeout(() => func(...args), delay);
     };

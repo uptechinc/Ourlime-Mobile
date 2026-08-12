@@ -2,7 +2,7 @@
 import { db } from '@/lib/firebaseConfig';
 import { collection, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
-interface Schedule {
+type Schedule = {
     id: string;
     subject: string;
     startTime: string;
@@ -18,12 +18,12 @@ interface Schedule {
         email: boolean;
         whatsapp: boolean;
     };
-}
+};
 
-interface Template {
+type Template = {
     name: string;
     schedules: Omit<Schedule, 'id' | 'status'>[];
-}
+};
 
 export class ScheduleService {
     private static instance: ScheduleService;

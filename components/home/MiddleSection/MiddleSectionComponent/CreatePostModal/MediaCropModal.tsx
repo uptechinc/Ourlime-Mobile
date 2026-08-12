@@ -13,7 +13,7 @@ type MediaCropModalProps = {
 };
 
 const mediaService = PostMediaService.getInstance();
-const presets: Array<{ value: CropPreset; label: string }> = [
+const presets: { value: CropPreset; label: string }[] = [
   { value: 'fit', label: 'Fit' },
   { value: 'portrait', label: '4:5' },
   { value: 'square', label: '1:1' },

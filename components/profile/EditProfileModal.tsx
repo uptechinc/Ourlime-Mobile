@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,10 +13,13 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
-import { db } from '@/lib/firebaseConfig';
-import { doc, updateDoc } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import type { UserProfile } from '@/lib/services/AuthService';
+import { AuthService, type UserProfile } from '@/lib/services/AuthService';
+import { profileResourceService } from '@/lib/services/ProfileResourceService';
+import { feedResourceService } from '@/lib/services/FeedResourceService';
+import { PostMediaService } from '@/lib/services/PostMediaService';
+
+const authService = AuthService.getInstance();
+const mediaService = PostMediaService.getInstance();
 
 type EditProfileModalProps = {
   visible: boolean;
@@ -34,10 +37,10 @@ export default function EditProfileModal({
   const [firstName, setFirstName] = useState(profile.firstName || '');
   const [lastName, setLastName] = useState(profile.lastName || '');
   const [userName, setUserName] = useState(profile.userName || '');
-  const [bio, setBio] = useState((profile as any).bio || '');
-  const [location, setLocation] = useState((profile as any).location || '');
+  const [bio, setBio] = useState(profile.bio || '');
+  const [location, setLocation] = useState(profile.location || '');
   const [profilePicture, setProfilePicture] = useState(profile.profilePicture || '');
-  const [coverPhoto, setCoverPhoto] = useState((profile as any).coverPhoto || (profile as any).coverImage || '');
+  const [coverPhoto, setCoverPhoto] = useState(profile.coverPhoto || profile.coverImage || '');
   const [saving, setSaving] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
@@ -45,10 +48,10 @@ export default function EditProfileModal({
     setFirstName(profile.firstName || '');
     setLastName(profile.lastName || '');
     setUserName(profile.userName || '');
-    setBio((profile as any).bio || '');
-    setLocation((profile as any).location || '');
+    setBio(profile.bio || '');
+    setLocation(profile.location || '');
     setProfilePicture(profile.profilePicture || '');
-    setCoverPhoto((profile as any).coverPhoto || (profile as any).coverImage || '');
+    setCoverPhoto(profile.coverPhoto || profile.coverImage || '');
   }, [profile]);
 
   const handlePickImage = async (type: 'avatar' | 'cover') => {
@@ -65,29 +68,6 @@ export default function EditProfileModal({
     }
   };
 
-  const uploadToStorage = async (uri: string, path: string): Promise<string> => {
-    if (!uri || uri.startsWith('http://') || uri.startsWith('https://')) return uri;
-    try {
-      // Use XMLHttpRequest to construct a clean Blob without Expo/RN Response.blob() warnings
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.onload = () => resolve(xhr.response);
-        xhr.onerror = () => reject(new TypeError('Network request failed'));
-        xhr.responseType = 'blob';
-        xhr.open('GET', uri, true);
-        xhr.send(null);
-      });
-
-      const storageInstance = getStorage();
-      const storageRef = ref(storageInstance, path);
-      await uploadBytes(storageRef, blob);
-      return await getDownloadURL(storageRef);
-    } catch (err) {
-      console.error('[EditProfileModal] Storage upload error:', err);
-      return uri;
-    }
-  };
-
   const handleSave = async () => {
     if (!profile.uid) return;
     setSaving(true);
@@ -96,23 +76,40 @@ export default function EditProfileModal({
       let finalCover = coverPhoto;
 
       if (profilePicture && (profilePicture.startsWith('file:') || profilePicture.startsWith('content:'))) {
-        finalAvatar = await uploadToStorage(profilePicture, `users/${profile.uid}/avatar_${Date.now()}.jpg`);
+        finalAvatar = await mediaService.uploadProfileImage({ userId: profile.uid, uri: profilePicture });
       }
       if (coverPhoto && (coverPhoto.startsWith('file:') || coverPhoto.startsWith('content:'))) {
-        finalCover = await uploadToStorage(coverPhoto, `users/${profile.uid}/cover_${Date.now()}.jpg`);
+        finalCover = await mediaService.uploadProfileCover({ userId: profile.uid, uri: coverPhoto });
       }
 
-      await updateDoc(doc(db, 'users', profile.uid), {
+      await authService.updateUserProfile(profile.uid, {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         userName: userName.trim().toLowerCase(),
         bio: bio.trim(),
         location: location.trim(),
         profilePicture: finalAvatar || null,
-        coverPhoto: finalCover || null,
-        coverImage: finalCover || null,
-        coverPicture: finalCover || null,
+        coverPhoto: finalCover || undefined,
       });
+
+      const immediateUpdates = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        userName: userName.trim().toLowerCase(),
+        bio: bio.trim(),
+        location: location.trim(),
+        profilePicture: finalAvatar || null,
+        coverPhoto: finalCover || undefined,
+      };
+      await Promise.all([
+        profileResourceService.patchOwnProfile(profile.uid, immediateUpdates),
+        feedResourceService.patchAuthor(profile.uid, {
+          firstName: immediateUpdates.firstName,
+          lastName: immediateUpdates.lastName,
+          userName: immediateUpdates.userName,
+          profilePicture: immediateUpdates.profilePicture,
+        }),
+      ]);
 
       setShowSuccessModal(true);
     } catch (err) {

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getCommentCount, getCommunityCommentCount } from '@/helpers/Posts';
+import { PostService } from '@/lib/services/PostService';
+
+const postService = PostService.getInstance();
 
 type PostType = 'feed' | 'community';
 
@@ -22,9 +24,9 @@ export const useCommentCount = (postId: string, postType: PostType = 'feed', ini
             let count = 0;
             
             if (postType === 'feed') {
-                count = await getCommentCount(postId);
+                count = await postService.getCommentCount(postId, 'feed');
             } else if (postType === 'community') {
-                count = await getCommunityCommentCount(postId);
+                count = await postService.getCommentCount(postId, 'community');
             }
             
             setCommentCount(count);
@@ -71,9 +73,9 @@ export const useCommentCounts = (postIds: string[], postType: PostType = 'feed')
                 postIds.map(async (postId) => {
                     try {
                         if (postType === 'feed') {
-                            counts[postId] = await getCommentCount(postId);
+                            counts[postId] = await postService.getCommentCount(postId, 'feed');
                         } else if (postType === 'community') {
-                            counts[postId] = await getCommunityCommentCount(postId);
+                            counts[postId] = await postService.getCommentCount(postId, 'community');
                         }
                     } catch (error) {
                         console.error(`Error fetching comment count for ${postType} post ${postId}:`, error);
@@ -99,4 +101,4 @@ export const useCommentCounts = (postIds: string[], postType: PostType = 'feed')
         isLoading,
         refreshCounts
     };
-}; 
+};

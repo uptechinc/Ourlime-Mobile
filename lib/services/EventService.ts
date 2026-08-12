@@ -1,16 +1,43 @@
-import { addDoc, collection, deleteDoc, getDocs, query, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, getDocs, query, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { ApiService } from './ApiService';
+import type { Event } from '@/types/eventTypes';
 
 export type EventAttendanceStatus = { isAttending: boolean; attendeeCount: number };
+export type CreateEventInput = {
+  title: string;
+  description: string;
+  summary: string;
+  startDate: string;
+  startTime: string;
+  endDate: string;
+  endTime: string;
+  location: string;
+  recurrence: string;
+  creatorId: string;
+  userId: string;
+  user: { id: string; firstName: string; lastName: string; userName: string; profileImage: string | null };
+};
 
 export class EventService {
   private static instance: EventService;
+  private readonly apiService = ApiService.getInstance();
 
   private constructor() {}
 
   public static getInstance(): EventService {
     if (!EventService.instance) EventService.instance = new EventService();
     return EventService.instance;
+  }
+
+  public async fetchEvents(): Promise<Event[]> {
+    const response = await this.apiService.request<{ status: 'success'; data: Event[] }>('/api/events/fetch');
+    return Array.isArray(response.data) ? response.data : [];
+  }
+
+  public async createEvent(input: CreateEventInput): Promise<string> {
+    const event = await addDoc(collection(db, 'events'), { ...input, createdAt: serverTimestamp() });
+    return event.id;
   }
 
   public async getAttendance(eventId: string, userId?: string): Promise<EventAttendanceStatus> {

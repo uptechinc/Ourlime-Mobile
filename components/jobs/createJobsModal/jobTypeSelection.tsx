@@ -1,17 +1,15 @@
 /* components/jobCreation/JobTypeSelection.tsx */
-import { Job } from '@/app/types/global';
-import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 
 type JobCat = 'professional' | 'freelancer' | 'quickTask';
 type FreelanceOpt = 'promoteSelf' | 'postRequest';
 
-interface Props {
+type Props = {
   jobCategory: JobCat;
   setJobCategory: (c: JobCat) => void;
   freelancerOption: FreelanceOpt;
   setFreelancerOption: (o: FreelanceOpt) => void;
-}
+};
 
 export const JobTypeSelection = ({
   jobCategory,

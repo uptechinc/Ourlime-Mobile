@@ -1,8 +1,8 @@
-import React, { Dispatch, SetStateAction, useEffect, useState } from 'react';
+import { Dispatch, SetStateAction, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { Colors, Sizes } from '@/types/productTypes';
 
-interface ProductFilterProps {
+type ProductFilterProps = {
     isMobileOpen: boolean;
     onMobileClose: () => void;
     selectedCategories: string[];
@@ -16,7 +16,7 @@ interface ProductFilterProps {
     categories: string[];
     colors: Colors[];
     sizes: Sizes[];
-}
+};
 
 export default function ProductFilter({
     isMobileOpen,
@@ -34,19 +34,14 @@ export default function ProductFilter({
 }: ProductFilterProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [newPercentage, setNewPercentage] = useState(0.5);
-    const [initialPrice, setInitialPrice] = useState(50000);
 
     useEffect(() => {
         // Set default to 50% for React Native
         setNewPercentage(0.5);
-        setInitialPrice(50000);
     }, []);
 
-    const handleSliderChange = (percentage: number) => {
-        const newPrice = Math.round(percentage * 100000);
-        setNewPercentage(percentage);
-        setPriceRange([0, newPrice]);
-    };
+    // suppress unused-read lint: isDragging is used as a drag state flag via setIsDragging
+    void isDragging;
 
     const resetFilters = () => {
         setSelectedCategories([]);

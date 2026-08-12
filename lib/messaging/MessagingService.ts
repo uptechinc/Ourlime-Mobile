@@ -9,10 +9,22 @@ import {
     arrayUnion,
     Timestamp,
     onSnapshot
+    ,getDocs,
+    query,
+    where
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { readAsStringAsync, EncodingType, getInfoAsync } from 'expo-file-system/legacy';
 import type { MessageData, ChatRoom, ReplyReference } from '@/lib/types/message';
+import type { UserProfile } from '@/lib/services/AuthService';
+import { ApiService } from '@/lib/services/ApiService';
+
+export type ConversationEntry = UserProfile & {
+    lastMessage?: string;
+    lastMessageTime?: Timestamp;
+    unreadCount: number;
+    isOnline: boolean;
+};
 
 // Extended types for full parity with web MessagingService
 export type Attachment = {
@@ -45,6 +57,7 @@ export type FullMessage = MessageData & {
     isForwarded?: boolean;
     reactions?: Record<string, string[]>;
     deletedFor?: string[];
+    isDeletedForEveryone?: boolean;
     type?: 'text' | 'sticker' | 'voiceNote';
     stickerId?: string;
     stickerUrl?: string;
@@ -70,6 +83,7 @@ function base64ToUint8Array(base64: string): Uint8Array {
 export class MessagingService {
     private static instance: MessagingService;
     private readonly db;
+    private readonly apiService = ApiService.getInstance();
 
     private constructor() {
         this.db = db;
@@ -84,6 +98,52 @@ export class MessagingService {
 
     public getChatRoomId(userId1: string, userId2: string): string {
         return [userId1, userId2].sort().join('_');
+    }
+
+    public async fetchConversations(currentUserId: string): Promise<ConversationEntry[]> {
+        return (await this.fetchConversationPage(currentUserId, null)).items;
+    }
+
+    public async fetchConversationPage(currentUserId: string, cursor: string | null): Promise<{ items: ConversationEntry[]; nextCursor: string | null }> {
+        if (!currentUserId) return { items: [], nextCursor: null };
+        const entries: ConversationEntry[] = [];
+            const search = new URLSearchParams({ limit: '20' });
+            if (cursor) search.set('cursor', cursor);
+            const response = await this.apiService.request<{ success: boolean; data?: { items?: unknown[]; nextCursor?: string | null }; error?: string }>(`/api/chat/friends?${search.toString()}`, { authenticated: true });
+            if (!response.success) throw new Error(response.error || 'Failed to load conversations');
+            for (const value of response.data?.items ?? []) {
+                if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+                const record = value as Record<string, unknown>;
+                const id = typeof record.id === 'string' ? record.id : '';
+                if (!id) continue;
+                const timeRecord = record.lastMessageTime && typeof record.lastMessageTime === 'object' ? record.lastMessageTime as Record<string, unknown> : {};
+                const seconds = typeof timeRecord.seconds === 'number' ? timeRecord.seconds : 0;
+                const nanoseconds = typeof timeRecord.nanoseconds === 'number' ? timeRecord.nanoseconds : 0;
+                entries.push({
+                    uid: id,
+                    firstName: typeof record.firstName === 'string' ? record.firstName : 'User',
+                    lastName: typeof record.lastName === 'string' ? record.lastName : '',
+                    userName: typeof record.userName === 'string' ? record.userName : 'user',
+                    email: '',
+                    accountType: 'user',
+                    profilePicture: typeof record.profileImage === 'string' ? record.profileImage : null,
+                    lastMessage: typeof record.lastMessage === 'string' ? record.lastMessage : undefined,
+                    lastMessageTime: seconds > 0 ? new Timestamp(seconds, nanoseconds) : undefined,
+                    unreadCount: typeof record.unreadCount === 'number' ? record.unreadCount : 0,
+                    isOnline: record.isOnline === true,
+                });
+            }
+        return { items: entries, nextCursor: response.data?.nextCursor ?? null };
+    }
+
+    public async getMuteUntil(currentUserId: string, friendId: string): Promise<number | null> {
+        const snapshot = await getDoc(doc(this.db, 'users', currentUserId, 'chatMuteSettings', friendId));
+        const value = snapshot.exists() ? snapshot.data().mutedUntil : null;
+        return typeof value === 'number' && value > Date.now() ? value : null;
+    }
+
+    public async setMuteUntil(currentUserId: string, friendId: string, mutedUntil: number | null): Promise<void> {
+        await setDoc(doc(this.db, 'users', currentUserId, 'chatMuteSettings', friendId), { mutedUntil });
     }
 
     /**
@@ -147,9 +207,10 @@ export class MessagingService {
             await uploadBytes(storageRef, uint8Array, { contentType: mimeType });
         } finally {
             // Clean up native Blob memory if close() method exists
-            if (blob && typeof (blob as any).close === 'function') {
+            const closeableBlob = blob as Blob & { close?: () => void };
+            if (typeof closeableBlob.close === 'function') {
                 try {
-                    (blob as any).close();
+                    closeableBlob.close();
                 } catch {}
             }
         }
@@ -181,8 +242,44 @@ export class MessagingService {
         voiceNoteData?: VoiceNoteData,
         isForwarded?: boolean
     ): Promise<FullMessage> {
+        const response = await this.apiService.request<{ status: 'success'; data: unknown } | { status: 'error'; message: string }>('/api/messaging', {
+            authenticated: true,
+            method: 'POST',
+            body: { receiverId, message, replyTo, attachment, stickerData, voiceNoteData, isForwarded },
+        });
+        if (response.status !== 'success') throw new Error(response.message);
+        const serverMessage = this.normalizeMessage(response.data);
+        if (!serverMessage) throw new Error('The messaging server returned an invalid message.');
+
+        const isCall = message === '[SYS:VIDEO_CALL_INVITE]' || message === '[SYS:VOICE_CALL_INVITE]';
+        const isVideoCall = message === '[SYS:VIDEO_CALL_INVITE]';
+        void pushNotificationService.sendPushNotification(receiverId, {
+            title: isCall ? 'Incoming Call' : 'New Message',
+            body: isVideoCall ? 'Incoming video call...' : isCall ? 'Incoming voice call...' : (message || attachment?.fileName || 'Sent a sticker'),
+            type: isVideoCall ? 'video_call' : isCall ? 'voice_call' : 'message',
+            senderId,
+        });
+        return serverMessage;
+
+        /* Legacy direct-write implementation remains below only as a temporary
+         * compatibility reference and is unreachable. It will be removed when
+         * all released clients use the authenticated server contract. */
+        {
         const chatRoomId = this.getChatRoomId(senderId, receiverId);
         const chatRef = doc(db, 'chats', chatRoomId);
+
+        let stickerFields = null;
+        if (stickerData) {
+            const sd = stickerData as StickerData;
+            stickerFields = {
+                type: 'sticker' as const,
+                stickerId: sd.stickerId,
+                stickerUrl: sd.stickerUrl,
+                packId: sd.packId,
+                stickerWidth: sd.stickerWidth,
+                stickerHeight: sd.stickerHeight,
+            };
+        }
 
         const messageData: FullMessage = {
             senderId,
@@ -192,14 +289,7 @@ export class MessagingService {
             timestamp: Timestamp.now(),
             ...(replyTo && { replyTo }),
             ...(attachment && { attachment }),
-            ...(stickerData && {
-                type: 'sticker',
-                stickerId: stickerData.stickerId,
-                stickerUrl: stickerData.stickerUrl,
-                packId: stickerData.packId,
-                stickerWidth: stickerData.stickerWidth,
-                stickerHeight: stickerData.stickerHeight,
-            }),
+            ...(stickerFields ?? {}),
             ...(voiceNoteData && { voiceNoteData }),
             ...(isForwarded && { isForwarded }),
         };
@@ -216,7 +306,7 @@ export class MessagingService {
             };
             await setDoc(chatRef, chatRoom);
         } else {
-            const currentData = chatDoc.data();
+            const currentData = chatDoc.data() ?? {};
             await updateDoc(chatRef, {
                 messages: arrayUnion(messageData),
                 lastMessageTime: messageData.timestamp,
@@ -236,6 +326,26 @@ export class MessagingService {
         });
 
         return messageData;
+        }
+    }
+
+    public normalizeMessage(value: unknown): FullMessage | null {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+        const record = value as Record<string, unknown>;
+        const rawTimestamp = record.timestamp;
+        const timestampRecord = rawTimestamp && typeof rawTimestamp === 'object' ? rawTimestamp as Record<string, unknown> : {};
+        const timestamp = rawTimestamp instanceof Timestamp
+            ? rawTimestamp
+            : new Timestamp(typeof timestampRecord.seconds === 'number' ? timestampRecord.seconds : 0, typeof timestampRecord.nanoseconds === 'number' ? timestampRecord.nanoseconds : 0);
+        if (typeof record.senderId !== 'string' || typeof record.receiverId !== 'string' || typeof record.message !== 'string' || timestamp.seconds <= 0) return null;
+        return {
+            ...record,
+            senderId: record.senderId,
+            receiverId: record.receiverId,
+            message: record.message,
+            timestamp,
+            status: record.status === 'read' || record.status === 'delivered' ? record.status : 'sent',
+        } as FullMessage;
     }
 
     /**
@@ -247,12 +357,15 @@ export class MessagingService {
         emoji: string,
         userId: string
     ): Promise<void> {
+        await this.apiService.request('/api/messaging/actions', { authenticated: true, method: 'POST', body: { action: 'react', chatId: chatRoomId, timestampSeconds: messageTimestamp, emoji } });
+        return;
+        {
         const chatRef = doc(this.db, 'chats', chatRoomId);
         const chatDoc = await getDoc(chatRef);
         if (!chatDoc.exists()) return;
 
-        const chatData = chatDoc.data();
-        const updatedMessages: FullMessage[] = chatData.messages.map((msg: FullMessage) => {
+        const chatData = chatDoc.data() ?? {};
+        const updatedMessages: FullMessage[] = (chatData.messages ?? []).map((msg: FullMessage) => {
             if (msg.timestamp.seconds !== messageTimestamp) return msg;
             const reactions: Record<string, string[]> = { ...(msg.reactions ?? {}) };
             const users = reactions[emoji] ?? [];
@@ -266,6 +379,7 @@ export class MessagingService {
         });
 
         await updateDoc(chatRef, { messages: updatedMessages });
+        }
     }
 
     /**
@@ -277,8 +391,8 @@ export class MessagingService {
         const chatDoc = await getDoc(chatRef);
         if (!chatDoc.exists()) return;
 
-        const chatData = chatDoc.data();
-        const updatedMessages = chatData.messages.map((msg: MessageData) => {
+        const chatData = chatDoc.data() ?? {};
+        const updatedMessages = (chatData.messages ?? []).map((msg: MessageData) => {
             if (msg.receiverId === senderId && msg.status !== 'read') {
                 return { ...msg, status: 'read' };
             }
@@ -299,17 +413,20 @@ export class MessagingService {
     ): Promise<boolean> {
         try {
             const chatRoomId = this.getChatRoomId(senderId, receiverId);
+            await this.apiService.request('/api/messaging/actions', { authenticated: true, method: 'POST', body: { action: 'delete', chatId: chatRoomId, timestampSeconds: messageTimestamp, deleteForEveryone } });
+            return true;
+            {
             const chatRef = doc(this.db, 'chats', chatRoomId);
             const chatDoc = await getDoc(chatRef);
             if (!chatDoc.exists()) return false;
 
-            const chatData = chatDoc.data();
+            const chatData = chatDoc.data() ?? {};
             let updatedMessages: FullMessage[];
 
             if (deleteForEveryone) {
-                updatedMessages = chatData.messages.map((msg: FullMessage) => {
+                updatedMessages = (chatData.messages ?? []).map((msg: FullMessage) => {
                     if (msg.timestamp?.seconds !== messageTimestamp) return msg;
-                    const cleanedMsg: Record<string, any> = {
+                    const cleanedMsg: Record<string, unknown> = {
                         ...msg,
                         isDeletedForEveryone: true,
                         message: 'This message was deleted',
@@ -326,7 +443,7 @@ export class MessagingService {
                     return cleanedMsg as FullMessage;
                 });
             } else {
-                updatedMessages = chatData.messages.map((msg: FullMessage) => {
+                updatedMessages = (chatData.messages ?? []).map((msg: FullMessage) => {
                     if (msg.timestamp?.seconds !== messageTimestamp) return msg;
                     return { ...msg, deletedFor: [...(msg.deletedFor ?? []), senderId] };
                 });
@@ -338,6 +455,7 @@ export class MessagingService {
                 lastMessageTime: updatedMessages.length > 0 ? updatedMessages[updatedMessages.length - 1].timestamp : Timestamp.now(),
             });
             return true;
+            }
         } catch (error) {
             console.error('[MessagingService.deleteMessage]', error);
             return false;
@@ -348,6 +466,9 @@ export class MessagingService {
      * Clear all messages in a chat room
      */
     public async clearChatHistory(chatRoomId: string): Promise<void> {
+        await this.apiService.request('/api/messaging/actions', { authenticated: true, method: 'POST', body: { action: 'clear', chatId: chatRoomId } });
+        return;
+        {
         const chatRef = doc(this.db, 'chats', chatRoomId);
         await updateDoc(chatRef, {
             messages: [],
@@ -355,6 +476,7 @@ export class MessagingService {
             lastMessageTime: Timestamp.now(),
             unreadCount: 0,
         });
+        }
     }
 
     /**

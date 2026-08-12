@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { Animated, ViewStyle, StyleProp } from 'react-native';
+import { Animated, ViewStyle, StyleProp, type DimensionValue } from 'react-native';
 
 type SkeletonProps = {
-  width?: number | string;
-  height?: number | string;
+  width?: DimensionValue;
+  height?: DimensionValue;
   borderRadius?: number;
   style?: StyleProp<ViewStyle>;
 };
@@ -34,8 +34,8 @@ export function SkeletonBox({ width = '100%', height = 20, borderRadius = 8, sty
     <Animated.View
       style={[
         {
-          width: width as any,
-          height: height as any,
+          width,
+          height,
           borderRadius,
           backgroundColor: '#e2e8f0',
           opacity: opacityAnim,

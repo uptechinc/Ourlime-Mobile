@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, Text, Image, FlatList, Dimensions } from 'react-native';
 import { Users, Star } from 'lucide-react-native';
 

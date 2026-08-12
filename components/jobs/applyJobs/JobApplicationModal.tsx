@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { Fragment, useState } from 'react';
 import {
   Modal,
   View,
@@ -19,25 +19,25 @@ import {
 // import { storage, db, auth } from '@/lib/firebaseConfig';
 // import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
-interface Question {
+type Question = {
   id: string;
-  question: string;
-  type: 'input' | 'checkbox' | 'dropdown';
+  question?: string;
+  type?: string;
   options?: string[];
-}
+};
 
-interface JobApplicationModalProps {
+type JobApplicationModalProps = {
   isOpen: boolean;
   onClose: () => void;
   job: {
     id: string;
     basic_info: { title: string };
-    category_specific: { name: string };
-    creator: { name: string; profileImage?: string; email: string };
+    category_specific: { name?: string };
+    creator?: { name: string; profileImage?: string; email?: string };
     questions?: Question[];
   };
   jobType: 'professional' | 'quicktasks' | 'freelance';
-}
+};
 
 export default function JobApplicationModal({
   isOpen,
@@ -47,7 +47,7 @@ export default function JobApplicationModal({
 }: JobApplicationModalProps) {
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const [coverLetter, setCoverLetter] = useState('');
-  const [resumeFile, setResumeFile] = useState<string | null>(null); // path / uri
+  const [resumeFile] = useState<string | null>(null); // path / uri
   const [portfolioLink, setPortfolioLink] = useState('');
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -188,7 +188,7 @@ export default function JobApplicationModal({
           {/* Progress */}
           <View style={styles.progressRow}>
             {[1, 2, 3].map(s => (
-              <React.Fragment key={s}>
+              <Fragment key={s}>
                 <StepDot step={s as 1 | 2 | 3} />
                 {s < 3 && (
                   <View
@@ -198,7 +198,7 @@ export default function JobApplicationModal({
                     ]}
                   />
                 )}
-              </React.Fragment>
+              </Fragment>
             ))}
           </View>
         </View>

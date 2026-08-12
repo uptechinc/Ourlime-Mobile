@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   Modal,
   View,
@@ -10,7 +9,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 
-export type CustomModalType = 'success' | 'danger' | 'warning' | 'info';
+export type CustomModalType = 'success' | 'danger' | 'warning' | 'info' | 'error';
 
 export type CustomModalProps = {
   visible: boolean;
@@ -48,9 +47,10 @@ export default function CustomModal({
           </View>
         );
       case 'danger':
+      case 'error':
         return (
           <View style={[styles.iconContainer, { backgroundColor: '#fef2f2' }]}>
-            <Icon name="trash-2" size={32} color="#ef4444" />
+            <Icon name="alert-circle" size={32} color="#ef4444" />
           </View>
         );
       case 'warning':
@@ -72,6 +72,7 @@ export default function CustomModal({
   const getConfirmButtonStyle = () => {
     switch (type) {
       case 'danger':
+      case 'error':
         return { backgroundColor: '#ef4444' };
       case 'success':
         return { backgroundColor: '#10b981' };

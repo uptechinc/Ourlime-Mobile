@@ -1,138 +1,17 @@
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import type { UserProfile } from '@/lib/services/AuthService';
 
-type AdminTabProps = {
-  profile: UserProfile;
-};
+type AdminTabProps = { profile: UserProfile };
 
 export default function AdminTab({ profile }: AdminTabProps) {
-  const handleAction = (title: string) => {
-    Alert.alert(title, `Admin action triggered for user ${profile.userName}`);
-  };
-
-  return (
-    <View style={{ padding: 16, gap: 12 }}>
-      {/* Admin Surface Header */}
-      <View style={{
-        backgroundColor: '#1e293b', // admin-surface
-        borderRadius: 20,
-        padding: 18,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 3,
-      }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-          <View style={{
-            width: 32,
-            height: 32,
-            borderRadius: 10,
-            backgroundColor: 'rgba(239, 68, 68, 0.2)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            marginRight: 10,
-          }}>
-            <Ionicons name="shield-checkmark" size={18} color="#ef4444" />
-          </View>
-          <View>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: '#ffffff' }}>
-              Admin Control Panel
-            </Text>
-            <Text style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>
-              Privileged tools & account management
-            </Text>
-          </View>
-        </View>
-
-        <View style={{ gap: 10, marginTop: 10 }}>
-          {/* Quick Actions */}
-          <TouchableOpacity
-            onPress={() => handleAction('Verify User')}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: 14,
-              borderRadius: 14,
-              backgroundColor: '#0f172a',
-              borderWidth: 1,
-              borderColor: '#334155',
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="checkmark-circle-outline" size={18} color="#10b981" style={{ marginRight: 10 }} />
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#ffffff' }}>Verify Account Status</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color="#64748b" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => handleAction('Change Tier')}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: 14,
-              borderRadius: 14,
-              backgroundColor: '#0f172a',
-              borderWidth: 1,
-              borderColor: '#334155',
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="ribbon-outline" size={18} color="#3b82f6" style={{ marginRight: 10 }} />
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#ffffff' }}>Assign Tier & Role</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color="#64748b" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => handleAction('View Audit Logs')}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: 14,
-              borderRadius: 14,
-              backgroundColor: '#0f172a',
-              borderWidth: 1,
-              borderColor: '#334155',
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="list-outline" size={18} color="#f59e0b" style={{ marginRight: 10 }} />
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#ffffff' }}>View Activity & Audit Logs</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color="#64748b" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => handleAction('Moderate Content')}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: 14,
-              borderRadius: 14,
-              backgroundColor: '#450a0a',
-              borderWidth: 1,
-              borderColor: '#991b1b',
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="warning-outline" size={18} color="#ef4444" style={{ marginRight: 10 }} />
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#fca5a5' }}>Moderate / Suspend Account</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color="#f87171" />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
-  );
+  const router = useRouter();
+  const items = [
+    { id: 'overview', label: 'Admin Overview', description: 'Platform metrics and operational status', icon: 'grid-outline' as const },
+    { id: 'users', label: 'User Management', description: 'Roles, account status, archive and restore', icon: 'people-outline' as const },
+    { id: 'moderation', label: 'Content Moderation', description: 'Review and resolve reported content', icon: 'flag-outline' as const },
+    { id: 'page_access', label: 'Page Access', description: 'Availability, maintenance and Coming Soon controls', icon: 'shield-checkmark-outline' as const },
+  ];
+  return <View style={{ padding: 16 }}><View style={{ padding: 18, borderRadius: 20, backgroundColor: '#1e293b' }}><View style={{ flexDirection: 'row', alignItems: 'center' }}><Ionicons name="shield-checkmark" size={24} color="#10b981" /><View style={{ marginLeft: 10 }}><Text style={{ color: '#fff', fontSize: 17, fontWeight: '900' }}>Admin Control Panel</Text><Text style={{ color: '#94a3b8', marginTop: 2 }}>Signed in as @{profile.userName}</Text></View></View>{items.map((item) => <TouchableOpacity key={item.id} onPress={() => router.push({ pathname: '/admin/index', params: { section: item.id } })} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 11, padding: 14, borderRadius: 14, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155' }}><Ionicons name={item.icon} size={20} color="#10b981" /><View style={{ flex: 1, marginLeft: 11 }}><Text style={{ color: '#fff', fontWeight: '800' }}>{item.label}</Text><Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>{item.description}</Text></View><Ionicons name="chevron-forward" size={18} color="#64748b" /></TouchableOpacity>)}</View></View>;
 }

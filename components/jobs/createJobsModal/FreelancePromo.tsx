@@ -1,5 +1,4 @@
 // components/jobCreation/PromoteYourselfForm.tsx
-import React from 'react';
 import {
   View,
   Text,
@@ -11,7 +10,7 @@ import { Picker } from '@react-native-picker/picker';
 
 type Availability = 'Freelance' | 'Full-time' | 'Part-time';
 
-interface FreelancerDetails {
+type FreelancerDetails = {
   name: string;
   skills: string[];
   experience: string;
@@ -19,12 +18,12 @@ interface FreelancerDetails {
   availability: Availability;
   hourlyRate: string;
   bio: string;
-}
+};
 
-interface PromoteYourselfFormProps {
+type PromoteYourselfFormProps = {
   freelancerDetails: FreelancerDetails;
   setFreelancerDetails: (details: FreelancerDetails) => void;
-}
+};
 
 export const PromoteYourselfForm = ({
   freelancerDetails,

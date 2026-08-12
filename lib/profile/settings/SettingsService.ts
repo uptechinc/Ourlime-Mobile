@@ -1,438 +1,73 @@
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
-import {
-	doc,
-	getDoc,
-	setDoc,
-	updateDoc,
-	serverTimestamp,
-} from 'firebase/firestore';
+import { ApiService } from '@/lib/services/ApiService';
+
+export type SettingsVisibility = 'public' | 'friends' | 'private';
+export type BlockedUserSummary = { id: string; userName: string; firstName: string; lastName: string; profileImage: string | null };
+export type MobileSettings = {
+  firstName: string;
+  lastName: string;
+  userName: string;
+  bio: string;
+  visibility: SettingsVisibility;
+  allowDirectMessages: boolean;
+  pushEnabled: boolean;
+  emailEnabled: boolean;
+  mentionAlerts: boolean;
+  blockedUsers: BlockedUserSummary[];
+};
+
+const readString = (value: unknown): string => typeof value === 'string' ? value : '';
+const readRecord = (value: unknown): Record<string, unknown> => typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
 
 export class SettingsService {
-	private static instance: SettingsService;
-	private readonly db;
+  private static instance: SettingsService;
+  private readonly apiService = ApiService.getInstance();
 
-	private constructor() {
-		console.log('SettingsService: Initializing');
-		this.db = db;
-	}
+  private constructor() {}
 
-	public static getInstance(): SettingsService {
-		console.log('SettingsService: Getting instance');
-		if (!SettingsService.instance) {
-			SettingsService.instance = new SettingsService();
-		}
-		return SettingsService.instance;
-	}
+  public static getInstance(): SettingsService {
+    if (!SettingsService.instance) SettingsService.instance = new SettingsService();
+    return SettingsService.instance;
+  }
 
-	/**
-	 * Get all settings for a user
-	 */
-	public async getAllSettings(userId: string) {
-		console.log('SettingsService: Getting all settings for user', userId);
+  public async getMobileSettings(userId: string): Promise<MobileSettings> {
+    const [userSnapshot, notificationsSnapshot, blockResponse] = await Promise.all([
+      getDoc(doc(db, 'users', userId)),
+      getDoc(doc(db, `users/${userId}/userSettings/notifications`)),
+      this.apiService.request<{ success: boolean; data?: unknown[] }>('/api/profile/blocklist', { authenticated: true }),
+    ]);
+    if (!userSnapshot.exists()) throw new Error('User profile not found');
+    const user = userSnapshot.data();
+    const notifications = notificationsSnapshot.data() ?? {};
+    const visibility = user.visibility === 'friends' || user.visibility === 'private' ? user.visibility : 'public';
+    const blockedUsers = (blockResponse.data ?? []).flatMap((value): BlockedUserSummary[] => {
+      const record = readRecord(value);
+      const id = readString(record.id);
+      if (!id) return [];
+      return [{ id, userName: readString(record.userName), firstName: readString(record.firstName), lastName: readString(record.lastName), profileImage: readString(record.profileImage) || null }];
+    });
+    return {
+      firstName: readString(user.firstName), lastName: readString(user.lastName), userName: readString(user.userName), bio: readString(user.bio), visibility,
+      allowDirectMessages: user.allowDirectMessages !== false,
+      pushEnabled: notifications.pushNotifications !== false,
+      emailEnabled: notifications.emailNotifications !== false,
+      mentionAlerts: notifications.mentionAlerts !== false,
+      blockedUsers,
+    };
+  }
 
-		try {
-			const [account, notifications, appearance] = await Promise.all([
-				this.getAccountSettings(userId),
-				this.getNotificationSettings(userId),
-				this.getAppearanceSettings(userId),
-			]);
+  public async updateMobileSettings(userId: string, settings: Omit<MobileSettings, 'blockedUsers'>): Promise<void> {
+    await Promise.all([
+      updateDoc(doc(db, 'users', userId), {
+        firstName: settings.firstName.trim(), lastName: settings.lastName.trim(), userName: settings.userName.trim().toLowerCase(), bio: settings.bio.trim(), visibility: settings.visibility, allowDirectMessages: settings.allowDirectMessages,
+      }),
+      setDoc(doc(db, `users/${userId}/userSettings/notifications`), { pushNotifications: settings.pushEnabled, emailNotifications: settings.emailEnabled, mentionAlerts: settings.mentionAlerts }, { merge: true }),
+    ]);
+  }
 
-			console.log('SettingsService: Successfully retrieved all settings');
-			return {
-				account,
-				notifications,
-				appearance,
-			};
-		} catch (error: any) {
-			console.error(
-				'SettingsService: Error getting all settings:',
-				error.message
-			);
-			throw new Error(`Failed to get all settings: ${error.message}`);
-		}
-	}
-
-	/**
-	 * Get account settings for a user
-	 */
-	public async getAccountSettings(userId: string) {
-		console.log('SettingsService: Getting account settings for user', userId);
-
-		try {
-			// Check if user exists and is verified
-			const userDoc = await getDoc(doc(this.db, 'users', userId));
-			if (!userDoc.exists()) {
-				console.error('SettingsService: User not found', userId);
-				throw new Error('User not found');
-			}
-
-			const userData = userDoc.data();
-			if (!userData.emailVerified) {
-				console.error('SettingsService: User email not verified', userId);
-				throw new Error('Email verification required');
-			}
-
-			// Get account settings - UPDATED PATH
-			const settingsDoc = await getDoc(
-				doc(this.db, `users/${userId}/userSettings/account`)
-			);
-
-			if (!settingsDoc.exists()) {
-				console.log(
-					'SettingsService: No account settings found, creating default settings'
-				);
-				// Create default settings if they don't exist
-				const defaultSettings = {
-					emailNotifications: true,
-					profileVisibility: 'public',
-					activityStatus: true,
-					language: 'en',
-					timezone: 'UTC',
-					createdAt: serverTimestamp(),
-					updatedAt: serverTimestamp(),
-				};
-
-				await setDoc(
-					doc(this.db, `users/${userId}/userSettings/account`),
-					defaultSettings
-				);
-				console.log('SettingsService: Default account settings created');
-				return defaultSettings;
-			}
-
-			const settings = settingsDoc.data();
-			console.log('SettingsService: Account settings retrieved successfully');
-			return settings || {};
-		} catch (error: any) {
-			console.error(
-				'SettingsService: Error getting account settings:',
-				error.message
-			);
-			throw new Error(`Failed to get account settings: ${error.message}`);
-		}
-	}
-
-	/**
-	 * Get notification settings for a user
-	 */
-	public async getNotificationSettings(userId: string) {
-		console.log(
-			'SettingsService: Getting notification settings for user',
-			userId
-		);
-
-		try {
-			// Check if user exists and is verified
-			const userDoc = await getDoc(doc(this.db, 'users', userId));
-			if (!userDoc.exists()) {
-				console.error('SettingsService: User not found', userId);
-				throw new Error('User not found');
-			}
-
-			const userData = userDoc.data();
-			if (!userData.emailVerified) {
-				console.error('SettingsService: User email not verified', userId);
-				throw new Error('Email verification required');
-			}
-
-			// Get notification settings - UPDATED PATH
-			const settingsDoc = await getDoc(
-				doc(this.db, `users/${userId}/userSettings/notifications`)
-			);
-
-			if (!settingsDoc.exists()) {
-				console.log(
-					'SettingsService: No notification settings found, creating default settings'
-				);
-				// Create default settings if they don't exist
-				const defaultSettings = {
-					pushNotifications: true,
-					emailUpdates: true,
-					smsAlerts: false,
-					marketingEmails: false,
-					newMessages: true,
-					newComments: true,
-					mentions: true,
-					createdAt: serverTimestamp(),
-					updatedAt: serverTimestamp(),
-				};
-
-				await setDoc(
-					doc(this.db, `users/${userId}/userSettings/notifications`),
-					defaultSettings
-				);
-				console.log('SettingsService: Default notification settings created');
-				return defaultSettings;
-			}
-
-			const settings = settingsDoc.data();
-			console.log(
-				'SettingsService: Notification settings retrieved successfully'
-			);
-			return settings || {};
-		} catch (error: any) {
-			console.error(
-				'SettingsService: Error getting notification settings:',
-				error.message
-			);
-			throw new Error(`Failed to get notification settings: ${error.message}`);
-		}
-	}
-
-	/**
-	 * Get appearance settings for a user
-	 */
-	public async getAppearanceSettings(userId: string) {
-		console.log(
-			'SettingsService: Getting appearance settings for user',
-			userId
-		);
-
-		try {
-			// Check if user exists and is verified
-			const userDoc = await getDoc(doc(this.db, 'users', userId));
-			if (!userDoc.exists()) {
-				console.error('SettingsService: User not found', userId);
-				throw new Error('User not found');
-			}
-
-			const userData = userDoc.data();
-			if (!userData.emailVerified) {
-				console.error('SettingsService: User email not verified', userId);
-				throw new Error('Email verification required');
-			}
-
-			// Get appearance settings - UPDATED PATH
-			const settingsDoc = await getDoc(
-				doc(this.db, `users/${userId}/userSettings/appearance`)
-			);
-
-			if (!settingsDoc.exists()) {
-				console.log(
-					'SettingsService: No appearance settings found, creating default settings'
-				);
-				// Create default settings if they don't exist
-				const defaultSettings = {
-					theme: 'light',
-					fontSize: 'medium',
-					compactMode: false,
-					highContrast: false,
-					createdAt: serverTimestamp(),
-					updatedAt: serverTimestamp(),
-				};
-
-				await setDoc(
-					doc(this.db, `users/${userId}/userSettings/appearance`),
-					defaultSettings
-				);
-				console.log('SettingsService: Default appearance settings created');
-				return defaultSettings;
-			}
-
-			const settings = settingsDoc.data();
-			console.log(
-				'SettingsService: Appearance settings retrieved successfully'
-			);
-			return settings || {};
-		} catch (error: any) {
-			console.error(
-				'SettingsService: Error getting appearance settings:',
-				error.message
-			);
-			throw new Error(`Failed to get appearance settings: ${error.message}`);
-		}
-	}
-
-	/**
-	 * Update account settings for a user
-	 */
-	public async updateAccountSettings(userId: string, newSettings: any) {
-		console.log(
-			'SettingsService: Updating account settings for user',
-			userId,
-			newSettings
-		);
-
-		try {
-			// Check if user exists and is verified
-			const userDoc = await getDoc(doc(this.db, 'users', userId));
-			if (!userDoc.exists()) {
-				console.error('SettingsService: User not found', userId);
-				throw new Error('User not found');
-			}
-
-			const userData = userDoc.data();
-			if (!userData.emailVerified) {
-				console.error('SettingsService: User email not verified', userId);
-				throw new Error('Email verification required');
-			}
-
-			// Get current settings - UPDATED PATH
-			const settingsRef = doc(this.db, `users/${userId}/userSettings/account`);
-			const settingsDoc = await getDoc(settingsRef);
-
-			if (!settingsDoc.exists()) {
-				console.log(
-					'SettingsService: No settings document found, creating new one'
-				);
-				// Create new settings document if it doesn't exist
-				const settings = {
-					...newSettings,
-					createdAt: serverTimestamp(),
-					updatedAt: serverTimestamp(),
-				};
-
-				await setDoc(settingsRef, settings);
-				console.log('SettingsService: New account settings created');
-				return newSettings;
-			}
-
-			// Update existing settings
-			await updateDoc(settingsRef, {
-				...newSettings,
-				updatedAt: serverTimestamp(),
-			});
-
-			console.log('SettingsService: Account settings updated successfully');
-			return newSettings;
-		} catch (error: any) {
-			console.error(
-				'SettingsService: Error updating account settings:',
-				error.message
-			);
-			throw new Error(`Failed to update account settings: ${error.message}`);
-		}
-	}
-
-	/**
-	 * Update notification settings for a user
-	 */
-	public async updateNotificationSettings(userId: string, newSettings: any) {
-		console.log(
-			'SettingsService: Updating notification settings for user',
-			userId,
-			newSettings
-		);
-
-		try {
-			// Check if user exists and is verified
-			const userDoc = await getDoc(doc(this.db, 'users', userId));
-			if (!userDoc.exists()) {
-				console.error('SettingsService: User not found', userId);
-				throw new Error('User not found');
-			}
-
-			const userData = userDoc.data();
-			if (!userData.emailVerified) {
-				console.error('SettingsService: User email not verified', userId);
-				throw new Error('Email verification required');
-			}
-
-			// Get current settings - UPDATED PATH
-			const settingsRef = doc(
-				this.db,
-				`users/${userId}/userSettings/notifications`
-			);
-			const settingsDoc = await getDoc(settingsRef);
-
-			if (!settingsDoc.exists()) {
-				console.log(
-					'SettingsService: No settings document found, creating new one'
-				);
-				// Create new settings document if it doesn't exist
-				const settings = {
-					...newSettings,
-					createdAt: serverTimestamp(),
-					updatedAt: serverTimestamp(),
-				};
-
-				await setDoc(settingsRef, settings);
-				console.log('SettingsService: New notification settings created');
-				return newSettings;
-			}
-
-			// Update existing settings
-			await updateDoc(settingsRef, {
-				...newSettings,
-				updatedAt: serverTimestamp(),
-			});
-
-			console.log(
-				'SettingsService: Notification settings updated successfully'
-			);
-			return newSettings;
-		} catch (error: any) {
-			console.error(
-				'SettingsService: Error updating notification settings:',
-				error.message
-			);
-			throw new Error(
-				`Failed to update notification settings: ${error.message}`
-			);
-		}
-	}
-
-	/**
-	 * Update appearance settings for a user
-	 */
-	public async updateAppearanceSettings(userId: string, newSettings: any) {
-		console.log(
-			'SettingsService: Updating appearance settings for user',
-			userId,
-			newSettings
-		);
-
-		try {
-			// Check if user exists and is verified
-			const userDoc = await getDoc(doc(this.db, 'users', userId));
-			if (!userDoc.exists()) {
-				console.error('SettingsService: User not found', userId);
-				throw new Error('User not found');
-			}
-
-			const userData = userDoc.data();
-			if (!userData.emailVerified) {
-				console.error('SettingsService: User email not verified', userId);
-				throw new Error('Email verification required');
-			}
-
-			// Get current settings - UPDATED PATH
-			const settingsRef = doc(
-				this.db,
-				`users/${userId}/userSettings/appearance`
-			);
-			const settingsDoc = await getDoc(settingsRef);
-
-			if (!settingsDoc.exists()) {
-				console.log(
-					'SettingsService: No settings document found, creating new one'
-				);
-				// Create new settings document if it doesn't exist
-				const settings = {
-					...newSettings,
-					createdAt: serverTimestamp(),
-					updatedAt: serverTimestamp(),
-				};
-
-				await setDoc(settingsRef, settings);
-				console.log('SettingsService: New appearance settings created');
-				return newSettings;
-			}
-
-			// Update existing settings
-			await updateDoc(settingsRef, {
-				...newSettings,
-				updatedAt: serverTimestamp(),
-			});
-
-			console.log('SettingsService: Appearance settings updated successfully');
-			return newSettings;
-		} catch (error: any) {
-			console.error(
-				'SettingsService: Error updating appearance settings:',
-				error.message
-			);
-			throw new Error(`Failed to update appearance settings: ${error.message}`);
-		}
-	}
+  public async unblockUser(userId: string): Promise<void> {
+    const response = await this.apiService.request<{ success: boolean; message?: string }>('/api/profile/blocklist', { method: 'DELETE', authenticated: true, body: { userIdToUnblock: userId } });
+    if (!response.success) throw new Error(response.message || 'Failed to unblock user');
+  }
 }

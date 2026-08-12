@@ -1,65 +1,32 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { router } from "expo-router";
 import { ActivityIndicator, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MiddleSection from "@/components/home/MiddleSection";
 import SlideOutMenu from "@/components/ui/SlideOutMenu";
-import GameWebViewModal from "@/components/home/GameWebViewModal";
 import { MenuItem } from "../../lib/types/componentProps";
 import AppHeader from "@/components/ui/AppHeader";
 import CreatePostModal from "@/components/home/MiddleSection/MiddleSectionComponent/CreatePostModal";
 import NotificationsModal from "@/components/home/NotificationsModal";
-import { AuthService, type UserProfile } from "@/lib/services/AuthService";
+import { AuthService } from "@/lib/services/AuthService";
 import type { PostItem } from "@/lib/services/PostService";
-import { DiagnosticLogService } from "@/lib/services/DiagnosticLogService";
+import { getAppNavigationItems } from '@/lib/navigation/AppNavigation';
+import { usePageAccess } from '@/lib/contexts/PageAccessContext';
+import { useProfileResource } from '@/lib/hooks/useProfileResource';
+import { profileResourceService } from '@/lib/services/ProfileResourceService';
 
 const authService = AuthService.getInstance();
-const diagnosticLogService = DiagnosticLogService.getInstance();
 
 export default function FeedsScreen() {
+  const { authorization, getDecision } = usePageAccess();
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [profileError, setProfileError] = useState<string | null>(null);
+  const currentUser = authService.getCurrentUser();
+  const { resource: profileResource } = useProfileResource({ kind: 'own', userId: currentUser?.uid ?? '' });
+  const userProfile = profileResource.data?.profile ?? null;
+  const profileError = profileResource.error?.message ?? null;
   const [createdPost, setCreatedPost] = useState<PostItem | null>(null);
-
-  useEffect(() => {
-    return authService.subscribeToAuthState((currentUser) => {
-      if (!currentUser) {
-        setUserProfile(null);
-        setProfileError('Firebase Auth did not return an authenticated user.');
-        diagnosticLogService.warn('FeedsScreen', 'profile:no-auth-user');
-        return;
-      }
-      setProfileError(null);
-      diagnosticLogService.info('FeedsScreen', 'profile:start', { uid: currentUser.uid });
-      void authService.getUserProfile(currentUser.uid)
-        .then((profile) => {
-          const resolvedProfile = profile ?? {
-            uid: currentUser.uid,
-            firstName: currentUser.displayName?.split(' ')[0] || 'Ourlime',
-            lastName: currentUser.displayName?.split(' ').slice(1).join(' ') || 'User',
-            userName: currentUser.email?.split('@')[0] || 'ourlime_user',
-            email: currentUser.email || '',
-            accountType: 'regular',
-            profilePicture: currentUser.photoURL,
-          };
-          setUserProfile(resolvedProfile);
-          diagnosticLogService.success('FeedsScreen', 'profile', {
-            uid: currentUser.uid,
-            source: profile ? 'firestore' : 'firebase-auth-fallback',
-            hasProfilePicture: Boolean(resolvedProfile.profilePicture),
-            firstName: resolvedProfile.firstName,
-          });
-        })
-        .catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : 'Unknown profile query error';
-          setProfileError(message);
-          diagnosticLogService.error('FeedsScreen', 'profile', error, { uid: currentUser.uid });
-        });
-    });
-  }, []);
 
   const handleCreatePost = () => {
     setIsCreatePostModalOpen(true);
@@ -67,6 +34,7 @@ export default function FeedsScreen() {
 
   const handlePostCreated = (post: PostItem) => {
     setCreatedPost(post);
+    if (currentUser?.uid) void profileResourceService.adjustOwnStats(currentUser.uid, { posts: 1 });
     setIsCreatePostModalOpen(false);
   };
 
@@ -74,129 +42,28 @@ export default function FeedsScreen() {
     setIsMenuVisible(true);
   };
 
-  const [activeGameModal, setActiveGameModal] = useState<{ id: string; name: string } | null>(null);
-
   const handleCloseMenu = () => {
     setIsMenuVisible(false);
   };
 
   const menuItems: MenuItem[] = [
+    ...getAppNavigationItems({
+      includeHome: false,
+      isAdmin: authorization.isAdmin,
+      resolveStatus: (route) => {
+        const decision = getDecision(route);
+        return { visible: decision.isVisibleInNavigation, status: decision.status, badge: decision.setting?.badgeText };
+      },
+    }).map((item) => ({
+      id: item.id,
+      title: item.label,
+      icon: item.ionicon,
+      route: item.route,
+      badge: item.badge || (item.status === 'coming_soon' ? 'Soon' : item.status === 'maintenance' ? 'Maintenance' : undefined),
+      onPress: () => router.push(item.route),
+    })),
     {
-      id: "1",
-      title: "Communities",
-      icon: "people",
-      onPress: () => router.push("/communities/page"),
-    },
-    {
-      id: "2",
-      title: "Events",
-      icon: "calendar",
-      onPress: () => router.push("/events/page"),
-    },
-    {
-      id: "3",
-      title: "Jobs",
-      icon: "briefcase",
-      onPress: () => router.push("/jobs/page"),
-    },
-    {
-      id: "4",
-      title: "Market",
-      icon: "storefront",
-      onPress: () => router.push("/market/page"),
-    },
-    {
-      id: "5",
-      title: "Blogs",
-      icon: "book",
-      onPress: () => router.push("/blogs/page"),
-    },
-    {
-      id: "6",
-      title: "E-Learning",
-      icon: "school",
-      onPress: () => router.push("/eLearning/page"),
-    },
-    {
-      id: "7",
-      title: "Chat",
-      icon: "chatbubbles",
-      onPress: () => router.push("/chat/page"),
-    },
-    {
-      id: "12",
-      title: "E-Projects",
-      icon: "folder",
-      onPress: () => router.push("/projectManagement/page" as any),
-    },
-    {
-      id: "17",
-      title: "Games",
-      icon: "game-controller",
-      onPress: () => setActiveGameModal({ id: 'wordle', name: 'Games' }),
-    },
-    {
-      id: "divider1",
-      title: "",
-      icon: "",
-      isDivider: true,
-    },
-    {
-      id: "10",
-      title: "Profile",
-      icon: "person",
-      onPress: () => router.push("/(tabs)/Profile" as any),
-    },
-    {
-      id: "8",
-      title: "Settings",
-      icon: "settings",
-      onPress: () => router.push("/(tabs)/Profile" as any),
-    },
-    {
-      id: "13",
-      title: "Wallet",
-      icon: "wallet",
-      onPress: () => router.push("/eWallet/page" as any),
-    },
-    {
-      id: "9",
-      title: "Saved Items",
-      icon: "bookmark",
-      onPress: () => router.push("/(tabs)/Profile" as any),
-    },
-    {
-      id: "divider2",
-      title: "",
-      icon: "",
-      isDivider: true,
-    },
-    {
-      id: "14",
-      title: "Create Ad",
-      icon: "megaphone",
-      onPress: () => router.push("/ads/page" as any),
-    },
-    {
-      id: "15",
-      title: "Manage Ads",
-      icon: "bar-chart",
-      onPress: () => router.push("/ads/page" as any),
-    },
-    {
-      id: "divider3",
-      title: "",
-      icon: "",
-      isDivider: true,
-    },
-    {
-      id: "16",
-      title: "Help & Support",
-      icon: "help-circle",
-      onPress: () => router.push("/help/page" as any),
-    },
-    {
-      id: "11",
+      id: "logout",
       title: "Log Out",
       icon: "log-out",
       onPress: async () => {
@@ -269,14 +136,6 @@ export default function FeedsScreen() {
         }}
       />
 
-      {activeGameModal && (
-        <GameWebViewModal
-          gameId={activeGameModal.id}
-          gameName={activeGameModal.name}
-          isVisible={true}
-          onClose={() => setActiveGameModal(null)}
-        />
-      )}
     </View>
   );
 }

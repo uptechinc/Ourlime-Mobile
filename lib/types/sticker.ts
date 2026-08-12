@@ -12,7 +12,7 @@ export type Sticker = {
   order: number;
   enabled: boolean;
   isAnimated: boolean;
-  createdAt: Timestamp;
+  createdAt?: Timestamp;
 };
 
 export type StickerPack = {

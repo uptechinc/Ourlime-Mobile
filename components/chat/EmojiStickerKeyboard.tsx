@@ -259,7 +259,7 @@ export function EmojiStickerKeyboard({
                       backgroundColor: isActive ? '#dcfce7' : 'transparent',
                     }}
                   >
-                    <Icon name={cat.icon as any} size={16} color={isActive ? '#10b981' : '#94a3b8'} />
+                    <Icon name={cat.icon} size={16} color={isActive ? '#10b981' : '#94a3b8'} />
                   </TouchableOpacity>
                 );
               })}

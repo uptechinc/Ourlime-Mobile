@@ -3,6 +3,10 @@ import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
+  sendPasswordResetEmail,
+  verifyPasswordResetCode,
+  confirmPasswordReset,
+  sendEmailVerification,
   User as FirebaseUser,
   Unsubscribe,
 } from 'firebase/auth';
@@ -18,9 +22,17 @@ import {
   where,
   FieldValue,
   Timestamp,
+  updateDoc,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { pushNotificationService } from './PushNotificationService';
+import { localCacheService } from './LocalCacheService';
+import { useResourceStore } from '@/lib/store/useResourceStore';
+import { PostMediaService } from './PostMediaService';
+import { AuthServiceError } from '@/lib/auth/AuthErrors';
+export { AuthServiceError, getAuthErrorCode } from '@/lib/auth/AuthErrors';
+export type { AuthServiceErrorCode } from '@/lib/auth/AuthErrors';
 
 export type UserProfile = {
   uid: string;
@@ -29,6 +41,20 @@ export type UserProfile = {
   userName: string;
   email: string;
   accountType: string;
+  role?: string;
+  isAdmin?: boolean;
+  isDeveloper?: boolean;
+  bio?: string;
+  location?: string;
+  coverPhoto?: string;
+  coverImage?: string;
+  coverPicture?: string;
+  emailVerified?: boolean;
+  verificationStatus?: string;
+  visibility?: 'public' | 'friends' | 'private';
+  followersCount?: number;
+  friendsCount?: number;
+  postsCount?: number;
   gender?: string;
   dateOfBirth?: string;
   country?: string;
@@ -42,6 +68,7 @@ export type UserProfile = {
 export class AuthService {
   private static instance: AuthService;
   private readonly logger = DiagnosticLogService.getInstance();
+  private readonly mediaService = PostMediaService.getInstance();
 
   private constructor() {}
 
@@ -60,6 +87,21 @@ export class AuthService {
     this.logger.info('AuthService', 'login:start', { emailDomain: normalizedEmail.split('@')[1] ?? 'unknown' });
     try {
       const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      const accountDocument = await getDoc(doc(db, 'users', credential.user.uid));
+      const account = accountDocument.data();
+      if (account?.deletedAt || account?.status === 'deleted') {
+        await signOut(auth);
+        throw new AuthServiceError('ACCOUNT_DELETED', 'This account has been deleted.');
+      }
+      if (account?.disabled === true || account?.status === 'disabled' || account?.status === 'suspended') {
+        await signOut(auth);
+        throw new AuthServiceError('ACCOUNT_DISABLED', 'This account is currently disabled.');
+      }
+      if (!credential.user.emailVerified) {
+        await sendEmailVerification(credential.user).catch(() => undefined);
+        await signOut(auth);
+        throw new AuthServiceError('EMAIL_NOT_VERIFIED', 'Verify your email before signing in. A new verification email was sent.');
+      }
       this.logger.success('AuthService', 'login', {
         uid: credential.user.uid,
         emailVerified: credential.user.emailVerified,
@@ -68,6 +110,31 @@ export class AuthService {
     } catch (error: unknown) {
       this.logger.error('AuthService', 'login', error, { emailDomain: normalizedEmail.split('@')[1] ?? 'unknown' });
       throw error;
+    }
+  }
+
+  public async requestPasswordReset(email: string): Promise<void> {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) throw new AuthServiceError('UNKNOWN', 'Email is required.');
+    await sendPasswordResetEmail(auth, normalizedEmail, { url: 'ourlime://reset-password' });
+  }
+
+  public async validatePasswordResetCode(code: string): Promise<string> {
+    if (!code) throw new AuthServiceError('UNKNOWN', 'Password reset code is missing.');
+    return verifyPasswordResetCode(auth, code);
+  }
+
+  public async resetPassword(code: string, password: string): Promise<void> {
+    if (password.length < 8) throw new AuthServiceError('UNKNOWN', 'Password must contain at least 8 characters.');
+    await confirmPasswordReset(auth, code, password);
+  }
+
+  public async resendEmailVerification(email: string, password: string): Promise<void> {
+    const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+    try {
+      if (!credential.user.emailVerified) await sendEmailVerification(credential.user);
+    } finally {
+      await signOut(auth);
     }
   }
 
@@ -98,6 +165,9 @@ export class AuthService {
     const user = credential.user;
 
     // Create user profile in Firestore
+    const profilePicture = formData.profilePicture && /^(file:|content:)/i.test(formData.profilePicture)
+      ? await this.mediaService.uploadProfileImage({ userId: user.uid, uri: formData.profilePicture })
+      : formData.profilePicture || null;
     const userProfile: UserProfile = {
       uid: user.uid,
       firstName: formData.firstName.trim(),
@@ -110,7 +180,7 @@ export class AuthService {
       country: formData.country || '',
       city: formData.city || '',
       phone: formData.phone || '',
-      profilePicture: formData.profilePicture || null,
+      profilePicture,
       selectedInterests: formData.selectedInterests || [],
       createdAt: serverTimestamp(),
     };
@@ -188,6 +258,20 @@ export class AuthService {
         userName: this.readString(profileRecord.userName),
         email: this.readString(profileRecord.email, auth.currentUser?.email ?? ''),
         accountType: this.readString(profileRecord.accountType, 'regular'),
+        role: this.readString(profileRecord.role) || undefined,
+        isAdmin: profileRecord.isAdmin === true,
+        isDeveloper: profileRecord.isDeveloper === true,
+        bio: this.readString(profileRecord.bio) || undefined,
+        location: this.readString(profileRecord.location) || undefined,
+        coverPhoto: this.readString(profileRecord.coverPhoto) || undefined,
+        coverImage: this.readString(profileRecord.coverImage) || undefined,
+        coverPicture: this.readString(profileRecord.coverPicture) || undefined,
+        emailVerified: profileRecord.emailVerified === true || auth.currentUser?.emailVerified === true,
+        verificationStatus: this.readString(profileRecord.verificationStatus) || undefined,
+        visibility: profileRecord.visibility === 'private' || profileRecord.visibility === 'friends' ? profileRecord.visibility : 'public',
+        followersCount: this.readNumber(profileRecord.followersCount),
+        friendsCount: this.readNumber(profileRecord.friendsCount),
+        postsCount: this.readNumber(profileRecord.postsCount),
         gender: this.readString(profileRecord.gender) || undefined,
         dateOfBirth: this.readString(profileRecord.dateOfBirth) || undefined,
         country: this.readString(profileRecord.country) || undefined,
@@ -232,6 +316,12 @@ export class AuthService {
    * Log out current user
    */
   public async logout(): Promise<void> {
+    const userId = auth.currentUser?.uid;
+    await pushNotificationService.unregisterCurrentDevice().catch((error: unknown) => {
+      this.logger.warn('AuthService', 'logout:push-unregister', { error: error instanceof Error ? error.message : String(error) });
+    });
+    if (userId) await localCacheService.clearUser(userId).catch(() => undefined);
+    useResourceStore.getState().clearUserResources();
     await signOut(auth);
   }
 
@@ -240,6 +330,15 @@ export class AuthService {
    */
   public getCurrentUser(): FirebaseUser | null {
     return auth.currentUser;
+  }
+
+  public async updateUserProfile(userId: string, updates: Pick<UserProfile, 'firstName' | 'lastName' | 'userName' | 'bio' | 'location' | 'profilePicture' | 'coverPhoto'>): Promise<void> {
+    await updateDoc(doc(db, 'users', userId), {
+      ...updates,
+      coverImage: updates.coverPhoto ?? null,
+      coverPicture: updates.coverPhoto ?? null,
+      updatedAt: serverTimestamp(),
+    });
   }
 
   public subscribeToAuthState(onChange: (user: FirebaseUser | null) => void): Unsubscribe {
@@ -271,6 +370,10 @@ export class AuthService {
       || this.readString(record.imageUrl)
       || this.readString(record.downloadURL)
       || this.readString(record.url);
+  }
+
+  private readNumber(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
   }
 }
 

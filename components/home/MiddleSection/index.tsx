@@ -20,11 +20,9 @@ import { FeedsFilterSection, type FeedFilter, type FeedSource } from './MiddleSe
 import CommentsModal from './MiddleSectionComponent/CommentsModal/CommentsModal';
 import PollCardSection from './MiddleSectionComponent/PostCardSection/PollCardSection';
 import PostCardSection from './MiddleSectionComponent/PostCardSection/PostCardSection';
-import PromotedCarousel from '../PromotedCarousel';
-import SuggestedUsersSection from '../SuggestedUsersSection';
-import ActivityCard from '../ActivityCard';
-import GamesCard from '../GamesCard';
-import { SkeletonPostCard } from '../SkeletonLoaders';
+import SuggestedUsersSection from '@/components/home/SuggestedUsersSection';
+import ActivityCard from '@/components/home/ActivityCard';
+import { SkeletonPostCard } from '@/components/home/SkeletonLoaders';
 
 type MiddleSectionProps = {
   userProfile: UserProfile;
@@ -479,7 +477,7 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
           );
 
         case 'promoted':
-          return <View style={{ marginHorizontal: 16 }}><PromotedCarousel /></View>;
+          return null;
 
         case 'activity':
           return <View style={{ marginHorizontal: 16 }}><ActivityCard userId={userProfile.uid} /></View>;
@@ -488,7 +486,7 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
           return <View style={{ marginHorizontal: 16 }}><SuggestedUsersSection /></View>;
 
         case 'games':
-          return <View style={{ marginHorizontal: 16 }}><GamesCard /></View>;
+          return null;
 
         case 'footer':
           return loadingMore ? (

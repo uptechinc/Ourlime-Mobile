@@ -14,6 +14,19 @@ import {
 import { NotificationData, NotificationType } from '@/lib/types/notification';
 import { pushNotificationService } from '@/lib/services/PushNotificationService';
 
+const toTimestampMillis = (value: unknown): number => {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return new Date(value).getTime();
+  if (value && typeof value === 'object') {
+    const record = value as { seconds?: unknown; toMillis?: unknown; toDate?: unknown };
+    if (typeof record.toMillis === 'function') return (record.toMillis as () => number)();
+    if (typeof record.toDate === 'function') return (record.toDate as () => Date)().getTime();
+    if (typeof record.seconds === 'number') return record.seconds * 1000;
+  }
+  return 0;
+};
+
 export const notificationHelpers = {
   createNotification(data: Partial<NotificationData>): NotificationData {
     return {
@@ -90,7 +103,7 @@ export const notificationHelpers = {
         title: notification.title || 'Ourlime Notification',
         body: notification.message || 'You have a new notification',
         type: 'message',
-        senderId: (notification.userDetails as any)?.uid || (notification.userDetails as any)?.userId || '',
+        senderId: notification.userDetails?.uid || notification.userDetails?.userId || '',
       });
 
       return true;
@@ -111,17 +124,21 @@ export const notificationHelpers = {
       }
       
       const data = userNotifDoc.data();
-      const notificationsMap = data.notificationsMap || {};
+      const notificationsMap: Record<string, unknown> = data.notificationsMap || {};
       
       const notifications = Object.entries(notificationsMap)
-        .map(([id, notif]: [string, any]) => ({
-          ...notif,
-          id: notif.id || id,
-          isRead: notif.isRead === true || notif.isRead === 'true' || notif.isRead === 1,
-        }))
+        .flatMap(([id, value]) => {
+          if (!value || typeof value !== 'object') return [];
+          const notif = value as Record<string, unknown>;
+          return [{
+            ...notif,
+            id: typeof notif.id === 'string' ? notif.id : id,
+            isRead: notif.isRead === true || notif.isRead === 'true' || notif.isRead === 1,
+          } as NotificationData];
+        })
         .sort((a, b) => {
-          const timeA = a.createdAt ? (a.createdAt.toMillis ? a.createdAt.toMillis() : (a.createdAt.seconds ? a.createdAt.seconds * 1000 : 0)) : 0;
-          const timeB = b.createdAt ? (b.createdAt.toMillis ? b.createdAt.toMillis() : (b.createdAt.seconds ? b.createdAt.seconds * 1000 : 0)) : 0;
+          const timeA = toTimestampMillis(a.createdAt);
+          const timeB = toTimestampMillis(b.createdAt);
           return timeB - timeA;
         })
         .slice(0, limitCount);
@@ -404,16 +421,16 @@ export const notificationHelpers = {
   },
 
   // Format time ago (pure JavaScript without external libraries)
-  getTimeAgo(timestamp: any): string {
+  getTimeAgo(timestamp: unknown): string {
     if (!timestamp) return 'recently';
     
     try {
       let millis = 0;
-      if (typeof timestamp.toMillis === 'function') {
+      if (typeof timestamp === 'object' && timestamp !== null && 'toMillis' in timestamp && typeof timestamp.toMillis === 'function') {
         millis = timestamp.toMillis();
-      } else if (typeof timestamp.toDate === 'function') {
+      } else if (typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp && typeof timestamp.toDate === 'function') {
         millis = timestamp.toDate().getTime();
-      } else if (typeof timestamp?.seconds === 'number') {
+      } else if (typeof timestamp === 'object' && timestamp !== null && 'seconds' in timestamp && typeof timestamp.seconds === 'number') {
         millis = timestamp.seconds * 1000;
       } else if (timestamp instanceof Date) {
         millis = timestamp.getTime();

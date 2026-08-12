@@ -13,15 +13,15 @@ import {
     onSnapshot
 } from 'firebase/firestore';
 
-interface TempMessageData {
+type TempMessageData = {
     senderId: string;
     receiverId: string;
     message: string;
     timestamp: Timestamp;
     status: 'sent' | 'delivered' | 'read';
-}
+};
 
-interface TempChatRoom {
+type TempChatRoom = {
     participants: string[];
     lastMessageTime: Timestamp;
     messages: TempMessageData[];
@@ -34,11 +34,11 @@ interface TempChatRoom {
         sizeVariant: string | null;
         price: string | null;
     };
-}
+};
 
-interface TempChatRoomWithId extends TempChatRoom {
+type TempChatRoomWithId = TempChatRoom & {
     id: string;
-}
+};
 
 export class TempMessagingService {
     private static instance: TempMessagingService;

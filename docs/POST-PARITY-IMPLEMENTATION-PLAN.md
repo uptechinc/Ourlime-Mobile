@@ -321,15 +321,13 @@ Install Expo-compatible versions through `npx expo install` when implementation 
 
 Avoid a native module that requires leaving Expo managed workflow solely for cropping; the existing gesture-handler, Reanimated and image-manipulator stack can provide the crop surface.
 
-## Verification Matrix
+## User-controlled manual verification matrix
 
-### Static
+### Source review
 
-- `cmd /c "node_modules\.bin\tsc --noEmit"`
-- Targeted lint/parse checks for every touched post file.
-- `git diff --check`.
-- Confirm zero `any`, zero new `interface`, zero React namespace imports in touched mobile code.
-- Confirm every screen-level safe area uses explicit top/left/right edges.
+- The user controls any compiler, lint, Expo, browser, simulator, device, or build commands.
+- Review changed source for zero `any`, zero new `interface`, zero React namespace imports, and explicit screen safe-area edges.
+- Do not claim runtime or build validation from source inspection alone.
 
 ### Data parity
 

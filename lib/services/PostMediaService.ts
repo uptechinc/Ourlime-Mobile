@@ -169,6 +169,22 @@ export class PostMediaService {
     }
   }
 
+  public async uploadProfileImage(options: { userId: string; uri: string }): Promise<string> {
+    const blob = await this.uriToBlob(options.uri);
+    const imageReference = ref(storage, `profiles/${options.userId}/avatar-${Date.now()}.jpg`);
+    const task = uploadBytesResumable(imageReference, blob, { contentType: 'image/jpeg' });
+    await new Promise<void>((resolve, reject) => task.on('state_changed', undefined, reject, resolve));
+    return getDownloadURL(imageReference);
+  }
+
+  public async uploadProfileCover(options: { userId: string; uri: string }): Promise<string> {
+    const blob = await this.uriToBlob(options.uri);
+    const imageReference = ref(storage, `profiles/${options.userId}/cover-${Date.now()}.jpg`);
+    const task = uploadBytesResumable(imageReference, blob, { contentType: 'image/jpeg' });
+    await new Promise<void>((resolve, reject) => task.on('state_changed', undefined, reject, resolve));
+    return getDownloadURL(imageReference);
+  }
+
   public async cleanup(storagePaths: string[]): Promise<void> {
     await Promise.all(storagePaths.map(async (path) => {
       try {

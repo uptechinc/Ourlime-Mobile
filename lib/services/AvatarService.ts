@@ -37,10 +37,14 @@ export class AvatarService {
     const decodedValue = this.safeDecode(normalizedValue).toLowerCase();
     const presetName = presetAvatarNames.find((name) => decodedValue.includes(name.toLowerCase()));
     if (presetName) return { kind: 'preset', name: presetName };
-    if (decodedValue.includes('.svg')) return { kind: 'remote-svg', uri: normalizedValue };
+    const resolvedUri = normalizedValue.startsWith('/')
+      ? `${(process.env.EXPO_PUBLIC_OURLIME_API_BASE_URL || process.env.EXPO_PUBLIC_WEB_API_URL || 'https://ourlime.com').replace(/\/$/, '')}${normalizedValue}`
+      : normalizedValue;
+    if (decodedValue.includes('.svg')) return { kind: 'remote-svg', uri: resolvedUri };
     if (/^(https?:|file:|content:|data:image)/i.test(normalizedValue)) {
-      return { kind: 'remote-raster', uri: normalizedValue };
+      return { kind: 'remote-raster', uri: resolvedUri };
     }
+    if (normalizedValue.startsWith('/')) return { kind: 'remote-raster', uri: resolvedUri };
     return { kind: 'initial' };
   }
 

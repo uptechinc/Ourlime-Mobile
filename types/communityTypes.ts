@@ -30,7 +30,7 @@ export type Community = {
     isBanned: boolean;
 }
 
-export interface CommunityMember {
+export type CommunityMember = {
     userId: string;
     communityVariantId: string;
     status: 'active' | 'pending' | 'blocked';
@@ -40,16 +40,16 @@ export interface CommunityMember {
     firstName: string;
     lastName: string;
     userName: string;
-}
+};
 
-export interface CommunityCategory {
+export type CommunityCategory = {
     id: string;
     name: string;
     description: string;
     icon: string;
-}
+};
 
-export interface CommunityPost {
+export type CommunityPost = {
     id: string;
     communityVariantId: string;
     userId: string;
@@ -57,4 +57,4 @@ export interface CommunityPost {
     media?: string[];
     createdAt: string;
     updatedAt: string;
-}
+};

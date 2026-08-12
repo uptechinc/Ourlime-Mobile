@@ -1,4 +1,5 @@
 import { Timestamp } from 'firebase/firestore';
+import type { UserProfile } from '@/lib/services/AuthService';
 
 /**
  * Represents a chat message with reply functionality
@@ -50,7 +51,7 @@ export type ChatRoom = {
  * Props for friend messages component
  */
 export type FriendMessagesProps = {
-    selectedFriend: any;
+    selectedFriend: UserProfile;
     isCompact: boolean;
     onBack?: () => void;
 };
@@ -58,4 +59,4 @@ export type FriendMessagesProps = {
 /**
  * Message reactions structure
  */
-export type MessageReactions = Record<string, { [emoji: string]: string[] }>; 
+export type MessageReactions = Record<string, { [emoji: string]: string[] }>;

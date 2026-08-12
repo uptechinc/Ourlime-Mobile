@@ -99,7 +99,6 @@ export function DocumentPreviewModal({ visible, attachment, onClose }: DocumentP
     }
   };
 
-  const officeViewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(attachment.url)}`;
   const googleDocsViewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(attachment.url)}`;
 
   return (

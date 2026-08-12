@@ -1,13 +1,10 @@
 import { View, Text, TouchableOpacity, Image, Dimensions } from 'react-native';
-import { MessageSquare, Plus, Bell, Share2, ExternalLink } from 'lucide-react-native';
+import { MessageSquare, Bell, Share2, ExternalLink } from 'lucide-react-native';
 import { useState } from 'react';
 import { FlashList } from '@shopify/flash-list';
 
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
-const horizontalSpacing = 32;
-const cardWidth = screenWidth - horizontalSpacing * 2;
-const cardHeight = screenHeight * 0.45;
 
 const messages = [
   {
@@ -58,7 +55,6 @@ export const CourseMessages = () => {
   const [activeIndex, setActiveIndex] = useState(0);
   const cardMargin = 16;
   const cardWidth = screenWidth - cardMargin * 4;
-  const cardHeight = screenHeight * 0.45;
 
   const renderCard = ({ item }: { item: typeof messages[0] }) => (
     <View
@@ -235,7 +231,6 @@ export const CourseMessages = () => {
         snapToAlignment="center"
         decelerationRate="fast"
         showsHorizontalScrollIndicator={false}
-        estimatedItemSize={screenWidth}
         keyExtractor={(item) => item.id.toString()}
         onMomentumScrollEnd={(e) => {
           const offsetX = e.nativeEvent.contentOffset.x;

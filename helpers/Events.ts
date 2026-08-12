@@ -105,7 +105,7 @@ export const fetchCommentsForEvent = async (eventVariantId: string) => {
             return userDocSnap.exists() ? { id: userId, ...userDocSnap.data() } : null;
         });
 
-        const users = (await Promise.all(userPromises)).filter(Boolean);
+        const users = (await Promise.all(userPromises)).filter((user): user is NonNullable<typeof user> => user !== null);
 
         // Fetch profile images where `setAs = "profile"`
         const profileImagePromises = userIdsArray.map(async userId => {

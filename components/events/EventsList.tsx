@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Image, ScrollView, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, Image, ScrollView } from 'react-native';
 import { Event } from '@/types/eventTypes';
-// import { auth, db } from '@/lib/firebaseConfig';
 // import { addDoc, collection, doc, getDoc, getDocs, increment, setDoc, updateDoc, deleteDoc, query, where, onSnapshot } from 'firebase/firestore';
 // import { Heart, MessageCircle, CheckCircle, Users, X } from 'lucide-react';
 import EventCommentModal from './EventCommentModal';
@@ -9,10 +8,10 @@ import EventCommentModal from './EventCommentModal';
 // import Slider from '../comm/Slider';
 // import Image from 'next/image';
 
-interface EventsListProps {
+type EventsListProps = {
     communityVariantId?: string;
     userId: string;
-}
+};
 
 export default function EventsList({ communityVariantId, userId }: EventsListProps) {
     const [events, setEvents] = useState<Event[]>([]);

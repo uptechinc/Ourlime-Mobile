@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   View,
   Text,
@@ -6,74 +5,48 @@ import {
   Modal,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useRouter } from 'expo-router';
-import { auth } from '@/lib/firebaseConfig';
 import UserAvatar from '@/components/ui/UserAvatar';
+import { AuthService, type UserProfile } from '@/lib/services/AuthService';
+import { getAppNavigationItems, type AppNavigationItem } from '@/lib/navigation/AppNavigation';
+import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 
 type AppDrawerNavProps = {
   isOpen: boolean;
   onClose: () => void;
-  userProfile?: {
-    uid: string;
-    userName: string;
-    firstName: string;
-    lastName: string;
-    profilePicture?: string;
-    isAdmin?: boolean;
-  };
+  userProfile?: UserProfile;
 };
 
-export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawerNavProps) {
-  const router = useRouter();
-  const currentUser = auth.currentUser;
+const authService = AuthService.getInstance();
 
-  const navigateTo = (path: string) => {
+export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawerNavProps) {
+  const { authorization, getDecision } = usePageAccess();
+  const router = useRouter();
+  const navigateTo = (item: AppNavigationItem) => {
     onClose();
-    router.push(path as any);
+    router.push(item.route);
   };
 
   if (!isOpen) return null;
 
-  const isDev = Boolean(
-    (userProfile as any)?.isDeveloper === true ||
-    (userProfile as any)?.accountType === 'developer' ||
-    (userProfile as any)?.role === 'developer'
-  );
-
-  const isAdmin = Boolean(
-    userProfile?.isAdmin === true ||
-    (userProfile as any)?.accountType === 'admin' ||
-    (userProfile as any)?.role === 'admin' ||
-    isDev
-  );
-
-  const navItems = [
-    { label: 'Home Feed', icon: 'home', route: '/(tabs)' },
-    ...(isDev ? [{ label: 'Limes (Reels)', icon: 'video', route: '/(tabs)/Limes' }] : []),
-    { label: 'Events', icon: 'calendar', route: '/events' },
-    { label: 'E-Learning', icon: 'book-open', route: '/eLearning' },
-    { label: 'Blogs', icon: 'file-text', route: '/blogs' },
-    { label: 'Jobs', icon: 'briefcase', route: '/jobs' },
-    { label: 'Communities', icon: 'users', route: '/communities' },
-    { label: 'Marketplace', icon: 'shopping-bag', route: '/market' },
-    { label: 'E-Projects', icon: 'folder', route: '/(tabs)/Discover' },
-    { label: 'My Profile', icon: 'user', route: '/(tabs)/Profile' },
-    { label: 'Settings', icon: 'settings', route: '/settings' },
-  ];
-
-  if (isAdmin) {
-    navItems.push({ label: 'Admin Portal', icon: 'shield', route: '/admin' });
-  }
+  const navItems = getAppNavigationItems({
+    includeHome: true,
+    isAdmin: authorization.isAdmin,
+    resolveStatus: (route) => {
+      const decision = getDecision(route);
+      return { visible: decision.isVisibleInNavigation, status: decision.status, badge: decision.setting?.badgeText };
+    },
+  });
 
   return (
     <Modal visible={isOpen} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         
-        <SafeAreaView style={styles.drawerCard}>
+        <SafeAreaView edges={['top', 'left', 'right']} style={styles.drawerCard}>
           {/* Header Profile Section */}
           <View style={styles.profileHeader}>
             <UserAvatar
@@ -96,15 +69,18 @@ export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawer
           <ScrollView style={styles.menuScroll} contentContainerStyle={{ paddingVertical: 12, gap: 4 }}>
             {navItems.map((item) => (
               <TouchableOpacity
-                key={item.label}
-                onPress={() => navigateTo(item.route)}
+                key={item.id}
+                onPress={() => navigateTo(item)}
                 style={styles.menuRow}
                 activeOpacity={0.7}
               >
                 <View style={styles.iconCircle}>
-                  <Icon name={item.icon} size={18} color="#10b981" />
+                  <Icon name={item.featherIcon} size={18} color="#10b981" />
                 </View>
                 <Text style={styles.menuText}>{item.label}</Text>
+                {item.status && item.status !== 'enabled' && item.status !== 'admin_only' ? (
+                  <View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{item.badge || 'Soon'}</Text></View>
+                ) : null}
                 <Icon name="chevron-right" size={16} color="#94a3b8" />
               </TouchableOpacity>
             ))}
@@ -115,7 +91,7 @@ export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawer
             <TouchableOpacity
               onPress={() => {
                 onClose();
-                auth.signOut().then(() => router.replace('/(auth)/login'));
+                void authService.logout().then(() => router.replace('/(auth)/login'));
               }}
               style={styles.signOutRow}
             >
@@ -197,6 +173,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1e293b',
   },
+  statusBadge: { marginRight: 8, borderRadius: 999, backgroundColor: '#ecfdf5', paddingHorizontal: 8, paddingVertical: 3 },
+  statusBadgeText: { color: '#047857', fontSize: 10, fontWeight: '800' },
   footer: {
     padding: 16,
     borderTopWidth: 1,

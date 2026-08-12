@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Share, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Share, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useRouter } from 'expo-router';
 import { AuthService } from '@/lib/services/AuthService';
@@ -7,11 +7,15 @@ import { PostService, type PostItem } from '@/lib/services/PostService';
 import ImageAndVideoPostSection from './ImageAndVideoPostSection/ImageAndVideoPostSection';
 import UserAvatar from '@/components/ui/UserAvatar';
 import PostOptionsSheet from './PostOptionsSheet';
+import { feedCardContainerStyle } from './feedCardStyles';
+import PostLinkPreview from './PostLinkPreview';
+import { findFirstUrl } from '@/lib/services/OpenGraphService';
 import LikesModal from './LikesModal';
 import IdentityBadges from './IdentityBadges';
 import MentionText from '@/components/ui/MentionText';
 import PostLocationMap from './PostLocationMap';
 import { EventService } from '@/lib/services/EventService';
+import CustomModal from '@/components/ui/CustomModal';
 
 type PostCardSectionProps = {
   post: PostItem;
@@ -38,6 +42,7 @@ const formatTimestamp = (createdAt: string): string => {
 
 export default function PostCardSection({ post, isVisible = false, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PostCardSectionProps) {
   const router = useRouter();
+  const postUrl = findFirstUrl(`${post.caption} ${post.description}`);
   const currentUserId = authService.getCurrentUser()?.uid;
   const [isLiked, setIsLiked] = useState(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
   const [likeCount, setLikeCount] = useState(post.stats.likes);
@@ -48,11 +53,16 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
   const [likesVisible, setLikesVisible] = useState(false);
   const [eventAttendance, setEventAttendance] = useState<{ isAttending: boolean; attendeeCount: number }>();
   const [eventAttendanceLoading, setEventAttendanceLoading] = useState(false);
+  const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(null);
+
+  useEffect(() => {
+    setIsReposted(post.repostedByViewer === true);
+  }, [post.repostedByViewer]);
 
   const handleNavigateProfile = (userName?: string) => {
     const targetUser = userName || post.user.userName;
     if (targetUser) {
-      router.push(`/profile/${targetUser}` as any);
+      router.push({ pathname: '/profile/[username]', params: { username: targetUser } });
     }
   };
 
@@ -65,12 +75,12 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
   }, [currentUserId, post.eventId]);
 
   const handleToggleAttendance = async () => {
-    if (!post.eventId || !currentUserId) return Alert.alert('Sign in required', 'Sign in to RSVP.');
+    if (!post.eventId || !currentUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to RSVP.' });
     setEventAttendanceLoading(true);
     try {
       setEventAttendance(await eventService.toggleAttendance(post.eventId, currentUserId));
     } catch (error: unknown) {
-      Alert.alert('RSVP not updated', error instanceof Error ? error.message : 'Please try again');
+      setFeedback({ title: 'RSVP not updated', message: error instanceof Error ? error.message : 'Please try again' });
     } finally {
       setEventAttendanceLoading(false);
     }
@@ -78,14 +88,14 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
 
   const handleLike = async () => {
     if (!currentUserId) {
-      Alert.alert('Sign in required', 'Sign in to like posts.');
+      setFeedback({ title: 'Sign in required', message: 'Sign in to like posts.' });
       return;
     }
     const previousLiked = isLiked;
     setIsLiked(!previousLiked);
     setLikeCount((count) => Math.max(0, count + (previousLiked ? -1 : 1)));
     try {
-      const result = await postService.toggleLike(post.id, currentUserId, previousLiked);
+      const result = await postService.toggleLike(post.id, currentUserId, previousLiked, Boolean(post.communityId), likeCount);
       setIsLiked(result.liked);
       setLikeCount(result.likeCount);
       onPostUpdate({ ...post, stats: { ...post.stats, likes: result.likeCount }, likedUserIds: result.liked ? [currentUserId] : [] });
@@ -98,7 +108,7 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
 
   const handleShare = async () => {
     try {
-      if (!hasShared) {
+      if (!hasShared && !post.communityId) {
         const result = await postService.recordShare(post.id);
         setShareCount(result.shareCount);
         setHasShared(true);
@@ -106,29 +116,39 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
       }
       await Share.share({ message: `${post.caption || post.description || 'View this post on Ourlime'}\n\n${postService.getPostUrl(post.id)}` });
     } catch (error: unknown) {
-      Alert.alert('Post not shared', error instanceof Error ? error.message : 'Please try again');
+      setFeedback({ title: 'Post not shared', message: error instanceof Error ? error.message : 'Please try again' });
     }
   };
 
   const handleRepost = async () => {
-    if (!currentUserId) return Alert.alert('Sign in required', 'Sign in to repost.');
-    if (isReposted) return;
+    if (!currentUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to repost.' });
     try {
-      await postService.repost(post.id);
-      setIsReposted(true);
-      setShareCount((count) => count + 1);
+      if (isReposted) {
+        await postService.removeRepost(post.id);
+        const nextCount = Math.max(0, shareCount - 1);
+        setIsReposted(false);
+        setShareCount(nextCount);
+        onPostUpdate({ ...post, repostedByViewer: false, stats: { ...post.stats, shares: nextCount } });
+      } else {
+        await postService.repost(post.id);
+        const nextCount = shareCount + 1;
+        setIsReposted(true);
+        setShareCount(nextCount);
+        onPostUpdate({ ...post, repostedByViewer: true, stats: { ...post.stats, shares: nextCount } });
+      }
     } catch (error: unknown) {
-      Alert.alert('Post not reposted', error instanceof Error ? error.message : 'Please try again');
+      setFeedback({ title: 'Repost not updated', message: error instanceof Error ? error.message : 'Please try again' });
     }
   };
 
   return (
-    <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 18, shadowColor: '#000000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 4 }}>
+    <>
+    <View style={feedCardContainerStyle}>
       {/* Community Post Header Badge */}
       {post.communityName ? (
         <TouchableOpacity
           onPress={() => {
-            if (post.communityId) router.push(`/communities/${post.communityId}` as any);
+            if (post.communityId) router.push({ pathname: '/communities/[id]', params: { id: post.communityId } });
           }}
           style={{
             flexDirection: 'row',
@@ -187,6 +207,8 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
         />
       ) : null}
 
+      {postUrl ? <PostLinkPreview url={postUrl} /> : null}
+
       {/* 2. Hashtags */}
       {post.hashtags.length > 0 ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 }}>
@@ -227,14 +249,16 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
           <Icon name="message-circle" size={22} color="#6b7280" />
           <Text style={{ marginLeft: 7, color: '#6b7280', fontWeight: '600' }}>{post.stats.comments}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24, paddingVertical: 6 }}>
+        {!post.communityId ? <TouchableOpacity onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24, paddingVertical: 6 }}>
           <Icon name="share-2" size={22} color="#6b7280" />
           <Text style={{ marginLeft: 7, color: '#6b7280', fontWeight: '600' }}>{shareCount}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => void handleRepost()} disabled={isReposted} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="repeat" size={22} color={isReposted ? '#10b981' : '#6b7280'} /></TouchableOpacity>
+        </TouchableOpacity> : null}
+        {!post.communityId ? <TouchableOpacity onPress={() => void handleRepost()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }} accessibilityLabel={isReposted ? 'Remove repost' : 'Repost'}><Icon name="repeat" size={22} color={isReposted ? '#10b981' : '#6b7280'} /></TouchableOpacity> : null}
       </View>
-      <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} />
+      <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} onPostUpdate={onPostUpdate} />
       <LikesModal visible={likesVisible} postId={post.id} onClose={() => setLikesVisible(false)} />
     </View>
+    <CustomModal visible={feedback !== null} type="danger" title={feedback?.title ?? ''} message={feedback?.message ?? ''} onClose={() => setFeedback(null)} />
+    </>
   );
 }

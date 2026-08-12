@@ -20,6 +20,8 @@ type RelationshipActionResponse = {
 };
 
 export type RelationshipUser = { id: string; firstName: string; lastName: string; userName: string; profileImage?: string };
+export type RelationshipSuggestion = RelationshipUser & { reason?: string };
+export type RelationshipNetworkStats = { friends: number; followers: number; following: number };
 type UnknownRecord = Record<string, unknown>;
 const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null && !Array.isArray(value);
 const readString = (value: unknown): string => typeof value === 'string' ? value : '';
@@ -53,6 +55,29 @@ export class RelationshipService {
     if (!response.success) throw new Error(response.error || response.message || 'Failed to send friend request');
   }
 
+  public async getSuggestions(maxResults = 6): Promise<RelationshipSuggestion[]> {
+    const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>(
+      `/api/relationships/suggestions?limit=${encodeURIComponent(String(maxResults))}`,
+      { authenticated: true }
+    );
+    if (!response.success) throw new Error(response.error || 'Failed to load suggested users');
+    return (response.data ?? []).flatMap((value): RelationshipSuggestion[] => {
+      if (!isRecord(value)) return [];
+      const id = readString(value.id) || readString(value.userId) || readString(value.uid);
+      if (!id) return [];
+      const profileImage = readString(value.profileImage) || readString(value.profilePicture);
+      const reason = readString(value.reason);
+      return [{
+        id,
+        firstName: readString(value.firstName),
+        lastName: readString(value.lastName),
+        userName: readString(value.userName),
+        profileImage: profileImage || undefined,
+        reason: reason || undefined,
+      }];
+    });
+  }
+
   public async blockUser(userIdToBlock: string): Promise<void> {
     const response = await this.apiService.request<RelationshipActionResponse>('/api/profile/blocklist', {
       method: 'POST',
@@ -60,6 +85,24 @@ export class RelationshipService {
       body: { userIdToBlock },
     });
     if (!response.success) throw new Error(response.error || response.message || 'Failed to block user');
+  }
+
+  public async unblockUser(userIdToUnblock: string): Promise<void> {
+    const response = await this.apiService.request<RelationshipActionResponse>('/api/profile/blocklist', {
+      method: 'DELETE',
+      authenticated: true,
+      body: { userIdToUnblock },
+    });
+    if (!response.success) throw new Error(response.error || response.message || 'Failed to unblock user');
+  }
+
+  public async cancelOrRemoveFriend(userId1: string, userId2: string, status: 'pending' | 'accepted'): Promise<void> {
+    const response = await this.apiService.request<RelationshipActionResponse>('/api/relationships/friends', {
+      method: 'POST',
+      authenticated: true,
+      body: { userId1, userId2, action: status === 'pending' ? 'cancel' : 'remove' },
+    });
+    if (!response.success) throw new Error(response.error || response.message || 'Failed to update friendship');
   }
 
   /**
@@ -143,6 +186,19 @@ export class RelationshipService {
       if (!id) return [];
       return [{ id, firstName, lastName, userName, profileImage }];
     });
+  }
+
+  public async getNetworkStats(userId: string): Promise<RelationshipNetworkStats> {
+    const response = await this.apiService.request<{ success: boolean; data?: Partial<RelationshipNetworkStats>; error?: string }>(
+      `/api/relationships/status?userId1=${encodeURIComponent(userId)}&userId2=${encodeURIComponent(userId)}&type=network-stats`,
+      { authenticated: true }
+    );
+    if (!response.success || !response.data) throw new Error(response.error || 'Failed to load network stats');
+    return {
+      friends: typeof response.data.friends === 'number' ? response.data.friends : 0,
+      followers: typeof response.data.followers === 'number' ? response.data.followers : 0,
+      following: typeof response.data.following === 'number' ? response.data.following : 0,
+    };
   }
 
   public async checkFollowStatus(followerId: string, followeeId: string): Promise<boolean> {

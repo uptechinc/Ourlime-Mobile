@@ -9,6 +9,7 @@ import realisticAvatarWhiteMan from '@/assets/images/avatars/realisticAvatarWhit
 import realisticAvatarBlackWoman from '@/assets/images/avatars/realisticAvatarBlackWoman.png';
 import { AvatarService, type PresetAvatarName } from '@/lib/services/AvatarService';
 import { DiagnosticLogService } from '@/lib/services/DiagnosticLogService';
+import CachedImage from './CachedImage';
 
 type UserAvatarProps = {
   profileImage?: string | null;
@@ -63,7 +64,7 @@ export default function UserAvatar({
         <SvgUri width={size} height={size} uri={resolution.uri} onError={handleImageError} />
       ) : null}
       {resolution.kind === 'remote-raster' ? (
-        <Image source={{ uri: resolution.uri }} style={{ width: size, height: size, borderRadius: size / 2 }} resizeMode="cover" onError={handleImageError} />
+        <CachedImage uri={resolution.uri} recyclingKey={profileImage ?? resolution.uri} accessibilityLabel={`${firstName} profile picture`} style={{ width: size, height: size, borderRadius: size / 2 }} onError={handleImageError} />
       ) : null}
       {resolution.kind === 'initial' ? (
         <Text style={{ color: '#ffffff', fontSize: Math.max(14, size * 0.4), fontWeight: '800' }}>{initial}</Text>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,20 +6,25 @@ import {
   TouchableOpacity,
   ScrollView,
   Switch,
-  Alert,
   ActivityIndicator,
   StyleSheet,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useRouter } from 'expo-router';
-import { auth, db } from '@/lib/firebaseConfig';
-import { doc, getDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
+import { AuthService } from '@/lib/services/AuthService';
+import { SettingsService, type BlockedUserSummary } from '@/lib/profile/settings/SettingsService';
+import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
+
+type SettingsTab = 'account' | 'privacy' | 'notifications' | 'blocked' | 'security';
+type SettingsModalState = { visible: boolean; type: CustomModalType; title: string; message: string; action?: 'logout' };
+const authService = AuthService.getInstance();
+const settingsService = SettingsService.getInstance();
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const user = auth.currentUser;
-  const [activeTab, setActiveTab] = useState<'account' | 'privacy' | 'notifications' | 'blocked' | 'security'>('account');
+  const user = authService.getCurrentUser();
+  const [activeTab, setActiveTab] = useState<SettingsTab>('account');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -39,37 +44,19 @@ export default function SettingsScreen() {
   const [mentionAlerts, setMentionAlerts] = useState(true);
 
   // Blocked Users State
-  const [blockedUsers, setBlockedUsers] = useState<{ id: string; userName: string; firstName: string }[]>([]);
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUserSummary[]>([]);
+  const [modal, setModal] = useState<SettingsModalState>({ visible: false, type: 'info', title: '', message: '' });
 
   useEffect(() => {
     if (!user) return;
     const fetchSettings = async () => {
       try {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          setFirstName(data.firstName || '');
-          setLastName(data.lastName || '');
-          setUserName(data.userName || '');
-          setBio(data.bio || '');
-          setVisibility(data.visibility || 'public');
-          if (data.allowDirectMessages !== undefined) setAllowDirectMessages(data.allowDirectMessages);
-        }
-
-        // Fetch user settings
-        const notifDoc = await getDoc(doc(db, `users/${user.uid}/userSettings/notifications`));
-        if (notifDoc.exists()) {
-          const notifData = notifDoc.data();
-          if (notifData.pushNotifications !== undefined) setPushEnabled(notifData.pushNotifications);
-          if (notifData.emailNotifications !== undefined) setEmailEnabled(notifData.emailNotifications);
-        }
-
-        // Fetch blocked users
-        const blockedSnap = await getDocs(collection(db, `users/${user.uid}/blockedUsers`));
-        const list = blockedSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-        setBlockedUsers(list);
+        const settings = await settingsService.getMobileSettings(user.uid);
+        setFirstName(settings.firstName); setLastName(settings.lastName); setUserName(settings.userName); setBio(settings.bio);
+        setVisibility(settings.visibility); setAllowDirectMessages(settings.allowDirectMessages); setPushEnabled(settings.pushEnabled); setEmailEnabled(settings.emailEnabled); setMentionAlerts(settings.mentionAlerts); setBlockedUsers(settings.blockedUsers);
       } catch (err) {
         console.error('[Settings] Load error:', err);
+        setModal({ visible: true, type: 'danger', title: 'Settings unavailable', message: err instanceof Error ? err.message : 'Could not load your settings.' });
       } finally {
         setLoading(false);
       }
@@ -81,23 +68,12 @@ export default function SettingsScreen() {
     if (!user) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        userName: userName.trim().toLowerCase(),
-        bio: bio.trim(),
-        visibility,
-        allowDirectMessages,
-      });
-      await updateDoc(doc(db, `users/${user.uid}/userSettings/notifications`), {
-        pushNotifications: pushEnabled,
-        emailNotifications: emailEnabled,
-      }).catch(() => {});
+      await settingsService.updateMobileSettings(user.uid, { firstName, lastName, userName, bio, visibility, allowDirectMessages, pushEnabled, emailEnabled, mentionAlerts });
 
-      Alert.alert('Settings Saved', 'Your profile and preference settings have been updated.');
+      setModal({ visible: true, type: 'success', title: 'Settings saved', message: 'Your profile and preference settings have been updated.' });
     } catch (err) {
       console.error('[Settings] Save error:', err);
-      Alert.alert('Error', 'Could not save settings. Please try again.');
+      setModal({ visible: true, type: 'danger', title: 'Settings not saved', message: 'Could not save settings. Please try again.' });
     } finally {
       setSaving(false);
     }
@@ -106,16 +82,17 @@ export default function SettingsScreen() {
   const handleUnblock = async (blockedId: string) => {
     if (!user) return;
     try {
+      await settingsService.unblockUser(blockedId);
       setBlockedUsers((prev) => prev.filter((u) => u.id !== blockedId));
-      Alert.alert('User Unblocked', 'User has been removed from your block list.');
-    } catch {
-      // ignore
+      setModal({ visible: true, type: 'success', title: 'User unblocked', message: 'User has been removed from your block list.' });
+    } catch (unblockError: unknown) {
+      setModal({ visible: true, type: 'danger', title: 'User not unblocked', message: unblockError instanceof Error ? unblockError.message : 'Please try again.' });
     }
   };
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
         <View style={styles.loadingCenter}>
           <ActivityIndicator size="large" color="#10b981" />
           <Text style={styles.loadingText}>Loading settings…</Text>
@@ -125,7 +102,7 @@ export default function SettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -139,18 +116,18 @@ export default function SettingsScreen() {
 
       {/* Settings Navigation Tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
-        {[
+        {([
           { key: 'account', label: 'Account', icon: 'user' },
           { key: 'privacy', label: 'Privacy', icon: 'lock' },
           { key: 'notifications', label: 'Notifications', icon: 'bell' },
           { key: 'blocked', label: 'Blocked', icon: 'user-x' },
           { key: 'security', label: 'Security', icon: 'shield' },
-        ].map((tab) => {
+        ] satisfies { key: SettingsTab; label: string; icon: string }[]).map((tab) => {
           const active = activeTab === tab.key;
           return (
             <TouchableOpacity
               key={tab.key}
-              onPress={() => setActiveTab(tab.key as any)}
+              onPress={() => setActiveTab(tab.key)}
               style={[styles.tabPill, active && styles.tabPillActive]}
             >
               <Icon name={tab.icon} size={15} color={active ? '#ffffff' : '#64748b'} />
@@ -240,7 +217,7 @@ export default function SettingsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Blocked Users</Text>
             {blockedUsers.length === 0 ? (
-              <Text style={styles.emptyText}>You haven't blocked any users.</Text>
+              <Text style={styles.emptyText}>Your blocked-users list is empty.</Text>
             ) : (
               blockedUsers.map((b) => (
                 <View key={b.id} style={styles.blockedRow}>
@@ -257,13 +234,14 @@ export default function SettingsScreen() {
         {activeTab === 'security' && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Security</Text>
-            <TouchableOpacity onPress={() => auth.signOut().then(() => router.replace('/(auth)/login'))} style={styles.signOutBtn}>
+            <TouchableOpacity onPress={() => setModal({ visible: true, type: 'warning', title: 'Sign out?', message: 'You will need to sign in again to use Ourlime.', action: 'logout' })} style={styles.signOutBtn}>
               <Icon name="log-out" size={18} color="#ef4444" />
               <Text style={styles.signOutText}>Sign Out of Ourlime</Text>
             </TouchableOpacity>
           </View>
         )}
       </ScrollView>
+      <CustomModal visible={modal.visible} type={modal.type} title={modal.title} message={modal.message} confirmText={modal.action === 'logout' ? 'Sign Out' : 'OK'} cancelText={modal.action === 'logout' ? 'Cancel' : undefined} onClose={() => setModal((current) => ({ ...current, visible: false }))} onConfirm={modal.action === 'logout' ? () => { void authService.logout().then(() => router.replace('/(auth)/login')); } : undefined} />
     </SafeAreaView>
   );
 }

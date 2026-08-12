@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   Platform,
   StyleSheet,
   Image,
-  Modal,
   Alert,
   ScrollView,
   Pressable,
@@ -17,9 +16,10 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { authService } from '@/lib/services/AuthService';
-import { mockData } from './data.mock';
+import * as ImagePicker from 'expo-image-picker';
+import { cartoonAvatars, realisticAvatars } from './registrationAvatars';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GREEN = '#01eb53';
@@ -57,7 +57,7 @@ const INTERESTS = [
 ];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-const Register: React.FC = () => {
+const Register = () => {
   const router = useRouter();
 
   // Step state
@@ -67,9 +67,6 @@ const Register: React.FC = () => {
   // Avatar tab
   const [activeTab, setActiveTab] = useState<AvatarType>('cartoon');
 
-  // Legal modals
-  const [isTermsOpen, setIsTermsOpen] = useState(false);
-  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [isTermsAccepted, setIsTermsAccepted] = useState(false);
   const [isPrivacyAccepted, setIsPrivacyAccepted] = useState(false);
 
@@ -95,7 +92,7 @@ const Register: React.FC = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // ── Helpers ────────────────────────────────────────────────────────────────
-  const updateField = (field: keyof FormData, value: any) => {
+  const updateField = <TField extends keyof FormData>(field: TField, value: FormData[TField]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
   };
@@ -162,8 +159,8 @@ const Register: React.FC = () => {
       Alert.alert('🎉 Welcome to Ourlime!', 'Your account has been created successfully.', [
         { text: 'Continue to App', onPress: () => router.replace('/(tabs)') },
       ]);
-    } catch (error: any) {
-      const errorMsg = error?.message || 'Failed to create account. Please try again.';
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to create account. Please try again.';
       Alert.alert('Registration Error', errorMsg);
     } finally {
       setIsSubmitting(false);
@@ -316,7 +313,7 @@ const Register: React.FC = () => {
           </View>
           <Text style={styles.checkLabel}>
             I accept Ourlime{' '}
-            <Text style={styles.green} onPress={() => setIsTermsOpen(true)}>Terms & Conditions</Text>
+            <Text style={styles.green} onPress={() => router.push('/terms-and-conditions' as Href)}>Terms & Conditions</Text>
           </Text>
         </Pressable>
 
@@ -326,7 +323,7 @@ const Register: React.FC = () => {
           </View>
           <Text style={styles.checkLabel}>
             I accept Ourlime{' '}
-            <Text style={styles.green} onPress={() => setIsPrivacyOpen(true)}>Privacy Policy</Text>
+            <Text style={styles.green} onPress={() => router.push('/privacy-policy' as Href)}>Privacy Policy</Text>
           </Text>
         </Pressable>
       </View>
@@ -360,7 +357,7 @@ const Register: React.FC = () => {
 
       {/* Avatar Grid */}
       <View style={styles.avatarGrid}>
-        {(activeTab === 'cartoon' ? mockData.cartoonAvatars : mockData.realisticAvatars).map((avatar: any) => (
+        {(activeTab === 'cartoon' ? cartoonAvatars : realisticAvatars).map((avatar) => (
           <Pressable
             key={avatar.id}
             onPress={() => updateField('profilePicture', avatar.id)}
@@ -381,9 +378,12 @@ const Register: React.FC = () => {
 
       {errors.profilePicture ? <Text style={styles.errorText}>{errors.profilePicture}</Text> : null}
 
-      <Text style={[styles.green, { textAlign: 'center', marginTop: 12, fontWeight: '600' }]}>
-        Use your own photo (coming soon)
-      </Text>
+      <TouchableOpacity onPress={async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.85 });
+        const uri = result.canceled ? null : result.assets[0]?.uri;
+        if (uri) updateField('profilePicture', uri);
+      }} style={{ alignSelf: 'center', marginTop: 12 }}><Text style={[styles.green, { fontWeight: '700' }]}>Use your own photo</Text></TouchableOpacity>
+      {formData.profilePicture?.startsWith('file:') || formData.profilePicture?.startsWith('content:') ? <Image source={{ uri: formData.profilePicture }} style={[styles.avatarImg, { alignSelf: 'center', marginTop: 10, borderRadius: 40 }]} /> : null}
     </View>
   );
 
@@ -583,34 +583,8 @@ const Register: React.FC = () => {
       </View>
 
       {/* ── Terms Modal ── */}
-      <Modal visible={isTermsOpen} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Terms & Conditions</Text>
-            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator>
-              <Text style={styles.modalBody}>{mockData.termsText}</Text>
-            </ScrollView>
-            <TouchableOpacity style={styles.modalBtn} onPress={() => { setIsTermsAccepted(true); setIsTermsOpen(false); }}>
-              <Text style={styles.modalBtnText}>Accept & Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       {/* ── Privacy Modal ── */}
-      <Modal visible={isPrivacyOpen} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Privacy Policy</Text>
-            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator>
-              <Text style={styles.modalBody}>{mockData.privacyText}</Text>
-            </ScrollView>
-            <TouchableOpacity style={styles.modalBtn} onPress={() => { setIsPrivacyAccepted(true); setIsPrivacyOpen(false); }}>
-              <Text style={styles.modalBtnText}>Accept & Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 };

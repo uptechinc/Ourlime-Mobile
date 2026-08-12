@@ -1,16 +1,15 @@
 /* components/jobCreation/BasicInformationForm.tsx */
-import React from 'react';
 import { View, Text, TextInput, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 
-interface Props {
+type Props = {
   title: string;
   setTitle: (t: string) => void;
   description: string;
   setDescription: (d: string) => void;
   category: string;
   setCategory: (c: string) => void;
-}
+};
 
 export const BasicInformationForm = ({
   title,

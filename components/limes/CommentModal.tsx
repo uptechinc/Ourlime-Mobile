@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   View,
   Text,
@@ -16,111 +16,47 @@ import {
 } from 'react-native';
 import { X, Send, Heart, CornerDownRight, Edit2, Trash2, Smile, ChevronDown } from 'lucide-react-native';
 import UserAvatar from '@/components/ui/UserAvatar';
-import { auth, db } from '@/lib/firebaseConfig';
-import {
-  collection,
-  addDoc,
-  getDocs,
-  doc,
-  updateDoc,
-  deleteDoc,
-  query,
-  orderBy,
-  limit,
-  startAfter,
-  serverTimestamp,
-  arrayUnion,
-  arrayRemove,
-  type DocumentSnapshot,
-} from 'firebase/firestore';
 import { dispatchMentionNotifications } from '@/lib/services/dispatchMentionNotifications';
+import { AuthService } from '@/lib/services/AuthService';
+import { limeService } from '@/lib/services/LimeService';
+import type { LimeComment, LimeCommentCursor } from '@/lib/types/lime';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-export interface LimeComment {
-  id: string;
-  reelId: string;
-  userId: string;
-  content: string;
-  userName: string;
-  firstName: string;
-  profileImage?: string;
-  likes: string[];
-  replyCount: number;
-  parentCommentId?: string | null;
-  replyToUserName?: string | null;
-  createdAt: number;
-  editedAt?: number;
-}
+const authService = AuthService.getInstance();
 
-interface CommentModalProps {
+type CommentModalProps = {
   reelId: string;
   isOpen: boolean;
   initialComments?: LimeComment[];
   onClose: () => void;
   onCommentCountUpdate?: (count: number) => void;
-}
+};
 
 const EMOJI_PILLS = ['❤️', '🔥', '😂', '👏', '🚀', '🙌'];
 const PAGE_SIZE = 50;
 
-function safeParse(raw: any): LimeComment | null {
+function safeParse(raw: unknown): LimeComment | null {
   try {
     if (!raw || typeof raw !== 'object') return null;
-    const id = typeof raw.id === 'string' ? raw.id : '';
+    const value = raw as Record<string, unknown>;
+    const id = typeof value.id === 'string' ? value.id : '';
     if (!id) return null;
     return {
       id,
-      reelId: typeof raw.reelId === 'string' ? raw.reelId : '',
-      userId: typeof raw.userId === 'string' ? raw.userId : '',
-      content: typeof raw.content === 'string' ? raw.content : '',
-      userName: typeof raw.userName === 'string' && raw.userName ? raw.userName : 'user',
-      firstName: typeof raw.firstName === 'string' && raw.firstName ? raw.firstName : 'User',
-      profileImage: typeof raw.profileImage === 'string' && raw.profileImage ? raw.profileImage : undefined,
-      likes: Array.isArray(raw.likes) ? raw.likes.filter((u: unknown) => typeof u === 'string') : [],
-      replyCount: typeof raw.replyCount === 'number' ? raw.replyCount : 0,
-      parentCommentId: typeof raw.parentCommentId === 'string' ? raw.parentCommentId : null,
-      replyToUserName: typeof raw.replyToUserName === 'string' ? raw.replyToUserName : null,
-      createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
-      editedAt: typeof raw.editedAt === 'number' ? raw.editedAt : undefined,
+      reelId: typeof value.reelId === 'string' ? value.reelId : '',
+      userId: typeof value.userId === 'string' ? value.userId : '',
+      content: typeof value.content === 'string' ? value.content : '',
+      userName: typeof value.userName === 'string' && value.userName ? value.userName : 'user',
+      firstName: typeof value.firstName === 'string' && value.firstName ? value.firstName : 'User',
+      profileImage: typeof value.profileImage === 'string' && value.profileImage ? value.profileImage : undefined,
+      likes: Array.isArray(value.likes) ? value.likes.filter((u): u is string => typeof u === 'string') : [],
+      replyCount: typeof value.replyCount === 'number' ? value.replyCount : 0,
+      parentCommentId: typeof value.parentCommentId === 'string' ? value.parentCommentId : null,
+      replyToUserName: typeof value.replyToUserName === 'string' ? value.replyToUserName : null,
+      createdAt: typeof value.createdAt === 'number' ? value.createdAt : Date.now(),
+      editedAt: typeof value.editedAt === 'number' ? value.editedAt : undefined,
     };
-  } catch {
-    return null;
-  }
-}
-
-function parseFirestoreDoc(d: any, reelId: string): LimeComment | null {
-  try {
-    const data = d.data();
-    if (!data) return null;
-    const createdAt = data.createdAt
-      ? typeof data.createdAt.seconds === 'number'
-        ? data.createdAt.seconds * 1000
-        : typeof data.createdAt === 'number'
-        ? data.createdAt
-        : Date.now()
-      : Date.now();
-    return safeParse({
-      id: d.id,
-      reelId,
-      userId: data.userId || '',
-      content: data.content || '',
-      userName: data.userName || data.user?.userName || 'user',
-      firstName: data.firstName || data.user?.firstName || 'User',
-      profileImage: data.profileImage || data.user?.profileImage || null,
-      likes: Array.isArray(data.likes) ? data.likes : [],
-      replyCount: data.replyCount || 0,
-      parentCommentId: data.parentCommentId || null,
-      replyToUserName: data.replyToUserName || null,
-      createdAt,
-      editedAt: data.editedAt
-        ? typeof data.editedAt.seconds === 'number'
-          ? data.editedAt.seconds * 1000
-          : typeof data.editedAt === 'number'
-          ? data.editedAt
-          : undefined
-        : undefined,
-    });
   } catch {
     return null;
   }
@@ -139,7 +75,7 @@ function CommentSkeletonRow() {
   );
 }
 
-function renderContent(content: string): React.ReactNode {
+function renderContent(content: string): ReactNode {
   if (!content || typeof content !== 'string') return null;
   const parts = content.split(/(@[a-zA-Z0-9._]+)/g);
   return parts.map((part, i) =>
@@ -175,18 +111,19 @@ export default function CommentModal({
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
-  const lastDocRef = useRef<DocumentSnapshot | null>(null);
+  const lastDocRef = useRef<LimeCommentCursor | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [replyTarget, setReplyTarget] = useState<{ id: string; userName: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [visibleRepliesLimitMap, setVisibleRepliesLimitMap] = useState<Record<string, number>>({});
 
-  const currentUserId = auth.currentUser?.uid ?? '';
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.uid ?? '';
   const currentUserName =
-    auth.currentUser?.displayName?.trim() || auth.currentUser?.email?.split('@')[0] || 'user';
+    currentUser?.displayName?.trim() || currentUser?.email?.split('@')[0] || 'user';
   const currentFirstName =
-    auth.currentUser?.displayName?.split(' ')[0] || 'User';
+    currentUser?.displayName?.split(' ')[0] || 'User';
 
   /* ── Swipe-Down — we own the animation (animationType=none) ── */
   const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -238,13 +175,8 @@ export default function CommentModal({
     if (!reelId) return;
     if (replace) setLoading(true);
     try {
-      const q = query(
-        collection(db, 'reels', reelId, 'comments'),
-        orderBy('createdAt', 'desc'),
-        limit(PAGE_SIZE)
-      );
-      const snap = await getDocs(q);
-      const loaded = snap.docs.map((d) => parseFirestoreDoc(d, reelId)).filter(Boolean) as LimeComment[];
+      const page = await limeService.fetchComments(reelId, PAGE_SIZE);
+      const loaded = page.items;
       if (replace) {
         setComments(loaded);
       } else {
@@ -253,8 +185,8 @@ export default function CommentModal({
           return [...prev, ...loaded.filter((c) => !ids.has(c.id))];
         });
       }
-      lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
-      setHasMore(snap.docs.length >= PAGE_SIZE);
+      lastDocRef.current = page.nextCursor;
+      setHasMore(page.hasMore);
       if (onCommentCountUpdate) onCommentCountUpdate(loaded.length);
     } catch (err) {
       console.error('[LimeCommentModal] fetchComments error:', err);
@@ -268,21 +200,15 @@ export default function CommentModal({
     if (loadingMore || !hasMore || !lastDocRef.current || !reelId) return;
     setLoadingMore(true);
     try {
-      const q = query(
-        collection(db, 'reels', reelId, 'comments'),
-        orderBy('createdAt', 'desc'),
-        startAfter(lastDocRef.current),
-        limit(PAGE_SIZE)
-      );
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const nextBatch = snap.docs.map((d) => parseFirestoreDoc(d, reelId)).filter(Boolean) as LimeComment[];
+      const page = await limeService.fetchComments(reelId, PAGE_SIZE, lastDocRef.current);
+      if (page.items.length > 0) {
+        const nextBatch = page.items;
         setComments((prev) => {
           const ids = new Set(prev.map((c) => c.id));
           return [...prev, ...nextBatch.filter((c) => !ids.has(c.id))];
         });
-        lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
-        setHasMore(snap.docs.length >= PAGE_SIZE);
+        lastDocRef.current = page.nextCursor;
+        setHasMore(page.hasMore);
       } else {
         setHasMore(false);
       }
@@ -329,7 +255,7 @@ export default function CommentModal({
       content: text,
       userName: currentUserName,
       firstName: currentFirstName,
-      profileImage: auth.currentUser?.photoURL ?? undefined,
+      profileImage: currentUser?.photoURL ?? undefined,
       likes: [],
       replyCount: 0,
       parentCommentId: replyTarget?.id ?? null,
@@ -341,30 +267,28 @@ export default function CommentModal({
     setReplyTarget(null);
     if (onCommentCountUpdate) onCommentCountUpdate(comments.length + 1);
     try {
-      const docRef = await addDoc(collection(db, 'reels', reelId, 'comments'), {
+      const commentId = await limeService.createComment({
+        reelId,
         userId: currentUserId,
         userName: currentUserName,
         firstName: currentFirstName,
-        profileImage: auth.currentUser?.photoURL ?? null,
+        profileImage: currentUser?.photoURL ?? undefined,
         content: text,
-        likes: [],
-        replyCount: 0,
         parentCommentId: replyTarget?.id ?? null,
         replyToUserName: replyTarget?.userName ?? null,
-        createdAt: serverTimestamp(),
       });
       // Replace temp with real ID
       setComments((prev) =>
-        prev.map((c) => (c.id === optimisticId ? { ...c, id: docRef.id } : c))
+        prev.map((c) => (c.id === optimisticId ? { ...c, id: commentId } : c))
       );
       dispatchMentionNotifications({
         actorUserId: currentUserId,
         actorName: currentUserName,
-        actorProfileImage: auth.currentUser?.photoURL ?? undefined,
+        actorProfileImage: currentUser?.photoURL ?? undefined,
         content: text,
         contentType: 'lime',
         postId: reelId,
-        commentId: docRef.id,
+        commentId,
       });
     } catch (err) {
       console.error('[LimeCommentModal] submit error:', err);
@@ -373,7 +297,7 @@ export default function CommentModal({
     } finally {
       setSubmitting(false);
     }
-  }, [commentText, submitting, currentUserId, currentUserName, currentFirstName, reelId, replyTarget, comments.length, onCommentCountUpdate]);
+  }, [commentText, submitting, currentUserId, currentUserName, currentFirstName, currentUser?.photoURL, reelId, replyTarget, comments.length, onCommentCountUpdate]);
 
   /* ── Toggle like ── */
   const handleToggleLike = useCallback(async (commentId: string) => {
@@ -387,11 +311,8 @@ export default function CommentModal({
       })
     );
     try {
-      const commentRef = doc(db, 'reels', reelId, 'comments', commentId);
       const liked = comments.find((c) => c.id === commentId)?.likes?.includes(currentUserId) ?? false;
-      await updateDoc(commentRef, {
-        likes: liked ? arrayRemove(currentUserId) : arrayUnion(currentUserId),
-      });
+      await limeService.toggleCommentLike(reelId, commentId, currentUserId, liked);
     } catch (err) {
       console.error('[LimeCommentModal] toggleLike error:', err);
     }
@@ -408,10 +329,7 @@ export default function CommentModal({
     setEditingId(null);
     setEditText('');
     try {
-      await updateDoc(doc(db, 'reels', reelId, 'comments', editingId), {
-        content: text,
-        editedAt: serverTimestamp(),
-      });
+      await limeService.editComment(reelId, editingId, text);
     } catch (err) {
       console.error('[LimeCommentModal] saveEdit error:', err);
     }
@@ -428,7 +346,7 @@ export default function CommentModal({
     setDeleteTargetId(null);
     setComments((prev) => prev.filter((c) => c.id !== idToDelete));
     try {
-      await deleteDoc(doc(db, 'reels', reelId, 'comments', idToDelete));
+      await limeService.deleteComment(reelId, idToDelete);
     } catch (err) {
       console.error('[LimeCommentModal] delete error:', err);
     }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { 
     View, 
     Text, 
@@ -15,20 +15,19 @@ import * as ImagePicker from 'expo-image-picker';
 // TODO: Comment out Firebase setup for later implementation
 // import { uploadFile } from '@/helpers/firebaseStorage';
 // import { Timestamp } from 'firebase/firestore';
-// import { db, auth } from '@/lib/firebaseConfig';
 // import { collection, addDoc, updateDoc } from 'firebase/firestore';
 // import { getDoc, doc } from 'firebase/firestore';
 
-interface CreateAlbumProps {
+type CreateAlbumProps = {
 	onGoBack: () => void;
-}
+};
 
-interface ImageAsset {
+type ImageAsset = {
 	uri: string;
 	name: string;
 	type: string;
 	size?: number;
-}
+};
 
 export default function CreateAlbum({ onGoBack }: CreateAlbumProps) {
 	const [images, setImages] = useState<ImageAsset[]>([]);

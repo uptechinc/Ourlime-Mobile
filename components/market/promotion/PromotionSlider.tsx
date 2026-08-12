@@ -1,14 +1,13 @@
 // components/market/promotion/PromotionSlider.tsx
-import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Image, Dimensions } from 'react-native';
 
-interface Promotion {
+type Promotion = {
     id: string;
     name: string;
     count: number;
     image: string;
     description: string;
-}
+};
 
 export default function PromotionSlider() {
     const promotions = [

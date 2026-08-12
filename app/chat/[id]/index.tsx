@@ -1,1 +1,1235 @@
-export { default } from './page';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    View,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    ScrollView,
+    KeyboardAvoidingView,
+    Platform,
+    StatusBar,
+    Image,
+    Alert,
+    ActivityIndicator,
+    Modal,
+    Pressable,
+    Linking,
+    Keyboard,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import Icon from 'react-native-vector-icons/Feather';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AuthService, type UserProfile } from '@/lib/services/AuthService';
+import { messagingService, type FullMessage, type Attachment } from '@/lib/messaging/MessagingService';
+import { RelationshipService } from '@/lib/services/RelationshipService';
+import { StickerService, normalizeStickerUrl } from '@/lib/sticker/StickerService';
+import { getLocalStickerSource } from '@/assets/images/stickers/stickerMap';
+import { EmojiStickerKeyboard } from '@/components/chat/EmojiStickerKeyboard';
+import { VoiceNotePlayer } from '@/components/chat/VoiceNotePlayer';
+import { VideoCallModal } from '@/components/chat/VideoCallModal';
+import { ChatSettingsMenu } from '@/components/chat/ChatSettingsMenu';
+import { ChatMediaPanel } from '@/components/chat/ChatMediaPanel';
+import { ForwardMessageModal } from '@/components/chat/ForwardMessageModal';
+import { DocumentPreviewModal } from '@/components/chat/DocumentPreviewModal';
+import { LinkPreviewMessage, LinkInputBanner } from '@/components/chat/LinkPreviewMessage';
+import { findFirstUrl } from '@/lib/services/OpenGraphService';
+import UserAvatar from '@/components/ui/UserAvatar';
+import type { ReplyReference } from '@/lib/types/message';
+import type { Sticker } from '@/lib/types/sticker';
+import { Timestamp } from 'firebase/firestore';
+import { useMessages } from '@/lib/hooks/useMessages';
+import { messageResourceService } from '@/lib/services/MessageResourceService';
+import { useResourceStore } from '@/lib/store/useResourceStore';
+
+const authService = AuthService.getInstance();
+const relationshipService = RelationshipService.getInstance();
+const stickerService = StickerService.getInstance();
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatMessageTime(ts: Timestamp | { seconds: number; nanoseconds: number } | undefined): string {
+    if (!ts) return '';
+    const date = new Date((ts.seconds ?? 0) * 1000);
+    const now = new Date();
+    const diffMin = Math.floor((now.getTime() - date.getTime()) / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const h = date.getHours();
+    const m = date.getMinutes();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const dh = h % 12 || 12;
+    const timeStr = `${dh}:${m.toString().padStart(2, '0')} ${ampm}`;
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    if (date.toDateString() === today.toDateString()) return timeStr;
+    if (date.toDateString() === yesterday.toDateString()) return `Yesterday ${timeStr}`;
+    return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${timeStr}`;
+}
+
+function getMsgId(msg: FullMessage): string {
+    return msg.id ?? `${msg.timestamp?.seconds ?? Date.now()}-${msg.timestamp?.nanoseconds ?? 0}`;
+}
+
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥'];
+
+// ─── System Message Renderer ─────────────────────────────────────────────────
+
+type SystemMessageProps = {
+    msg: FullMessage;
+    currentUserId: string;
+    friendFirstName: string;
+    onJoinCall: (type: 'audio' | 'video') => void;
+    callActive: boolean;
+};
+
+function SystemMessage({ msg, currentUserId, friendFirstName, onJoinCall, callActive }: SystemMessageProps) {
+    const isOwn = msg.senderId === currentUserId;
+
+    if (msg.message === '[SYS:CALL_ENDED]') {
+        return (
+            <View style={{ alignItems: 'center', marginVertical: 10, paddingHorizontal: 12 }}>
+                <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: 'rgba(100,116,139,0.1)',
+                    borderRadius: 20,
+                    paddingHorizontal: 14,
+                    paddingVertical: 6,
+                    gap: 6,
+                }}>
+                    <Icon name="phone-off" size={12} color="#94a3b8" />
+                    <Text style={{ fontSize: 12, color: '#64748b', fontWeight: '500' }}>
+                        Call ended · {formatMessageTime(msg.timestamp)}
+                    </Text>
+                </View>
+            </View>
+        );
+    }
+
+    const isVideo = msg.message === '[SYS:VIDEO_CALL_INVITE]';
+    const isVoice = msg.message === '[SYS:VOICE_CALL_INVITE]';
+
+    if (isVideo || isVoice) {
+        return (
+            <View style={{
+                alignItems: isOwn ? 'flex-end' : 'flex-start',
+                paddingHorizontal: 12,
+                marginVertical: 4,
+            }}>
+                <View style={{
+                    backgroundColor: isOwn ? '#10b981' : '#ffffff',
+                    borderRadius: 16,
+                    borderWidth: isOwn ? 0 : 1,
+                    borderColor: '#e2e8f0',
+                    padding: 16,
+                    alignItems: 'center',
+                    minWidth: 200,
+                    maxWidth: 260,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.07,
+                    shadowRadius: 8,
+                    elevation: 2,
+                }}>
+                    <View style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 28,
+                        backgroundColor: isOwn ? 'rgba(255,255,255,0.2)' : '#f0fdf4',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginBottom: 10,
+                    }}>
+                        <Icon name={isVideo ? 'video' : 'phone'} size={24} color={isOwn ? '#ffffff' : '#10b981'} />
+                    </View>
+
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: isOwn ? '#ffffff' : '#1e293b', textAlign: 'center', marginBottom: 4 }}>
+                        {isOwn
+                            ? `You started a ${isVideo ? 'video' : 'voice'} call`
+                            : `${friendFirstName} is calling you...`}
+                    </Text>
+
+                    {callActive ? (
+                        <>
+                            {!isOwn ? (
+                                <TouchableOpacity
+                                    onPress={() => onJoinCall(isVideo ? 'video' : 'audio')}
+                                    style={{
+                                        marginTop: 10,
+                                        backgroundColor: '#10b981',
+                                        borderRadius: 12,
+                                        paddingHorizontal: 24,
+                                        paddingVertical: 10,
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        gap: 8,
+                                    }}
+                                >
+                                    <Icon name={isVideo ? 'video' : 'phone'} size={16} color="#ffffff" />
+                                    <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 14 }}>Join Call</Text>
+                                </TouchableOpacity>
+                            ) : (
+                                <TouchableOpacity
+                                    onPress={() => onJoinCall(isVideo ? 'video' : 'audio')}
+                                    style={{
+                                        marginTop: 10,
+                                        backgroundColor: 'rgba(255,255,255,0.2)',
+                                        borderRadius: 12,
+                                        paddingHorizontal: 24,
+                                        paddingVertical: 10,
+                                        borderWidth: 1,
+                                        borderColor: 'rgba(255,255,255,0.35)',
+                                    }}
+                                >
+                                    <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 14 }}>Rejoin Call</Text>
+                                </TouchableOpacity>
+                            )}
+                        </>
+                    ) : (
+                        <View style={{
+                            marginTop: 10,
+                            backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(100,116,139,0.1)',
+                            borderRadius: 12,
+                            paddingHorizontal: 20,
+                            paddingVertical: 9,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                        }}>
+                            <Icon name="phone-off" size={14} color={isOwn ? 'rgba(255,255,255,0.7)' : '#94a3b8'} />
+                            <Text style={{ color: isOwn ? 'rgba(255,255,255,0.8)' : '#94a3b8', fontSize: 13, fontWeight: '600' }}>
+                                Call Ended
+                            </Text>
+                        </View>
+                    )}
+                </View>
+            </View>
+        );
+    }
+
+    return null;
+}
+
+// ─── Message Bubble ───────────────────────────────────────────────────────────
+
+type MessageBubbleProps = {
+    msg: FullMessage;
+    currentUserId: string;
+    friend: UserProfile | null;
+    onReply: (msg: FullMessage) => void;
+    onDelete: (msg: FullMessage, deleteForEveryone: boolean) => void;
+    onReact: (msg: FullMessage, emoji: string) => void;
+    onForward: (msg: FullMessage) => void;
+    onImagePress: (url: string) => void;
+    onPreviewDoc: (attachment: Attachment) => void;
+};
+
+function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact, onForward, onImagePress, onPreviewDoc }: MessageBubbleProps) {
+    const [showActions, setShowActions] = useState(false);
+    if (!friend) return null;
+    const isOwn = msg.senderId === currentUserId;
+
+    const isImage = msg.attachment?.fileType?.startsWith('image/');
+    const isVideo = msg.attachment?.fileType?.startsWith('video/');
+    const isDoc = msg.attachment && !isImage && !isVideo;
+    const hasText = msg.message?.trim().length > 0;
+    const stickerUrl = normalizeStickerUrl(msg.stickerUrl ?? msg.stickerData?.stickerUrl);
+    const isSticker = msg.type === 'sticker' || !!stickerUrl;
+    const audioUrl = msg.audioUrl ?? msg.voiceNoteData?.audioUrl;
+    const audioDuration = msg.audioDuration ?? msg.voiceNoteData?.audioDuration ?? 0;
+    const isVoiceNote = msg.type === 'voiceNote' || !!audioUrl;
+    const isDeleted = msg.isDeletedForEveryone;
+
+    const detectedUrl = hasText ? findFirstUrl(msg.message) : null;
+
+    const reactionSummary: { emoji: string; count: number; iMine: boolean }[] = Object.entries(msg.reactions ?? {}).map(([emoji, users]) => ({
+        emoji,
+        count: users.length,
+        iMine: users.includes(currentUserId),
+    }));
+
+    return (
+        <Pressable
+            onLongPress={() => setShowActions(true)}
+            style={{
+                flexDirection: isOwn ? 'row-reverse' : 'row',
+                alignItems: 'flex-end',
+                marginBottom: 4,
+                paddingHorizontal: 12,
+            }}
+        >
+            {!isOwn && (
+                <View style={{ marginRight: 6, marginBottom: 2 }}>
+                    <UserAvatar profileImage={friend.profilePicture} firstName={friend.firstName ?? 'U'} size={26} />
+                </View>
+            )}
+
+            <View style={{ maxWidth: '78%' }}>
+                {msg.replyTo && (
+                    <View style={{
+                        backgroundColor: isOwn ? 'rgba(255,255,255,0.18)' : '#f1f5f9',
+                        borderLeftWidth: 3,
+                        borderLeftColor: '#10b981',
+                        borderRadius: 8,
+                        padding: 7,
+                        marginBottom: 4,
+                    }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#10b981', marginBottom: 2 }}>
+                            {msg.replyTo.originalSenderId === currentUserId ? 'You' : friend.firstName}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: '#64748b' }} numberOfLines={1}>
+                            {msg.replyTo.originalMessage}
+                        </Text>
+                    </View>
+                )}
+
+                {msg.isForwarded && !isDeleted && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                        <Icon name="corner-up-right" size={11} color="#94a3b8" />
+                        <Text style={{ fontSize: 11, color: '#94a3b8', marginLeft: 4, fontStyle: 'italic' }}>Forwarded</Text>
+                    </View>
+                )}
+
+                {isSticker && stickerUrl ? (
+                    <TouchableOpacity onPress={() => onImagePress(stickerUrl)}>
+                        <StickerBubble
+                            url={stickerUrl}
+                            width={msg.stickerWidth ?? msg.stickerData?.stickerWidth ?? 160}
+                            height={msg.stickerHeight ?? msg.stickerData?.stickerHeight ?? 160}
+                            time={formatMessageTime(msg.timestamp)}
+                        />
+                    </TouchableOpacity>
+                ) : (
+                    <View style={{
+                        backgroundColor: isOwn ? '#10b981' : '#ffffff',
+                        borderRadius: 18,
+                        borderBottomRightRadius: isOwn ? 4 : 18,
+                        borderBottomLeftRadius: isOwn ? 18 : 4,
+                        paddingHorizontal: isDeleted || isImage || isVideo || isVoiceNote ? 10 : 14,
+                        paddingVertical: 9,
+                        borderWidth: isOwn ? 0 : 1,
+                        borderColor: '#e2e8f0',
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 1 },
+                        shadowOpacity: 0.06,
+                        shadowRadius: 4,
+                        elevation: 1,
+                    }}>
+                        {isDeleted ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Icon name="trash-2" size={13} color={isOwn ? 'rgba(255,255,255,0.7)' : '#94a3b8'} />
+                                <Text style={{ fontSize: 13, fontStyle: 'italic', color: isOwn ? 'rgba(255,255,255,0.8)' : '#94a3b8' }}>
+                                    This message was deleted
+                                </Text>
+                            </View>
+                        ) : (
+                            <>
+                                {isImage && msg.attachment && (
+                                    <TouchableOpacity onPress={() => onImagePress(msg.attachment!.url)}>
+                                        <Image
+                                            source={{ uri: msg.attachment.url }}
+                                            style={{ width: 220, height: 160, borderRadius: 12, marginBottom: hasText ? 8 : 0 }}
+                                            resizeMode="cover"
+                                        />
+                                    </TouchableOpacity>
+                                )}
+
+                                {isVideo && msg.attachment && (
+                                    <TouchableOpacity
+                                        onPress={() => Linking.openURL(msg.attachment!.url)}
+                                        style={{ width: 220, height: 140, borderRadius: 12, backgroundColor: '#0f172a', alignItems: 'center', justifyContent: 'center', marginBottom: hasText ? 8 : 0 }}
+                                    >
+                                        <Icon name="play-circle" size={40} color="#ffffff" />
+                                        <Text style={{ color: '#ffffff', fontSize: 12, marginTop: 6 }}>Tap to play</Text>
+                                    </TouchableOpacity>
+                                )}
+
+                                {isDoc && msg.attachment && (
+                                    <View style={{
+                                        width: 220,
+                                        borderRadius: 12,
+                                        backgroundColor: isOwn ? 'rgba(0,0,0,0.1)' : '#f8fafc',
+                                        padding: 10,
+                                        borderWidth: 1,
+                                        borderColor: isOwn ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+                                        marginBottom: hasText ? 8 : 0,
+                                    }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                                            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isOwn ? 'rgba(255,255,255,0.2)' : '#dcfce7', alignItems: 'center', justifyContent: 'center' }}>
+                                                <Icon name="file-text" size={18} color={isOwn ? '#ffffff' : '#10b981'} />
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={{ fontSize: 13, fontWeight: '600', color: isOwn ? '#ffffff' : '#1e293b' }} numberOfLines={1}>
+                                                    {msg.attachment.fileName}
+                                                </Text>
+                                                <Text style={{ fontSize: 11, color: isOwn ? 'rgba(255,255,255,0.7)' : '#94a3b8' }}>
+                                                    {(msg.attachment.fileSize / 1024).toFixed(1)} KB
+                                                </Text>
+                                            </View>
+                                        </View>
+
+                                        {/* Action buttons: Preview + Download */}
+                                        <View style={{ flexDirection: 'row', gap: 6, borderTopWidth: 1, borderTopColor: isOwn ? 'rgba(255,255,255,0.15)' : '#e2e8f0', paddingTop: 8 }}>
+                                            <TouchableOpacity
+                                                onPress={() => onPreviewDoc(msg.attachment!)}
+                                                style={{
+                                                    flex: 1,
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    backgroundColor: isOwn ? 'rgba(255,255,255,0.2)' : '#ffffff',
+                                                    borderRadius: 8,
+                                                    paddingVertical: 6,
+                                                    gap: 4,
+                                                }}
+                                            >
+                                                <Icon name="eye" size={13} color={isOwn ? '#ffffff' : '#10b981'} />
+                                                <Text style={{ fontSize: 11, fontWeight: '700', color: isOwn ? '#ffffff' : '#10b981' }}>Preview</Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity
+                                                onPress={() => Linking.openURL(msg.attachment!.url)}
+                                                style={{
+                                                    flex: 1,
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    backgroundColor: isOwn ? 'rgba(255,255,255,0.2)' : '#ffffff',
+                                                    borderRadius: 8,
+                                                    paddingVertical: 6,
+                                                    gap: 4,
+                                                }}
+                                            >
+                                                <Icon name="download" size={13} color={isOwn ? '#ffffff' : '#475569'} />
+                                                <Text style={{ fontSize: 11, fontWeight: '700', color: isOwn ? '#ffffff' : '#475569' }}>Save</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                )}
+
+                                {isVoiceNote && audioUrl && (
+                                    <VoiceNotePlayer
+                                        audioUrl={audioUrl}
+                                        duration={audioDuration}
+                                        isSentByMe={isOwn}
+                                    />
+                                )}
+
+                                {hasText && (
+                                    <Text style={{ fontSize: 15, color: isOwn ? '#ffffff' : '#1e293b', lineHeight: 21 }}>
+                                        {msg.message}
+                                    </Text>
+                                )}
+
+                                {/* OpenGraph Link Card */}
+                                {detectedUrl && (
+                                    <LinkPreviewMessage url={detectedUrl} isOwn={isOwn} />
+                                )}
+                            </>
+                        )}
+
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, gap: 4 }}>
+                            <Text style={{ fontSize: 10, color: isOwn ? 'rgba(255,255,255,0.65)' : '#94a3b8' }}>
+                                {formatMessageTime(msg.timestamp)}
+                            </Text>
+                            {isOwn && (
+                                <Icon
+                                    name={msg.status === 'read' ? 'check-circle' : 'check'}
+                                    size={12}
+                                    color={msg.status === 'read' ? '#93c5fd' : 'rgba(255,255,255,0.6)'}
+                                />
+                            )}
+                        </View>
+                    </View>
+                )}
+
+                {reactionSummary.length > 0 && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 4, gap: 4 }}>
+                        {reactionSummary.map(({ emoji, count, iMine }) => (
+                            <TouchableOpacity
+                                key={emoji}
+                                onPress={() => onReact(msg, emoji)}
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    backgroundColor: iMine ? '#dcfce7' : '#f1f5f9',
+                                    borderRadius: 12,
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 3,
+                                    borderWidth: 1,
+                                    borderColor: iMine ? '#10b981' : '#e2e8f0',
+                                }}
+                            >
+                                <Text style={{ fontSize: 13 }}>{emoji}</Text>
+                                <Text style={{ fontSize: 11, color: '#475569', marginLeft: 4 }}>{count}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
+            </View>
+
+            <Modal visible={showActions} transparent animationType="fade" onRequestClose={() => setShowActions(false)}>
+                <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }} onPress={() => setShowActions(false)}>
+                    <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 8, minWidth: 240, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 16, elevation: 10 }}>
+                        {!isDeleted && (
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 10, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
+                                {REACTION_EMOJIS.map((emoji) => (
+                                    <TouchableOpacity key={emoji} onPress={() => { onReact(msg, emoji); setShowActions(false); }} style={{ padding: 6 }}>
+                                        <Text style={{ fontSize: 22 }}>{emoji}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
+
+                        {!isDeleted && [
+                            { icon: 'corner-up-left', label: 'Reply', action: () => { onReply(msg); setShowActions(false); } },
+                            { icon: 'corner-up-right', label: 'Forward', action: () => { onForward(msg); setShowActions(false); } },
+                        ].map(({ icon, label, action }) => (
+                            <TouchableOpacity key={label} onPress={action} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 }}>
+                                <Icon name={icon} size={17} color="#475569" />
+                                <Text style={{ marginLeft: 14, fontSize: 15, color: '#1e293b', fontWeight: '500' }}>{label}</Text>
+                            </TouchableOpacity>
+                        ))}
+
+                        {isOwn && !isDeleted && (
+                            <TouchableOpacity
+                                onPress={() => {
+                                    setShowActions(false);
+                                    Alert.alert('Delete Message', 'Choose how to delete:', [
+                                        { text: 'Cancel', style: 'cancel' },
+                                        { text: 'Delete for me', onPress: () => onDelete(msg, false) },
+                                        { text: 'Delete for everyone', style: 'destructive', onPress: () => onDelete(msg, true) },
+                                    ]);
+                                }}
+                                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 }}
+                            >
+                                <Icon name="trash-2" size={17} color="#ef4444" />
+                                <Text style={{ marginLeft: 14, fontSize: 15, color: '#ef4444', fontWeight: '500' }}>Delete</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </Pressable>
+            </Modal>
+        </Pressable>
+    );
+}
+
+// ─── Sticker Bubble ───────────────────────────────────────────────────────────
+
+function StickerBubble({ url, width, height, time }: { url: string; width: number; height: number; time: string }) {
+    const [errored, setErrored] = useState(false);
+    const localSource = getLocalStickerSource(url);
+    const imageSource = localSource ?? { uri: url };
+
+    return (
+        <View>
+            {errored ? (
+                <Text style={{ fontSize: 52 }}>🎨</Text>
+            ) : (
+                <Image
+                    source={imageSource}
+                    style={{ width: Math.min(width, 160), height: Math.min(height, 160) }}
+                    resizeMode="contain"
+                    onError={() => setErrored(true)}
+                />
+            )}
+            <Text style={{ fontSize: 10, color: '#94a3b8', marginTop: 3, textAlign: 'right' }}>{time}</Text>
+        </View>
+    );
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
+export default function ChatPage() {
+    const { id: friendId } = useLocalSearchParams<{ id: string }>();
+    const router = useRouter();
+    const currentUserId = authService.getCurrentUser()?.uid ?? '';
+    const chatRoomId = messagingService.getChatRoomId(currentUserId, friendId ?? '');
+    const cachedFriend = useResourceStore((state) => state.conversations.data?.find((conversation) => conversation.uid === friendId) ?? null);
+
+    const [friend, setFriend] = useState<UserProfile | null>(cachedFriend);
+    const { resource: messageResource, loadOlder, markRead } = useMessages(currentUserId, friendId ?? '', chatRoomId);
+    const rawMessages = messageResource.data?.messages;
+    const messages = useMemo(
+        () => (rawMessages ?? []).filter((message: FullMessage) => !(message.deletedFor ?? []).includes(currentUserId)),
+        [rawMessages, currentUserId]
+    );
+    const isLoading = !messageResource.data && (messageResource.status === 'idle' || messageResource.status === 'hydrating');
+    const [messageText, setMessageText] = useState('');
+    const [replyTo, setReplyTo] = useState<FullMessage | null>(null);
+    const [isSending, setIsSending] = useState(false);
+    const [keyboardState, setKeyboardState] = useState<{ visible: boolean; tab: 'emojis' | 'stickers' }>({ visible: false, tab: 'emojis' });
+    const [showCallModal, setShowCallModal] = useState(false);
+    const [callType, setCallType] = useState<'audio' | 'video'>('audio');
+    const [showSettings, setShowSettings] = useState(false);
+    const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+    const [showAttachModal, setShowAttachModal] = useState(false);
+    const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; fileName: string; mimeType: string; type: 'image' | 'document' } | null>(null);
+    const [wallpaperUri, setWallpaperUri] = useState<string | null>(null);
+    const [randomStickerBg, setRandomStickerBg] = useState<string | null>(null);
+    const [isBlocked, setIsBlocked] = useState(false);
+    const [showMediaPanel, setShowMediaPanel] = useState(false);
+    const [forwardMessage, setForwardMessage] = useState<FullMessage | null>(null);
+    const [previewDocAttachment, setPreviewDocAttachment] = useState<Attachment | null>(null);
+    const [dismissedInputUrl, setDismissedInputUrl] = useState<string | null>(null);
+
+    const scrollViewRef = useRef<ScrollView>(null);
+
+    const wallpaperKey = `ourlime_chat_wallpaper_${currentUserId}_${friendId}`;
+
+    // Live URL detection in input
+    const inputUrl = findFirstUrl(messageText);
+    const showInputLinkBanner = Boolean(inputUrl && inputUrl !== dismissedInputUrl);
+
+    // Load wallpaper or random sticker background on entry
+    useEffect(() => {
+        if (!wallpaperKey) return;
+        AsyncStorage.getItem(wallpaperKey).then((val) => {
+            if (val) {
+                setWallpaperUri(val);
+            } else {
+                const unsub = stickerService.subscribeToAllStickers((stickers) => {
+                    if (stickers.length > 0) {
+                        const idx = Math.floor(Math.random() * stickers.length);
+                        setRandomStickerBg(stickers[idx].imageUrl);
+                    }
+                });
+                return () => unsub();
+            }
+        }).catch(() => {});
+    }, [wallpaperKey]);
+
+    const handleUploadWallpaper = async (uri: string) => {
+        setWallpaperUri(uri);
+        await AsyncStorage.setItem(wallpaperKey, uri).catch(() => {});
+        Alert.alert('Wallpaper Updated', 'Chat background updated successfully.');
+    };
+
+    const handleResetWallpaper = async () => {
+        setWallpaperUri(null);
+        await AsyncStorage.removeItem(wallpaperKey).catch(() => {});
+        Alert.alert('Wallpaper Reset', 'Chat background reset to default.');
+    };
+
+    // Check block status
+    useEffect(() => {
+        if (!friendId || !currentUserId) return;
+        relationshipService.checkBlockStatus(currentUserId, friendId).then(({ isBlockedByMe, isBlockedByOther }: { isBlockedByMe: boolean; isBlockedByOther: boolean }) => {
+            setIsBlocked(isBlockedByMe || isBlockedByOther);
+        });
+    }, [friendId, currentUserId]);
+
+    const getCallActiveForMessage = useCallback((index: number): boolean => {
+        for (let i = index + 1; i < messages.length; i++) {
+            if (messages[i].message === '[SYS:CALL_ENDED]') return false;
+        }
+        return true;
+    }, [messages]);
+
+    // Load friend profile
+    useEffect(() => {
+        if (!friendId) return;
+        if (cachedFriend) setFriend(cachedFriend);
+        authService.getUserProfile(friendId).then((p) => { if (p) setFriend(p); });
+    }, [cachedFriend, friendId]);
+
+    // Mark cached and newly-arrived messages as read without reloading the chat.
+    useEffect(() => {
+        if (!friendId || !currentUserId) return;
+        void markRead();
+    }, [messages.length, friendId, currentUserId, markRead]);
+
+    useEffect(() => {
+        if (messages.length === 0) return;
+        const timeout = setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: false }), 80);
+        return () => clearTimeout(timeout);
+    }, [chatRoomId, messages.length]);
+
+    // Send message
+    const handleSend = useCallback(async () => {
+        if ((!messageText.trim() && !pendingAttachment) || !friendId || !currentUserId || isSending || isBlocked) return;
+        const text = messageText.trim();
+        setMessageText('');
+        setDismissedInputUrl(null);
+        setIsSending(true);
+        setKeyboardState({ visible: false, tab: 'emojis' });
+        Keyboard.dismiss();
+
+        let replyRef: ReplyReference | undefined;
+        if (replyTo) {
+            replyRef = {
+                messageId: getMsgId(replyTo),
+                originalMessage: replyTo.message,
+                originalSenderId: replyTo.senderId,
+                originalTimestamp: replyTo.timestamp,
+            };
+        }
+        setReplyTo(null);
+
+        let attachment: Attachment | undefined;
+        if (pendingAttachment) {
+            try {
+                attachment = await messagingService.uploadFile(pendingAttachment.uri, pendingAttachment.fileName, pendingAttachment.mimeType, currentUserId);
+            } catch (err) {
+                Alert.alert('Error', `Failed to upload attachment: ${err instanceof Error ? err.message : String(err)}`);
+                setIsSending(false);
+                return;
+            }
+            setPendingAttachment(null);
+        }
+
+        const optimisticId = `optimistic:${Date.now()}`;
+        const optimisticMessage: FullMessage = {
+            id: optimisticId,
+            senderId: currentUserId,
+            receiverId: friendId,
+            message: text,
+            status: 'sent',
+            timestamp: Timestamp.now(),
+            ...(replyRef ? { replyTo: replyRef } : {}),
+            ...(attachment ? { attachment } : {}),
+        };
+        await messageResourceService.insertOptimistic(currentUserId, chatRoomId, optimisticMessage);
+        try {
+            const serverMessage = await messagingService.sendMessage(friendId, text, currentUserId, replyRef, attachment);
+            await messageResourceService.reconcileOptimistic(currentUserId, chatRoomId, optimisticId, serverMessage);
+        } catch (err) {
+            await messageResourceService.reconcileOptimistic(currentUserId, chatRoomId, optimisticId, null);
+            Alert.alert('Error', `Failed to send message: ${err instanceof Error ? err.message : String(err)}`);
+            setMessageText(text);
+        } finally {
+            setIsSending(false);
+        }
+    }, [messageText, friendId, currentUserId, isSending, replyTo, pendingAttachment, isBlocked, chatRoomId]);
+
+    // Start a call
+    const handleStartCall = useCallback(async (type: 'audio' | 'video') => {
+        if (!friendId || !currentUserId || isBlocked) return;
+        const sysMsg = type === 'video' ? '[SYS:VIDEO_CALL_INVITE]' : '[SYS:VOICE_CALL_INVITE]';
+        setCallType(type);
+        setShowCallModal(true);
+        try {
+            await messagingService.sendMessage(friendId, sysMsg, currentUserId);
+        } catch {}
+    }, [friendId, currentUserId, isBlocked]);
+
+    // End a call
+    const handleEndCall = useCallback(async () => {
+        if (!friendId || !currentUserId) return;
+        setShowCallModal(false);
+        try {
+            await messagingService.sendMessage(friendId, '[SYS:CALL_ENDED]', currentUserId);
+        } catch {}
+    }, [friendId, currentUserId]);
+
+    const handleAttachImage = useCallback(async () => {
+        setShowAttachModal(false);
+        const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.8 });
+        if (result.canceled || !result.assets[0]) return;
+        const asset = result.assets[0];
+        const mimeType = asset.mimeType ?? 'image/jpeg';
+        const fileName = asset.fileName ?? `media_${Date.now()}.jpg`;
+        setPendingAttachment({ uri: asset.uri, fileName, mimeType, type: 'image' });
+    }, []);
+
+    const handleAttachDoc = useCallback(async () => {
+        setShowAttachModal(false);
+        const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+        if (result.canceled) return;
+        const asset = result.assets[0];
+        setPendingAttachment({ uri: asset.uri, fileName: asset.name, mimeType: asset.mimeType ?? 'application/octet-stream', type: 'document' });
+    }, []);
+
+    const handleStickerSelect = useCallback(async (sticker: Sticker) => {
+        if (!friendId || !currentUserId || isBlocked) return;
+        const stickerData = {
+            type: 'sticker' as const,
+            stickerId: sticker.id,
+            stickerUrl: sticker.imageUrl,
+            packId: sticker.packId,
+            stickerWidth: sticker.width,
+            stickerHeight: sticker.height,
+        };
+        try {
+            await messagingService.sendMessage(friendId, '', currentUserId, undefined, undefined, stickerData);
+        } catch { Alert.alert('Error', 'Failed to send sticker.'); }
+    }, [friendId, currentUserId, isBlocked]);
+
+    const handleDelete = useCallback(async (msg: FullMessage, deleteForEveryone: boolean) => {
+        if (!friendId || !currentUserId) return;
+        await messagingService.deleteMessage(friendId, currentUserId, msg.timestamp.seconds, deleteForEveryone);
+    }, [friendId, currentUserId]);
+
+    const handleReact = useCallback(async (msg: FullMessage, emoji: string) => {
+        if (!currentUserId || isBlocked) return;
+        await messagingService.toggleReaction(chatRoomId, msg.timestamp.seconds, emoji, currentUserId);
+    }, [chatRoomId, currentUserId, isBlocked]);
+
+    const handleForward = useCallback((msg: FullMessage) => {
+        setForwardMessage(msg);
+    }, []);
+
+    const handleDeleteChat = useCallback(async () => {
+        if (!chatRoomId) return;
+        await messagingService.clearChatHistory(chatRoomId);
+        await messageResourceService.clearLocal(currentUserId, chatRoomId);
+    }, [chatRoomId, currentUserId]);
+
+    const activeBg = wallpaperUri ?? randomStickerBg;
+
+    return (
+        <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#ffffff' }}>
+            <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+
+            {/* ── Header ────────────────────────────────────────────────── */}
+            <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 8,
+                paddingVertical: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: '#f1f5f9',
+                backgroundColor: '#ffffff',
+            }}>
+                <TouchableOpacity onPress={() => router.back()} style={{ padding: 8 }}>
+                    <Text style={{ fontSize: 26, fontWeight: '700', color: '#111827', lineHeight: 30 }}>‹</Text>
+                </TouchableOpacity>
+
+                {friend ? (
+                    <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginHorizontal: 4 }}
+                        onPress={() => router.push({ pathname: '/profile/[username]', params: { username: friend.userName } })}
+                    >
+                        <UserAvatar profileImage={friend.profilePicture} firstName={friend.firstName ?? 'U'} size={38} />
+                        <View style={{ marginLeft: 10, flex: 1 }}>
+                            <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }} numberOfLines={1}>
+                                {friend.firstName} {friend.lastName}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#64748b' }}>@{friend.userName}</Text>
+                        </View>
+                    </TouchableOpacity>
+                ) : (
+                    <View style={{ flex: 1 }} />
+                )}
+
+                <TouchableOpacity onPress={() => handleStartCall('audio')} disabled={isBlocked} style={{ padding: 8, opacity: isBlocked ? 0.35 : 1 }}>
+                    <Icon name="phone" size={20} color="#10b981" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleStartCall('video')} disabled={isBlocked} style={{ padding: 8, opacity: isBlocked ? 0.35 : 1 }}>
+                    <Icon name="video" size={20} color="#10b981" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowSettings(true)} style={{ padding: 8 }}>
+                    <Icon name="settings" size={20} color="#6b7280" />
+                </TouchableOpacity>
+            </View>
+
+            {/* ── Messages & Background Wallpaper ───────────────────────── */}
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={0}
+            >
+                <View style={{ flex: 1, position: 'relative' }}>
+                    {/* Background Wallpaper (custom image or random sticker) */}
+                    {wallpaperUri ? (
+                        <Image
+                            source={{ uri: wallpaperUri }}
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.25 }}
+                            resizeMode="cover"
+                        />
+                    ) : randomStickerBg ? (
+                        <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
+                            <Image
+                                source={{ uri: randomStickerBg }}
+                                style={{ width: 220, height: 220, opacity: 0.18 }}
+                                resizeMode="contain"
+                            />
+                        </View>
+                    ) : null}
+
+                    <ScrollView
+                        ref={scrollViewRef}
+                        style={{ flex: 1, backgroundColor: activeBg ? 'transparent' : '#f8fafc' }}
+                        contentContainerStyle={{ paddingTop: 12, paddingBottom: 16 }}
+                        showsVerticalScrollIndicator={false}
+                    >
+                        {isLoading ? (
+                            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 60 }}>
+                                <ActivityIndicator size="large" color="#10b981" />
+                            </View>
+                        ) : messages.length === 0 ? (
+                            <View style={{ alignItems: 'center', paddingVertical: 60 }}>
+                                <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#f0fdf4', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                                    <Icon name="message-circle" size={36} color="#10b981" />
+                                </View>
+                                <Text style={{ fontSize: 18, fontWeight: '700', color: '#1e293b', marginBottom: 6 }}>Start a conversation</Text>
+                                <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center', paddingHorizontal: 32 }}>
+                                    Say hello to{' '}
+                                    <Text style={{ color: '#10b981', fontWeight: '600' }}>{friend?.firstName}</Text>!
+                                </Text>
+                            </View>
+                        ) : !friend ? (
+                            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                                <ActivityIndicator size="large" color="#10b981" />
+                            </View>
+                        ) : (
+                            <>
+                            {messageResource.data?.hasMore ? (
+                                <TouchableOpacity onPress={() => void loadOlder()} style={{ alignSelf: 'center', marginBottom: 12, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 18, backgroundColor: '#ecfdf5' }}>
+                                    <Text style={{ color: '#059669', fontSize: 12, fontWeight: '700' }}>Load earlier messages</Text>
+                                </TouchableOpacity>
+                            ) : null}
+                            {messages.map((msg, index) => {
+                                const isSysCallEnded = msg.message === '[SYS:CALL_ENDED]';
+                                const isSysCallInvite = msg.message === '[SYS:VIDEO_CALL_INVITE]' || msg.message === '[SYS:VOICE_CALL_INVITE]';
+
+                                if (isSysCallEnded || isSysCallInvite) {
+                                    return (
+                                        <SystemMessage
+                                            key={getMsgId(msg)}
+                                            msg={msg}
+                                            currentUserId={currentUserId}
+                                            friendFirstName={friend.firstName ?? 'Friend'}
+                                            onJoinCall={(type) => {
+                                                setCallType(type);
+                                                setShowCallModal(true);
+                                            }}
+                                            callActive={isSysCallInvite ? getCallActiveForMessage(index) : false}
+                                        />
+                                    );
+                                }
+
+                                return (
+                                    <MessageBubble
+                                        key={getMsgId(msg)}
+                                        msg={msg}
+                                        currentUserId={currentUserId}
+                                        friend={friend}
+                                        onReply={setReplyTo}
+                                        onDelete={handleDelete}
+                                        onReact={handleReact}
+                                        onForward={handleForward}
+                                        onImagePress={setLightboxUrl}
+                                        onPreviewDoc={setPreviewDocAttachment}
+                                    />
+                                );
+                            })}
+                            </>
+                        )}
+                    </ScrollView>
+                </View>
+
+                {/* ── Blocked Banner ────────────────────────────────────────── */}
+                {isBlocked ? (
+                    <View style={{ backgroundColor: '#fef2f2', paddingVertical: 14, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: '#fecaca', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#dc2626', textAlign: 'center' }}>
+                            You cannot send messages to @{friend?.userName ?? 'user'} due to block restrictions.
+                        </Text>
+                    </View>
+                ) : (
+                    <>
+                        {/* Pending Attachment Preview Banner */}
+                        {pendingAttachment && (
+                            <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                backgroundColor: '#f0fdf4',
+                                borderTopWidth: 2,
+                                borderTopColor: '#10b981',
+                                paddingHorizontal: 14,
+                                paddingVertical: 10,
+                            }}>
+                                {pendingAttachment.type === 'image' ? (
+                                    <Image source={{ uri: pendingAttachment.uri }} style={{ width: 44, height: 44, borderRadius: 8, marginRight: 10 }} />
+                                ) : (
+                                    <View style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: '#dcfce7', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                                        <Icon name="file-text" size={20} color="#10b981" />
+                                    </View>
+                                )}
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#1e293b' }} numberOfLines={1}>
+                                        {pendingAttachment.fileName}
+                                    </Text>
+                                    <Text style={{ fontSize: 11, color: '#10b981', fontWeight: '600' }}>
+                                        Ready to send — tap Send to upload
+                                    </Text>
+                                </View>
+                                <TouchableOpacity onPress={() => setPendingAttachment(null)} style={{ padding: 6 }}>
+                                    <Icon name="x" size={18} color="#94a3b8" />
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
+                        {/* Reply Banner */}
+                        {replyTo && (
+                            <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                backgroundColor: '#f0fdf4',
+                                borderTopWidth: 2,
+                                borderTopColor: '#10b981',
+                                paddingHorizontal: 14,
+                                paddingVertical: 9,
+                            }}>
+                                <Icon name="corner-up-left" size={14} color="#10b981" />
+                                <View style={{ flex: 1, marginLeft: 10 }}>
+                                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#10b981' }}>
+                                        Replying to {replyTo.senderId === currentUserId ? 'yourself' : friend?.firstName}
+                                    </Text>
+                                    <Text style={{ fontSize: 12, color: '#475569' }} numberOfLines={1}>
+                                        {replyTo.message || (replyTo.stickerData ? '🎨 Sticker' : replyTo.voiceNoteData ? '🎤 Voice note' : 'Attachment')}
+                                    </Text>
+                                </View>
+                                <TouchableOpacity onPress={() => setReplyTo(null)}>
+                                    <Icon name="x" size={18} color="#94a3b8" />
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
+                        {/* Live Link Input Preview Banner */}
+                        {showInputLinkBanner && inputUrl && (
+                            <LinkInputBanner url={inputUrl} onDismiss={() => setDismissedInputUrl(inputUrl)} />
+                        )}
+
+                        {/* Modernized Web-Parity Input Bar */}
+                        <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'flex-end',
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            backgroundColor: '#ffffff',
+                            borderTopWidth: 1,
+                            borderTopColor: '#f1f5f9',
+                            gap: 8,
+                        }}>
+                            {/* WhatsApp / Web Long White Pill Container */}
+                            <View style={{
+                                flex: 1,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                backgroundColor: '#ffffff',
+                                borderRadius: 24,
+                                borderWidth: 1,
+                                borderColor: '#e2e8f0',
+                                paddingHorizontal: 6,
+                                paddingVertical: Platform.OS === 'ios' ? 4 : 2,
+                                minHeight: 44,
+                                maxHeight: 120,
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 1 },
+                                shadowOpacity: 0.04,
+                                shadowRadius: 3,
+                                elevation: 1,
+                            }}>
+                                {/* Sticker Picker Toggle (Grid icon) */}
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        Keyboard.dismiss();
+                                        setKeyboardState({ visible: true, tab: 'stickers' });
+                                    }}
+                                    style={{ padding: 6 }}
+                                    activeOpacity={0.7}
+                                >
+                                    <Icon
+                                        name="grid"
+                                        size={20}
+                                        color={keyboardState.visible && keyboardState.tab === 'stickers' ? '#10b981' : '#64748b'}
+                                    />
+                                </TouchableOpacity>
+
+                                {/* WhatsApp Emoji Keyboard Toggle (Smile icon) */}
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        Keyboard.dismiss();
+                                        setKeyboardState({ visible: true, tab: 'emojis' });
+                                    }}
+                                    style={{ padding: 6 }}
+                                    activeOpacity={0.7}
+                                >
+                                    <Icon
+                                        name="smile"
+                                        size={20}
+                                        color={keyboardState.visible && keyboardState.tab === 'emojis' ? '#10b981' : '#64748b'}
+                                    />
+                                </TouchableOpacity>
+
+                                {/* Center Clean TextInput */}
+                                <TextInput
+                                    style={{
+                                        flex: 1,
+                                        fontSize: 15,
+                                        color: '#1e293b',
+                                        paddingHorizontal: 6,
+                                        paddingVertical: Platform.OS === 'ios' ? 6 : 4,
+                                        maxHeight: 100,
+                                    }}
+                                    placeholder={`Message ${friend?.firstName ?? ''}...`}
+                                    placeholderTextColor="#94a3b8"
+                                    value={messageText}
+                                    onChangeText={setMessageText}
+                                    multiline
+                                    autoCapitalize="sentences"
+                                    onFocus={() => setKeyboardState((s) => ({ ...s, visible: false }))}
+                                />
+
+                                {/* Paperclip Attachment Icon */}
+                                <TouchableOpacity
+                                    onPress={() => setShowAttachModal(true)}
+                                    style={{ padding: 6 }}
+                                    activeOpacity={0.7}
+                                >
+                                    <Icon name="paperclip" size={20} color="#64748b" />
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Circular Action Button Outside Pill (Send or Mic) */}
+                            {(messageText.trim().length > 0 || pendingAttachment) ? (
+                                <TouchableOpacity
+                                    onPress={handleSend}
+                                    disabled={isSending}
+                                    style={{
+                                        width: 44,
+                                        height: 44,
+                                        borderRadius: 22,
+                                        backgroundColor: '#10b981',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        shadowColor: '#10b981',
+                                        shadowOffset: { width: 0, height: 3 },
+                                        shadowOpacity: 0.35,
+                                        shadowRadius: 6,
+                                        elevation: 4,
+                                    }}
+                                    activeOpacity={0.8}
+                                >
+                                    {isSending ? (
+                                        <ActivityIndicator size="small" color="#ffffff" />
+                                    ) : (
+                                        <Icon name="send" size={18} color="#ffffff" style={{ marginLeft: 2 }} />
+                                    )}
+                                </TouchableOpacity>
+                            ) : null}
+                        </View>
+                    </>
+                )}
+            </KeyboardAvoidingView>
+
+            {/* ── Attachment Modal ──────────────────────────────────────── */}
+            <Modal visible={showAttachModal} transparent animationType="fade" onRequestClose={() => setShowAttachModal(false)}>
+                <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }} onPress={() => setShowAttachModal(false)}>
+                    <View style={{ backgroundColor: '#ffffff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 12 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 4 }}>Attach File</Text>
+
+                        <TouchableOpacity
+                            onPress={() => void handleAttachImage()}
+                            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#f1f5f9' }}
+                        >
+                            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#dcfce7', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                                <Icon name="image" size={20} color="#10b981" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 15, fontWeight: '600', color: '#1e293b' }}>Photo or Video</Text>
+                                <Text style={{ fontSize: 12, color: '#64748b' }}>Share images or videos from gallery</Text>
+                            </View>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={() => void handleAttachDoc()}
+                            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#f1f5f9' }}
+                        >
+                            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#eff6ff', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                                <Icon name="file-text" size={20} color="#3b82f6" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 15, fontWeight: '600', color: '#1e293b' }}>Document</Text>
+                                <Text style={{ fontSize: 12, color: '#64748b' }}>Share PDF, DOCX, code or text files</Text>
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+                </Pressable>
+            </Modal>
+
+            {/* ── Document Preview Modal ─────────────────────────────────── */}
+            <DocumentPreviewModal
+                visible={Boolean(previewDocAttachment)}
+                attachment={previewDocAttachment}
+                onClose={() => setPreviewDocAttachment(null)}
+            />
+
+            {/* ── Unified WhatsApp Emoji & Sticker Keyboard ───────────────── */}
+            <EmojiStickerKeyboard
+                visible={keyboardState.visible}
+                initialTab={keyboardState.tab}
+                onClose={() => setKeyboardState((s) => ({ ...s, visible: false }))}
+                onEmojiSelect={(emoji) => setMessageText((t) => t + emoji)}
+                onStickerSelect={handleStickerSelect}
+                onBackspace={() => setMessageText((t) => t.slice(0, -1))}
+            />
+
+            {/* ── Settings Menu ─────────────────────────────────────────── */}
+            {friend && (
+                <ChatSettingsMenu
+                    visible={showSettings}
+                    onClose={() => setShowSettings(false)}
+                    userName={friend.userName ?? ''}
+                    friendId={friendId ?? ''}
+                    currentUserId={currentUserId}
+                    onDeleteChat={handleDeleteChat}
+                    onOpenChatMedia={() => setShowMediaPanel(true)}
+                    onUploadWallpaper={handleUploadWallpaper}
+                    onResetWallpaper={handleResetWallpaper}
+                    hasCustomWallpaper={Boolean(wallpaperUri)}
+                />
+            )}
+
+            {/* ── Chat Media Panel ──────────────────────────────────────── */}
+            {friend && (
+                <ChatMediaPanel
+                    visible={showMediaPanel}
+                    onClose={() => setShowMediaPanel(false)}
+                    messages={messages}
+                    friendName={`${friend.firstName} ${friend.lastName}`}
+                    onImagePress={(url) => {
+                        setShowMediaPanel(false);
+                        setLightboxUrl(url);
+                    }}
+                />
+            )}
+
+            {/* ── Forward Message Modal ─────────────────────────────────── */}
+            <ForwardMessageModal
+                visible={Boolean(forwardMessage)}
+                onClose={() => setForwardMessage(null)}
+                messageToForward={forwardMessage}
+                currentUserId={currentUserId}
+                onForwardSuccess={(name) => {
+                    Alert.alert('Forwarded', `Message forwarded to ${name}.`);
+                }}
+            />
+
+            {/* ── Call Modal ────────────────────────────────────────────── */}
+            <VideoCallModal
+                visible={showCallModal}
+                friend={friend}
+                callType={callType}
+                onEnd={handleEndCall}
+            />
+
+            {/* ── Image Lightbox ────────────────────────────────────────── */}
+            {lightboxUrl && (
+                <Modal visible animationType="fade" transparent onRequestClose={() => setLightboxUrl(null)}>
+                    <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' }} onPress={() => setLightboxUrl(null)}>
+                        <Image source={{ uri: lightboxUrl }} style={{ width: '100%', height: '80%' }} resizeMode="contain" />
+                        <TouchableOpacity onPress={() => setLightboxUrl(null)} style={{ position: 'absolute', top: 60, right: 20, padding: 12 }}>
+                            <Icon name="x" size={26} color="#ffffff" />
+                        </TouchableOpacity>
+                    </Pressable>
+                </Modal>
+            )}
+        </SafeAreaView>
+    );
+}

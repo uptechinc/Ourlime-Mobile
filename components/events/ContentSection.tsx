@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,6 @@ import {
   Users,
   MessageCircle,
   Plus,
-  Eye,
 } from 'lucide-react-native';
 import type { Event } from '@/types/eventTypes';
 import EventDetailModal from '@/components/events/eventDetailModal/EventDetailModal';
@@ -26,7 +25,7 @@ const ITEM_MARGIN = 16;
 const ITEM_WIDTH = width - ITEM_MARGIN * 2;
 const IMAGE_HEIGHT = ITEM_WIDTH * 0.6;
 
-interface EventsContentProps {
+type EventsContentProps = {
   events: Event[];
   onSearch: (query: string) => void;
   handleRSVP: (eventId: string) => void;
@@ -36,7 +35,7 @@ interface EventsContentProps {
   registrationCounts: { [key: string]: number };
   onLike: (eventId: string) => void;
   currentUserId?: string;
-}
+};
 
 export default function EventsContentSection({
   events,
@@ -109,12 +108,11 @@ export default function EventsContentSection({
       <FlashList
         data={events}
         keyExtractor={item => item.id!}
-        estimatedItemSize={IMAGE_HEIGHT + 120}
         contentContainerStyle={{ paddingBottom: ITEM_MARGIN }}
         nestedScrollEnabled
         renderItem={({ item: evt }) => (
           <TouchableOpacity
-            onPress={() => setSelectedEvent(evt)}
+            onPress={() => handleViewDetails(evt)}
             activeOpacity={0.8}
             style={{
               width: ITEM_WIDTH,

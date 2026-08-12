@@ -17,8 +17,8 @@ type Users = {
     isAdmin: boolean;
     userTier: number;
     onlineStatus: string;
-    createdAt: any;
-    last_loggedIn: any;
+    createdAt: unknown;
+    last_loggedIn: unknown;
     profileImage?: string;
     profileImageId?: string;
     isAuthenticated?: boolean;
@@ -29,9 +29,9 @@ type Users = {
     _aboutData?: {
         interests: string[];
         skills: string[];
-        education: any[];
-        work: any[];
-        [key: string]: any;
+        education: unknown[];
+        work: unknown[];
+        [key: string]: unknown;
     };
     _authData?: {
         faceID: boolean;

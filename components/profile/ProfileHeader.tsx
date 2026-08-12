@@ -1,8 +1,10 @@
-import { View, Text, Image, TouchableOpacity, Share } from 'react-native';
+import { View, Text, TouchableOpacity, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import type { UserProfile } from '@/lib/services/AuthService';
+import CachedImage from '@/components/ui/CachedImage';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 type ProfileHeaderProps = {
   profile: UserProfile;
@@ -24,8 +26,9 @@ export default function ProfileHeader({
   const router = useRouter();
   const displayName = `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() || profile.userName || 'Ourlime User';
   const handle = `@${profile.userName || 'user'}`;
-  const isAdmin = profile.accountType === 'admin' || (profile as any).isAdmin === true;
-  const isVerified = (profile as any).emailVerified || (profile as any).verificationStatus === 'verified';
+  const isAdmin = profile.accountType === 'admin' || profile.isAdmin === true;
+  const isVerified = profile.emailVerified === true || profile.verificationStatus === 'verified';
+  const coverImage = profile.coverPhoto || profile.coverImage || profile.coverPicture;
 
   const handleShare = async () => {
     try {
@@ -41,11 +44,11 @@ export default function ProfileHeader({
     <View style={{ backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
       {/* ── Cover Photo Banner ── */}
       <View style={{ height: 140, width: '100%', position: 'relative' }}>
-        {(profile as any).coverPhoto || (profile as any).coverImage || (profile as any).coverPicture ? (
-          <Image
-            source={{ uri: (profile as any).coverPhoto || (profile as any).coverImage || (profile as any).coverPicture }}
+        {coverImage ? (
+          <CachedImage
+            uri={coverImage}
+            recyclingKey={`cover-${profile.uid}-${coverImage}`}
             style={{ width: '100%', height: '100%' }}
-            resizeMode="cover"
           />
         ) : (
           <LinearGradient
@@ -79,30 +82,12 @@ export default function ProfileHeader({
             shadowRadius: 8,
             elevation: 4,
           }}>
-            {profile.profilePicture ? (
-              <Image
-                source={{ uri: profile.profilePicture }}
-                style={{ width: '100%', height: '100%', borderRadius: 40 }}
-              />
-            ) : (
-              <View style={{
-                width: '100%',
-                height: '100%',
-                borderRadius: 40,
-                backgroundColor: '#d1fae5',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-                <Text style={{ color: '#059669', fontSize: 32, fontWeight: '800' }}>
-                  {profile.firstName?.charAt(0).toUpperCase() || 'U'}
-                </Text>
-              </View>
-            )}
+            <UserAvatar profileImage={profile.profilePicture} firstName={profile.firstName} size={78} />
           </View>
 
           {/* Action buttons row */}
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity
+            {onEditProfile ? <TouchableOpacity
               onPress={onEditProfile}
               style={{
                 paddingHorizontal: 14,
@@ -113,7 +98,7 @@ export default function ProfileHeader({
               activeOpacity={0.8}
             >
               <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 13 }}>Edit Profile</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> : null}
 
             <TouchableOpacity
               onPress={onCustomize}
@@ -155,7 +140,7 @@ export default function ProfileHeader({
           )}
           {isAdmin && (
             <TouchableOpacity
-              onPress={() => router.push('/admin' as any)}
+              onPress={() => router.push('/admin' as Href)}
               style={{
                 backgroundColor: '#fee2e2',
                 paddingHorizontal: 10,
@@ -175,9 +160,9 @@ export default function ProfileHeader({
         <Text style={{ fontSize: 14, color: '#64748b', marginTop: 2 }}>{handle}</Text>
 
         {/* Bio */}
-        {(profile as any).bio ? (
+        {profile.bio ? (
           <Text style={{ fontSize: 14, color: '#334155', marginTop: 8, lineHeight: 20 }}>
-            {(profile as any).bio}
+            {profile.bio}
           </Text>
         ) : null}
 

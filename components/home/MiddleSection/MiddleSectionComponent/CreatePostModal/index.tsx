@@ -18,8 +18,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import Icon from 'react-native-vector-icons/Feather';
-import { collection, query, where, limit, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebaseConfig';
 import type { UserProfile } from '@/lib/services/AuthService';
 import {
   PostService,
@@ -35,6 +33,8 @@ import LocationPickerModal from './LocationPickerModal';
 import MediaCropModal from './MediaCropModal';
 import { RelationshipService, type RelationshipUser } from '@/lib/services/RelationshipService';
 import { dispatchMentionNotifications } from '@/lib/services/dispatchMentionNotifications';
+import { EventService } from '@/lib/services/EventService';
+import { SearchService } from '@/lib/services/SearchService';
 
 type DraftPollOption = { id: string; text: string };
 type TextSelection = { start: number; end: number };
@@ -44,11 +44,15 @@ type CreatePostModalProps = {
   setTogglePostForm: Dispatch<SetStateAction<boolean>>;
   userProfile: UserProfile;
   onCreatePost: (post: PostItem) => void;
+  communityId?: string;
+  communityName?: string;
 };
 
 const postService = PostService.getInstance();
 const mediaService = PostMediaService.getInstance();
 const relationshipService = RelationshipService.getInstance();
+const eventService = EventService.getInstance();
+const searchService = SearchService.getInstance();
 const emojis = ['😀', '😂', '😍', '🥳', '😎', '🤔', '😢', '😡', '👍', '👏', '🙏', '❤️', '🔥', '🎉', '🇹🇹', '🌴', '⚽', '🎵', '🍋', '✨'];
 const pollDurations: PollDurationChoice[] = [
   { label: '5m', hours: 5 / 60 },
@@ -64,14 +68,14 @@ const pollDurations: PollDurationChoice[] = [
 
 const normalizeHashtag = (value: string): string => value.trim().replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '').toLowerCase();
 
-export default function CreatePostModal({ setTogglePostForm, userProfile, onCreatePost }: CreatePostModalProps) {
+export default function CreatePostModal({ setTogglePostForm, userProfile, onCreatePost, communityId, communityName }: CreatePostModalProps) {
   const captionInputRef = useRef<TextInput>(null);
   const uploadControllerRef = useRef<AbortController | undefined>(undefined);
   const [postType, setPostType] = useState<PostType>('regular');
   const [visibility, setVisibility] = useState<PostVisibility>('public');
   const [caption, setCaption] = useState('');
   const [captionSelection, setCaptionSelection] = useState<TextSelection>({ start: 0, end: 0 });
-  const [description, setDescription] = useState('');
+  const [description] = useState('');
   const [media, setMedia] = useState<PostMediaDraft[]>([]);
   const [cropQueue, setCropQueue] = useState<PendingImageCrop[]>([]);
   const [hashtags, setHashtags] = useState<string[]>([]);
@@ -133,22 +137,14 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
     }
     const timer = setTimeout(async () => {
       try {
-        const usersRef = collection(db, 'users');
-        const q = query(
-          usersRef,
-          where('userName', '>=', activeMentionQuery),
-          where('userName', '<=', activeMentionQuery + '\uf8ff'),
-          limit(10)
-        );
-        const snap = await getDocs(q);
-        const found: RelationshipUser[] = snap.docs.map((docSnap) => {
-          const d = docSnap.data();
+        const profiles = await searchService.searchUsers(activeMentionQuery, 10);
+        const found: RelationshipUser[] = profiles.map((profile) => {
           return {
-            id: docSnap.id,
-            userName: d.userName || 'user',
-            firstName: d.firstName || '',
-            lastName: d.lastName || '',
-            profileImage: d.profileImage || undefined,
+            id: profile.uid,
+            userName: profile.userName || 'user',
+            firstName: profile.firstName || '',
+            lastName: profile.lastName || '',
+            profileImage: profile.profilePicture || undefined,
             isFollowing: false,
             friendshipStatus: 'none',
           };
@@ -165,7 +161,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
           }
         }
         setSearchedUsers(merged.slice(0, 10));
-      } catch (_) {}
+      } catch {}
     }, 200);
     return () => clearTimeout(timer);
   }, [activeMentionQuery, friends]);
@@ -317,9 +313,8 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
     const controller = new AbortController();
     uploadControllerRef.current = controller;
     try {
-      let createdEventId: string | undefined;
       if (postType === 'event') {
-        const eventDoc = await addDoc(collection(db, 'events'), {
+        await eventService.createEvent({
           title: eventTitle.trim() || caption.trim(),
           description: caption.trim() || description.trim(),
           summary: caption.trim(),
@@ -331,7 +326,6 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
           recurrence: eventRecurrence,
           creatorId: userProfile.uid,
           userId: userProfile.uid,
-          createdAt: serverTimestamp(),
           user: {
             id: userProfile.uid,
             firstName: userProfile.firstName,
@@ -340,7 +334,6 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
             profileImage: userProfile.profilePicture ?? null,
           },
         });
-        createdEventId = eventDoc.id;
       }
 
       const createdPost = await postService.createPost({
@@ -365,6 +358,8 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
         location: postType === 'regular' || postType === 'event' ? location : undefined,
         signal: controller.signal,
         onUploadProgress: (progress) => setUploadProgress(Math.min(100, Math.max(0, Math.round(progress.percentage)))),
+        communityId,
+        communityName,
       });
       onCreatePost(createdPost);
       dispatchMentionNotifications({
@@ -426,7 +421,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
             </View>
 
             <View style={{ flexDirection: 'row', backgroundColor: '#f3f4f6', borderRadius: 14, padding: 4, marginBottom: 16 }}>
-              {(['regular', 'poll', 'event'] as const).map((option) => (
+              {(communityId ? (['regular'] as const) : (['regular', 'poll', 'event'] as const)).map((option) => (
                 <TouchableOpacity key={option} onPress={() => setPostType(option)} style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 11, backgroundColor: postType === option ? '#ffffff' : 'transparent' }}>
                   <Text style={{ color: postType === option ? '#10b981' : '#6b7280', fontWeight: '700', textTransform: 'capitalize' }}>
                     {option === 'regular' ? 'Post' : option === 'poll' ? 'Poll' : '📅 Event'}

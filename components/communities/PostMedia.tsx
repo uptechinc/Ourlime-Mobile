@@ -1,30 +1,18 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   View,
   Text,
   Image,
   TouchableOpacity,
   ScrollView,
-  StyleSheet,
-  Dimensions,
-  // Platform
 } from "react-native";
-import { CommunityVariantDetailsSummary } from "@/types/communityTypes";
-// If you need video support, install and import from 'react-native-video'
-// e.g. import Video from 'react-native-video';
+import type { CommunityVariantDetailsSummary } from "@/types/communityTypes";
 
-// interface CommunityVariantDetailsSummary {
-//   type: "image" | "video";
-//   typeUrl: string;
-// }
-
-interface PostMediaProps {
+type PostMediaProps = {
   media: CommunityVariantDetailsSummary[];
-}
+};
 
-const { width } = Dimensions.get("window");
-
-const PostMedia: React.FC<PostMediaProps> = ({ media }) => {
+const PostMedia = ({ media }: PostMediaProps) => {
   const [activeIndex, setActiveIndex] = useState(0);
 
   // Handle empty media array

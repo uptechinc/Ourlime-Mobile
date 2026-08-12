@@ -3,12 +3,12 @@
 import { db } from '@/lib/firebaseConfig';
 import { doc, updateDoc, query, collection, where, getDocs, Timestamp } from 'firebase/firestore';
 
-interface UpdateBasicInfoData {
+type UpdateBasicInfoData = {
     firstName: string;
     lastName: string;
     userName: string;
     country: string;
-}
+};
 
 export class BasicInformationService {
     private static instance: BasicInformationService;

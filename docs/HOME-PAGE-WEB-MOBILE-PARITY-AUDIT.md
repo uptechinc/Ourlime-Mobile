@@ -1,26 +1,23 @@
 # Home Page Web-to-Mobile Parity Audit
 
-Updated: 2026-08-06
+Updated: 2026-08-12
 
 Scope: the live rendered Home page rooted at `Ourlime-Web/app/page.tsx` compared with the live Expo Router Home screen rooted at `Ourlime-Mobile/app/(tabs)/index.tsx`. Dormant, commented, or unrendered legacy components are not counted as current web features.
+
+Corrective note: this document was source-reconciled after the full parity re-audit in `docs/WEB-MOBILE-FULL-PARITY-REAUDIT.md`. No automated or runtime validation was run.
 
 ## Status legend
 
 - **DONE** - present in the app with equivalent behavior and live data.
 - **ADAPTED** - present through a mobile-native placement or interaction.
 - **PARTIAL** - some behavior exists, but important web behavior is missing.
+- **PROTOTYPE** - visible behavior is hard-coded, local-only, simulated, or not connected to its intended mutation.
 - **TODO** - absent or still backed by placeholder behavior.
 - **DESKTOP ONLY** - visual enhancement that should not be copied literally to native.
 
 ## Summary
 
-The app's center feed is substantially implemented: canonical posts, filters, post creation, media, polls, events, reactions, comments, replies, sharing, moderation, pagination, refresh, and empty/error states are present. The largest remaining Home-page parity gaps are outside the feed cards:
-
-1. Header search, notifications, and the full account menu.
-2. Friends/community feed scopes, Sound and Events filters.
-3. Games, weekly activity, promoted content, and suggested users.
-4. Profile/mention/hashtag/location navigation from cards and comments.
-5. Poll media rendering on the app after a poll image is uploaded.
+The app's center feed is substantially implemented, but it is not 100% design or functional parity. Page availability, unified role rendering, suggested-user friend requests, owner visibility, remove-repost, shared regular/poll card containers, link previews, and native location directions are now implemented. The largest remaining Home gaps are selected-media/fullscreen behavior, hashtag navigation, inline YouTube playback, comment report/mention depth, and finer typography/content-order matching.
 
 ## A. Global Home shell and header
 
@@ -28,42 +25,42 @@ The app's center feed is substantially implemented: canonical posts, filters, po
 |---|---|---|---|---|
 | Ourlime logo | Returns to Home | Logo in fixed native header | DONE | Keep static and compact. |
 | Sticky desktop header | Logo, search, notifications, profile | Native safe-area header | ADAPTED | Correct native pattern. |
-| User search field | Debounced live user search | Search bottom tab exists, but its results are placeholder data | TODO | Make Search tab query the same user endpoint. |
-| Search result row | Avatar, name, username | No live result rows | TODO | Use `UserAvatar` and a native result list. |
-| Search result profile navigation | Opens another user's profile | No other-user profile route | TODO | Add a native `profile/[username]` route. |
+| User search field | Debounced live user search | `SearchService`-backed Search/Discover | DONE | Search is a hidden typed route rather than a visible bottom tab. |
+| Search result row | Avatar, name, username | Live `UserAvatar` rows | DONE | Keep native list treatment. |
+| Search result profile navigation | Opens another user's profile | Typed `/profile/[username]` route | DONE | Keep. |
 | Search Add Friend | Sends request and reflects Pending/Friends | Only available from post menus and likes modal | PARTIAL | Add to Search results. |
 | Search Follow/Unfollow | Updates relationship state | Only available from post menus | PARTIAL | Add to Search results. |
 | Search clear button | Clears query/results | Search tab has a clear button | DONE | Replace placeholder data without changing UX. |
-| Notification bell and unread badge | Opens notifications and shows count | No Home notification entry | TODO | Add bell to header with badge. |
-| Mark all notifications read | Bulk update | Missing | TODO | Put in native notification sheet/screen. |
-| Notification sort | Unread first / newest first | Missing | TODO | Use compact sheet controls. |
-| Notification type filter | Filters notification categories | Missing | TODO | Use horizontally scrollable chips. |
-| Select all notifications | Starts bulk selection | Missing | TODO | Use long-press selection mode. |
-| Bulk mark read/unread/delete | Acts on selected rows | Missing | TODO | Use contextual header actions. |
-| Notification friend request Accept/Decline | Responds inline | Missing | TODO | Preserve inline buttons in notification row. |
-| Show/hide read notifications | Toggles read history | Missing | TODO | Native footer action. |
+| Notification bell and unread badge | Opens notifications and shows count | Home header opens live modal with unread state | DONE | Keep. |
+| Mark all notifications read | Bulk update | Implemented | DONE | Keep. |
+| Notification sort | Unread first / newest first | Implemented | DONE | Keep. |
+| Notification type filter | Filters notification categories | Implemented chips | DONE | Keep. |
+| Select all notifications | Starts bulk selection | Implemented | DONE | Keep. |
+| Bulk mark read/unread/delete | Acts on selected rows | Implemented | DONE | Keep. |
+| Notification friend request Accept/Decline | Responds inline | Implemented | DONE | Keep. |
+| Show/hide read notifications | Toggles read history | Implemented | DONE | Keep. |
 | Notification pagination | Infinite/load-more | Missing | TODO | Use `FlatList.onEndReached`. |
 | Profile avatar menu trigger | Opens account menu | Profile tab plus hamburger drawer | ADAPTED | The placement is correct, but content is incomplete. |
 | Account identity summary | Name, username, friend/post counts | Profile screen and drawer avatar | PARTIAL | Add counts and correct `UserAvatar` resolution in drawer. |
 | Verification state/action | Verify, pending, verified/student verified | Not accessible from Home | TODO | Add account status row in drawer/profile menu. |
 | View Profile | Opens own profile | Bottom Profile tab and drawer item | DONE | Keep. |
-| Settings | Opens profile settings | Missing from Home drawer | TODO | Add Settings drawer row and route. |
-| Wallet | Opens wallet | Missing | TODO | Add drawer row when route is available. |
-| Saved Items | Opens saved content | Missing | TODO | Add route and drawer row. |
-| Create Ad | Opens ads flow | Missing | TODO | Add under a secondary Services section. |
-| Manage Ads | Opens ads management | Missing | TODO | Add under Services, not primary navigation. |
-| Help & Support | Opens help | Missing | TODO | Add drawer footer row. |
-| Logout | Signs out | Not exposed from Home drawer | TODO | Add destructive footer action with confirmation. |
+| Settings | Opens profile settings | Home drawer item and route | DONE | Keep. |
+| Wallet | Opens wallet | Coming Soon route/drawer row | DONE | Keep status badge until implemented. |
+| Saved Items | Opens saved content | Coming Soon route/drawer row | DONE | Keep status badge until implemented. |
+| Create Ad | Opens ads flow | Valid Coming Soon child route | DONE | Keep protected until implemented. |
+| Manage Ads | Opens ads management | Valid Coming Soon child route | DONE | Keep protected until implemented. |
+| Help & Support | Opens help | Coming Soon route/drawer row | DONE | Keep status badge until implemented. |
+| Logout | Signs out | Home drawer footer action | DONE | Add project modal confirmation rather than immediate logout. |
 | Desktop nav: Home | Route navigation | Home bottom tab | ADAPTED | Keep bottom tab. |
-| Desktop nav: Limes | Route navigation | Limes bottom tab | ADAPTED | Keep bottom tab. |
-| Desktop nav: E-Learning | Route navigation | Drawer item | ADAPTED | Keep in drawer. |
+| Desktop nav: Limes | Route navigation | Bottom tab follows canonical role/page access | DONE | Runtime role/status QA remains manual. |
+| Desktop nav: E-Learning | Route navigation | Drawer item despite web `coming_soon` default and P0 exclusion | TODO | Hide until implemented or expose only through canonical page-status policy. |
 | Desktop nav: Blogs | Route navigation | Drawer item | ADAPTED | Keep in drawer. |
 | Desktop nav: Events | Route navigation | Drawer item | ADAPTED | Also expose from composer quick actions. |
 | Desktop nav: Jobs | Route navigation | Drawer item | ADAPTED | Keep. |
 | Desktop nav: Communities | Route navigation | Drawer item | ADAPTED | Keep. |
 | Desktop nav: Market | Route navigation | Drawer item | ADAPTED | Keep. |
-| Desktop nav: E-Projects | Route navigation | Missing | TODO | Add drawer item and route. |
-| Page availability/developer badges | Shows disabled/preview route state | Route guard service exists, but Home navigation has no status badges | PARTIAL | Disable unavailable drawer rows and show a small status label. |
+| Desktop nav: E-Projects | Route navigation | Coming Soon route/drawer row | DONE | Keep protected until implemented. |
+| Page availability/developer badges | Shows disabled/preview route state | Registry subscription, prefix policy, overlays, and badges | DONE | Runtime role/status QA remains manual. |
 | Signed-out Log in / Sign up | Header actions | App routes users through auth screens | ADAPTED | Home is authenticated; no duplicate buttons needed. |
 
 ## B. Left Home rail
@@ -76,10 +73,10 @@ The app's center feed is substantially implemented: canonical posts, filters, po
 | See All Games | Opens games page | Missing | TODO | Add carousel header action. |
 | Individual game card | Thumbnail, type, plays, launch | Missing | TODO | Use live `/api/home/LeftSection/games`; no mock cards. |
 | Feed scope: Home | All eligible feed posts | App All filter | DONE | Keep as default. |
-| Feed scope: Friends | Only friend posts | No equivalent | TODO | Add `For You / Friends` segmented control above media filters. |
-| Feed scope: Communities | Community feed/coming-soon state | No equivalent | TODO | Add only when canonical community-feed query is ready. |
-| Activity This Week | Likes received, comments, posts, friends | Missing | TODO | Add compact expandable insight card in drawer or Profile, not in scrolling feed by default. |
-| Activity loading/empty states | Skeleton or engagement prompt | Missing | TODO | Implement with live endpoint and native skeleton. |
+| Feed scope: Friends | Only friend posts | Typed Friends source and server relationship filter | DONE | Deployed API QA remains. |
+| Feed scope: Communities | Posts from joined communities | Typed Communities source and membership query | DONE | Deployed API QA remains. |
+| Activity This Week | Likes received, comments, posts, friends | Interleaved `ActivityCard` | ADAPTED | Keep only if the interleaved placement performs well. |
+| Activity loading/empty states | Skeleton or engagement prompt | Live service with loading/error/empty UI | DONE | Keep. |
 
 ## C. Right Home rail
 
@@ -91,10 +88,10 @@ The app's center feed is substantially implemented: canonical posts, filters, po
 | Promotion page dots | Shows page position | Missing | TODO | Add to native carousel. |
 | Promotion card | Image, category, title, description, metric | Missing | TODO | Use canonical promotions API. |
 | Promotion Apply / Join | Routes to job/community | Missing | TODO | Whole card and CTA should navigate. |
-| Suggested Users | Live relationship suggestions | Not shown on Home; partial actions exist in likes modal | PARTIAL | Add a horizontal `People you may know` module or put it in Search/Discover with a Home preview. |
-| Add Friend suggestion | Sends request | Available in likes/post options | PARTIAL | Add to suggestion cards. |
+| Suggested Users | Live relationship suggestions | Canonical relationship suggestion API | DONE | Keep recommendation reason and relationship state server-owned. |
+| Add Friend suggestion | Sends request | Real request mutation with loading/error state | DONE | Accepted state reconciles with refreshed suggestions. |
 | Cancel Friend Request | Cancels pending request | Missing from app suggestion flows | TODO | Pending button should support cancel. |
-| Suggested user reason | Explains recommendation | Missing | TODO | Show concise reason under username. |
+| Suggested user reason | Explains recommendation | Canonical reason rendered | DONE | Keep concise in the native card. |
 
 ## D. Feed filters and feed states
 
@@ -103,20 +100,22 @@ The app's center feed is substantially implemented: canonical posts, filters, po
 | All filter | All | DONE | Canonical server filter. |
 | Photos filter | Photos | DONE | Canonical server filter. |
 | Videos filter | Videos | DONE | Canonical server filter. |
-| Sound filter | Missing | TODO | Add only after audio posts have an intentional card/player and composer input. |
+| Sound filter | Sound chip and server filter | PARTIAL | Card/player and composer audio intent still need parity review. |
 | Polls filter | Polls | DONE | Canonical server filter. |
-| Events filter | Missing | TODO | Add Events chip using server `event` filter. |
+| Events filter | Events chip and server filter | DONE | Keep. |
 | Horizontal filter overflow | Horizontal native chips | DONE | Correct mobile pattern. |
-| Initial loading skeletons | App uses a spinner | PARTIAL | Replace with two native post skeleton cards to reduce layout shift. |
+| Initial loading skeletons | Two native post skeleton cards | DONE | Keep. |
 | Load-more indicator | Native spinner | DONE | Cursor pagination is implemented. |
 | End-of-feed state | Native `That's a wrap` text | DONE | Keep compact. |
 | Empty Home feed | Native empty state | DONE | Correct copy and no mock fallback. |
 | Empty filtered feed | Native filter-specific state | DONE | Keep. |
 | Friends empty state | Missing with scope | TODO | Add with Friends feed scope. |
 | Community coming-soon state | Missing with scope | TODO | Tie to page availability, not hard-coded copy. |
-| Pull to refresh | Native `RefreshControl` | DONE | Mobile-only improvement. |
+| Pull to refresh | Native `RefreshControl` | DONE | Forces authoritative reconciliation while retaining saved content on failure. |
 | Automatic load more | Near-bottom scroll detection | DONE | Prefer `FlatList` during performance pass. |
-| Request cancellation/dedupe/cache | Implemented | DONE | Keep service-owned query behavior. |
+| Request cancellation/dedupe/cache | SQLite plus shared SWR resources | DONE | User/scope/filter/author snapshots hydrate before network work; keyed requests deduplicate. |
+| Background head reconciliation | Non-jumping New Posts pill | DONE | New head posts remain buffered until the reader explicitly reveals them. |
+| Feed scroll restoration | Persisted per query | DONE | Revisiting a scope/filter restores its prior bounded page and offset. |
 | Retry on feed failure | Native error card and Retry | DONE | Keep diagnostic hint development-only. |
 
 ## E. Home composer
@@ -161,20 +160,20 @@ The app's center feed is substantially implemented: canonical posts, filters, po
 | Web card feature/control | App counterpart | Status | Work required |
 |---|---|---|---|
 | Author avatar | `UserAvatar` | DONE | Default/custom avatar parity fixed. |
-| Tap avatar/name to profile | Not interactive | TODO | Add other-user profile route and wrap avatar/name. |
+| Tap avatar/name to profile | Typed `profile/[username]` navigation | DONE | Public profile enforces privacy/block state. |
 | Name and username | Rendered | DONE | Keep. |
 | Relative timestamp | Rendered | DONE | Keep. |
 | Visibility icon | Rendered | DONE | Keep. |
 | Verified badge | Rendered | DONE | Keep. |
 | Student badge | Rendered | DONE | Keep. |
 | Admin badge | Rendered | DONE | Keep. |
-| Repost attribution | Rendered | DONE | Make attribution/avatar tappable. |
+| Repost attribution | Compact original-author attribution | PARTIAL | Match web repeater identity/count semantics and keep it tappable. |
 | Caption and details | Rendered | DONE | Keep native typography. |
-| Mention links | Styled but not tappable in comments; post text is plain | PARTIAL | Parse mentions into tappable profile links. |
+| Mention links | Regular post `MentionText` navigates to profiles | DONE | Reuse it in polls and comments. |
 | Friend-reference links | Not interactive | TODO | Treat as profile mentions. |
 | Hashtag links | Styled but not tappable | PARTIAL | Tap should open Search filtered by hashtag. |
 | Structured location label | Rendered | DONE | Keep concise card label. |
-| Location map/address detail | No post map/detail action | TODO | Tap location to open a compact map sheet or native maps app. |
+| Location map/address detail | Structured map/detail plus native directions | DONE | Missing coordinates show truthful place details without a fabricated map. |
 | Image gallery | Horizontal paging/count | DONE | Keep. |
 | Video player controls | Native controls | DONE | Only active gallery video auto-plays. |
 | Full-screen media view | Missing | TODO | Add tap-to-view gallery with pinch zoom and video fullscreen. |
@@ -184,6 +183,7 @@ The app's center feed is substantially implemented: canonical posts, filters, po
 | Report Post | Full-screen report flow | DONE | Categories/reasons/details/evidence. |
 | Block User | Confirm and remove author from feed | DONE | Keep. |
 | Delete own post | Confirm and cascade delete | DONE | Server cascade hardened. |
+| Change own post visibility | Service-backed native options | DONE | Community visibility remains governed by community permissions. |
 | Event schedule | Date/end date | DONE | Keep. |
 | Event category/recurrence | Rendered chips | DONE | Keep. |
 | Event attendee count | Rendered | DONE | Keep. |
@@ -194,7 +194,8 @@ The app's center feed is substantially implemented: canonical posts, filters, po
 | Likes avatars summary | Count only on card; avatars inside modal | ADAPTED | Compact count is acceptable for narrow screens. |
 | Comment | Opens full-screen comments | DONE | Correct mobile pattern. |
 | Share | Native share sheet and canonical URL | DONE | Keep. |
-| Repost | One-time action with state | DONE | Keep. |
+| Repost | Repost/remove-repost toggle with state | DONE | Keep optimistic rollback on failure. |
+| YouTube URL preview | Thumbnail/title card opens the native URL | ADAPTED | Inline playback remains a native follow-up. |
 
 ## G. Poll cards
 
@@ -202,7 +203,7 @@ The app's center feed is substantially implemented: canonical posts, filters, po
 |---|---|---|---|
 | Author identity/badges | Rendered | DONE | Make author tappable with profile route. |
 | Poll question/details | Rendered | DONE | Keep. |
-| Poll image | Uploaded by composer but not rendered in app card | TODO | Render shared media gallery above timer/options. |
+| Poll image | Rendered through shared media gallery | DONE | Keep. |
 | Poll timer | Remaining/ended | DONE | Keep. |
 | Option count | Web shows count near timer | PARTIAL | App options are visible but lacks explicit option-count label. Low priority. |
 | Vote option | Native progress row | DONE | Server-authoritative with rollback. |
@@ -226,13 +227,14 @@ The app's center feed is substantially implemented: canonical posts, filters, po
 | Paginated comments | Load 20 more | DONE | Keep. |
 | Empty state | Start the conversation | DONE | Keep. |
 | Retry state | Native Retry | DONE | Keep. |
-| Comment author avatar/name | Rendered | DONE | Make author tappable. |
-| Comment mentions | Styled | PARTIAL | Make tappable. |
+| Comment author avatar/name | Rendered but not navigational | PARTIAL | Tap avatar/name to profile. |
+| Comment mentions | Plain comment text | TODO | Reuse tappable `MentionText`. |
 | Friend mention suggestions | Web friend textarea | Missing | TODO | Add suggestions to comment, reply, and edit composers. |
 | Like comment | Optimistic/rollback | DONE | Keep. |
 | Reply to comment | Implemented | DONE | Keep. |
 | Reply to reply | Parent reply target | DONE | Keep. |
 | Edit own comment/reply | Implemented | DONE | Keep. |
+| Report comment/reply | Missing | TODO | Match the web moderation entry points. |
 | Edited label/timestamp | Implemented | DONE | Keep. |
 | View/hide replies | Implemented | DONE | Keep. |
 | Paginated replies | Load 20 more | DONE | Keep. |
@@ -256,11 +258,11 @@ The app's center feed is substantially implemented: canonical posts, filters, po
 The live app currently contains these Home-facing surfaces:
 
 1. Safe-area Ourlime header with hamburger drawer.
-2. Drawer routes for Communities, Events, Jobs, Market, Blogs, E-Learning, Chat, and Profile.
-3. Bottom tabs for Home, Search, Limes, Discover, and Profile.
+2. Drawer routes for Communities, Events, Jobs, Market, Blogs, E-Learning, Chat, Profile, and Settings. Availability settings are not enforced, and Home never includes Admin because it omits the role input.
+3. Bottom tabs for Feed, Discover, developer-only Limes, Chat, and Profile; the Limes role restriction is a parity defect. Search remains a typed non-tab route.
 4. Current-user avatar and create-post prompt card.
 5. Gallery and Feeling quick actions; both currently open the same composer.
-6. All, Photos, Videos, and Polls server-backed filter chips.
+6. All, Photos, Videos, Sound, Polls, and Events server-backed filter chips plus Home/Friends/Communities feed scopes.
 7. Pull-to-refresh, cursor load-more, loading, retry, empty, filtered-empty, and end-of-feed states.
 8. Regular, repost, poll, and event post rendering.
 9. Native media gallery/video controls.
@@ -286,15 +288,15 @@ The live app currently contains these Home-facing surfaces:
 ### P1 - major missing Home sections
 
 - [x] Rebuild Discover screen to 100% match web Mobile.tsx (Search bar, Suggested Friends carousel, Featured Communities carousel, Featured Events list, Featured Jobs list).
-- [x] Add promoted content module with native swipe pagination.
+- [x] Hide promoted/Ads content until the canonical mobile Ads contract is implemented; no simulated promoted cards are injected into Home.
 - [x] Add suggested-users module with Add/Cancel Friend Request.
-- [x] Complete drawer account actions: settings, saved items, profile, logout.
+- [x] Complete working drawer account actions: settings, profile, and logout. Saved Items remains hidden until implemented.
 
 ### P2 - polish and lower-priority parity
 
-- [ ] Add weekly activity in an expandable drawer/profile card.
-- [ ] Replace feed spinner with post skeleton cards.
-- [ ] Move feed rendering from `ScrollView` to `FlatList` for virtualization.
+- [x] Add service-backed weekly activity as an expandable native feed card.
+- [x] Replace feed spinner with post skeleton cards.
+- [x] Move feed rendering to `FlatList` for virtualization.
 - [ ] Add page-availability status to drawer rows.
 - [ ] Decide whether server-backed achievements belong on Home.
 - [ ] Add native haptics for like, vote, repost, successful post, and RSVP.

@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "ourlime",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
@@ -51,7 +51,8 @@
           "cameraPermission": "Ourlime requires camera access for video calls.",
           "microphonePermission": "Ourlime requires microphone access for voice and video calls."
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { 
     View, 
     Text, 
@@ -17,7 +17,7 @@ import { useProfileStore } from '@/src/store/useProfileStore';
 
 type RecurringType = 'weekly' | 'monthly';
 
-interface Schedule {
+type Schedule = {
     id: string;
     subject: string;
     startTime: string;
@@ -33,9 +33,9 @@ interface Schedule {
         email: boolean;
         whatsapp: boolean;
     };
-}
+};
 
-interface FormData {
+type FormData = {
     subject: string;
     startTime: string;
     endTime: string;
@@ -49,14 +49,14 @@ interface FormData {
     };
     showStartTimeDropdown: boolean;
     showEndTimeDropdown: boolean;
-}
+};
 
-interface Template {
+type Template = {
     name: string;
     schedules: Omit<Schedule, 'id' | 'status'>[];
-}
+};
 
-export default function Schedule() {
+export default function Schedules() {
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [showAddForm, setShowAddForm] = useState(false);
     const [showEditForm, setShowEditForm] = useState(false);
@@ -690,7 +690,11 @@ export default function Schedule() {
                 animationType="slide"
                 presentationStyle="pageSheet"
                 onRequestClose={() => {
-                    showAddForm ? setShowAddForm(false) : setShowEditForm(false);
+                    if (showAddForm) {
+                        setShowAddForm(false);
+                    } else {
+                        setShowEditForm(false);
+                    }
                     resetForm();
                 }}
             >
@@ -710,7 +714,11 @@ export default function Schedule() {
                         </Text>
                         <TouchableOpacity
                             onPress={() => {
-                                showAddForm ? setShowAddForm(false) : setShowEditForm(false);
+                                if (showAddForm) {
+                                    setShowAddForm(false);
+                                } else {
+                                    setShowEditForm(false);
+                                }
                                 resetForm();
                             }}
                         >

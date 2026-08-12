@@ -78,7 +78,11 @@ export default function CommentsModal({ post, userId, onClose, onPostUpdate }: C
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadComments = useCallback(async (cursor?: number | null, append = false) => {
-    append ? setLoadingMore(true) : setLoading(true);
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     setErrorMessage(null);
     try {
       const page = await commentService.fetchComments(post.id, cursor);

@@ -1,4 +1,4 @@
-import React, { SetStateAction, useState } from 'react';
+import { type Dispatch, type SetStateAction, useState } from 'react';
 import {
 	View,
 	Text,
@@ -20,8 +20,8 @@ export default function AddStory({
 	setAddStory,
 	setStories,
 }: {
-	setAddStory: React.Dispatch<SetStateAction<boolean>>;
-	setStories: React.Dispatch<SetStateAction<Stories[]>>;
+	setAddStory: Dispatch<SetStateAction<boolean>>;
+	setStories: Dispatch<SetStateAction<Stories[]>>;
 }) {
 	const [fileSelected, setFileSelected] = useState<boolean>(false);
 	const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -37,7 +37,7 @@ export default function AddStory({
 				setSelectedFile(result.assets[0].uri);
 				setFileSelected(true);
 			}
-		} catch (err) {
+		} catch {
 			Alert.alert('Error', 'Failed to pick document');
 		}
 	};
@@ -61,7 +61,7 @@ export default function AddStory({
 	};
 
 	return (
-		<SafeAreaView style={{ flex: 1, backgroundColor: '#141414' }}>
+		<SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#141414' }}>
 			<View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, gap: 8 }}>
 				<TouchableOpacity
 					onPress={() => setAddStory((prev: boolean) => !prev)}

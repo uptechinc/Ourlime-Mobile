@@ -15,17 +15,21 @@ import {
   updateDoc,
   where,
   writeBatch,
+  type QueryConstraint,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { AvatarService } from './AvatarService';
 import { ApiService } from './ApiService';
 import { PostMediaService, type MediaUploadProgress } from './PostMediaService';
+import type { PageResult } from '@/lib/types/serviceResults';
+import { buildFeedQuery } from '@/lib/posts/FeedQuery';
 
 export type PostMediaType = 'image' | 'video';
 export type PostType = 'regular' | 'poll' | 'event';
 export type PostVisibility = 'public' | 'friends' | 'friends_followers' | 'private';
 export type FeedFilter = 'all' | 'photo' | 'video' | 'audio' | 'poll' | 'event';
+export type FeedScope = 'home' | 'friends' | 'communities';
 
 export type PostMediaDraft = {
   uri: string;
@@ -49,7 +53,15 @@ export type PostUser = {
   accountType?: string;
 };
 export type PollOption = { id: string; text: string; votes: number };
-export type PostLocation = { name: string; address?: string; lat?: number; lng?: number };
+export type PostLocation = {
+  name: string;
+  address?: string;
+  lat?: number;
+  lng?: number;
+  latitude?: number;
+  longitude?: number;
+  coordinates?: { latitude?: number; longitude?: number };
+};
 export type PostStats = { likes: number; comments: number; shares: number };
 export type PostRelationshipStatus = {
   isFollowing: boolean;
@@ -96,11 +108,7 @@ export type PostItem = {
   category?: string;
 };
 
-export type FeedPage = {
-  posts: PostItem[];
-  nextCursor: string | null;
-  hasMore: boolean;
-};
+export type FeedPage = Omit<PageResult<PostItem>, 'items'> & { posts: PostItem[] };
 export type PostLikesPage = { users: PostUser[]; nextCursor: string | null; hasMore: boolean };
 
 export type CreatePostInput = {
@@ -119,6 +127,8 @@ export type CreatePostInput = {
   location?: PostLocation;
   signal?: AbortSignal;
   onUploadProgress?: (progress: MediaUploadProgress) => void;
+  communityId?: string;
+  communityName?: string;
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -172,22 +182,30 @@ export class PostService {
     return (await this.fetchFeedPage({ limit: fetchLimit })).posts;
   }
 
+  public async fetchCommunityPosts(communityId: string): Promise<PostItem[]> {
+    const response = await this.apiService.request<{ data?: unknown[]; error?: string }>(
+      `/api/communities/fetch?type=posts&id=${encodeURIComponent(communityId)}`,
+      { authenticated: true }
+    );
+    if (!response.data) throw new Error(response.error || 'Failed to load community posts');
+    return response.data.flatMap((record): PostItem[] => {
+      const mapped = this.mapApiPost(record);
+      return mapped ? [{ ...mapped, communityId }] : [];
+    });
+  }
+
   public async fetchFeedPage(options: {
     limit?: number;
     cursor?: string | null;
     filter?: FeedFilter;
+    scope?: FeedScope;
     authorId?: string;
     signal?: AbortSignal;
   } = {}): Promise<FeedPage> {
-    const search = new URLSearchParams({
-      pageSize: String(options.limit ?? 20),
-      filter: options.filter ?? 'all',
-    });
-    if (options.cursor) search.set('cursor', options.cursor);
-    if (options.authorId) search.set('authorId', options.authorId);
+    const search = buildFeedQuery(options);
     try {
       const response = await this.apiService.request<FeedApiResponse>(
-        `/api/home/MiddleSection/Post?${search.toString()}`,
+        `/api/home/MiddleSection/Post?${search}`,
         { authenticated: Boolean(auth.currentUser), signal: options.signal }
       );
       if (!response.success) throw new Error(response.error || 'Failed to load posts');
@@ -209,10 +227,11 @@ export class PostService {
       if (options.signal?.aborted) throw error;
       this.logger.warn('PostService', 'feed-api:fallback-to-firestore', { error: String(error) });
       try {
+        if (options.scope && options.scope !== 'home') throw error;
         return await this.fetchFeedPageFromFirestore(options);
       } catch (fsError: unknown) {
         this.logger.error('PostService', 'feed-firestore:error', fsError);
-        return { posts: [], nextCursor: null, hasMore: false };
+        throw fsError instanceof Error ? fsError : new Error('Unable to load the feed.');
       }
     }
   }
@@ -225,7 +244,7 @@ export class PostService {
   }): Promise<FeedPage> {
     const fetchLimit = options.limit ?? 20;
     const postsRef = collection(db, 'posts');
-    const queryConstraints: any[] = [orderBy('createdAt', 'desc'), limit(fetchLimit)];
+    const queryConstraints: QueryConstraint[] = [orderBy('createdAt', 'desc'), limit(fetchLimit)];
     if (options.authorId) {
       queryConstraints.unshift(where('userId', '==', options.authorId));
     }
@@ -268,8 +287,8 @@ export class PostService {
         userName: readString(data.userName, 'user'),
       };
       const mediaList = Array.isArray(data.media)
-        ? data.media.flatMap((item: any, index: number): PostMedia[] => {
-            if (typeof item === 'object' && item !== null) {
+        ? data.media.flatMap((item: unknown, index: number): PostMedia[] => {
+            if (isRecord(item)) {
               const typeUrl = readString(item.typeUrl);
               if (typeUrl) {
                 return [{
@@ -334,6 +353,48 @@ export class PostService {
       const pollOptions = input.type === 'poll'
         ? (input.pollOptions ?? []).map((option) => ({ ...option, votes: 0 }))
         : undefined;
+      if (input.communityId) {
+        if (input.type !== 'regular') throw new Error('Community polls and events use their dedicated creation tools');
+        const communityPost = await addDoc(collection(db, 'communityVariantDetails'), {
+          title: input.caption.trim(),
+          caption: input.caption.trim(),
+          content: input.caption.trim(),
+          description: input.description.trim() || input.caption.trim(),
+          visibility: 'community',
+          createdAt: serverTimestamp(),
+          userId: input.userId,
+          communityVariantId: input.communityId,
+          hashtags: input.hashtags,
+          mentions: input.mentions,
+        });
+        const mediaRecords = await Promise.all(media.map(async (mediaItem) => {
+          const summary = await addDoc(collection(db, 'communityVariantDetailsSummary'), {
+            type: mediaItem.type,
+            typeUrl: mediaItem.typeUrl,
+            fileName: mediaItem.fileName,
+            communityVariantDetailsId: communityPost.id,
+          });
+          return { ...mediaItem, id: summary.id };
+        }));
+        return {
+          id: communityPost.id,
+          userId: input.userId,
+          user: input.user,
+          type: 'regular',
+          caption: input.caption.trim(),
+          description: input.description.trim() || input.caption.trim(),
+          visibility: 'public',
+          hashtags: input.hashtags,
+          media: mediaRecords,
+          mentions: input.mentions,
+          friendReferences: input.friendReferences,
+          stats: { likes: 0, comments: 0, shares: 0 },
+          likedUserIds: [],
+          createdAt: new Date().toISOString(),
+          communityId: input.communityId,
+          communityName: input.communityName,
+        };
+      }
       const response = await this.apiService.request<{
         success: boolean;
         data?: { postId?: string; location?: PostLocation | null };
@@ -414,7 +475,15 @@ export class PostService {
     return post;
   }
 
-  public async toggleLike(postId: string, userId: string, isLiked: boolean): Promise<{ liked: boolean; likeCount: number }> {
+  public async toggleLike(postId: string, userId: string, isLiked: boolean, isCommunityPost = false, currentLikeCount = 0): Promise<{ liked: boolean; likeCount: number }> {
+    if (isCommunityPost) {
+      await this.apiService.request<{ status?: string; error?: string }>('/api/communities/like', {
+        method: 'POST',
+        authenticated: true,
+        body: { postId, userId, isLiked },
+      });
+      return { liked: !isLiked, likeCount: Math.max(0, currentLikeCount + (isLiked ? -1 : 1)) };
+    }
     const response = await this.apiService.request<{
       success: boolean;
       data?: { liked?: boolean; likeCount?: number };
@@ -520,6 +589,26 @@ export class PostService {
     }
 
     return response.data.postId;
+  }
+
+  public async removeRepost(postId: string): Promise<void> {
+    const response = await this.apiService.request<{ success: boolean; error?: string }>(
+      `/api/posts/${encodeURIComponent(postId)}/repost`,
+      { method: 'DELETE', authenticated: true }
+    );
+    if (!response.success) throw new Error(response.error || 'Failed to remove repost');
+  }
+
+  public async updateVisibility(postId: string, visibility: 'public' | 'private'): Promise<void> {
+    const response = await this.apiService.request<{ success: boolean; error?: string }>(
+      `/api/posts/${encodeURIComponent(postId)}`,
+      {
+        method: 'PATCH',
+        authenticated: true,
+        body: { visibility },
+      }
+    );
+    if (!response.success) throw new Error(response.error || 'Failed to update post visibility');
   }
 
   public async deletePost(postId: string): Promise<void> {
@@ -694,7 +783,7 @@ export class PostService {
     if (!isRecord(value)) return null;
     const id = readString(value.id);
     if (!id) return null;
-    const userRecord = isRecord(value.user) ? value.user : {};
+    const userRecord = isRecord(value.user) ? value.user : isRecord(value.author) ? value.author : {};
     const userId = readString(value.userId, readString(userRecord.id));
     const user: PostUser = {
       id: readString(userRecord.id, userId),
@@ -706,8 +795,9 @@ export class PostService {
       isAdmin: typeof userRecord.isAdmin === 'boolean' ? userRecord.isAdmin : undefined,
       accountType: readString(userRecord.accountType) || undefined,
     };
-    const media = Array.isArray(value.media)
-      ? value.media.flatMap((item, index): PostMedia[] => {
+    const rawMedia = Array.isArray(value.mediaDetails) ? value.mediaDetails : value.media;
+    const media = Array.isArray(rawMedia)
+      ? rawMedia.flatMap((item, index): PostMedia[] => {
           if (!isRecord(item)) return [];
           const typeUrl = readString(item.typeUrl);
           if (!typeUrl) return [];
@@ -728,9 +818,9 @@ export class PostService {
       user,
       media,
       {
-        likeCount: readNumber(stats.likes),
-        commentCount: readNumber(stats.comments),
-        shareCount: readNumber(stats.shares),
+        likeCount: readNumber(stats.likes, readNumber(value.likeCount)),
+        commentCount: readNumber(stats.comments, readNumber(value.commentCount)),
+        shareCount: readNumber(stats.shares, readNumber(value.shareCount)),
       },
       likedUserIds
     );
@@ -793,8 +883,8 @@ export class PostService {
       userId: readString(record.userId, user.id),
       user,
       type: record.type === 'poll' || record.type === 'event' ? record.type : 'regular',
-      caption: readString(record.caption),
-      description: readString(record.description),
+      caption: readString(record.caption, readString(record.content, readString(record.title))),
+      description: readString(record.description, readString(record.content)),
       visibility,
       hashtags: readStringArray(record.hashtags).map((tag) => tag.replace(/^#/, '')),
       media,
@@ -830,6 +920,18 @@ export class PostService {
 
   private emptyUser(userId: string): PostUser {
     return { id: userId, firstName: '', lastName: '', userName: '' };
+  }
+
+  public async getCommentCount(postId: string, source: 'feed' | 'community' = 'feed'): Promise<number> {
+    const collectionName = source === 'community' ? 'communityVariantDetailsComments' : 'feedsPostComments';
+    const idField = source === 'community' ? 'communityVariantDetailsId' : 'feedsPostId';
+    try {
+      const snapshot = await getDocs(query(collection(db, collectionName), where(idField, '==', postId)));
+      return snapshot.size;
+    } catch (error: unknown) {
+      this.logger.error('PostService', 'getCommentCount', error, { postId, source });
+      throw error;
+    }
   }
 
   private readImageUrl(record: UnknownRecord): string {

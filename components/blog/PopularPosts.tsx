@@ -1,12 +1,11 @@
-import React from 'react';
 import { View, Text, Image, ScrollView } from 'react-native';
 
 type PopularPostsProps = {
-	posts: Array<{
+	posts: {
 		uri: string;
 		title?: string;
 		author?: string;
-	}>;
+	}[];
 };
 
 export default function PopularPosts({ posts }: PopularPostsProps) {

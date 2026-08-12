@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Modal,
   View,
@@ -12,12 +12,17 @@ import {
 import { Save, Send, X, XCircle, Plus } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Toast from 'react-native-toast-message';
+import { AuthService } from '@/lib/services/AuthService';
+import { EventService } from '@/lib/services/EventService';
+
+const authService = AuthService.getInstance();
+const eventService = EventService.getInstance();
 
 /* ─────────── Types ─────────── */
-interface CreateEventModalProps {
+type CreateEventModalProps = {
   visible: boolean;
   onClose: () => void;
-}
+};
 type MediaSource = { url: string; type: 'image' | 'video'; isVerified: boolean };
 
 type CreateEventForm = {
@@ -34,6 +39,18 @@ type CreateEventForm = {
   recurrence: 'none' | 'daily' | 'weekly' | 'monthly';
   category: string;
 };
+
+type DateField = { label: string; key: 'date' | 'time' | 'endDate' | 'endTime'; ph: string };
+
+const START_FIELDS: DateField[] = [
+  { label: 'Start Date', key: 'date', ph: 'YYYY-MM-DD' },
+  { label: 'Start Time', key: 'time', ph: 'HH:MM' },
+];
+
+const END_FIELDS: DateField[] = [
+  { label: 'End Date', key: 'endDate', ph: 'YYYY-MM-DD' },
+  { label: 'End Time', key: 'endTime', ph: 'HH:MM' },
+];
 
 /* ─────────── Component ─────────── */
 export default function CreateEventModal({ visible, onClose }: CreateEventModalProps) {
@@ -111,12 +128,34 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
     }
     try {
       setIsSubmitting(true);
-      console.log('Creating event:', { ...formData, createdAt: new Date().toISOString() });
+      const user = authService.getCurrentUser();
+      if (!user) throw new Error('Authentication required');
+      const profile = await authService.getUserProfile(user.uid);
+      await eventService.createEvent({
+        title: formData.title.trim(),
+        description: formData.summary.trim(),
+        summary: formData.summary.trim(),
+        startDate: formData.date,
+        startTime: formData.time,
+        endDate: formData.endDate,
+        endTime: formData.endTime,
+        location: formData.location.trim() || 'Location TBD',
+        recurrence: formData.recurrence,
+        creatorId: user.uid,
+        userId: user.uid,
+        user: {
+          id: user.uid,
+          firstName: profile?.firstName || user.displayName?.split(' ')[0] || 'User',
+          lastName: profile?.lastName || '',
+          userName: profile?.userName || user.email?.split('@')[0] || 'user',
+          profileImage: profile?.profilePicture || user.photoURL || null,
+        },
+      });
       Toast.show({ type: 'success', text1: 'Event created!' });
       resetForm();
       onClose();
-    } catch (err) {
-      Toast.show({ type: 'error', text1: 'Failed to create event' });
+    } catch (error: unknown) {
+      Toast.show({ type: 'error', text1: error instanceof Error ? error.message : 'Failed to create event' });
     } finally {
       setIsSubmitting(false);
     }
@@ -205,17 +244,14 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
             />
 
             {/* Dates & Times */}
-            {[
-              { label: 'Start Date', key: 'date', ph: 'YYYY-MM-DD' },
-              { label: 'Start Time', key: 'time', ph: 'HH:MM' },
-            ].map(field => (
+            {START_FIELDS.map(field => (
               <View key={field.key} style={{ marginBottom: 12 }}>
                 <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
                   {field.label} <Text style={{ color: '#ef4444' }}>*</Text>
                 </Text>
                 <TextInput
                   placeholder={field.ph}
-                  value={(formData as any)[field.key]}
+                  value={formData[field.key]}
                   onChangeText={v => setFormData(p => ({ ...p, [field.key]: v }))}
                   style={{
                     borderWidth: 1,
@@ -230,17 +266,14 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
             ))}
 
             {/* End date/time */}
-            {[
-              { label: 'End Date', key: 'endDate', ph: 'YYYY-MM-DD' },
-              { label: 'End Time', key: 'endTime', ph: 'HH:MM' },
-            ].map(field => (
+            {END_FIELDS.map(field => (
               <View key={field.key} style={{ marginBottom: 12 }}>
                 <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
                   {field.label} <Text style={{ color: '#ef4444' }}>*</Text>
                 </Text>
                 <TextInput
                   placeholder={field.ph}
-                  value={(formData as any)[field.key]}
+                  value={formData[field.key]}
                   onChangeText={v => setFormData(p => ({ ...p, [field.key]: v }))}
                   style={{
                     borderWidth: 1,

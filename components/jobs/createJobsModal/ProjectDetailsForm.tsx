@@ -1,8 +1,7 @@
 /* components/jobCreation/ProjectDetailsForm.tsx */
-import React from 'react';
 import { View, Text, TextInput, Platform } from 'react-native';
 
-interface ProjectDetailsFormProps {
+type ProjectDetailsFormProps = {
   projectDetails: {
     timeline: string;
     milestones: string[];
@@ -10,7 +9,7 @@ interface ProjectDetailsFormProps {
     technicalRequirements: string[];
   };
   setProjectDetails: (details: ProjectDetailsFormProps['projectDetails']) => void;
-}
+};
 
 export const ProjectDetailsForm = ({
   projectDetails,

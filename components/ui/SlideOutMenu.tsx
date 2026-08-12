@@ -1,4 +1,5 @@
-import React from 'react';
+import { useEffect, useRef } from 'react';
+import type { ComponentProps } from 'react';
 import {
     View,
     Text,
@@ -24,7 +25,7 @@ type SectionItem = {
     id: string;
     title: string;
     subtitle?: string;
-    icon: string;
+    icon: ComponentProps<typeof Ionicons>['name'];
     iconColor: string;
     iconBgColor: string;
     onPress?: () => void;
@@ -37,12 +38,12 @@ export default function SlideOutMenu({
     menuItems,
     userProfile,
 }: SlideOutMenuProps) {
-    const slideAnim = React.useRef(new Animated.Value(MENU_WIDTH)).current;
-    const overlayOpacity = React.useRef(new Animated.Value(0)).current;
-    const scaleAnim = React.useRef(new Animated.Value(0.95)).current;
-    const contentOpacity = React.useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(MENU_WIDTH)).current;
+    const overlayOpacity = useRef(new Animated.Value(0)).current;
+    const scaleAnim = useRef(new Animated.Value(0.95)).current;
+    const contentOpacity = useRef(new Animated.Value(0)).current;
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (isVisible) {
             Animated.parallel([
                 Animated.spring(slideAnim, {
@@ -96,11 +97,11 @@ export default function SlideOutMenu({
     }, [isVisible, slideAnim, overlayOpacity, scaleAnim, contentOpacity]);
 
     // Separate account items from feature items from logout from the menuItems prop
-    const accountIds = ['8', '9', '10', '13'];      // Settings, Saved Items, Profile, Wallet
-    const logoutId = '11';
-    const featureIds = ['1', '2', '3', '4', '5', '6', '7', '12', '17'];
-    const adsIds = ['14', '15'];
-    const supportIds = ['16'];
+    const accountIds = ['profile', 'settings'];
+    const logoutId = 'logout';
+    const featureIds = ['communities', 'events', 'jobs', 'market', 'blogs', 'elearning', 'chat'];
+    const adsIds: string[] = [];
+    const supportIds: string[] = [];
 
     const accountItems = menuItems.filter(m => accountIds.includes(m.id));
     const featureItems = menuItems.filter(m => featureIds.includes(m.id));
@@ -111,54 +112,34 @@ export default function SlideOutMenu({
     // Build section config: Account section first
     const accountSection: SectionItem[] = [
         {
-            id: '10',
+            id: 'profile',
             title: 'My Profile',
             subtitle: 'View and edit your profile',
             icon: 'person-circle-outline',
             iconColor: '#10b981',
             iconBgColor: '#d1fae5',
-            onPress: accountItems.find(m => m.id === '10')?.onPress,
+            onPress: accountItems.find(m => m.id === 'profile')?.onPress,
         },
         {
-            id: '8',
+            id: 'settings',
             title: 'Settings',
             subtitle: 'Preferences & privacy',
             icon: 'settings-outline',
             iconColor: '#6366f1',
             iconBgColor: '#ede9fe',
-            onPress: accountItems.find(m => m.id === '8')?.onPress,
-        },
-        {
-            id: '13',
-            title: 'Wallet',
-            subtitle: 'Your e-wallet & balance',
-            icon: 'wallet-outline',
-            iconColor: '#0ea5e9',
-            iconBgColor: '#e0f2fe',
-            onPress: accountItems.find(m => m.id === '13')?.onPress,
-        },
-        {
-            id: '9',
-            title: 'Saved Items',
-            subtitle: 'Posts & content you saved',
-            icon: 'bookmark-outline',
-            iconColor: '#f59e0b',
-            iconBgColor: '#fef3c7',
-            onPress: accountItems.find(m => m.id === '9')?.onPress,
+            onPress: accountItems.find(m => m.id === 'settings')?.onPress,
         },
     ];
 
     // Feature section
-    const featureIconMap: Record<string, { icon: string; iconColor: string; iconBgColor: string }> = {
-        '1':  { icon: 'people-outline',      iconColor: '#3b82f6', iconBgColor: '#dbeafe' },
-        '2':  { icon: 'calendar-outline',    iconColor: '#8b5cf6', iconBgColor: '#ede9fe' },
-        '3':  { icon: 'briefcase-outline',   iconColor: '#0ea5e9', iconBgColor: '#e0f2fe' },
-        '4':  { icon: 'storefront-outline',  iconColor: '#f97316', iconBgColor: '#ffedd5' },
-        '5':  { icon: 'book-outline',        iconColor: '#ec4899', iconBgColor: '#fce7f3' },
-        '6':  { icon: 'school-outline',      iconColor: '#14b8a6', iconBgColor: '#ccfbf1' },
-        '7':  { icon: 'chatbubbles-outline', iconColor: '#10b981', iconBgColor: '#d1fae5' },
-        '12': { icon: 'folder-outline',      iconColor: '#7c3aed', iconBgColor: '#ede9fe' },
-        '17': { icon: 'game-controller-outline', iconColor: '#f59e0b', iconBgColor: '#fef3c7' },
+    const featureIconMap: Record<string, Pick<SectionItem, 'icon' | 'iconColor' | 'iconBgColor'>> = {
+        communities: { icon: 'people-outline', iconColor: '#3b82f6', iconBgColor: '#dbeafe' },
+        events: { icon: 'calendar-outline', iconColor: '#8b5cf6', iconBgColor: '#ede9fe' },
+        jobs: { icon: 'briefcase-outline', iconColor: '#0ea5e9', iconBgColor: '#e0f2fe' },
+        market: { icon: 'storefront-outline', iconColor: '#f97316', iconBgColor: '#ffedd5' },
+        blogs: { icon: 'book-outline', iconColor: '#ec4899', iconBgColor: '#fce7f3' },
+        elearning: { icon: 'school-outline', iconColor: '#14b8a6', iconBgColor: '#ccfbf1' },
+        chat: { icon: 'chatbubbles-outline', iconColor: '#10b981', iconBgColor: '#d1fae5' },
     };
 
     const featureSection: SectionItem[] = featureItems.map(m => ({
@@ -172,7 +153,7 @@ export default function SlideOutMenu({
     }));
 
     // Ads section
-    const adsIconMap: Record<string, { icon: string; iconColor: string; iconBgColor: string }> = {
+    const adsIconMap: Record<string, Pick<SectionItem, 'icon' | 'iconColor' | 'iconBgColor'>> = {
         '14': { icon: 'megaphone-outline',   iconColor: '#f97316', iconBgColor: '#ffedd5' },
         '15': { icon: 'bar-chart-outline',   iconColor: '#6366f1', iconBgColor: '#ede9fe' },
     };
@@ -247,7 +228,7 @@ export default function SlideOutMenu({
                     alignItems: 'center',
                     marginRight: 14,
                 }}>
-                    <Ionicons name={item.icon as any} size={20} color={item.iconColor} />
+                    <Ionicons name={item.icon} size={20} color={item.iconColor} />
                 </View>
                 <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 15, color: '#111827', fontWeight: '600' }}>
@@ -344,7 +325,7 @@ export default function SlideOutMenu({
                         ],
                     }}
                 >
-                    <SafeAreaView style={{ flex: 1 }}>
+                    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1 }}>
 
                         {/* ─── Profile Header ─── */}
                         <LinearGradient

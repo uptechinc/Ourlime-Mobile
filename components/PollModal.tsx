@@ -1,8 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   Alert,
   Modal,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -15,15 +14,14 @@ import {
 //       them for your React Native project:
 //
 // import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-// import { db, auth } from '@/lib/firebaseConfig';
 // ---------------------------------------------------------------------------
 
-interface PollModalProps {
+type PollModalProps = {
   onClose: () => void;
   communityId: string;
   // If you want control over showing/hiding, add `isOpen: boolean;`
   // and then conditionally render the <Modal> based on that.
-}
+};
 
 export default function PollModal({ onClose, communityId }: PollModalProps) {
   const [question, setQuestion] = useState("");

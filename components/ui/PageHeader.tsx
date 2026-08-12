@@ -1,10 +1,8 @@
-import React from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   Platform,
-  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
@@ -29,7 +27,7 @@ export default function PageHeader({
   rightComponent,
 }: PageHeaderProps) {
   return (
-    <SafeAreaView style={{ backgroundColor }}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ backgroundColor }}>
       <View
         style={{
           flexDirection: 'row',

@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
-import type { Articles, Categories } from '@/types/global';
+import type { Articles, Categories as CategoryItem } from '@/types/global';
 // TODO: Comment out Firebase setup for later implementation
 // import { useRouter, useSearchParams } from 'next/navigation';
 // import { Spinner } from "@nextui-org/react";
 
 type CategoriesProps = {
-    categories: Categories[];
+    categories: CategoryItem[];
     filteredArticles?: Articles[];
     onCategoryChange?: (categories: string[]) => void;
     selectedCategories?: string[];

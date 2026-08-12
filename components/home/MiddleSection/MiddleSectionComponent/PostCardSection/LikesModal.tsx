@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { PostService, type PostUser } from '@/lib/services/PostService';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { AuthService } from '@/lib/services/AuthService';
+import CustomModal from '@/components/ui/CustomModal';
 
 type LikesModalProps = { visible: boolean; postId: string; onClose: () => void };
 
@@ -21,8 +22,9 @@ export default function LikesModal({ visible, postId, onClose }: LikesModalProps
   const [actingUserId, setActingUserId] = useState<string>();
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [friendRequestedIds, setFriendRequestedIds] = useState<Set<string>>(new Set());
+  const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(null);
 
-  const load = async (nextCursor?: string | null) => {
+  const load = useCallback(async (nextCursor?: string | null) => {
     setLoading(true);
     try {
       const page = await postService.fetchPostLikes(postId, nextCursor);
@@ -30,21 +32,21 @@ export default function LikesModal({ visible, postId, onClose }: LikesModalProps
       setCursor(page.nextCursor);
       setHasMore(page.hasMore);
     } catch (error: unknown) {
-      Alert.alert('Likes unavailable', error instanceof Error ? error.message : 'Please try again');
+      setFeedback({ title: 'Likes unavailable', message: error instanceof Error ? error.message : 'Please try again' });
     } finally {
       setLoading(false);
     }
-  };
+  }, [postId]);
 
   const handleFriendRequest = async (userId: string) => {
     const currentUserId = authService.getCurrentUser()?.uid;
-    if (!currentUserId) return Alert.alert('Sign in required', 'Sign in to add friends.');
+    if (!currentUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to add friends.' });
     setActingUserId(userId);
     try {
       await relationshipService.sendFriendRequest(currentUserId, userId);
       setFriendRequestedIds((current) => new Set(current).add(userId));
     } catch (error: unknown) {
-      Alert.alert('Request not sent', error instanceof Error ? error.message : 'Please try again');
+      setFeedback({ title: 'Request not sent', message: error instanceof Error ? error.message : 'Please try again' });
     } finally {
       setActingUserId(undefined);
     }
@@ -56,23 +58,24 @@ export default function LikesModal({ visible, postId, onClose }: LikesModalProps
     setCursor(null);
     setHasMore(false);
     void load();
-  }, [visible, postId]);
+  }, [visible, postId, load]);
 
   const handleFollow = async (userId: string) => {
     const currentUserId = authService.getCurrentUser()?.uid;
-    if (!currentUserId) return Alert.alert('Sign in required', 'Sign in to follow people.');
+    if (!currentUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to follow people.' });
     setActingUserId(userId);
     try {
       await relationshipService.setFollowing(currentUserId, userId, true);
       setFollowedIds((current) => new Set(current).add(userId));
     } catch (error: unknown) {
-      Alert.alert('Could not follow', error instanceof Error ? error.message : 'Please try again');
+      setFeedback({ title: 'Could not follow', message: error instanceof Error ? error.message : 'Please try again' });
     } finally {
       setActingUserId(undefined);
     }
   };
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
         <View style={{ flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }}>
@@ -99,5 +102,7 @@ export default function LikesModal({ visible, postId, onClose }: LikesModalProps
         </ScrollView>
       </SafeAreaView>
     </Modal>
+    <CustomModal visible={feedback !== null} type="danger" title={feedback?.title ?? ''} message={feedback?.message ?? ''} onClose={() => setFeedback(null)} />
+    </>
   );
 }

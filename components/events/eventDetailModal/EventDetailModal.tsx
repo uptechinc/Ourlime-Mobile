@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   Modal,
   View,
@@ -10,13 +9,6 @@ import {
   Dimensions,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-
-function EventMediaVideo({ url }: { url: string }) {
-  const player = useVideoPlayer(url, (p) => {
-    p.loop = true;
-  });
-  return <VideoView player={player} style={{ width: '100%', height: '100%' }} allowsFullscreen />;
-}
 import {
   X,
   Users,
@@ -28,21 +20,17 @@ import {
 } from 'lucide-react-native';
 import type { Event } from '@/types/eventTypes';
 
-interface Comment {
-  id: string;
-  profileImage: string;
-  userDate?: {
-    firstName: string;
-    lastname: string;
-    username: string;
-  };
-  comment: string;
-  timestamp: Date;
-  replies: Comment[]
+function EventMediaVideo({ url }: { url: string }) {
+  const player = useVideoPlayer(url, (p) => {
+    p.loop = true;
+  });
+  return <VideoView player={player} style={{ width: '100%', height: '100%' }} />;
 }
 
 
-interface Props {
+
+
+type Props = {
   visible: boolean;
   selectedEvent: Event;           // ← renamed
   onClose: () => void;
@@ -53,7 +41,7 @@ interface Props {
   likeCount: number;
   registrationCount: number;
   currentUserId?: string;
-}
+};
 
 // ─── Component ────────────────────────────
 export default function EventDetailModal({

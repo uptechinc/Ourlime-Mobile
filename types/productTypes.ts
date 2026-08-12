@@ -1,48 +1,46 @@
-import { Timestamp } from "firebase/firestore";
-
 // types/productTypes.ts
-export interface ContactInfoItem {
+export type ContactInfoItem = {
     type: 'phone' | 'email' | 'website';
     value: string;
-}
+};
 
-export interface Product {
+export type Product = {
     id: string;
     title: string;
     shortDescription: string;
     longDescription: string;
     thumbnailImage: string;
     category: string;
-    createdAt: Timestamp;
+    createdAt: unknown;
     views?: string;
     contactInfo?: ContactInfoItem[];
-}
+};
 
-export interface Colors {
+export type Colors = {
     id: string;
     colorName: string;
-}
+};
 
-export interface Sizes {
+export type Sizes = {
     id: string;
     sizeName: string;
-}
+};
 
-export interface ColorVariants {
+export type ColorVariants = {
     id: string;
     colorVariantName: string;
     colorId: string;
     productId: string;
-}
+};
 
-export interface SizeVariants {
+export type SizeVariants = {
     id: string;
     sizeVariantName: string;
     sizeId: string;
     productId: string;
-}
+};
 
-export interface ProductVariant {
+export type ProductVariant = {
     id: string;
     productId: string;
     colorVariantId: string;
@@ -50,9 +48,9 @@ export interface ProductVariant {
     price: number;
     quantity: number;
     status: 'active' | 'inactive';
-}
+};
 
-export interface ProductFormData {
+export type ProductFormData = {
     title: string;
     category: string;
     shortDescription: string;
@@ -68,4 +66,4 @@ export interface ProductFormData {
     selectedBaseColor?: string;
     selectedBaseSize?: string;
     contactInfo?: ContactInfoItem[];
-}
+};

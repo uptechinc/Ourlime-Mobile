@@ -1,7 +1,6 @@
-import React from 'react';
-import { View, Text, Image, TextInput, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Image, TextInput, ScrollView } from 'react-native';
 import { Heart, MessageCircle, Share } from 'lucide-react-native';
-import type { SocialPosts } from '@/app/types/global';
+import type { SocialPosts } from '@/types/global';
 
 function formatDate(time: number | { seconds: number }): string {
   // Accepts either a JS timestamp or a Firestore Timestamp-like object

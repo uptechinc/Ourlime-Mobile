@@ -1,5 +1,5 @@
 /* components/jobCreation/JobCreationModal.tsx */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Modal,
   View,
@@ -19,12 +19,12 @@ import { BasicInformationForm } from './BasicInformationForm';
 import { PromoteYourselfForm } from './FreelancePromo';
 // import toast from 'react-hot-toast'; 
 // import { auth } from '@/lib/firebaseConfig'; 
-interface Props {
+type JobCreationModalProps = {
   isOpen: boolean;
   onClose: () => void;
-}
+};
 
-export default function JobCreationModal({ isOpen, onClose }: Props) {
+export default function JobCreationModal({ isOpen, onClose }: JobCreationModalProps) {
   const [jobCategory, setJobCategory] = useState<'professional' | 'freelancer' | 'quickTask'>('professional');
   const [freelancerOption, setFreelancerOption] = useState<'promoteSelf' | 'postRequest'>('promoteSelf');
 
@@ -33,14 +33,7 @@ export default function JobCreationModal({ isOpen, onClose }: Props) {
   const [category, setCategory] = useState('');
   const [priceFrom, setPriceFrom] = useState('');
   const [priceTo, setPriceTo] = useState('');
-  const [skills, setSkills] = useState<string[]>([]);
-  const [newSkill, setNewSkill] = useState('');
-  const [locationDetails, setLocationDetails] = useState({
-    type: 'remote',
-    address: '',
-    city: '',
-    country: '',
-  });
+
   const [companyDetails, setCompanyDetails] = useState({
     name: '',
     size: '',
@@ -69,54 +62,8 @@ export default function JobCreationModal({ isOpen, onClose }: Props) {
     complexity: 'moderate' as 'simple' | 'moderate' | 'complex',
   });
   const [newBenefit, setNewBenefit] = useState('');
-  const [questions, setQuestions] = useState<
-    { question: string; answerType: 'input' | 'checkbox' | 'dropdown'; options: string[] }[]
-  >([]);
+
   const [submitting, setSubmitting] = useState(false);
-
-  const addItem = (
-    item: string,
-    items: string[],
-    setter: (i: string[]) => void,
-    clear: () => void
-  ) => {
-    const t = item.trim();
-    if (!t) return;
-    setter([...items, t]);
-    clear();
-  };
-
-  const removeItem = (idx: number, items: string[], setter: (i: string[]) => void) =>
-    setter(items.filter((_, i) => i !== idx));
-
-  const addQuestion = () =>
-    setQuestions([...questions, { question: '', answerType: 'input', options: [] }]);
-  const removeQuestion = (idx: number) =>
-    setQuestions(questions.filter((_, i) => i !== idx));
-  const updateQuestion = (idx: number, field: any, value: any) => {
-    const q = [...questions];
-    q[idx] = {
-      ...q[idx],
-      [field]: value,
-      options: field === 'answerType' && value === 'input' ? [] : q[idx].options,
-    };
-    setQuestions(q);
-  };
-  const addOption = (qIdx: number) => {
-    const q = [...questions];
-    q[qIdx].options.push('');
-    setQuestions(q);
-  };
-  const updateOption = (qIdx: number, oIdx: number, v: string) => {
-    const q = [...questions];
-    q[qIdx].options[oIdx] = v;
-    setQuestions(q);
-  };
-  const removeOption = (qIdx: number, oIdx: number) => {
-    const q = [...questions];
-    q[qIdx].options = q[qIdx].options.filter((_, i) => i !== oIdx);
-    setQuestions(q);
-  };
 
   const handleSubmit = async () => {
     // basic validation here...

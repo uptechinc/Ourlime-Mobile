@@ -6,12 +6,12 @@ export type Friendship = {
     userId2: string;
     friendshipStatus: FriendshipStatus;
     typeOfFriendship: string; // 'friend', 'best_friend', 'family', etc.
-    createdAt: any; // Firestore Timestamp
-    updatedAt: any; // Firestore Timestamp
+    createdAt: unknown;
+    updatedAt: unknown;
 };
 
 export type FriendshipResponse = {
     success: boolean;
     data?: Friendship | Friendship[];
     error?: string;
-}; 
+};

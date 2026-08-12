@@ -9,7 +9,7 @@ import {
     ProductVariant,
 } from '@/types/productTypes';
 
-interface BusinessData {
+type BusinessData = {
     profile: {
         name: string;
         established: string;

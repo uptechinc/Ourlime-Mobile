@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,11 @@ import {
   Platform,
   StatusBar,
   Image,
+  type TextStyle,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { authService } from '@/lib/services/AuthService';
+import { authService, getAuthErrorCode } from '@/lib/services/AuthService';
+import type { Href } from 'expo-router';
 import Animated, {
   FadeInDown,
   useAnimatedStyle,
@@ -104,7 +106,7 @@ export default function LoginScreen() {
       setTimeout(() => {
         router.replace('/(tabs)');
       }, 600);
-    } catch (err: any) {
+    } catch (error: unknown) {
       const errorMessages: Record<string, string> = {
         'auth/user-not-found': 'No user found with this email.',
         'auth/wrong-password': 'Incorrect password.',
@@ -112,8 +114,11 @@ export default function LoginScreen() {
         'auth/user-disabled': 'This user account has been disabled.',
         'auth/too-many-requests': 'Too many login attempts. Please try again later.',
         'auth/invalid-credential': 'Invalid credentials provided.',
+        EMAIL_NOT_VERIFIED: 'Verify your email before signing in. We sent a new verification email.',
+        ACCOUNT_DISABLED: 'This account is currently disabled.',
+        ACCOUNT_DELETED: 'This account has been deleted.',
       };
-      setErrorMsg(errorMessages[err.code] || 'Failed to sign in. Please check your credentials.');
+      setErrorMsg(errorMessages[getAuthErrorCode(error)] || 'Failed to sign in. Please check your credentials.');
     } finally {
       setIsSubmitting(false);
     }
@@ -287,7 +292,7 @@ export default function LoginScreen() {
 
               {/* Forgot Password */}
               <TouchableOpacity
-                onPress={() => console.log('TODO: Forgot password')}
+                onPress={() => router.push('/forgot-password' as Href)}
                 activeOpacity={0.7}
                 style={{ marginBottom: 28 }}
               >
@@ -345,7 +350,7 @@ export default function LoginScreen() {
 }
 
 // ─── Shared input style ────────────────────────────────────────────────────────
-const inputStyle: any = {
+const inputStyle: TextStyle = {
   width: '100%',
   borderRadius: 14,
   borderWidth: 1,

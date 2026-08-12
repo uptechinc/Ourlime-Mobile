@@ -1,124 +1,67 @@
-import { useEffect, useState, useCallback } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
-import { PostService, type PostItem, type FeedFilter } from '@/lib/services/PostService';
+import { useState } from 'react';
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import type { FeedFilter } from '@/lib/services/PostService';
+import { useFeedQuery } from '@/lib/hooks/useFeedQuery';
+import { feedResourceService } from '@/lib/services/FeedResourceService';
 import PostCardSection from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
-import { FeedsFilterSection } from '@/components/home/MiddleSection/MiddleSectionComponent/FeedsFilterSection/FeedsFilterSection';
+import { FeedsFilterSection, type FeedFilter as UiFeedFilter } from '@/components/home/MiddleSection/MiddleSectionComponent/FeedsFilterSection/FeedsFilterSection';
+import { AuthService } from '@/lib/services/AuthService';
 
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebaseConfig';
+type TimelineTabProps = { userId: string };
 
-type TimelineTabProps = {
-  userId: string;
-};
-
-const postService = PostService.getInstance();
+const authService = AuthService.getInstance();
+const apiFilters: Record<UiFeedFilter, FeedFilter> = { All: 'all', Photos: 'photo', Videos: 'video', Sound: 'audio', Polls: 'poll', Events: 'event' };
 
 export default function TimelineTab({ userId }: TimelineTabProps) {
-  const [posts, setPosts] = useState<PostItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<'All' | 'Photos' | 'Videos' | 'Sound' | 'Polls' | 'Events'>('All');
+  const viewerId = authService.getCurrentUser()?.uid ?? userId;
+  const [activeFilter, setActiveFilter] = useState<UiFeedFilter>('All');
   const [activePostId, setActivePostId] = useState<string | null>(null);
-
-  const loadUserPosts = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const page = await postService.fetchFeedPage({
-        authorId: userId,
-        limit: 20,
-      });
-
-      try {
-        const reelsSnap = await getDocs(query(collection(db, 'reels'), where('userId', '==', userId)));
-        const reelPosts: PostItem[] = reelsSnap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            userId: userId,
-            type: 'regular',
-            caption: data.caption || '',
-            description: '',
-            visibility: data.visibility || 'public',
-            hashtags: [],
-            media: [
-              {
-                id: d.id,
-                type: 'video',
-                typeUrl: data.media?.typeUrl || '',
-                fileName: data.media?.fileName || 'reel.mp4',
-              },
-            ],
-            user: data.user || { id: userId, firstName: 'Lime', lastName: 'Creator', userName: 'user' },
-            stats: data.stats || { likes: Array.isArray(data.likes) ? data.likes.length : 0, comments: 0, shares: 0 },
-            likedUserIds: Array.isArray(data.likes) ? data.likes : [],
-            mentions: data.mentions || [],
-            friendReferences: [],
-            createdAt: data.createdAt ? new Date().toISOString() : new Date().toISOString(),
-          };
-        });
-
-        const combined = [...reelPosts, ...page.posts];
-        setPosts(combined);
-      } catch {
-        setPosts(page.posts);
-      }
-    } catch {
-      setPosts([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    void loadUserPosts();
-  }, [loadUserPosts]);
-
-  const activePost = activePostId ? posts.find((p) => p.id === activePostId) ?? null : null;
-
-  if (isLoading) {
-    return (
-      <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-        <ActivityIndicator size="small" color="#10b981" />
-      </View>
-    );
-  }
+  const query = { userId: viewerId, scope: 'home' as const, filter: apiFilters[activeFilter], authorId: userId };
+  const { resource, refresh, loadMore } = useFeedQuery(query);
+  const posts = resource.data?.posts ?? [];
+  const activePost = activePostId ? posts.find((post) => post.id === activePostId) ?? null : null;
+  const isInitialLoading = !resource.data && (resource.status === 'idle' || resource.status === 'hydrating');
 
   return (
     <View style={{ paddingVertical: 12 }}>
       <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
-        <FeedsFilterSection
-          activeFilter={activeFilter}
-          onFilterChange={setActiveFilter}
-        />
+        <FeedsFilterSection activeFilter={activeFilter} onFilterChange={setActiveFilter} />
       </View>
 
-      {posts.length === 0 ? (
-        <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-          <Text style={{ fontSize: 15, color: '#64748b', fontWeight: '500' }}>No posts yet</Text>
+      {isInitialLoading ? (
+        <View style={{ paddingVertical: 40, alignItems: 'center' }}><ActivityIndicator size="small" color="#10b981" /></View>
+      ) : resource.error && posts.length === 0 ? (
+        <View style={{ paddingVertical: 40, alignItems: 'center', paddingHorizontal: 24 }}>
+          <Text style={{ color: '#991b1b', textAlign: 'center' }}>{resource.error.message}</Text>
+          <TouchableOpacity onPress={() => void refresh()} style={{ marginTop: 13, paddingHorizontal: 17, paddingVertical: 9, borderRadius: 999, backgroundColor: '#10b981' }}><Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text></TouchableOpacity>
         </View>
+      ) : posts.length === 0 ? (
+        <View style={{ paddingVertical: 40, alignItems: 'center' }}><Text style={{ fontSize: 15, color: '#64748b', fontWeight: '500' }}>No posts yet</Text></View>
       ) : (
-        posts.map((post) => (
-          <View key={post.id} style={{ marginHorizontal: 16, marginBottom: 16 }}>
-            <PostCardSection
-              post={post}
-              isVisible={true}
-              onCommentClick={(id) => setActivePostId(id)}
-              onPostDelete={(id) => setPosts((curr) => curr.filter((p) => p.id !== id))}
-              onAuthorBlocked={() => {}}
-              onPostUpdate={(updated) => setPosts((curr) => curr.map((p) => (p.id === updated.id ? updated : p)))}
-            />
-          </View>
-        ))
+        <>
+          {posts.map((post) => (
+            <View key={post.id} style={{ marginHorizontal: 16, marginBottom: 16 }}>
+              <PostCardSection
+                post={post}
+                isVisible={true}
+                onCommentClick={setActivePostId}
+                onPostDelete={(postId) => void feedResourceService.removePosts((item) => item.id === postId)}
+                onAuthorBlocked={(authorId) => void feedResourceService.removePosts((item) => item.userId === authorId)}
+                onPostUpdate={(updatedPost) => void feedResourceService.patchPost(updatedPost)}
+              />
+            </View>
+          ))}
+          {resource.data?.hasMore ? (
+            <TouchableOpacity onPress={() => void loadMore()} style={{ alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 9, borderRadius: 18, backgroundColor: '#ecfdf5' }}><Text style={{ color: '#059669', fontWeight: '700' }}>Load more posts</Text></TouchableOpacity>
+          ) : null}
+          {resource.error ? <Text style={{ color: '#64748b', textAlign: 'center', fontSize: 12 }}>Showing saved posts</Text> : null}
+        </>
       )}
 
-      {activePost && (
-        <CommentsModal
-          post={activePost}
-          userId={userId}
-          onClose={() => setActivePostId(null)}
-          onPostUpdate={(updated) => setPosts((curr) => curr.map((p) => (p.id === updated.id ? updated : p)))}
-        />
-      )}
+      {activePost ? (
+        <CommentsModal post={activePost} userId={viewerId} onClose={() => setActivePostId(null)} onPostUpdate={(updatedPost) => void feedResourceService.patchPost(updatedPost)} />
+      ) : null}
     </View>
   );
 }

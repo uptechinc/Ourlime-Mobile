@@ -11,9 +11,8 @@ import {
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebaseConfig';
 import { RelationshipService } from '@/lib/services/RelationshipService';
+import { messagingService } from '@/lib/messaging/MessagingService';
 
 const relationshipService = RelationshipService.getInstance();
 
@@ -69,22 +68,13 @@ export function ChatSettingsMenu({
     const loadState = async () => {
       try {
         const [muteDoc, blockStatus] = await Promise.all([
-          getDoc(doc(db, 'users', currentUserId, 'chatMuteSettings', friendId)),
+          messagingService.getMuteUntil(currentUserId, friendId),
           relationshipService.checkBlockStatus(currentUserId, friendId),
         ]);
 
         setIsBlockedByMe(blockStatus.isBlockedByMe);
 
-        if (muteDoc.exists()) {
-          const until = muteDoc.data().mutedUntil as number | undefined;
-          if (until && until > Date.now()) {
-            setMutedUntil(until);
-          } else {
-            setMutedUntil(null);
-          }
-        } else {
-          setMutedUntil(null);
-        }
+        setMutedUntil(muteDoc);
       } catch {
         // ignore
       } finally {
@@ -98,7 +88,7 @@ export function ChatSettingsMenu({
     const until = duration === 'Always' ? Number.MAX_SAFE_INTEGER : Date.now() + MUTE_MS[duration];
     setMutedUntil(until);
     try {
-      await setDoc(doc(db, 'users', currentUserId, 'chatMuteSettings', friendId), { mutedUntil: until });
+      await messagingService.setMuteUntil(currentUserId, friendId, until);
     } catch (e) {
       console.error('[ChatSettingsMenu.handleMute]', e);
     }
@@ -108,7 +98,7 @@ export function ChatSettingsMenu({
   const handleUnmute = async () => {
     setMutedUntil(null);
     try {
-      await setDoc(doc(db, 'users', currentUserId, 'chatMuteSettings', friendId), { mutedUntil: null });
+      await messagingService.setMuteUntil(currentUserId, friendId, null);
     } catch (e) {
       console.error('[ChatSettingsMenu.handleUnmute]', e);
     }
@@ -223,7 +213,7 @@ export function ChatSettingsMenu({
               label="View Profile"
               onPress={() => {
                 onClose();
-                router.push(`/profile/${userName}` as any);
+                router.push({ pathname: '/profile/[username]', params: { username: userName } });
               }}
             />
 
@@ -334,7 +324,7 @@ function MenuItem({ icon, label, onPress, danger, chevron }: MenuItemProps) {
       }}
       activeOpacity={0.65}
     >
-      <Icon name={icon as any} size={16} color={iconColor} />
+      <Icon name={icon} size={16} color={iconColor} />
       <Text style={{ flex: 1, fontSize: 14, color, marginLeft: 12, fontWeight: '500' }}>
         {label}
       </Text>

@@ -1,18 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
+import type { ComponentProps } from 'react';
 import {
   View,
   Text,
   ScrollView,
   RefreshControl,
   TouchableOpacity,
-  ActivityIndicator,
   StatusBar,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { authService, UserProfile } from '@/lib/services/AuthService';
+import { useRouter, type Href } from 'expo-router';
+import { authService } from '@/lib/services/AuthService';
 import ProfileHeader from '@/components/profile/ProfileHeader';
 import TimelineTab from '@/components/profile/TimelineTab';
 import AboutTab from '@/components/profile/AboutTab';
@@ -21,75 +20,35 @@ import AdminTab from '@/components/profile/AdminTab';
 import AppDrawerNav from '@/components/navigation/AppDrawerNav';
 import EditProfileModal from '@/components/profile/EditProfileModal';
 import ProfileSkeleton from '@/components/profile/ProfileSkeleton';
+import { useProfileResource } from '@/lib/hooks/useProfileResource';
 
 type ProfileTab = 'timeline' | 'about' | 'gallery' | 'admin';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const currentUserId = authService.getCurrentUser()?.uid ?? '';
+  const { resource, refresh } = useProfileResource({ kind: 'own', userId: currentUserId });
+  const profile = resource.data?.profile ?? null;
+  const isLoading = resource.data === null && (resource.status === 'idle' || resource.status === 'hydrating');
+  const refreshing = resource.status === 'refreshing';
   const [activeTab, setActiveTab] = useState<ProfileTab>('timeline');
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-
-  const loadProfile = useCallback(async () => {
-    try {
-      const currentUser = authService.getCurrentUser();
-      if (currentUser) {
-        const userProf = await authService.getUserProfile(currentUser.uid);
-        if (userProf) {
-          setProfile(userProf);
-        } else {
-          setProfile({
-            uid: currentUser.uid,
-            firstName: currentUser.displayName || 'Ourlime',
-            lastName: 'User',
-            userName: currentUser.email?.split('@')[0] || 'user',
-            email: currentUser.email || '',
-            accountType: 'regular',
-          });
-        }
-      }
-    } catch (error) {
-      console.error('[ProfileScreen.loadProfile] Error:', error);
-    } finally {
-      setIsLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadProfile();
-  }, [loadProfile]);
+  const stats = resource.data?.stats ?? { posts: 0, friends: 0, followers: 0, following: 0 };
+  const error = resource.error?.message ?? null;
 
   const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    void loadProfile();
-  }, [loadProfile]);
+    void refresh();
+  }, [refresh]);
 
-  const handleLogout = () => {
-    Alert.alert('Log Out', 'Are you sure you want to log out of Ourlime?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Log Out',
-        style: 'destructive',
-        onPress: async () => {
-          await authService.logout();
-          router.replace('/(auth)/login');
-        },
-      },
-    ]);
-  };
+  const isAdmin = profile?.accountType === 'admin' || profile?.role === 'admin' || profile?.isAdmin === true;
 
-  const isAdmin = profile?.accountType === 'admin' || (profile as any)?.isAdmin === true;
-
-  const tabs: { key: ProfileTab; label: string; icon: string }[] = [
+  const tabs: { key: ProfileTab; label: string; icon: ComponentProps<typeof Ionicons>['name'] }[] = [
     { key: 'timeline', label: 'Timeline', icon: 'list-outline' },
     { key: 'about', label: 'About', icon: 'information-circle-outline' },
     { key: 'gallery', label: 'Gallery', icon: 'images-outline' },
-    ...(isAdmin ? [{ key: 'admin' as ProfileTab, label: 'Admin', icon: 'shield-checkmark-outline' }] : []),
   ];
+  if (isAdmin) tabs.push({ key: 'admin', label: 'Admin', icon: 'shield-checkmark-outline' });
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#ffffff' }}>
@@ -101,14 +60,7 @@ export default function ProfileScreen() {
         onClose={() => setDrawerOpen(false)}
         userProfile={
           profile
-            ? {
-                uid: profile.uid,
-                userName: profile.userName,
-                firstName: profile.firstName,
-                lastName: profile.lastName,
-                profilePicture: profile.profilePicture || undefined,
-                isAdmin,
-              }
+            ? { ...profile, isAdmin }
             : undefined
         }
       />
@@ -128,7 +80,7 @@ export default function ProfileScreen() {
           <Ionicons name="menu-outline" size={26} color="#0f172a" />
         </TouchableOpacity>
         <Text style={{ fontSize: 20, fontWeight: '800', color: '#0f172a' }}>Profile</Text>
-        <TouchableOpacity onPress={() => router.push('/settings' as any)} style={{ padding: 6 }}>
+        <TouchableOpacity onPress={() => router.push('/settings' as Href)} style={{ padding: 6 }}>
           <Ionicons name="settings-outline" size={22} color="#334155" />
         </TouchableOpacity>
       </View>
@@ -152,17 +104,17 @@ export default function ProfileScreen() {
           {/* ── Profile Header Card ── */}
           <ProfileHeader
             profile={profile}
-            postsCount={0}
-            friendsCount={0}
-            followingCount={0}
+            postsCount={stats.posts}
+            friendsCount={stats.friends}
+            followingCount={stats.following}
             onEditProfile={() => setEditModalOpen(true)}
-            onCustomize={() => Alert.alert('Customization', 'Profile theme customization')}
           />
+          {error ? <TouchableOpacity onPress={() => void refresh()} style={{ marginHorizontal: 16, marginTop: 10, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 14, backgroundColor: '#fff7ed' }}><Text style={{ color: '#9a3412', textAlign: 'center', fontSize: 12, fontWeight: '700' }}>Showing saved profile · Tap to retry</Text></TouchableOpacity> : null}
           <EditProfileModal
             visible={editModalOpen}
             profile={profile}
             onClose={() => setEditModalOpen(false)}
-            onProfileUpdated={() => void loadProfile()}
+            onProfileUpdated={() => void refresh()}
           />
 
           {/* ── Tab Selector Row ── */}
@@ -190,7 +142,7 @@ export default function ProfileScreen() {
                   activeOpacity={0.8}
                 >
                   <Ionicons
-                    name={t.icon as any}
+                    name={t.icon}
                     size={16}
                     color={isActive ? '#ffffff' : '#64748b'}
                   />
@@ -214,7 +166,7 @@ export default function ProfileScreen() {
         </ScrollView>
       ) : (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-          <Text style={{ fontSize: 16, color: '#64748b', fontWeight: '600' }}>Could not load profile</Text>
+          <Text style={{ fontSize: 16, color: '#64748b', fontWeight: '600', textAlign: 'center' }}>{error || 'Could not load profile'}</Text>
         </View>
       )}
     </SafeAreaView>

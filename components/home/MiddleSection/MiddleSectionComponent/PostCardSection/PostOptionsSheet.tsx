@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Modal, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { PostService, type PostItem } from '@/lib/services/PostService';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import ReportPostModal from './ReportPostModal';
 import DeletePostModal from './DeletePostModal';
+import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
+
+type ActionFeedback = {
+  title: string;
+  message: string;
+  type: CustomModalType;
+};
 
 type PostOptionsSheetProps = {
   visible: boolean;
@@ -14,17 +20,20 @@ type PostOptionsSheetProps = {
   onClose: () => void;
   onDelete: (postId: string) => void;
   onBlock: (userId: string) => void;
+  onPostUpdate: (post: PostItem) => void;
 };
 
 const postService = PostService.getInstance();
 const relationshipService = RelationshipService.getInstance();
 
-export default function PostOptionsSheet({ visible, post, currentUserId, onClose, onDelete, onBlock }: PostOptionsSheetProps) {
+export default function PostOptionsSheet({ visible, post, currentUserId, onClose, onDelete, onBlock, onPostUpdate }: PostOptionsSheetProps) {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [following, setFollowing] = useState(post.relationshipStatus?.isFollowing === true);
   const [friendshipStatus, setFriendshipStatus] = useState(post.relationshipStatus?.friendshipStatus ?? 'none');
   const [reportVisible, setReportVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [blockConfirmationVisible, setBlockConfirmationVisible] = useState(false);
+  const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
   const isOwner = Boolean(currentUserId && currentUserId === post.userId);
 
   useEffect(() => {
@@ -37,9 +46,9 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
     setBusyAction(action);
     try {
       await operation();
-      Alert.alert('Done', successMessage);
+      setFeedback({ title: 'Done', message: successMessage, type: 'success' });
     } catch (error: unknown) {
-      Alert.alert('Action failed', error instanceof Error ? error.message : 'Please try again');
+      setFeedback({ title: 'Action failed', message: error instanceof Error ? error.message : 'Please try again', type: 'danger' });
     } finally {
       setBusyAction(null);
     }
@@ -47,6 +56,15 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
 
   const handleDelete = () => {
     setDeleteModalVisible(true);
+  };
+
+  const handleVisibility = () => {
+    const visibility = post.visibility === 'private' ? 'public' : 'private';
+    void runAction('visibility', async () => {
+      await postService.updateVisibility(post.id, visibility);
+      onPostUpdate({ ...post, visibility });
+      onClose();
+    }, visibility === 'public' ? 'Your post is now public' : 'Your post is now visible to friends only');
   };
 
   const handleConfirmDelete = async () => {
@@ -72,18 +90,16 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
   };
 
   const handleBlock = () => {
-    Alert.alert('Block this user?', 'Their posts will be removed from your feed.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Block',
-        style: 'destructive',
-        onPress: () => void runAction('block', async () => {
-          await relationshipService.blockUser(post.userId);
-          onBlock(post.userId);
-          onClose();
-        }, 'User blocked'),
-      },
-    ]);
+    setBlockConfirmationVisible(true);
+  };
+
+  const handleConfirmBlock = () => {
+    setBlockConfirmationVisible(false);
+    void runAction('block', async () => {
+      await relationshipService.blockUser(post.userId);
+      onBlock(post.userId);
+      onClose();
+    }, 'User blocked');
   };
 
   const renderRow = (icon: string, label: string, onPress: () => void, options?: { destructive?: boolean; disabled?: boolean; action?: string }) => {
@@ -157,16 +173,24 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
 
               {/* 5. Delete Post / Remove Repost */}
               {isOwner ? (
-                <TouchableOpacity
-                  disabled={Boolean(busyAction)}
-                  onPress={handleDelete}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12 }}
-                >
-                  <Icon name="trash-2" size={20} color="#ef4444" />
-                  <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: '#ef4444' }}>
-                    Delete Post
-                  </Text>
-                </TouchableOpacity>
+                <>
+                  {!post.communityId ? renderRow(
+                    post.visibility === 'private' ? 'globe' : 'lock',
+                    post.visibility === 'private' ? 'Make Public' : 'Make Private (Friends only)',
+                    handleVisibility,
+                    { action: 'visibility' }
+                  ) : null}
+                  <TouchableOpacity
+                    disabled={Boolean(busyAction)}
+                    onPress={handleDelete}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12 }}
+                  >
+                    <Icon name="trash-2" size={20} color="#ef4444" />
+                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: '#ef4444' }}>
+                      Delete Post
+                    </Text>
+                  </TouchableOpacity>
+                </>
               ) : null}
 
               {/* Close Button */}
@@ -188,6 +212,24 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
           onClose();
         }}
         onConfirmDelete={handleConfirmDelete}
+      />
+      <CustomModal
+        visible={blockConfirmationVisible}
+        type="danger"
+        title="Block this user?"
+        message="Their posts will be removed from your feed."
+        confirmText="Block"
+        cancelText="Cancel"
+        isLoading={busyAction === 'block'}
+        onConfirm={handleConfirmBlock}
+        onClose={() => setBlockConfirmationVisible(false)}
+      />
+      <CustomModal
+        visible={feedback !== null}
+        type={feedback?.type}
+        title={feedback?.title ?? ''}
+        message={feedback?.message ?? ''}
+        onClose={() => setFeedback(null)}
       />
     </>
   );

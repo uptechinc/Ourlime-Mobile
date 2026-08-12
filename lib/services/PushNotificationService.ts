@@ -1,154 +1,130 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
-import { db } from '@/lib/firebaseConfig';
-import { collection, doc, setDoc, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
+import type { Href } from 'expo-router';
+import { ApiService } from './ApiService';
+import { DiagnosticLogService } from './DiagnosticLogService';
+import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
 
 const DEVICE_TOKEN_KEY = 'ourlime_device_push_token';
 
+export type PushMessageType = 'message' | 'voice_call' | 'video_call';
+export type PushMessagePayload = { title: string; body: string; type: PushMessageType; senderId: string; channelId?: string };
+
+type PushTokenResponse = { success: boolean; error?: string };
+
 export class PushNotificationService {
   private static instance: PushNotificationService;
+  private readonly apiService = ApiService.getInstance();
+  private readonly logger = DiagnosticLogService.getInstance();
 
   private constructor() {}
 
   public static getInstance(): PushNotificationService {
-    if (!PushNotificationService.instance) {
-      PushNotificationService.instance = new PushNotificationService();
-    }
+    if (!PushNotificationService.instance) PushNotificationService.instance = new PushNotificationService();
     return PushNotificationService.instance;
   }
 
-  /**
-   * Get or generate a stable device installation token
-   */
-  public async getDevicePushToken(): Promise<string> {
-    try {
-      const existing = await AsyncStorage.getItem(DEVICE_TOKEN_KEY);
-      if (existing) return existing;
-
-      const deviceId = Constants.installationId ?? `device_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      const token = `ExponentPushToken[${deviceId}]`;
-      await AsyncStorage.setItem(DEVICE_TOKEN_KEY, token);
-      return token;
-    } catch {
-      const fallbackToken = `ExponentPushToken[dev_${Date.now()}]`;
-      return fallbackToken;
-    }
+  public configureForegroundPresentation(): void {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
   }
 
-  /**
-   * Register device push token in Firestore under pushTokens collection
-   */
-  public async registerForPushNotifications(userId: string): Promise<string | null> {
-    if (!userId) return null;
+  public async getDevicePushToken(): Promise<string | null> {
+    if (Platform.OS === 'web' || !Device.isDevice) return null;
+    const existingPermission = await Notifications.getPermissionsAsync();
+    const permission = existingPermission.status === 'granted'
+      ? existingPermission
+      : await Notifications.requestPermissionsAsync();
+    if (permission.status !== 'granted') return null;
 
-    try {
-      const token = await this.getDevicePushToken();
-      const docId = `${userId}_${token.replace(/[^a-zA-Z0-9]/g, '_')}`;
-      const tokenDocRef = doc(db, 'pushTokens', docId);
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'Ourlime notifications',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+      });
+      await Notifications.setNotificationChannelAsync('calls', {
+        name: 'Ourlime calls',
+        importance: Notifications.AndroidImportance.MAX,
+        sound: 'default',
+        vibrationPattern: [0, 250, 250, 250],
+      });
+    }
 
-      await setDoc(tokenDocRef, {
-        userId,
-        token,
-        platform: Platform.OS,
-        updatedAt: Timestamp.now(),
-      }, { merge: true });
-
-      console.log('[PushNotificationService] Push token registered in Firestore:', token);
-      return token;
-    } catch (error) {
-      console.error('[PushNotificationService.registerForPushNotifications]', error);
+    const projectId = Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+      this.logger.warn('PushNotificationService', 'token:no-project-id');
       return null;
     }
+    const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+    await AsyncStorage.setItem(DEVICE_TOKEN_KEY, token);
+    return token;
   }
 
-  /**
-   * Check if user muted chat notifications for a friend
-   */
-  public async isChatMuted(userId: string, friendId: string): Promise<boolean> {
+  public async registerForPushNotifications(userId: string): Promise<string | null> {
+    if (!userId) return null;
+    const token = await this.getDevicePushToken();
+    if (!token) return null;
+    await this.apiService.request<PushTokenResponse>('/api/push-tokens', {
+      method: 'POST', authenticated: true, body: { token, platform: Platform.OS },
+    });
+    this.logger.success('PushNotificationService', 'token:registered', { userId, platform: Platform.OS });
+    return token;
+  }
+
+  public async unregisterCurrentDevice(): Promise<void> {
+    const token = await AsyncStorage.getItem(DEVICE_TOKEN_KEY);
+    if (!token) return;
     try {
-      const key = `ourlime_chat_muted_${userId}_${friendId}`;
-      const val = await AsyncStorage.getItem(key);
-      if (!val) return false;
-      if (val === 'indefinite' || val === 'true') return true;
-      const mutedUntil = parseInt(val, 10);
-      if (isNaN(mutedUntil)) return false;
-      return Date.now() < mutedUntil;
-    } catch {
-      return false;
+      await this.apiService.request<PushTokenResponse>('/api/push-tokens', {
+        method: 'DELETE', authenticated: true, body: { token },
+      });
+    } finally {
+      await AsyncStorage.removeItem(DEVICE_TOKEN_KEY);
     }
   }
 
-  /**
-   * Set chat mute status
-   */
+  public async isChatMuted(userId: string, friendId: string): Promise<boolean> {
+    const value = await AsyncStorage.getItem(`ourlime_chat_muted_${userId}_${friendId}`);
+    if (!value) return false;
+    if (value === 'indefinite') return true;
+    const mutedUntil = Number(value);
+    return Number.isFinite(mutedUntil) && Date.now() < mutedUntil;
+  }
+
   public async setChatMuted(userId: string, friendId: string, durationMs: number | 'indefinite' | false): Promise<void> {
     const key = `ourlime_chat_muted_${userId}_${friendId}`;
-    if (durationMs === false) {
-      await AsyncStorage.removeItem(key);
-    } else if (durationMs === 'indefinite') {
-      await AsyncStorage.setItem(key, 'indefinite');
-    } else {
-      const until = Date.now() + durationMs;
-      await AsyncStorage.setItem(key, String(until));
-    }
+    if (durationMs === false) await AsyncStorage.removeItem(key);
+    else await AsyncStorage.setItem(key, durationMs === 'indefinite' ? durationMs : String(Date.now() + durationMs));
   }
 
-  /**
-   * Send a high-priority push notification (call or message) to a user's tokens in Firestore
-   */
-  public async sendPushNotification(receiverId: string, payload: {
-    title: string;
-    body: string;
-    type: 'message' | 'voice_call' | 'video_call';
-    senderId: string;
-    channelId?: string;
-  }): Promise<void> {
+  public async sendPushNotification(receiverId: string, payload: PushMessagePayload): Promise<void> {
     if (!receiverId) return;
+    await this.apiService.request<{ success: boolean }>('/api/push-messages', {
+      method: 'POST',
+      authenticated: true,
+      body: {
+        receiverId,
+        message: payload.type === 'video_call'
+          ? '[SYS:VIDEO_CALL_INVITE]'
+          : payload.type === 'voice_call'
+            ? '[SYS:VOICE_CALL_INVITE]'
+            : payload.body,
+      },
+    });
+  }
 
-    try {
-      // Check if receiver has muted notifications from this sender
-      const muted = await this.isChatMuted(receiverId, payload.senderId);
-      if (muted) {
-        console.log(`[PushNotificationService] Push notification suppressed because receiver muted chat with ${payload.senderId}`);
-        return;
-      }
-
-      // Query push tokens for receiver from Firestore pushTokens collection
-      const q = query(collection(db, 'pushTokens'), where('userId', '==', receiverId));
-      const snap = await getDocs(q);
-      const tokens = snap.docs.map((d) => d.data().token as string).filter(Boolean);
-
-      if (tokens.length === 0) return;
-
-      const isCall = payload.type === 'voice_call' || payload.type === 'video_call';
-
-      const messages = tokens.map((token) => ({
-        to: token,
-        sound: isCall ? 'default' : 'default',
-        title: payload.title,
-        body: payload.body,
-        priority: 'high',
-        channelId: isCall ? 'calls' : 'default',
-        data: {
-          type: payload.type,
-          senderId: payload.senderId,
-          timestamp: Date.now(),
-        },
-      }));
-
-      await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Accept-encoding': 'gzip, deflate',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(messages),
-      });
-    } catch (error) {
-      console.error('[PushNotificationService.sendPushNotification]', error);
-    }
+  public resolveNotificationDestination(data: Record<string, unknown>): Href {
+    return notificationDestinationRegistry.resolve(data);
   }
 }
 

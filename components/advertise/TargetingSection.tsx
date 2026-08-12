@@ -1,4 +1,4 @@
-import React, { Dispatch, SetStateAction, useState, useCallback, useEffect } from 'react';
+import { Dispatch, SetStateAction, useState, useCallback, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { AdvertiseFormError } from '@/types/advertise';
 
@@ -22,7 +22,6 @@ export default function TargetingSection({
 	const [bidding, setBidding] = useState('');
 	const [location, setLocation] = useState('');
 	const [isPublishing, setIsPublishing] = useState(false);
-	const [showGenderPicker, setShowGenderPicker] = useState(false);
 
 	const checkFormValidity = useCallback(() => {
 		const isValid = !!(
@@ -70,9 +69,9 @@ export default function TargetingSection({
 			'Choose the target gender for your campaign',
 			[
 				{ text: 'Cancel', style: 'cancel' },
-				{ text: 'Male', onPress: () => { setGender('male'); setShowGenderPicker(false); } },
-				{ text: 'Female', onPress: () => { setGender('female'); setShowGenderPicker(false); } },
-				{ text: 'Other', onPress: () => { setGender('other'); setShowGenderPicker(false); } }
+				{ text: 'Male', onPress: () => { setGender('male'); } },
+				{ text: 'Female', onPress: () => { setGender('female'); } },
+				{ text: 'Other', onPress: () => { setGender('other'); } }
 			]
 		);
 	};

@@ -18,7 +18,8 @@ import { notificationHelpers } from '@/lib/helpers/notificationHelpers';
 import { FriendshipService } from '@/lib/relationships/friendshipService';
 import { AuthService } from '@/lib/services/AuthService';
 import { SkeletonNotificationRow } from './SkeletonLoaders';
-import type { NotificationType, NotificationData } from '@/lib/types/notification';
+import type { NotificationData } from '@/lib/types/notification';
+import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
 
 type NotificationsModalProps = {
   visible: boolean;
@@ -39,6 +40,12 @@ type DialogState = {
   confirmText?: string;
   cancelText?: string;
   onConfirm?: () => void;
+};
+
+const getNotificationTime = (createdAt: NotificationData['createdAt']): number => {
+  if (!createdAt) return 0;
+  if (typeof createdAt === 'object' && 'seconds' in createdAt) return createdAt.seconds * 1000;
+  return new Date(createdAt).getTime();
 };
 
 export default function NotificationsModal({ visible, onClose }: NotificationsModalProps) {
@@ -74,7 +81,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
   const closeDialog = () => setDialogState((prev) => ({ ...prev, visible: false }));
 
   // Strict normalization helper
-  const isItemRead = (n: NotificationData) => Boolean(n.isRead === true || (n as any).isRead === 'true' || (n as any).isRead === 1);
+  const isItemRead = (notification: NotificationData) => notification.isRead;
 
   // Filter list
   const filteredNotifications = useMemo(() => {
@@ -100,8 +107,8 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
       if (sortMode === 'unread_first' && aRead !== bRead) {
         return aRead ? 1 : -1;
       }
-      const aTime = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0;
-      const bTime = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0;
+      const aTime = getNotificationTime(a.createdAt);
+      const bTime = getNotificationTime(b.createdAt);
       return bTime - aTime;
     });
     return copy;
@@ -228,13 +235,14 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
       await markAsRead(item.id);
     }
     const username = item.userDetails?.userName || item.metadata?.sourceUserName;
-    if (username) {
-      onClose();
-      router.push(`/profile/${username}` as any);
-    } else if (item.metadata?.actionUrl) {
-      onClose();
-      router.push(item.metadata.actionUrl as any);
-    }
+    const destinationData: Record<string, unknown> = {
+      ...item.metadata,
+      type: item.type,
+      userName: username,
+      path: item.metadata?.actionUrl,
+    };
+    onClose();
+    router.push(notificationDestinationRegistry.resolve(destinationData));
   };
 
   const handleAcceptFriendRequest = async (item: NotificationData) => {
@@ -435,7 +443,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#ffffff' }}>
         <StatusBar barStyle="dark-content" />
 
         {/* Modern Confirmation Dialog */}

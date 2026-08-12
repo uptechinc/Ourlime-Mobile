@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -12,7 +11,6 @@ import {
 // NOTE: The following Firebase imports and calls are commented out.
 //       Uncomment and adapt them for your React Native Firebase environment.
 //
-// import { db } from '@/lib/firebaseConfig';
 // import { collection, onSnapshot, doc, updateDoc, getDoc, query, where } from 'firebase/firestore';
 // ---------------------------------------------------------------------------
 
@@ -21,21 +19,21 @@ import {
 //
 // import AsyncStorage from '@react-native-async-storage/async-storage';
 
-interface PollOption {
+type PollOption = {
   option: string;
   votes: number;
-}
+};
 
-interface Poll {
+type Poll = {
   id: string;
   question: string;
   options: PollOption[];
   communityId: string;
-}
+};
 
-interface PollListProps {
+type PollListProps = {
   communityId: string;
-}
+};
 
 export default function PollList({ communityId }: PollListProps) {
   const [polls, setPolls] = useState<Poll[]>([]);

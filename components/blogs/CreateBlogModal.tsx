@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { 
     View, 
     Text, 
@@ -8,17 +8,16 @@ import {
     ScrollView, 
     Alert,
     ActivityIndicator,
-    Dimensions
 } from 'react-native';
 // TODO: Comment out Firebase setup for later implementation
 // import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesService';
 
-interface CreateBlogModalProps {
+type CreateBlogModalProps = {
     isOpen: boolean;
     onClose: () => void;
     userId: string;
     onSuccess?: () => void;
-}
+};
 
 export default function CreateBlogModal({ isOpen, onClose, userId, onSuccess }: CreateBlogModalProps) {
     const [isLoading, setIsLoading] = useState(false);
@@ -31,7 +30,7 @@ export default function CreateBlogModal({ isOpen, onClose, userId, onSuccess }: 
         categoryId: '',
         readTime: 0,
         tags: [] as string[],
-        sources: [] as Array<{
+        sources: [] as {
             title: string;
             url: string;
             author: string;
@@ -39,10 +38,8 @@ export default function CreateBlogModal({ isOpen, onClose, userId, onSuccess }: 
             type: string;
             citation: string;
             isVerified: boolean;
-        }>
+        }[]
     });
-
-    const screenHeight = Dimensions.get('window').height;
 
     const handleSubmit = async () => {
         if (!formData.title.trim() || !formData.excerpt.trim() || !formData.content.trim()) {

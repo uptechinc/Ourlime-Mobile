@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
   Image,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
 import {
   Clock,
@@ -17,22 +16,22 @@ import {
 } from 'lucide-react-native';
 
 import JobApplicationModal from './applyJobs/JobApplicationModal';
-// import { auth } from '@/lib/firebaseConfig';  
+import type { JobRecord } from '@/lib/job/JobsService';
 
-interface Props {
-  jobs: any[];
-}
+type FreelanceProjectsListProps = {
+  jobs: JobRecord[];
+};
 
-export const FreelanceProjectsList = ({ jobs }: Props) => {
+export const FreelanceProjectsList = ({ jobs }: FreelanceProjectsListProps) => {
   const freelanceProjects = jobs.filter(j => j.basic_info.type === 'freelancer');
   const promoteList = freelanceProjects.filter(j => j.category_specific?.type === 'promote');
   const requestList  = freelanceProjects.filter(j => j.category_specific?.type === 'request');
 
   const [activeTab, setActiveTab] = useState<'promote' | 'request'>('promote');
   const [modalOpen, setModalOpen] = useState(false);
-  const [selected, setSelected] = useState<any | null>(null);
+  const [selected, setSelected] = useState<JobRecord | null>(null);
 
-  const handleApply = (proj: any) => {
+  const handleApply = (proj: JobRecord) => {
     setSelected(proj);
     setModalOpen(true);
   };
@@ -45,7 +44,7 @@ export const FreelanceProjectsList = ({ jobs }: Props) => {
     );
 
   /* ─── card component ─── */
-  const Card = ({ project }: { project: any }) => {
+  const Card = ({ project }: { project: JobRecord }) => {
     // const isCreator = auth.currentUser?.uid === project.basic_info.userId;
     const isCreator = false;
 
@@ -114,7 +113,7 @@ export const FreelanceProjectsList = ({ jobs }: Props) => {
 
             {!isCreator && (
               <TouchableOpacity
-                //onPress={() => handleApply(project)}
+                onPress={() => handleApply(project)}
                 style={{
                   backgroundColor: '#01eb53',
                   paddingHorizontal: 20,
@@ -171,7 +170,7 @@ export const FreelanceProjectsList = ({ jobs }: Props) => {
               <Clock size={16} color="#9CA3AF" />
               <Text style={{ fontSize: 12, color: '#6B7280' }}>
                 Posted{' '}
-                {new Date(project.basic_info.createdAt.seconds * 1000).toLocaleDateString()}
+                {project.basic_info.createdAt?.seconds ? new Date(project.basic_info.createdAt.seconds * 1000).toLocaleDateString() : 'Recently'}
               </Text>
             </View>
             <TouchableOpacity>
@@ -227,7 +226,7 @@ export const FreelanceProjectsList = ({ jobs }: Props) => {
       </ScrollView>
 
       {/* modal */}
-      {modalOpen && (
+      {selected && (
         <JobApplicationModal
           isOpen={modalOpen}
           onClose={() => {

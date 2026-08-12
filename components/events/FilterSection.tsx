@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   Dimensions,
   Animated,
 } from 'react-native';
-import { X, Search, Plus } from 'lucide-react-native';
+import { X, Search } from 'lucide-react-native';
 import type { Dispatch, SetStateAction } from 'react';
 
 const { width, height } = Dimensions.get('window');
@@ -47,7 +47,7 @@ export default function EventsFilterSection({
       duration: 300,
       useNativeDriver: true,
     }).start();
-  }, [isOpen]);
+  }, [isOpen, translateX]);
 
   const toggleCategory = (id: string) => {
     setSelectedCategories(prev =>

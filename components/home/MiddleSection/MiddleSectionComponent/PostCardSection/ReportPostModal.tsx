@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import Icon from 'react-native-vector-icons/Feather';
@@ -10,6 +10,7 @@ import {
   type ReportEvidenceDraft,
 } from '@/lib/services/ModerationService';
 import type { PostItem } from '@/lib/services/PostService';
+import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
 
 type ReportPostModalProps = {
   visible: boolean;
@@ -25,6 +26,7 @@ export default function ReportPostModal({ visible, post, onClose }: ReportPostMo
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [evidenceFiles, setEvidenceFiles] = useState<ReportEvidenceDraft[]>([]);
+  const [feedback, setFeedback] = useState<{ title: string; message: string; type: CustomModalType } | null>(null);
 
   const handleClose = () => {
     if (submitting) return;
@@ -38,7 +40,7 @@ export default function ReportPostModal({ visible, post, onClose }: ReportPostMo
   const handlePickEvidence = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow photo access to attach report evidence.');
+      setFeedback({ title: 'Permission needed', message: 'Allow photo access to attach report evidence.', type: 'warning' });
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -56,7 +58,7 @@ export default function ReportPostModal({ visible, post, onClose }: ReportPostMo
       else accepted.push({ uri: asset.uri, fileName, mimeType: asset.mimeType ?? undefined, fileSize: asset.fileSize });
     });
     setEvidenceFiles((current) => [...current, ...accepted].slice(0, 3));
-    if (rejected.length > 0) Alert.alert('Evidence not added', rejected.join('\n'));
+    if (rejected.length > 0) setFeedback({ title: 'Evidence not added', message: rejected.join('\n'), type: 'warning' });
   };
 
   const handleSubmit = async () => {
@@ -74,15 +76,16 @@ export default function ReportPostModal({ visible, post, onClose }: ReportPostMo
       });
       setSubmitting(false);
       handleClose();
-      Alert.alert('Report submitted', 'Our moderation team will review this post.');
+      setFeedback({ title: 'Report submitted', message: 'Our moderation team will review this post.', type: 'success' });
     } catch (error: unknown) {
-      Alert.alert('Report not submitted', error instanceof Error ? error.message : 'Please try again');
+      setFeedback({ title: 'Report not submitted', message: error instanceof Error ? error.message : 'Please try again', type: 'danger' });
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
       <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
         <View style={{ flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }}>
@@ -95,7 +98,7 @@ export default function ReportPostModal({ visible, post, onClose }: ReportPostMo
           {!category ? (
             <View>
               <Text style={{ marginBottom: 12, color: '#111827', fontWeight: '800' }}>What type of issue is this?</Text>
-              {(Object.entries(REPORT_REASONS) as Array<[ReportReasonCategory, (typeof REPORT_REASONS)[ReportReasonCategory]]>).map(([key, group]) => (
+              {(Object.entries(REPORT_REASONS) as [ReportReasonCategory, (typeof REPORT_REASONS)[ReportReasonCategory]][]).map(([key, group]) => (
                 <TouchableOpacity key={key} onPress={() => setCategory(key)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, padding: 15, borderRadius: 15, borderWidth: 1, borderColor: '#e5e7eb' }}><Icon name="alert-circle" size={19} color="#c64d53" /><Text style={{ flex: 1, marginLeft: 11, color: '#374151', fontWeight: '700' }}>{group.label}</Text><Icon name="chevron-right" size={19} color="#9ca3af" /></TouchableOpacity>
               ))}
             </View>
@@ -120,5 +123,7 @@ export default function ReportPostModal({ visible, post, onClose }: ReportPostMo
         {category ? <View style={{ padding: 15, borderTopWidth: 1, borderTopColor: '#e5e7eb' }}><TouchableOpacity disabled={!reason || submitting} onPress={() => void handleSubmit()} style={{ alignItems: 'center', borderRadius: 17, paddingVertical: 13, backgroundColor: reason ? '#dc2626' : '#d1d5db' }}>{submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: '#ffffff', fontWeight: '800' }}>Submit Report</Text>}</TouchableOpacity></View> : null}
       </SafeAreaView>
     </Modal>
+    <CustomModal visible={feedback !== null} type={feedback?.type} title={feedback?.title ?? ''} message={feedback?.message ?? ''} onClose={() => setFeedback(null)} />
+    </>
   );
 }

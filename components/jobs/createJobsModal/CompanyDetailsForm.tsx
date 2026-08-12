@@ -1,21 +1,20 @@
 /* components/jobCreation/CompanyDetailsForm.tsx */
-import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 
-interface CompanyDetails {
+type CompanyDetails = {
   name: string;
   size: string;
   industry: string;
   benefits: string[];
-}
+};
 
-interface Props {
+type Props = {
   companyDetails: CompanyDetails;
   setCompanyDetails: (d: CompanyDetails) => void;
   newBenefit: string;
   setNewBenefit: (b: string) => void;
-}
+};
 
 export const CompanyDetailsForm = ({
   companyDetails,

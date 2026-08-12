@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -17,25 +17,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { Heart, MessageCircle, Send, Volume2, VolumeX, Play, Plus } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { auth, db } from '@/lib/firebaseConfig';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  getDoc,
-  doc,
-  limit,
-  orderBy,
-  updateDoc,
-  arrayUnion,
-  arrayRemove,
-} from 'firebase/firestore';
 import CreateLimeModal from '@/components/limes/CreateLimeModal';
-import CommentModal, { LimeComment } from '@/components/limes/CommentModal';
+import CommentModal from '@/components/limes/CommentModal';
 import { Reel } from '@/types/userTypes';
+import type { LimeComment } from '@/lib/types/lime';
+import { limeService } from '@/lib/services/LimeService';
+import { AuthService } from '@/lib/services/AuthService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const authService = AuthService.getInstance();
 
 export default function LimesScreen() {
   const [limesList, setLimesList] = useState<Reel[]>([]);
@@ -51,117 +41,10 @@ export default function LimesScreen() {
   const loadRealLimes = useCallback(async () => {
     setLoading(true);
     try {
-      if (auth.currentUser?.uid) {
-        try {
-          const friendsSnap = await getDocs(
-            query(collection(db, 'friendships'), where('users', 'array-contains', auth.currentUser.uid))
-          );
-          const fSet = new Set<string>();
-          friendsSnap.docs.forEach((d) => {
-            const users: string[] = d.data().users || [];
-            users.forEach((u) => {
-              if (u !== auth.currentUser?.uid) fSet.add(u);
-            });
-          });
-          setFollowingUserIds(fSet);
-        } catch {
-          // ignore friends fetch errors
-        }
-      }
-
-      const reelsSnap = await getDocs(query(collection(db, 'reels'), limit(50)));
-      if (!reelsSnap.empty) {
-        const loaded = await Promise.all(
-          reelsSnap.docs.map(async (reelDoc) => {
-            const data = reelDoc.data();
-            const creatorId = data.userId || '';
-            let userDetails = data.user;
-
-            if ((!userDetails || !userDetails.userName || userDetails.userName === 'lime_user') && creatorId) {
-              try {
-                const userDoc = await getDoc(doc(db, 'users', creatorId));
-                if (userDoc.exists()) {
-                  const u = userDoc.data();
-                  userDetails = {
-                    firstName: u.firstName || 'Lime',
-                    lastName: u.lastName || 'Creator',
-                    userName: u.userName || 'creator',
-                    profileImage: u.profileImage || undefined,
-                  };
-                }
-              } catch {
-                // fallback
-              }
-            }
-
-            // Pre-fetch first 50 comments
-            try {
-              const commentsSnap = await getDocs(
-                query(
-                  collection(db, 'reels', reelDoc.id, 'comments'),
-                  orderBy('createdAt', 'desc'),
-                  limit(50)
-                )
-              );
-              const firstComments: LimeComment[] = commentsSnap.docs
-                .map((cd) => {
-                  const cData = cd.data();
-                  const createdAt = cData.createdAt
-                    ? typeof cData.createdAt.seconds === 'number'
-                      ? cData.createdAt.seconds * 1000
-                      : Date.now()
-                    : Date.now();
-                  return {
-                    id: cd.id,
-                    reelId: reelDoc.id,
-                    userId: cData.userId || '',
-                    content: cData.content || '',
-                    userName: cData.userName || cData.user?.userName || 'user',
-                    firstName: cData.firstName || cData.user?.firstName || 'User',
-                    profileImage: cData.profileImage || cData.user?.profileImage || undefined,
-                    likes: Array.isArray(cData.likes) ? cData.likes : [],
-                    replyCount: cData.replyCount || 0,
-                    parentCommentId: cData.parentCommentId || null,
-                    replyToUserName: cData.replyToUserName || null,
-                    createdAt,
-                    editedAt: cData.editedAt
-                      ? typeof cData.editedAt.seconds === 'number'
-                        ? cData.editedAt.seconds * 1000
-                        : undefined
-                      : undefined,
-                  } satisfies LimeComment;
-                })
-                .filter((c) => Boolean(c.id));
-              setPreloadedCommentsMap((prev) => ({ ...prev, [reelDoc.id]: firstComments }));
-            } catch {
-              // ignore
-            }
-
-            return {
-              id: reelDoc.id,
-              userId: creatorId,
-              media: data.media || { type: 'video', typeUrl: '', fileName: 'reel.mp4', duration: 0 },
-              visibility: data.visibility || 'public',
-              category: data.category || 'Lifestyle',
-              caption: data.caption || '',
-              createdAt: data.createdAt ? new Date() : new Date(),
-              user: userDetails || {
-                firstName: 'Lime',
-                lastName: 'User',
-                userName: 'user',
-                profileImage: undefined,
-              },
-              stats: data.stats || {
-                likes: Array.isArray(data.likes) ? data.likes.length : 0,
-                comments: 0,
-                shares: 0,
-              },
-              likes: Array.isArray(data.likes) ? data.likes : [],
-            } as Reel;
-          })
-        );
-        setLimesList(loaded);
-      }
+      const result = await limeService.fetchFeed(authService.getCurrentUser()?.uid ?? '');
+      setFollowingUserIds(new Set(result.followingUserIds));
+      setPreloadedCommentsMap(result.commentsByReel);
+      setLimesList(result.reels);
     } catch (err) {
       console.error('[LimesScreen] Error loading real limes:', err);
     } finally {
@@ -173,7 +56,7 @@ export default function LimesScreen() {
     void loadRealLimes();
   }, [loadRealLimes]);
 
-  const currentUserId = auth.currentUser?.uid || '';
+  const currentUserId = authService.getCurrentUser()?.uid || '';
 
   const displayedLimes = limesList.filter((l) => {
     const isOwner = currentUserId === l.userId;
@@ -457,9 +340,7 @@ function ReelItem({ reel, isActive, muted, currentUserId, onToggleMute, onCommen
       onLikeUpdate(reel.id, true);
       // Persist to Firestore
       if (currentUserId) {
-        updateDoc(doc(db, 'reels', reel.id), {
-          likes: arrayUnion(currentUserId),
-        }).catch(() => {});
+        limeService.toggleLike(reel.id, currentUserId, true).catch(() => {});
       }
     }
     triggerHeartAnim();
@@ -471,9 +352,7 @@ function ReelItem({ reel, isActive, muted, currentUserId, onToggleMute, onCommen
     setLikeCount((c) => Math.max(0, c + (nextLiked ? 1 : -1)));
     onLikeUpdate(reel.id, nextLiked);
     if (currentUserId) {
-      updateDoc(doc(db, 'reels', reel.id), {
-        likes: nextLiked ? arrayUnion(currentUserId) : arrayRemove(currentUserId),
-      }).catch(() => {});
+      limeService.toggleLike(reel.id, currentUserId, nextLiked).catch(() => {});
     }
     if (nextLiked) {
       triggerHeartAnim();

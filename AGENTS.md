@@ -50,10 +50,13 @@ Ourlime-Mobile/
   - Internal handlers: prefix with `handle` (`handleLogin`, `handleNextStep`).
   - Prop callbacks: prefix with `on` (`onPress`, `onMenuPress`, `onBackPress`).
 
-### 2.2 TypeScript & Zero-`any` Policy
-- **Strict Typing**: Never use `any`. Always use explicit `type` definitions.
-- **`type` over `interface`**: Use `type MyType = { ... }` across the codebase.
-- **Direct React Imports**: Do not import `React` namespace (`import React from 'react'`). Import hooks directly (`import { useState, useEffect, useCallback } from 'react'`).
+### 2.2 Strict TypeScript & Type-Safety Rules
+- **Zero-`any` & Zero-Lazy-Record Policy**: Never use `any` as a type. Avoid `Record<string, unknown>` when a concrete type or `Partial<Pick<...>>` can be specified.
+- **`type` over `interface`**: Always use `type MyType = { ... }`. Never use `interface`.
+- **Direct React Imports**: Do not import `React` namespace (`import React from 'react'`). Import hooks and types directly (`import { useState, useEffect, useCallback } from 'react'` and `import type { ReactNode } from 'react'`).
+- **Discriminated Union Overloads**: Use function overloads for hook and service methods accepting kind discriminators to preserve narrowed return types.
+- **String Literal Unions**: Prefer string literal unions (`'active' | 'inactive'`) over numeric enums.
+- **Callback Parameter Naming**: Use descriptive names in array callbacks (`friends.map(friend => ...)` instead of `f => ...`).
 
 ---
 

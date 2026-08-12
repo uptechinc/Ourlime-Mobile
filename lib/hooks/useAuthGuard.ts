@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { useRouter, useSegments } from 'expo-router';
+import { useRouter, useSegments, type Href } from 'expo-router';
 import { auth } from '../firebaseConfig';
 import { pageAccessService } from '../services/PageAccessService';
 
@@ -31,7 +31,7 @@ export function useAuthGuard() {
     const targetRedirect = pageAccessService.getTargetRedirect(user, currentSegment);
 
     if (targetRedirect) {
-      router.replace(targetRedirect as any);
+      router.replace(targetRedirect as Href);
     }
   }, [user, isInitializing, segments, router]);
 

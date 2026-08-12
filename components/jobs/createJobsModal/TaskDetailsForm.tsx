@@ -1,16 +1,15 @@
 /* components/jobCreation/TaskDetailsForm.tsx */
-import React from 'react';
 import { View, Text, TextInput, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 
-interface TaskDetailsFormProps {
+type TaskDetailsFormProps = {
   taskDetails: {
     urgency: 'low' | 'medium' | 'high';
     duration: string;
     complexity: 'simple' | 'moderate' | 'complex';
   };
   setTaskDetails: (details: TaskDetailsFormProps['taskDetails']) => void;
-}
+};
 
 export const TaskDetailsForm = ({
   taskDetails,

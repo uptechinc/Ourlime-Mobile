@@ -1,4 +1,3 @@
-import React from 'react';
 import { Text, TextStyle, StyleProp } from 'react-native';
 import { useRouter } from 'expo-router';
 
@@ -28,7 +27,7 @@ export default function MentionText({
     if (onMentionPress) {
       onMentionPress(username);
     } else {
-      router.push(`/profile/${username}` as any);
+      router.push({ pathname: '/profile/[username]', params: { username } });
     }
   };
 

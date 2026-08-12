@@ -1,18 +1,18 @@
 import { db } from '@/lib/firebaseConfig';
 import { collection, query, where, getDocs, addDoc, deleteDoc, serverTimestamp, doc } from 'firebase/firestore';
 
-interface Follow {
+type Follow = {
     id: string;
     followerId: string;
     followeeId: string;
-    createdAt: any;
-}
+    createdAt: unknown;
+};
 
-interface FollowResponse {
+type FollowResponse = {
     success: boolean;
     data?: Follow | Follow[];
     error?: string;
-}
+};
 
 export class FollowService {
     private static instance: FollowService;

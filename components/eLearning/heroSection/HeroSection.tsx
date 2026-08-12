@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Image,
   Dimensions,
-  ScrollView
 } from 'react-native';
 import { Menu, Search } from 'lucide-react-native';
 import { FlashList } from '@shopify/flash-list';
@@ -78,8 +77,7 @@ export const HeroSection = () => {
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
-            keyExtractor={(item, index) => index.toString()}
-            estimatedItemSize={sliderWidth}
+            keyExtractor={(item, index) => `${item.title}-${index}-${currentSlide}`}
             renderItem={({ item }) => (
               <View style={{ width: sliderWidth, height: 200, position: 'relative' }}>
                 <Image

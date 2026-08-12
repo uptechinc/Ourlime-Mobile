@@ -1,4 +1,4 @@
-import React, { Dispatch, SetStateAction, useState } from 'react';
+import { Dispatch, SetStateAction, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { AdvertiseFormError } from '@/types/advertise';
 
@@ -103,7 +103,7 @@ export default function DetailsSection({
                 { text: 'Cancel', style: 'cancel' },
                 {
                     text: 'OK',
-                    onPress: (dateString) => {
+                    onPress: (dateString?: string) => {
                         if (dateString) {
                             if (type === 'start') {
                                 setStartDate(dateString);

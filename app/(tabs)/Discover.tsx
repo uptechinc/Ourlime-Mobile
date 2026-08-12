@@ -6,7 +6,6 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
-  ActivityIndicator,
   StatusBar,
   Image,
   Dimensions,
@@ -16,8 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useRouter } from 'expo-router';
 import UserAvatar from '@/components/ui/UserAvatar';
-import { SearchService } from '@/lib/services/SearchService';
-import type { UserProfile } from '@/lib/services/AuthService';
+import { AuthService } from '@/lib/services/AuthService';
+import { CommunityService } from '@/lib/services/CommunityService';
+import { EventService } from '@/lib/services/EventService';
+import { JobsService } from '@/lib/job/JobsService';
+import { RelationshipService, type RelationshipSuggestion } from '@/lib/services/RelationshipService';
+import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import {
   SkeletonUserCard,
   SkeletonCommunityCard,
@@ -25,14 +28,18 @@ import {
   SkeletonJobCard,
 } from '@/components/home/SkeletonLoaders';
 
-const searchService = SearchService.getInstance();
+const authService = AuthService.getInstance();
+const communityService = CommunityService.getInstance();
+const eventService = EventService.getInstance();
+const jobsService = JobsService.getInstance();
+const relationshipService = RelationshipService.getInstance();
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 type DiscoverCommunity = {
   id: string;
   title: string;
   membershipCount: number;
-  imageUrl: string;
+  imageUrl: string | null;
 };
 
 type DiscoverEvent = {
@@ -40,7 +47,7 @@ type DiscoverEvent = {
   title: string;
   date: string;
   location: string;
-  image: string;
+  image: string | null;
 };
 
 type DiscoverJob = {
@@ -49,33 +56,22 @@ type DiscoverJob = {
   company: string;
   type: string;
   salary: string;
-  image: string;
+  image: string | null;
 };
-
-const DISCOVER_COMMUNITIES: DiscoverCommunity[] = [
-  { id: '1', title: 'Caribbean Tech Innovators', membershipCount: 1420, imageUrl: 'https://picsum.photos/400/200?random=1' },
-  { id: '2', title: 'Trini Foodies & Chefs', membershipCount: 890, imageUrl: 'https://picsum.photos/400/200?random=2' },
-  { id: '3', title: 'Ourlime Entrepreneurs', membershipCount: 2300, imageUrl: 'https://picsum.photos/400/200?random=3' },
-];
-
-const DISCOVER_EVENTS: DiscoverEvent[] = [
-  { id: '1', title: 'Upcoming community events', date: 'AUG 12', location: 'Ourlime Events Center', image: 'https://picsum.photos/400/200?random=5' },
-  { id: '2', title: 'Local Tech & Design Meetup', date: 'AUG 18', location: 'Port of Spain, Trinidad', image: 'https://picsum.photos/400/200?random=6' },
-];
-
-const DISCOVER_JOBS: DiscoverJob[] = [
-  { id: '1', role: 'Senior Mobile Developer', company: 'Ourlime Tech', type: 'Full-time', salary: '$5,000 / mo', image: 'https://picsum.photos/100/100?random=8' },
-  { id: '2', role: 'UI/UX Product Designer', company: 'Creative Caribbean', type: 'Remote', salary: '$4,200 / mo', image: 'https://picsum.photos/100/100?random=9' },
-];
 
 export default function DiscoverScreen() {
   const router = useRouter();
+  const { getDecision } = usePageAccess();
   const [discoverQuery, setDiscoverQuery] = useState('');
-  const [suggestedPeople, setSuggestedPeople] = useState<UserProfile[]>([]);
+  const [suggestedPeople, setSuggestedPeople] = useState<RelationshipSuggestion[]>([]);
+  const [communities, setCommunities] = useState<DiscoverCommunity[]>([]);
+  const [events, setEvents] = useState<DiscoverEvent[]>([]);
+  const [jobs, setJobs] = useState<DiscoverJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSearchingQuery, setIsSearchingQuery] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [friendSentIds, setFriendSentIds] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
 
   const handleQueryChange = (text: string) => {
     setDiscoverQuery(text);
@@ -91,16 +87,39 @@ export default function DiscoverScreen() {
   };
 
   const loadDiscoverData = useCallback(async () => {
+    setError(null);
     try {
-      const users = await searchService.searchUsers('a', 8);
+      const [users, communityRecords, eventRecords, jobRecords] = await Promise.all([
+        relationshipService.getSuggestions(8),
+        communityService.fetchCommunities(6),
+        getDecision('/events').canAccess ? eventService.fetchEvents() : Promise.resolve([]),
+        getDecision('/jobs').canAccess ? jobsService.fetchJobs() : Promise.resolve([]),
+      ]);
       setSuggestedPeople(users);
-    } catch (error) {
-      console.error('[DiscoverScreen.loadDiscoverData]', error);
+      setCommunities(communityRecords.slice(0, 6).map((item) => ({ id: item.id, title: item.title, membershipCount: item.membershipCount, imageUrl: item.imageUrl })));
+      setEvents(eventRecords.slice(0, 6).map((item, index) => ({
+        id: item.id || `event-${index}`,
+        title: item.title,
+        date: new Date(item.startDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        location: item.location,
+        image: item.image || item.media?.find((media) => media.type === 'image')?.url || null,
+      })));
+      setJobs(jobRecords.slice(0, 6).map((item) => ({
+        id: item.id,
+        role: item.basic_info.title,
+        company: item.creator?.name || 'Ourlime member',
+        type: item.basic_info.type,
+        salary: `$${item.basic_info.priceRange.from.toLocaleString()} - $${item.basic_info.priceRange.to.toLocaleString()}`,
+        image: item.creator?.profileImage || null,
+      })));
+    } catch (loadError: unknown) {
+      console.error('[DiscoverScreen.loadDiscoverData]', loadError);
+      setError('Discover could not be loaded. Check your connection and try again.');
     } finally {
       setIsLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [getDecision]);
 
   useEffect(() => {
     void loadDiscoverData();
@@ -122,27 +141,29 @@ export default function DiscoverScreen() {
   }, [suggestedPeople, normalizedQuery]);
 
   const filteredCommunities = useMemo(() => {
-    if (!normalizedQuery) return DISCOVER_COMMUNITIES;
-    return DISCOVER_COMMUNITIES.filter((c) => c.title.toLowerCase().includes(normalizedQuery));
-  }, [normalizedQuery]);
+    if (!normalizedQuery) return communities;
+    return communities.filter((c) => c.title.toLowerCase().includes(normalizedQuery));
+  }, [communities, normalizedQuery]);
 
   const filteredEvents = useMemo(() => {
-    if (!normalizedQuery) return DISCOVER_EVENTS;
-    return DISCOVER_EVENTS.filter((e) => `${e.title} ${e.location}`.toLowerCase().includes(normalizedQuery));
-  }, [normalizedQuery]);
+    if (!normalizedQuery) return events;
+    return events.filter((e) => `${e.title} ${e.location}`.toLowerCase().includes(normalizedQuery));
+  }, [events, normalizedQuery]);
 
   const filteredJobs = useMemo(() => {
-    if (!normalizedQuery) return DISCOVER_JOBS;
-    return DISCOVER_JOBS.filter((j) => `${j.role} ${j.company} ${j.type}`.toLowerCase().includes(normalizedQuery));
-  }, [normalizedQuery]);
+    if (!normalizedQuery) return jobs;
+    return jobs.filter((j) => `${j.role} ${j.company} ${j.type}`.toLowerCase().includes(normalizedQuery));
+  }, [jobs, normalizedQuery]);
 
-  const handleToggleFriend = (uid: string) => {
-    setFriendSentIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(uid)) next.delete(uid);
-      else next.add(uid);
-      return next;
-    });
+  const handleToggleFriend = async (uid: string) => {
+    const currentUserId = authService.getCurrentUser()?.uid;
+    if (!currentUserId || friendSentIds.has(uid)) return;
+    try {
+      await relationshipService.sendFriendRequest(currentUserId, uid);
+      setFriendSentIds((previous) => new Set(previous).add(uid));
+    } catch (friendError: unknown) {
+      console.error('[DiscoverScreen.handleToggleFriend]', friendError);
+    }
   };
 
   const handleShareEvent = async (event: DiscoverEvent) => {
@@ -225,6 +246,14 @@ export default function DiscoverScreen() {
               <SkeletonJobCard />
             </View>
           </View>
+        ) : error ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+            <Icon name="wifi-off" size={36} color="#64748b" />
+            <Text style={{ color: '#475569', textAlign: 'center', lineHeight: 21, marginTop: 12 }}>{error}</Text>
+            <TouchableOpacity onPress={() => void loadDiscoverData()} style={{ backgroundColor: '#10b981', paddingHorizontal: 22, paddingVertical: 11, borderRadius: 999, marginTop: 16 }}>
+              <Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <View style={{ paddingVertical: 16 }}>
             {/* 1. Suggested Friends Section */}
@@ -238,11 +267,11 @@ export default function DiscoverScreen() {
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
                 {filteredPeople.map((person) => {
-                  const isSent = friendSentIds.has(person.uid);
+                  const isSent = friendSentIds.has(person.id);
                   return (
                     <TouchableOpacity
-                      key={person.uid}
-                      onPress={() => router.push(`/profile/${person.userName}` as any)}
+                      key={person.id}
+                      onPress={() => router.push({ pathname: '/profile/[username]', params: { username: person.userName } })}
                       style={{
                         width: 150,
                         padding: 14,
@@ -259,7 +288,7 @@ export default function DiscoverScreen() {
                         elevation: 2,
                       }}
                     >
-                      <UserAvatar profileImage={person.profilePicture} firstName={person.firstName || person.userName} size={60} />
+                      <UserAvatar profileImage={person.profileImage} firstName={person.firstName || person.userName} size={60} />
                       <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: '#1e293b', marginTop: 10, textAlign: 'center' }}>
                         {person.firstName} {person.lastName}
                       </Text>
@@ -267,7 +296,7 @@ export default function DiscoverScreen() {
                         @{person.userName}
                       </Text>
                       <TouchableOpacity
-                        onPress={() => handleToggleFriend(person.uid)}
+                        onPress={() => void handleToggleFriend(person.id)}
                         style={{
                           marginTop: 12,
                           paddingHorizontal: 14,
@@ -295,7 +324,7 @@ export default function DiscoverScreen() {
                   <Text style={{ fontSize: 18, fontWeight: '800', color: '#0f172a' }}>Featured Communities</Text>
                   <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Join groups sharing your passions</Text>
                 </View>
-                <TouchableOpacity onPress={() => router.push('/communities/page' as any)}>
+                <TouchableOpacity onPress={() => router.push('/communities')}>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: '#10b981' }}>See All</Text>
                 </TouchableOpacity>
               </View>
@@ -304,7 +333,7 @@ export default function DiscoverScreen() {
                 {filteredCommunities.map((community) => (
                   <TouchableOpacity
                     key={community.id}
-                    onPress={() => router.push('/communities/page' as any)}
+                    onPress={() => router.push({ pathname: '/communities/[id]', params: { id: community.id } })}
                     style={{
                       width: SCREEN_WIDTH * 0.72,
                       borderRadius: 20,
@@ -315,13 +344,11 @@ export default function DiscoverScreen() {
                       marginRight: 14,
                     }}
                   >
-                    <Image source={{ uri: community.imageUrl }} style={{ width: '100%', height: 110 }} />
+                    {community.imageUrl ? <Image source={{ uri: community.imageUrl }} style={{ width: '100%', height: 110 }} /> : <View style={{ width: '100%', height: 110, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}><Icon name="users" size={30} color="#10b981" /></View>}
                     <View style={{ padding: 14 }}>
                       <Text style={{ fontSize: 16, fontWeight: '800', color: '#1e293b' }}>{community.title}</Text>
                       <Text style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{community.membershipCount.toLocaleString()} members</Text>
-                      <TouchableOpacity style={{ marginTop: 12, paddingVertical: 8, borderRadius: 14, backgroundColor: '#ecfdf5', borderWidth: 1, borderColor: '#a7f3d0', alignItems: 'center' }}>
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#047857' }}>Join Community</Text>
-                      </TouchableOpacity>
+                      <Text style={{ marginTop: 12, fontSize: 12, fontWeight: '700', color: '#047857' }}>View community</Text>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -335,7 +362,7 @@ export default function DiscoverScreen() {
                   <Text style={{ fontSize: 18, fontWeight: '800', color: '#0f172a' }}>Upcoming Events</Text>
                   <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Discover what is happening near you</Text>
                 </View>
-                <TouchableOpacity onPress={() => router.push('/events/page' as any)}>
+                <TouchableOpacity onPress={() => router.push('/events')}>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: '#10b981' }}>View All</Text>
                 </TouchableOpacity>
               </View>
@@ -354,7 +381,7 @@ export default function DiscoverScreen() {
                     alignItems: 'center',
                   }}
                 >
-                  <Image source={{ uri: evt.image }} style={{ width: 80, height: 80, borderRadius: 16 }} />
+                  {evt.image ? <Image source={{ uri: evt.image }} style={{ width: 80, height: 80, borderRadius: 16 }} /> : <View style={{ width: 80, height: 80, borderRadius: 16, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}><Icon name="calendar" size={24} color="#10b981" /></View>}
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={{ fontSize: 11, fontWeight: '800', color: '#10b981', textTransform: 'uppercase' }}>{evt.date}</Text>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: '#1e293b', marginTop: 2 }}>{evt.title}</Text>
@@ -377,7 +404,7 @@ export default function DiscoverScreen() {
                   <Text style={{ fontSize: 18, fontWeight: '800', color: '#0f172a' }}>Featured Jobs</Text>
                   <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Take the next step in your career</Text>
                 </View>
-                <TouchableOpacity onPress={() => router.push('/jobs/page' as any)}>
+                <TouchableOpacity onPress={() => router.push('/jobs')}>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: '#10b981' }}>Browse All</Text>
                 </TouchableOpacity>
               </View>
@@ -385,7 +412,7 @@ export default function DiscoverScreen() {
               {filteredJobs.map((job) => (
                 <TouchableOpacity
                   key={job.id}
-                  onPress={() => router.push('/jobs/page' as any)}
+                  onPress={() => router.push('/jobs')}
                   style={{
                     flexDirection: 'row',
                     backgroundColor: '#ffffff',
@@ -397,7 +424,7 @@ export default function DiscoverScreen() {
                     alignItems: 'center',
                   }}
                 >
-                  <Image source={{ uri: job.image }} style={{ width: 44, height: 44, borderRadius: 14 }} />
+                  {job.image ? <Image source={{ uri: job.image }} style={{ width: 44, height: 44, borderRadius: 14 }} /> : <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}><Icon name="briefcase" size={20} color="#10b981" /></View>}
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: '#1e293b' }}>{job.role}</Text>
                     <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{job.company} · <Text style={{ color: '#10b981', fontWeight: '600' }}>{job.type}</Text></Text>

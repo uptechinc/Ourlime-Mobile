@@ -1,15 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
-import { auth } from '@/lib/firebaseConfig';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  Timestamp,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebaseConfig';
+import { ActivityService } from '@/lib/services/ActivityService';
 
 type ActivityStat = {
   icon: string;
@@ -22,6 +14,8 @@ type ActivityStat = {
 type ActivityCardProps = {
   userId: string;
 };
+
+const activityService = ActivityService.getInstance();
 
 export default function ActivityCard({ userId }: ActivityCardProps) {
   const [stats, setStats] = useState<ActivityStat[]>([]);
@@ -37,56 +31,8 @@ export default function ActivityCard({ userId }: ActivityCardProps) {
     const fetchActivity = async () => {
       setIsLoading(true);
       try {
-        // Try the web REST endpoint first (works when deployed or same-network dev)
-        const idToken = await auth.currentUser?.getIdToken();
-        if (idToken) {
-          // NOTE: Replace with your deployed web API base URL if needed
-          const webApiBase = process.env.EXPO_PUBLIC_WEB_API_URL ?? '';
-          if (webApiBase) {
-            const response = await fetch(`${webApiBase}/api/home/LeftSection/activity`, {
-              headers: { Authorization: `Bearer ${idToken}` },
-            });
-            if (response.ok) {
-              const result = await response.json();
-              if (result.success && result.data) {
-                buildStats(result.data.likesReceived ?? 0, result.data.commentsReceived ?? 0);
-                return;
-              }
-            }
-          }
-        }
-
-        // Fallback: native Firestore queries for this week's engagement
-        const oneWeekAgo = Timestamp.fromDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
-
-        // Count posts created this week
-        const postsSnap = await getDocs(
-          query(
-            collection(db, 'userPosts'),
-            where('userId', '==', userId),
-            where('createdAt', '>=', oneWeekAgo),
-          ),
-        );
-
-        // Count likes received on user's posts this week
-        const likesSnap = await getDocs(
-          query(
-            collection(db, 'postLikes'),
-            where('postOwnerId', '==', userId),
-            where('createdAt', '>=', oneWeekAgo),
-          ),
-        );
-
-        // Count comments received this week
-        const commentsSnap = await getDocs(
-          query(
-            collection(db, 'postComments'),
-            where('postOwnerId', '==', userId),
-            where('createdAt', '>=', oneWeekAgo),
-          ),
-        );
-
-        buildStats(likesSnap.size, commentsSnap.size, postsSnap.size);
+        const summary = await activityService.getWeeklyActivity(userId);
+        buildStats(summary.likesReceived, summary.commentsReceived, summary.postsCreated);
       } catch {
         // Silent fail — hide the card if data is unavailable
         setStats([]);

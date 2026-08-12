@@ -15,6 +15,69 @@ import {
     Timestamp
 } from 'firebase/firestore';
 
+export type JobRecord = {
+    id: string;
+    basic_info: {
+        type: string;
+        title: string;
+        description: string;
+        userId: string;
+        location: { type?: string; city?: string; country?: string; address?: string };
+        priceRange: { from: number; to: number };
+        createdAt?: { seconds: number };
+        category?: string;
+    };
+    category?: string;
+    details: { skills: string[]; requirements?: string[]; qualifications?: string[] };
+    category_specific: Record<string, unknown> & {
+        name?: string;
+        type?: string;
+        industry?: string;
+        size?: string | number;
+        benefits?: string[];
+        urgency?: 'low' | 'medium' | 'high';
+        duration?: string;
+        complexity?: string;
+        timeline?: string;
+    };
+    questions?: { id: string; question?: string; type?: string; options?: string[] }[];
+    creator?: { name: string; username: string; profileImage: string; email?: string };
+};
+
+export type JobQuestionInput = {
+    question: string;
+    answerType: 'input' | 'single' | 'multiple' | 'checkbox' | 'dropdown';
+    options: string[];
+};
+
+export type CreateJobInput = {
+    jobTitle: string;
+    jobDescription: string;
+    jobCategory: string;
+    category?: string;
+    userId: string;
+    priceRange: { from: number | string; to: number | string };
+    location: JobRecord['basic_info']['location'];
+    skills?: string[];
+    requirements?: string[];
+    qualifications?: string[];
+    category_specific?: JobRecord['category_specific'];
+    questions?: JobQuestionInput[];
+};
+
+export type UpdateJobInput = {
+    title: string;
+    description: string;
+    type: string;
+    priceRange: JobRecord['basic_info']['priceRange'];
+    location: JobRecord['basic_info']['location'];
+    skills: string[];
+    requirements: string[];
+    qualifications: string[];
+    category_specific: JobRecord['category_specific'];
+    questions: JobQuestionInput[];
+};
+
 export class JobsService {
     private static instance: JobsService;
     private readonly db: Firestore;
@@ -30,7 +93,7 @@ export class JobsService {
         return JobsService.instance;
     }
 
-    public async createJob(jobData: any) {
+    public async createJob(jobData: CreateJobInput): Promise<string> {
         try {
             console.log('Creating job with data:', jobData);
             console.log('Job category being saved:', jobData.jobCategory);
@@ -60,10 +123,11 @@ export class JobsService {
                 category_specific: jobData.category_specific || {}
             });
     
-            if (jobData.questions?.length > 0) {
+            const questions = jobData.questions ?? [];
+            if (questions.length > 0) {
                 const questionsCollection = collection(jobRef, 'questions');
                 await Promise.all(
-                    jobData.questions.map((question: any) => 
+                    questions.map((question) =>
                         addDoc(questionsCollection, {
                             question: question.question,
                             type: question.answerType,
@@ -84,14 +148,14 @@ export class JobsService {
             }
             
             return jobRef.id;
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('Detailed error in createJob:', error);
-            throw new Error(`Failed to create job: ${error.message}`);
+            throw new Error(`Failed to create job: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
     
 
-    public async fetchJobs() {
+    public async fetchJobs(): Promise<JobRecord[]> {
         try {
             const jobsQuery = query(
                 collection(this.db, 'jobs'),
@@ -152,7 +216,7 @@ export class JobsService {
                         profileImage: profileImageUrl,
                         email: userData?.email
                     }
-                };
+                } as JobRecord;
             }));
     
             return jobs;
@@ -162,7 +226,7 @@ export class JobsService {
         }
     }
     
-    public async updateJob(jobId: string, jobData: any) {
+    public async updateJob(jobId: string, jobData: UpdateJobInput): Promise<boolean> {
         try {
             const jobRef = doc(this.db, 'jobs', jobId);
             
@@ -187,7 +251,7 @@ export class JobsService {
             await Promise.all(existingQuestions.docs.map(doc => deleteDoc(doc.ref)));
             
             // Add updated questions
-            await Promise.all(jobData.questions.map(async (question: any) => {
+            await Promise.all(jobData.questions.map(async (question) => {
                 await addDoc(questionsCollection, {
                     question: question.question,
                     type: question.answerType,

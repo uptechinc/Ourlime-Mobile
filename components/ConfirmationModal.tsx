@@ -1,13 +1,12 @@
-import React from "react";
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal, Text, TouchableOpacity, View } from "react-native";
 
-interface ConfirmationModalProps {
+type ConfirmationModalProps = {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => void;
   userName: string;
   action: "remove" | "ban";
-}
+};
 
 export default function ConfirmationModal({
   isOpen,

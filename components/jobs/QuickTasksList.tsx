@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -7,28 +7,28 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import {
-  Clock,
   DollarSign,
   MapPin,
   Star,
   Timer,
   AlertCircle,
+  type LucideIcon,
 } from 'lucide-react-native';
 
 import JobApplicationModal from './applyJobs/JobApplicationModal';
-// import { auth } from '@/lib/firebaseConfig';   // uncomment if you use auth
+import type { JobRecord } from '@/lib/job/JobsService';
 
-interface Props {
-  jobs: any[];
-}
+type QuickTasksListProps = {
+  jobs: JobRecord[];
+};
 
-export const QuickTasksList = ({ jobs }: Props) => {
+export const QuickTasksList = ({ jobs }: QuickTasksListProps) => {
   const quickTasks = jobs.filter(j => j.basic_info.type === 'quickTask');
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [selected, setSelected] = useState<any | null>(null);
+  const [selected, setSelected] = useState<JobRecord | null>(null);
 
-  const handleApply = (task: any) => {
+  const handleApply = (task: JobRecord) => {
     setSelected(task);
     setModalOpen(true);
   };
@@ -41,7 +41,7 @@ export const QuickTasksList = ({ jobs }: Props) => {
     );
 
   /* single card */
-  const Card = ({ task }: { task: any }) => {
+  const Card = ({ task }: { task: JobRecord }) => {
     // const isCreator = auth.currentUser?.uid === task.basic_info.userId;
     const isCreator = false;
 
@@ -182,7 +182,7 @@ export const QuickTasksList = ({ jobs }: Props) => {
           {/* footer */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={{ fontSize: 12, color: '#6B7280' }}>
-              Posted {new Date(task.basic_info.createdAt.seconds * 1000).toLocaleDateString()}
+              Posted {task.basic_info.createdAt?.seconds ? new Date(task.basic_info.createdAt.seconds * 1000).toLocaleDateString() : 'Recently'}
             </Text>
             {!isCreator && (
               <TouchableOpacity
@@ -204,7 +204,7 @@ export const QuickTasksList = ({ jobs }: Props) => {
   };
 
   /* helper badge */
-  const Badge = ({ icon: Icon, label }: { icon: any; label: string }) => (
+  const Badge = ({ icon: Icon, label }: { icon: LucideIcon; label: string }) => (
     <View
       style={{
         flexDirection: 'row',
@@ -232,7 +232,7 @@ export const QuickTasksList = ({ jobs }: Props) => {
         ))}
       </ScrollView>
 
-      {modalOpen && (
+      {selected && (
         <JobApplicationModal
           isOpen={modalOpen}
           onClose={() => {

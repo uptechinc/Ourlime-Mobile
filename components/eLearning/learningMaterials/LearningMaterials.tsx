@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Image } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { BookText, Video, Star, Clock, CheckCircle } from 'lucide-react-native';
+import { Star, Clock, CheckCircle } from 'lucide-react-native';
 
 const mainCategories = [
   'Information Technology', 'Science', 'Business', 'Language', 'Art', 'History',
@@ -168,7 +168,6 @@ export const LearningMaterials = () => {
         {/* COURSES */}
         <FlashList
           data={filteredCourses}
-          estimatedItemSize={200}
           renderItem={renderCourseCard}
           keyExtractor={(item) => item.id.toString()}
           showsVerticalScrollIndicator={false}

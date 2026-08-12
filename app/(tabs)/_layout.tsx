@@ -2,26 +2,23 @@ import { useState, useEffect } from "react";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image, Platform } from "react-native";
-import { auth, db } from "@/lib/firebaseConfig";
-import { doc, getDoc } from "firebase/firestore";
+import { AuthService } from '@/lib/services/AuthService';
+
+const authService = AuthService.getInstance();
 
 const TabLayout = () => {
   const [isDeveloper, setIsDeveloper] = useState(false);
 
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged((user) => {
+    const unsub = authService.subscribeToAuthState((user) => {
       if (!user) {
         setIsDeveloper(false);
         return;
       }
-      getDoc(doc(db, 'users', user.uid)).then((snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          const role = (data.accountType || data.role || '').toLowerCase();
-          const allowed = role === 'developer' || role === 'dev' || data.isDeveloper === true;
-          setIsDeveloper(allowed);
-        }
-      }).catch(() => {});
+      void authService.getUserProfile(user.uid).then((profile) => {
+        const role = profile?.accountType?.toLowerCase() ?? '';
+        setIsDeveloper(role === 'developer' || role === 'dev' || profile?.isDeveloper === true);
+      }).catch(() => setIsDeveloper(false));
     });
     return () => unsub();
   }, []);

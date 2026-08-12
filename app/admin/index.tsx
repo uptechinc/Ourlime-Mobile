@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,53 +6,66 @@ import {
   ScrollView,
   ActivityIndicator,
   StyleSheet,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
-import { useRouter } from 'expo-router';
-import { auth, db } from '@/lib/firebaseConfig';
-import { collection, getDocs, limit, query } from 'firebase/firestore';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { AdminMetricsService, type AdminMetrics } from '@/lib/services/AdminMetricsService';
+import PageAccessAdminSection from '@/components/admin/PageAccessAdminSection';
+import UserManagementSection from '@/components/admin/UserManagementSection';
+import ModerationSection from '@/components/admin/ModerationSection';
+import { usePageAccess } from '@/lib/contexts/PageAccessContext';
+
+const adminMetricsService = AdminMetricsService.getInstance();
+
+const REMAINING_ADMIN_WORKSPACES = [
+  { id: 'analytics', title: 'Analytics', icon: 'bar-chart-2' as const, route: '/admin/analytics' as Href },
+  { id: 'testers', title: 'Testers', icon: 'user-check' as const, route: '/admin/testers' as Href },
+  { id: 'stickers', title: 'Stickers', icon: 'smile' as const, route: '/admin/stickers' as Href },
+  { id: 'products', title: 'Products', icon: 'shopping-bag' as const, route: '/admin/products' as Href },
+  { id: 'categories', title: 'Categories', icon: 'tag' as const, route: '/admin/categories' as Href },
+  { id: 'community-categories', title: 'Community Categories', icon: 'layers' as const, route: '/admin/community-categories' as Href },
+  { id: 'communities', title: 'Communities', icon: 'users' as const, route: '/admin/communities' as Href },
+] as const;
 
 export default function AdminPortalScreen() {
   const router = useRouter();
+  const { section } = useLocalSearchParams<{ section?: string }>();
+  const { authorization, loading: accessLoading } = usePageAccess();
+  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'moderation' | 'page_access'>('overview');
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<AdminMetrics>({
     usersCount: 0,
     postsCount: 0,
     reelsCount: 0,
     eventsCount: 0,
     reportsCount: 0,
   });
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchAdminStats = async () => {
-      try {
-        const [usersSnap, postsSnap, reelsSnap, eventsSnap, reportsSnap] = await Promise.all([
-          getDocs(query(collection(db, 'users'), limit(50))),
-          getDocs(query(collection(db, 'posts'), limit(50))),
-          getDocs(query(collection(db, 'reels'), limit(50))),
-          getDocs(query(collection(db, 'events'), limit(50))),
-          getDocs(query(collection(db, 'reports'), limit(50))),
-        ]);
+    if (section === 'users' || section === 'moderation' || section === 'page_access' || section === 'overview') setActiveSection(section);
+  }, [section]);
 
-        setStats({
-          usersCount: usersSnap.size,
-          postsCount: postsSnap.size,
-          reelsCount: reelsSnap.size,
-          eventsCount: eventsSnap.size,
-          reportsCount: reportsSnap.size,
-        });
-      } catch (err) {
+  const fetchAdminStats = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        setStats(await adminMetricsService.fetchMetrics());
+      } catch (err: unknown) {
         console.error('[AdminPortal] Error loading stats:', err);
+        setError(err instanceof Error ? err.message : 'Could not load admin metrics.');
       } finally {
         setLoading(false);
       }
     };
-    void fetchAdminStats();
-  }, []);
+
+  useEffect(() => {
+    if (!accessLoading && authorization.isAdmin) void fetchAdminStats();
+  }, [accessLoading, authorization.isAdmin]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -62,12 +75,38 @@ export default function AdminPortalScreen() {
         <View style={{ width: 32 }} />
       </View>
 
-      {loading ? (
+      {accessLoading ? (
+        <View style={styles.center}><ActivityIndicator size="large" color="#10b981" /></View>
+      ) : !authorization.isAdmin ? (
+        <View style={styles.center}>
+          <Icon name="lock" size={38} color="#c64d53" />
+          <Text style={styles.deniedTitle}>Admin access required</Text>
+          <Text style={styles.deniedText}>Your account does not have permission to open the administration workspace.</Text>
+          <TouchableOpacity onPress={() => router.replace('/(tabs)')} style={styles.deniedButton}>
+            <Text style={styles.deniedButtonText}>Back to Home</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingVertical: 10, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+            {([{ key: 'overview', label: 'Overview', icon: 'grid' }, { key: 'users', label: 'Users', icon: 'users' }, { key: 'moderation', label: 'Reports', icon: 'flag' }, { key: 'page_access', label: 'Access', icon: 'shield' }] as const).map((section) => (
+              <TouchableOpacity key={section.key} onPress={() => setActiveSection(section.key)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 13, paddingVertical: 10, backgroundColor: activeSection === section.key ? '#ecfdf5' : 'transparent' }}><Icon name={section.icon} size={16} color={activeSection === section.key ? '#047857' : '#64748b'} /><Text style={{ marginLeft: 7, color: activeSection === section.key ? '#047857' : '#64748b', fontWeight: '800' }}>{section.label}</Text></TouchableOpacity>
+            ))}
+          </View>
+          {activeSection === 'page_access' ? (
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 50 }}><PageAccessAdminSection /></ScrollView>
+          ) : activeSection === 'users' ? (
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 50 }}><UserManagementSection /></ScrollView>
+          ) : activeSection === 'moderation' ? (
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 50 }}><ModerationSection /></ScrollView>
+          ) : loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#10b981" />
           <Text style={{ marginTop: 12, color: '#64748b' }}>Loading admin dashboard…</Text>
         </View>
-      ) : (
+          ) : error ? (
+        <View style={styles.center}><Icon name="alert-triangle" size={34} color="#c64d53" /><Text style={{ marginTop: 10, color: '#991b1b' }}>{error}</Text><TouchableOpacity onPress={() => void fetchAdminStats()} style={{ marginTop: 14, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, backgroundColor: '#10b981' }}><Text style={{ color: '#fff', fontWeight: '700' }}>Retry</Text></TouchableOpacity></View>
+          ) : (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 16 }}>
           <Text style={styles.sectionTitle}>Overview & Metrics</Text>
 
@@ -95,29 +134,22 @@ export default function AdminPortalScreen() {
             </View>
           </View>
 
-          {/* Admin Management Tools */}
-          <Text style={[styles.sectionTitle, { marginTop: 12 }]}>Admin Management</Text>
-          <View style={styles.toolList}>
-            {[
-              { label: 'User Management', icon: 'users', desc: 'Manage user accounts, roles & bans' },
-              { label: 'Content Moderation', icon: 'shield', desc: 'Review reported posts & comments' },
-              { label: 'Reports & Flagged Content', icon: 'flag', desc: `${stats.reportsCount} open reports` },
-              { label: 'Category & Sticker Management', icon: 'grid', desc: 'Configure platform taxonomy' },
-              { label: 'Analytics & Performance', icon: 'bar-chart-2', desc: 'System traffic and user engagement' },
-            ].map((tool) => (
-              <TouchableOpacity key={tool.label} style={styles.toolRow} activeOpacity={0.75}>
-                <View style={styles.toolIconCircle}>
-                  <Icon name={tool.icon} size={20} color="#10b981" />
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.toolLabel}>{tool.label}</Text>
-                  <Text style={styles.toolDesc}>{tool.desc}</Text>
-                </View>
+          <View style={styles.notice}><Icon name="shield" size={20} color="#047857" /><Text style={styles.noticeText}>Admin tools are role-gated and use authenticated server operations.</Text></View>
+          <View style={styles.pendingSection}>
+            <Text style={styles.sectionTitle}>Additional Web Workspaces</Text>
+            <Text style={styles.pendingIntro}>These canonical destinations are listed for parity tracking. Their secure native workflows are still in progress.</Text>
+            {REMAINING_ADMIN_WORKSPACES.map((workspace) => (
+              <TouchableOpacity key={workspace.id} onPress={() => router.push(workspace.route)} style={styles.pendingRow}>
+                <Icon name={workspace.icon} size={19} color="#475569" />
+                <Text style={styles.pendingRowTitle}>{workspace.title}</Text>
+                <Text style={styles.webBadge}>WEB</Text>
                 <Icon name="chevron-right" size={18} color="#94a3b8" />
               </TouchableOpacity>
             ))}
           </View>
         </ScrollView>
+          )}
+        </>
       )}
     </SafeAreaView>
   );
@@ -134,9 +166,15 @@ const styles = StyleSheet.create({
   metricCard: { width: '47%', padding: 16, borderRadius: 16, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
   metricVal: { fontSize: 24, fontWeight: '800', color: '#0f172a', marginTop: 8 },
   metricLabel: { fontSize: 12, color: '#64748b', fontWeight: '600', marginTop: 2 },
-  toolList: { gap: 10 },
-  toolRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e2e8f0' },
-  toolIconCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#ecfdf5', alignItems: 'center', justifyContent: 'center' },
-  toolLabel: { fontSize: 15, fontWeight: '700', color: '#0f172a' },
-  toolDesc: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, borderRadius: 16, backgroundColor: '#ecfdf5' },
+  noticeText: { flex: 1, fontSize: 13, color: '#047857', lineHeight: 19 },
+  deniedTitle: { marginTop: 14, fontSize: 20, fontWeight: '900', color: '#0f172a' },
+  deniedText: { maxWidth: 320, marginTop: 8, paddingHorizontal: 18, textAlign: 'center', lineHeight: 20, color: '#64748b' },
+  deniedButton: { marginTop: 20, borderRadius: 999, backgroundColor: '#10b981', paddingHorizontal: 20, paddingVertical: 11 },
+  deniedButtonText: { color: '#ffffff', fontWeight: '800' },
+  pendingSection: { padding: 16, borderRadius: 16, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e2e8f0' },
+  pendingIntro: { marginTop: 6, marginBottom: 8, fontSize: 12, lineHeight: 18, color: '#64748b' },
+  pendingRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f1f5f9' },
+  pendingRowTitle: { flex: 1, marginLeft: 10, color: '#334155', fontWeight: '700' },
+  webBadge: { marginRight: 8, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, overflow: 'hidden', backgroundColor: '#e2e8f0', color: '#475569', fontSize: 10, fontWeight: '900' },
 });

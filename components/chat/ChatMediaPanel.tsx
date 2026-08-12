@@ -128,7 +128,7 @@ export function ChatMediaPanel({
                   gap: 6,
                 }}
               >
-                <Icon name={icon as any} size={15} color={isActive ? '#10b981' : '#64748b'} />
+                <Icon name={icon} size={15} color={isActive ? '#10b981' : '#64748b'} />
                 <Text style={{ fontSize: 13, fontWeight: isActive ? '700' : '500', color: isActive ? '#10b981' : '#64748b' }}>
                   {label}
                 </Text>
@@ -251,7 +251,7 @@ function EmptyState({ icon, title, subtitle }: { icon: string; title: string; su
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 60 }}>
       <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-        <Icon name={icon as any} size={28} color="#94a3b8" />
+        <Icon name={icon} size={28} color="#94a3b8" />
       </View>
       <Text style={{ fontSize: 16, fontWeight: '700', color: '#334155', marginBottom: 4 }}>{title}</Text>
       <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center', paddingHorizontal: 32 }}>{subtitle}</Text>

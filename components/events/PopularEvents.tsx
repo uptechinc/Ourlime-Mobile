@@ -1,5 +1,5 @@
-import React from "react";
-import { View, Text, Image as RNImage, Dimensions, TouchableOpacity } from "react-native";
+import { useRef } from "react";
+import { View, Text, Image as RNImage, Dimensions } from "react-native";
 import Carousel, { ICarouselInstance, Pagination } from "react-native-reanimated-carousel";
 import { useSharedValue } from "react-native-reanimated";
 import type { Event } from "@/types/eventTypes";
@@ -14,20 +14,10 @@ type PopularEventsProps = { events: Event[] };
 export default function PopularEvents({ events }: PopularEventsProps) {
   const data = events.slice(0, 4);
   const progress = useSharedValue(0);
-  const carouselRef = React.useRef<ICarouselInstance>(null);
+  const carouselRef = useRef<ICarouselInstance>(null);
 
   const handleDotPress = (index: number) => {
     carouselRef.current?.scrollTo({ index, animated: true });
-  };
-
-  const next = () => {
-    const nextIndex = Math.min(data.length - 1, Math.ceil(progress.value) + 1);
-    carouselRef.current?.scrollTo({ index: nextIndex, animated: true });
-  };
-
-  const prev = () => {
-    const prevIndex = Math.max(0, Math.floor(progress.value) - 1);
-    carouselRef.current?.scrollTo({ index: prevIndex, animated: true });
   };
 
   return (

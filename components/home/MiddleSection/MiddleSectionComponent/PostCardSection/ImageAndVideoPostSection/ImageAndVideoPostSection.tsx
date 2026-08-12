@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Dimensions,
-  Image,
   ScrollView,
   Text,
   View,
@@ -13,6 +12,7 @@ import {
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import CachedImage from '@/components/ui/CachedImage';
 
 type DisplayPostMedia = {
   id?: string;
@@ -442,10 +442,10 @@ export default function ImageAndVideoPostSection({
                 onLike={onLike}
               />
             ) : (
-              <Image
-                source={{ uri: item.typeUrl }}
+              <CachedImage
+                uri={item.typeUrl}
                 style={{ width: '100%', height: '100%' }}
-                resizeMode="cover"
+                recyclingKey={item.id ?? item.typeUrl}
               />
             )}
           </View>

@@ -1,5 +1,5 @@
 // types/businessTypes.ts
-export interface BusinessProfile {
+export type BusinessProfile = {
     userId: string;
     profile: {
         name: string;
@@ -38,9 +38,9 @@ export interface BusinessProfile {
     status: 'active' | 'inactive' | 'pending';
     createdAt: Date;
     updatedAt: Date;
-}
+};
 
-export interface BusinessMetrics {
+export type BusinessMetrics = {
     totalProducts: number;
     totalSales: number;
     avgRating: number;
@@ -50,4 +50,4 @@ export interface BusinessMetrics {
         positive: number;
         negative: number;
     };
-}
+};

@@ -1,4 +1,25 @@
 import { db } from '@/lib/firebaseConfig';
+
+export type BlogListItem = {
+    id: string;
+    title: string;
+    excerpt: string;
+    coverImage: string;
+    author: { id: string; name: string; avatar: string };
+    category: string;
+    categories: Array<{ name: string }>;
+    tags: Array<{ name: string }>;
+    readTime: number;
+    createdAt: unknown;
+    publishedDate?: string;
+    likes: number;
+    comments: number;
+    engagement: Array<{ likesCount?: number; commentsCount?: number }>;
+};
+
+function readString(value: unknown, fallback = ''): string { return typeof value === 'string' ? value : fallback; }
+function readNumber(value: unknown): number { return typeof value === 'number' && Number.isFinite(value) ? value : 0; }
+function readRecord(value: unknown): Record<string, unknown> { return typeof value === 'object' && value !== null ? value as Record<string, unknown> : {}; }
 import { 
     collection, 
     doc,
@@ -124,7 +145,7 @@ export class BlogsAndArticlesService {
         }
     }
 
-    public async getPosts() {
+    public async getPosts(): Promise<BlogListItem[]> {
         try {
             const postsRef = collection(db, 'blogsAndArticles');
             const postsSnapshot = await getDocs(postsRef);
@@ -147,12 +168,23 @@ export class BlogsAndArticlesService {
                 const tagsSnapshot = await getDocs(tagsRef);
                 const tags = tagsSnapshot.docs.map(tag => tag.data());
     
+                const author = readRecord(postData.author);
+                const normalizedEngagement = engagement.map((item) => ({ likesCount: readNumber(item.likesCount), commentsCount: readNumber(item.commentsCount) }));
                 return {
                     id: doc.id,
-                    ...postData,
-                    engagement,
-                    categories,
-                    tags
+                    title: readString(postData.title),
+                    excerpt: readString(postData.excerpt) || readString(postData.description),
+                    coverImage: readString(postData.coverImage) || readString(postData.imageUrl),
+                    author: { id: readString(author.id) || readString(postData.userId), name: readString(author.name) || readString(postData.authorName, 'Ourlime user'), avatar: readString(author.avatar) },
+                    category: readString(postData.category) || readString(categories[0]?.name),
+                    categories: categories.map((item) => ({ name: readString(item.name) })).filter((item) => item.name),
+                    tags: tags.map((item) => ({ name: readString(item.name) })).filter((item) => item.name),
+                    readTime: readNumber(postData.readTime),
+                    createdAt: postData.createdAt ?? postData.publishedDate ?? null,
+                    publishedDate: readString(postData.publishedDate) || undefined,
+                    likes: readNumber(postData.likes) || normalizedEngagement[0]?.likesCount || 0,
+                    comments: readNumber(postData.comments) || normalizedEngagement[0]?.commentsCount || 0,
+                    engagement: normalizedEngagement,
                 };
             }));
     
@@ -161,6 +193,15 @@ export class BlogsAndArticlesService {
             console.error('Error fetching posts:', error);
             throw new Error('Failed to fetch posts');
         }
+    }
+
+    public async getPost(postId: string): Promise<BlogListItem> {
+        const postSnapshot = await getDoc(doc(this.db, 'blogsAndArticles', postId));
+        if (!postSnapshot.exists()) throw new Error('Blog not found');
+        const posts = await this.getPosts();
+        const post = posts.find((item) => item.id === postId);
+        if (!post) throw new Error('Blog could not be normalized');
+        return post;
     }
     
     

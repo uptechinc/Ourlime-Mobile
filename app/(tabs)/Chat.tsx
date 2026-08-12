@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,25 +7,19 @@ import {
   ScrollView,
   RefreshControl,
   StatusBar,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useRouter } from 'expo-router';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebaseConfig';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { AuthService, type UserProfile } from '@/lib/services/AuthService';
 import { SkeletonChatRow } from '@/components/home/SkeletonLoaders';
-import { messagingService } from '@/lib/messaging/MessagingService';
+import type { ConversationEntry } from '@/lib/messaging/MessagingService';
 import { Timestamp } from 'firebase/firestore';
+import { useConversations } from '@/lib/hooks/useConversations';
 
 const authService = AuthService.getInstance();
-
-type ConversationEntry = UserProfile & {
-  lastMessage?: string;
-  lastMessageTime?: Timestamp;
-  unreadCount?: number;
-};
 
 function formatLastMessageTime(ts?: Timestamp): string {
   if (!ts) return '';
@@ -54,93 +48,17 @@ function formatLastMessagePreview(msg?: string, userName?: string): string {
 export default function ChatTabScreen() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [conversations, setConversations] = useState<ConversationEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [composeVisible, setComposeVisible] = useState(false);
   const currentUserId = authService.getCurrentUser()?.uid ?? '';
-
-  const loadConversations = useCallback(async () => {
-    if (!currentUserId) return;
-    try {
-      // 1. Query friendship collection for accepted friendships
-      const [snap1, snap2] = await Promise.all([
-        getDocs(query(collection(db, 'friendship'), where('userId1', '==', currentUserId), where('friendshipStatus', '==', 'accepted'))),
-        getDocs(query(collection(db, 'friendship'), where('userId2', '==', currentUserId), where('friendshipStatus', '==', 'accepted'))),
-      ]);
-
-      const friendIds = new Set<string>([
-        ...snap1.docs.map((d) => d.data().userId2 as string),
-        ...snap2.docs.map((d) => d.data().userId1 as string),
-      ]);
-
-      // 2. Hydrate friend profiles with last message data
-      const entries: ConversationEntry[] = [];
-
-      for (const fId of friendIds) {
-        if (!fId || fId === currentUserId) continue;
-        const profile = await authService.getUserProfile(fId);
-        if (!profile) continue;
-
-        // Load last message from chat room
-        const chatRoomId = messagingService.getChatRoomId(currentUserId, fId);
-        const chatDoc = await getDoc(doc(db, 'chats', chatRoomId));
-        let lastMessage: string | undefined;
-        let lastMessageTime: Timestamp | undefined;
-        let unreadCount = 0;
-
-        if (chatDoc.exists()) {
-          const data = chatDoc.data();
-          lastMessage = data.lastMessage;
-          lastMessageTime = data.lastMessageTime;
-          unreadCount = data.unreadCount ?? 0;
-
-          // Only count unread messages addressed to me
-          if (data.messages && Array.isArray(data.messages)) {
-            unreadCount = data.messages.filter(
-              (m: { receiverId: string; status: string }) =>
-                m.receiverId === currentUserId && m.status !== 'read'
-            ).length;
-          }
-        }
-
-        entries.push({ ...profile, lastMessage, lastMessageTime, unreadCount });
-      }
-
-      // Sort by last message time (most recent first)
-      entries.sort((a, b) => {
-        const aTime = a.lastMessageTime?.seconds ?? 0;
-        const bTime = b.lastMessageTime?.seconds ?? 0;
-        return bTime - aTime;
-      });
-
-      // Fallback: if no friends yet, show all users
-      if (entries.length === 0) {
-        const usersSnap = await getDocs(query(collection(db, 'users')));
-        for (const userDoc of usersSnap.docs) {
-          if (userDoc.id === currentUserId) continue;
-          const profile = await authService.getUserProfile(userDoc.id);
-          if (profile) entries.push(profile);
-          if (entries.length >= 20) break; // cap fallback list
-        }
-      }
-
-      setConversations(entries);
-    } catch (error) {
-      console.error('[ChatTabScreen.loadConversations]', error);
-    } finally {
-      setIsLoading(false);
-      setRefreshing(false);
-    }
-  }, [currentUserId]);
-
-  useEffect(() => {
-    void loadConversations();
-  }, [loadConversations]);
+  const { resource, refresh, loadMore, hasMore } = useConversations(currentUserId);
+  const conversations: ConversationEntry[] = resource.data ?? [];
+  const isLoading = resource.data === null && (resource.status === 'idle' || resource.status === 'hydrating');
+  const refreshing = resource.status === 'refreshing';
+  const loadError = resource.error?.message ?? null;
 
   const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    void loadConversations();
-  }, [loadConversations]);
+    void refresh();
+  }, [refresh]);
 
   const filteredConversations = conversations.filter((user) => {
     if (!searchQuery.trim()) return true;
@@ -149,7 +67,7 @@ export default function ChatTabScreen() {
   });
 
   const handleOpenChat = (user: UserProfile) => {
-    router.push(`/chat/${user.uid}` as any);
+    router.push({ pathname: '/chat/[id]', params: { id: user.uid } });
   };
 
   return (
@@ -160,7 +78,7 @@ export default function ChatTabScreen() {
       <View style={{ paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827' }}>Messages</Text>
         <View style={{ flexDirection: 'row', gap: 12 }}>
-          <TouchableOpacity style={{ padding: 6 }}>
+          <TouchableOpacity onPress={() => setComposeVisible(true)} style={{ padding: 6 }} accessibilityLabel="Start a new conversation">
             <Icon name="edit" size={20} color="#10b981" />
           </TouchableOpacity>
         </View>
@@ -207,6 +125,13 @@ export default function ChatTabScreen() {
             <SkeletonChatRow />
             <SkeletonChatRow />
           </View>
+        ) : loadError && conversations.length === 0 ? (
+          <View style={{ paddingVertical: 80, alignItems: 'center' }}>
+            <Icon name="alert-triangle" size={36} color="#c64d53" />
+            <Text style={{ marginTop: 12, fontSize: 16, fontWeight: '700', color: '#991b1b' }}>Messages unavailable</Text>
+            <Text style={{ marginTop: 6, color: '#64748b', textAlign: 'center' }}>{loadError}</Text>
+            <TouchableOpacity onPress={() => void refresh()} style={{ marginTop: 16, borderRadius: 999, backgroundColor: '#10b981', paddingHorizontal: 18, paddingVertical: 10 }}><Text style={{ color: '#fff', fontWeight: '700' }}>Retry</Text></TouchableOpacity>
+          </View>
         ) : filteredConversations.length === 0 ? (
           <View style={{ paddingVertical: 80, alignItems: 'center' }}>
             <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#f0fdf4', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
@@ -218,7 +143,9 @@ export default function ChatTabScreen() {
             </Text>
           </View>
         ) : (
-          filteredConversations.map((user) => {
+          <>
+          {loadError ? <TouchableOpacity onPress={() => void refresh()} style={{ marginBottom: 8, padding: 10, borderRadius: 12, backgroundColor: '#fff7ed' }}><Text style={{ color: '#9a3412', textAlign: 'center', fontSize: 12, fontWeight: '700' }}>Showing saved conversations · Tap to retry</Text></TouchableOpacity> : null}
+          {filteredConversations.map((user) => {
             const hasUnread = (user.unreadCount ?? 0) > 0;
             return (
               <TouchableOpacity
@@ -243,7 +170,7 @@ export default function ChatTabScreen() {
                 {/* Avatar with online dot */}
                 <View style={{ position: 'relative' }}>
                   <UserAvatar profileImage={user.profilePicture} firstName={user.firstName ?? user.userName ?? 'U'} size={52} />
-                  <View style={{
+                  {user.isOnline ? <View style={{
                     position: 'absolute',
                     bottom: 2,
                     right: 2,
@@ -253,7 +180,7 @@ export default function ChatTabScreen() {
                     backgroundColor: '#10b981',
                     borderWidth: 2,
                     borderColor: '#ffffff',
-                  }} />
+                  }} /> : null}
                 </View>
 
                 <View style={{ flex: 1, marginLeft: 12 }}>
@@ -282,9 +209,19 @@ export default function ChatTabScreen() {
                 <Icon name="chevron-right" size={16} color="#cbd5e1" style={{ marginLeft: 6 }} />
               </TouchableOpacity>
             );
-          })
+          })}
+          {hasMore ? <TouchableOpacity onPress={() => void loadMore()} style={{ alignSelf: 'center', marginTop: 8, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 18, backgroundColor: '#ecfdf5' }}><Text style={{ color: '#059669', fontSize: 12, fontWeight: '700' }}>Load older conversations</Text></TouchableOpacity> : null}
+          </>
         )}
       </ScrollView>
+      <Modal visible={composeVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setComposeVisible(false)}>
+        <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}><Text style={{ flex: 1, fontSize: 20, fontWeight: '900', color: '#0f172a' }}>New message</Text><TouchableOpacity onPress={() => setComposeVisible(false)}><Icon name="x" size={24} color="#475569" /></TouchableOpacity></View>
+          <ScrollView contentContainerStyle={{ padding: 16 }}>
+            {conversations.length === 0 ? <View style={{ paddingVertical: 60, alignItems: 'center' }}><Icon name="users" size={38} color="#10b981" /><Text style={{ marginTop: 10, fontWeight: '800', color: '#334155' }}>Add friends to start chatting</Text></View> : conversations.map((friend) => <TouchableOpacity key={friend.uid} onPress={() => { setComposeVisible(false); handleOpenChat(friend); }} style={{ flexDirection: 'row', alignItems: 'center', padding: 13, borderRadius: 15, marginBottom: 8, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0' }}><UserAvatar profileImage={friend.profilePicture} firstName={friend.firstName || friend.userName} size={46} /><View style={{ flex: 1, marginLeft: 11 }}><Text style={{ color: '#0f172a', fontWeight: '800' }}>{friend.firstName} {friend.lastName}</Text><Text style={{ color: '#64748b', marginTop: 2 }}>@{friend.userName}</Text></View><Icon name="message-circle" size={19} color="#10b981" /></TouchableOpacity>)}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }

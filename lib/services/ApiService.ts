@@ -1,7 +1,10 @@
 import { auth } from '@/lib/firebaseConfig';
+import { signOut } from 'firebase/auth';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { localCacheService } from './LocalCacheService';
+import { useResourceStore } from '@/lib/store/useResourceStore';
 
-export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export type ApiRequestOptions = {
   method?: ApiMethod;
@@ -49,6 +52,10 @@ export class ApiService {
   }
 
   public async request<TResponse>(path: string, options: ApiRequestOptions = {}): Promise<TResponse> {
+    return this.performRequest<TResponse>(path, options, false);
+  }
+
+  private async performRequest<TResponse>(path: string, options: ApiRequestOptions, didRetryAuthentication: boolean): Promise<TResponse> {
     const method = options.method ?? 'GET';
     const requestId = this.createRequestId();
     const startedAt = Date.now();
@@ -61,7 +68,7 @@ export class ApiService {
     if (options.authenticated) {
       const currentUser = auth.currentUser;
       if (!currentUser) throw new ApiServiceError('Authentication required', 401, 'AUTH_REQUIRED');
-      headers.Authorization = `Bearer ${await currentUser.getIdToken()}`;
+      headers.Authorization = `Bearer ${await currentUser.getIdToken(didRetryAuthentication)}`;
     }
 
     const url = `${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
@@ -75,6 +82,16 @@ export class ApiService {
         signal: options.signal,
       });
       const payload: unknown = await response.json().catch(() => null);
+      if (response.status === 401 && options.authenticated && !didRetryAuthentication && auth.currentUser) {
+        this.logger.warn('ApiService', 'request:auth-retry', { requestId, method, path });
+        return this.performRequest<TResponse>(path, options, true);
+      }
+      if (response.status === 401 && options.authenticated && didRetryAuthentication) {
+        const userId = auth.currentUser?.uid;
+        if (userId) await localCacheService.clearUser(userId).catch(() => undefined);
+        useResourceStore.getState().clearUserResources();
+        await signOut(auth).catch(() => undefined);
+      }
       if (!response.ok) {
         const errorPayload = this.readErrorPayload(payload);
         throw new ApiServiceError(

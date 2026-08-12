@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
-  Image,
   Modal,
   ScrollView,
   Text,
@@ -10,11 +9,10 @@ import {
   View,
   Dimensions,
 } from 'react-native';
-import { X, Send, MessageCircle, User, Reply } from 'lucide-react-native';
+import { X, Send, MessageCircle, Reply } from 'lucide-react-native';
 import { Event } from '@/types/eventTypes';
-import {fetchEvents, fetchCommentsForEvent} from '@/helpers/Events';
 
-interface Comment {
+type Comment = {
   id: string;
   profileImage?: string;
   userData?: {
@@ -25,7 +23,7 @@ interface Comment {
   comment: string;
   timestamp: Date;
   replies: Comment[];
-}
+};
 
 // ---------------------------------------------------------------------------
 // NOTE: The following Firebase imports and any references to them are commented out.
@@ -53,12 +51,12 @@ interface Comment {
 // }
 
 // Props for EventCommentModal
-interface EventCommentModalProps {
+type EventCommentModalProps = {
   onClose: () => void;
   eventId: string;
-}
+};
 
-  const EventCommentModal: React.FC<EventCommentModalProps> = ({ onClose, eventId }) => {
+  const EventCommentModal = ({ onClose, eventId }: EventCommentModalProps) => {
     const [comment, setComment] = useState('');
     const [comments, setComments] = useState<Comment[]>([]);
     const [event, setEvent] = useState<Event | null>(null);

@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
   Image,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
 import {
   Bookmark,
@@ -17,18 +16,18 @@ import {
 } from 'lucide-react-native';
 
 import JobApplicationModal from './applyJobs/JobApplicationModal';
-// import { auth } from '@/lib/firebaseConfig';  // uncomment if you use auth
+import type { JobRecord } from '@/lib/job/JobsService';
 
-interface Props {
-  jobs: any[];
-}
+type ProfessionalJobsListProps = {
+  jobs: JobRecord[];
+};
 
-export const ProfessionalJobsList = ({ jobs }: Props) => {
+export const ProfessionalJobsList = ({ jobs }: ProfessionalJobsListProps) => {
   const professionalJobs = jobs.filter(j => j.basic_info.type === 'professional');
   const [modalOpen, setModalOpen] = useState(false);
-  const [selected, setSelected] = useState<any | null>(null);
+  const [selected, setSelected] = useState<JobRecord | null>(null);
 
-  const handleApply = (job: any) => {
+  const handleApply = (job: JobRecord) => {
     setSelected(job);
     setModalOpen(true);
   };
@@ -41,7 +40,7 @@ export const ProfessionalJobsList = ({ jobs }: Props) => {
     );
 
   /* single card */
-  const Card = ({ job }: { job: any }) => {
+  const Card = ({ job }: { job: JobRecord }) => {
     // const isCreator = auth.currentUser?.uid === job.basic_info.userId;
     const isCreator = false;
 
@@ -188,7 +187,7 @@ export const ProfessionalJobsList = ({ jobs }: Props) => {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Clock size={16} color="#9CA3AF" />
               <Text style={{ fontSize: 12, color: '#6B7280' }}>
-                Posted {new Date(job.basic_info.createdAt.seconds * 1000).toLocaleDateString()}
+                Posted {job.basic_info.createdAt?.seconds ? new Date(job.basic_info.createdAt.seconds * 1000).toLocaleDateString() : 'Recently'}
               </Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -210,7 +209,7 @@ export const ProfessionalJobsList = ({ jobs }: Props) => {
       </ScrollView>
 
       {/* modal */}
-      {modalOpen && (
+      {selected && (
         <JobApplicationModal
           isOpen={modalOpen}
           onClose={() => {

@@ -15,18 +15,25 @@ export type NotificationData = {
   title: string;
   message: string;
   isRead: boolean;
-  createdAt: any; // Firestore Timestamp
-  metadata?: {
+  createdAt?: { seconds: number; nanoseconds?: number; toDate?: () => Date } | string | number | Date;
+  metadata?: Record<string, unknown> & {
     sourceId?: string;
     sourceUserId?: string;
     actionUrl?: string;
     postId?: string;
-    [key: string]: any;
+    sourceUserName?: string;
+    senderId?: string;
+    communityId?: string;
+    limeId?: string;
+    reelId?: string;
+    sourceProfileImage?: string;
   };
   userDetails?: {
+    uid?: string;
+    userId?: string;
     profileImage?: string;
     firstName?: string;
     lastName?: string;
     userName?: string;
   };
-}; 
+};

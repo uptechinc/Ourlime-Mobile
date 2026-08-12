@@ -1,4 +1,4 @@
-import type { SocialPosts } from '@/app/types/global';
+import type { SocialPosts } from '@/types/global';
 import AllPosts from './filteredPosts/AllPost';
 import PhotosPosts from './filteredPosts/PhotosPosts';
 import VideosPosts from './filteredPosts/VideosPosts';

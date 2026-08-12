@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,13 +14,15 @@ import {
   PanResponder,
   Image,
 } from 'react-native';
-import { X, Upload, Globe, Users, Lock, Film, Sparkles, Laugh, Lightbulb, Video as VideoIcon, Music2, Compass, AtSign } from 'lucide-react-native';
+import { X, Upload, Globe, Users, Lock, Film, Sparkles, Laugh, Lightbulb, Video as VideoIcon, Music2, Compass } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { auth, db, storage } from '@/lib/firebaseConfig';
-import { collection, addDoc, serverTimestamp, getDocs, query, limit } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { AuthService } from '@/lib/services/AuthService';
+import { SearchService } from '@/lib/services/SearchService';
+import { limeService } from '@/lib/services/LimeService';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const authService = AuthService.getInstance();
+const searchService = SearchService.getInstance();
 
 const CATEGORIES = [
   { name: 'Comedy', icon: Laugh, color: '#f59e0b' },
@@ -35,21 +37,21 @@ const PRIVACY_OPTIONS = [
   { key: 'public', label: 'Public', icon: Globe },
   { key: 'friends', label: 'Friends', icon: Users },
   { key: 'private', label: 'Only me', icon: Lock },
-];
+] as const;
 
-interface UserSuggestion {
+type UserSuggestion = {
   id: string;
   userName: string;
   firstName: string;
   lastName: string;
   profileImage?: string;
-}
+};
 
-interface CreateLimeModalProps {
+type CreateLimeModalProps = {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-}
+};
 
 export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLimeModalProps) {
   const [visibility, setVisibility] = useState<'public' | 'friends' | 'private'>('public');
@@ -62,7 +64,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
   /* ── Mention Autocomplete State ── */
   const [userSuggestions, setUserSuggestions] = useState<UserSuggestion[]>([]);
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState('');
+  const [, setMentionQuery] = useState('');
 
   /* ── Swipe-Down PanResponder ── */
   const translateY = useRef(new Animated.Value(0)).current;
@@ -113,17 +115,14 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
         setShowMentionDropdown(true);
 
         try {
-          const snap = await getDocs(query(collection(db, 'users'), limit(20)));
-          const users: UserSuggestion[] = snap.docs.map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              userName: data.userName || data.username || 'user',
-              firstName: data.firstName || '',
-              lastName: data.lastName || '',
-              profileImage: data.profileImage || undefined,
-            };
-          });
+          const profiles = await searchService.searchUsers(queryText, 8);
+          const users: UserSuggestion[] = profiles.map((profile) => ({
+            id: profile.uid,
+            userName: profile.userName || 'user',
+            firstName: profile.firstName || '',
+            lastName: profile.lastName || '',
+            profileImage: profile.profilePicture || undefined,
+          }));
 
           const filtered = users
             .filter((u) => u.userName.toLowerCase().includes(queryText.toLowerCase()) || u.firstName.toLowerCase().includes(queryText.toLowerCase()))
@@ -181,7 +180,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
   };
 
   const handleSubmit = async () => {
-    const user = auth.currentUser;
+    const user = authService.getCurrentUser();
     if (!user) {
       Alert.alert('Authentication required', 'Please sign in to post a Lime.');
       return;
@@ -196,56 +195,27 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
     setUploadProgress(10);
 
     try {
-      const response = await fetch(selectedAsset.uri);
-      const blob = await response.blob();
-
-      const fileName = `limes/${user.uid}/${Date.now()}_reel.mp4`;
-      const storageRef = ref(storage, fileName);
-      const uploadTask = uploadBytesResumable(storageRef, blob);
-
-      await new Promise<void>((resolve, reject) => {
-        uploadTask.on(
-          'state_changed',
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 80 + 10;
-            setUploadProgress(Math.round(progress));
-          },
-          (error) => reject(error),
-          () => resolve()
-        );
-      });
-
-      const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-
       // Extract @mentions from caption
       const mentions = (caption.match(/@([a-zA-Z0-9._]+)/g) || []).map((m) => m.replace('@', ''));
 
-      await addDoc(collection(db, 'reels'), {
+      await limeService.createLime({
         userId: user.uid,
-        media: {
-          type: 'video',
-          typeUrl: downloadUrl,
-          fileName: fileName,
-          duration: selectedAsset.duration ? Math.round(selectedAsset.duration / 1000) : 15,
-          aspectRatio: '9:16',
-        },
-        visibility: visibility,
-        category: category,
+        uri: selectedAsset.uri,
+        durationSeconds: selectedAsset.duration ? Math.round(selectedAsset.duration / 1000) : 15,
+        visibility,
+        category,
         caption: caption.trim(),
-        mentions: mentions,
-        createdAt: serverTimestamp(),
-        stats: { likes: 0, comments: 0, shares: 0 },
-        likes: [],
-      });
+        mentions,
+      }, (progress) => setUploadProgress(Math.round(progress * 0.9 + 10)));
 
       setUploadProgress(100);
       setIsUploading(false);
       setShowSuccessModal(true);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[CreateLimeModal] Submit error:', error);
       setIsUploading(false);
       setUploadProgress(0);
-      Alert.alert('Upload Failed', error?.message || 'Could not upload your Lime reel.');
+      Alert.alert('Upload Failed', error instanceof Error ? error.message : 'Could not upload your Lime reel.');
     }
   };
 
@@ -290,7 +260,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
                 return (
                   <TouchableOpacity
                     key={opt.key}
-                    onPress={() => setVisibility(opt.key as any)}
+                    onPress={() => setVisibility(opt.key)}
                     style={[styles.privacyPill, active && styles.privacyPillActive]}
                   >
                     <IconComponent size={15} color={active ? '#ffffff' : '#64748b'} />

@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase/firestore';
 
-export interface Moment {
+export type Moment = {
     id: string;
     videoUrl: string;
     userId: string;
@@ -17,13 +17,13 @@ export interface Moment {
         profileImage: string | null;
     };
     timeRemaining: string;
-}
+};
 
-export interface MomentUploadResponse {
+export type MomentUploadResponse = {
     success: boolean;
     momentId: string;
-}
+};
 
-export interface MomentsFetchResponse {
+export type MomentsFetchResponse = {
     moments: Moment[];
-}
+};

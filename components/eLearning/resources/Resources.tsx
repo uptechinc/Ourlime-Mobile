@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { BookOpen, ChevronRight } from 'lucide-react-native';
 

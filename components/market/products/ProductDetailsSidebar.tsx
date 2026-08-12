@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Image, Modal } from 'react-native';
 import { Product, ColorVariants, SizeVariants, ProductVariant } from '@/types/productTypes';
 
@@ -6,24 +6,25 @@ import { useTempMessages } from '@/src/hooks/useTempMessages';
 import { useProfileStore } from '@/src/store/useProfileStore';
 import { useChatStore } from '@/src/chatExpand/useChatStore';
 
-interface OwnershipData {
+export type MarketOwnership = {
     id: string;
     productId: string;
     userId: string;
     sellerType: 'business' | 'personal';
     profileImage: string;
-    businessDetails: {
+    businessDetails?: {
         name: string;
         description: string;
-        location: string;
-        established: string;
-        contact: {
-            email: string;
-            phone: string;
-            website: string;
+        location?: string;
+        established?: string;
+        rating?: number;
+        contact?: {
+            email?: string;
+            phone?: string;
+            website?: string;
         }
     };
-    businessProfile: {
+    businessProfile?: {
         rating: {
             overall: number;
             service: number;
@@ -41,13 +42,13 @@ interface OwnershipData {
             negative: number;
         };
     };
-    businessOwner: {
+    businessOwner?: {
         name: string;
         email: string;
     };
-}
+};
 
-interface ProductDetailsSidebarProps {
+type ProductDetailsSidebarProps = {
     isOpen: boolean;
     onClose: () => void;
     product: Product;
@@ -55,11 +56,11 @@ interface ProductDetailsSidebarProps {
         colorVariants: ColorVariants[];
         sizeVariants: SizeVariants[];
         variants: ProductVariant[];
-        subImages: any[];
-        ownership: OwnershipData[];
+        subImages?: { id: string; productId: string; imageName: string }[];
+        ownership: MarketOwnership[];
     };
-    onContactSeller: (sellerData: any, productContext: any) => void;
-}
+    onContactSeller?: (sellerData: unknown, productContext: unknown) => void;
+};
 
 export default function ProductDetailsSidebar({ isOpen, onClose, product, marketData, onContactSeller }: ProductDetailsSidebarProps) {
     const [selectedImage, setSelectedImage] = useState(product?.thumbnailImage);
@@ -72,7 +73,7 @@ export default function ProductDetailsSidebar({ isOpen, onClose, product, market
     const productColorVariants = marketData.colorVariants.filter(cv => cv.productId === product.id);
     const productSizeVariants = marketData.sizeVariants.filter(sv => sv.productId === product.id);
     const productVariants = marketData.variants.filter(v => v.productId === product.id);
-    const productSubImages = marketData.subImages.filter(si => si.productId === product.id);
+    const productSubImages = (marketData.subImages ?? []).filter(si => si.productId === product.id);
     const { setWindowSize } = useChatStore();
 
     // Inside component:
@@ -126,7 +127,6 @@ export default function ProductDetailsSidebar({ isOpen, onClose, product, market
     const handleProductInquiry = async () => {
         setIsSubmitting(true);
     
-        const userData = useProfileStore.getState();
         const productOwnership = marketData.ownership.find(o => o.productId === product.id);
         
         const selectedColorVariant = productColorVariants.find(cv => cv.id === selectedColor);

@@ -6,7 +6,6 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
-  ActivityIndicator,
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,9 +24,11 @@ export default function SearchScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<UserProfile[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const performSearch = useCallback(async (queryText: string) => {
+    setSearchError(null);
     if (!queryText.trim()) {
       setResults([]);
       setIsSearching(false);
@@ -37,8 +38,9 @@ export default function SearchScreen() {
     try {
       const users = await searchService.searchUsers(queryText);
       setResults(users);
-    } catch {
+    } catch (error: unknown) {
       setResults([]);
+      setSearchError(error instanceof Error ? error.message : 'Search is unavailable');
     } finally {
       setIsSearching(false);
     }
@@ -63,7 +65,7 @@ export default function SearchScreen() {
   }, [performSearch, searchQuery]);
 
   const handleNavigateProfile = (username: string) => {
-    router.push(`/profile/${username}` as any);
+    router.push({ pathname: '/profile/[username]', params: { username } });
   };
 
   return (
@@ -126,6 +128,8 @@ export default function SearchScreen() {
               Type a username or name above to search for people on Ourlime.
             </Text>
           </View>
+        ) : searchError ? (
+          <View style={{ paddingVertical: 60, alignItems: 'center' }}><Ionicons name="alert-circle-outline" size={48} color="#c64d53" /><Text style={{ fontSize: 17, fontWeight: '700', color: '#991b1b', marginTop: 12 }}>Search unavailable</Text><Text style={{ color: '#64748b', marginTop: 5, textAlign: 'center' }}>{searchError}</Text><TouchableOpacity onPress={() => void performSearch(searchQuery)} style={{ marginTop: 15, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, backgroundColor: '#10b981' }}><Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text></TouchableOpacity></View>
         ) : results.length === 0 ? (
           <View style={{ paddingVertical: 60, alignItems: 'center' }}>
             <Ionicons name="search-outline" size={48} color="#cbd5e1" />

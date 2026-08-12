@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   Modal,
   StyleSheet,
   Image,
+  Linking,
+  Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import type { PostLocation } from '@/lib/services/PostService';
@@ -17,17 +19,26 @@ type PostLocationMapProps = {
 export default function PostLocationMap({ location }: PostLocationMapProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const lat = (location as any).coordinates?.latitude || (location as any).latitude || 10.66;
-  const lon = (location as any).coordinates?.longitude || (location as any).longitude || -61.52;
+  const lat = location.coordinates?.latitude ?? location.latitude ?? location.lat;
+  const lon = location.coordinates?.longitude ?? location.longitude ?? location.lng;
+  const hasCoordinates = typeof lat === 'number' && typeof lon === 'number';
   const zoom = 14;
 
   // OpenStreetMap static tile url constructed from lat/lon
-  const mapTileUrl = `https://static-maps.yandex.ru/1.x/?ll=${lon},${lat}&z=${zoom}&l=map&size=600,300&pt=${lon},${lat},pm2gnm`;
+  const mapTileUrl = hasCoordinates ? `https://static-maps.yandex.ru/1.x/?ll=${lon},${lat}&z=${zoom}&l=map&size=600,300&pt=${lon},${lat},pm2gnm` : null;
+
+  const handleOpenMaps = async () => {
+    const label = encodeURIComponent(location.name || location.address || 'Post location');
+    const url = hasCoordinates
+      ? Platform.select({ ios: `maps:0,0?q=${label}@${lat},${lon}`, default: `geo:${lat},${lon}?q=${lat},${lon}(${label})` })
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.address || location.name)}`;
+    if (url) await Linking.openURL(url);
+  };
 
   return (
     <View style={styles.container}>
       {/* Map Preview Image with Controls */}
-      <View style={styles.mapFrame}>
+      {mapTileUrl ? <View style={styles.mapFrame}>
         <Image
           source={{ uri: mapTileUrl }}
           style={styles.mapImage}
@@ -48,7 +59,7 @@ export default function PostLocationMap({ location }: PostLocationMapProps) {
             <Text style={styles.controlText}>Expand</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </View> : null}
 
       {/* Location Details Card */}
       <View style={styles.detailsCard}>
@@ -61,10 +72,14 @@ export default function PostLocationMap({ location }: PostLocationMapProps) {
             <Text style={styles.locAddress}>{location.address}</Text>
           ) : null}
         </View>
+        <TouchableOpacity onPress={() => void handleOpenMaps()} style={styles.openMapsButton} accessibilityRole="link" accessibilityLabel={`Open ${location.name || 'location'} in maps`}>
+          <Icon name="navigation" size={15} color="#047857" />
+          <Text style={styles.openMapsText}>Directions</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Expanded Map Modal */}
-      {expanded && (
+      {expanded && mapTileUrl && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setExpanded(false)}>
           <View style={styles.modalOverlay}>
             <View style={styles.expandedContainer}>
@@ -178,6 +193,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     marginTop: 2,
+  },
+  openMapsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#d1fae5',
+  },
+  openMapsText: {
+    color: '#047857',
+    fontSize: 11,
+    fontWeight: '800',
   },
   modalOverlay: {
     flex: 1,

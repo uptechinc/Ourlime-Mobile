@@ -1,8 +1,15 @@
 import '@/lib/shims/codegenNativeComponent';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
+import { useEffect } from 'react';
+import * as Notifications from 'expo-notifications';
 import { View, ActivityIndicator, LogBox } from 'react-native';
 import { useAuthGuard } from '@/lib/hooks/useAuthGuard';
 import "./globals.css";
+import { NotificationProvider } from '@/lib/contexts/NotificationContext';
+import { PageAccessProvider } from '@/lib/contexts/PageAccessContext';
+import PageAccessOverlay from '@/components/pageAccess/PageAccessOverlay';
+import { pushNotificationService } from '@/lib/services/PushNotificationService';
+import { AppDataProvider } from '@/lib/contexts/AppDataContext';
 
 LogBox.ignoreLogs([
   'SafeAreaView has been deprecated',
@@ -14,10 +21,18 @@ LogBox.ignoreLogs([
   'Cannot connect to Expo CLI',
 ]);
 
-import { NotificationProvider } from '@/lib/contexts/NotificationContext';
+pushNotificationService.configureForegroundPresentation();
 
 export default function Layout() {
+  const router = useRouter();
   const { isInitializing } = useAuthGuard();
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      router.push(pushNotificationService.resolveNotificationDestination(response.notification.request.content.data ?? {}));
+    });
+    return () => subscription.remove();
+  }, [router]);
 
   if (isInitializing) {
     return (
@@ -28,7 +43,9 @@ export default function Layout() {
   }
 
   return (
-    <NotificationProvider>
+    <AppDataProvider>
+      <PageAccessProvider>
+      <NotificationProvider>
       <Stack
         screenOptions={{
           headerShown: false,
@@ -41,7 +58,10 @@ export default function Layout() {
         <Stack.Screen name="(auth)/login" options={{ animation: 'none' }} />
         {/* Register slides in from right */}
         <Stack.Screen name="(auth)/register" options={{ animation: 'slide_from_right' }} />
-      </Stack>
-    </NotificationProvider>
+        </Stack>
+        <PageAccessOverlay />
+      </NotificationProvider>
+      </PageAccessProvider>
+    </AppDataProvider>
   );
 }

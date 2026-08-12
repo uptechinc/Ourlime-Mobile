@@ -10,13 +10,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebaseConfig';
-import { AuthService, type UserProfile } from '@/lib/services/AuthService';
+import type { UserProfile } from '@/lib/services/AuthService';
 import { messagingService, type FullMessage } from '@/lib/messaging/MessagingService';
 import UserAvatar from '@/components/ui/UserAvatar';
-
-const authService = AuthService.getInstance();
 
 type ForwardMessageModalProps = {
   visible: boolean;
@@ -44,23 +40,7 @@ export function ForwardMessageModal({
 
     const loadFriends = async () => {
       try {
-        const [snap1, snap2] = await Promise.all([
-          getDocs(query(collection(db, 'friendship'), where('userId1', '==', currentUserId), where('friendshipStatus', '==', 'accepted'))),
-          getDocs(query(collection(db, 'friendship'), where('userId2', '==', currentUserId), where('friendshipStatus', '==', 'accepted'))),
-        ]);
-
-        const friendIds = new Set<string>([
-          ...snap1.docs.map((d) => d.data().userId2 as string),
-          ...snap2.docs.map((d) => d.data().userId1 as string),
-        ]);
-
-        const list: UserProfile[] = [];
-        for (const fId of friendIds) {
-          if (!fId || fId === currentUserId) continue;
-          const prof = await authService.getUserProfile(fId);
-          if (prof) list.push(prof);
-        }
-        setFriends(list);
+        setFriends(await messagingService.fetchConversations(currentUserId));
       } catch (e) {
         console.error('[ForwardMessageModal] Error loading friends:', e);
       } finally {

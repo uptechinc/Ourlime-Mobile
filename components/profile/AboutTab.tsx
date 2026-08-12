@@ -1,13 +1,14 @@
 import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { UserProfile } from '@/lib/services/AuthService';
+import type { ComponentProps } from 'react';
 
 type AboutTabProps = {
   profile: UserProfile;
 };
 
 export default function AboutTab({ profile }: AboutTabProps) {
-  const items = [
+  const items: { icon: ComponentProps<typeof Ionicons>['name']; label: string; value: string; color: string }[] = [
     {
       icon: 'person-outline',
       label: 'Account Type',
@@ -68,7 +69,7 @@ export default function AboutTab({ profile }: AboutTabProps) {
                 alignItems: 'center',
                 marginRight: 12,
               }}>
-                <Ionicons name={item.icon as any} size={18} color={item.color} />
+                <Ionicons name={item.icon} size={18} color={item.color} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, color: '#64748b', fontWeight: '500' }}>{item.label}</Text>

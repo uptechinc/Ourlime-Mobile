@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   View, 
   Text, 
@@ -7,7 +7,6 @@ import {
   ScrollView, 
   Dimensions, 
   StyleSheet,
-  Platform
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import Video from 'react-native-video';
@@ -18,37 +17,19 @@ import { Reel } from '@/types/userTypes';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const isMobile = SCREEN_WIDTH < 768;
 
-interface ReelCardProps {
+type ReelCardProps = {
     reels: Reel[];
     onCommentClick: (postId: string) => void;
     setSelectedReel: (reel: Reel | null) => void;
-}
+};
 
 const ReelCardSection = ({ reels, onCommentClick, setSelectedReel }: ReelCardProps) => {
-    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+    const hoveredIndex: number | null = null; // hover is web-only; always null on RN
     const [likingReels, setLikingReels] = useState<Set<string>>(new Set());
-    const [thumbnails, setThumbnails] = useState<string[]>([]);
     
     // const currentUser = auth.currentUser; // TODO: Get from auth context
     const currentUser: { uid: string } | null = null; // TODO: Replace with actual user
 
-    useEffect(() => {
-        // TODO: Generate thumbnails for React Native
-        // This would typically use react-native-video or a thumbnail generation library
-        const generateThumbnails = async () => {
-            // For now, use placeholder thumbnails
-            const placeholderThumbnails = reels.map(() => 'https://via.placeholder.com/300x400/10b981/ffffff?text=Video');
-            setThumbnails(placeholderThumbnails);
-        };
-
-        generateThumbnails();
-    }, [reels]);
-
-    const handleVideoHover = (index: number, isHovering: boolean) => {
-        if (!isMobile) {
-            setHoveredIndex(isHovering ? index : null);
-        }
-    };
 
     const handleLike = async (reelId: string) => {
         if (!currentUser) {

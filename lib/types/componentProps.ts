@@ -7,7 +7,7 @@ export type MenuItem = {
     id: string;
     title: string;
     icon: string;
-    route?: string;
+    route?: Href;
     onPress?: () => void;
     badge?: string | number;
     isDivider?: boolean;
@@ -36,8 +36,10 @@ export type PageHeaderProps = {
     onBackPress?: () => void;
     backgroundColor?: string;
     borderBottomColor?: string;
-    rightComponent?: React.ReactNode;
+    rightComponent?: ReactNode;
 }
 
 // Message-related types
 export * from './message';
+import type { Href } from 'expo-router';
+import type { ReactNode } from 'react';

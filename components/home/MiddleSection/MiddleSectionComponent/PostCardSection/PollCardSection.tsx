@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Alert, Share, Text, TouchableOpacity, View } from 'react-native';
+import { Share, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useRouter } from 'expo-router';
 import { AuthService } from '@/lib/services/AuthService';
@@ -7,6 +7,10 @@ import { PostService, type PostItem } from '@/lib/services/PostService';
 import ImageAndVideoPostSection from './ImageAndVideoPostSection/ImageAndVideoPostSection';
 import UserAvatar from '@/components/ui/UserAvatar';
 import PostOptionsSheet from './PostOptionsSheet';
+import { feedCardContainerStyle } from './feedCardStyles';
+import PostLinkPreview from './PostLinkPreview';
+import { findFirstUrl } from '@/lib/services/OpenGraphService';
+import CustomModal from '@/components/ui/CustomModal';
 import LikesModal from './LikesModal';
 import IdentityBadges from './IdentityBadges';
 
@@ -45,6 +49,7 @@ const getTimeRemaining = (endTime?: string, createdAt?: string, pollDuration?: n
 
 export default function PollCardSection({ post, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PollCardSectionProps) {
   const router = useRouter();
+  const postUrl = findFirstUrl(`${post.caption} ${post.description}`);
   const currentUserId = authService.getCurrentUser()?.uid;
   const [isLiked, setIsLiked] = useState(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
   const [likeCount, setLikeCount] = useState(post.stats.likes);
@@ -52,6 +57,7 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
   const [hasShared, setHasShared] = useState(false);
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [likesVisible, setLikesVisible] = useState(false);
+  const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(null);
   const [selectedOptionId, setSelectedOptionId] = useState(currentUserId ? post.pollVotes?.[currentUserId] : undefined);
   const [voteCounts, setVoteCounts] = useState<Record<string, number>>(
     Object.fromEntries((post.pollOptions ?? []).map((option) => [option.id, option.votes]))
@@ -65,6 +71,7 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
 
   const timeRemaining = useMemo(
     () => getTimeRemaining(post.pollEndTime, post.createdAt, post.pollDuration),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [post.pollEndTime, post.createdAt, post.pollDuration, nowMs]
   );
   const pollEnded = timeRemaining === 'Poll ended';
@@ -72,12 +79,12 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
 
   const handleNavigateProfile = () => {
     if (post.user.userName) {
-      router.push(`/profile/${post.user.userName}` as any);
+      router.push({ pathname: '/profile/[username]', params: { username: post.user.userName } });
     }
   };
 
   const handleLike = async () => {
-    if (!currentUserId) return Alert.alert('Sign in required', 'Sign in to like posts.');
+    if (!currentUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to like posts.' });
     const previousLiked = isLiked;
     setIsLiked(!previousLiked);
     setLikeCount((count) => Math.max(0, count + (previousLiked ? -1 : 1)));
@@ -94,7 +101,7 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
   };
 
   const handleVote = async (optionId: string) => {
-    if (!currentUserId) return Alert.alert('Sign in required', 'Sign in to vote in polls.');
+    if (!currentUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to vote in polls.' });
     if (pollEnded || selectedOptionId === optionId) return;
     const previousOptionId = selectedOptionId;
     setSelectedOptionId(optionId);
@@ -129,12 +136,13 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
       }
       await Share.share({ message: `${post.caption || post.description || 'Vote on this poll in Ourlime'}\n\n${postService.getPostUrl(post.id)}` });
     } catch (error: unknown) {
-      Alert.alert('Poll not shared', error instanceof Error ? error.message : 'Please try again');
+      setFeedback({ title: 'Poll not shared', message: error instanceof Error ? error.message : 'Please try again' });
     }
   };
 
   return (
-    <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 18, shadowColor: '#000000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 4 }}>
+    <>
+    <View style={feedCardContainerStyle}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <TouchableOpacity onPress={handleNavigateProfile} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
           <UserAvatar profileImage={post.user.profileImage} firstName={post.user.firstName || post.user.userName} size={48} />
@@ -149,6 +157,7 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
       {post.location ? <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}><Icon name="map-pin" size={14} color="#10b981" /><Text style={{ marginLeft: 5, color: '#6b7280' }}>{post.location.name}</Text></View> : null}
       {post.caption ? <Text style={{ marginTop: 15, color: '#111827', fontSize: 18, lineHeight: 24, fontWeight: '700' }}>{post.caption}</Text> : null}
       {post.description && post.description !== post.caption ? <Text style={{ marginTop: 7, color: '#4b5563', lineHeight: 21 }}>{post.description}</Text> : null}
+      {postUrl ? <PostLinkPreview url={postUrl} /> : null}
 
       {post.media && post.media.length > 0 ? (
         <View style={{ marginTop: 12 }}>
@@ -183,8 +192,10 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
         <TouchableOpacity onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 26, paddingVertical: 6 }}><Icon name="message-circle" size={22} color="#6b7280" /><Text style={{ marginLeft: 7, color: '#6b7280', fontWeight: '600' }}>{post.stats.comments}</Text></TouchableOpacity>
         <TouchableOpacity onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="share-2" size={22} color="#6b7280" /><Text style={{ marginLeft: 7, color: '#6b7280', fontWeight: '600' }}>{shareCount}</Text></TouchableOpacity>
       </View>
-      <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} />
+      <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} onPostUpdate={onPostUpdate} />
       <LikesModal visible={likesVisible} postId={post.id} onClose={() => setLikesVisible(false)} />
     </View>
+    <CustomModal visible={feedback !== null} type="danger" title={feedback?.title ?? ''} message={feedback?.message ?? ''} onClose={() => setFeedback(null)} />
+    </>
   );
 }

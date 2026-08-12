@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, ActivityIndicator, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 
