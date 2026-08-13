@@ -1,5 +1,5 @@
 import { ApiService } from './ApiService';
-import { db } from '@/lib/firebaseConfig';
+import { auth, db } from '@/lib/firebaseConfig';
 import {
   doc,
   getDoc,
@@ -11,6 +11,9 @@ import {
   where,
   getDocs,
   deleteDoc,
+  addDoc,
+  limit,
+  serverTimestamp,
 } from 'firebase/firestore';
 
 type RelationshipActionResponse = {
@@ -22,8 +25,18 @@ type RelationshipActionResponse = {
 export type RelationshipUser = { id: string; firstName: string; lastName: string; userName: string; profileImage?: string };
 export type RelationshipSuggestion = RelationshipUser & { reason?: string };
 export type RelationshipNetworkStats = { friends: number; followers: number; following: number };
-type UnknownRecord = Record<string, unknown>;
-const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null && !Array.isArray(value);
+type RelationshipSource = {
+  id?: unknown;
+  userId?: unknown;
+  uid?: unknown;
+  firstName?: unknown;
+  lastName?: unknown;
+  userName?: unknown;
+  profileImage?: unknown;
+  profilePicture?: unknown;
+  reason?: unknown;
+};
+const isRelationshipSource = (value: unknown): value is RelationshipSource => typeof value === 'object' && value !== null && !Array.isArray(value);
 const readString = (value: unknown): string => typeof value === 'string' ? value : '';
 
 export class RelationshipService {
@@ -47,22 +60,59 @@ export class RelationshipService {
   }
 
   public async sendFriendRequest(userId1: string, userId2: string): Promise<void> {
-    const response = await this.apiService.request<RelationshipActionResponse>('/api/relationships/friends', {
-      method: 'POST',
-      authenticated: true,
-      body: { userId1, userId2, action: 'send-request' },
-    });
-    if (!response.success) throw new Error(response.error || response.message || 'Failed to send friend request');
+    try {
+      const response = await this.apiService.request<RelationshipActionResponse>('/api/relationships/friends', {
+        method: 'POST',
+        authenticated: true,
+        body: { userId1, userId2, action: 'send-request' },
+        timeoutMs: 2_500,
+      });
+      if (!response.success) throw new Error(response.error || response.message || 'Failed to send friend request');
+    } catch {
+      const [asFirst, asSecond] = await Promise.all([
+        getDocs(query(collection(db, 'friendship'), where('userId1', '==', userId1))),
+        getDocs(query(collection(db, 'friendship'), where('userId2', '==', userId1))),
+      ]);
+      const existing = [...asFirst.docs, ...asSecond.docs].find((document) => {
+        const relationship = document.data();
+        return (relationship.userId1 === userId1 && relationship.userId2 === userId2)
+          || (relationship.userId1 === userId2 && relationship.userId2 === userId1);
+      });
+      if (existing) {
+        await updateDoc(existing.ref, {
+          friendshipStatus: 'pending',
+          status: 'pending',
+          updatedAt: serverTimestamp(),
+        });
+        return;
+      }
+      await addDoc(collection(db, 'friendship'), {
+        userId1,
+        userId2,
+        friendshipStatus: 'pending',
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
   }
 
   public async getSuggestions(maxResults = 6): Promise<RelationshipSuggestion[]> {
-    const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>(
-      `/api/relationships/suggestions?limit=${encodeURIComponent(String(maxResults))}`,
-      { authenticated: true }
-    );
-    if (!response.success) throw new Error(response.error || 'Failed to load suggested users');
-    return (response.data ?? []).flatMap((value): RelationshipSuggestion[] => {
-      if (!isRecord(value)) return [];
+    try {
+      const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>(
+        `/api/relationships/suggestions?limit=${encodeURIComponent(String(maxResults))}`,
+        { authenticated: true, timeoutMs: 2_500 }
+      );
+      if (!response.success) throw new Error(response.error || 'Failed to load suggested users');
+      return this.normalizeSuggestions(response.data ?? []);
+    } catch {
+      return this.getSuggestionsFromFirestore(maxResults);
+    }
+  }
+
+  private normalizeSuggestions(values: unknown[]): RelationshipSuggestion[] {
+    return values.flatMap((value): RelationshipSuggestion[] => {
+      if (!isRelationshipSource(value)) return [];
       const id = readString(value.id) || readString(value.userId) || readString(value.uid);
       if (!id) return [];
       const profileImage = readString(value.profileImage) || readString(value.profilePicture);
@@ -76,6 +126,61 @@ export class RelationshipService {
         reason: reason || undefined,
       }];
     });
+  }
+
+  private async getSuggestionsFromFirestore(maxResults: number): Promise<RelationshipSuggestion[]> {
+    const viewerId = auth.currentUser?.uid;
+    if (!viewerId) return [];
+    const [viewerDocument, asFirst, asSecond, usersSnapshot] = await Promise.all([
+      getDoc(doc(db, 'users', viewerId)),
+      getDocs(query(collection(db, 'friendship'), where('userId1', '==', viewerId))),
+      getDocs(query(collection(db, 'friendship'), where('userId2', '==', viewerId))),
+      getDocs(query(collection(db, 'users'), limit(Math.max(maxResults * 6, 30)))),
+    ]);
+    const excludedIds = new Set<string>([viewerId]);
+    [...asFirst.docs, ...asSecond.docs].forEach((document) => {
+      const relationship = document.data();
+      const otherId = relationship.userId1 === viewerId ? readString(relationship.userId2) : readString(relationship.userId1);
+      if (otherId) excludedIds.add(otherId);
+    });
+    const viewerCountry = readString(viewerDocument.data()?.country);
+    const candidates = usersSnapshot.docs
+      .filter((document) => !excludedIds.has(document.id))
+      .filter((document) => {
+        const user = document.data();
+        return user.deletedAt == null
+          && user.disabled !== true
+          && user.isPrivate !== true
+          && readString(user.accountPrivacy) !== 'private'
+          && readString(user.visibility) !== 'private';
+      })
+      .slice(0, maxResults);
+
+    return Promise.all(candidates.map(async (document): Promise<RelationshipSuggestion> => {
+      const user = document.data();
+      const imageSelections = await getDocs(
+        query(collection(db, 'profileImageSetAs'), where('userId', '==', document.id)),
+      ).catch(() => null);
+      const preferredSelection = imageSelections?.docs.find((selection) => selection.data().setAs === 'profile')
+        ?? imageSelections?.docs.find((selection) => selection.data().setAs === 'postProfile');
+      const imageId = preferredSelection ? readString(preferredSelection.data().profileImageId) : '';
+      const imageDocument = imageId
+        ? await getDoc(doc(db, 'profileImages', imageId)).catch(() => null)
+        : null;
+      const profileImage = readString(imageDocument?.data()?.imageURL)
+        || readString(imageDocument?.data()?.imageUrl)
+        || readString(user.profilePicture)
+        || readString(user.profileImage);
+      const sameCountry = Boolean(viewerCountry && viewerCountry === readString(user.country));
+      return {
+        id: document.id,
+        firstName: readString(user.firstName),
+        lastName: readString(user.lastName),
+        userName: readString(user.userName),
+        profileImage: profileImage || undefined,
+        reason: sameCountry ? 'People near you' : 'Suggested for you',
+      };
+    }));
   }
 
   public async blockUser(userIdToBlock: string): Promise<void> {
@@ -171,13 +276,18 @@ export class RelationshipService {
   }
 
   public async getFriends(userId: string): Promise<RelationshipUser[]> {
+    if (auth.currentUser?.uid === userId) return this.getOwnFriendsFromFirestore(userId);
     const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>(
       `/api/relationships/status?userId=${encodeURIComponent(userId)}&type=friends`,
-      { authenticated: true }
+      { authenticated: true, timeoutMs: 2_500 }
     );
     if (!response.success) throw new Error(response.error || 'Failed to load friends');
-    return (response.data ?? []).flatMap((value): RelationshipUser[] => {
-      if (!isRecord(value)) return [];
+    return this.normalizeFriends(response.data ?? []);
+  }
+
+  private normalizeFriends(values: unknown[]): RelationshipUser[] {
+    return values.flatMap((value): RelationshipUser[] => {
+      if (!isRelationshipSource(value)) return [];
       const id = readString(value.id) || readString(value.userId);
       const userName = readString(value.userName);
       const firstName = readString(value.firstName);
@@ -186,6 +296,54 @@ export class RelationshipService {
       if (!id) return [];
       return [{ id, firstName, lastName, userName, profileImage }];
     });
+  }
+
+  private async getOwnFriendsFromFirestore(userId: string): Promise<RelationshipUser[]> {
+    const [asFirst, asSecond] = await Promise.all([
+      getDocs(query(collection(db, 'friendship'), where('userId1', '==', userId))),
+      getDocs(query(collection(db, 'friendship'), where('userId2', '==', userId))),
+    ]);
+    const friendIds = new Set<string>();
+    [...asFirst.docs, ...asSecond.docs].forEach((document) => {
+      const relationship = document.data();
+      const status = readString(relationship.friendshipStatus) || readString(relationship.status);
+      if (status !== 'accepted') return;
+      const friendId = relationship.userId1 === userId
+        ? readString(relationship.userId2)
+        : readString(relationship.userId1);
+      if (friendId) friendIds.add(friendId);
+    });
+
+    const friends = await Promise.all([...friendIds].map(async (friendId): Promise<RelationshipUser | null> => {
+      const userDocument = await getDoc(doc(db, 'users', friendId));
+      if (!userDocument.exists()) return null;
+      const user = userDocument.data();
+      const profileImage = await this.resolveProfileImage(friendId, user.profilePicture, user.profileImage);
+      return {
+        id: friendId,
+        firstName: readString(user.firstName),
+        lastName: readString(user.lastName),
+        userName: readString(user.userName),
+        profileImage: profileImage || undefined,
+      };
+    }));
+    return friends.filter((friend): friend is RelationshipUser => friend !== null);
+  }
+
+  private async resolveProfileImage(userId: string, profilePicture: unknown, profileImage: unknown): Promise<string> {
+    const imageSelections = await getDocs(
+      query(collection(db, 'profileImageSetAs'), where('userId', '==', userId)),
+    ).catch(() => null);
+    const preferredSelection = imageSelections?.docs.find((selection) => selection.data().setAs === 'profile')
+      ?? imageSelections?.docs.find((selection) => selection.data().setAs === 'postProfile');
+    const imageId = preferredSelection ? readString(preferredSelection.data().profileImageId) : '';
+    const imageDocument = imageId
+      ? await getDoc(doc(db, 'profileImages', imageId)).catch(() => null)
+      : null;
+    return readString(imageDocument?.data()?.imageURL)
+      || readString(imageDocument?.data()?.imageUrl)
+      || readString(profilePicture)
+      || readString(profileImage);
   }
 
   public async getNetworkStats(userId: string): Promise<RelationshipNetworkStats> {

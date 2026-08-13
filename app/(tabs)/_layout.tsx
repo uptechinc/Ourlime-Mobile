@@ -3,14 +3,16 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image, Platform } from "react-native";
 import { AuthService } from '@/lib/services/AuthService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const authService = AuthService.getInstance();
 
 const TabLayout = () => {
   const [isDeveloper, setIsDeveloper] = useState(false);
+  const { isDark } = useAppTheme();
 
   useEffect(() => {
-    const unsub = authService.subscribeToAuthState((user) => {
+    const unsub = authService.subscribeToVerifiedAuthState((user) => {
       if (!user) {
         setIsDeveloper(false);
         return;
@@ -25,14 +27,15 @@ const TabLayout = () => {
 
   return (
     <Tabs
+      key={isDark ? 'dark-tabs' : 'light-tabs'}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: "#10B981",
-        tabBarInactiveTintColor: "#6B7280",
+        tabBarInactiveTintColor: isDark ? '#94A3B8' : '#6B7280',
         tabBarStyle: {
-          backgroundColor: "#FFFFFF",
+          backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
           borderTopWidth: 1,
-          borderTopColor: "#E5E7EB",
+          borderTopColor: isDark ? '#334155' : '#E5E7EB',
           height: Platform.OS === 'ios' ? 84 : 64,
           paddingBottom: Platform.OS === 'ios' ? 24 : 8,
           paddingTop: 8,
@@ -86,16 +89,16 @@ const TabLayout = () => {
           title: "Limes",
           href: isDeveloper ? undefined : null,
           tabBarStyle: {
-            backgroundColor: "#0f172a",
+            backgroundColor: isDark ? '#0f172a' : '#ffffff',
             borderTopWidth: 1,
-            borderTopColor: "#1e293b",
+            borderTopColor: isDark ? '#334155' : '#e5e7eb',
             height: Platform.OS === 'ios' ? 84 : 64,
             paddingBottom: Platform.OS === 'ios' ? 24 : 8,
             paddingTop: 8,
             elevation: 10,
           },
           tabBarActiveTintColor: "#10B981",
-          tabBarInactiveTintColor: "#94A3B8",
+          tabBarInactiveTintColor: isDark ? '#94A3B8' : '#6B7280',
           tabBarIcon: ({ focused }) => (
             <Image
               source={require('@/assets/images/logo.png')}

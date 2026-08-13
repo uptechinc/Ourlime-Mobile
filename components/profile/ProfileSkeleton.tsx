@@ -39,7 +39,7 @@ export default function ProfileSkeleton() {
       </View>
 
       {/* Feed Skeleton */}
-      <View style={{ padding: 16 }}>
+      <View style={{ width: '100%', marginTop: 12 }}>
         <SkeletonPostCard />
       </View>
     </View>

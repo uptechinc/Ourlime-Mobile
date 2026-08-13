@@ -13,6 +13,7 @@ type ProfileHeaderProps = {
   followingCount?: number;
   onEditProfile?: () => void;
   onCustomize?: () => void;
+  onFriendsPress?: () => void;
 };
 
 export default function ProfileHeader({
@@ -22,6 +23,7 @@ export default function ProfileHeader({
   followingCount = 0,
   onEditProfile,
   onCustomize,
+  onFriendsPress,
 }: ProfileHeaderProps) {
   const router = useRouter();
   const displayName = `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() || profile.userName || 'Ourlime User';
@@ -100,7 +102,7 @@ export default function ProfileHeader({
               <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 13 }}>Edit Profile</Text>
             </TouchableOpacity> : null}
 
-            <TouchableOpacity
+            {onCustomize ? <TouchableOpacity
               onPress={onCustomize}
               style={{
                 width: 36,
@@ -113,7 +115,7 @@ export default function ProfileHeader({
               activeOpacity={0.8}
             >
               <Ionicons name="color-palette-outline" size={18} color="#475569" />
-            </TouchableOpacity>
+            </TouchableOpacity> : null}
 
             <TouchableOpacity
               onPress={() => void handleShare()}
@@ -181,10 +183,10 @@ export default function ProfileHeader({
             <Text style={{ fontSize: 12, color: '#64748b', marginTop: 1, fontWeight: '500' }}>Posts</Text>
           </View>
           <View style={{ width: 1, height: '80%', backgroundColor: '#e2e8f0', alignSelf: 'center' }} />
-          <View style={{ alignItems: 'center' }}>
+          <TouchableOpacity onPress={onFriendsPress} disabled={!onFriendsPress} style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: 17, fontWeight: '800', color: '#0f172a' }}>{friendsCount}</Text>
             <Text style={{ fontSize: 12, color: '#64748b', marginTop: 1, fontWeight: '500' }}>Friends</Text>
-          </View>
+          </TouchableOpacity>
           <View style={{ width: 1, height: '80%', backgroundColor: '#e2e8f0', alignSelf: 'center' }} />
           <View style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: 17, fontWeight: '800', color: '#0f172a' }}>{followingCount}</Text>

@@ -14,11 +14,13 @@ import { getAppNavigationItems } from '@/lib/navigation/AppNavigation';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { profileResourceService } from '@/lib/services/ProfileResourceService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const authService = AuthService.getInstance();
 
 export default function FeedsScreen() {
   const { authorization, getDecision } = usePageAccess();
+  const { colors } = useAppTheme();
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
@@ -75,7 +77,7 @@ export default function FeedsScreen() {
 
   if (!userProfile) {
     return (
-      <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas }} edges={['top', 'left', 'right']}>
         {profileError ? (
           <View style={{ paddingHorizontal: 28, alignItems: 'center' }}>
             <Text style={{ color: '#991b1b', fontSize: 18, fontWeight: '700', textAlign: 'center' }}>Could not load your profile</Text>
@@ -91,7 +93,7 @@ export default function FeedsScreen() {
     <View
       style={{
         flex: 1,
-        backgroundColor: "#F2F2F7",
+        backgroundColor: colors.canvas,
       }}
     >
       <AppHeader

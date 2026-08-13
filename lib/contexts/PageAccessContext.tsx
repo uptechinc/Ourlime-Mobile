@@ -29,7 +29,7 @@ export function PageAccessProvider({ children }: PageAccessProviderProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribeAuth = authService.subscribeToAuthState((user) => {
+    const unsubscribeAuth = authService.subscribeToVerifiedAuthState((user) => {
       if (!user) {
         setProfile(null);
         setProfileLoading(false);

@@ -1,7 +1,8 @@
-import { addDoc, collection, doc, getDoc, getDocs, increment, limit, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, where, writeBatch } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
-import { ApiService } from './ApiService';
+import { ApiService, ApiServiceError } from './ApiService';
+import { RequestTimeoutService } from './RequestTimeoutService';
 
 export type CommunitySummary = {
   id: string;
@@ -18,10 +19,19 @@ export type CommunitySummary = {
   postCount: number;
   membershipLikes: number;
   createdAt: string | null;
+  createdAtMs: number;
   hasAccess: boolean;
   isOwner: boolean;
   isBanned: boolean;
   postingPermission: 'members' | 'admins' | 'owner';
+};
+
+export type CommunityCategory = { id: string; name: string; type: string };
+
+type JoinedByFriendsResponse = {
+  success: boolean;
+  data?: { communityIds?: string[] };
+  error?: string;
 };
 
 export type CreateCommunityInput = {
@@ -31,13 +41,48 @@ export type CreateCommunityInput = {
   categoryId?: string;
 };
 
+type CommunitySource = {
+  title?: unknown;
+  name?: unknown;
+  description?: unknown;
+  imageUrl?: unknown;
+  coverImage?: unknown;
+  bannerImageUrl?: unknown;
+  membershipCount?: unknown;
+  memberCount?: unknown;
+  membersCount?: unknown;
+  isPrivate?: unknown;
+  privacy?: unknown;
+  categoryId?: unknown;
+  userId?: unknown;
+  creatorName?: unknown;
+  isMember?: unknown;
+  requestStatus?: unknown;
+  postCount?: unknown;
+  membershipLikes?: unknown;
+  createdAt?: unknown;
+  hasAccess?: unknown;
+  isOwner?: unknown;
+  isBanned?: unknown;
+  postingPermission?: unknown;
+};
+
 const readString = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 const readNumber = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) ? value : 0;
+const readDateMs = (value: unknown): number => {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return new Date(value).getTime() || 0;
+  if (typeof value === 'object' && value !== null && 'toMillis' in value && typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof value === 'object' && value !== null && 'seconds' in value && typeof value.seconds === 'number') return value.seconds * 1000;
+  return 0;
+};
 
 export class CommunityService {
   private static instance: CommunityService;
   private readonly logger = DiagnosticLogService.getInstance();
   private readonly apiService = ApiService.getInstance();
+  private readonly timeoutService = RequestTimeoutService.getInstance();
 
   private constructor() {}
 
@@ -53,15 +98,18 @@ export class CommunityService {
   public async fetchCommunities(maxResults = 40): Promise<CommunitySummary[]> {
     this.logger.info('CommunityService', 'fetchCommunities:start', { maxResults });
     try {
-      const snapshot = await getDocs(query(collection(db, 'communityVariant'), limit(maxResults)));
+      const snapshot = await this.timeoutService.run(
+        getDocs(query(collection(db, 'communityVariant'), limit(maxResults))),
+        'Communities request',
+      );
       const viewerId = auth.currentUser?.uid;
       const baseCommunities = snapshot.docs.map((document) => this.normalizeCommunity(document.id, document.data()));
       const ids = baseCommunities.map((community) => community.id);
-      const [memberships, requests, counts] = await Promise.all([
+      const [memberships, requests, counts] = await this.timeoutService.run(Promise.all([
         viewerId ? getDocs(query(collection(db, 'communityVariantMembership'), where('userId', '==', viewerId), where('isMember', '==', true))) : null,
         viewerId ? getDocs(query(collection(db, 'communityRequests'), where('userId', '==', viewerId))) : null,
         Promise.all(ids.map((id) => getDoc(doc(db, 'communityVariantMembershipAndLikeCount', id)))),
-      ]);
+      ]), 'Community membership request');
       const joinedIds = new Set(memberships?.docs.map((entry) => readString(entry.data().communityVariantId)) ?? []);
       const requestStatuses = new Map<string, CommunitySummary['requestStatus']>();
       requests?.docs.forEach((entry) => {
@@ -89,9 +137,25 @@ export class CommunityService {
 
   public async fetchCommunity(id: string): Promise<CommunitySummary> {
     this.logger.info('CommunityService', 'fetchCommunity:start', { id });
+    try {
+      return await this.fetchCommunityFromApi(id);
+    } catch (error: unknown) {
+      const canUseFirestore = error instanceof ApiServiceError
+        ? error.code === 'REQUEST_TIMEOUT' || error.status >= 500
+        : error instanceof TypeError;
+      if (!canUseFirestore) throw error;
+      this.logger.warn('CommunityService', 'fetchCommunity:firestore-fallback', {
+        id,
+        reason: error instanceof Error ? error.message : 'Network unavailable',
+      });
+      return this.fetchCommunityFromFirestore(id);
+    }
+  }
+
+  private async fetchCommunityFromApi(id: string): Promise<CommunitySummary> {
     const response = await this.apiService.request<{ data?: unknown; resolvedId?: string; access?: { hasAccess?: boolean; isOwner?: boolean; isBanned?: boolean }; error?: string }>(
       `/api/communities/fetch?type=community&id=${encodeURIComponent(id)}`,
-      { authenticated: Boolean(auth.currentUser) }
+      { authenticated: Boolean(auth.currentUser) },
     );
     if (!response.data) throw new Error(response.error || 'Community not found');
     const base = this.normalizeCommunity(response.resolvedId || id, response.data);
@@ -111,24 +175,70 @@ export class CommunityService {
     return community;
   }
 
+  private async fetchCommunityFromFirestore(identifier: string): Promise<CommunitySummary> {
+    const directSnapshot = await getDoc(doc(db, 'communityVariant', identifier));
+    const slugSnapshot = directSnapshot.exists()
+      ? null
+      : await getDocs(query(collection(db, 'communityVariant'), where('uniqueName', '==', identifier), limit(1)));
+    const communityDocument = directSnapshot.exists() ? directSnapshot : slugSnapshot?.docs[0];
+    if (!communityDocument?.exists()) throw new Error('Community not found');
+
+    const viewerId = auth.currentUser?.uid;
+    const resolvedId = communityDocument.id;
+    const base = this.normalizeCommunity(resolvedId, communityDocument.data());
+    const [memberships, requests, countSnapshot] = await Promise.all([
+      viewerId ? getDocs(query(collection(db, 'communityVariantMembership'), where('userId', '==', viewerId), where('communityVariantId', '==', resolvedId), limit(1))) : null,
+      viewerId ? getDocs(query(collection(db, 'communityRequests'), where('userId', '==', viewerId), where('communityVariantId', '==', resolvedId), limit(1))) : null,
+      getDoc(doc(db, 'communityVariantMembershipAndLikeCount', resolvedId)),
+    ]);
+    const membership = memberships?.docs[0]?.data();
+    const requestStatus = readString(requests?.docs[0]?.data().status);
+    const isOwner = Boolean(viewerId && base.creatorId === viewerId);
+    const isMember = isOwner || membership?.isMember === true;
+    const isBanned = membership?.isBanned === true || membership?.status === 'banned';
+    const count = countSnapshot.data();
+    const community: CommunitySummary = {
+      ...base,
+      membershipCount: readNumber(count?.membershipCount) || base.membershipCount,
+      membershipLikes: readNumber(count?.membershipLikes) || base.membershipLikes,
+      isOwner,
+      isMember,
+      isBanned,
+      hasAccess: !isBanned && (!base.isPrivate || isMember),
+      requestStatus: requestStatus === 'pending' || requestStatus === 'approved' || requestStatus === 'declined' ? requestStatus : 'none',
+    };
+    this.logger.success('CommunityService', 'fetchCommunity:firestore', { id: resolvedId, hasAccess: community.hasAccess });
+    return community;
+  }
+
+  public async fetchJoinedByFriendsIds(): Promise<Set<string>> {
+    if (!auth.currentUser) return new Set();
+    const response = await this.apiService.request<JoinedByFriendsResponse>('/api/communities/joined-by-friends', { authenticated: true });
+    if (!response.success) throw new Error(response.error || 'Communities joined by friends could not be loaded.');
+    return new Set((response.data?.communityIds ?? []).filter((communityId): communityId is string => typeof communityId === 'string'));
+  }
+
+  public async fetchCategories(): Promise<CommunityCategory[]> {
+    const snapshot = await getDocs(collection(db, 'communityCategories'));
+    return snapshot.docs.flatMap((document): CommunityCategory[] => {
+      const value = document.data();
+      const name = readString(value.name) || readString(value.type) || readString(value.categoryName);
+      if (!name) return [];
+      return [{ id: document.id, name, type: readString(value.type) || name }];
+    }).sort((first, second) => first.name.localeCompare(second.name));
+  }
+
   public async joinOrRequestAccess(community: CommunitySummary): Promise<'joined' | 'requested'> {
-    const userId = auth.currentUser?.uid;
-    if (!userId) throw new Error('Sign in to join a community');
-    if (community.isPrivate) {
-      const existing = await getDocs(query(collection(db, 'communityRequests'), where('userId', '==', userId), where('communityVariantId', '==', community.id)));
-      if (existing.empty) {
-        await addDoc(collection(db, 'communityRequests'), { userId, communityVariantId: community.id, status: 'pending', requestedAt: serverTimestamp() });
-      } else {
-        await updateDoc(existing.docs[0].ref, { status: 'pending', requestedAt: serverTimestamp(), declinedAt: null });
-      }
-      return 'requested';
-    }
-    const existing = await getDocs(query(collection(db, 'communityVariantMembership'), where('userId', '==', userId), where('communityVariantId', '==', community.id), where('isMember', '==', true)));
-    if (existing.empty) {
-      await addDoc(collection(db, 'communityVariantMembership'), { userId, communityVariantId: community.id, isMember: true, role: 'member', isAdmin: false, from: serverTimestamp(), to: null });
-      await setDoc(doc(db, 'communityVariantMembershipAndLikeCount', community.id), { communityVariantId: community.id, membershipCount: increment(1), membershipLikes: community.membershipLikes }, { merge: true });
-    }
-    return 'joined';
+    if (!auth.currentUser) throw new Error('Sign in to join a community');
+    const action = community.isPrivate ? 'request' : 'join';
+    const response = await this.apiService.request<{ success: boolean; result?: 'joined' | 'requested'; error?: string }>('/api/communities/membership', { method: 'POST', authenticated: true, body: { communityId: community.id, action } });
+    if (!response.success || !response.result) throw new Error(response.error || 'Community membership could not be updated.');
+    return response.result;
+  }
+
+  public async leaveCommunity(communityId: string): Promise<void> {
+    const response = await this.apiService.request<{ success: boolean; error?: string }>('/api/communities/membership', { method: 'POST', authenticated: true, body: { communityId, action: 'leave' } });
+    if (!response.success) throw new Error(response.error || 'You could not leave this community.');
   }
 
   public async createCommunity(input: CreateCommunityInput): Promise<CommunitySummary> {
@@ -156,7 +266,7 @@ export class CommunityService {
   }
 
   private normalizeCommunity(id: string, value: unknown): CommunitySummary {
-    const record = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
+    const record: CommunitySource = typeof value === 'object' && value !== null ? value as CommunitySource : {};
     return {
       id,
       title: readString(record.title) || readString(record.name) || 'Untitled community',
@@ -172,6 +282,7 @@ export class CommunityService {
       postCount: readNumber(record.postCount),
       membershipLikes: readNumber(record.membershipLikes),
       createdAt: readString(record.createdAt) || null,
+      createdAtMs: readDateMs(record.createdAt),
       hasAccess: record.hasAccess !== false,
       isOwner: record.isOwner === true,
       isBanned: record.isBanned === true,

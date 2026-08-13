@@ -20,6 +20,7 @@ import { AuthService } from '@/lib/services/AuthService';
 import { SkeletonNotificationRow } from './SkeletonLoaders';
 import type { NotificationData } from '@/lib/types/notification';
 import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type NotificationsModalProps = {
   visible: boolean;
@@ -50,6 +51,7 @@ const getNotificationTime = (createdAt: NotificationData['createdAt']): number =
 
 export default function NotificationsModal({ visible, onClose }: NotificationsModalProps) {
   const router = useRouter();
+  const { isDark } = useAppTheme();
   const { notifications, unreadCount, isLoading, markAsRead, markAsUnread, markAllAsRead, refreshNotifications } = useNotifications();
 
   const [sortMode, setSortMode] = useState<SortMode>('unread_first');
@@ -444,7 +446,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#ffffff' }}>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0f172a' : '#ffffff'} />
 
         {/* Modern Confirmation Dialog */}
         <CustomModal

@@ -4,6 +4,8 @@ Updated: 2026-08-12
 
 This is the current source-level status of every mobile page. **Done** means implemented in source; it does not claim deployed API, Firestore-rule, physical-device, or manual authenticated verification. `Coming Soon` pages are intentionally protected rather than presented as finished features.
 
+Detailed Profile and Communities evidence and requirements: [`PROFILE-COMMUNITIES-WEB-MOBILE-PARITY-AUDIT.md`](PROFILE-COMMUNITIES-WEB-MOBILE-PARITY-AUDIT.md).
+
 ## Global application shell — `app/_layout.tsx`, `app/(tabs)/_layout.tsx`
 
 - Done
@@ -115,17 +117,21 @@ This is the current source-level status of every mobile page. **Done** means imp
 ## Own profile — `app/(tabs)/Profile.tsx`
 
 - Done
-  - Shared disk-first own profile summary with five-minute revalidation, profile counts, header/cover/avatar, edit profile, Timeline, About, Gallery, conditional Admin tab, settings, drawer, error/refresh states.
+  - Shared disk-first own profile summary with five-minute revalidation, profile counts, header/cover/avatar, edit profile, Timeline, searchable Friends, About, Gallery, conditional Admin tab, settings, drawer, error/refresh states.
   - Profile edits immediately patch own summary and cached feed author records; cached images cover avatar, cover, gallery, and feed assets.
   - Timeline/gallery reuse author-scoped feed resources rather than independent duplicate fetches.
+  - Avatar/cover selection uses native cropping and `ProfileMediaService`; it uploads to Storage, writes web-compatible `profileImages`/`profileImageSetAs` assignments, updates the user record, and patches caches. Required rules are changed in source but not deployed.
+  - Native profile sharing is wired. The nonfunctional Customize palette control is hidden.
 - Still to do
-  - Friends, Reposts, Profile Customization, full albums/gallery ownership, richer profile share, products/jobs/business account routes, and complete About/privacy fields.
-  - Manually verify avatar/cover crop/upload/deletion propagation everywhere.
+  - Reposts, Profile Customization, following/followers/requests/suggestions, friend row actions, full albums/gallery ownership, products/jobs/business account routes, and complete About/privacy fields.
+  - Multiple cover images, ordering, gradients, remove/delete, unused-media cleanup, upload progress/recovery, and propagation to comments/chat/community rows.
+  - Deploy adjacent Storage/Firestore rules and manually verify avatar/cover persistence and propagation everywhere.
 
 ## Other-user profile — `app/profile/[username].tsx`
 
 - Done
   - Cached public profile by normalized username/UID, privacy-aware details, cover/avatar, timeline/about/gallery, follow/friend/message controls, block/unblock/report behavior, and visible friends/communities.
+  - Own Friends loads accepted Firestore relationship records plus canonical profile-image selections directly, avoiding dependence on the optional LAN web API; privacy-aware other-user friend graphs remain server-owned.
   - Cached profile content stays visible during revalidation failure with retry affordance.
 - Still to do
   - Deeper follower/following/community sliders, full privacy-tab behavior, share depth, and manual block/relationship verification.
@@ -133,28 +139,40 @@ This is the current source-level status of every mobile page. **Done** means imp
 ## Settings — `app/settings/index.tsx`
 
 - Done
-  - Existing service-backed settings shell, account/profile routing, and page-access-aware navigation.
+  - Typed service-backed account, appearance, notifications, privacy, security, and blocked-user reads/writes using canonical `users/{uid}/userSettings/*` records without requiring the unavailable LAN API.
+  - System/Light/Dark selection applied above navigation and across route backgrounds/text/borders, status bars, tab navigation, headers, drawers, and custom dialogs. System is the default and follows live phone appearance changes; the preference is saved locally and to the appearance document. Theme compatibility state is updated before route rendering, and retained Stack/Tabs surfaces are refreshed when the resolved system scheme changes.
+  - Feed composer/scopes/filters/cards/polls, Discover sections/cards/search, Search results, Chat lists/composer, Profile shell/tabs, Communities lists/filters, shared skeletons, the active Home drawer, Admin tabs/user filters, shared page headers, and Jobs now use explicit semantic surfaces and contrast-safe selected states in both themes.
+  - Profile/activity/search visibility, message permissions, data-sharing choices, granular notification choices, security alerts, blocked-user removal, save/sign-out, and custom modal states.
 - Still to do
-  - Complete all web settings/privacy/security/deletion subflows and verify persistence/device behavior.
+  - Secure 2FA enrollment/disable, password change with reauthentication, connected accounts, session/activity logs, export, and account deletion.
+  - Continue replacing legacy hard-coded neutrals with explicit semantic theme colors whenever a page is touched; the global compatibility bridge currently keeps those existing pages synchronized.
+  - Deploy the adjacent nested `userSettings` Firestore rule and manually verify each preference is consumed by Search, Chat, notifications, presence, and profile privacy.
 
 ## Communities list — `app/communities/index.tsx`
 
 - Done
-  - Live list, filter/search, community creation, join/request handling, privacy/banned-state checks, truthful loading/empty/error states, and OOP service ownership.
+  - Live list, search, All/My Joined/Joined by Friends/New/My Created, public/private/live-category filters, Popular/Newest/Active/Trending controls, community creation, join/request handling, privacy/banned checks, truthful loading/empty/error states, and OOP service ownership.
+  - Membership join/request/leave uses the authenticated `/api/communities/membership` contract rather than trusting a route-level client mutation.
 - Still to do
-  - Advanced discovery pagination/filter depth, invite workflows, and manual permission verification.
+  - Community-of-the-Week/statistics, server-backed search/pagination/trending/activity rank, banner upload/crop, verified-member/posting policies, cancel request, fuller badges, invite workflows, and manual permission verification.
+  - Deploy the membership API and relevant Firestore rules before runtime completion can be claimed.
 
 ## Community detail — `app/communities/[id]/index.tsx`
 
 - Done
-  - Live detail/feed/create/comment/like flows and permission-aware visible actions.
+  - Live detail/feed/create/comment/like flows, privacy/access/banned states, join/request/leave, native share, server-backed report, Posts/About, and permission-aware visible actions.
+  - Network/server failure on `/api/communities/fetch` falls back to live Firestore community, membership, request, and count records instead of leaving the route empty; auth/permission errors remain explicit.
+  - Public-profile joined-community links and community member/profile links resolve to canonical native slug routes.
 - Still to do
-  - Members/dashboard, invites, polls, events, moderation, owner/admin management, and deeper community settings.
+  - Paginated members and join requests; invites; selectable report reasons; polls; events; media; post/member moderation; owner/admin dashboard; edit/delete; role management; and deeper community settings.
+  - Use modern Ourlime bottom sheets/custom confirmations for leave/delete/ban/remove/promote/report actions; never native default alerts or simulated success.
 
 ## Events — `app/events/index.tsx`
 
 - Done
   - Existing event list/create/like/RSVP shell remains reachable only according to page access.
+  - Coming Soon and other unavailable states render a blocking dark-glass modal above the route, matching the web interaction instead of exposing the underlying prototype page.
+  - Events and all bundled future routes are blocked immediately from canonical defaults even while remote page-access/profile subscriptions are still hydrating.
 - Still to do
   - Replace the prototype event comments/local reply behavior and complete detail, ticketing, review, calendar, and owner workflows before enabling full product status.
 
@@ -162,6 +180,7 @@ This is the current source-level status of every mobile page. **Done** means imp
 
 - Done
   - Existing browse/create shell is protected by canonical availability settings.
+  - Category paging uses a native horizontal `ScrollView`; the Fabric-crashing `react-native-swiper` dependency is no longer used by the page.
 - Still to do
   - Replace simulated job application/upload flow, connect all visible actions, add saved/detail/employer management, and hide incomplete controls until live.
 
@@ -189,10 +208,17 @@ This is the current source-level status of every mobile page. **Done** means imp
 ## Admin — `app/admin/index.tsx` and `app/admin/*`
 
 - Done
-  - Authenticated, role-gated metrics, user search, role/lifecycle actions, moderation reports, page-access management, route handoffs, and access-denied states.
-  - Shared authorization result controls admin navigation and rendering; server APIs remain the enforcement boundary.
+  - All twelve canonical web admin destinations now render native workspaces instead of an “Admin Overview” handoff: dashboard, analytics, user management, testers, stickers, reports, products, page access, moderation, community categories, marketplace categories, and communities.
+  - Authenticated role-gated metrics; live user search; status/role/account filters; pagination; CSV sharing; role, account status, verification, archive/restore/permanent-delete workflows; and self-protection rules.
+  - Report status/severity/search filters, report-detail slug routing, the web moderation action set, required reason/duration inputs, and secure server mutations.
+  - Page-access Pages/Activity Log tabs, full overlay/navigation/preview/button editor, bulk status changes, initialize/reset defaults, and global route enforcement.
+  - Tester registration modes, lifecycle tabs, applications/invitations/testers, notes/status mutations, and secure tester invitation creation.
+  - Live products, communities, categories, sticker packs/assets, and aggregate analytics with native loading, empty, error, refresh, filter, detail, and action states.
+  - Shared authorization result controls admin navigation and rendering; services own Firestore/API contracts and server APIs remain the boundary for privileged Auth, moderation, tester email, and lifecycle operations.
 - Still to do
-  - Analytics, testers, stickers, products, categories, communities, audit/activity, bulk page-access controls, audit-log depth, and moderator-specific parity.
+  - Add web-equivalent analytics date ranges/trends/route breakdowns, complete sticker pack/sticker create/edit/seed forms, deepen product/community-specific field controls, and add secure user import.
+  - Add a moderator-specific shell if moderators should enter reports without full administrator access.
+  - Deploy the checked-in Firestore rules and reachable web APIs before runtime verification; the agent did not deploy them.
   - Manually verify every role mutation, lifecycle action, page-setting precedence, and authorization failure.
 
 ## Post detail and Not Found — `app/post/[id].tsx`, `app/+not-found.tsx`

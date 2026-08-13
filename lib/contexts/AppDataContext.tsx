@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { AuthService } from '@/lib/services/AuthService';
 import { LocalCacheService } from '@/lib/services/LocalCacheService';
 import { ConversationResourceService } from '@/lib/services/ConversationResourceService';
@@ -25,7 +25,7 @@ const messageService = MessageResourceService.getInstance();
 const feedService = FeedResourceService.getInstance();
 
 export function AppDataProvider({ children }: AppDataProviderProps) {
-  const [activeUserId, setActiveUserId] = useState<string | null>(authService.getCurrentUser()?.uid ?? null);
+  const [activeUserId, setActiveUserId] = useState<string | null>(authService.getVerifiedCurrentUser()?.uid ?? null);
   const [cacheReady, setCacheReady] = useState(false);
   const activeUserIdRef = useRef<string | null>(activeUserId);
 
@@ -33,7 +33,7 @@ export function AppDataProvider({ children }: AppDataProviderProps) {
     void cacheService.initialize().then(() => setCacheReady(true)).catch(() => setCacheReady(false));
   }, []);
 
-  useEffect(() => authService.subscribeToAuthState((user) => {
+  useEffect(() => authService.subscribeToVerifiedAuthState((user) => {
     const previousUserId = activeUserIdRef.current;
     const nextUserId = user?.uid ?? null;
     if (previousUserId && previousUserId !== nextUserId) {
@@ -73,20 +73,30 @@ export function AppDataProvider({ children }: AppDataProviderProps) {
 
   useEffect(() => {
     if (!activeUserId) return;
-    const subscription = Notifications.addNotificationReceivedListener((notification) => {
-      const data = notification.request.content.data ?? {};
-      const type = typeof data.type === 'string' ? data.type : typeof data.notificationType === 'string' ? data.notificationType : '';
-      if (type === 'message' || type === 'voice_call' || type === 'video_call' || type === 'friend_accepted') {
-        void conversationService.refresh(activeUserId, true);
-      }
-      if (type.includes('post') || type === 'comment' || type === 'like') {
-        void feedService.reconcileCachedFeeds(activeUserId);
-      }
-      if (type.includes('friend') || type.includes('follow') || type === 'profile') {
-        void profileService.refresh({ kind: 'own', userId: activeUserId }, true);
-      }
-    });
-    return () => subscription.remove();
+    if (Constants.appOwnership === 'expo') return;
+    // expo-notifications remote push was removed from Expo Go in SDK 53.
+    // Lazily load so the module never throws at import time.
+    let subscription: { remove: () => void } | null = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Notifications = require('expo-notifications') as typeof import('expo-notifications');
+      subscription = Notifications.addNotificationReceivedListener((notification) => {
+        const data = notification.request.content.data ?? {};
+        const type = typeof data.type === 'string' ? data.type : typeof data.notificationType === 'string' ? data.notificationType : '';
+        if (type === 'message' || type === 'voice_call' || type === 'video_call' || type === 'friend_accepted') {
+          void conversationService.refresh(activeUserId, true);
+        }
+        if (type.includes('post') || type === 'comment' || type === 'like') {
+          void feedService.reconcileCachedFeeds(activeUserId);
+        }
+        if (type.includes('friend') || type.includes('follow') || type === 'profile') {
+          void profileService.refresh({ kind: 'own', userId: activeUserId }, true);
+        }
+      });
+    } catch {
+      // Not supported in Expo Go — skip.
+    }
+    return () => subscription?.remove();
   }, [activeUserId]);
 
   return <AppDataContext.Provider value={{ activeUserId, cacheReady }}>{children}</AppDataContext.Provider>;

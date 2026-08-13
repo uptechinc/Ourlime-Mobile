@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import type { SlideOutMenuProps } from '../../lib/types/componentProps';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const { width: screenWidth } = Dimensions.get('window');
 const MENU_WIDTH = screenWidth * 0.88;
@@ -38,13 +39,36 @@ export default function SlideOutMenu({
     menuItems,
     userProfile,
 }: SlideOutMenuProps) {
+    const { colors } = useAppTheme();
     const slideAnim = useRef(new Animated.Value(MENU_WIDTH)).current;
     const overlayOpacity = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(0.95)).current;
     const contentOpacity = useRef(new Animated.Value(0)).current;
 
+    const handleCloseAnimated = () => {
+        Animated.parallel([
+            Animated.timing(slideAnim, {
+                toValue: MENU_WIDTH,
+                duration: 220,
+                useNativeDriver: true,
+            }),
+            Animated.timing(overlayOpacity, {
+                toValue: 0,
+                duration: 220,
+                useNativeDriver: true,
+            }),
+        ]).start(() => {
+            onClose();
+        });
+    };
+
     useEffect(() => {
         if (isVisible) {
+            slideAnim.setValue(MENU_WIDTH);
+            overlayOpacity.setValue(0);
+            scaleAnim.setValue(0.95);
+            contentOpacity.setValue(0);
+
             Animated.parallel([
                 Animated.spring(slideAnim, {
                     toValue: 0,
@@ -54,7 +78,7 @@ export default function SlideOutMenu({
                 }),
                 Animated.timing(overlayOpacity, {
                     toValue: 1,
-                    duration: 300,
+                    duration: 250,
                     useNativeDriver: true,
                 }),
                 Animated.spring(scaleAnim, {
@@ -65,31 +89,8 @@ export default function SlideOutMenu({
                 }),
                 Animated.timing(contentOpacity, {
                     toValue: 1,
-                    duration: 350,
-                    delay: 80,
-                    useNativeDriver: true,
-                }),
-            ]).start();
-        } else {
-            Animated.parallel([
-                Animated.timing(slideAnim, {
-                    toValue: MENU_WIDTH,
-                    duration: 250,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(overlayOpacity, {
-                    toValue: 0,
-                    duration: 250,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(scaleAnim, {
-                    toValue: 0.95,
-                    duration: 250,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(contentOpacity, {
-                    toValue: 0,
-                    duration: 200,
+                    duration: 300,
+                    delay: 50,
                     useNativeDriver: true,
                 }),
             ]).start();
@@ -97,17 +98,19 @@ export default function SlideOutMenu({
     }, [isVisible, slideAnim, overlayOpacity, scaleAnim, contentOpacity]);
 
     // Separate account items from feature items from logout from the menuItems prop
-    const accountIds = ['profile', 'settings'];
+    const accountIds = ['profile', 'settings', 'chat'];
     const logoutId = 'logout';
-    const featureIds = ['communities', 'events', 'jobs', 'market', 'blogs', 'elearning', 'chat'];
+    const featureIds = ['communities', 'events', 'jobs', 'market', 'blogs', 'elearning'];
     const adsIds: string[] = [];
     const supportIds: string[] = [];
 
-    const accountItems = menuItems.filter(m => accountIds.includes(m.id));
-    const featureItems = menuItems.filter(m => featureIds.includes(m.id));
-    const adsItems = menuItems.filter(m => adsIds.includes(m.id));
-    const supportItems = menuItems.filter(m => supportIds.includes(m.id));
-    const logoutItem = menuItems.find(m => m.id === logoutId);
+    const accountItems = menuItems.filter((menuItem) => accountIds.includes(menuItem.id));
+    const featureItems = menuItems.filter((menuItem) => featureIds.includes(menuItem.id));
+    const adsItems = menuItems.filter((menuItem) => adsIds.includes(menuItem.id));
+    const supportItems = menuItems.filter((menuItem) => supportIds.includes(menuItem.id));
+    const logoutItem = menuItems.find((menuItem) => menuItem.id === logoutId);
+
+    const chatMenuItem = menuItems.find((menuItem) => menuItem.id === 'chat');
 
     // Build section config: Account section first
     const accountSection: SectionItem[] = [
@@ -118,7 +121,7 @@ export default function SlideOutMenu({
             icon: 'person-circle-outline',
             iconColor: '#10b981',
             iconBgColor: '#d1fae5',
-            onPress: accountItems.find(m => m.id === 'profile')?.onPress,
+            onPress: accountItems.find((menuItem) => menuItem.id === 'profile')?.onPress,
         },
         {
             id: 'settings',
@@ -127,53 +130,63 @@ export default function SlideOutMenu({
             icon: 'settings-outline',
             iconColor: '#6366f1',
             iconBgColor: '#ede9fe',
-            onPress: accountItems.find(m => m.id === 'settings')?.onPress,
+            onPress: accountItems.find((menuItem) => menuItem.id === 'settings')?.onPress,
+        },
+        {
+            id: 'chat',
+            title: 'Chat',
+            subtitle: 'Direct messages & groups',
+            icon: 'chatbubbles-outline',
+            iconColor: '#10b981',
+            iconBgColor: '#d1fae5',
+            badge: chatMenuItem?.badge,
+            onPress: chatMenuItem?.onPress,
         },
     ];
 
     // Feature section
-    const featureIconMap: Record<string, Pick<SectionItem, 'icon' | 'iconColor' | 'iconBgColor'>> = {
-        communities: { icon: 'people-outline', iconColor: '#3b82f6', iconBgColor: '#dbeafe' },
-        events: { icon: 'calendar-outline', iconColor: '#8b5cf6', iconBgColor: '#ede9fe' },
-        jobs: { icon: 'briefcase-outline', iconColor: '#0ea5e9', iconBgColor: '#e0f2fe' },
-        market: { icon: 'storefront-outline', iconColor: '#f97316', iconBgColor: '#ffedd5' },
-        blogs: { icon: 'book-outline', iconColor: '#ec4899', iconBgColor: '#fce7f3' },
-        elearning: { icon: 'school-outline', iconColor: '#14b8a6', iconBgColor: '#ccfbf1' },
-        chat: { icon: 'chatbubbles-outline', iconColor: '#10b981', iconBgColor: '#d1fae5' },
-    };
+    const featureIconMap = new Map<string, Pick<SectionItem, 'icon' | 'iconColor' | 'iconBgColor'>>([
+        ['communities', { icon: 'people-outline', iconColor: '#3b82f6', iconBgColor: '#dbeafe' }],
+        ['events', { icon: 'calendar-outline', iconColor: '#8b5cf6', iconBgColor: '#ede9fe' }],
+        ['jobs', { icon: 'briefcase-outline', iconColor: '#0ea5e9', iconBgColor: '#e0f2fe' }],
+        ['market', { icon: 'storefront-outline', iconColor: '#f97316', iconBgColor: '#ffedd5' }],
+        ['blogs', { icon: 'book-outline', iconColor: '#ec4899', iconBgColor: '#fce7f3' }],
+        ['elearning', { icon: 'school-outline', iconColor: '#14b8a6', iconBgColor: '#ccfbf1' }],
+        ['chat', { icon: 'chatbubbles-outline', iconColor: '#10b981', iconBgColor: '#d1fae5' }],
+    ]);
 
-    const featureSection: SectionItem[] = featureItems.map(m => ({
-        id: m.id,
-        title: m.title,
-        icon: featureIconMap[m.id]?.icon ?? 'apps-outline',
-        iconColor: featureIconMap[m.id]?.iconColor ?? '#6b7280',
-        iconBgColor: featureIconMap[m.id]?.iconBgColor ?? '#f3f4f6',
-        onPress: m.onPress,
-        badge: m.badge,
+    const featureSection: SectionItem[] = featureItems.map((menuItem) => ({
+        id: menuItem.id,
+        title: menuItem.title,
+        icon: featureIconMap.get(menuItem.id)?.icon ?? 'apps-outline',
+        iconColor: featureIconMap.get(menuItem.id)?.iconColor ?? '#6b7280',
+        iconBgColor: featureIconMap.get(menuItem.id)?.iconBgColor ?? '#f3f4f6',
+        onPress: menuItem.onPress,
+        badge: menuItem.badge,
     }));
 
     // Ads section
-    const adsIconMap: Record<string, Pick<SectionItem, 'icon' | 'iconColor' | 'iconBgColor'>> = {
-        '14': { icon: 'megaphone-outline',   iconColor: '#f97316', iconBgColor: '#ffedd5' },
-        '15': { icon: 'bar-chart-outline',   iconColor: '#6366f1', iconBgColor: '#ede9fe' },
-    };
-    const adsSection: SectionItem[] = adsItems.map(m => ({
-        id: m.id,
-        title: m.title,
-        icon: adsIconMap[m.id]?.icon ?? 'megaphone-outline',
-        iconColor: adsIconMap[m.id]?.iconColor ?? '#6b7280',
-        iconBgColor: adsIconMap[m.id]?.iconBgColor ?? '#f3f4f6',
-        onPress: m.onPress,
+    const adsIconMap = new Map<string, Pick<SectionItem, 'icon' | 'iconColor' | 'iconBgColor'>>([
+        ['14', { icon: 'megaphone-outline', iconColor: '#f97316', iconBgColor: '#ffedd5' }],
+        ['15', { icon: 'bar-chart-outline', iconColor: '#6366f1', iconBgColor: '#ede9fe' }],
+    ]);
+    const adsSection: SectionItem[] = adsItems.map((menuItem) => ({
+        id: menuItem.id,
+        title: menuItem.title,
+        icon: adsIconMap.get(menuItem.id)?.icon ?? 'megaphone-outline',
+        iconColor: adsIconMap.get(menuItem.id)?.iconColor ?? '#6b7280',
+        iconBgColor: adsIconMap.get(menuItem.id)?.iconBgColor ?? '#f3f4f6',
+        onPress: menuItem.onPress,
     }));
 
     // Support section
-    const supportSection: SectionItem[] = supportItems.map(m => ({
-        id: m.id,
-        title: m.title,
+    const supportSection: SectionItem[] = supportItems.map((menuItem) => ({
+        id: menuItem.id,
+        title: menuItem.title,
         icon: 'help-circle-outline',
         iconColor: '#64748b',
         iconBgColor: '#f1f5f9',
-        onPress: m.onPress,
+        onPress: menuItem.onPress,
     }));
 
     const displayName = userProfile
@@ -184,7 +197,7 @@ export default function SlideOutMenu({
         : userProfile?.email ?? '';
     const avatarUrl = userProfile?.profilePicture ?? userProfile?.avatar ?? null;
 
-    const renderSectionItem = (item: SectionItem, index: number) => (
+    const renderSectionItem = (item: SectionItem) => (
         <Animated.View
             key={item.id}
             style={{
@@ -206,7 +219,9 @@ export default function SlideOutMenu({
                     marginHorizontal: 12,
                     marginVertical: 2,
                     borderRadius: 14,
-                    backgroundColor: '#ffffff',
+                    backgroundColor: colors.surface,
+                    borderWidth: 1,
+                    borderColor: colors.border,
                     shadowColor: '#000',
                     shadowOffset: { width: 0, height: 1 },
                     shadowOpacity: 0.04,
@@ -231,11 +246,11 @@ export default function SlideOutMenu({
                     <Ionicons name={item.icon} size={20} color={item.iconColor} />
                 </View>
                 <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15, color: '#111827', fontWeight: '600' }}>
+                    <Text style={{ fontSize: 15, color: colors.text, fontWeight: '600' }}>
                         {item.title}
                     </Text>
                     {item.subtitle ? (
-                        <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>
+                        <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 1 }}>
                             {item.subtitle}
                         </Text>
                     ) : null}
@@ -256,7 +271,7 @@ export default function SlideOutMenu({
                             </Text>
                         </View>
                     ) : null}
-                    <Ionicons name="chevron-forward" size={14} color="#d1d5db" />
+                    <Ionicons name="chevron-forward" size={14} color={colors.icon} />
                 </View>
             </TouchableOpacity>
         </Animated.View>
@@ -266,7 +281,7 @@ export default function SlideOutMenu({
         <Text style={{
             fontSize: 11,
             fontWeight: '700',
-            color: '#9ca3af',
+            color: colors.mutedText,
             textTransform: 'uppercase',
             letterSpacing: 0.8,
             marginHorizontal: 24,
@@ -313,7 +328,7 @@ export default function SlideOutMenu({
                     style={{
                         width: MENU_WIDTH,
                         height: '100%',
-                        backgroundColor: '#f4f6f8',
+                        backgroundColor: colors.canvas,
                         shadowColor: '#000',
                         shadowOffset: { width: -4, height: 0 },
                         shadowOpacity: 0.18,
@@ -414,17 +429,17 @@ export default function SlideOutMenu({
                         >
                             {/* Account section */}
                             {renderSectionLabel('My Account')}
-                            {accountSection.map((item, i) => renderSectionItem(item, i))}
+                            {accountSection.map((item) => renderSectionItem(item))}
 
                             {/* Explore section */}
                             {renderSectionLabel('Explore')}
-                            {featureSection.map((item, i) => renderSectionItem(item, i))}
+                            {featureSection.map((item) => renderSectionItem(item))}
 
                             {/* Advertising section */}
                             {adsSection.length > 0 && (
                                 <>
                                     {renderSectionLabel('Advertising')}
-                                    {adsSection.map((item, i) => renderSectionItem(item, i))}
+                                    {adsSection.map((item) => renderSectionItem(item))}
                                 </>
                             )}
 
@@ -432,7 +447,7 @@ export default function SlideOutMenu({
                             {supportSection.length > 0 && (
                                 <>
                                     {renderSectionLabel('Support')}
-                                    {supportSection.map((item, i) => renderSectionItem(item, i))}
+                                    {supportSection.map((item) => renderSectionItem(item))}
                                 </>
                             )}
                         </ScrollView>
@@ -444,8 +459,8 @@ export default function SlideOutMenu({
                                 paddingHorizontal: 16,
                                 paddingVertical: 16,
                                 borderTopWidth: 1,
-                                borderTopColor: '#e5e7eb',
-                                backgroundColor: '#f4f6f8',
+                                borderTopColor: colors.border,
+                                backgroundColor: colors.canvas,
                             }}
                         >
                             <TouchableOpacity

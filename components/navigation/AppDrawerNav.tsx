@@ -13,6 +13,7 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import { AuthService, type UserProfile } from '@/lib/services/AuthService';
 import { getAppNavigationItems, type AppNavigationItem } from '@/lib/navigation/AppNavigation';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type AppDrawerNavProps = {
   isOpen: boolean;
@@ -24,7 +25,9 @@ const authService = AuthService.getInstance();
 
 export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawerNavProps) {
   const { authorization, getDecision } = usePageAccess();
+  const { isDark } = useAppTheme();
   const router = useRouter();
+  const themeStyles = createThemeStyles(isDark);
   const navigateTo = (item: AppNavigationItem) => {
     onClose();
     router.push(item.route);
@@ -46,22 +49,22 @@ export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawer
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         
-        <SafeAreaView edges={['top', 'left', 'right']} style={styles.drawerCard}>
+        <SafeAreaView edges={['top', 'left', 'right']} style={[styles.drawerCard, themeStyles.drawerCard]}>
           {/* Header Profile Section */}
-          <View style={styles.profileHeader}>
+          <View style={[styles.profileHeader, themeStyles.divider]}>
             <UserAvatar
               profileImage={userProfile?.profilePicture}
               firstName={userProfile?.firstName || 'U'}
               size={54}
             />
             <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.profileName}>
+              <Text style={[styles.profileName, themeStyles.primaryText]}>
                 {userProfile?.firstName ? `${userProfile.firstName} ${userProfile.lastName}` : 'Ourlime User'}
               </Text>
               <Text style={styles.profileHandle}>@{userProfile?.userName || 'user'}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Icon name="x" size={22} color="#64748b" />
+              <Icon name="x" size={22} color={isDark ? '#cbd5e1' : '#64748b'} />
             </TouchableOpacity>
           </View>
 
@@ -71,23 +74,23 @@ export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawer
               <TouchableOpacity
                 key={item.id}
                 onPress={() => navigateTo(item)}
-                style={styles.menuRow}
+                style={[styles.menuRow, themeStyles.menuRow]}
                 activeOpacity={0.7}
               >
                 <View style={styles.iconCircle}>
                   <Icon name={item.featherIcon} size={18} color="#10b981" />
                 </View>
-                <Text style={styles.menuText}>{item.label}</Text>
+                <Text style={[styles.menuText, themeStyles.primaryText]}>{item.label}</Text>
                 {item.status && item.status !== 'enabled' && item.status !== 'admin_only' ? (
                   <View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{item.badge || 'Soon'}</Text></View>
                 ) : null}
-                <Icon name="chevron-right" size={16} color="#94a3b8" />
+                <Icon name="chevron-right" size={16} color={isDark ? '#cbd5e1' : '#94a3b8'} />
               </TouchableOpacity>
             ))}
           </ScrollView>
 
           {/* Footer Sign Out */}
-          <View style={styles.footer}>
+          <View style={[styles.footer, themeStyles.divider]}>
             <TouchableOpacity
               onPress={() => {
                 onClose();
@@ -194,4 +197,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
+});
+
+const createThemeStyles = (isDark: boolean) => StyleSheet.create({
+  drawerCard: { backgroundColor: isDark ? '#0f172a' : '#ffffff' },
+  divider: { borderColor: isDark ? '#334155' : '#f1f5f9' },
+  menuRow: { backgroundColor: isDark ? '#0f172a' : '#ffffff' },
+  primaryText: { color: isDark ? '#f8fafc' : '#0f172a' },
 });

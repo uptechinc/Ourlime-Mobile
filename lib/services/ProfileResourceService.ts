@@ -1,8 +1,9 @@
 import { AuthService, type UserProfile } from './AuthService';
 import { ProfileService, type PublicProfileResult } from './ProfileService';
 import { RelationshipService } from './RelationshipService';
-import { LocalCacheService } from './LocalCacheService';
+import { LocalCacheService, type CachedRecord } from './LocalCacheService';
 import { ResourceErrorService } from './ResourceErrorService';
+import { RequestTimeoutService } from './RequestTimeoutService';
 import { useResourceStore, type OwnProfileResource } from '@/lib/store/useResourceStore';
 import type { ResourceState } from '@/lib/types/resourceState';
 
@@ -22,6 +23,7 @@ export class ProfileResourceService {
   private readonly relationshipService = RelationshipService.getInstance();
   private readonly cacheService = LocalCacheService.getInstance();
   private readonly errorService = ResourceErrorService.getInstance();
+  private readonly timeoutService = RequestTimeoutService.getInstance();
   private readonly inFlight = new Map<string, Promise<void>>();
 
   private constructor() {}
@@ -41,7 +43,13 @@ export class ProfileResourceService {
     if (existing?.data) return;
     this.setResource(identifier, this.withState(existing, { status: 'hydrating', error: null }));
     const cacheUserId = identifier.kind === 'own' ? identifier.userId : identifier.viewerId;
-    const cached = await this.cacheService.read<OwnProfileResource | PublicProfileResult>(cacheUserId, PROFILE_NAMESPACE, key);
+    let cached: CachedRecord<OwnProfileResource | PublicProfileResult> | null;
+    try {
+      cached = await this.cacheService.read<OwnProfileResource | PublicProfileResult>(cacheUserId, PROFILE_NAMESPACE, key);
+    } catch {
+      this.setResource(identifier, this.withState(null, { status: 'idle', error: null }));
+      return;
+    }
     if (!cached) {
       this.setResource(identifier, this.withState(null, { status: 'idle' }));
       return;
@@ -79,18 +87,38 @@ export class ProfileResourceService {
   }
 
   private async performRefresh(identifier: ProfileResourceIdentifier): Promise<void> {
+    // Guard: never attempt a Firestore fetch with a blank userId.
+    if (identifier.kind === 'own' && !identifier.userId) return;
     const current = this.getResource(identifier);
     this.setResource(identifier, this.withState(current, { status: current?.data ? 'refreshing' : 'hydrating', error: null }));
     try {
       if (identifier.kind === 'own') {
-        const [profile, networkStats] = await Promise.all([
+        const profile = await this.timeoutService.run(
           this.authService.getUserProfile(identifier.userId),
-          this.relationshipService.getNetworkStats(identifier.userId),
-        ]);
+          'Profile request',
+        );
         if (!profile) throw new Error('Your profile record could not be found.');
-        await this.commit(identifier, { profile, stats: { posts: profile.postsCount ?? 0, ...networkStats } }, 'network');
+        const initialStats = {
+          posts: profile.postsCount ?? 0,
+          friends: profile.friendsCount ?? 0,
+          followers: profile.followersCount ?? 0,
+          following: 0,
+        };
+        await this.commit(identifier, { profile, stats: initialStats }, 'network');
+
+        try {
+          const networkStats = await this.timeoutService.run(
+            this.relationshipService.getNetworkStats(identifier.userId),
+            'Profile network statistics',
+            5_000,
+          );
+          await this.commit(identifier, { profile, stats: { posts: initialStats.posts, ...networkStats } }, 'network');
+        } catch {
+          // The profile is already ready; network counts are optional enrichment.
+        }
       } else {
-        await this.commit(identifier, await this.profileService.fetchPublicProfile(identifier.username), 'network');
+        const publicProfile = await this.timeoutService.run(this.profileService.fetchPublicProfile(identifier.username), 'Public profile request');
+        await this.commit(identifier, publicProfile, 'network');
       }
     } catch (error: unknown) {
       const latest = this.getResource(identifier);

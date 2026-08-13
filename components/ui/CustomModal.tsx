@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 export type CustomModalType = 'success' | 'danger' | 'warning' | 'info' | 'error';
 
@@ -36,6 +37,8 @@ export default function CustomModal({
   onCancel,
   onClose,
 }: CustomModalProps) {
+  const { isDark } = useAppTheme();
+  const themeStyles = createThemeStyles(isDark);
   if (!visible) return null;
 
   const renderIcon = () => {
@@ -104,13 +107,13 @@ export default function CustomModal({
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
           <TouchableWithoutFeedback>
-            <View style={styles.card}>
+            <View style={[styles.card, themeStyles.card]}>
               {/* Top Header Icon */}
               {renderIcon()}
 
               {/* Title & Message */}
-              <Text style={styles.title}>{title}</Text>
-              <Text style={styles.message}>{message}</Text>
+              <Text style={[styles.title, themeStyles.title]}>{title}</Text>
+              <Text style={[styles.message, themeStyles.message]}>{message}</Text>
 
               {/* Action Buttons */}
               <View style={styles.buttonContainer}>
@@ -118,9 +121,9 @@ export default function CustomModal({
                   <TouchableOpacity
                     onPress={handleCancelPress}
                     disabled={isLoading}
-                    style={styles.cancelButton}
+                    style={[styles.cancelButton, themeStyles.cancelButton]}
                   >
-                    <Text style={styles.cancelButtonText}>{cancelText}</Text>
+                    <Text style={[styles.cancelButtonText, themeStyles.cancelButtonText]}>{cancelText}</Text>
                   </TouchableOpacity>
                 ) : null}
 
@@ -225,4 +228,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
   },
+});
+
+const createThemeStyles = (isDark: boolean) => StyleSheet.create({
+  card: { backgroundColor: isDark ? '#0f172a' : '#ffffff' },
+  title: { color: isDark ? '#f8fafc' : '#0f172a' },
+  message: { color: isDark ? '#cbd5e1' : '#64748b' },
+  cancelButton: {
+    backgroundColor: isDark ? '#1e293b' : '#f1f5f9',
+    borderColor: isDark ? '#475569' : '#e2e8f0',
+  },
+  cancelButtonText: { color: isDark ? '#e2e8f0' : '#64748b' },
 });

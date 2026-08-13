@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
 import type { PageHeaderProps } from '../../lib/types/componentProps';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 /**
  * Universal page header component with back button and centered title
@@ -26,8 +27,11 @@ export default function PageHeader({
   borderBottomColor = '#e5e7eb',
   rightComponent,
 }: PageHeaderProps) {
+  const { colors } = useAppTheme();
+  const resolvedBackgroundColor = backgroundColor === '#f9fafb' ? colors.surface : backgroundColor;
+  const resolvedBorderColor = borderBottomColor === '#e5e7eb' ? colors.border : borderBottomColor;
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={{ backgroundColor }}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ backgroundColor: resolvedBackgroundColor }}>
       <View
         style={{
           flexDirection: 'row',
@@ -35,9 +39,9 @@ export default function PageHeader({
           paddingHorizontal: 16,
           paddingTop: Platform.OS === 'ios' ? 8 : 12,
           paddingBottom: 12,
-          backgroundColor,
+          backgroundColor: resolvedBackgroundColor,
           borderBottomWidth: 1,
-          borderBottomColor,
+          borderBottomColor: resolvedBorderColor,
         }}
       >
         {/* Left side - Back button */}
@@ -50,7 +54,7 @@ export default function PageHeader({
               }}
               activeOpacity={0.7}
             >
-              <ArrowLeft size={24} color="#333" />
+              <ArrowLeft size={24} color={colors.icon} />
             </TouchableOpacity>
           )}
         </View>
@@ -61,7 +65,7 @@ export default function PageHeader({
             style={{
               fontSize: 18,
               fontWeight: '600',
-              color: '#333',
+              color: colors.text,
             }}
           >
             {title}

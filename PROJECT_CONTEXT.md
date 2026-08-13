@@ -23,6 +23,8 @@ The current corrective source audit is [`docs/WEB-MOBILE-FULL-PARITY-REAUDIT.md`
 
 For a concise page-by-page Done/Still-to-do checklist, see [`docs/MOBILE-PAGE-BY-PAGE-STATUS.md`](docs/MOBILE-PAGE-BY-PAGE-STATUS.md).
 
+For the exhaustive Profile, public-profile, Communities, and community-detail component/permission/design audit, see [`docs/PROFILE-COMMUNITIES-WEB-MOBILE-PARITY-AUDIT.md`](docs/PROFILE-COMMUNITIES-WEB-MOBILE-PARITY-AUDIT.md). Its focused matrices supersede shorter summaries for those surfaces.
+
 For a ready-to-copy external agent handoff, see [`docs/GEMINI-CONTINUATION-PROMPT.md`](docs/GEMINI-CONTINUATION-PROMPT.md).
 
 ## P0 implementation checkpoint — 2026-08-12
@@ -31,13 +33,13 @@ For a ready-to-copy external agent handoff, see [`docs/GEMINI-CONTINUATION-PROMP
 | --- | --- | --- |
 | Repository TypeScript baseline | **Previously reported green; not revalidated** | Automated validation is no longer part of this repository workflow. No compiler, lint, Jest, Expo, browser, or device command was run during the corrective re-audit. |
 | Canonical routing/navigation | **Done in source; manual QA pending** | Both drawers read `lib/navigation/AppNavigation.ts`, duplicate route aliases were removed, `AuthorizationService` supplies one role result, and `PageAccessContext` applies canonical visibility/status rules and preview badges. |
-| Auth recovery/legal/deep links | **Done in source; device QA pending** | Forgot/reset password, verification result, Terms, and Privacy routes exist; `AuthService` owns Firebase actions; scheme is `ourlime`; notification routing uses a typed registry. |
+| Auth recovery/legal/deep links | **Done in source; device QA pending** | Forgot/reset password with web parity design, authorized reset URL, verification result, Terms, and Privacy routes exist; `AuthService` owns Firebase actions; scheme is `ourlime`; notification routing uses a typed registry. |
 | Home feed scopes and failures | **Done in source; server deployment pending** | `home`, `friends`, and `communities` scopes reach the canonical API. Failed requests produce retryable errors and successful zero results produce empty states. Community membership filtering was added to the web feed server. |
 | Profiles and moderation | **Done in source; authenticated QA pending** | Public profiles use the canonical server response, author-filtered posts, privacy/block behavior, visible friends/communities, friendship cancellation/removal, block/unblock, report, and typed chat navigation. |
 | Push notifications | **Done in source; physical-device verification is an external release check** | Real Expo device tokens, Android channels, authenticated register/unregister/send APIs, foreground handling, and typed tap destinations are implemented. No client call to Expo's push gateway remains. |
-| Core social pages | **Partial; substantially implemented** | Home, Communities, Chat, Discover/Search, own/other profiles, and core Admin workspaces use typed services and live contracts. Deeper profile, community moderation/events/polls, global search, and advanced Admin modules remain. |
+| Core social pages | **Partial; substantially implemented** | Home, Communities, Chat, Discover/Search, own/other profiles, and all twelve canonical Admin destinations use typed services and live contracts. Deeper profile, community moderation/events/polls, global search, and deeper Admin workflow parity remain. |
 | Active mock removal | **Not complete outside the current core scope** | Coming Soon overlays prevent normal access to Events, Jobs, Market, Blogs, E-Learning, Projects, Ads, Wallet, Saved, Games, E-Hub, and Help. Legacy prototype code remains behind those overlays and is not production behavior. |
-| OOP service migration | **Partial** | Exposed core social surfaces use service classes. Remaining web-only/Coming Soon domains and advanced admin workspaces still require service-backed implementations before enabling them. |
+| OOP service migration | **Partial** | Exposed core social and Admin surfaces use service classes. Remaining web-only/Coming Soon domains still require service-backed implementations before enabling them. |
 | Zero `any` / React namespace discipline | **Previously reported complete; not revalidated** | The corrective audit did not execute repository scans. New work must continue to follow the zero-`any`, type-props, and direct-hook-import rules. |
 | Automated tests | **Removed by project policy** | Repository-owned `*.test.*`/`*.spec.*` files were deleted. Validation is manual and user-controlled. |
 
@@ -79,7 +81,7 @@ No area should be labelled complete until it satisfies the Definition of Done in
 
 - **104 web page routes versus a much smaller mobile product surface.** Entire web domains and many detail/workflow routes have no native destination.
 - **Active prototype flows.** Event comments, Job applications, Blog creation, and E-Learning schedules still expose mock, local-only, unwired, or simulated-success behavior.
-- **Admin is not fully parity-complete.** Overview metrics, user role/lifecycle management, moderation reports, and page-access management are live and role-gated. Analytics, testers, stickers, products, categories, communities, and detailed audit workspaces remain web-only.
+- **Admin is no longer made of web-only handoffs, but is not release-verified.** All twelve canonical web admin destinations now have native workspaces. User filters/lifecycle/role/verification controls, report detail actions, page-access bulk/editor/audit controls, tester records/invitations, sticker packs/assets, categories, products, communities, and aggregate analytics are present. Advanced analytics trends, full sticker CRUD forms, every specialized product/community field, and server-backed import remain parity debt; secure API mutations also require a reachable/deployed web backend.
 - **Profile depth remains partial.** Live counts and timelines are present, but Friends, Reposts, Profile Customization, full gallery/album management, and several settings subflows remain.
 - **Chat depth remains partial.** Conversation discovery, presence, rich messages, attachments, and real audio URL playback are present; native recording/playback controls, business/discovery tabs, and call-device verification remain.
 - **Home design/function gaps remain.** Suggested-user requests, owner visibility, and remove-repost are now service-backed; shared card tokens, fullscreen media, YouTube previews, hashtag/location navigation, and comment moderation depth remain.
@@ -139,15 +141,33 @@ Bottom tabs currently expose:
 
 Home and Profile drawers use the same typed registry, authoritative role result, availability status, and badges. They expose live core destinations plus valid Coming Soon destinations; Admin is shown only to authoritative admins.
 
-Global page access is applied before route rendering and navigation. A matching Coming Soon parent also protects child routes, while permitted developer preview state is labelled.
+Global page access is applied above route rendering and navigation. A matching Coming Soon parent also protects child routes. Coming Soon now always renders the same blocking, dark glass modal pattern as web—even for developer accounts—so unfinished page content cannot be used accidentally. The primary action remembers the last accessible route, labels that page, and navigates back through history instead of always sending the user Home.
 
-### 5.2 Required work
+Bundled future routes such as Events and Jobs are also blocked immediately from canonical defaults while remote settings/profile state hydrates, so delayed listeners and stale remote `enabled` values cannot expose prototype content before a mobile release.
 
-- [x] Consolidate `SlideOutMenu` and `AppDrawerNav` into one typed source of truth for labels, permissions, icons, and destinations.
-- [ ] Replace all `as any` route casts with typed Expo Router destinations.
-- [x] Remove duplicate `page.tsx` route aliases and keep one canonical route implementation per screen.
-- [x] Add valid Coming Soon routes for Projects, Ads/Create/Manage, Wallet, Saved, Games/GeoGuesser/Wordle, E-Hub, and Help.
-- [x] Apply page-availability/coming-soon policy before rendering and navigation.
+### 5.3 Exhaustive Web vs Mobile Registration, Beta Access, & Auth Parity Matrix
+
+| Feature / Component / Helper | Web Implementation (`Ourlime-Web`) | Mobile Implementation (`Ourlime-Mobile`) | Parity Status |
+| --- | --- | --- | --- |
+| **Beta Access Mode Guard** | `app/register/page.tsx` queries `/api/beta/registration-mode`. Defaults to `invite_only`. | `mobile/Register/index.tsx` queries `/api/beta/registration-mode` via `ApiService`. Defaults to `invite_only`. | **100% Done** |
+| **Beta Access Restricted View** | `components/register/BetaAccessView.tsx` (`invite_required`, `closed`, `invalid`, `expired`, `revoked`, `used`). | `components/auth/BetaAccessView.tsx` matching title, detail copy, green badge, dark glass container, and side-by-side/stacked buttons. | **100% Done** |
+| **Beta Tester Application Modal** | `components/register/BetaApplicationModal.tsx` (Full Name, Email, Invited By -> POST `/api/beta/apply`). | `components/auth/BetaApplicationModal.tsx` in React Native Modal (Full Name, Email, Invited By -> POST `/api/beta/apply`). | **100% Done** |
+| **Invitation Token Validation** | `app/register/page.tsx` checks `referralToken` via `/api/beta/validate-token`. | `mobile/Register/index.tsx` reads `searchParams.referralToken` and validates via `/api/beta/validate-token`. | **100% Done** |
+| **Step 0: Welcome Step** | `components/register/WelcomeStep.tsx` ("Welcome to Ourlime 🇹🇹", Quick & Easy card, Safe & Secure card, Get Started button). | `mobile/Register/index.tsx` Step 0 (Welcome header, Quick & Easy card, Safe & Secure card, Get Started button, Sign In link). | **100% Done** |
+| **Step 1: Account Type** | `components/register/AccountTypeStep.tsx` (Student vs Regular user cards). | `mobile/Register/index.tsx` Step 1 (Student vs Regular user selection cards with green/blue highlights). | **100% Done** |
+| **Step 2: Basic Info** | `components/register/FirstStep.tsx` (Name, Username, Email, Password, Terms/Privacy checkboxes). | `mobile/Register/index.tsx` Step 2 (First/Last name, Username, Email, Password/Confirm, Terms & Privacy toggles). | **100% Done** |
+| **Real-time Email Availability** | `helpers/Auth.ts` & `app/api/auth/registration-availability/route.ts`. | `mobile/Register/index.tsx` debounced 500ms call to `/api/auth/registration-availability` with loading spinner & inline error. | **100% Done** |
+| **Real-time Username Availability**| `helpers/Auth.ts` `UserService.checkUserExists` & `registration-availability`. | `mobile/Register/index.tsx` debounced 500ms call to `/api/auth/registration-availability` with loading spinner & inline error. | **100% Done** |
+| **Terms & Conditions Modal** | `components/register/TermsModal.tsx` (Scrollable Terms document). | `components/auth/TermsModal.tsx` (React Native ScrollView modal with full effective date & legal sections). | **100% Done** |
+| **Privacy Policy Modal** | `components/register/PrivacyModal.tsx` (Scrollable Privacy Policy document). | `components/auth/PrivacyModal.tsx` (React Native ScrollView modal with full data protection sections). | **100% Done** |
+| **Step 3: Demographics** | `components/register/DemographicsStep.tsx` (DOB, Gender, Student Level conditional). | `mobile/Register/index.tsx` Step 3 (DOB, Gender chips, and conditional Student Level chips if Student Account). | **100% Done** |
+| **Step 4: Location & Contact** | `components/register/LocationStep.tsx` (Country, Phone, City). | `mobile/Register/index.tsx` Step 4 (Country, Phone, City). | **100% Done** |
+| **Step 5: Avatar Selection** | `components/register/AvatarStep.tsx` (Cartoon vs Realistic SVGs, custom upload). | `mobile/Register/index.tsx` Step 5 (Cartoon vs Realistic tabs, 6 SVGs, and `expo-image-picker` custom photo upload). | **100% Done** |
+| **Step 6: Interests Selection** | `components/register/InterestsStep.tsx` (Grid of 17 tags, min 3 required). | `mobile/Register/index.tsx` Step 6 (Grid of 17 interest chips, selection counter, min 3 validation). | **100% Done** |
+| **Step 7: Verification & Submit** | `components/register/VerificationStep.tsx` (Student ID, National ID, Skip). | `mobile/Register/index.tsx` Step 7 (Student ID, National ID, Skip options & Complete Registration button). | **100% Done** |
+| **Email Verification Modal** | `components/register/VerificationStep.tsx` (Verification email sent & live polling). | `mobile/Register/index.tsx` Success Modal (Shows sent email & button to return to login). | **100% Done** |
+| **Login Auth & Redbox Avoidance**| `app/login/page.tsx` & `AuthService.login()`. | `app/(auth)/login.tsx` & `AuthService.login()` with `DiagnosticLogService` `console.log` interception (no LogBox redbox traps). | **100% Done** |
+| **Forgot & Reset Password** | `app/forgot-password` & `app/reset-password`. | `app/forgot-password.tsx` & `app/reset-password.tsx` with clean UI status banners and `oobCode` verification. | **100% Done** |
 - [x] Use one authoritative role policy for Home, tabs, Profile, drawers, route guards, and admin actions.
 - [ ] Add consistent deep-link handling for posts, Limes, profiles, communities, events, blogs, jobs, products, notifications, and chats.
 
@@ -348,18 +368,22 @@ The detailed control-level comparison is maintained in:
 
 **Web baseline**
 
-- Persistent profile shell; header/cover/avatar; share; edit images; counts; Timeline, Reposts, About, Friends, Gallery, and Profile Customization; products/jobs/business/admin/settings destinations.
+- Persistent profile shell; header/cover/avatar and canonical image assignment; share; counts; Timeline, Reposts, About, Friends/Following/Followers/Requests/Suggestions, Gallery albums, and Profile Customization; products/jobs/business/admin/settings destinations.
 
 **Mobile present**
 
-- Header, cover/avatar, edit profile, Timeline/About/Gallery tabs, conditional Admin tab, settings, refresh, drawer, skeleton/error state, logout, live post/friend/following counts, and truthful timeline retry states.
+- Header, cover/avatar, edit profile, Timeline/Friends/About/Gallery tabs, conditional Admin tab, settings, refresh, drawer, skeleton/error state, logout, live post/friend/following counts, native sharing, and truthful timeline/friends retry states.
+- The signed-in user's Friends tab reads accepted relationships and canonical avatar assignments directly from Firestore, avoiding an unnecessary dependency on the optional LAN API; privacy-aware friend graphs for other users stay server-owned.
+- `ProfileMediaService` uploads avatar/cover files, creates canonical `profileImages` records, maintains `profileImageSetAs` assignments, and immediately patches own-profile/feed-author caches. Required adjacent web rules are changed in source but not deployed.
+- The unused Customize/palette control is hidden until its workspace is implemented. Profile errors and confirmations use custom UI instead of the native default alert.
 
 **To do**
 
-- [ ] Add Reposts, Friends, and Profile Customization functionality; incomplete actions are hidden instead of simulating success.
+- [x] Add a real searchable, retryable, service-backed Friends workspace and profile links.
+- [ ] Add Reposts and Profile Customization; keep incomplete actions hidden instead of simulating success.
 - [ ] Complete About parity: basic info, contact, address, education, work, interests/skills, and social links with privacy rules.
 - [ ] Complete Gallery parity: albums, create/edit/delete album, upload, image preview, and ownership controls.
-- [ ] Verify cover/avatar upload, crop, deletion, cache invalidation, and propagation to all cards/messages.
+- [~] Avatar and single-cover upload/crop/canonical assignment/cache patching are implemented; multiple covers, gradient/order/remove, unused-media cleanup, and propagation to chat/comments/community rows remain.
 - [ ] Add share-profile deep link and route access for products/jobs/business-account areas.
 
 ### 6.12 Other User Profile — `app/profile/[username].tsx` — Partial
@@ -386,14 +410,20 @@ The detailed control-level comparison is maintained in:
 
 **Mobile present**
 
-- Account fields, profile visibility, direct-message toggle, push/email/mention preferences, blocked users/unblock, save, and sign out.
+- Typed `SettingsService` loads account, appearance, notifications, privacy, security, and blocked-user records directly from canonical Firestore documents, so an unavailable web API no longer leaves Settings loading or fails the entire screen.
+- Persistent System/Light/Dark appearance selection is applied above Expo Router. System is the default for users without a saved preference and follows live phone appearance changes; Light and Dark remain fixed overrides. `ThemeStyleService` is synchronized before descendants render (not in a post-render effect), so legacy neutral backgrounds, text, and borders cannot receive the previous system palette during a live switch. The root stack and tab navigator are keyed by the resolved scheme to refresh retained native navigation surfaces.
+- Theme resolution stays inside `ThemeProvider`; it does not call native `Appearance.setColorScheme`, because the current Android React Native module rejects the null reset required by System mode.
+- Feed canvases, composer/filter controls, post and poll cards, Discover sections/cards/search, Search results, Chat lists/composer, Profile shell/tabs, Communities lists/filters, shared skeletons, the Home slide-out menu, Admin navigation/filter controls, shared page headers, and protected Jobs content now use semantic theme colors explicitly so selected/unselected controls retain readable contrast in both modes.
+- All visible confirmation/error states use `CustomModal`. Two-factor status is shown truthfully but cannot be enabled until its secure verification workflow is implemented.
 
 **To do**
 
-- [ ] Move all Firestore/Auth access into typed settings/security services.
-- [ ] Add theme/appearance, activity status, granular notification preferences, message permissions, 2FA, change password, sessions/activity logs, data/export controls, and delete-account workflow.
+- [x] Move route-visible settings reads/writes into the typed OOP `SettingsService`.
+- [x] Add persistent System/Light/Dark appearance with live device-theme following, activity/search visibility, granular notification controls, message permissions, data-sharing controls, and security-alert preferences.
+- [ ] Implement secure 2FA setup/disable, change password with reauthentication, connected accounts, sessions/activity logs, data/export controls, and delete-account workflow.
 - [ ] Verify settings are actually consumed by notifications, messages, search, and profile visibility.
-- [ ] Replace native alerts with `CustomModal` and add destructive-action reauthentication.
+- [x] Apply Light/Dark throughout the route tree, shared navigation shell, status bars, drawers, and modern dialogs; new/touched screens must continue using explicit theme-aware semantic colors instead of adding legacy hard-coded neutrals.
+- [x] Replace visible native alerts with `CustomModal`; destructive account actions still require reauthentication work.
 
 ### 6.14 Communities list — `app/communities` — Partial
 
@@ -403,16 +433,17 @@ The detailed control-level comparison is maintained in:
 
 **Mobile present**
 
-- Firestore community reads, featured/community sections, search, sort/category controls, grid/list state, create-community form, Join/Request behavior, View and Report actions.
+- Live community reads; All/My Joined/Joined by Friends/New/My Created tabs; public/private/category filters; Popular/Newest/Active/Trending controls; search; create-community form with live categories; and Join/Request behavior.
+- `CommunityService` owns reads, normalization, categories, creation, and the authenticated join/request/leave API call. No dummy community fallback is used.
 
 **To do**
 
-- [ ] Move direct queries and creation/membership rules into `CommunityService`.
-- [ ] Remove `any`, web-style class usage, static profile counts, simulated navigation alerts, and hard-coded categories.
-- [ ] Add real membership state, cancel request, leave, ownership/admin badges, pagination, and robust empty/error/retry states.
+- [x] Move route-visible reads and membership calls into `CommunityService`; use live categories and truthful states.
+- [~] Real membership/request/leave exists; cancel request, complete owner/admin badges, cached paging, and server-backed trending/activity rank remain.
 - [ ] Use image picker/upload/crop instead of image URL entry.
+- [ ] Add the web Community-of-the-Week/statistics hierarchy only when a canonical ranking/metrics contract exists.
 
-### 6.15 Community detail — `app/communities/[id]` — Prototype/Partial
+### 6.15 Community detail — `app/communities/[id]` — Partial
 
 **Web baseline**
 
@@ -420,7 +451,8 @@ The detailed control-level comparison is maintained in:
 
 **Mobile present**
 
-- A route-level screen with community data/member/post state and create post/event/poll modals exists, plus a separate `mobile/CommunityDetail` implementation.
+- Canonical detail route with live access/privacy/banned state, banner/identity/counts, join/request/leave, native share, server-backed report, Posts/About, create post, likes/comments, refresh/error/empty state, and profile/community sublinks.
+- Detail reads first use the canonical web API, then fall back to canonical Firestore community/membership/request/count records only for network timeouts or server failures. Authorization/API failures are not hidden by the fallback.
 
 **Known prototype debt**
 
@@ -431,8 +463,8 @@ The detailed control-level comparison is maintained in:
 **To do**
 
 - [x] Choose one canonical community-detail route and remove the duplicate mock implementation.
-- [ ] Implement all reads/mutations in typed Community, CommunityPost, CommunityMember, CommunityPoll, and CommunityEvent services.
-- [ ] Match web roles, permissions, private access, owner/admin moderation, share/invite, report, dashboard, post/comment, poll, and event workflows.
+- [~] Community and post basics use typed services; dedicated Member/Poll/Event/dashboard services and contracts remain.
+- [~] Private access, join/request/leave, native share, and community report exist; invite, selectable report reasons, owner/admin moderation, edit/delete, dashboard, post moderation, poll, and event workflows remain.
 - [ ] Add real-time/paginated posts and member lists with native bottom-sheet actions.
 
 ### 6.16 Events — `app/events` — Prototype
@@ -468,6 +500,7 @@ The detailed control-level comparison is maintained in:
 **Mobile present**
 
 - Search, Advanced control, category chips, three job-type lists, Create Job modal, View All, No jobs state, application and creation components.
+- The Fabric-incompatible `react-native-swiper` category carousel was replaced with a native paged horizontal `ScrollView`, removing its undefined internal `scrollTo` crash.
 
 **Known prototype debt**
 
@@ -560,7 +593,7 @@ The detailed control-level comparison is maintained in:
 - [ ] Implement video lessons, downloads, quizzes, assignments, grading, discussions, announcements, payments, instructor tools, CXC tools, and completion certificates as required.
 - [ ] Add offline/download policy, media progress persistence, and accessibility.
 
-### 6.22 Admin — `app/admin/index.tsx` and Profile Admin tab — Prototype/Partial
+### 6.22 Admin — `app/admin/index.tsx` and Profile Admin tab — Substantially implemented/Partial
 
 **Web baseline**
 
@@ -568,19 +601,28 @@ The detailed control-level comparison is maintained in:
 
 **Mobile present**
 
-- Authenticated Admin Portal metrics, live paginated user search/listing, role changes, archive/restore actions, live moderation reports, report dismissal, and a canonical page-access editor. Profile admin actions navigate to these real workspaces.
+- The overview and every canonical child destination are native routes: dashboard, analytics, user management, testers, stickers, reports, products, page access, moderation, community categories, marketplace categories, and communities.
+- User Management includes live search, status/role/account filters, pagination, CSV sharing, detail tabs, role changes, account status/reason/suspension controls, email and identity verification actions, archive/restore, and permanent-delete confirmation. Import remains disabled until a secure provisioning contract exists; no simulated import success is shown.
+- Reports/Moderation includes status/severity/search filters, counts, report-detail slug routing, the web moderation action set, reasons, optional durations, secure action dispatch, and deletion.
+- Page Access includes Pages and Activity Log tabs, individual status/navigation/preview/overlay/badge/action-route editing, multi-select bulk status changes, initialize defaults, reset defaults, refresh, and global enforcement through `PageAccessContext`.
+- Testers includes registration mode, all web lifecycle tabs, search, applications/invitations/testers, notes/status actions, and secure invitation creation. Products, communities, both category workspaces, stickers/sticker packs, and analytics render live Firestore-backed records with native filtering/detail/action states.
+- `AdminAccessService`, `AdminMetricsService`, `AdminUserService`, `AdminModerationService`, `AdminPageAccessService`, and `AdminWorkspaceService` own authorization, reads, normalization, mutations, and diagnostics. UI/routes contain no Firestore queries.
 
 **Known parity debt**
 
-- Analytics, tester administration, stickers, product review, marketplace categories, community categories, community administration, and detailed audit/activity workspaces remain web-only.
-- Moderator-only direct access is not yet a separate mobile workspace; the current Admin portal is restricted to authoritative admins.
-- Native pagination/filter depth and reversible confirmations still need to be matched across every remaining admin domain.
+- Analytics currently supplies live aggregate/domain metrics but not the web date-range trend series and route breakdown depth.
+- Sticker packs and stickers can be listed, filtered, enabled/disabled, and removed; the web create/edit forms and seed control still require their final native forms.
+- Product/community workspaces provide live search/status/sort/detail/moderation, but specialized category/privacy/owner controls should be expanded field-for-field after manual schema verification.
+- Tester lifecycle/email/account enforcement goes through authenticated web APIs. It will show a truthful retryable failure while the configured API host is unreachable; deployment/runtime connectivity is an external requirement.
+- Moderator-only direct access is not yet a separate mobile workspace; the current portal shell is restricted to authoritative admins even though report data rules recognize moderators.
+- Repository Firestore rules were aligned for authoritative admin reads/writes but were not deployed. Server-only Auth deletion, role/lifecycle, moderation, tester email/invitation, and secure provisioning operations remain API-enforced.
 
 **To do**
 
 - [x] Enforce authenticated server-side role authorization for implemented admin queries and mutations.
-- [ ] Build native admin navigation and real workflows for every remaining web admin route.
-- [ ] Add pagination, search/filter, confirmation/reauthentication, audit records, reversible lifecycle actions, and error handling.
+- [x] Build native admin navigation and live workspaces for every canonical web admin route.
+- [x] Add user pagination, search/filter, destructive confirmation, audit records, reversible lifecycle actions, and truthful error handling to the core workspaces.
+- [ ] Finish advanced analytics trends, sticker create/edit/seed forms, product/community field-specific editors, secure user import, and moderator-shell parity.
 - [ ] Never rely on client-only role checks for privileged actions.
 - [x] Consume and enforce canonical page-access settings before rendering or navigating to exposed destinations.
 
@@ -850,4 +892,4 @@ The following 104 web page routes were included in this audit. Dynamic segments 
 /wordle-game
 ```
 
-The mobile app currently has logical screens for auth login/register/recovery/verification/legal flows, the five main tabs, chat detail, own/other profile, settings, communities list/detail, post detail, four live Admin workspaces, valid Admin child-route handoffs, and not-found. Future domains use valid Coming Soon routes and canonical page-access enforcement. Duplicate web-style `page.tsx` aliases were removed.
+The mobile app currently has logical screens for auth login/register/recovery/verification/legal flows, the five main tabs, chat detail, own/other profile, settings, communities list/detail, post detail, twelve native Admin workspaces plus report-detail slug routing, valid Coming Soon routes, and not-found. Future domains use canonical page-access enforcement. Duplicate web-style `page.tsx` aliases were removed.

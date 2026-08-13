@@ -1,5 +1,5 @@
-import AdminWebOnlyScreen from '@/components/admin/AdminWebOnlyScreen';
+import AdminCollectionWorkspace from '@/components/admin/AdminCollectionWorkspace';
 
 export default function AdminCommunitiesRoute() {
-  return <AdminWebOnlyScreen title="Community Administration" description="Platform-wide community review and enforcement controls are not yet available in the native app." />;
+  return <AdminCollectionWorkspace kind="communities" title="Community Administration" subtitle="Review, filter, archive, restore, and remove communities" />;
 }

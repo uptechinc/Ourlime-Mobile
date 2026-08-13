@@ -41,7 +41,7 @@ export default function TimelineTab({ userId }: TimelineTabProps) {
       ) : (
         <>
           {posts.map((post) => (
-            <View key={post.id} style={{ marginHorizontal: 16, marginBottom: 16 }}>
+            <View key={post.id} style={{ width: '100%', marginBottom: 12 }}>
               <PostCardSection
                 post={post}
                 isVisible={true}

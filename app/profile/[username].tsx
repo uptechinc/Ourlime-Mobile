@@ -25,6 +25,7 @@ import ProfileSkeleton from '@/components/profile/ProfileSkeleton';
 import CachedImage from '@/components/ui/CachedImage';
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { profileResourceService } from '@/lib/services/ProfileResourceService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const authService = AuthService.getInstance();
 const relationshipService = RelationshipService.getInstance();
@@ -42,6 +43,7 @@ type PublicProfileTab = 'timeline' | 'friends' | 'communities' | 'about' | 'gall
 
 export default function UserProfileScreen() {
   const router = useRouter();
+  const { isDark } = useAppTheme();
   const { username } = useLocalSearchParams<{ username: string }>();
 
   const [activeTab, setActiveTab] = useState<PublicProfileTab>('timeline');
@@ -187,7 +189,7 @@ export default function UserProfileScreen() {
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#ffffff' }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0f172a' : '#ffffff'} />
 
       {/* Header Bar */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>

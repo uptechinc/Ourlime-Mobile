@@ -13,6 +13,7 @@ import { findFirstUrl } from '@/lib/services/OpenGraphService';
 import CustomModal from '@/components/ui/CustomModal';
 import LikesModal from './LikesModal';
 import IdentityBadges from './IdentityBadges';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type PollCardSectionProps = {
   post: PostItem;
@@ -49,6 +50,7 @@ const getTimeRemaining = (endTime?: string, createdAt?: string, pollDuration?: n
 
 export default function PollCardSection({ post, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PollCardSectionProps) {
   const router = useRouter();
+  const { isDark, colors } = useAppTheme();
   const postUrl = findFirstUrl(`${post.caption} ${post.description}`);
   const currentUserId = authService.getCurrentUser()?.uid;
   const [isLiked, setIsLiked] = useState(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
@@ -142,21 +144,21 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
 
   return (
     <>
-    <View style={feedCardContainerStyle}>
+    <View style={[feedCardContainerStyle, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <TouchableOpacity onPress={handleNavigateProfile} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
           <UserAvatar profileImage={post.user.profileImage} firstName={post.user.firstName || post.user.userName} size={48} />
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ color: '#111827', fontSize: 16, fontWeight: '700' }}>{post.user.firstName} {post.user.lastName}</Text><IdentityBadges user={post.user} /></View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>{post.user.firstName} {post.user.lastName}</Text><IdentityBadges user={post.user} /></View>
             <Text style={{ marginTop: 2, color: '#6b7280', fontSize: 13 }}>@{post.user.userName} · Poll</Text>
           </View>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setOptionsVisible(true)} style={{ padding: 8 }}><Icon name="more-horizontal" size={21} color="#6b7280" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => setOptionsVisible(true)} style={{ padding: 8 }}><Icon name="more-horizontal" size={21} color={colors.icon} /></TouchableOpacity>
       </View>
 
       {post.location ? <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}><Icon name="map-pin" size={14} color="#10b981" /><Text style={{ marginLeft: 5, color: '#6b7280' }}>{post.location.name}</Text></View> : null}
-      {post.caption ? <Text style={{ marginTop: 15, color: '#111827', fontSize: 18, lineHeight: 24, fontWeight: '700' }}>{post.caption}</Text> : null}
-      {post.description && post.description !== post.caption ? <Text style={{ marginTop: 7, color: '#4b5563', lineHeight: 21 }}>{post.description}</Text> : null}
+      {post.caption ? <Text style={{ marginTop: 15, color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: '700' }}>{post.caption}</Text> : null}
+      {post.description && post.description !== post.caption ? <Text style={{ marginTop: 7, color: colors.mutedText, lineHeight: 21 }}>{post.description}</Text> : null}
       {postUrl ? <PostLinkPreview url={postUrl} /> : null}
 
       {post.media && post.media.length > 0 ? (
@@ -171,11 +173,11 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
           const percentage = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
           const isSelected = selectedOptionId === option.id;
           return (
-            <TouchableOpacity key={option.id} onPress={() => void handleVote(option.id)} disabled={pollEnded} style={{ marginBottom: 10, padding: 14, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: isSelected ? '#10b981' : '#e5e7eb', backgroundColor: '#ffffff' }}>
-              <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${percentage}%`, backgroundColor: '#d1fae5' }} />
+            <TouchableOpacity key={option.id} onPress={() => void handleVote(option.id)} disabled={pollEnded} style={{ marginBottom: 10, padding: 14, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: isSelected ? '#10b981' : colors.border, backgroundColor: colors.elevated }}>
+              <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${percentage}%`, backgroundColor: isDark ? '#065f46' : '#d1fae5' }} />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ color: '#111827', fontWeight: isSelected ? '700' : '600' }}>{option.text}</Text>
-                <Text style={{ color: '#6b7280', fontSize: 13 }}>{percentage}% · {votes}</Text>
+                <Text style={{ color: colors.text, fontWeight: isSelected ? '700' : '600' }}>{option.text}</Text>
+                <Text style={{ color: colors.mutedText, fontSize: 13 }}>{percentage}% · {votes}</Text>
               </View>
             </TouchableOpacity>
           );
@@ -187,7 +189,7 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
       </View>
       {post.hashtags.length > 0 ? <Text style={{ marginTop: 12, color: '#059669', fontWeight: '600' }}>{post.hashtags.map((tag) => `#${tag}`).join(' ')}</Text> : null}
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 13, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 13, borderTopWidth: 1, borderTopColor: colors.border }}>
         <TouchableOpacity onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="heart" size={22} color={isLiked ? '#c64d53' : '#6b7280'} /></TouchableOpacity><TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 26, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#c64d53' : '#6b7280', fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
         <TouchableOpacity onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 26, paddingVertical: 6 }}><Icon name="message-circle" size={22} color="#6b7280" /><Text style={{ marginLeft: 7, color: '#6b7280', fontWeight: '600' }}>{post.stats.comments}</Text></TouchableOpacity>
         <TouchableOpacity onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="share-2" size={22} color="#6b7280" /><Text style={{ marginLeft: 7, color: '#6b7280', fontWeight: '600' }}>{shareCount}</Text></TouchableOpacity>

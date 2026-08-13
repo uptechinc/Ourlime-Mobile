@@ -1,6 +1,7 @@
 import { PostService, type FeedFilter, type FeedPage, type FeedScope, type PostItem } from './PostService';
-import { LocalCacheService } from './LocalCacheService';
+import { LocalCacheService, type CachedRecord } from './LocalCacheService';
 import { ResourceErrorService } from './ResourceErrorService';
+import { RequestTimeoutService } from './RequestTimeoutService';
 import { useResourceStore, type FeedResourceData } from '@/lib/store/useResourceStore';
 import type { ResourceState } from '@/lib/types/resourceState';
 
@@ -20,6 +21,7 @@ export class FeedResourceService {
   private readonly postService = PostService.getInstance();
   private readonly cacheService = LocalCacheService.getInstance();
   private readonly errorService = ResourceErrorService.getInstance();
+  private readonly timeoutService = RequestTimeoutService.getInstance();
   private readonly inFlight = new Map<string, Promise<void>>();
 
   private constructor() {}
@@ -38,7 +40,13 @@ export class FeedResourceService {
     const existing = useResourceStore.getState().feeds[key];
     if (existing?.data) return;
     useResourceStore.getState().setFeed(key, this.withState(existing, { status: 'hydrating', error: null }));
-    const cached = await this.cacheService.read<FeedResourceData>(query.userId, FEED_NAMESPACE, key);
+    let cached: CachedRecord<FeedResourceData> | null;
+    try {
+      cached = await this.cacheService.read<FeedResourceData>(query.userId, FEED_NAMESPACE, key);
+    } catch {
+      useResourceStore.getState().setFeed(key, this.withState(null, { status: 'idle', error: null }));
+      return;
+    }
     if (!cached) {
       useResourceStore.getState().setFeed(key, this.withState(null, { status: 'idle' }));
       return;
@@ -69,7 +77,7 @@ export class FeedResourceService {
     const key = this.getKey(query);
     const current = useResourceStore.getState().feeds[key];
     if (!current?.data?.hasMore || !current.data.nextCursor || this.inFlight.has(`${key}:more`)) return;
-    const operation = this.postService.fetchFeedPage({ limit: 20, cursor: current.data.nextCursor, filter: query.filter, scope: query.scope, authorId: query.authorId }).then(async (page) => {
+    const operation = this.timeoutService.run(this.postService.fetchFeedPage({ limit: 20, cursor: current.data.nextCursor, filter: query.filter, scope: query.scope, authorId: query.authorId }), 'Feed pagination request').then(async (page) => {
       const posts = this.dedupe([...current.data!.posts, ...page.posts]).slice(0, 60);
       await this.commit(query, { ...current.data!, posts, nextCursor: page.nextCursor, hasMore: page.hasMore }, 'network');
     }).catch((error: unknown) => {
@@ -152,7 +160,7 @@ export class FeedResourceService {
     if (!options.force && current?.data && current.updatedAt && Date.now() - current.updatedAt < FEED_STALE_MS) return;
     useResourceStore.getState().setFeed(key, this.withState(current, { status: current?.data ? 'refreshing' : 'hydrating', error: null }));
     try {
-      const page = await this.postService.fetchFeedPage({ limit: 20, filter: query.filter, scope: query.scope, authorId: query.authorId });
+      const page = await this.timeoutService.run(this.postService.fetchFeedPage({ limit: 20, filter: query.filter, scope: query.scope, authorId: query.authorId }), 'Feed request');
       const currentData = useResourceStore.getState().feeds[key]?.data;
       const existingIds = new Set(currentData?.posts.map((post) => post.id) ?? []);
       const newPosts = page.posts.filter((post) => !existingIds.has(post.id));

@@ -1,5 +1,5 @@
-import AdminWebOnlyScreen from '@/components/admin/AdminWebOnlyScreen';
+import AdminCollectionWorkspace from '@/components/admin/AdminCollectionWorkspace';
 
 export default function AdminProductsRoute() {
-  return <AdminWebOnlyScreen title="Product Review" description="Marketplace product review and enforcement controls are not yet available in the native app." />;
+  return <AdminCollectionWorkspace kind="products" title="Product Review" subtitle="Review, approve, reject, archive, and remove marketplace products" />;
 }

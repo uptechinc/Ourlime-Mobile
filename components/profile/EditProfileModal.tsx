@@ -7,7 +7,6 @@ import {
   Modal,
   ScrollView,
   ActivityIndicator,
-  Alert,
   StyleSheet,
   Image,
 } from 'react-native';
@@ -16,10 +15,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { AuthService, type UserProfile } from '@/lib/services/AuthService';
 import { profileResourceService } from '@/lib/services/ProfileResourceService';
 import { feedResourceService } from '@/lib/services/FeedResourceService';
-import { PostMediaService } from '@/lib/services/PostMediaService';
+import { ProfileMediaService } from '@/lib/services/ProfileMediaService';
+import CustomModal from '@/components/ui/CustomModal';
 
 const authService = AuthService.getInstance();
-const mediaService = PostMediaService.getInstance();
+const profileMediaService = ProfileMediaService.getInstance();
 
 type EditProfileModalProps = {
   visible: boolean;
@@ -43,6 +43,7 @@ export default function EditProfileModal({
   const [coverPhoto, setCoverPhoto] = useState(profile.coverPhoto || profile.coverImage || '');
   const [saving, setSaving] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setFirstName(profile.firstName || '');
@@ -55,16 +56,24 @@ export default function EditProfileModal({
   }, [profile]);
 
   const handlePickImage = async (type: 'avatar' | 'cover') => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-      allowsEditing: true,
-      aspect: type === 'avatar' ? [1, 1] : [16, 9],
-    });
-
-    if (!result.canceled && result.assets[0]?.uri) {
-      if (type === 'avatar') setProfilePicture(result.assets[0].uri);
-      else setCoverPhoto(result.assets[0].uri);
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setErrorMessage('Photo access is required to update your profile images. You can enable it in device settings.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.85,
+        allowsEditing: true,
+        aspect: type === 'avatar' ? [1, 1] : [16, 9],
+      });
+      if (!result.canceled && result.assets[0]?.uri) {
+        if (type === 'avatar') setProfilePicture(result.assets[0].uri);
+        else setCoverPhoto(result.assets[0].uri);
+      }
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : 'The photo picker could not be opened.');
     }
   };
 
@@ -75,11 +84,11 @@ export default function EditProfileModal({
       let finalAvatar = profilePicture;
       let finalCover = coverPhoto;
 
-      if (profilePicture && (profilePicture.startsWith('file:') || profilePicture.startsWith('content:'))) {
-        finalAvatar = await mediaService.uploadProfileImage({ userId: profile.uid, uri: profilePicture });
+      if (profilePicture && !/^https?:/i.test(profilePicture)) {
+        finalAvatar = (await profileMediaService.uploadAndAssign(profile.uid, profilePicture, 'avatar')).imageUrl;
       }
-      if (coverPhoto && (coverPhoto.startsWith('file:') || coverPhoto.startsWith('content:'))) {
-        finalCover = await mediaService.uploadProfileCover({ userId: profile.uid, uri: coverPhoto });
+      if (coverPhoto && !/^https?:/i.test(coverPhoto)) {
+        finalCover = (await profileMediaService.uploadAndAssign(profile.uid, coverPhoto, 'cover')).imageUrl;
       }
 
       await authService.updateUserProfile(profile.uid, {
@@ -112,9 +121,9 @@ export default function EditProfileModal({
       ]);
 
       setShowSuccessModal(true);
-    } catch (err) {
-      console.error('[EditProfileModal] Save error:', err);
-      Alert.alert('Error', 'Failed to update profile. Please try again.');
+    } catch (error: unknown) {
+      console.error('[EditProfileModal] Save error:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to update profile. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -261,6 +270,7 @@ export default function EditProfileModal({
             </View>
           </View>
         </Modal>
+        <CustomModal visible={Boolean(errorMessage)} type="error" title="Profile not updated" message={errorMessage ?? ''} onClose={() => setErrorMessage(null)} />
       </View>
     </Modal>
   );

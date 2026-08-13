@@ -1,5 +1,6 @@
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 export type FeedFilter = 'All' | 'Photos' | 'Videos' | 'Sound' | 'Polls' | 'Events';
 export type FeedSource = 'home' | 'friends' | 'communities';
@@ -43,12 +44,13 @@ export function FeedsFilterSection({
   activeFeedSource = 'home',
   onFeedSourceChange,
 }: FeedsFilterSectionProps) {
+  const { colors } = useAppTheme();
   return (
     <View>
       {/* ── Feed Source Toggle ── */}
-      <View style={{
+      {onFeedSourceChange ? <View style={{
         flexDirection: 'row',
-        backgroundColor: '#f1f5f9',
+        backgroundColor: colors.control,
         borderRadius: 14,
         padding: 3,
         marginBottom: 14,
@@ -74,22 +76,22 @@ export function FeedsFilterSection({
               <Icon
                 name={src.icon}
                 size={14}
-                color={isActive ? '#ffffff' : '#6b7280'}
+                color={isActive ? '#ffffff' : colors.icon}
               />
               <Text style={{
                 fontSize: 13,
                 fontWeight: isActive ? '700' : '500',
-                color: isActive ? '#ffffff' : '#6b7280',
+                color: isActive ? '#ffffff' : colors.mutedText,
               }}>
                 {src.label}
               </Text>
             </TouchableOpacity>
           );
         })}
-      </View>
+      </View> : null}
 
       {/* ── Content-type Filter Chips ── */}
-      <Text style={{ marginBottom: 10, color: '#111827', fontSize: 15, fontWeight: '600' }}>Filters</Text>
+      <Text style={{ marginBottom: 10, color: colors.text, fontSize: 15, fontWeight: '600' }}>Filters</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         {filterOptions.map((filter) => {
           const isActive = activeFilter === filter.name;
@@ -105,12 +107,12 @@ export function FeedsFilterSection({
                 paddingVertical: 9,
                 borderRadius: 16,
                 borderWidth: 1,
-                borderColor: isActive ? '#10b981' : '#e5e7eb',
-                backgroundColor: isActive ? '#10b981' : '#ffffff',
+                borderColor: isActive ? '#10b981' : colors.border,
+                backgroundColor: isActive ? '#10b981' : colors.surface,
               }}
             >
-              <Icon name={filter.icon} size={16} color={isActive ? '#ffffff' : '#6b7280'} />
-              <Text style={{ marginLeft: 7, color: isActive ? '#ffffff' : '#374151', fontWeight: '600' }}>
+              <Icon name={filter.icon} size={16} color={isActive ? '#ffffff' : colors.icon} />
+              <Text style={{ marginLeft: 7, color: isActive ? '#ffffff' : colors.text, fontWeight: '600' }}>
                 {filter.name}
               </Text>
             </TouchableOpacity>

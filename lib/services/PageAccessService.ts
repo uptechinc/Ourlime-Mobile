@@ -62,8 +62,9 @@ export class PageAccessService {
   public getTargetRedirect(user: User | null, currentRoute: string): string | null {
     const normalized = this.normalizeRoute(currentRoute);
     const isPublic = this.isPublicRoute(normalized);
-    if (!user && !isPublic) return '/(auth)/login';
-    if (user && (normalized === '/(auth)/login' || normalized === '/(auth)/register')) return '/(tabs)';
+    const isAuthenticatedAndVerified = Boolean(user && user.emailVerified);
+    if (!isAuthenticatedAndVerified && !isPublic) return '/(auth)/login';
+    if (isAuthenticatedAndVerified && (normalized === '/(auth)/login' || normalized === '/(auth)/register')) return '/(tabs)';
     return null;
   }
 
@@ -102,7 +103,18 @@ export class PageAccessService {
     route: string,
     authorization: AuthorizationState,
   ): PageAccessDecision {
-    const setting = this.resolveSetting(settings, route);
+    const configuredSetting = this.resolveSetting(settings, route);
+    const protectedFutureSetting = this.resolveSetting(
+      this.getDefaultSettings().filter((defaultSetting) => defaultSetting.status === 'coming_soon'),
+      route,
+    );
+    const setting = protectedFutureSetting
+      ? {
+          ...(configuredSetting ?? protectedFutureSetting),
+          status: 'coming_soon' as const,
+          badgeText: protectedFutureSetting.badgeText || 'Coming Soon',
+        }
+      : configuredSetting;
     const status = setting?.status ?? 'enabled';
     const canAccess = authorizationService.canAccessStatus(status, authorization);
     return {

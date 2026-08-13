@@ -109,6 +109,27 @@ export class ModerationService {
     if (!response.success || !response.data?.id) throw new Error(response.error || 'Failed to submit report');
     return response.data.id;
   }
+
+  public async reportCommunity(input: Omit<SubmitReportInput, 'reportedUserId'>): Promise<string> {
+    if (!input.reason.trim()) throw new Error('Select a reason for reporting this community');
+    const response = await this.apiService.request<{ success: boolean; data?: { id?: string }; error?: string }>('/api/moderation/reports', {
+      method: 'POST',
+      authenticated: true,
+      body: {
+        contentType: 'community',
+        targetId: input.targetId,
+        reasonCategory: input.reasonCategory,
+        reason: input.reason,
+        description: input.description?.trim() ?? '',
+        evidence: input.evidence ?? [],
+        severity: 'medium',
+        routePath: input.routePath ?? `/communities/${input.targetId}`,
+        contentUrl: input.contentUrl ?? null,
+      },
+    });
+    if (!response.success || !response.data?.id) throw new Error(response.error || 'Failed to submit community report');
+    return response.data.id;
+  }
 }
 
 export const moderationService = ModerationService.getInstance();

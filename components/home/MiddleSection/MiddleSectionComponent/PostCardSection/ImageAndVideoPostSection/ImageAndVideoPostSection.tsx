@@ -27,7 +27,7 @@ type ImageAndVideoPostSectionProps = {
   onLike?: () => void;
 };
 
-const MEDIA_WIDTH = Dimensions.get('window').width - 72;
+const MEDIA_WIDTH = Dimensions.get('window').width;
 
 function VideoPostItem({
   url,
@@ -421,7 +421,7 @@ export default function ImageAndVideoPostSection({
   };
 
   return (
-    <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: '#111827', position: 'relative' }}>
+    <View style={{ borderRadius: 0, overflow: 'hidden', backgroundColor: '#111827', position: 'relative' }}>
       <ScrollView
         ref={scrollRef}
         horizontal

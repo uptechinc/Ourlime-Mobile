@@ -22,10 +22,10 @@ const notificationService = NotificationService.getInstance();
 export const NotificationProvider = ({ children }: NotificationProviderProps) => {
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(authService.getCurrentUser()?.uid ?? null);
+  const [userId, setUserId] = useState<string | null>(authService.getVerifiedCurrentUser()?.uid ?? null);
 
   const refreshNotifications = useCallback(async () => {
-    const user = authService.getCurrentUser();
+    const user = authService.getVerifiedCurrentUser();
     if (!user) {
       setNotifications([]);
       setIsLoading(false);
@@ -41,7 +41,7 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     }
   }, []);
 
-  useEffect(() => authService.subscribeToAuthState((user) => {
+  useEffect(() => authService.subscribeToVerifiedAuthState((user) => {
     setUserId(user?.uid ?? null);
     if (!user) {
       setNotifications([]);
@@ -61,7 +61,7 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
   }, [refreshNotifications, userId]);
 
   const markAsRead = async (notificationId: string) => {
-    const user = authService.getCurrentUser();
+    const user = authService.getVerifiedCurrentUser();
     if (!user) return;
     await notificationService.markLegacyAsRead(user.uid, notificationId);
     await notificationService.markAsRead(notificationId);
@@ -69,14 +69,14 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
   };
 
   const markAsUnread = async (notificationId: string) => {
-    const user = authService.getCurrentUser();
+    const user = authService.getVerifiedCurrentUser();
     if (!user) return;
     await notificationService.markAsUnread(user.uid, notificationId);
     await refreshNotifications();
   };
 
   const markAllAsRead = async () => {
-    const user = authService.getCurrentUser();
+    const user = authService.getVerifiedCurrentUser();
     if (!user) return;
     await notificationService.markAllLegacyAsRead(user.uid);
     await refreshNotifications();

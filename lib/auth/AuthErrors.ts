@@ -13,7 +13,11 @@ export class AuthServiceError extends Error {
 }
 
 export const getAuthErrorCode = (error: unknown): string => {
-  if (error instanceof AuthServiceError) return error.code;
-  if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string') return error.code;
+  if (error && typeof error === 'object') {
+    const errObj = error as Record<string, unknown>;
+    if (typeof errObj.code === 'string' && errObj.code.length > 0) {
+      return errObj.code;
+    }
+  }
   return 'UNKNOWN';
 };

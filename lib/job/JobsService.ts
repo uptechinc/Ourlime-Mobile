@@ -155,23 +155,31 @@ export class JobsService {
     }
     
 
-    public async fetchJobs(): Promise<JobRecord[]> {
+    public async fetchJobs(maxResults = 20): Promise<JobRecord[]> {
         try {
-            const jobsQuery = query(
-                collection(this.db, 'jobs'),
-                orderBy('basic_info.createdAt', 'desc')
-            );
-    
-            const jobsSnapshot = await getDocs(jobsQuery);
+            const jobsCollection = collection(this.db, 'jobs');
+            const resultLimit = limit(Math.min(40, Math.max(1, maxResults)));
+            const orderedJobsSnapshot = await getDocs(query(
+                jobsCollection,
+                orderBy('basic_info.createdAt', 'desc'),
+                resultLimit,
+            )).catch((orderedQueryError: unknown) => {
+                console.warn('[JobsService.fetchJobs] Ordered query failed; using unordered compatibility query.', orderedQueryError);
+                return null;
+            });
+            const jobsSnapshot = orderedJobsSnapshot && !orderedJobsSnapshot.empty
+                ? orderedJobsSnapshot
+                : await getDocs(query(jobsCollection, resultLimit));
             const jobs = await Promise.all(jobsSnapshot.docs.map(async (docSnapshot) => {
                 const data = docSnapshot.data();
-                const userRef = doc(this.db, 'users', data.basic_info.userId);
-                const userDoc = await getDoc(userRef);
-                const userData = userDoc.data();
+                const basicInfo = data.basic_info && typeof data.basic_info === 'object' ? data.basic_info : {};
+                const userId = typeof basicInfo.userId === 'string' ? basicInfo.userId : '';
+                const userDoc = userId ? await getDoc(doc(this.db, 'users', userId)).catch(() => null) : null;
+                const userData = userDoc?.data();
     
                 // Fetch questions from subcollection
-                const questionsSnapshot = await getDocs(collection(docSnapshot.ref, 'questions'));
-                const questions = questionsSnapshot.docs.map(qDoc => ({
+                const questionsSnapshot = await getDocs(collection(docSnapshot.ref, 'questions')).catch(() => null);
+                const questions = (questionsSnapshot?.docs ?? []).map(qDoc => ({
                     id: qDoc.id,
                     ...qDoc.data()
                 }));
@@ -179,36 +187,52 @@ export class JobsService {
                 // Fetch profile images
                 const profileImagesQuery = query(
                     collection(this.db, 'profileImages'),
-                    where('userId', '==', data.basic_info.userId)
+                    where('userId', '==', userId)
                 );
                 const profileSetAsQuery = query(
                     collection(this.db, 'profileImageSetAs'),
-                    where('userId', '==', data.basic_info.userId)
+                    where('userId', '==', userId)
                 );
     
                 const [profileImagesSnapshot, setAsSnapshot] = await Promise.all([
                     getDocs(profileImagesQuery),
                     getDocs(profileSetAsQuery)
-                ]);
+                ]).catch(() => [null, null] as const);
     
                 // Get profile image URL with priority
-                let profileImageUrl = '/default-avatar.png';
-                const jobProfileSetAs = setAsSnapshot.docs.find(doc => doc.data().setAs === 'jobProfile');
-                const regularProfileSetAs = setAsSnapshot.docs.find(doc => doc.data().setAs === 'profile');
+                let profileImageUrl = '';
+                const jobProfileSetAs = setAsSnapshot?.docs.find(doc => doc.data().setAs === 'jobProfile');
+                const regularProfileSetAs = setAsSnapshot?.docs.find(doc => doc.data().setAs === 'profile');
     
                 if (jobProfileSetAs) {
-                    const matchingImage = profileImagesSnapshot.docs.find(img => img.id === jobProfileSetAs.data().profileImageId);
+                    const matchingImage = profileImagesSnapshot?.docs.find(img => img.id === jobProfileSetAs.data().profileImageId);
                     profileImageUrl = matchingImage?.data()?.imageURL || profileImageUrl;
                 } else if (regularProfileSetAs) {
-                    const matchingImage = profileImagesSnapshot.docs.find(img => img.id === regularProfileSetAs.data().profileImageId);
+                    const matchingImage = profileImagesSnapshot?.docs.find(img => img.id === regularProfileSetAs.data().profileImageId);
                     profileImageUrl = matchingImage?.data()?.imageURL || profileImageUrl;
                 }
     
                 return {
                     id: docSnapshot.id,
-                    basic_info: data.basic_info,
-                    details: data.details,
-                    category_specific: data.category_specific,
+                    basic_info: {
+                        type: typeof basicInfo.type === 'string' ? basicInfo.type : 'Job',
+                        title: typeof basicInfo.title === 'string' ? basicInfo.title : 'Untitled opportunity',
+                        description: typeof basicInfo.description === 'string' ? basicInfo.description : '',
+                        userId,
+                        location: basicInfo.location && typeof basicInfo.location === 'object' ? basicInfo.location : {},
+                        priceRange: basicInfo.priceRange && typeof basicInfo.priceRange === 'object'
+                            ? {
+                                from: typeof basicInfo.priceRange.from === 'number' ? basicInfo.priceRange.from : 0,
+                                to: typeof basicInfo.priceRange.to === 'number' ? basicInfo.priceRange.to : 0,
+                            }
+                            : { from: 0, to: 0 },
+                        createdAt: basicInfo.createdAt,
+                        category: typeof basicInfo.category === 'string' ? basicInfo.category : undefined,
+                    },
+                    details: data.details && typeof data.details === 'object'
+                        ? { ...data.details, skills: Array.isArray(data.details.skills) ? data.details.skills : [] }
+                        : { skills: [] },
+                    category_specific: data.category_specific && typeof data.category_specific === 'object' ? data.category_specific : {},
                     questions,
                     creator: {
                         name: userData ? `${userData.firstName} ${userData.lastName}` : 'Anonymous',

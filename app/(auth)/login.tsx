@@ -114,11 +114,14 @@ export default function LoginScreen() {
         'auth/user-disabled': 'This user account has been disabled.',
         'auth/too-many-requests': 'Too many login attempts. Please try again later.',
         'auth/invalid-credential': 'Invalid credentials provided.',
-        EMAIL_NOT_VERIFIED: 'Verify your email before signing in. We sent a new verification email.',
+        EMAIL_NOT_VERIFIED: 'Verify your email before signing in. A new verification email was sent.',
         ACCOUNT_DISABLED: 'This account is currently disabled.',
         ACCOUNT_DELETED: 'This account has been deleted.',
       };
-      setErrorMsg(errorMessages[getAuthErrorCode(error)] || 'Failed to sign in. Please check your credentials.');
+      const code = getAuthErrorCode(error);
+      const customMsg = errorMessages[code];
+      const fallbackMsg = error instanceof Error && error.message ? error.message : 'Failed to sign in. Please check your credentials.';
+      setErrorMsg(customMsg || fallbackMsg);
     } finally {
       setIsSubmitting(false);
     }

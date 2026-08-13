@@ -33,6 +33,7 @@ import { VideoCallModal } from '@/components/chat/VideoCallModal';
 import { ChatSettingsMenu } from '@/components/chat/ChatSettingsMenu';
 import { ChatMediaPanel } from '@/components/chat/ChatMediaPanel';
 import { ForwardMessageModal } from '@/components/chat/ForwardMessageModal';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { DocumentPreviewModal } from '@/components/chat/DocumentPreviewModal';
 import { LinkPreviewMessage, LinkInputBanner } from '@/components/chat/LinkPreviewMessage';
 import { findFirstUrl } from '@/lib/services/OpenGraphService';
@@ -547,6 +548,7 @@ function StickerBubble({ url, width, height, time }: { url: string; width: numbe
 export default function ChatPage() {
     const { id: friendId } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
+    const { isDark } = useAppTheme();
     const currentUserId = authService.getCurrentUser()?.uid ?? '';
     const chatRoomId = messagingService.getChatRoomId(currentUserId, friendId ?? '');
     const cachedFriend = useResourceStore((state) => state.conversations.data?.find((conversation) => conversation.uid === friendId) ?? null);
@@ -783,7 +785,7 @@ export default function ChatPage() {
 
     return (
         <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#ffffff' }}>
-            <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+            <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0f172a' : '#ffffff'} />
 
             {/* ── Header ────────────────────────────────────────────────── */}
             <View style={{

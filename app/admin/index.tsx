@@ -15,6 +15,7 @@ import PageAccessAdminSection from '@/components/admin/PageAccessAdminSection';
 import UserManagementSection from '@/components/admin/UserManagementSection';
 import ModerationSection from '@/components/admin/ModerationSection';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const adminMetricsService = AdminMetricsService.getInstance();
 
@@ -32,6 +33,7 @@ export default function AdminPortalScreen() {
   const router = useRouter();
   const { section } = useLocalSearchParams<{ section?: string }>();
   const { authorization, loading: accessLoading } = usePageAccess();
+  const { colors } = useAppTheme();
   const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'moderation' | 'page_access'>('overview');
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<AdminMetrics>({
@@ -64,14 +66,22 @@ export default function AdminPortalScreen() {
     if (!accessLoading && authorization.isAdmin) void fetchAdminStats();
   }, [accessLoading, authorization.isAdmin]);
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/(tabs)');
+  };
+
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.canvas }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Icon name="arrow-left" size={24} color="#0f172a" />
+          <Icon name="arrow-left" size={24} color={colors.icon} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Admin Portal</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Admin Portal</Text>
         <View style={{ width: 32 }} />
       </View>
 
@@ -82,15 +92,15 @@ export default function AdminPortalScreen() {
           <Icon name="lock" size={38} color="#c64d53" />
           <Text style={styles.deniedTitle}>Admin access required</Text>
           <Text style={styles.deniedText}>Your account does not have permission to open the administration workspace.</Text>
-          <TouchableOpacity onPress={() => router.replace('/(tabs)')} style={styles.deniedButton}>
-            <Text style={styles.deniedButtonText}>Back to Home</Text>
+          <TouchableOpacity onPress={handleBack} style={styles.deniedButton}>
+            <Text style={styles.deniedButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <>
-          <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingVertical: 10, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+          <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingVertical: 10, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
             {([{ key: 'overview', label: 'Overview', icon: 'grid' }, { key: 'users', label: 'Users', icon: 'users' }, { key: 'moderation', label: 'Reports', icon: 'flag' }, { key: 'page_access', label: 'Access', icon: 'shield' }] as const).map((section) => (
-              <TouchableOpacity key={section.key} onPress={() => setActiveSection(section.key)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 13, paddingVertical: 10, backgroundColor: activeSection === section.key ? '#ecfdf5' : 'transparent' }}><Icon name={section.icon} size={16} color={activeSection === section.key ? '#047857' : '#64748b'} /><Text style={{ marginLeft: 7, color: activeSection === section.key ? '#047857' : '#64748b', fontWeight: '800' }}>{section.label}</Text></TouchableOpacity>
+              <TouchableOpacity key={section.key} onPress={() => setActiveSection(section.key)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 13, paddingVertical: 10, backgroundColor: activeSection === section.key ? '#10b981' : 'transparent' }}><Icon name={section.icon} size={16} color={activeSection === section.key ? '#ffffff' : colors.icon} /><Text style={{ marginLeft: 7, color: activeSection === section.key ? '#ffffff' : colors.mutedText, fontWeight: '800' }}>{section.label}</Text></TouchableOpacity>
             ))}
           </View>
           {activeSection === 'page_access' ? (
@@ -132,17 +142,22 @@ export default function AdminPortalScreen() {
               <Text style={styles.metricVal}>{stats.eventsCount}</Text>
               <Text style={styles.metricLabel}>Events</Text>
             </View>
+            <View style={styles.metricCard}>
+              <Icon name="flag" size={22} color="#c64d53" />
+              <Text style={styles.metricVal}>{stats.reportsCount}</Text>
+              <Text style={styles.metricLabel}>Reports</Text>
+            </View>
           </View>
 
           <View style={styles.notice}><Icon name="shield" size={20} color="#047857" /><Text style={styles.noticeText}>Admin tools are role-gated and use authenticated server operations.</Text></View>
           <View style={styles.pendingSection}>
             <Text style={styles.sectionTitle}>Additional Web Workspaces</Text>
-            <Text style={styles.pendingIntro}>These canonical destinations are listed for parity tracking. Their secure native workflows are still in progress.</Text>
+            <Text style={styles.pendingIntro}>Open the native administration workspaces for live platform records and role-gated controls.</Text>
             {REMAINING_ADMIN_WORKSPACES.map((workspace) => (
               <TouchableOpacity key={workspace.id} onPress={() => router.push(workspace.route)} style={styles.pendingRow}>
                 <Icon name={workspace.icon} size={19} color="#475569" />
                 <Text style={styles.pendingRowTitle}>{workspace.title}</Text>
-                <Text style={styles.webBadge}>WEB</Text>
+                <Text style={styles.webBadge}>LIVE</Text>
                 <Icon name="chevron-right" size={18} color="#94a3b8" />
               </TouchableOpacity>
             ))}

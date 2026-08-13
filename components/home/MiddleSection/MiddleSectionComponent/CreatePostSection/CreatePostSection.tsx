@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import UserAvatar from '@/components/ui/UserAvatar';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type CreatePostSectionProps = {
   onCreatePost: () => void;
@@ -13,6 +14,7 @@ export const CreatePostSection = ({
   profileImageUrl,
   userInitial = 'U',
 }: CreatePostSectionProps) => {
+  const { colors } = useAppTheme();
   return (
     <TouchableOpacity
       onPress={onCreatePost}
@@ -28,13 +30,13 @@ export const CreatePostSection = ({
         <View style={{ flex: 1 }}>
           <View style={{
             borderWidth: 1,
-            borderColor: '#e5e7eb',
+            borderColor: colors.border,
             borderRadius: 9999,
             paddingHorizontal: 16,
             paddingVertical: 10,
-            backgroundColor: '#ffffff',
+            backgroundColor: colors.surface,
           }}>
-            <Text style={{ color: '#6b7280', fontSize: 14, fontWeight: '500' }}>
+            <Text style={{ color: colors.mutedText, fontSize: 14, fontWeight: '500' }}>
               Tell us what&apos;s on your mind
             </Text>
           </View>
@@ -45,11 +47,11 @@ export const CreatePostSection = ({
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20, marginTop: 14, paddingLeft: 4 }}>
         <TouchableOpacity onPress={onCreatePost} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Icon name="image" size={18} color="#10b981" />
-          <Text style={{ color: '#374151', fontSize: 14, fontWeight: '600' }}>Gallery</Text>
+          <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>Gallery</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={onCreatePost} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Icon name="smile" size={18} color="#f59e0b" />
-          <Text style={{ color: '#374151', fontSize: 14, fontWeight: '600' }}>Feeling</Text>
+          <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>Feeling</Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>

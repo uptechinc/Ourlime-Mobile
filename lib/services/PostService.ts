@@ -15,7 +15,6 @@ import {
   updateDoc,
   where,
   writeBatch,
-  type QueryConstraint,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
@@ -206,7 +205,7 @@ export class PostService {
     try {
       const response = await this.apiService.request<FeedApiResponse>(
         `/api/home/MiddleSection/Post?${search}`,
-        { authenticated: Boolean(auth.currentUser), signal: options.signal }
+        { authenticated: Boolean(auth.currentUser), signal: options.signal, timeoutMs: 2_500 }
       );
       if (!response.success) throw new Error(response.error || 'Failed to load posts');
       const posts = (response.data ?? []).flatMap((record): PostItem[] => {
@@ -243,88 +242,84 @@ export class PostService {
     authorId?: string;
   }): Promise<FeedPage> {
     const fetchLimit = options.limit ?? 20;
-    const postsRef = collection(db, 'posts');
-    const queryConstraints: QueryConstraint[] = [orderBy('createdAt', 'desc'), limit(fetchLimit)];
-    if (options.authorId) {
-      queryConstraints.unshift(where('userId', '==', options.authorId));
-    }
-    if (options.filter === 'poll') {
-      queryConstraints.unshift(where('type', '==', 'poll'));
-    } else if (options.filter === 'event') {
-      queryConstraints.unshift(where('type', '==', 'event'));
-    }
-    const q = query(postsRef, ...queryConstraints);
-    const snapshot = await getDocs(q);
+    const scanLimit = Math.min(fetchLimit * 2, 40);
+    const postsReference = collection(db, 'feedPosts');
+    const snapshot = options.authorId
+      ? await getDocs(query(postsReference, where('userId', '==', options.authorId), limit(scanLimit)))
+      : await getDocs(query(postsReference, orderBy('createdAt', 'desc'), limit(scanLimit)));
+    const rawDocuments: DataDocument[] = snapshot.docs
+      .map((document) => ({
+        id: document.id,
+        data: isRecord(document.data()) ? document.data() : {},
+      }))
+      .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
 
-    const userIds = Array.from(new Set(snapshot.docs.map((docSnap) => docSnap.data().userId).filter((id): id is string => typeof id === 'string' && Boolean(id))));
-    const usersMap = new Map<string, PostUser>();
+    const viewerId = auth.currentUser?.uid ?? null;
+    const relationships = await this.loadRelationships(viewerId);
+    const visibleDocuments = rawDocuments.filter((document) => this.canViewPost(document.data, viewerId, relationships));
+    const postIds = visibleDocuments.map((document) => document.id);
+    const [mediaDocuments, countDocuments, likeDocuments] = await Promise.all([
+      this.getDocumentsByField('feedsPostSummary', 'feedsPostId', postIds),
+      this.getDocumentsByField('likesCount', 'feedsPostId', postIds),
+      this.getDocumentsByField('feedsPostLikeCount', 'feedsPostId', postIds),
+    ]);
 
-    await Promise.all(
-      userIds.slice(0, 15).map(async (uid) => {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', uid));
-          if (userDoc.exists()) {
-            const data = userDoc.data();
-            usersMap.set(uid, {
-              id: uid,
-              firstName: readString(data.firstName, 'User'),
-              lastName: readString(data.lastName),
-              userName: readString(data.userName, 'user'),
-              profileImage: readString(data.profileImage) || undefined,
-            });
-          }
-        } catch (_) {}
-      })
-    );
+    const mediaByPost = new Map<string, PostMedia[]>();
+    mediaDocuments.forEach((document) => {
+      const postId = readString(document.data.feedsPostId);
+      const typeUrl = readString(document.data.typeUrl);
+      if (!postId || !typeUrl) return;
+      const mediaItems = mediaByPost.get(postId) ?? [];
+      mediaItems.push({
+        id: document.id,
+        type: document.data.type === 'video' ? 'video' : 'image',
+        typeUrl,
+        fileName: readString(document.data.fileName),
+      });
+      mediaByPost.set(postId, mediaItems);
+    });
+    const countsByPost = new Map(countDocuments.map((document) => [readString(document.data.feedsPostId), document.data]));
+    const likedUsersByPost = new Map<string, string[]>();
+    likeDocuments.forEach((document) => {
+      if (document.data.likes !== true) return;
+      const postId = readString(document.data.feedsPostId);
+      const userId = readString(document.data.userId);
+      if (!postId || !userId) return;
+      likedUsersByPost.set(postId, [...(likedUsersByPost.get(postId) ?? []), userId]);
+    });
 
-    const posts: PostItem[] = snapshot.docs.flatMap((docSnap) => {
-      const data = docSnap.data();
-      const userId = readString(data.userId);
-      const user = usersMap.get(userId) || {
-        id: userId,
-        firstName: readString(data.userName, 'User'),
-        lastName: '',
-        userName: readString(data.userName, 'user'),
-      };
-      const mediaList = Array.isArray(data.media)
-        ? data.media.flatMap((item: unknown, index: number): PostMedia[] => {
-            if (isRecord(item)) {
-              const typeUrl = readString(item.typeUrl);
-              if (typeUrl) {
-                return [{
-                  id: readString(item.id, `${docSnap.id}-${index}`),
-                  type: item.type === 'video' ? 'video' : 'image',
-                  typeUrl,
-                  fileName: readString(item.fileName),
-                }];
-              }
-            }
-            return [];
-          })
-        : [];
-      const mapped = this.mapPost(
-        { id: docSnap.id, data },
-        user,
-        mediaList,
-        {
-          likeCount: readNumber(data.likeCount),
-          commentCount: readNumber(data.commentCount),
-          shareCount: readNumber(data.shareCount),
-        },
-        []
+    const filteredDocuments = visibleDocuments.filter((document) => {
+      const filter = options.filter ?? 'all';
+      if (filter === 'all') return true;
+      if (filter === 'poll' || filter === 'event') return document.data.type === filter;
+      const media = mediaByPost.get(document.id) ?? [];
+      if (filter === 'photo') return media.some((item) => item.type === 'image');
+      if (filter === 'video') return media.some((item) => item.type === 'video');
+      return false;
+    });
+    const pageDocuments = filteredDocuments.slice(0, fetchLimit);
+    const usersMap = await this.loadUserCards(pageDocuments.map((document) => readString(document.data.userId)));
+    const posts = pageDocuments.map((document) => {
+      const userId = readString(document.data.userId);
+      return this.mapPost(
+        document,
+        usersMap.get(userId) ?? this.emptyUser(userId),
+        mediaByPost.get(document.id) ?? [],
+        countsByPost.get(document.id) ?? document.data,
+        likedUsersByPost.get(document.id) ?? [],
       );
-      return mapped ? [mapped] : [];
     });
 
     this.logger.success('PostService', 'feed-firestore', {
+      collection: 'feedPosts',
       renderedPostCount: posts.length,
-      hasMore: snapshot.docs.length >= fetchLimit,
+      hasMore: filteredDocuments.length > fetchLimit || snapshot.docs.length >= scanLimit,
     });
 
     return {
       posts,
-      nextCursor: snapshot.docs.length >= fetchLimit ? snapshot.docs[snapshot.docs.length - 1].id : null,
-      hasMore: snapshot.docs.length >= fetchLimit,
+      nextCursor: null,
+      hasMore: false,
     };
   }
 
@@ -902,6 +897,7 @@ export class PostService {
       pollOptions,
       pollVotes,
       communityId: readString(record.communityId)
+        || readString(record.communityVariantId)
         || readString(record.community_id)
         || (isRecord(record.community) ? readString(record.community.id) : undefined),
       communityName: readString(record.communityName)

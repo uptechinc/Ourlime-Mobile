@@ -2,32 +2,35 @@ import { useState } from 'react';
 import { ActivityIndicator, Modal, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
-import { CommunityService, type CommunitySummary } from '@/lib/services/CommunityService';
+import { CommunityService, type CommunityCategory, type CommunitySummary } from '@/lib/services/CommunityService';
 import CustomModal from '@/components/ui/CustomModal';
 
 type CreateCommunityModalProps = {
   visible: boolean;
   onClose: () => void;
   onCreated: (community: CommunitySummary) => void;
+  categories: CommunityCategory[];
 };
 
 const communityService = CommunityService.getInstance();
 
-export default function CreateCommunityModal({ visible, onClose, onCreated }: CreateCommunityModalProps) {
+export default function CreateCommunityModal({ visible, onClose, onCreated, categories }: CreateCommunityModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [categoryId, setCategoryId] = useState<string | null>(null);
 
   const handleCreate = async () => {
     if (submitting) return;
     setSubmitting(true);
     try {
-      const community = await communityService.createCommunity({ title, description, isPrivate });
+      const community = await communityService.createCommunity({ title, description, isPrivate, categoryId: categoryId ?? undefined });
       setTitle('');
       setDescription('');
       setIsPrivate(false);
+      setCategoryId(null);
       onCreated(community);
       onClose();
     } catch (createError: unknown) {
@@ -50,6 +53,7 @@ export default function CreateCommunityModal({ visible, onClose, onCreated }: Cr
             <TextInput value={title} onChangeText={setTitle} maxLength={80} placeholder="Give your community a name" placeholderTextColor="#94a3b8" style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 14, padding: 13, color: '#0f172a' }} />
             <Text style={{ color: '#334155', fontWeight: '800', marginTop: 18, marginBottom: 7 }}>Description</Text>
             <TextInput value={description} onChangeText={setDescription} maxLength={500} multiline placeholder="What is this community about?" placeholderTextColor="#94a3b8" style={{ minHeight: 120, textAlignVertical: 'top', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 14, padding: 13, color: '#0f172a' }} />
+            {categories.length ? <View style={{ marginTop: 18 }}><Text style={{ color: '#334155', fontWeight: '800', marginBottom: 8 }}>Category</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>{categories.map((category) => <TouchableOpacity key={category.id} onPress={() => setCategoryId(category.id)} style={{ marginRight: 7, marginBottom: 7, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, backgroundColor: categoryId === category.id ? '#10b981' : '#f1f5f9' }}><Text style={{ color: categoryId === category.id ? '#fff' : '#475569', fontSize: 12, fontWeight: '800' }}>{category.name}</Text></TouchableOpacity>)}</View></View> : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 20, padding: 14, borderRadius: 14, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0' }}>
               <View style={{ flex: 1 }}><Text style={{ fontWeight: '800', color: '#0f172a' }}>Private community</Text><Text style={{ color: '#64748b', marginTop: 3, fontSize: 12 }}>New members must request access.</Text></View>
               <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: '#cbd5e1', true: '#6ee7b7' }} thumbColor={isPrivate ? '#10b981' : '#fff'} />

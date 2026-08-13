@@ -15,11 +15,13 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import { SearchService } from '@/lib/services/SearchService';
 import type { UserProfile } from '@/lib/services/AuthService';
 import { SkeletonChatRow } from '@/components/home/SkeletonLoaders';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const searchService = SearchService.getInstance();
 
 export default function SearchScreen() {
   const router = useRouter();
+  const { isDark, colors } = useAppTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -69,24 +71,24 @@ export default function SearchScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#ffffff' }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.surface }}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
 
       {/* Search Bar Header */}
-      <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
+      <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
         <View style={{
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: '#f1f5f9',
+          backgroundColor: colors.control,
           borderRadius: 14,
           paddingHorizontal: 14,
           paddingVertical: 10,
         }}>
-          <Ionicons name="search" size={20} color="#64748b" style={{ marginRight: 8 }} />
+          <Ionicons name="search" size={20} color={colors.icon} style={{ marginRight: 8 }} />
           <TextInput
-            style={{ flex: 1, fontSize: 15, color: '#0f172a' }}
+            style={{ flex: 1, fontSize: 15, color: colors.text }}
             placeholder="Search people on Ourlime..."
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={colors.mutedText}
             value={searchQuery}
             onChangeText={handleQueryChange}
             autoCapitalize="none"
@@ -94,7 +96,7 @@ export default function SearchScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => handleQueryChange('')}>
-              <Ionicons name="close-circle" size={18} color="#94a3b8" />
+              <Ionicons name="close-circle" size={18} color={colors.mutedText} />
             </TouchableOpacity>
           )}
         </View>
@@ -102,7 +104,7 @@ export default function SearchScreen() {
 
       {/* Content Area with Pull-To-Refresh */}
       <ScrollView
-        style={{ flex: 1, backgroundColor: '#f8fafc' }}
+        style={{ flex: 1, backgroundColor: colors.canvas }}
         contentContainerStyle={{ flexGrow: 1, padding: 16, paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -122,24 +124,24 @@ export default function SearchScreen() {
           </View>
         ) : searchQuery.trim().length === 0 ? (
           <View style={{ paddingVertical: 60, alignItems: 'center' }}>
-            <Ionicons name="compass-outline" size={48} color="#cbd5e1" />
-            <Text style={{ fontSize: 18, fontWeight: '700', color: '#334155', marginTop: 12 }}>Discover People & Profiles</Text>
-            <Text style={{ fontSize: 13, color: '#64748b', marginTop: 4, textAlign: 'center', maxWidth: 280 }}>
+            <Ionicons name="compass-outline" size={48} color={colors.icon} />
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginTop: 12 }}>Discover People & Profiles</Text>
+            <Text style={{ fontSize: 13, color: colors.mutedText, marginTop: 4, textAlign: 'center', maxWidth: 280 }}>
               Type a username or name above to search for people on Ourlime.
             </Text>
           </View>
         ) : searchError ? (
-          <View style={{ paddingVertical: 60, alignItems: 'center' }}><Ionicons name="alert-circle-outline" size={48} color="#c64d53" /><Text style={{ fontSize: 17, fontWeight: '700', color: '#991b1b', marginTop: 12 }}>Search unavailable</Text><Text style={{ color: '#64748b', marginTop: 5, textAlign: 'center' }}>{searchError}</Text><TouchableOpacity onPress={() => void performSearch(searchQuery)} style={{ marginTop: 15, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, backgroundColor: '#10b981' }}><Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text></TouchableOpacity></View>
+          <View style={{ paddingVertical: 60, alignItems: 'center' }}><Ionicons name="alert-circle-outline" size={48} color="#c64d53" /><Text style={{ fontSize: 17, fontWeight: '700', color: isDark ? '#fca5a5' : '#991b1b', marginTop: 12 }}>Search unavailable</Text><Text style={{ color: colors.mutedText, marginTop: 5, textAlign: 'center' }}>{searchError}</Text><TouchableOpacity onPress={() => void performSearch(searchQuery)} style={{ marginTop: 15, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, backgroundColor: '#10b981' }}><Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text></TouchableOpacity></View>
         ) : results.length === 0 ? (
           <View style={{ paddingVertical: 60, alignItems: 'center' }}>
-            <Ionicons name="search-outline" size={48} color="#cbd5e1" />
-            <Text style={{ fontSize: 17, fontWeight: '600', color: '#334155', marginTop: 12 }}>
+            <Ionicons name="search-outline" size={48} color={colors.icon} />
+            <Text style={{ fontSize: 17, fontWeight: '600', color: colors.text, marginTop: 12 }}>
               No users found for &quot;{searchQuery}&quot;
             </Text>
           </View>
         ) : (
           <View>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: '#64748b', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.mutedText, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
               People ({results.length})
             </Text>
             {results.map((user) => (
@@ -149,22 +151,22 @@ export default function SearchScreen() {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  backgroundColor: '#ffffff',
+                  backgroundColor: colors.surface,
                   padding: 14,
                   borderRadius: 16,
                   marginBottom: 10,
                   borderWidth: 1,
-                  borderColor: '#f1f5f9',
+                  borderColor: colors.border,
                 }}
               >
                 <UserAvatar profileImage={user.profilePicture} firstName={user.firstName || user.userName} size={48} />
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#1e293b' }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
                     {user.firstName} {user.lastName}
                   </Text>
-                  <Text style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>@{user.userName}</Text>
+                  <Text style={{ fontSize: 13, color: colors.mutedText, marginTop: 2 }}>@{user.userName}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
+                <Ionicons name="chevron-forward" size={18} color={colors.icon} />
               </TouchableOpacity>
             ))}
           </View>

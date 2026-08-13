@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { Animated, ViewStyle, StyleProp, type DimensionValue } from 'react-native';
+import { Animated } from 'react-native';
+import type { DimensionValue, StyleProp, ViewStyle } from 'react-native';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type SkeletonProps = {
   width?: DimensionValue;
@@ -9,6 +11,7 @@ type SkeletonProps = {
 };
 
 export function SkeletonBox({ width = '100%', height = 20, borderRadius = 8, style }: SkeletonProps) {
+  const { isDark } = useAppTheme();
   const opacityAnim = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
@@ -37,7 +40,7 @@ export function SkeletonBox({ width = '100%', height = 20, borderRadius = 8, sty
           width,
           height,
           borderRadius,
-          backgroundColor: '#e2e8f0',
+          backgroundColor: isDark ? '#334155' : '#e2e8f0',
           opacity: opacityAnim,
         },
         style,

@@ -27,7 +27,6 @@ import {
   Plus,
   type LucideIcon,
 } from 'lucide-react-native';
-import Swiper from 'react-native-swiper';
 
 import { ProfessionalJobsList } from '@/components/jobs/ProfessionalJobsList';
 import { QuickTasksList } from '@/components/jobs/QuickTasksList';
@@ -36,6 +35,7 @@ import JobCreationModal from '@/components/jobs/createJobsModal/jobCreationModal
 import PageHeader from '@/components/ui/PageHeader';
 import {useRouter} from 'expo-router';
 import type { JobRecord } from '@/lib/job/JobsService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -116,6 +116,7 @@ const dummyJobs: JobRecord[] = [
 
 export default function JobsPage() {
   const router = useRouter();
+  const { colors } = useAppTheme();
   const [jobs] = useState(dummyJobs);
   const [filtered, setFiltered] = useState(dummyJobs);
   const [categories, setCategories] = useState<
@@ -187,17 +188,17 @@ export default function JobsPage() {
 
   return (
     <>
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView style={{ flex: 1, backgroundColor: colors.canvas }} contentContainerStyle={{ paddingBottom: 40 }}>
         <PageHeader 
         title="Jobs"
         onBackPress={() => router.back()}
         />
         {/* Hero */}
         <View style={{ paddingHorizontal: 20, paddingTop: 40, alignItems: 'center' }}>
-          <Text style={{ fontSize: 24, fontWeight: '700', color: '#111827', textAlign: 'center' }}>
+          <Text style={{ fontSize: 24, fontWeight: '700', color: colors.text, textAlign: 'center' }}>
             Find Your Next Career Opportunity
           </Text>
-          <Text style={{ fontSize: 16, color: '#6B7280', marginTop: 8, textAlign: 'center' }}>
+          <Text style={{ fontSize: 16, color: colors.mutedText, marginTop: 8, textAlign: 'center' }}>
             Discover{' '}
             <Text style={{ color: '#01eb53', fontWeight: '700' }}>{jobs.length}</Text> opportunities
           </Text>
@@ -209,7 +210,9 @@ export default function JobsPage() {
             marginHorizontal: 20,
             marginTop: 16,
             padding: 16,
-            backgroundColor: '#FFFFFF',
+            backgroundColor: colors.surface,
+            borderWidth: 1,
+            borderColor: colors.border,
             borderRadius: 16,
             // iOS shadow
             shadowColor: '#000',
@@ -226,7 +229,7 @@ export default function JobsPage() {
                 flex: 1,
                 flexDirection: 'row',
                 alignItems: 'center',
-                backgroundColor: '#F9FAFB',
+                backgroundColor: colors.control,
                 borderRadius: 12,
                 paddingHorizontal: 12,
                 height: Platform.OS === 'ios' ? 40 : 44,
@@ -237,11 +240,13 @@ export default function JobsPage() {
                 value={search}
                 onChangeText={setSearch}
                 placeholder="Search jobs..."
+                placeholderTextColor={colors.mutedText}
                 style={{
                   flex: 1,
                   marginLeft: 8,
                   fontSize: 14,
                   height: '100%',
+                  color: colors.text,
                 }}
                 returnKeyType="search"
                 onSubmitEditing={() => setSearch(search.trim())}
@@ -274,14 +279,15 @@ export default function JobsPage() {
                 key={tag}
                 style={{
                   borderWidth: 1,
-                  borderColor: '#E5E7EB',
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
                   paddingHorizontal: 12,
                   paddingVertical: 6,
                   borderRadius: 999,
                   marginRight: 8,
                 }}
               >
-                <Text style={{ fontSize: 12, color: '#6B7280' }}>{tag}</Text>
+                <Text style={{ fontSize: 12, color: colors.mutedText }}>{tag}</Text>
               </View>
             ))}
             <TouchableOpacity
@@ -331,32 +337,31 @@ export default function JobsPage() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>
                 Popular Categories
               </Text>
               <TouchableOpacity>
                 <Text style={{ color: '#01eb53', fontSize: 14 }}>View All</Text>
               </TouchableOpacity>
             </View>
-            <Swiper
-              showsPagination
-              dotColor="#D1D5DB"
-              activeDotColor="#01eb53"
-              paginationStyle={{ bottom: -18 }}
-              loop={false}
-              height={160}
-              width={width}
-              dotStyle={{ width: 6, height: 6, borderRadius: 3 }}
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              decelerationRate="fast"
+              snapToInterval={width}
+              contentContainerStyle={{ paddingVertical: 2 }}
             >
               {categories.map((c) => (
                 <View
                   key={c.name}
                   style={{
-                    backgroundColor: '#FFF',
+                    backgroundColor: colors.surface,
                     borderRadius: 16,
                     borderWidth: 1,
-                    borderColor: '#F3F4F6',
+                    borderColor: colors.border,
                     marginHorizontal: 20,
+                    width: width - 40,
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: 20,
@@ -364,13 +369,13 @@ export default function JobsPage() {
                   }}
                 >
                   <c.icon size={32} color="#01eb53" style={{ marginBottom: 12 }} />
-                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: 4 }}>
                     {c.name}
                   </Text>
-                  <Text style={{ fontSize: 12, color: '#6B7280' }}>{c.count} jobs</Text>
+                  <Text style={{ fontSize: 12, color: colors.mutedText }}>{c.count} jobs</Text>
                 </View>
               ))}
-            </Swiper>
+            </ScrollView>
           </View>
         )}
 

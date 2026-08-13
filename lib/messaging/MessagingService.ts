@@ -26,6 +26,12 @@ export type ConversationEntry = UserProfile & {
     isOnline: boolean;
 };
 
+type UnknownRecord = Record<string, unknown>;
+const isRecord = (value: unknown): value is UnknownRecord =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+const readString = (value: unknown, fallback = ''): string =>
+    typeof value === 'string' ? value : fallback;
+
 // Extended types for full parity with web MessagingService
 export type Attachment = {
     url: string;
@@ -107,6 +113,7 @@ export class MessagingService {
     public async fetchConversationPage(currentUserId: string, cursor: string | null): Promise<{ items: ConversationEntry[]; nextCursor: string | null }> {
         if (!currentUserId) return { items: [], nextCursor: null };
         const entries: ConversationEntry[] = [];
+        try {
             const search = new URLSearchParams({ limit: '20' });
             if (cursor) search.set('cursor', cursor);
             const response = await this.apiService.request<{ success: boolean; data?: { items?: unknown[]; nextCursor?: string | null }; error?: string }>(`/api/chat/friends?${search.toString()}`, { authenticated: true });
@@ -133,7 +140,90 @@ export class MessagingService {
                     isOnline: record.isOnline === true,
                 });
             }
-        return { items: entries, nextCursor: response.data?.nextCursor ?? null };
+            return { items: entries, nextCursor: response.data?.nextCursor ?? null };
+        } catch {
+            return this.fetchConversationPageFromFirestore(currentUserId);
+        }
+    }
+
+    private async fetchConversationPageFromFirestore(currentUserId: string): Promise<{ items: ConversationEntry[]; nextCursor: string | null }> {
+        const [asFirst, asSecond] = await Promise.all([
+            getDocs(query(collection(this.db, 'friendship'), where('userId1', '==', currentUserId))),
+            getDocs(query(collection(this.db, 'friendship'), where('userId2', '==', currentUserId))),
+        ]);
+        const friendIds = new Set<string>();
+        asFirst.docs.forEach((document) => {
+            const relationship = document.data();
+            const status = readString(relationship.friendshipStatus, readString(relationship.status));
+            const friendId = readString(relationship.userId2);
+            if (status === 'accepted' && friendId) friendIds.add(friendId);
+        });
+        asSecond.docs.forEach((document) => {
+            const relationship = document.data();
+            const status = readString(relationship.friendshipStatus, readString(relationship.status));
+            const friendId = readString(relationship.userId1);
+            if (status === 'accepted' && friendId) friendIds.add(friendId);
+        });
+
+        const conversations = await Promise.all([...friendIds].slice(0, 20).map(async (friendId): Promise<ConversationEntry | null> => {
+            const [userDocument, imageSelections, chatDocument] = await Promise.all([
+                getDoc(doc(this.db, 'users', friendId)),
+                getDocs(query(collection(this.db, 'profileImageSetAs'), where('userId', '==', friendId))),
+                getDoc(doc(this.db, 'chats', this.getChatRoomId(currentUserId, friendId))),
+            ]);
+            if (!userDocument.exists()) return null;
+            const user = userDocument.data();
+            const preferredSelection = imageSelections.docs.find((document) => document.data().setAs === 'profile')
+                ?? imageSelections.docs.find((document) => document.data().setAs === 'postProfile');
+            const selectedImageId = preferredSelection ? readString(preferredSelection.data().profileImageId) : '';
+            const selectedImage = selectedImageId ? await getDoc(doc(this.db, 'profileImages', selectedImageId)) : null;
+            const selectedImageData = selectedImage?.data();
+            const directProfileImage = isRecord(user.profileImage)
+                ? readString(user.profileImage.imageURL, readString(user.profileImage.imageUrl))
+                : readString(user.profileImage);
+            const profilePicture = readString(selectedImageData?.imageURL)
+                || readString(selectedImageData?.imageUrl)
+                || readString(user.profilePicture)
+                || directProfileImage
+                || readString(user.avatar)
+                || readString(user.photoURL)
+                || null;
+
+            const chat = chatDocument.exists() ? chatDocument.data() : {};
+            const messages = Array.isArray(chat.messages) ? chat.messages.filter(isRecord) : [];
+            const clearedAt = isRecord(chat.clearedAt) && chat.clearedAt[currentUserId] instanceof Timestamp
+                ? chat.clearedAt[currentUserId] as Timestamp
+                : null;
+            const visibleMessages = clearedAt
+                ? messages.filter((message) => message.timestamp instanceof Timestamp && message.timestamp.toMillis() > clearedAt.toMillis())
+                : messages;
+            const lastMessageRecord = visibleMessages.at(-1);
+            const lastMessageTime = lastMessageRecord?.timestamp instanceof Timestamp ? lastMessageRecord.timestamp : undefined;
+            const unreadCount = visibleMessages.filter((message) =>
+                readString(message.receiverId) === currentUserId && readString(message.status) === 'sent'
+            ).length;
+
+            return {
+                uid: friendId,
+                firstName: readString(user.firstName, 'User'),
+                lastName: readString(user.lastName),
+                userName: readString(user.userName, 'user'),
+                email: readString(user.email),
+                accountType: readString(user.accountType, 'user'),
+                profilePicture,
+                lastMessage: lastMessageRecord ? readString(lastMessageRecord.message) : undefined,
+                lastMessageTime,
+                unreadCount,
+                isOnline: user.isOnline === true,
+            };
+        }));
+
+        return {
+            items: conversations
+                .filter((conversation): conversation is ConversationEntry => conversation !== null)
+                .sort((left, right) => (right.lastMessageTime?.toMillis() ?? 0) - (left.lastMessageTime?.toMillis() ?? 0)),
+            nextCursor: null,
+        };
     }
 
     public async getMuteUntil(currentUserId: string, friendId: string): Promise<number | null> {

@@ -1,4 +1,7 @@
+import { collection, getCountFromServer } from 'firebase/firestore';
+import { db } from '@/lib/firebaseConfig';
 import { apiService } from './ApiService';
+import { adminAccessService } from './AdminAccessService';
 
 export type AdminMetrics = {
   usersCount: number;
@@ -19,6 +22,32 @@ export class AdminMetricsService {
   }
 
   public async fetchMetrics(): Promise<AdminMetrics> {
-    return apiService.request<AdminMetrics>('/api/admin/metrics', { authenticated: true });
+    try {
+      return await this.fetchMetricsFromFirestore();
+    } catch (firestoreError: unknown) {
+      console.warn('[AdminMetricsService] Firestore metrics unavailable; trying the secure API.', firestoreError);
+      return apiService.request<AdminMetrics>('/api/admin/metrics', { authenticated: true, timeoutMs: 2_500 });
+    }
+  }
+
+  private async fetchMetricsFromFirestore(): Promise<AdminMetrics> {
+    await adminAccessService.requireAdmin();
+    const [usersCount, postsCount, reelsCount, eventsCount, reportsCount] = await Promise.all([
+      this.countCollection('users'),
+      this.countPreferredCollection('posts', 'feedPosts'),
+      this.countPreferredCollection('reels', 'shorts'),
+      this.countCollection('events'),
+      this.countCollection('reports'),
+    ]);
+    return { usersCount, postsCount, reelsCount, eventsCount, reportsCount };
+  }
+
+  private async countCollection(collectionName: string): Promise<number> {
+    return (await getCountFromServer(collection(db, collectionName))).data().count;
+  }
+
+  private async countPreferredCollection(primaryCollection: string, compatibilityCollection: string): Promise<number> {
+    const primaryCount = await this.countCollection(primaryCollection).catch(() => 0);
+    return primaryCount > 0 ? primaryCount : this.countCollection(compatibilityCollection);
   }
 }

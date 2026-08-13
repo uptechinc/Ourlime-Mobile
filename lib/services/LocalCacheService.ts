@@ -1,5 +1,6 @@
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { RequestTimeoutService } from './RequestTimeoutService';
 
 type CacheRow = {
   payload: string;
@@ -26,6 +27,7 @@ const CURRENT_DATABASE_VERSION = 1;
 export class LocalCacheService {
   private static instance: LocalCacheService;
   private readonly logger = DiagnosticLogService.getInstance();
+  private readonly timeoutService = RequestTimeoutService.getInstance();
   private databasePromise: Promise<SQLiteDatabase> | null = null;
 
   private constructor() {}
@@ -125,7 +127,14 @@ export class LocalCacheService {
   }
 
   private async getDatabase(): Promise<SQLiteDatabase> {
-    if (!this.databasePromise) this.databasePromise = this.openAndMigrate();
+    if (!this.databasePromise) {
+      this.databasePromise = this.timeoutService
+        .run(this.openAndMigrate(), 'Local cache initialization', 8_000)
+        .catch((error: unknown) => {
+          this.databasePromise = null;
+          throw error;
+        });
+    }
     return this.databasePromise;
   }
 

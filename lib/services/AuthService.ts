@@ -116,7 +116,7 @@ export class AuthService {
   public async requestPasswordReset(email: string): Promise<void> {
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) throw new AuthServiceError('UNKNOWN', 'Email is required.');
-    await sendPasswordResetEmail(auth, normalizedEmail, { url: 'ourlime://reset-password' });
+    await sendPasswordResetEmail(auth, normalizedEmail, { url: 'https://ourlime.com/reset-password' });
   }
 
   public async validatePasswordResetCode(code: string): Promise<string> {
@@ -194,6 +194,9 @@ export class AuthService {
    * Fetch user profile from Firestore
    */
   public async getUserProfile(uid: string): Promise<UserProfile | null> {
+    // Guard: Firestore document path requires a non-empty uid.
+    // An empty string produces the path 'users' (no document segment) which throws invalid-argument.
+    if (!uid) return null;
     this.logger.info('AuthService', 'profile:user-document:start', { uid, collection: 'users' });
     try {
       const snap = await getDoc(doc(db, 'users', uid));
@@ -332,6 +335,15 @@ export class AuthService {
     return auth.currentUser;
   }
 
+  public getVerifiedCurrentUser(): FirebaseUser | null {
+    const currentUser = auth.currentUser;
+    return currentUser?.emailVerified === true ? currentUser : null;
+  }
+
+  public isVerifiedUser(user: FirebaseUser | null | undefined): user is FirebaseUser {
+    return user?.emailVerified === true;
+  }
+
   public async updateUserProfile(userId: string, updates: Pick<UserProfile, 'firstName' | 'lastName' | 'userName' | 'bio' | 'location' | 'profilePicture' | 'coverPhoto'>): Promise<void> {
     await updateDoc(doc(db, 'users', userId), {
       ...updates,
@@ -350,6 +362,12 @@ export class AuthService {
         emailVerified: user?.emailVerified ?? null,
       });
       onChange(user);
+    });
+  }
+
+  public subscribeToVerifiedAuthState(onChange: (user: FirebaseUser | null) => void): Unsubscribe {
+    return this.subscribeToAuthState((user) => {
+      onChange(this.isVerifiedUser(user) ? user : null);
     });
   }
 

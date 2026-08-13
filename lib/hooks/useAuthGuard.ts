@@ -14,10 +14,11 @@ export function useAuthGuard() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+      const verifiedUser = currentUser?.emailVerified === true ? currentUser : null;
+      setUser(verifiedUser);
       setIsInitializing(false);
-      if (currentUser) {
-        void pushNotificationService.registerForPushNotifications(currentUser.uid);
+      if (verifiedUser) {
+        void pushNotificationService.registerForPushNotifications(verifiedUser.uid);
       }
     });
 

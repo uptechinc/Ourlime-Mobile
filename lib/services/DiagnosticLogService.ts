@@ -22,11 +22,11 @@ export class DiagnosticLogService {
   }
 
   public warn(scope: string, step: string, details: LogDetails = {}): void {
-    console.warn(this.formatPrefix(scope, `${step}:warning`), details);
+    console.log(this.formatPrefix(scope, `${step}:warning`), details);
   }
 
   public error(scope: string, step: string, error: unknown, details: LogDetails = {}): void {
-    console.error(this.formatPrefix(scope, `${step}:error`), {
+    console.log(this.formatPrefix(scope, `${step}:error`), {
       ...details,
       error: this.describeError(error),
     });

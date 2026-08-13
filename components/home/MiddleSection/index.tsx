@@ -23,6 +23,7 @@ import PostCardSection from './MiddleSectionComponent/PostCardSection/PostCardSe
 import SuggestedUsersSection from '@/components/home/SuggestedUsersSection';
 import ActivityCard from '@/components/home/ActivityCard';
 import { SkeletonPostCard } from '@/components/home/SkeletonLoaders';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type MiddleSectionProps = {
   userProfile: UserProfile;
@@ -81,6 +82,7 @@ function rowKey(row: FeedRow): string {
 }
 
 export default function MiddleSection({ userProfile, createdPost, onCreatePost }: MiddleSectionProps) {
+  const { colors, isDark } = useAppTheme();
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -370,7 +372,9 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
               marginBottom: 16,
               padding: 18,
               borderRadius: 20,
-              backgroundColor: '#ffffff',
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
               shadowColor: '#000000',
               shadowOffset: { width: 0, height: 2 },
               shadowOpacity: 0.05,
@@ -399,7 +403,7 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
 
         case 'loading':
           return (
-            <View style={{ marginHorizontal: 16 }}>
+            <View style={{ width: '100%' }}>
               <SkeletonPostCard />
               <SkeletonPostCard />
             </View>
@@ -415,15 +419,15 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
               justifyContent: 'center',
               borderRadius: 20,
               borderWidth: 1,
-              borderColor: '#fecaca',
-              backgroundColor: '#fff7f7',
+              borderColor: isDark ? '#7f1d1d' : '#fecaca',
+              backgroundColor: isDark ? '#450a0a' : '#fff7f7',
             }}>
-              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#fee2e2', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: isDark ? '#7f1d1d' : '#fee2e2', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
                 <Icon name="alert-triangle" size={30} color="#c64d53" />
               </View>
-              <Text style={{ color: '#991b1b', fontSize: 20, fontWeight: '700', textAlign: 'center' }}>Could not load your feed</Text>
-              <Text style={{ marginTop: 9, color: '#7f1d1d', fontSize: 13, textAlign: 'center' }}>{row.message}</Text>
-              <Text style={{ marginTop: 8, color: '#6b7280', fontSize: 12, textAlign: 'center' }}>
+              <Text style={{ color: isDark ? '#fca5a5' : '#991b1b', fontSize: 20, fontWeight: '700', textAlign: 'center' }}>Could not load your feed</Text>
+              <Text style={{ marginTop: 9, color: isDark ? '#fecaca' : '#7f1d1d', fontSize: 13, textAlign: 'center' }}>{row.message}</Text>
+              <Text style={{ marginTop: 8, color: colors.mutedText, fontSize: 12, textAlign: 'center' }}>
                 Check Metro for logs beginning with [Ourlime.Mobile][PostService].
               </Text>
               <TouchableOpacity
@@ -438,13 +442,13 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
         case 'empty':
           return (
             <View style={{ minHeight: 360, paddingHorizontal: 32, alignItems: 'center', justifyContent: 'center' }}>
-              <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+              <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: isDark ? '#065f46' : '#d1fae5', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
                 <Icon name={activeFilter === 'All' ? 'inbox' : 'filter'} size={34} color="#10b981" />
               </View>
-              <Text style={{ color: '#111827', fontSize: 21, fontWeight: '700' }}>
+              <Text style={{ color: colors.text, fontSize: 21, fontWeight: '700' }}>
                 {activeFilter === 'All' ? 'Your feed is empty' : `No ${activeFilter.toLowerCase()} posts`}
               </Text>
-              <Text style={{ marginTop: 8, color: '#6b7280', fontSize: 15, textAlign: 'center' }}>
+              <Text style={{ marginTop: 8, color: colors.mutedText, fontSize: 15, textAlign: 'center' }}>
                 {activeFilter === 'All'
                   ? 'Be the first to create a post!'
                   : 'Try another filter or pull down to refresh.'}
@@ -454,7 +458,7 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
 
         case 'post':
           return (
-            <View style={{ marginHorizontal: 16, marginBottom: 16 }}>
+            <View style={{ width: '100%', marginBottom: 12 }}>
               {row.post.type === 'poll' ? (
                 <PollCardSection
                   post={row.post}
@@ -522,7 +526,7 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
         data={rows}
         keyExtractor={rowKey}
         renderItem={renderRow}
-        style={{ flex: 1, backgroundColor: '#f8f9fa' }}
+        style={{ flex: 1, backgroundColor: colors.canvas }}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 48 }}
         showsVerticalScrollIndicator={false}
         // ── Video visibility tracking ────────────────────────────────────────

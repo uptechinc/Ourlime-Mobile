@@ -1,5 +1,5 @@
-import AdminWebOnlyScreen from '@/components/admin/AdminWebOnlyScreen';
+import AdminCategoryWorkspace from '@/components/admin/AdminCategoryWorkspace';
 
 export default function AdminCategoriesRoute() {
-  return <AdminWebOnlyScreen title="Marketplace Categories" description="Marketplace category administration is not yet available in the native app." />;
+  return <AdminCategoryWorkspace kind="products" title="Marketplace Categories" />;
 }

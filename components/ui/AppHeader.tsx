@@ -8,6 +8,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNotifications } from '@/lib/contexts/NotificationContext';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type AppHeaderProps = {
     title?: string;
@@ -35,6 +36,11 @@ export default function AppHeader({
     profilePictureUrl,
 }: AppHeaderProps) {
     const { unreadCount } = useNotifications();
+    const { isDark } = useAppTheme();
+    const surfaceColor = isDark ? '#0f172a' : '#ffffff';
+    const controlColor = isDark ? '#1e293b' : '#f8f9fa';
+    const contentColor = isDark ? '#f8fafc' : '#333333';
+    const borderColor = isDark ? '#334155' : '#e5e5e5';
     const renderLogo = () => {
         if (logoType === 'both') {
             return (
@@ -87,16 +93,16 @@ export default function AppHeader({
 
     return (
         <>
-            <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-            <SafeAreaView style={{ backgroundColor: '#fff' }} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={surfaceColor} />
+            <SafeAreaView style={{ backgroundColor: surfaceColor }} edges={['top', 'left', 'right']}>
                 <View style={{
                     flexDirection: 'row',
                     alignItems: 'center',
                     paddingHorizontal: 16,
                     paddingVertical: 12,
-                    backgroundColor: '#fff',
+                    backgroundColor: surfaceColor,
                     borderBottomWidth: 1,
-                    borderBottomColor: '#e5e5e5',
+                    borderBottomColor: borderColor,
                     shadowColor: '#000',
                     shadowOffset: {
                         width: 0,
@@ -122,7 +128,7 @@ export default function AppHeader({
                                 }}
                                 activeOpacity={0.7}
                             >
-                                <Ionicons name="arrow-back" size={24} color="#333" />
+                                <Ionicons name="arrow-back" size={24} color={contentColor} />
                             </TouchableOpacity>
                         ) : null}
                         
@@ -132,7 +138,7 @@ export default function AppHeader({
                             <Text style={{
                                 fontSize: 18,
                                 fontWeight: '600',
-                                color: '#333',
+                                color: contentColor,
                             }}>
                                 {title}
                             </Text>
@@ -177,12 +183,12 @@ export default function AppHeader({
                                 style={{
                                     padding: 8,
                                     borderRadius: 8,
-                                    backgroundColor: '#f8f9fa',
+                                    backgroundColor: controlColor,
                                     position: 'relative',
                                 }}
                                 activeOpacity={0.7}
                             >
-                                <Ionicons name="notifications-outline" size={22} color="#333" />
+                                <Ionicons name="notifications-outline" size={22} color={contentColor} />
                                 {unreadCount > 0 && (
                                     <View style={{
                                         position: 'absolute',
@@ -207,15 +213,16 @@ export default function AppHeader({
                             </TouchableOpacity>
                         )}
                         <TouchableOpacity 
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                             onPress={onMenuPress} 
                             style={{
                                 padding: 8,
                                 borderRadius: 8,
-                                backgroundColor: '#f8f9fa',
+                                backgroundColor: controlColor,
                             }}
                             activeOpacity={0.7}
                         >
-                            <Ionicons name="menu" size={24} color="#333" />
+                            <Ionicons name="menu" size={24} color={contentColor} />
                         </TouchableOpacity>
                     </View>
                 </View>

@@ -12,6 +12,7 @@ export type ApiRequestOptions = {
   body?: unknown;
   signal?: AbortSignal;
   headers?: Record<string, string>;
+  timeoutMs?: number;
 };
 
 export type ApiErrorPayload = {
@@ -73,13 +74,21 @@ export class ApiService {
 
     const url = `${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     this.logger.info('ApiService', 'request:start', { requestId, method, path });
+    const requestController = new AbortController();
+    let didTimeout = false;
+    const handleExternalAbort = () => requestController.abort();
+    options.signal?.addEventListener('abort', handleExternalAbort, { once: true });
+    const timeoutId = setTimeout(() => {
+      didTimeout = true;
+      requestController.abort();
+    }, options.timeoutMs ?? 8_000);
 
     try {
       const response = await fetch(url, {
         method,
         headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        signal: options.signal,
+        signal: requestController.signal,
       });
       const payload: unknown = await response.json().catch(() => null);
       if (response.status === 401 && options.authenticated && !didRetryAuthentication && auth.currentUser) {
@@ -109,6 +118,21 @@ export class ApiService {
       });
       return payload as TResponse;
     } catch (error: unknown) {
+      if (didTimeout) {
+        const timeoutError = new ApiServiceError(
+          'The Ourlime API did not respond at ' + this.baseUrl + '.',
+          408,
+          'REQUEST_TIMEOUT',
+        );
+        this.logger.warn('ApiService', 'request:timeout', {
+          requestId,
+          method,
+          path,
+          baseUrl: this.baseUrl,
+          elapsedMs: Date.now() - startedAt,
+        });
+        throw timeoutError;
+      }
       if (options.signal?.aborted) throw error;
       const isNetworkError = error instanceof TypeError || (error instanceof Error && error.message.toLowerCase().includes('fetch'));
       if (isNetworkError) {
@@ -128,6 +152,9 @@ export class ApiService {
         });
       }
       throw error;
+    } finally {
+      clearTimeout(timeoutId);
+      options.signal?.removeEventListener('abort', handleExternalAbort);
     }
   }
 

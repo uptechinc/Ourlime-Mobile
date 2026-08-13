@@ -1,10 +1,11 @@
 import { collection, limit, onSnapshot, orderBy, query, Timestamp, type DocumentData, type QueryDocumentSnapshot, type Unsubscribe } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { MessagingService, type ConversationEntry } from '@/lib/messaging/MessagingService';
-import { LocalCacheService } from './LocalCacheService';
+import { LocalCacheService, type CachedRecord } from './LocalCacheService';
 import { ResourceErrorService } from './ResourceErrorService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { RequestTimeoutService } from './RequestTimeoutService';
 
 const CONVERSATION_NAMESPACE = 'conversations';
 const CONVERSATION_CACHE_KEY = 'latest';
@@ -17,6 +18,7 @@ export class ConversationResourceService {
   private readonly cacheService = LocalCacheService.getInstance();
   private readonly errorService = ResourceErrorService.getInstance();
   private readonly logger = DiagnosticLogService.getInstance();
+  private readonly timeoutService = RequestTimeoutService.getInstance();
   private inFlight: Promise<void> | null = null;
   private unsubscribe: Unsubscribe | null = null;
   private activeUserId: string | null = null;
@@ -33,7 +35,16 @@ export class ConversationResourceService {
     const current = useResourceStore.getState().conversations;
     if (current.data) return;
     useResourceStore.getState().setConversations({ ...current, status: 'hydrating', error: null });
-    const cached = await this.cacheService.read<ConversationEntry[]>(userId, CONVERSATION_NAMESPACE, CONVERSATION_CACHE_KEY);
+    let cached: CachedRecord<ConversationEntry[]> | null;
+    try {
+      cached = await this.cacheService.read<ConversationEntry[]>(userId, CONVERSATION_NAMESPACE, CONVERSATION_CACHE_KEY);
+    } catch (error: unknown) {
+      this.logger.warn('ConversationResourceService', 'hydrate:cache-unavailable', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      useResourceStore.getState().setConversations({ ...current, status: 'idle', error: null });
+      return;
+    }
     if (!cached) {
       useResourceStore.getState().setConversations({ ...current, status: 'idle' });
       return;
@@ -59,7 +70,10 @@ export class ConversationResourceService {
       const incoming = snapshot.docs.map((document) => this.mapSummary(document)).filter((item): item is ConversationEntry => item !== null);
       this.logger.info('ConversationResourceService', 'listener:reconcile', { changeCount: snapshot.docChanges().length, recordCount: incoming.length, fromCache: snapshot.metadata.fromCache });
       if (incoming.length === 0) {
-        if (!snapshot.metadata.fromCache) void this.refresh(userId, true);
+        if (!snapshot.metadata.fromCache) {
+          void this.commit(userId, []);
+          void this.refresh(userId, true);
+        }
         return;
       }
       const existing = useResourceStore.getState().conversations.data ?? [];
@@ -86,7 +100,7 @@ export class ConversationResourceService {
 
   public async loadMore(userId: string): Promise<void> {
     if (!this.nextCursor || this.inFlight) return;
-    this.inFlight = this.messagingService.fetchConversationPage(userId, this.nextCursor).then(async (page) => {
+    this.inFlight = this.timeoutService.run(this.messagingService.fetchConversationPage(userId, this.nextCursor), 'Conversation pagination request').then(async (page) => {
       this.nextCursor = page.nextCursor;
       await this.commit(userId, [...(useResourceStore.getState().conversations.data ?? []), ...page.items]);
     }).finally(() => { this.inFlight = null; });
@@ -101,7 +115,7 @@ export class ConversationResourceService {
     const current = useResourceStore.getState().conversations;
     useResourceStore.getState().setConversations({ ...current, status: current.data ? 'refreshing' : 'hydrating', error: null });
     try {
-      const page = await this.messagingService.fetchConversationPage(userId, null);
+      const page = await this.timeoutService.run(this.messagingService.fetchConversationPage(userId, null), 'Conversation request');
       this.nextCursor = page.nextCursor;
       await this.commit(userId, page.items);
     } catch (error: unknown) {

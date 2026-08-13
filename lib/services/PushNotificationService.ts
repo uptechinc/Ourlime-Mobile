@@ -2,7 +2,6 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import type { Href } from 'expo-router';
 import { ApiService } from './ApiService';
 import { DiagnosticLogService } from './DiagnosticLogService';
@@ -14,6 +13,19 @@ export type PushMessageType = 'message' | 'voice_call' | 'video_call';
 export type PushMessagePayload = { title: string; body: string; type: PushMessageType; senderId: string; channelId?: string };
 
 type PushTokenResponse = { success: boolean; error?: string };
+
+// expo-notifications remote push support was removed from Expo Go in SDK 53.
+// We load it lazily so the module never throws at import time.
+// In Expo Go the require() will still throw at CALL time, which we catch per-method.
+function getNotifications(): typeof import('expo-notifications') | null {
+  if (Constants.appOwnership === 'expo') return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-notifications') as typeof import('expo-notifications');
+  } catch {
+    return null;
+  }
+}
 
 export class PushNotificationService {
   private static instance: PushNotificationService;
@@ -28,46 +40,58 @@ export class PushNotificationService {
   }
 
   public configureForegroundPresentation(): void {
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowBanner: true,
-        shouldShowList: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-      }),
-    });
+    const Notifications = getNotifications();
+    if (!Notifications) return;
+    try {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+        }),
+      });
+    } catch {
+      // Not supported in Expo Go — silently skip.
+    }
   }
 
   public async getDevicePushToken(): Promise<string | null> {
     if (Platform.OS === 'web' || !Device.isDevice) return null;
-    const existingPermission = await Notifications.getPermissionsAsync();
-    const permission = existingPermission.status === 'granted'
-      ? existingPermission
-      : await Notifications.requestPermissionsAsync();
-    if (permission.status !== 'granted') return null;
+    const Notifications = getNotifications();
+    if (!Notifications) return null;
+    try {
+      const existingPermission = await Notifications.getPermissionsAsync();
+      const permission = existingPermission.status === 'granted'
+        ? existingPermission
+        : await Notifications.requestPermissionsAsync();
+      if (permission.status !== 'granted') return null;
 
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'Ourlime notifications',
-        importance: Notifications.AndroidImportance.HIGH,
-        sound: 'default',
-      });
-      await Notifications.setNotificationChannelAsync('calls', {
-        name: 'Ourlime calls',
-        importance: Notifications.AndroidImportance.MAX,
-        sound: 'default',
-        vibrationPattern: [0, 250, 250, 250],
-      });
-    }
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'Ourlime notifications',
+          importance: Notifications.AndroidImportance.HIGH,
+          sound: 'default',
+        });
+        await Notifications.setNotificationChannelAsync('calls', {
+          name: 'Ourlime calls',
+          importance: Notifications.AndroidImportance.MAX,
+          sound: 'default',
+          vibrationPattern: [0, 250, 250, 250],
+        });
+      }
 
-    const projectId = Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.eas?.projectId;
-    if (!projectId) {
-      this.logger.warn('PushNotificationService', 'token:no-project-id');
+      const projectId = Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.eas?.projectId;
+      if (!projectId) {
+        this.logger.warn('PushNotificationService', 'token:no-project-id');
+        return null;
+      }
+      const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+      await AsyncStorage.setItem(DEVICE_TOKEN_KEY, token);
+      return token;
+    } catch {
       return null;
     }
-    const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-    await AsyncStorage.setItem(DEVICE_TOKEN_KEY, token);
-    return token;
   }
 
   public async registerForPushNotifications(userId: string): Promise<string | null> {

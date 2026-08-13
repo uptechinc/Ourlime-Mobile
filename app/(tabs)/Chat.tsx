@@ -18,6 +18,7 @@ import { SkeletonChatRow } from '@/components/home/SkeletonLoaders';
 import type { ConversationEntry } from '@/lib/messaging/MessagingService';
 import { Timestamp } from 'firebase/firestore';
 import { useConversations } from '@/lib/hooks/useConversations';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const authService = AuthService.getInstance();
 
@@ -47,6 +48,7 @@ function formatLastMessagePreview(msg?: string, userName?: string): string {
 
 export default function ChatTabScreen() {
   const router = useRouter();
+  const { isDark, colors } = useAppTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [composeVisible, setComposeVisible] = useState(false);
   const currentUserId = authService.getCurrentUser()?.uid ?? '';
@@ -71,12 +73,12 @@ export default function ChatTabScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#ffffff' }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.surface }}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
 
       {/* Header */}
-      <View style={{ paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827' }}>Messages</Text>
+      <View style={{ paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={{ fontSize: 24, fontWeight: '800', color: colors.text }}>Messages</Text>
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <TouchableOpacity onPress={() => setComposeVisible(true)} style={{ padding: 6 }} accessibilityLabel="Start a new conversation">
             <Icon name="edit" size={20} color="#10b981" />
@@ -85,27 +87,27 @@ export default function ChatTabScreen() {
       </View>
 
       {/* Search Bar */}
-      <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+      <View style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.surface }}>
         <View style={{
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: '#f1f5f9',
+          backgroundColor: colors.control,
           borderRadius: 14,
           paddingHorizontal: 14,
           paddingVertical: 9,
         }}>
-          <Icon name="search" size={18} color="#64748b" style={{ marginRight: 8 }} />
+          <Icon name="search" size={18} color={colors.icon} style={{ marginRight: 8 }} />
           <TextInput
-            style={{ flex: 1, fontSize: 15, color: '#0f172a' }}
+            style={{ flex: 1, fontSize: 15, color: colors.text }}
             placeholder="Search conversations..."
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={colors.mutedText}
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoCapitalize="none"
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Icon name="x-circle" size={18} color="#94a3b8" />
+              <Icon name="x-circle" size={18} color={colors.mutedText} />
             </TouchableOpacity>
           )}
         </View>
@@ -113,7 +115,7 @@ export default function ChatTabScreen() {
 
       {/* Conversations List */}
       <ScrollView
-        style={{ flex: 1, backgroundColor: '#f8fafc' }}
+        style={{ flex: 1, backgroundColor: colors.canvas }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 80 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
       >
@@ -129,7 +131,7 @@ export default function ChatTabScreen() {
           <View style={{ paddingVertical: 80, alignItems: 'center' }}>
             <Icon name="alert-triangle" size={36} color="#c64d53" />
             <Text style={{ marginTop: 12, fontSize: 16, fontWeight: '700', color: '#991b1b' }}>Messages unavailable</Text>
-            <Text style={{ marginTop: 6, color: '#64748b', textAlign: 'center' }}>{loadError}</Text>
+            <Text style={{ marginTop: 6, color: colors.mutedText, textAlign: 'center' }}>{loadError}</Text>
             <TouchableOpacity onPress={() => void refresh()} style={{ marginTop: 16, borderRadius: 999, backgroundColor: '#10b981', paddingHorizontal: 18, paddingVertical: 10 }}><Text style={{ color: '#fff', fontWeight: '700' }}>Retry</Text></TouchableOpacity>
           </View>
         ) : filteredConversations.length === 0 ? (
@@ -137,8 +139,8 @@ export default function ChatTabScreen() {
             <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#f0fdf4', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
               <Icon name="message-circle" size={36} color="#10b981" />
             </View>
-            <Text style={{ fontSize: 18, fontWeight: '700', color: '#1e293b', marginBottom: 6 }}>No Messages Yet</Text>
-            <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center', paddingHorizontal: 32 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 6 }}>No Messages Yet</Text>
+            <Text style={{ fontSize: 13, color: colors.mutedText, textAlign: 'center', paddingHorizontal: 32 }}>
               Connect with friends on Ourlime to start messaging.
             </Text>
           </View>
@@ -154,12 +156,12 @@ export default function ChatTabScreen() {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  backgroundColor: '#ffffff',
+                  backgroundColor: colors.surface,
                   padding: 14,
                   borderRadius: 18,
                   marginBottom: 8,
                   borderWidth: hasUnread ? 1.5 : 1,
-                  borderColor: hasUnread ? '#10b981' : '#f1f5f9',
+                  borderColor: hasUnread ? '#10b981' : colors.border,
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 1 },
                   shadowOpacity: 0.04,
@@ -179,21 +181,21 @@ export default function ChatTabScreen() {
                     borderRadius: 6,
                     backgroundColor: '#10b981',
                     borderWidth: 2,
-                    borderColor: '#ffffff',
+                    borderColor: colors.surface,
                   }} /> : null}
                 </View>
 
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                    <Text style={{ fontSize: 16, fontWeight: hasUnread ? '800' : '600', color: '#1e293b' }} numberOfLines={1}>
+                    <Text style={{ fontSize: 16, fontWeight: hasUnread ? '800' : '600', color: colors.text }} numberOfLines={1}>
                       {user.firstName} {user.lastName}
                     </Text>
-                    <Text style={{ fontSize: 11, color: hasUnread ? '#10b981' : '#94a3b8', fontWeight: hasUnread ? '700' : '400' }}>
+                    <Text style={{ fontSize: 11, color: hasUnread ? '#10b981' : colors.mutedText, fontWeight: hasUnread ? '700' : '400' }}>
                       {formatLastMessageTime(user.lastMessageTime)}
                     </Text>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 13, color: hasUnread ? '#374151' : '#94a3b8', fontWeight: hasUnread ? '600' : '400', flex: 1 }} numberOfLines={1}>
+                    <Text style={{ fontSize: 13, color: hasUnread ? colors.text : colors.mutedText, fontWeight: hasUnread ? '600' : '400', flex: 1 }} numberOfLines={1}>
                       {formatLastMessagePreview(user.lastMessage, user.userName)}
                     </Text>
                     {hasUnread && (
@@ -206,7 +208,7 @@ export default function ChatTabScreen() {
                   </View>
                 </View>
 
-                <Icon name="chevron-right" size={16} color="#cbd5e1" style={{ marginLeft: 6 }} />
+                <Icon name="chevron-right" size={16} color={colors.icon} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
             );
           })}
@@ -215,10 +217,10 @@ export default function ChatTabScreen() {
         )}
       </ScrollView>
       <Modal visible={composeVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setComposeVisible(false)}>
-        <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#f8fafc' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}><Text style={{ flex: 1, fontSize: 20, fontWeight: '900', color: '#0f172a' }}>New message</Text><TouchableOpacity onPress={() => setComposeVisible(false)}><Icon name="x" size={24} color="#475569" /></TouchableOpacity></View>
+        <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><Text style={{ flex: 1, fontSize: 20, fontWeight: '900', color: colors.text }}>New message</Text><TouchableOpacity onPress={() => setComposeVisible(false)}><Icon name="x" size={24} color={colors.icon} /></TouchableOpacity></View>
           <ScrollView contentContainerStyle={{ padding: 16 }}>
-            {conversations.length === 0 ? <View style={{ paddingVertical: 60, alignItems: 'center' }}><Icon name="users" size={38} color="#10b981" /><Text style={{ marginTop: 10, fontWeight: '800', color: '#334155' }}>Add friends to start chatting</Text></View> : conversations.map((friend) => <TouchableOpacity key={friend.uid} onPress={() => { setComposeVisible(false); handleOpenChat(friend); }} style={{ flexDirection: 'row', alignItems: 'center', padding: 13, borderRadius: 15, marginBottom: 8, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0' }}><UserAvatar profileImage={friend.profilePicture} firstName={friend.firstName || friend.userName} size={46} /><View style={{ flex: 1, marginLeft: 11 }}><Text style={{ color: '#0f172a', fontWeight: '800' }}>{friend.firstName} {friend.lastName}</Text><Text style={{ color: '#64748b', marginTop: 2 }}>@{friend.userName}</Text></View><Icon name="message-circle" size={19} color="#10b981" /></TouchableOpacity>)}
+            {conversations.length === 0 ? <View style={{ paddingVertical: 60, alignItems: 'center' }}><Icon name="users" size={38} color="#10b981" /><Text style={{ marginTop: 10, fontWeight: '800', color: colors.text }}>Add friends to start chatting</Text></View> : conversations.map((friend) => <TouchableOpacity key={friend.uid} onPress={() => { setComposeVisible(false); handleOpenChat(friend); }} style={{ flexDirection: 'row', alignItems: 'center', padding: 13, borderRadius: 15, marginBottom: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}><UserAvatar profileImage={friend.profilePicture} firstName={friend.firstName || friend.userName} size={46} /><View style={{ flex: 1, marginLeft: 11 }}><Text style={{ color: colors.text, fontWeight: '800' }}>{friend.firstName} {friend.lastName}</Text><Text style={{ color: colors.mutedText, marginTop: 2 }}>@{friend.userName}</Text></View><Icon name="message-circle" size={19} color="#10b981" /></TouchableOpacity>)}
           </ScrollView>
         </SafeAreaView>
       </Modal>

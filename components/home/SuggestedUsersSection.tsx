@@ -5,12 +5,14 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import { AuthService } from '@/lib/services/AuthService';
 import { RelationshipService, type RelationshipSuggestion } from '@/lib/services/RelationshipService';
 import CustomModal from '@/components/ui/CustomModal';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const authService = AuthService.getInstance();
 const relationshipService = RelationshipService.getInstance();
 
 export default function SuggestedUsersSection() {
   const router = useRouter();
+  const { colors } = useAppTheme();
   const [users, setUsers] = useState<RelationshipSuggestion[]>([]);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -39,8 +41,8 @@ export default function SuggestedUsersSection() {
   if (users.length === 0) return null;
 
   return (
-    <View style={{ marginBottom: 16, backgroundColor: '#ffffff', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 }}>
-      <Text style={{ fontSize: 15, fontWeight: '700', color: '#1e293b', marginBottom: 12 }}>
+    <View style={{ marginBottom: 16, backgroundColor: colors.surface, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 }}>
+      <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 12 }}>
         People You May Know
       </Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -52,23 +54,23 @@ export default function SuggestedUsersSection() {
               width: 130,
               padding: 12,
               borderRadius: 16,
-              backgroundColor: '#f8fafc',
+              backgroundColor: colors.control,
               borderWidth: 1,
-              borderColor: '#e2e8f0',
+              borderColor: colors.border,
               alignItems: 'center',
               marginRight: 10,
             }}
           >
             <UserAvatar profileImage={user.profileImage} firstName={user.firstName || user.userName} size={52} />
-            <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '700', color: '#1e293b', marginTop: 8, textAlign: 'center' }}>
+            <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 8, textAlign: 'center' }}>
               {user.firstName}
             </Text>
-            <Text numberOfLines={1} style={{ fontSize: 12, color: '#64748b', marginTop: 2, textAlign: 'center' }}>
+            <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText, marginTop: 2, textAlign: 'center' }}>
               @{user.userName}
             </Text>
-            {user.reason ? <Text numberOfLines={1} style={{ fontSize: 10, color: '#059669', marginTop: 3 }}>{user.reason}</Text> : null}
-            <TouchableOpacity disabled={busyId === user.id || pendingIds.has(user.id)} onPress={() => void handleFriendRequest(user.id)} style={{ marginTop: 10, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, backgroundColor: pendingIds.has(user.id) ? '#e2e8f0' : '#10b981', width: '100%', alignItems: 'center' }}>
-              {busyId === user.id ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={{ fontSize: 12, fontWeight: '700', color: pendingIds.has(user.id) ? '#64748b' : '#ffffff' }}>{pendingIds.has(user.id) ? 'Sent' : 'Add Friend'}</Text>}
+            {user.reason ? <Text numberOfLines={1} style={{ fontSize: 10, color: '#10b981', marginTop: 3 }}>{user.reason}</Text> : null}
+            <TouchableOpacity disabled={busyId === user.id || pendingIds.has(user.id)} onPress={() => void handleFriendRequest(user.id)} style={{ marginTop: 10, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, backgroundColor: pendingIds.has(user.id) ? colors.border : '#10b981', width: '100%', alignItems: 'center' }}>
+              {busyId === user.id ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={{ fontSize: 12, fontWeight: '700', color: pendingIds.has(user.id) ? colors.mutedText : '#ffffff' }}>{pendingIds.has(user.id) ? 'Sent' : 'Add Friend'}</Text>}
             </TouchableOpacity>
           </TouchableOpacity>
         ))}

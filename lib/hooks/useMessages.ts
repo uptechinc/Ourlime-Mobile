@@ -10,7 +10,9 @@ export function useMessages(userId: string, peerId: string, chatId: string) {
 
   useEffect(() => {
     if (!userId || !peerId || !chatId) return;
-    void messageResourceService.hydrate(userId, chatId).then(() => messageResourceService.refresh(userId, peerId, chatId));
+    void messageResourceService.hydrate(userId, chatId)
+      .then(() => messageResourceService.refresh(userId, peerId, chatId))
+      .catch(() => undefined);
     messageResourceService.startRealtime(userId, chatId);
     return () => messageResourceService.stopRealtime(chatId);
   }, [userId, peerId, chatId]);
@@ -18,6 +20,6 @@ export function useMessages(userId: string, peerId: string, chatId: string) {
   return {
     resource,
     loadOlder: useCallback(() => messageResourceService.loadOlder(userId, peerId, chatId), [userId, peerId, chatId]),
-    markRead: useCallback(() => messageResourceService.markRead(peerId), [peerId]),
+    markRead: useCallback(() => messageResourceService.markRead(peerId).catch(() => undefined), [peerId]),
   };
 }
