@@ -5,10 +5,11 @@ import { createIdleResource } from '@/lib/types/resourceState';
 import type { FeedResourceData } from '@/lib/store/useResourceStore';
 
 const feedResourceService = FeedResourceService.getInstance();
+const IDLE_FEED_RESOURCE = createIdleResource<FeedResourceData>();
 
 export function useFeedQuery(query: FeedResourceQuery) {
   const key = feedResourceService.getKey(query);
-  const resource = useResourceStore((state) => state.feeds[key]) ?? createIdleResource<FeedResourceData>();
+  const resource = useResourceStore((state) => state.feeds[key]) ?? IDLE_FEED_RESOURCE;
 
   useEffect(() => {
     void feedResourceService.hydrate(query).then(() => feedResourceService.refresh(query));

@@ -1,8 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Share, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { AuthService } from '@/lib/services/AuthService';
 import { PostService, type PostItem } from '@/lib/services/PostService';
 import ImageAndVideoPostSection from './ImageAndVideoPostSection/ImageAndVideoPostSection';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -14,6 +14,7 @@ import CustomModal from '@/components/ui/CustomModal';
 import LikesModal from './LikesModal';
 import IdentityBadges from './IdentityBadges';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { useAppData } from '@/lib/contexts/AppDataContext';
 
 type PollCardSectionProps = {
   post: PostItem;
@@ -23,7 +24,6 @@ type PollCardSectionProps = {
   onPostUpdate: (post: PostItem) => void;
 };
 
-const authService = AuthService.getInstance();
 const postService = PostService.getInstance();
 
 const getTimeRemaining = (endTime?: string, createdAt?: string, pollDuration?: number): string => {
@@ -51,8 +51,8 @@ const getTimeRemaining = (endTime?: string, createdAt?: string, pollDuration?: n
 export default function PollCardSection({ post, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PollCardSectionProps) {
   const router = useRouter();
   const { isDark, colors } = useAppTheme();
+  const { activeUserId: currentUserId } = useAppData();
   const postUrl = findFirstUrl(`${post.caption} ${post.description}`);
-  const currentUserId = authService.getCurrentUser()?.uid;
   const [isLiked, setIsLiked] = useState(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
   const [likeCount, setLikeCount] = useState(post.stats.likes);
   const [shareCount, setShareCount] = useState(post.stats.shares);
@@ -70,6 +70,15 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
     const timer = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    setIsLiked(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
+    setSelectedOptionId(currentUserId ? post.pollVotes?.[currentUserId] : undefined);
+  }, [currentUserId, post.likedUserIds, post.pollVotes]);
+
+  useEffect(() => {
+    setLikeCount(post.stats.likes);
+  }, [post.stats.likes]);
 
   const timeRemaining = useMemo(
     () => getTimeRemaining(post.pollEndTime, post.createdAt, post.pollDuration),
@@ -91,10 +100,13 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
     setIsLiked(!previousLiked);
     setLikeCount((count) => Math.max(0, count + (previousLiked ? -1 : 1)));
     try {
-      const result = await postService.toggleLike(post.id, currentUserId, previousLiked);
+      const result = await postService.toggleLike(post, currentUserId, !previousLiked);
       setIsLiked(result.liked);
       setLikeCount(result.likeCount);
-      onPostUpdate({ ...post, stats: { ...post.stats, likes: result.likeCount }, likedUserIds: result.liked ? [currentUserId] : [] });
+      const likedUserIds = result.liked
+        ? Array.from(new Set([...post.likedUserIds, currentUserId]))
+        : post.likedUserIds.filter((userId) => userId !== currentUserId);
+      onPostUpdate({ ...post, stats: { ...post.stats, likes: result.likeCount }, likedUserIds });
     } catch (error: unknown) {
       setIsLiked(previousLiked);
       setLikeCount((count) => Math.max(0, count + (previousLiked ? 1 : -1)));
@@ -190,12 +202,12 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
       {post.hashtags.length > 0 ? <Text style={{ marginTop: 12, color: '#059669', fontWeight: '600' }}>{post.hashtags.map((tag) => `#${tag}`).join(' ')}</Text> : null}
 
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 13, borderTopWidth: 1, borderTopColor: colors.border }}>
-        <TouchableOpacity onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="heart" size={22} color={isLiked ? '#c64d53' : '#6b7280'} /></TouchableOpacity><TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 26, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#c64d53' : '#6b7280', fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} /></TouchableOpacity><TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 26, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#ef4444' : colors.mutedText, fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
         <TouchableOpacity onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 26, paddingVertical: 6 }}><Icon name="message-circle" size={22} color="#6b7280" /><Text style={{ marginLeft: 7, color: '#6b7280', fontWeight: '600' }}>{post.stats.comments}</Text></TouchableOpacity>
         <TouchableOpacity onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="share-2" size={22} color="#6b7280" /><Text style={{ marginLeft: 7, color: '#6b7280', fontWeight: '600' }}>{shareCount}</Text></TouchableOpacity>
       </View>
       <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} onPostUpdate={onPostUpdate} />
-      <LikesModal visible={likesVisible} postId={post.id} onClose={() => setLikesVisible(false)} />
+      <LikesModal visible={likesVisible} postId={post.id} origin={post.origin} onClose={() => setLikesVisible(false)} />
     </View>
     <CustomModal visible={feedback !== null} type="danger" title={feedback?.title ?? ''} message={feedback?.message ?? ''} onClose={() => setFeedback(null)} />
     </>

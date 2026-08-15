@@ -27,7 +27,7 @@ export class MessageResourceService {
   private readonly logger = DiagnosticLogService.getInstance();
   private readonly inFlight = new Map<string, Promise<void>>();
   private readonly listeners = new Map<string, Unsubscribe>();
-  private readonly listenerContexts = new Map<string, { userId: string; chatId: string }>();
+  private readonly listenerContexts = new Map<string, { userId: string; peerId: string; chatId: string }>();
 
   private constructor() {}
 
@@ -38,14 +38,47 @@ export class MessageResourceService {
 
   public async hydrate(userId: string, chatId: string): Promise<void> {
     const current = useResourceStore.getState().messages[chatId];
-    if (current?.data) return;
+    if (current?.data) {
+      const headMessages = this.mergeMessages(current.data.messages).slice(-MESSAGE_PAGE_SIZE);
+      this.logger.info('MessageResourceService', 'hydrate:memory-head', {
+        chatId,
+        sourceCount: current.data.messages.length,
+        hydratedCount: headMessages.length,
+      });
+      useResourceStore.getState().setMessages(chatId, {
+        ...current,
+        data: {
+          ...current.data,
+          messages: headMessages,
+          nextCursor: null,
+          hasMore: false,
+          pagination: { status: 'idle', errorMessage: null },
+        },
+      });
+      return;
+    }
     useResourceStore.getState().setMessages(chatId, this.withState(current, { status: 'hydrating', error: null }));
     const cached = await this.cacheService.read<MessageResourceData>(userId, MESSAGE_NAMESPACE, chatId);
     if (!cached) {
       useResourceStore.getState().setMessages(chatId, this.withState(null, { status: 'idle' }));
       return;
     }
-    const data = { ...cached.data, messages: cached.data.messages.map((message) => this.messagingService.normalizeMessage(message)).filter((message): message is FullMessage => message !== null) };
+    const data: MessageResourceData = {
+      ...cached.data,
+      messages: this.mergeMessages(
+        cached.data.messages
+          .map((message) => this.messagingService.normalizeMessage(message))
+          .filter((message): message is FullMessage => message !== null),
+      ).slice(-MESSAGE_PAGE_SIZE),
+      nextCursor: null,
+      hasMore: false,
+      pagination: cached.data.pagination ?? { status: 'idle', errorMessage: null },
+    };
+    this.logger.info('MessageResourceService', 'hydrate:disk-head', {
+      chatId,
+      sourceCount: cached.data.messages.length,
+      hydratedCount: data.messages.length,
+    });
     useResourceStore.getState().setMessages(chatId, { data, status: 'ready', source: 'disk', updatedAt: cached.updatedAt, isStale: true, error: null });
   }
 
@@ -62,13 +95,17 @@ export class MessageResourceService {
     const current = useResourceStore.getState().messages[chatId];
     const requestKey = `${chatId}:older`;
     if (!current?.data?.hasMore || !current.data.nextCursor || this.inFlight.has(requestKey)) return;
+    useResourceStore.getState().setMessages(chatId, {
+      ...current,
+      data: { ...current.data, pagination: { status: 'loading', errorMessage: null } },
+    });
     const operation = this.fetchPage(userId, peerId, chatId, current.data.nextCursor, true).finally(() => this.inFlight.delete(requestKey));
     this.inFlight.set(requestKey, operation);
     return operation;
   }
 
-  public startRealtime(userId: string, chatId: string): void {
-    this.listenerContexts.set(chatId, { userId, chatId });
+  public startRealtime(userId: string, peerId: string, chatId: string): void {
+    this.listenerContexts.set(chatId, { userId, peerId, chatId });
     if (this.listeners.has(chatId)) return;
     const clearedAt = useResourceStore.getState().messages[chatId]?.data?.clearedAt;
     const headQuery = clearedAt
@@ -86,6 +123,7 @@ export class MessageResourceService {
         nextCursor: current?.data?.nextCursor ?? null,
         hasMore: current?.data?.hasMore ?? false,
         clearedAt: current?.data?.clearedAt,
+        pagination: current?.data?.pagination ?? { status: 'idle', errorMessage: null },
       };
       void this.commit(userId, chatId, data, 'network');
     }, (error) => {
@@ -108,7 +146,7 @@ export class MessageResourceService {
   }
 
   public resumeRealtime(): void {
-    this.listenerContexts.forEach(({ userId, chatId }) => this.startRealtime(userId, chatId));
+    this.listenerContexts.forEach(({ userId, peerId, chatId }) => this.startRealtime(userId, peerId, chatId));
   }
 
   public async markRead(peerId: string): Promise<void> {
@@ -117,7 +155,7 @@ export class MessageResourceService {
 
   public async insertOptimistic(userId: string, chatId: string, message: FullMessage): Promise<void> {
     const current = useResourceStore.getState().messages[chatId];
-    const data: MessageResourceData = { messages: this.mergeMessages([...(current?.data?.messages ?? []), message]), nextCursor: current?.data?.nextCursor ?? null, hasMore: current?.data?.hasMore ?? false, clearedAt: current?.data?.clearedAt };
+    const data: MessageResourceData = { messages: this.mergeMessages([...(current?.data?.messages ?? []), message]), nextCursor: current?.data?.nextCursor ?? null, hasMore: current?.data?.hasMore ?? false, clearedAt: current?.data?.clearedAt, pagination: current?.data?.pagination ?? { status: 'idle', errorMessage: null } };
     await this.commit(userId, chatId, data, 'memory');
   }
 
@@ -129,11 +167,11 @@ export class MessageResourceService {
   }
 
   public async clearLocal(userId: string, chatId: string): Promise<void> {
-    await this.commit(userId, chatId, { messages: [], nextCursor: null, hasMore: false, clearedAt: Date.now() }, 'memory');
+    await this.commit(userId, chatId, { messages: [], nextCursor: null, hasMore: false, clearedAt: Date.now(), pagination: { status: 'idle', errorMessage: null } }, 'memory');
     const context = this.listenerContexts.get(chatId);
     this.listeners.get(chatId)?.();
     this.listeners.delete(chatId);
-    if (context) this.startRealtime(context.userId, context.chatId);
+    if (context) this.startRealtime(context.userId, context.peerId, context.chatId);
   }
 
   private async fetchPage(userId: string, peerId: string, chatId: string, cursor: string | null, appendOlder: boolean): Promise<void> {
@@ -148,16 +186,24 @@ export class MessageResourceService {
       const clearedAt = response.data?.clearedAt ?? current?.data?.clearedAt;
       const currentMessages = (current?.data?.messages ?? []).filter((message) => !clearedAt || message.timestamp.toMillis() > clearedAt);
       const messages = appendOlder ? this.mergeMessages([...page, ...currentMessages]) : this.mergeMessages([...currentMessages, ...page]);
-      await this.commit(userId, chatId, { messages, nextCursor: response.data?.nextCursor ?? null, hasMore: response.data?.hasMore === true, clearedAt }, 'network');
+      await this.commit(userId, chatId, { messages, nextCursor: response.data?.nextCursor ?? null, hasMore: response.data?.hasMore === true, clearedAt, pagination: { status: 'idle', errorMessage: null } }, 'network');
       if (clearedAt && clearedAt !== current?.data?.clearedAt && this.listenerContexts.has(chatId)) {
         const context = this.listenerContexts.get(chatId);
         this.listeners.get(chatId)?.();
         this.listeners.delete(chatId);
-        if (context) this.startRealtime(context.userId, context.chatId);
+        if (context) this.startRealtime(context.userId, context.peerId, context.chatId);
       }
     } catch (error: unknown) {
       const latest = useResourceStore.getState().messages[chatId];
-      useResourceStore.getState().setMessages(chatId, { ...this.withState(latest, { status: latest?.data ? 'ready' : 'error' }), isStale: true, error: this.errorService.normalize(error, 'Could not load messages.') });
+      const normalizedError = this.errorService.normalize(error, appendOlder ? 'Could not load earlier messages.' : 'Could not load messages.');
+      useResourceStore.getState().setMessages(chatId, {
+        ...this.withState(latest, { status: latest?.data ? 'ready' : 'error' }),
+        data: latest?.data
+          ? { ...latest.data, pagination: appendOlder ? { status: 'error', errorMessage: normalizedError.message } : latest.data.pagination }
+          : null,
+        isStale: true,
+        error: appendOlder && latest?.data ? latest.error : normalizedError,
+      });
     }
   }
 
@@ -171,8 +217,11 @@ export class MessageResourceService {
 
   private mergeMessages(messages: FullMessage[]): FullMessage[] {
     const unique = new Map<string, FullMessage>();
-    messages.forEach((message) => unique.set(message.id ?? `${message.senderId}:${message.timestamp.seconds}:${message.timestamp.nanoseconds}`, message));
-    return [...unique.values()].sort((left, right) => left.timestamp.toMillis() - right.timestamp.toMillis());
+    messages.forEach((message) => unique.set(this.messagingService.getMessageFingerprint(message), message));
+    return [...unique.values()].sort((left, right) => {
+      if (left.timestamp.seconds !== right.timestamp.seconds) return left.timestamp.seconds - right.timestamp.seconds;
+      return left.timestamp.nanoseconds - right.timestamp.nanoseconds;
+    });
   }
 
   private withState(current: ResourceState<MessageResourceData> | null | undefined, changes: Partial<ResourceState<MessageResourceData>>): ResourceState<MessageResourceData> {

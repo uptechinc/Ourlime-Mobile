@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStickers } from '@/lib/hooks/useStickers';
 import type { Sticker } from '@/lib/types/sticker';
 import { getLocalStickerSource } from '@/assets/images/stickers/stickerMap';
@@ -22,6 +23,7 @@ type StickerPickerProps = {
 };
 
 export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPickerProps) {
+  const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
   const [activePackId, setActivePackId] = useState('all');
 
@@ -68,6 +70,7 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
           shadowOpacity: 0.12,
           shadowRadius: 16,
           elevation: 12,
+          paddingBottom: insets.bottom,
         }}
       >
         {/* Drag handle */}

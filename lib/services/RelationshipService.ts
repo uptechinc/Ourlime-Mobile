@@ -97,6 +97,15 @@ export class RelationshipService {
     }
   }
 
+  public async respondToFriendRequest(requesterId: string, viewerId: string, action: 'accept' | 'decline'): Promise<void> {
+    const response = await this.apiService.request<RelationshipActionResponse>('/api/relationships/friends', {
+      method: 'POST',
+      authenticated: true,
+      body: { userId1: requesterId, userId2: viewerId, action },
+    });
+    if (!response.success) throw new Error(response.error || response.message || `Failed to ${action} friend request`);
+  }
+
   public async getSuggestions(maxResults = 6): Promise<RelationshipSuggestion[]> {
     try {
       const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>(
@@ -347,16 +356,43 @@ export class RelationshipService {
   }
 
   public async getNetworkStats(userId: string): Promise<RelationshipNetworkStats> {
-    const response = await this.apiService.request<{ success: boolean; data?: Partial<RelationshipNetworkStats>; error?: string }>(
-      `/api/relationships/status?userId1=${encodeURIComponent(userId)}&userId2=${encodeURIComponent(userId)}&type=network-stats`,
-      { authenticated: true }
-    );
-    if (!response.success || !response.data) throw new Error(response.error || 'Failed to load network stats');
-    return {
-      friends: typeof response.data.friends === 'number' ? response.data.friends : 0,
-      followers: typeof response.data.followers === 'number' ? response.data.followers : 0,
-      following: typeof response.data.following === 'number' ? response.data.following : 0,
-    };
+    try {
+      const response = await this.apiService.request<{ success: boolean; data?: Partial<RelationshipNetworkStats>; error?: string }>(
+        `/api/relationships/status?userId1=${encodeURIComponent(userId)}&userId2=${encodeURIComponent(userId)}&type=network-stats`,
+        { authenticated: true }
+      );
+      if (!response.success || !response.data) throw new Error(response.error || 'Failed to load network stats');
+      return {
+        friends: typeof response.data.friends === 'number' ? response.data.friends : 0,
+        followers: typeof response.data.followers === 'number' ? response.data.followers : 0,
+        following: typeof response.data.following === 'number' ? response.data.following : 0,
+      };
+    } catch {
+      return this.getNetworkStatsFromFirestore(userId);
+    }
+  }
+
+  private async getNetworkStatsFromFirestore(userId: string): Promise<RelationshipNetworkStats> {
+    const [asFirst, asSecond, followers, following] = await Promise.all([
+      getDocs(query(collection(db, 'friendship'), where('userId1', '==', userId))),
+      getDocs(query(collection(db, 'friendship'), where('userId2', '==', userId))),
+      getDocs(query(collection(db, 'followers'), where('followeeId', '==', userId))),
+      getDocs(query(collection(db, 'followers'), where('followerId', '==', userId))),
+    ]);
+    const friendIds = new Set<string>();
+    asFirst.docs.forEach((document) => {
+      const relationship = document.data();
+      const status = readString(relationship.friendshipStatus) || readString(relationship.status);
+      const friendId = readString(relationship.userId2);
+      if (status === 'accepted' && friendId) friendIds.add(friendId);
+    });
+    asSecond.docs.forEach((document) => {
+      const relationship = document.data();
+      const status = readString(relationship.friendshipStatus) || readString(relationship.status);
+      const friendId = readString(relationship.userId1);
+      if (status === 'accepted' && friendId) friendIds.add(friendId);
+    });
+    return { friends: friendIds.size, followers: followers.size, following: following.size };
   }
 
   public async checkFollowStatus(followerId: string, followeeId: string): Promise<boolean> {

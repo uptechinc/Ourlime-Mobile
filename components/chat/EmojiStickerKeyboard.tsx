@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStickers } from '@/lib/hooks/useStickers';
 import type { Sticker } from '@/lib/types/sticker';
 import { getLocalStickerSource } from '@/assets/images/stickers/stickerMap';
@@ -128,6 +129,7 @@ export function EmojiStickerKeyboard({
   onStickerSelect,
   onBackspace,
 }: EmojiStickerKeyboardProps) {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<KeyboardTab>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -184,7 +186,8 @@ export function EmojiStickerKeyboard({
           backgroundColor: '#ffffff',
           borderTopLeftRadius: 20,
           borderTopRightRadius: 20,
-          height: 380,
+          height: 380 + insets.bottom,
+          paddingBottom: insets.bottom,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 0.12,

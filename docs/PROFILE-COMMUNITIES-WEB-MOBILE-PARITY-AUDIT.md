@@ -103,63 +103,68 @@ This is the focused source-of-truth for Profile, public profiles, Communities, a
 
 | Web contract | Mobile status and evidence | Required work |
 | --- | --- | --- |
-| Community of the Week hero and aggregate statistics | **Missing.** | Add only when backed by canonical ranking/metrics contracts; use a compact native hero. |
-| All, My Joined, Joined by Friends, New, My Created | **Done in source.** Mobile tab chips expose all five and Joined by Friends calls the authenticated API. | Add per-tab cache/pagination and distinguish friend API failure without discarding the base list. |
-| Public/private/all filters | **Done in source.** | Persist selection and expose clear accessible labels. |
-| Live categories | **Done in source.** `CommunityService.fetchCategories` replaces hard-coded categories. | Add category paging/ordering if the admin category contract requires it. |
-| Popular, Newest, Active, Trending | **Partial.** All four native sort controls exist; newest uses timestamps and other sorts use currently available counts. | Server must return canonical activity/trending scores so mobile does not approximate ranking. |
-| Search | **Done in source for loaded results.** | Add debounced server search and cursor paging beyond the bounded first page. |
-| Grid/list controls | **Partial.** Native list cards exist; desktop layout is intentionally not copied. | Add an optional compact/grid mode only if it improves phone/tablet UX. |
-| Loading, empty, error, retry, refresh | **Done in source for the base request.** | Add cached stale-while-revalidate snapshots and pagination states. |
+| Community of the Week | **Done in source.** The authenticated directory API applies the web member/like/post scoring and returns a compact native hero from the same normalized entity. | Deploy and manually compare the selected community with production web data. |
+| All, Joined, Joined by Friends, New, Created | **Done in source.** All five scopes are server-filtered and independently cached by viewer/query. | Manually verify every scope with accounts that exercise each state. |
+| Visibility and live categories | **Done in source.** All/Public/Private and the canonical live category collection feed the query contract through one themed Filters & Sort sheet with Apply/Reset and removable active summaries. | Honor future Admin category ordering/paging if the category contract outgrows its current bounded result. |
+| Popular, Newest, Active, Trending | **Done in source.** Sorting is server-owned and uses normalized member, like, post, and activity data; it is grouped with secondary filters rather than competing with primary Browse scopes. | Validate ordering after deployment; do not reintroduce client approximations. |
+| Search and result count | **Done in source.** Search is debounced and server-filtered; pages carry authoritative totals and opaque cursors. | Manual long-list and special-character verification remains. |
+| Grid/compact list | **Done in source.** Both native layouts use the same card contract and preserve query state. | Tablet polish remains a manual UX check. |
+| Loading, empty, error, retry, refresh | **Done in source.** SQLite SWR retains cached content, supports pull-to-refresh and bounded pagination, and never substitutes mock records. Visible foreground recovery is isolated from background preload work, and silent refresh does not show the native pull spinner. | Offline/device verification remains external. |
 
 ## 3.2 Community cards
 
-- **Present:** image/initial fallback, title, description, privacy, member/post counts, joined/pending/owner state, open-detail link, and join/request actions.
-- **Required:** category/verified/owner/admin badges, friend-members summary, activity/trending signal, cancel request, leave action placement, and consistent inaccessible/banned states.
-- Every card action must reflect canonical membership state after mutation and reconcile the list/detail caches.
+- **Done in source:** banner/fallback, category/privacy/verification badges, creator selected-avatar/name, description, members/likes/posts/activity, top-member previews, friends-here summaries, slug, viewer role, and permission-derived actions.
+- **Done in source:** View, Join, Request Access, Request Again, Cancel Request, Leave, Pending, Owner, Member, Banned, and inaccessible states are derived at the server boundary.
+- **Done in source:** directory, Discover, detail, profile and Admin consumers share the normalized community model. Join/leave/request/cancel/like/delete mutations patch persisted directory queries and Discover copies.
+- **Count correction:** `communityVariantMembershipAndLikeCount` is batch-loaded. A missing, invalid, or stale-zero member counter is derived from unique active membership IDs plus the creator, rather than displayed as zero.
 
 ## 3.3 Create Community
 
-- **Present:** modern native modal, name, description, public/private, live category selection, validation, create mutation, owner membership, and count record.
-- **Required:** banner picker/upload/crop, verified-members-only policy, full naming/impersonation notice, posting permission, preview, server authorization/validation, upload recovery, and duplicate/slug handling.
-- Creation currently writes the basic records through `CommunityService`; move the complete create transaction behind an authenticated server endpoint before calling the flow authorization-complete.
+- **Done in source:** authenticated server creation, name and slug availability/suggestions, description limit, live category, public/private, verified-members-only, posting permission, naming/impersonation notice, terms confirmation, and deterministic owner/count records.
+- **Done in source:** banner picker, 3:1 crop, preview/remove, optional image URL, upload progress, recoverable failure, and server validation. Picker URIs are never persisted as canonical media.
+- **External:** deploy the API/rules and manually exercise duplicate names/slugs, interrupted uploads, and every page-access/role combination.
 
 # 4. Community Detail and Sub-workspaces
 
 ## 4.1 Route, header, access, and links
 
-- **Present:** canonical `/communities/[id]` route, back navigation, banner/title/description, counts, privacy/access/banned handling, join/request/leave, native share, report, posts/about, create post, comments, likes, refresh/error/empty states. Read-only detail data falls back from a timed-out/server-failed web API to canonical Firestore without disguising authorization failures.
-- **Present:** member/profile links already use `/profile/[username]`; public-profile joined-community links use `/communities/[id]`.
-- **Required:** verified/category/owner/admin badges, invite-friends flow, canonical unique-name deep links, access-request cancellation, and complete private/verified-members gate messaging.
+- **Done in source:** canonical ID/slug route, cached detail hydration, back navigation, banner/title/description, category/privacy/verification badges, creator identity, date, authoritative counts, community-like, share, report, membership/request actions, role badge, edit, dashboard/moderation, and server-owned cascade delete.
+- **Done in source:** private, banned, verified-members-only, posting, role, site-admin and page-access outcomes are authorized server-side; hidden controls are only presentation of those returned permissions.
+- **Done in source:** profile and community links use typed native destinations and canonical HTTPS shares resolve back to the exact community.
+- **Still required:** replace the generic Share Invite action with searchable friend selection and authenticated invite-message delivery.
 
 ## 4.2 Content tabs
 
 | Web workspace | Mobile status | Required work |
 | --- | --- | --- |
-| Posts | **Partial.** Read/create/like/comment and post-card rendering exist. | Add edit/delete/report, pin/visibility, post moderation, media upload/crop, emoji/GIF/location/tagging, paging/realtime, permissions, and cache patching. |
-| Events | **Missing in canonical mobile detail.** | Add list/detail/create/edit/delete, attendance, comments, role checks, and native date/location UX. |
-| Polls | **Missing in canonical mobile detail.** | Add list/create/vote/results/expiry/media, role checks, and reconciliation. |
-| About | **Partial.** Description and posting permission render. | Add rules, category/privacy/verification policy, created date, member summary, and editable owner fields. |
-| Media | **Missing.** | Add community-scoped photo/video gallery backed by canonical post/media queries. |
+| Posts | **Substantially done.** Canonical post cards provide community identity, media, likes/lists, comments/replies, report, author/moderator server-cascade deletion, counter correction and cross-resource reconciliation. | Add pin/visibility moderation and verify every composer accessory against Home. |
+| Events | **Partial parity.** Live create/edit/delete, image/video media, recurrence, attendance/count, authenticated report action, author/moderator controls, refresh/error/empty and modern confirmations are implemented. | Add event likes/discussions and dedicated native date/time/map inputs. |
+| Polls | **Substantially done.** Live two-to-five option create, duration, single/multiple vote, results, expiry, selectable report reason/details, delete permission and reconciliation are implemented. | Add any canonical poll media fields exposed by web. |
+| About | **Done in source.** Category, privacy, verification policy, posting permission, rules, created date, counts, and owner edit entry are present. | Manual content/long-text verification remains. |
+| Members | **Done in source.** Cursor paging, server search, selected avatars, roles, friend/presence context, profile navigation and role/remove/ban sheets are present. | Manual role matrix verification remains. |
 
 ## 4.3 Members, requests, and roles
 
-- **Missing:** paginated member list, role labels, profile links from the list, online/mutual context, and member search.
-- **Missing:** owner join-request queue with approve/decline.
-- **Missing:** promote/demote member/admin/moderator, remove, ban/unban, and delete-member-content options.
-- All role actions require an authenticated server endpoint that independently verifies owner/admin/moderator permissions. Use a modern action sheet plus explicit custom confirmation for destructive operations.
+- **Done in source:** paginated/searchable member list, role labels, canonical selected avatars, profile navigation, friend/presence context and permissions.
+- **Done in source:** join-request queue with Approve/Decline and authoritative membership-count reconciliation.
+- **Done in source:** member/admin/moderator role changes, remove and ban run through authenticated server routes with independent owner/admin/moderator checks and Ourlime confirmation sheets.
+- **Remaining:** unban and delete-all-member-content need a dedicated native dashboard action if still reachable in the active web UI.
 
 ## 4.4 Owner/admin dashboard and settings
 
-- **Missing:** edit title/description/privacy/category/posting permission/banner; delete community; owner dashboard; moderator dashboard.
-- Web dashboard sections to reproduce: Overview/Stats, Members, Activity, Reports; filters/search; open-report counts; in-review/dismiss/resolve; hide reported content; role management.
-- Page-access and role settings must govern visibility, but hidden buttons are not authorization. Every mutation must authorize on the server.
+- **Done in source:** full-screen native Overview, Members, Requests, Activity and Reports workspaces; counts; search/status filters; request actions; roles; assign/dismiss/resolve/hide moderation; and bounded server actions. Dashboard/member/request resources start concurrently on open, Activity/Reports share their canonical payload, and each visible workspace has a force-refresh control.
+- **Interaction repair:** dashboard data loaders are stable across parent renders; the X, Android back action, and workspace tabs dismiss/switch reliably. Opening Host Event or Create Poll from the slug action row now switches workspace and opens the correct creation UI.
+- **Done in source:** edit name/slug/description/category/privacy/verification/posting policy/rules/banner and server-owned cascade deletion with explicit confirmation.
+- **Remaining:** multi-select UI for bounded bulk report actions and deeper activity preview/navigation. Storage-object cleanup after replacing media or deleting a community remains release hardening.
 
 ## 4.5 Share, invite, report, and confirmation UX
 
 - Native system share is a valid adaptation for general sharing.
 - Still required: friend search/selection and authenticated invite message delivery, with private/verified access notice.
-- Community reporting is server-backed. Expand the mobile report sheet to match canonical reason/details choices rather than sending a fixed reason.
+- Community, post, event, and poll reporting are server-backed with selectable category/reason/details; community-content reports feed the owner/moderator dashboard. Evidence attachments remain post-only.
+
+- The shared community post composer is now fully semantic-theme-backed, including fixed Dark and live System-dark surfaces, input text/placeholders, selection chips, media controls, and readable enabled/disabled Post states.
+- Feed and Profile reuse a single native `pageSheet` navigation menu matching the smooth Community filter transition; the obsolete secondary JavaScript entrance animation and gesture responder were removed.
 - Leave, delete, ban, remove member, role changes, post deletion, and report resolution must use Ourlime `CustomModal`/bottom sheets with clear consequences, progress, failure, and retry states—never browser confirm, native `Alert`, toast-only destructive actions, or simulated success.
 
 # 5. Data, Security, and Release Requirements
@@ -167,7 +172,7 @@ This is the focused source-of-truth for Profile, public profiles, Communities, a
 - `ProfileMediaService`, `CommunityService`, `RelationshipService`, `ModerationService`, feed/profile resource services, and secure web APIs own domain behavior; route/UI files must not gain direct Firebase mutations.
 - Adjacent `firestore.rules` now includes owner access for `profileImages`/`profileImageSetAs` and community read/membership rules; adjacent `storage.rules` now permits owner-scoped `/profiles/{uid}` image uploads. These changes are **not deployed**.
 - `/api/communities/membership` is a new authenticated server contract for join/request/leave. It is **not deployed**, and mobile API base URL reachability remains an external prerequisite.
-- Community creation is not yet fully server-owned. Advanced role/moderation operations must not be implemented as trusted client writes.
+- Community creation, membership, role, moderation, event, poll, report and delete mutations are server-owned. Preserve those authorization boundaries; do not reintroduce trusted client writes.
 - No dummy data, fake success alerts, or silent empty-array failure fallbacks are permitted.
 
 # 6. Manual Acceptance Checklist

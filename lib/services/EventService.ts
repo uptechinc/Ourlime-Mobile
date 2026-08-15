@@ -1,9 +1,11 @@
 import { addDoc, collection, deleteDoc, getDocs, query, serverTimestamp, Timestamp, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { ApiService } from './ApiService';
-import type { Event } from '@/types/eventTypes';
+import { AuthService } from './AuthService';
+import type { Event, MediaItem } from '@/types/eventTypes';
 
 export type EventAttendanceStatus = { isAttending: boolean; attendeeCount: number };
+type CommunityEventApiResult<TData> = { success?: boolean; data?: TData; error?: string };
 type EventMediaRecord = { type?: unknown; url?: unknown; typeUrl?: unknown };
 export type CreateEventInput = {
   title: string;
@@ -18,11 +20,15 @@ export type CreateEventInput = {
   creatorId: string;
   userId: string;
   user: { id: string; firstName: string; lastName: string; userName: string; profileImage: string | null };
+  communityVariantId?: string;
+  image?: string;
+  media?: MediaItem[];
 };
 
 export class EventService {
   private static instance: EventService;
   private readonly apiService = ApiService.getInstance();
+  private readonly authService = AuthService.getInstance();
 
   private constructor() {}
 
@@ -58,8 +64,8 @@ export class EventService {
           : event.location && typeof event.location === 'object' && typeof event.location.name === 'string'
             ? event.location.name
             : 'Online';
-        const media = Array.isArray(event.media)
-          ? event.media.flatMap((item): NonNullable<Event['media']> => {
+        const media: MediaItem[] | undefined = Array.isArray(event.media)
+          ? event.media.flatMap((item): MediaItem[] => {
               if (!item || typeof item !== 'object') return [];
               const value = item as EventMediaRecord;
               const url = typeof value.url === 'string' ? value.url : typeof value.typeUrl === 'string' ? value.typeUrl : '';
@@ -92,7 +98,41 @@ export class EventService {
     return event.id;
   }
 
-  public async getAttendance(eventId: string, userId?: string): Promise<EventAttendanceStatus> {
+  public async fetchCommunityEvents(communityId: string): Promise<Event[]> {
+    const response = await this.apiService.request<CommunityEventApiResult<Event[]>>(`/api/communities/events?communityId=${encodeURIComponent(communityId)}`, { authenticated: true });
+    if (!response.success || !Array.isArray(response.data)) throw new Error(response.error || 'Community events could not be loaded.');
+    return response.data;
+  }
+
+  public async createCommunityEvent(input: CreateEventInput): Promise<string> {
+    if (!input.communityVariantId) throw new Error('Community is required.');
+    const response = await this.apiService.request<CommunityEventApiResult<{ id: string }>>('/api/communities/events', { method: 'POST', authenticated: true, body: { communityId: input.communityVariantId, ...input } });
+    if (!response.success || !response.data?.id) throw new Error(response.error || 'Community event could not be created.');
+    return response.data.id;
+  }
+
+  public async updateCommunityEvent(communityId: string, eventId: string, updates: Partial<CreateEventInput>): Promise<void> {
+    const response = await this.apiService.request<CommunityEventApiResult<never>>('/api/communities/events', { method: 'PATCH', authenticated: true, body: { communityId, eventId, ...updates } });
+    if (!response.success) throw new Error(response.error || 'Community event could not be updated.');
+  }
+
+  public async deleteCommunityEvent(communityId: string, eventId: string): Promise<void> {
+    const response = await this.apiService.request<CommunityEventApiResult<never>>('/api/communities/events', { method: 'DELETE', authenticated: true, body: { communityId, eventId } });
+    if (!response.success) throw new Error(response.error || 'Community event could not be deleted.');
+  }
+
+  public async toggleCommunityAttendance(communityId: string, eventId: string, desiredAttending?: boolean): Promise<EventAttendanceStatus> {
+    const response = await this.apiService.request<CommunityEventApiResult<EventAttendanceStatus>>('/api/communities/events', {
+      method: 'PATCH',
+      authenticated: true,
+      body: { action: 'attendance', communityId, eventId, desiredAttending },
+    });
+    if (!response.success || !response.data) throw new Error(response.error || 'Event attendance could not be updated.');
+    return response.data;
+  }
+
+  public async getAttendance(eventId: string): Promise<EventAttendanceStatus> {
+    const userId = this.authService.getVerifiedCurrentUser()?.uid;
     const attendees = await getDocs(query(collection(db, 'eventAttendees'), where('eventId', '==', eventId)));
     return {
       attendeeCount: attendees.size,
@@ -100,14 +140,16 @@ export class EventService {
     };
   }
 
-  public async toggleAttendance(eventId: string, userId: string): Promise<EventAttendanceStatus> {
+  public async toggleAttendance(eventId: string): Promise<EventAttendanceStatus> {
+    const userId = this.authService.getVerifiedCurrentUser()?.uid;
+    if (!userId) throw new Error('Your verified session is still loading. Please try again.');
     const existing = await getDocs(query(collection(db, 'eventAttendees'), where('eventId', '==', eventId), where('userId', '==', userId)));
     if (existing.empty) {
       await addDoc(collection(db, 'eventAttendees'), { eventId, userId, createdAt: new Date().toISOString() });
     } else {
       await Promise.all(existing.docs.map((document) => deleteDoc(document.ref)));
     }
-    return this.getAttendance(eventId, userId);
+    return this.getAttendance(eventId);
   }
 }
 

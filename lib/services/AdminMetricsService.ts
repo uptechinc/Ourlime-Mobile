@@ -13,6 +13,8 @@ export type AdminMetrics = {
 
 export class AdminMetricsService {
   private static instance: AdminMetricsService;
+  private cachedMetrics: { data: AdminMetrics; updatedAt: number } | null = null;
+  private inFlight: Promise<AdminMetrics> | null = null;
 
   private constructor() {}
 
@@ -21,7 +23,17 @@ export class AdminMetricsService {
     return AdminMetricsService.instance;
   }
 
-  public async fetchMetrics(): Promise<AdminMetrics> {
+  public async fetchMetrics(force = false): Promise<AdminMetrics> {
+    if (!force && this.cachedMetrics && Date.now() - this.cachedMetrics.updatedAt < 5 * 60_000) return this.cachedMetrics.data;
+    if (this.inFlight) return this.inFlight;
+    this.inFlight = this.loadMetrics().then((data) => {
+      this.cachedMetrics = { data, updatedAt: Date.now() };
+      return data;
+    }).finally(() => { this.inFlight = null; });
+    return this.inFlight;
+  }
+
+  private async loadMetrics(): Promise<AdminMetrics> {
     try {
       return await this.fetchMetricsFromFirestore();
     } catch (firestoreError: unknown) {

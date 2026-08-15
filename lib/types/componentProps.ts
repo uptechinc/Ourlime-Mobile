@@ -23,9 +23,13 @@ export type MenuUserProfile = {
     profilePicture?: string | null;
 };
 
+export type AppDrawerState = 'closed' | 'opening' | 'open' | 'closing';
+
 export type SlideOutMenuProps = {
-    isVisible: boolean;
+    state: AppDrawerState;
     onClose: () => void;
+    onOpened: () => void;
+    onClosed: () => void;
     menuItems: MenuItem[];
     userProfile?: MenuUserProfile;
 };

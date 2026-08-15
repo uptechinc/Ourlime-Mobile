@@ -5,7 +5,7 @@ import AdminWorkspaceShell from './AdminWorkspaceShell';
 import { AdminWorkspaceService, type AdminAnalyticsSnapshot } from '@/lib/services/AdminWorkspaceService';
 
 const workspaceService = AdminWorkspaceService.getInstance();
-const DOMAINS: ReadonlyArray<AdminAnalyticsSnapshot['metrics'][number]['domain'] | 'all'> = ['all', 'audience', 'social', 'communities', 'events', 'marketplace', 'administration'];
+const DOMAINS: readonly (AdminAnalyticsSnapshot['metrics'][number]['domain'] | 'all')[] = ['all', 'audience', 'social', 'communities', 'events', 'marketplace', 'administration'];
 
 export default function AdminAnalyticsWorkspace() {
   const [snapshot, setSnapshot] = useState<AdminAnalyticsSnapshot>({ metrics: [], unavailableCollections: [] });

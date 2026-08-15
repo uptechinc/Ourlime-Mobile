@@ -1,26 +1,18 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import type { ComponentProps } from 'react';
 import {
     View,
     Text,
-    Modal,
     TouchableOpacity,
-    Animated,
-    Dimensions,
-    StatusBar,
     Image,
     ScrollView,
-    Platform,
+    Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import type { SlideOutMenuProps } from '../../lib/types/componentProps';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-
-const { width: screenWidth } = Dimensions.get('window');
-const MENU_WIDTH = screenWidth * 0.88;
 
 type SectionItem = {
     id: string;
@@ -33,69 +25,26 @@ type SectionItem = {
     badge?: string | number;
 };
 
+function getBadgeLabel(badge: SectionItem['badge']): string | null {
+    if (typeof badge === 'number') return String(badge);
+    const label = badge?.trim();
+    return label || null;
+}
+
 export default function SlideOutMenu({
-    isVisible,
+    state,
     onClose,
+    onOpened,
+    onClosed,
     menuItems,
     userProfile,
 }: SlideOutMenuProps) {
     const { colors } = useAppTheme();
-    const slideAnim = useRef(new Animated.Value(MENU_WIDTH)).current;
-    const overlayOpacity = useRef(new Animated.Value(0)).current;
-    const scaleAnim = useRef(new Animated.Value(0.95)).current;
-    const contentOpacity = useRef(new Animated.Value(0)).current;
-
-    const handleCloseAnimated = () => {
-        Animated.parallel([
-            Animated.timing(slideAnim, {
-                toValue: MENU_WIDTH,
-                duration: 220,
-                useNativeDriver: true,
-            }),
-            Animated.timing(overlayOpacity, {
-                toValue: 0,
-                duration: 220,
-                useNativeDriver: true,
-            }),
-        ]).start(() => {
-            onClose();
-        });
-    };
+    const interactionEnabled = state === 'open' || state === 'opening';
 
     useEffect(() => {
-        if (isVisible) {
-            slideAnim.setValue(MENU_WIDTH);
-            overlayOpacity.setValue(0);
-            scaleAnim.setValue(0.95);
-            contentOpacity.setValue(0);
-
-            Animated.parallel([
-                Animated.spring(slideAnim, {
-                    toValue: 0,
-                    tension: 85,
-                    friction: 15,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(overlayOpacity, {
-                    toValue: 1,
-                    duration: 250,
-                    useNativeDriver: true,
-                }),
-                Animated.spring(scaleAnim, {
-                    toValue: 1,
-                    tension: 85,
-                    friction: 15,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(contentOpacity, {
-                    toValue: 1,
-                    duration: 300,
-                    delay: 50,
-                    useNativeDriver: true,
-                }),
-            ]).start();
-        }
-    }, [isVisible, slideAnim, overlayOpacity, scaleAnim, contentOpacity]);
+        if (state === 'closing') onClosed();
+    }, [onClosed, state]);
 
     // Separate account items from feature items from logout from the menuItems prop
     const accountIds = ['profile', 'settings', 'chat'];
@@ -197,19 +146,53 @@ export default function SlideOutMenu({
         : userProfile?.email ?? '';
     const avatarUrl = userProfile?.profilePicture ?? userProfile?.avatar ?? null;
 
-    const renderSectionItem = (item: SectionItem) => (
-        <Animated.View
-            key={item.id}
-            style={{
-                opacity: contentOpacity,
-                transform: [{
-                    translateX: contentOpacity.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [30, 0],
-                    }),
-                }],
-            }}
-        >
+    const renderAccountShortcut = (item: SectionItem) => {
+        const badgeLabel = getBadgeLabel(item.badge);
+        return (
+            <View key={item.id} style={{ flex: 1 }}>
+                <TouchableOpacity
+                    onPress={item.onPress}
+                    disabled={!interactionEnabled}
+                    activeOpacity={0.75}
+                    style={{
+                        minHeight: 96,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 18,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.surface,
+                        paddingHorizontal: 8,
+                        paddingVertical: 12,
+                    }}
+                >
+                    <View style={{
+                        width: 42,
+                        height: 42,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 14,
+                        backgroundColor: item.iconBgColor,
+                    }}>
+                        <Ionicons name={item.icon} size={21} color={item.iconColor} />
+                    </View>
+                    <Text numberOfLines={1} style={{ marginTop: 8, color: colors.text, fontSize: 12, fontWeight: '800' }}>
+                        {item.title}
+                    </Text>
+                    {badgeLabel ? (
+                        <View style={{ position: 'absolute', right: 8, top: 8, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#ef4444', paddingHorizontal: 4 }}>
+                            <Text style={{ color: '#ffffff', fontSize: 9, fontWeight: '800' }}>{badgeLabel}</Text>
+                        </View>
+                    ) : null}
+                </TouchableOpacity>
+            </View>
+        );
+    };
+
+    const renderSectionItem = (item: SectionItem) => {
+        const badgeLabel = getBadgeLabel(item.badge);
+        return (
+        <View key={item.id}>
             <TouchableOpacity
                 style={{
                     flexDirection: 'row',
@@ -228,10 +211,8 @@ export default function SlideOutMenu({
                     shadowRadius: 4,
                     elevation: 1,
                 }}
-                onPress={() => {
-                    item.onPress?.();
-                    onClose();
-                }}
+                onPress={item.onPress}
+                disabled={!interactionEnabled}
                 activeOpacity={0.7}
             >
                 <View style={{
@@ -256,7 +237,7 @@ export default function SlideOutMenu({
                     ) : null}
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    {item.badge != null ? (
+                    {badgeLabel ? (
                         <View style={{
                             backgroundColor: '#ef4444',
                             borderRadius: 10,
@@ -267,15 +248,16 @@ export default function SlideOutMenu({
                             alignItems: 'center',
                         }}>
                             <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>
-                                {item.badge}
+                                {badgeLabel}
                             </Text>
                         </View>
                     ) : null}
                     <Ionicons name="chevron-forward" size={14} color={colors.icon} />
                 </View>
             </TouchableOpacity>
-        </Animated.View>
-    );
+        </View>
+        );
+    };
 
     const renderSectionLabel = (label: string) => (
         <Text style={{
@@ -294,53 +276,13 @@ export default function SlideOutMenu({
 
     return (
         <Modal
-            visible={isVisible}
-            transparent
-            animationType="none"
-            statusBarTranslucent
+            visible={state === 'opening' || state === 'open'}
+            animationType="slide"
+            presentationStyle="pageSheet"
+            onShow={onOpened}
+            onRequestClose={() => { if (interactionEnabled) onClose(); }}
         >
-            <StatusBar backgroundColor="rgba(0,0,0,0.5)" barStyle="light-content" />
-            <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'flex-end' }}>
-
-                {/* Overlay */}
-                <Animated.View
-                    style={{
-                        position: 'absolute',
-                        top: 0, left: 0, right: 0, bottom: 0,
-                        opacity: overlayOpacity,
-                    }}
-                >
-                    {Platform.OS === 'ios' ? (
-                        <BlurView intensity={20} tint="dark" style={{ flex: 1 }}>
-                            <TouchableOpacity style={{ flex: 1 }} onPress={onClose} activeOpacity={1} />
-                        </BlurView>
-                    ) : (
-                        <TouchableOpacity
-                            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }}
-                            onPress={onClose}
-                            activeOpacity={1}
-                        />
-                    )}
-                </Animated.View>
-
-                {/* Menu Panel */}
-                <Animated.View
-                    style={{
-                        width: MENU_WIDTH,
-                        height: '100%',
-                        backgroundColor: colors.canvas,
-                        shadowColor: '#000',
-                        shadowOffset: { width: -4, height: 0 },
-                        shadowOpacity: 0.18,
-                        shadowRadius: 20,
-                        elevation: 20,
-                        transform: [
-                            { translateX: slideAnim },
-                            { scale: scaleAnim },
-                        ],
-                    }}
-                >
-                    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1 }}>
+            <SafeAreaView edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal style={{ flex: 1, backgroundColor: colors.canvas }}>
 
                         {/* ─── Profile Header ─── */}
                         <LinearGradient
@@ -349,25 +291,12 @@ export default function SlideOutMenu({
                             end={{ x: 1, y: 1 }}
                             style={{
                                 paddingHorizontal: 20,
-                                paddingTop: 16,
-                                paddingBottom: 24,
+                                paddingTop: 10,
+                                paddingBottom: 18,
                             }}
                         >
-                            {/* Close button row */}
-                            <View style={{ flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 16 }}>
-                                <TouchableOpacity
-                                    onPress={onClose}
-                                    style={{
-                                        width: 34,
-                                        height: 34,
-                                        borderRadius: 17,
-                                        backgroundColor: 'rgba(255,255,255,0.22)',
-                                        justifyContent: 'center',
-                                        alignItems: 'center',
-                                    }}
-                                >
-                                    <Ionicons name="close" size={18} color="#fff" />
-                                </TouchableOpacity>
+                            <View style={{ minHeight: 22, alignItems: 'center', justifyContent: 'flex-start', marginBottom: 6 }}>
+                                <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.58)' }} />
                             </View>
 
                             {/* Avatar + Name */}
@@ -376,25 +305,25 @@ export default function SlideOutMenu({
                                     <Image
                                         source={{ uri: avatarUrl }}
                                         style={{
-                                            width: 62,
-                                            height: 62,
-                                            borderRadius: 31,
+                                            width: 54,
+                                            height: 54,
+                                            borderRadius: 27,
                                             borderWidth: 2.5,
                                             borderColor: 'rgba(255,255,255,0.8)',
                                         }}
                                     />
                                 ) : (
                                     <View style={{
-                                        width: 62,
-                                        height: 62,
-                                        borderRadius: 31,
+                                        width: 54,
+                                        height: 54,
+                                        borderRadius: 27,
                                         backgroundColor: 'rgba(255,255,255,0.25)',
                                         justifyContent: 'center',
                                         alignItems: 'center',
                                         borderWidth: 2.5,
                                         borderColor: 'rgba(255,255,255,0.6)',
                                     }}>
-                                        <Ionicons name="person" size={30} color="#fff" />
+                                        <Ionicons name="person" size={27} color="#fff" />
                                     </View>
                                 )}
 
@@ -418,6 +347,22 @@ export default function SlideOutMenu({
                                         </Text>
                                     ) : null}
                                 </View>
+                                <TouchableOpacity
+                                    onPress={onClose}
+                                    disabled={!interactionEnabled}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Close menu"
+                                    style={{
+                                        width: 40,
+                                        height: 40,
+                                        borderRadius: 20,
+                                        backgroundColor: 'rgba(255,255,255,0.22)',
+                                        justifyContent: 'center',
+                                        alignItems: 'center',
+                                    }}
+                                >
+                                    <Ionicons name="close" size={21} color="#fff" />
+                                </TouchableOpacity>
                             </View>
                         </LinearGradient>
 
@@ -425,11 +370,15 @@ export default function SlideOutMenu({
                         <ScrollView
                             style={{ flex: 1 }}
                             showsVerticalScrollIndicator={false}
-                            contentContainerStyle={{ paddingTop: 8, paddingBottom: 16 }}
+                            nestedScrollEnabled
+                            keyboardShouldPersistTaps="handled"
+                            contentContainerStyle={{ paddingTop: 4, paddingBottom: 16 }}
                         >
                             {/* Account section */}
                             {renderSectionLabel('My Account')}
-                            {accountSection.map((item) => renderSectionItem(item))}
+                            <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12 }}>
+                                {accountSection.map((item) => renderAccountShortcut(item))}
+                            </View>
 
                             {/* Explore section */}
                             {renderSectionLabel('Explore')}
@@ -453,9 +402,8 @@ export default function SlideOutMenu({
                         </ScrollView>
 
                         {/* ─── Logout Footer ─── */}
-                        <Animated.View
+                        <View
                             style={{
-                                opacity: contentOpacity,
                                 paddingHorizontal: 16,
                                 paddingVertical: 16,
                                 borderTopWidth: 1,
@@ -470,31 +418,28 @@ export default function SlideOutMenu({
                                     justifyContent: 'center',
                                     paddingVertical: 14,
                                     borderRadius: 14,
-                                    backgroundColor: '#fef2f2',
+                                    backgroundColor: colors.destructiveSurface,
                                     borderWidth: 1,
-                                    borderColor: '#fecaca',
+                                    borderColor: colors.destructive,
                                 }}
                                 onPress={() => {
                                     logoutItem?.onPress?.();
-                                    onClose();
                                 }}
+                                disabled={!interactionEnabled}
                                 activeOpacity={0.75}
                             >
-                                <Ionicons name="log-out-outline" size={18} color="#dc2626" />
+                                <Ionicons name="log-out-outline" size={18} color={colors.destructive} />
                                 <Text style={{
                                     marginLeft: 8,
                                     fontSize: 15,
-                                    color: '#dc2626',
+                                    color: colors.destructiveText,
                                     fontWeight: '700',
                                 }}>
                                     Log Out
                                 </Text>
                             </TouchableOpacity>
-                        </Animated.View>
-
-                    </SafeAreaView>
-                </Animated.View>
-            </View>
+                        </View>
+            </SafeAreaView>
         </Modal>
     );
 }

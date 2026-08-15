@@ -17,6 +17,7 @@ import { profileResourceService } from '@/lib/services/ProfileResourceService';
 import { feedResourceService } from '@/lib/services/FeedResourceService';
 import { ProfileMediaService } from '@/lib/services/ProfileMediaService';
 import CustomModal from '@/components/ui/CustomModal';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const authService = AuthService.getInstance();
 const profileMediaService = ProfileMediaService.getInstance();
@@ -34,6 +35,7 @@ export default function EditProfileModal({
   onClose,
   onProfileUpdated,
 }: EditProfileModalProps) {
+  const { colors } = useAppTheme();
   const [firstName, setFirstName] = useState(profile.firstName || '');
   const [lastName, setLastName] = useState(profile.lastName || '');
   const [userName, setUserName] = useState(profile.userName || '');
@@ -139,33 +141,33 @@ export default function EditProfileModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.card}>
+      <View style={[styles.overlay, { backgroundColor: colors.modalScrim }]}>
+        <View style={[styles.card, { backgroundColor: colors.surface }]}>
           <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 2 }}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#cbd5e1' }} />
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.mutedText }} />
           </View>
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, { borderBottomColor: colors.border }]}>
             <TouchableOpacity onPress={onClose} disabled={saving} style={styles.closeBtn}>
-              <Icon name="x" size={22} color="#0f172a" />
+              <Icon name="x" size={22} color={colors.icon} />
             </TouchableOpacity>
-            <Text style={styles.title}>Edit Profile</Text>
-            <TouchableOpacity onPress={handleSave} disabled={saving} style={styles.saveBtn}>
-              {saving ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.saveText}>Save</Text>}
+            <Text style={[styles.title, { color: colors.text }]}>Edit Profile</Text>
+            <TouchableOpacity onPress={handleSave} disabled={saving} style={[styles.saveBtn, { backgroundColor: saving ? colors.disabled : colors.accent }]}>
+              {saving ? <ActivityIndicator size="small" color={colors.disabledText} /> : <Text style={[styles.saveText, { color: colors.onAccent }]}>Save</Text>}
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.body} contentContainerStyle={{ padding: 20, gap: 16 }}>
             {/* Cover Photo Picker */}
             <View style={styles.imagePickerSection}>
-              <Text style={styles.label}>Cover Banner</Text>
-              <TouchableOpacity onPress={() => handlePickImage('cover')} style={styles.coverFrame}>
+              <Text style={[styles.label, { color: colors.secondaryText }]}>Cover Banner</Text>
+              <TouchableOpacity onPress={() => handlePickImage('cover')} style={[styles.coverFrame, { backgroundColor: colors.control, borderColor: colors.border }]}>
                 {coverPhoto ? (
                   <Image source={{ uri: coverPhoto }} style={styles.coverPreview} />
                 ) : (
                   <View style={styles.coverPlaceholder}>
-                    <Icon name="image" size={24} color="#94a3b8" />
-                    <Text style={styles.placeholderText}>Choose Cover Photo</Text>
+                    <Icon name="image" size={24} color={colors.mutedText} />
+                    <Text style={[styles.placeholderText, { color: colors.mutedText }]}>Choose Cover Photo</Text>
                   </View>
                 )}
                 <View style={styles.cameraBadge}>
@@ -176,80 +178,80 @@ export default function EditProfileModal({
 
             {/* Profile Avatar Picker */}
             <View style={styles.avatarSection}>
-              <Text style={styles.label}>Profile Avatar</Text>
-              <TouchableOpacity onPress={() => handlePickImage('avatar')} style={styles.avatarFrame}>
+              <Text style={[styles.label, { color: colors.secondaryText }]}>Profile Avatar</Text>
+              <TouchableOpacity onPress={() => handlePickImage('avatar')} style={[styles.avatarFrame, { backgroundColor: colors.control, borderColor: colors.border }]}>
                 {profilePicture ? (
                   <Image source={{ uri: profilePicture }} style={styles.avatarPreview} />
                 ) : (
                   <View style={styles.avatarPlaceholder}>
-                    <Icon name="user" size={32} color="#94a3b8" />
+                    <Icon name="user" size={32} color={colors.mutedText} />
                   </View>
                 )}
-                <View style={styles.cameraBadgeAvatar}>
-                  <Icon name="camera" size={12} color="#ffffff" />
+                <View style={[styles.cameraBadgeAvatar, { backgroundColor: colors.accent, borderColor: colors.surface }]}>
+                  <Icon name="camera" size={12} color={colors.onAccent} />
                 </View>
               </TouchableOpacity>
             </View>
 
             {/* First Name */}
             <View>
-              <Text style={styles.label}>First Name</Text>
+              <Text style={[styles.label, { color: colors.secondaryText }]}>First Name</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 value={firstName}
                 onChangeText={setFirstName}
                 placeholder="First name"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.mutedText}
               />
             </View>
 
             {/* Last Name */}
             <View>
-              <Text style={styles.label}>Last Name</Text>
+              <Text style={[styles.label, { color: colors.secondaryText }]}>Last Name</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 value={lastName}
                 onChangeText={setLastName}
                 placeholder="Last name"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.mutedText}
               />
             </View>
 
             {/* Username */}
             <View>
-              <Text style={styles.label}>Username</Text>
+              <Text style={[styles.label, { color: colors.secondaryText }]}>Username</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 value={userName}
                 onChangeText={setUserName}
                 placeholder="Username"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.mutedText}
                 autoCapitalize="none"
               />
             </View>
 
             {/* Bio */}
             <View>
-              <Text style={styles.label}>Bio</Text>
+              <Text style={[styles.label, { color: colors.secondaryText }]}>Bio</Text>
               <TextInput
-                style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                style={[styles.input, { height: 80, textAlignVertical: 'top', backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 value={bio}
                 onChangeText={setBio}
                 placeholder="Tell others about yourself..."
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.mutedText}
                 multiline
               />
             </View>
 
             {/* Location */}
             <View>
-              <Text style={styles.label}>Location</Text>
+              <Text style={[styles.label, { color: colors.secondaryText }]}>Location</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 value={location}
                 onChangeText={setLocation}
                 placeholder="e.g. San Francisco, CA"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.mutedText}
               />
             </View>
           </ScrollView>
@@ -257,15 +259,15 @@ export default function EditProfileModal({
 
         {/* Modern Success Dialog Modal */}
         <Modal visible={showSuccessModal} transparent animationType="fade" onRequestClose={handleSuccessClose}>
-          <View style={styles.successOverlay}>
-            <View style={styles.successCard}>
-              <View style={styles.successIconBadge}>
-                <Icon name="check" size={32} color="#ffffff" />
+          <View style={[styles.successOverlay, { backgroundColor: colors.modalScrim }]}>
+            <View style={[styles.successCard, { backgroundColor: colors.elevated }]}>
+              <View style={[styles.successIconBadge, { backgroundColor: colors.accent }]}>
+                <Icon name="check" size={32} color={colors.onAccent} />
               </View>
-              <Text style={styles.successTitle}>Profile Updated!</Text>
-              <Text style={styles.successMessage}>Your profile information and images have been saved successfully.</Text>
-              <TouchableOpacity onPress={handleSuccessClose} style={styles.successBtn}>
-                <Text style={styles.successBtnText}>Great!</Text>
+              <Text style={[styles.successTitle, { color: colors.text }]}>Profile Updated!</Text>
+              <Text style={[styles.successMessage, { color: colors.mutedText }]}>Your profile information and images have been saved successfully.</Text>
+              <TouchableOpacity onPress={handleSuccessClose} style={[styles.successBtn, { backgroundColor: colors.accent }]}>
+                <Text style={[styles.successBtnText, { color: colors.onAccent }]}>Great!</Text>
               </TouchableOpacity>
             </View>
           </View>

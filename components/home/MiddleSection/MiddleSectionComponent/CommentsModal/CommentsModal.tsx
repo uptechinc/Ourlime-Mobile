@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import UserAvatar from '@/components/ui/UserAvatar';
 import {
@@ -20,6 +20,7 @@ import {
   type PostReply,
 } from '@/lib/services/CommentService';
 import type { PostItem } from '@/lib/services/PostService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type ReplyThread = {
   items: PostReply[];
@@ -63,6 +64,8 @@ const formatTimestamp = (milliseconds: number): string => {
 };
 
 export default function CommentsModal({ post, userId, onClose, onPostUpdate }: CommentsModalProps) {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const [comments, setComments] = useState<PostComment[]>([]);
   const [replyThreads, setReplyThreads] = useState<Record<string, ReplyThread>>({});
   const [commentText, setCommentText] = useState('');
@@ -296,10 +299,10 @@ export default function CommentsModal({ post, userId, onClose, onPostUpdate }: C
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }}>
-          <Text style={{ flex: 1, fontSize: 18, color: '#111827', fontWeight: '800' }}>Comments</Text>
-          <TouchableOpacity onPress={onClose} accessibilityLabel="Close comments" style={{ padding: 8 }}><Icon name="x" size={23} color="#374151" /></TouchableOpacity>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }} edges={['top', 'left', 'right']}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ flex: 1, fontSize: 18, color: colors.text, fontWeight: '800' }}>Comments</Text>
+          <TouchableOpacity onPress={onClose} accessibilityLabel="Close comments" style={{ padding: 8 }}><Icon name="x" size={23} color={colors.icon} /></TouchableOpacity>
         </View>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, paddingBottom: 28 }} keyboardShouldPersistTaps="handled">
@@ -340,17 +343,17 @@ export default function CommentsModal({ post, userId, onClose, onPostUpdate }: C
           </ScrollView>
 
           {editTarget ? (
-            <View style={{ padding: 12, borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: '#f9fafb' }}>
+            <View style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: Math.max(12, insets.bottom), borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.control }}>
               <Text style={{ marginBottom: 7, color: '#6b7280', fontSize: 12, fontWeight: '700' }}>Editing your {editTarget.type}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}><TextInput value={editText} onChangeText={setEditText} maxLength={2000} multiline style={{ flex: 1, maxHeight: 110, borderRadius: 18, borderWidth: 1, borderColor: '#d1d5db', backgroundColor: '#ffffff', paddingHorizontal: 14, paddingVertical: 10 }} /><TouchableOpacity onPress={() => { setEditTarget(null); setEditText(''); }} style={{ marginLeft: 8, padding: 10 }}><Text style={{ color: '#6b7280' }}>Cancel</Text></TouchableOpacity><TouchableOpacity disabled={!editText.trim() || submitting} onPress={() => void handleSubmitEdit()} style={{ marginLeft: 5, borderRadius: 16, backgroundColor: '#10b981', paddingHorizontal: 15, paddingVertical: 10 }}><Text style={{ color: '#ffffff', fontWeight: '700' }}>Save</Text></TouchableOpacity></View>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}><TextInput value={editText} onChangeText={setEditText} maxLength={2000} multiline placeholderTextColor={colors.mutedText} style={{ flex: 1, maxHeight: 110, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: 14, paddingVertical: 10 }} /><TouchableOpacity onPress={() => { setEditTarget(null); setEditText(''); }} style={{ marginLeft: 8, padding: 10 }}><Text style={{ color: colors.mutedText }}>Cancel</Text></TouchableOpacity><TouchableOpacity disabled={!editText.trim() || submitting} onPress={() => void handleSubmitEdit()} style={{ marginLeft: 5, borderRadius: 16, backgroundColor: '#10b981', paddingHorizontal: 15, paddingVertical: 10 }}><Text style={{ color: '#ffffff', fontWeight: '700' }}>Save</Text></TouchableOpacity></View>
             </View>
           ) : replyTarget ? (
-            <View style={{ padding: 12, borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: '#ecfdf5' }}>
+            <View style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: Math.max(12, insets.bottom), borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.control }}>
               <Text style={{ marginBottom: 7, color: '#047857', fontSize: 12 }}>Replying to <Text style={{ fontWeight: '800' }}>@{replyTarget.userName}</Text></Text>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}><TextInput value={replyText} onChangeText={setReplyText} maxLength={2000} multiline placeholder="Write a reply..." style={{ flex: 1, maxHeight: 110, borderRadius: 18, borderWidth: 1, borderColor: '#a7f3d0', backgroundColor: '#ffffff', paddingHorizontal: 14, paddingVertical: 10 }} /><TouchableOpacity onPress={() => { setReplyTarget(null); setReplyText(''); }} style={{ marginLeft: 8, padding: 10 }}><Text style={{ color: '#6b7280' }}>Cancel</Text></TouchableOpacity><TouchableOpacity disabled={!replyText.trim() || submitting} onPress={() => void handleSubmitReply()} style={{ marginLeft: 5, borderRadius: 16, backgroundColor: '#10b981', paddingHorizontal: 15, paddingVertical: 10 }}><Text style={{ color: '#ffffff', fontWeight: '700' }}>Reply</Text></TouchableOpacity></View>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}><TextInput value={replyText} onChangeText={setReplyText} maxLength={2000} multiline placeholder="Write a reply..." placeholderTextColor={colors.mutedText} style={{ flex: 1, maxHeight: 110, borderRadius: 18, borderWidth: 1, borderColor: '#a7f3d0', backgroundColor: colors.surface, color: colors.text, paddingHorizontal: 14, paddingVertical: 10 }} /><TouchableOpacity onPress={() => { setReplyTarget(null); setReplyText(''); }} style={{ marginLeft: 8, padding: 10 }}><Text style={{ color: colors.mutedText }}>Cancel</Text></TouchableOpacity><TouchableOpacity disabled={!replyText.trim() || submitting} onPress={() => void handleSubmitReply()} style={{ marginLeft: 5, borderRadius: 16, backgroundColor: '#10b981', paddingHorizontal: 15, paddingVertical: 10 }}><Text style={{ color: '#ffffff', fontWeight: '700' }}>Reply</Text></TouchableOpacity></View>
             </View>
           ) : (
-            <View style={{ flexDirection: 'row', alignItems: 'flex-end', padding: 12, borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: '#ffffff' }}><TextInput value={commentText} onChangeText={setCommentText} maxLength={2000} multiline placeholder="Write a comment..." style={{ flex: 1, maxHeight: 110, borderRadius: 20, borderWidth: 1, borderColor: '#d1d5db', backgroundColor: '#f9fafb', paddingHorizontal: 15, paddingVertical: 10 }} /><TouchableOpacity disabled={!commentText.trim() || submitting} onPress={() => void handleSubmitComment()} style={{ marginLeft: 9, width: 43, height: 43, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: commentText.trim() ? '#10b981' : '#d1d5db' }}>{submitting ? <ActivityIndicator color="#ffffff" size="small" /> : <Icon name="send" size={19} color="#ffffff" />}</TouchableOpacity></View>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 12, paddingTop: 12, paddingBottom: Math.max(12, insets.bottom), borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface }}><TextInput value={commentText} onChangeText={setCommentText} maxLength={2000} multiline placeholder="Write a comment..." placeholderTextColor={colors.mutedText} style={{ flex: 1, maxHeight: 110, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control, color: colors.text, paddingHorizontal: 15, paddingVertical: 10 }} /><TouchableOpacity disabled={!commentText.trim() || submitting} onPress={() => void handleSubmitComment()} style={{ marginLeft: 9, width: 43, height: 43, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: commentText.trim() ? '#10b981' : '#64748b' }}>{submitting ? <ActivityIndicator color="#ffffff" size="small" /> : <Icon name="send" size={19} color="#ffffff" />}</TouchableOpacity></View>
           )}
         </KeyboardAvoidingView>
       </SafeAreaView>

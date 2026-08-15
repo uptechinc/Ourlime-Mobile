@@ -17,6 +17,7 @@ import { AuthService, type UserProfile } from '@/lib/services/AuthService';
 import type { PublicProfileResult } from '@/lib/services/ProfileService';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { ModerationService } from '@/lib/services/ModerationService';
+import { DeepLinkService } from '@/lib/services/DeepLinkService';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
 import TimelineTab from '@/components/profile/TimelineTab';
 import AboutTab from '@/components/profile/AboutTab';
@@ -26,10 +27,12 @@ import CachedImage from '@/components/ui/CachedImage';
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { profileResourceService } from '@/lib/services/ProfileResourceService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { presenceService, type PresenceState } from '@/lib/services/PresenceService';
 
 const authService = AuthService.getInstance();
 const relationshipService = RelationshipService.getInstance();
 const moderationService = ModerationService.getInstance();
+const deepLinkService = DeepLinkService.getInstance();
 
 type ProfileModalState = {
   visible: boolean;
@@ -43,7 +46,7 @@ type PublicProfileTab = 'timeline' | 'friends' | 'communities' | 'about' | 'gall
 
 export default function UserProfileScreen() {
   const router = useRouter();
-  const { isDark } = useAppTheme();
+  const { isDark, colors } = useAppTheme();
   const { username } = useLocalSearchParams<{ username: string }>();
 
   const [activeTab, setActiveTab] = useState<PublicProfileTab>('timeline');
@@ -55,6 +58,7 @@ export default function UserProfileScreen() {
   const [isBlockedByOther, setIsBlockedByOther] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<ProfileModalState>({ visible: false, type: 'info', title: '', message: '' });
+  const [presence, setPresence] = useState<PresenceState | null>(null);
 
   const currentUser = authService.getCurrentUser();
   const currentUserId = currentUser?.uid;
@@ -64,6 +68,11 @@ export default function UserProfileScreen() {
   const isLoading = !publicProfileResource.data && (publicProfileResource.status === 'idle' || publicProfileResource.status === 'hydrating');
   const refreshing = publicProfileResource.status === 'refreshing' && Boolean(publicProfileResource.data);
   const profileError = error ?? publicProfileResource.error?.message ?? null;
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    void presenceService.getPresence(profile.uid).then(setPresence).catch(() => setPresence(null));
+  }, [profile?.uid]);
 
   const loadRelationshipState = useCallback(async () => {
     if (!profile) return;
@@ -146,7 +155,7 @@ export default function UserProfileScreen() {
     if (!profile) return;
     try {
       await Share.share({
-        message: `Check out @${profile.userName}'s profile on Ourlime: https://ourlime.com/profile/${profile.userName}`,
+        message: `Check out @${profile.userName}'s profile on Ourlime: ${deepLinkService.getProfileShareUrl(profile.userName)}`,
       });
     } catch {
       // ignore
@@ -188,23 +197,23 @@ export default function UserProfileScreen() {
   const coverImage = profile?.coverPhoto || profile?.coverImage || profile?.coverPicture;
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#ffffff' }}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0f172a' : '#ffffff'} />
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
 
       {/* Header Bar */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
         <TouchableOpacity onPress={() => router.back()} style={{ padding: 6, marginRight: 10 }}>
-          <Ionicons name="chevron-back" size={26} color="#111827" />
+          <Ionicons name="chevron-back" size={26} color={colors.icon} />
         </TouchableOpacity>
-        <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: '800', color: '#111827', flex: 1 }}>
+        <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: '800', color: colors.text, flex: 1 }}>
           {displayName}
         </Text>
         <TouchableOpacity onPress={() => void handleShare()} style={{ padding: 6 }}>
-          <Ionicons name="share-outline" size={22} color="#475569" />
+          <Ionicons name="share-outline" size={22} color={colors.icon} />
         </TouchableOpacity>
         {!isOwnProfile && profile ? (
           <TouchableOpacity onPress={() => setModal({ visible: true, type: 'warning', title: isBlockedByMe ? 'Unblock user?' : 'Block user?', message: isBlockedByMe ? `Allow @${profile.userName} to interact with you again?` : `@${profile.userName} will no longer be able to interact with you.`, action: isBlockedByMe ? 'unblock' : 'block' })} style={{ padding: 6 }}>
-            <Ionicons name={isBlockedByMe ? 'person-add-outline' : 'ban-outline'} size={21} color="#475569" />
+            <Ionicons name={isBlockedByMe ? 'person-add-outline' : 'ban-outline'} size={21} color={colors.icon} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -214,14 +223,14 @@ export default function UserProfileScreen() {
       ) : !profile ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
           <Ionicons name="person-circle-outline" size={52} color="#94a3b8" />
-          <Text style={{ color: '#475569', textAlign: 'center', lineHeight: 21, marginTop: 12 }}>{profileError || 'This profile is unavailable.'}</Text>
+          <Text style={{ color: colors.secondaryText, textAlign: 'center', lineHeight: 21, marginTop: 12 }}>{profileError || 'This profile is unavailable.'}</Text>
           <TouchableOpacity onPress={() => void refreshProfile()} style={{ backgroundColor: '#10b981', paddingHorizontal: 22, paddingVertical: 11, borderRadius: 999, marginTop: 16 }}><Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text></TouchableOpacity>
         </View>
       ) : isBlockedByOther ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}><Text style={{ color: '#475569' }}>This profile is unavailable.</Text></View>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}><Text style={{ color: colors.secondaryText }}>This profile is unavailable.</Text></View>
       ) : (
         <ScrollView
-          style={{ flex: 1, backgroundColor: '#f8fafc' }}
+          style={{ flex: 1, backgroundColor: colors.canvas }}
           contentContainerStyle={{ paddingBottom: 60 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
         >
@@ -236,10 +245,11 @@ export default function UserProfileScreen() {
           </View>
 
           {/* ── Profile Header Body ── */}
-          <View style={{ backgroundColor: '#ffffff', paddingHorizontal: 20, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+          <View style={{ backgroundColor: colors.surface, paddingHorizontal: 20, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: -40, marginBottom: 12 }}>
-              <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: '#ffffff', padding: 3, elevation: 4 }}>
+              <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.surface, padding: 3, elevation: 4 }}>
                 <UserAvatar profileImage={profile?.profilePicture} firstName={profile?.firstName || username} size={78} />
+                {presence?.status === 'online' ? <View style={{ position: 'absolute', right: 2, bottom: 2, width: 16, height: 16, borderRadius: 8, backgroundColor: '#10b981', borderWidth: 3, borderColor: '#ffffff' }} /> : null}
               </View>
 
               {/* Public Actions (Follow, Add Friend, Message) */}
@@ -252,12 +262,12 @@ export default function UserProfileScreen() {
                       paddingHorizontal: 16,
                       paddingVertical: 8,
                       borderRadius: 20,
-                      backgroundColor: isFollowing ? '#f1f5f9' : '#10b981',
+                      backgroundColor: isFollowing ? colors.control : colors.accent,
                       borderWidth: 1,
                       borderColor: isFollowing ? '#cbd5e1' : '#10b981',
                     }}
                   >
-                    <Text style={{ color: isFollowing ? '#475569' : '#ffffff', fontWeight: '800', fontSize: 13 }}>
+                    <Text style={{ color: isFollowing ? colors.text : colors.onAccent, fontWeight: '800', fontSize: 13 }}>
                       {isFollowing ? 'Following' : '+ Follow'}
                     </Text>
                   </TouchableOpacity>
@@ -283,34 +293,34 @@ export default function UserProfileScreen() {
                       width: 36,
                       height: 36,
                       borderRadius: 18,
-                      backgroundColor: '#f1f5f9',
+                      backgroundColor: colors.control,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Ionicons name="chatbubble-ellipses-outline" size={18} color="#334155" />
+                    <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.icon} />
                   </TouchableOpacity>
                 </View>
               )}
             </View>
 
-            <Text style={{ fontSize: 22, fontWeight: '800', color: '#0f172a' }}>{displayName}</Text>
-            <Text style={{ fontSize: 14, color: '#64748b', marginTop: 2 }}>@{profile?.userName || username}</Text>
-            {profile.bio ? <Text style={{ fontSize: 14, color: '#334155', marginTop: 8, lineHeight: 20 }}>{profile.bio}</Text> : null}
+            <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text }}>{displayName}</Text>
+            <Text style={{ fontSize: 14, color: colors.mutedText, marginTop: 2 }}>@{profile?.userName || username}</Text>
+            {profile.bio ? <Text style={{ fontSize: 14, color: colors.secondaryText, marginTop: 8, lineHeight: 20 }}>{profile.bio}</Text> : null}
 
             {/* Stats Bar */}
-            <View style={{ flexDirection: 'row', marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#f1f5f9' }}>
+            <View style={{ flexDirection: 'row', marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border }}>
               <View style={{ marginRight: 24, alignItems: 'center' }}>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a' }}>{profile.postsCount ?? 0}</Text>
-                <Text style={{ fontSize: 12, color: '#64748b' }}>Posts</Text>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{profile.postsCount ?? 0}</Text>
+                <Text style={{ fontSize: 12, color: colors.mutedText }}>Posts</Text>
               </View>
               <View style={{ marginRight: 24, alignItems: 'center' }}>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a' }}>{profile.followersCount ?? 0}</Text>
-                <Text style={{ fontSize: 12, color: '#64748b' }}>Followers</Text>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{profile.followersCount ?? 0}</Text>
+                <Text style={{ fontSize: 12, color: colors.mutedText }}>Followers</Text>
               </View>
               <View style={{ alignItems: 'center' }}>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a' }}>{profile.friendsCount ?? 0}</Text>
-                <Text style={{ fontSize: 12, color: '#64748b' }}>Friends</Text>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{profile.friendsCount ?? 0}</Text>
+                <Text style={{ fontSize: 12, color: colors.mutedText }}>Friends</Text>
               </View>
             </View>
           </View>
@@ -319,7 +329,7 @@ export default function UserProfileScreen() {
           {canViewPrivateContent ? <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={{ backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}
+            style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}
             contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}
           >
             {(['timeline', 'friends', 'communities', 'about', 'gallery'] as const).map((tab) => {
@@ -333,17 +343,17 @@ export default function UserProfileScreen() {
                     paddingHorizontal: 16,
                     paddingVertical: 8,
                     borderRadius: 20,
-                    backgroundColor: isActive ? '#10b981' : '#f1f5f9',
+                    backgroundColor: isActive ? colors.selectedControl : colors.control,
                   }}
                   activeOpacity={0.8}
                 >
-                  <Text style={{ color: isActive ? '#ffffff' : '#64748b', fontWeight: isActive ? '800' : '600', fontSize: 13 }}>
+                  <Text style={{ color: isActive ? colors.selectedText : colors.secondaryText, fontWeight: isActive ? '800' : '600', fontSize: 13 }}>
                     {label}
                   </Text>
                 </TouchableOpacity>
               );
             })}
-          </ScrollView> : <View style={{ padding: 22, alignItems: 'center', backgroundColor: '#fff' }}><Ionicons name="lock-closed-outline" size={26} color="#64748b" /><Text style={{ color: '#475569', marginTop: 8 }}>This account is private.</Text></View>}
+          </ScrollView> : <View style={{ padding: 22, alignItems: 'center', backgroundColor: colors.surface }}><Ionicons name="lock-closed-outline" size={26} color={colors.icon} /><Text style={{ color: colors.secondaryText, marginTop: 8 }}>This account is private.</Text></View>}
 
           {/* ── Tab Content Views ── */}
           {canViewPrivateContent ? <View style={{ marginTop: 12 }}>
@@ -352,16 +362,16 @@ export default function UserProfileScreen() {
             )}
 
             {activeTab === 'friends' && (
-              <View style={{ padding: 16, backgroundColor: '#ffffff', borderRadius: 16, marginHorizontal: 16 }}>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a', marginBottom: 12 }}>Friends</Text>
-                {profileDetails.friends.length ? profileDetails.friends.map((friend: PublicProfileResult['friends'][number]) => <TouchableOpacity key={friend.id} onPress={() => router.push({ pathname: '/profile/[username]', params: { username: friend.userName } })} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}><Text style={{ fontWeight: '700', color: '#0f172a' }}>{friend.name}</Text><Text style={{ color: '#64748b', marginTop: 2 }}>@{friend.userName}</Text></TouchableOpacity>) : <Text style={{ fontSize: 13, color: '#64748b' }}>No visible friends.</Text>}
+              <View style={{ padding: 16, backgroundColor: colors.surface, borderRadius: 16, marginHorizontal: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 12 }}>Friends</Text>
+                {profileDetails.friends.length ? profileDetails.friends.map((friend: PublicProfileResult['friends'][number]) => <TouchableOpacity key={friend.id} onPress={() => router.push({ pathname: '/profile/[username]', params: { username: friend.userName } })} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}><Text style={{ fontWeight: '700', color: colors.text }}>{friend.name}</Text><Text style={{ color: colors.mutedText, marginTop: 2 }}>@{friend.userName}</Text></TouchableOpacity>) : <Text style={{ fontSize: 13, color: colors.mutedText }}>No visible friends.</Text>}
               </View>
             )}
 
             {activeTab === 'communities' && (
-              <View style={{ padding: 16, backgroundColor: '#ffffff', borderRadius: 16, marginHorizontal: 16 }}>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a', marginBottom: 12 }}>Joined Communities</Text>
-                {profileDetails.communities.length ? profileDetails.communities.map((community: PublicProfileResult['communities'][number]) => <TouchableOpacity key={community.id} onPress={() => router.push({ pathname: '/communities/[id]', params: { id: community.id } })} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}><Text style={{ fontWeight: '700', color: '#0f172a' }}>{community.title}</Text><Text style={{ color: '#64748b', marginTop: 2 }}>{community.membershipCount.toLocaleString()} members</Text></TouchableOpacity>) : <Text style={{ fontSize: 13, color: '#64748b' }}>No visible communities.</Text>}
+              <View style={{ padding: 16, backgroundColor: colors.surface, borderRadius: 16, marginHorizontal: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 12 }}>Joined Communities</Text>
+                {profileDetails.communities.length ? profileDetails.communities.map((community: PublicProfileResult['communities'][number]) => <TouchableOpacity key={community.id} onPress={() => router.push({ pathname: '/communities/[id]', params: { id: community.id } })} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}><Text style={{ fontWeight: '700', color: colors.text }}>{community.title}</Text><Text style={{ color: colors.mutedText, marginTop: 2 }}>{community.membershipCount.toLocaleString()} members</Text></TouchableOpacity>) : <Text style={{ fontSize: 13, color: colors.mutedText }}>No visible communities.</Text>}
               </View>
             )}
 

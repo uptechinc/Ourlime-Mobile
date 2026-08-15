@@ -7,17 +7,29 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_WEB_API_URL": "https://ourlime.com",
+        "EXPO_PUBLIC_OURLIME_API_BASE_URL": "https://ourlime.com"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_WEB_API_URL": "https://ourlime.com",
+        "EXPO_PUBLIC_OURLIME_API_BASE_URL": "https://ourlime.com"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "env": {
+        "EXPO_PUBLIC_WEB_API_URL": "https://ourlime.com",
+        "EXPO_PUBLIC_OURLIME_API_BASE_URL": "https://ourlime.com"
+      },
       "android": {
         "buildType": "app-bundle"
       }

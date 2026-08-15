@@ -389,13 +389,16 @@ export const notificationHelpers = {
       follow: 'New Follower',
       like: 'New Like',
       comment: 'New Comment',
+      repost: 'New Repost',
       mention: 'New Mention',
       community_invite: 'Community Invitation',
       role_change: 'Role Changed',
+      community_report: 'Community Report',
       report_action: 'Report Update',
       community_accepted: 'Join Request Accepted',
       community_rejected: 'Join Request Declined',
-      community_removed: 'Removed from Community'
+      community_removed: 'Removed from Community',
+      beta_management: 'Beta Program Update'
     };
     return titles[type] || 'New Notification';
   },
@@ -409,13 +412,16 @@ export const notificationHelpers = {
       follow: `${actorName} started following you`,
       like: `${actorName} liked your post`,
       comment: `${actorName} commented on your post`,
+      repost: `${actorName} reposted your post`,
       mention: `${actorName} mentioned you in a post`,
       community_invite: `${actorName} invited you to join a community`,
       role_change: `${actorName} changed your role`,
+      community_report: `${actorName} reported community content`,
       report_action: `${actorName} took action on a report`,
       community_accepted: `Your request to join has been accepted`,
       community_rejected: `Your request to join has been declined`,
-      community_removed: `You have been removed from the community`
+      community_removed: `You have been removed from the community`,
+      beta_management: `Your beta access has been updated`
     };
     return messages[type] || `${actorName} interacted with you`;
   },

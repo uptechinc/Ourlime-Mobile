@@ -2,12 +2,14 @@ import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { UserProfile } from '@/lib/services/AuthService';
 import type { ComponentProps } from 'react';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type AboutTabProps = {
   profile: UserProfile;
 };
 
 export default function AboutTab({ profile }: AboutTabProps) {
+  const { colors } = useAppTheme();
   const items: { icon: ComponentProps<typeof Ionicons>['name']; label: string; value: string; color: string }[] = [
     {
       icon: 'person-outline',
@@ -44,7 +46,9 @@ export default function AboutTab({ profile }: AboutTabProps) {
   return (
     <View style={{ padding: 16, gap: 12 }}>
       <View style={{
-        backgroundColor: '#ffffff',
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.border,
         borderRadius: 20,
         padding: 18,
         shadowColor: '#000',
@@ -53,7 +57,7 @@ export default function AboutTab({ profile }: AboutTabProps) {
         shadowRadius: 6,
         elevation: 2,
       }}>
-        <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a', marginBottom: 14 }}>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 14 }}>
           About & Overview
         </Text>
 
@@ -72,8 +76,8 @@ export default function AboutTab({ profile }: AboutTabProps) {
                 <Ionicons name={item.icon} size={18} color={item.color} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, color: '#64748b', fontWeight: '500' }}>{item.label}</Text>
-                <Text style={{ fontSize: 14, color: '#1e293b', fontWeight: '600', marginTop: 1 }}>{item.value}</Text>
+                <Text style={{ fontSize: 12, color: colors.mutedText, fontWeight: '500' }}>{item.label}</Text>
+                <Text style={{ fontSize: 14, color: colors.text, fontWeight: '600', marginTop: 1 }}>{item.value}</Text>
               </View>
             </View>
           ))}

@@ -44,6 +44,7 @@ export function getAppNavigationItems(options: { includeHome?: boolean; isAdmin?
     return options.resolveStatus?.(item.pageRoute).visible !== false;
   }).map((item) => {
     const availability = options.resolveStatus?.(item.pageRoute);
-    return availability ? { ...item, status: availability.status, badge: availability.badge } : { ...item };
+    const badge = availability?.badge?.trim();
+    return availability ? { ...item, status: availability.status, badge: badge || undefined } : { ...item };
   });
 }

@@ -1,169 +1,86 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  updateDoc,
-  where,
-  writeBatch,
-  onSnapshot,
-} from 'firebase/firestore';
+import { collection, doc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { ApiService, ApiServiceError } from './ApiService';
 import { DiagnosticLogService } from './DiagnosticLogService';
-import { notificationHelpers } from '../helpers/notificationHelpers';
-import type { NotificationData, NotificationType } from '@/lib/types/notification';
+import { LocalCacheService } from './LocalCacheService';
+import type { NotificationData, NotificationPage } from '@/lib/types/notification';
 
-export type NotificationItem = {
-  id: string;
-  userId: string;
-  type: 'like' | 'comment' | 'follow' | 'friend_request' | 'friend_accept' | 'mention' | 'repost';
-  title: string;
-  message: string;
-  isRead: boolean;
-  createdAt: string;
-  sourceUserId?: string;
-  sourceUserName?: string;
-  sourceProfileImage?: string;
-  actionUrl?: string;
-};
+type NotificationApiResponse = { success: boolean; data?: NotificationPage; error?: string };
+type NotificationAction = 'read' | 'unread' | 'read-all' | 'delete';
+
+const CACHE_NAMESPACE = 'notifications';
+const CACHE_KEY = 'latest';
+const CACHE_RETENTION_MS = 48 * 60 * 60 * 1000;
 
 export class NotificationService {
   private static instance: NotificationService;
+  private readonly apiService = ApiService.getInstance();
+  private readonly cacheService = LocalCacheService.getInstance();
   private readonly logger = DiagnosticLogService.getInstance();
+  private readonly inFlight = new Map<string, Promise<NotificationPage>>();
 
   private constructor() {}
 
   public static getInstance(): NotificationService {
-    if (!NotificationService.instance) {
-      NotificationService.instance = new NotificationService();
-    }
+    if (!NotificationService.instance) NotificationService.instance = new NotificationService();
     return NotificationService.instance;
   }
 
-  public async fetchNotifications(userId: string, maxLimit = 30): Promise<NotificationItem[]> {
-    if (!userId) return [];
-    this.logger.info('NotificationService', 'fetchNotifications:start', { userId });
-    try {
-      const rawNotifs = await notificationHelpers.getUserNotifications(userId, maxLimit);
-      const notifications: NotificationItem[] = rawNotifs.map((data) => ({
-        id: data.id || `notif_${Date.now()}`,
-        userId: data.userId || userId,
-        type: this.normalizeType(data.type),
-        title: data.title || notificationHelpers.formatNotificationTitle(data.type),
-        message: data.message || '',
-        isRead: Boolean(data.isRead),
-        createdAt: this.toDate(data.createdAt).toISOString(),
-        sourceUserId: data.metadata?.sourceUserId || data.metadata?.sourceId,
-        sourceUserName: data.userDetails?.userName || `${data.userDetails?.firstName || ''} ${data.userDetails?.lastName || ''}`.trim(),
-        sourceProfileImage: data.userDetails?.profileImage,
-        actionUrl: data.metadata?.actionUrl,
-      }));
-      this.logger.success('NotificationService', 'fetchNotifications', { count: notifications.length });
-      return notifications;
-    } catch (error) {
-      this.logger.error('NotificationService', 'fetchNotifications', error, { userId });
-      return [];
-    }
+  public async hydrate(userId: string): Promise<NotificationPage | null> {
+    if (!userId) return null;
+    const cached = await this.cacheService.read<NotificationPage>(userId, CACHE_NAMESPACE, CACHE_KEY);
+    return cached?.data ?? null;
   }
 
-  public async fetchNotificationData(userId: string, maxLimit = 50): Promise<NotificationData[]> {
-    const [topLevel, legacy] = await Promise.all([
-      getDocs(query(collection(db, 'notifications'), where('userId', '==', userId), limit(maxLimit))),
-      notificationHelpers.getUserNotifications(userId, maxLimit),
-    ]);
-    const merged = new Map<string, NotificationData>();
-    topLevel.docs.forEach((item) => merged.set(item.id, this.normalizeNotification(item.id, item.data(), userId)));
-    legacy.forEach((item) => {
-      const id = item.id || `legacy-${this.toDate(item.createdAt).getTime()}`;
-      if (!merged.has(id)) merged.set(id, this.normalizeNotification(id, item, userId));
-    });
-    return Array.from(merged.values()).sort((left, right) => this.toDate(right.createdAt).getTime() - this.toDate(left.createdAt).getTime());
+  public async fetchPage(userId: string, cursor: string | null = null, pageLimit = 30): Promise<NotificationPage> {
+    const key = `${userId}:${cursor ?? 'head'}`;
+    const existing = this.inFlight.get(key);
+    if (existing) return existing;
+    const operation = (async () => {
+      const search = new URLSearchParams({ limit: String(pageLimit) });
+      if (cursor) search.set('cursor', cursor);
+      const response = await this.apiService.request<NotificationApiResponse>(`/api/notifications?${search.toString()}`, { authenticated: true });
+      if (!response.success || !response.data) throw new Error(response.error || 'Notifications unavailable');
+      const page = response.data;
+      if (!cursor) await this.cacheService.write(userId, CACHE_NAMESPACE, CACHE_KEY, page, { expiresAt: Date.now() + CACHE_RETENTION_MS });
+      this.logger.success('NotificationService', 'fetch-page', { count: page.notifications.length, unreadCount: page.unreadCount, hasMore: page.hasMore });
+      return page;
+    })().catch((error: unknown) => {
+      const isAvailabilityFailure = error instanceof ApiServiceError
+        && ['API_UNAVAILABLE', 'REQUEST_TIMEOUT', 'NETWORK_ERROR'].includes(error.code ?? '');
+      if (!isAvailabilityFailure) {
+        this.logger.error('NotificationService', 'fetch-page', error, { userId, hasCursor: Boolean(cursor) });
+      }
+      throw error;
+    }).finally(() => this.inFlight.delete(key));
+    this.inFlight.set(key, operation);
+    return operation;
   }
 
-  public subscribe(userId: string, onChange: () => void, onError: (error: Error) => void): () => void {
+  public subscribeToInvalidation(userId: string, onChange: () => void, onError: (error: Error) => void): () => void {
     return onSnapshot(
-      query(collection(db, 'notifications'), where('userId', '==', userId), limit(50)),
+      query(collection(doc(db, 'userNotifications', userId), 'items'), orderBy('createdAt', 'desc'), limit(1)),
       () => onChange(),
-      (error) => onError(error)
+      onError,
     );
   }
 
-  public async markLegacyAsRead(userId: string, notificationId: string): Promise<void> {
-    await notificationHelpers.markAsRead(userId, notificationId);
+  public async mutate(action: NotificationAction, notificationIds: string[] = []): Promise<void> {
+    const response = await this.apiService.request<{ success: boolean; error?: string }>('/api/notifications', {
+      method: 'PATCH', authenticated: true, body: { action, notificationIds },
+    });
+    if (!response.success) throw new Error(response.error || 'Notification update failed');
   }
 
-  public async markAsUnread(userId: string, notificationId: string): Promise<void> {
-    await notificationHelpers.markAsUnread(userId, notificationId);
-  }
+  public markAsRead(notificationId: string): Promise<void> { return this.mutate('read', [notificationId]); }
+  public markAsUnread(notificationId: string): Promise<void> { return this.mutate('unread', [notificationId]); }
+  public markAllAsRead(): Promise<void> { return this.mutate('read-all'); }
+  public delete(notificationIds: string[]): Promise<void> { return this.mutate('delete', notificationIds); }
 
-  public async markAllLegacyAsRead(userId: string): Promise<void> {
-    await notificationHelpers.markAllAsRead(userId);
-    await this.markAllAsRead(userId);
-  }
-
-  private normalizeType(value: unknown): NotificationItem['type'] {
-    const validTypes: NotificationItem['type'][] = ['like', 'comment', 'follow', 'friend_request', 'friend_accept', 'mention', 'repost'];
-    return typeof value === 'string' && validTypes.includes(value as NotificationItem['type'])
-      ? value as NotificationItem['type']
-      : 'like';
-  }
-
-  private normalizeNotification(id: string, value: unknown, fallbackUserId: string): NotificationData {
-    const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};
-    const metadata = record.metadata && typeof record.metadata === 'object' ? record.metadata as NotificationData['metadata'] : {};
-    const userDetails = record.userDetails && typeof record.userDetails === 'object' ? record.userDetails as NotificationData['userDetails'] : {};
-    return {
-      id,
-      userId: typeof record.userId === 'string' ? record.userId : fallbackUserId,
-      type: this.normalizeNotificationType(record.type),
-      title: typeof record.title === 'string' ? record.title : '',
-      message: typeof record.message === 'string' ? record.message : '',
-      isRead: record.isRead === true || record.isRead === 'true' || record.isRead === 1,
-      createdAt: record.createdAt instanceof Date || typeof record.createdAt === 'string' || typeof record.createdAt === 'number' || (record.createdAt !== null && typeof record.createdAt === 'object') ? record.createdAt as NotificationData['createdAt'] : new Date(),
-      metadata,
-      userDetails,
-    };
-  }
-
-  private normalizeNotificationType(value: unknown): NotificationType {
-    const types: NotificationType[] = ['friend_request', 'friend_accepted', 'friend_declined', 'follow', 'like', 'comment', 'mention', 'community_invite'];
-    return typeof value === 'string' && types.includes(value as NotificationType) ? value as NotificationType : 'mention';
-  }
-
-  private toDate(value: unknown): Date {
-    if (value instanceof Date) return value;
-    if (typeof value === 'string' || typeof value === 'number') return new Date(value);
-    if (value && typeof value === 'object') {
-      const record = value as { seconds?: unknown; toDate?: unknown };
-      if (typeof record.toDate === 'function') return (record.toDate as () => Date)();
-      if (typeof record.seconds === 'number') return new Date(record.seconds * 1000);
-    }
-    return new Date();
-  }
-
-  public async markAsRead(notificationId: string): Promise<void> {
-    try {
-      await updateDoc(doc(db, 'notifications', notificationId), { isRead: true });
-    } catch (error) {
-      this.logger.error('NotificationService', 'markAsRead', error, { notificationId });
-    }
-  }
-
-  public async markAllAsRead(userId: string): Promise<void> {
-    try {
-      const q = query(
-        collection(db, 'notifications'),
-        where('userId', '==', userId),
-        where('isRead', '==', false)
-      );
-      const snap = await getDocs(q);
-      const batch = writeBatch(db);
-      snap.docs.forEach((d) => batch.update(d.ref, { isRead: true }));
-      await batch.commit();
-    } catch (error) {
-      this.logger.error('NotificationService', 'markAllAsRead', error, { userId });
-    }
+  public mergePages(current: NotificationData[], next: NotificationData[]): NotificationData[] {
+    const merged = new Map(current.map((notification) => [notification.id ?? '', notification]));
+    next.forEach((notification) => merged.set(notification.id ?? '', notification));
+    merged.delete('');
+    return Array.from(merged.values());
   }
 }

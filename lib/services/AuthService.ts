@@ -31,6 +31,8 @@ import { localCacheService } from './LocalCacheService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import { PostMediaService } from './PostMediaService';
 import { AuthServiceError } from '@/lib/auth/AuthErrors';
+import { presenceService } from './PresenceService';
+import { nativeCallService } from './NativeCallService';
 export { AuthServiceError, getAuthErrorCode } from '@/lib/auth/AuthErrors';
 export type { AuthServiceErrorCode } from '@/lib/auth/AuthErrors';
 
@@ -320,8 +322,12 @@ export class AuthService {
    */
   public async logout(): Promise<void> {
     const userId = auth.currentUser?.uid;
+    await presenceService.heartbeat('offline').catch(() => undefined);
     await pushNotificationService.unregisterCurrentDevice().catch((error: unknown) => {
       this.logger.warn('AuthService', 'logout:push-unregister', { error: error instanceof Error ? error.message : String(error) });
+    });
+    await nativeCallService.unregisterTokens().catch((error: unknown) => {
+      this.logger.warn('AuthService', 'logout:call-token-unregister', { error: error instanceof Error ? error.message : String(error) });
     });
     if (userId) await localCacheService.clearUser(userId).catch(() => undefined);
     useResourceStore.getState().clearUserResources();

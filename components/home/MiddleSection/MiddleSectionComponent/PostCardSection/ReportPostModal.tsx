@@ -11,6 +11,8 @@ import {
 } from '@/lib/services/ModerationService';
 import type { PostItem } from '@/lib/services/PostService';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
+import { CommunityService } from '@/lib/services/CommunityService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type ReportPostModalProps = {
   visible: boolean;
@@ -19,8 +21,10 @@ type ReportPostModalProps = {
 };
 
 const moderationService = ModerationService.getInstance();
+const communityService = CommunityService.getInstance();
 
 export default function ReportPostModal({ visible, post, onClose }: ReportPostModalProps) {
+  const { colors } = useAppTheme();
   const [category, setCategory] = useState<ReportReasonCategory | null>(null);
   const [reason, setReason] = useState('');
   const [description, setDescription] = useState('');
@@ -65,15 +69,19 @@ export default function ReportPostModal({ visible, post, onClose }: ReportPostMo
     if (!category || !reason || submitting) return;
     setSubmitting(true);
     try {
-      await moderationService.reportPost({
-        targetId: post.id,
-        reportedUserId: post.userId,
-        reasonCategory: category,
-        reason,
-        description,
-        contentUrl: post.media[0]?.typeUrl,
-        evidenceFiles,
-      });
+      if (post.origin === 'community' && post.communityId) {
+        await communityService.reportContent({ communityId: post.communityId, targetId: post.id, targetType: 'post', reason, details: description });
+      } else {
+        await moderationService.reportPost({
+          targetId: post.id,
+          reportedUserId: post.userId,
+          reasonCategory: category,
+          reason,
+          description,
+          contentUrl: post.media[0]?.typeUrl,
+          evidenceFiles,
+        });
+      }
       setSubmitting(false);
       handleClose();
       setFeedback({ title: 'Report submitted', message: 'Our moderation team will review this post.', type: 'success' });
@@ -87,28 +95,28 @@ export default function ReportPostModal({ visible, post, onClose }: ReportPostMo
   return (
     <>
     <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }}>
-          {category ? <TouchableOpacity onPress={() => { setCategory(null); setReason(''); }} style={{ padding: 7 }}><Icon name="arrow-left" size={22} color="#374151" /></TouchableOpacity> : null}
-          <View style={{ flex: 1, marginLeft: category ? 5 : 0 }}><Text style={{ color: '#111827', fontSize: 18, fontWeight: '800' }}>Report Post</Text><Text style={{ color: '#6b7280', fontSize: 12 }}>Help us keep Ourlime safe</Text></View>
-          <TouchableOpacity onPress={handleClose} style={{ padding: 7 }}><Icon name="x" size={22} color="#374151" /></TouchableOpacity>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={['top', 'left', 'right']}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
+          {category ? <TouchableOpacity onPress={() => { setCategory(null); setReason(''); }} style={{ padding: 7 }}><Icon name="arrow-left" size={22} color={colors.icon} /></TouchableOpacity> : null}
+          <View style={{ flex: 1, marginLeft: category ? 5 : 0 }}><Text style={{ color: colors.text, fontSize: 18, fontWeight: '800' }}>Report Post</Text><Text style={{ color: colors.mutedText, fontSize: 12 }}>Help us keep Ourlime safe</Text></View>
+          <TouchableOpacity onPress={handleClose} style={{ padding: 7 }}><Icon name="x" size={22} color={colors.icon} /></TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }}>
-          <View style={{ padding: 13, borderRadius: 14, backgroundColor: '#f9fafb', marginBottom: 18 }}><Text numberOfLines={3} style={{ color: '#4b5563' }}>{post.caption || post.description || 'Post content'}</Text></View>
+          <View style={{ padding: 13, borderRadius: 14, backgroundColor: colors.control, marginBottom: 18 }}><Text numberOfLines={3} style={{ color: colors.secondaryText }}>{post.caption || post.description || 'Post content'}</Text></View>
           {!category ? (
             <View>
-              <Text style={{ marginBottom: 12, color: '#111827', fontWeight: '800' }}>What type of issue is this?</Text>
+              <Text style={{ marginBottom: 12, color: colors.text, fontWeight: '800' }}>What type of issue is this?</Text>
               {(Object.entries(REPORT_REASONS) as [ReportReasonCategory, (typeof REPORT_REASONS)[ReportReasonCategory]][]).map(([key, group]) => (
-                <TouchableOpacity key={key} onPress={() => setCategory(key)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, padding: 15, borderRadius: 15, borderWidth: 1, borderColor: '#e5e7eb' }}><Icon name="alert-circle" size={19} color="#c64d53" /><Text style={{ flex: 1, marginLeft: 11, color: '#374151', fontWeight: '700' }}>{group.label}</Text><Icon name="chevron-right" size={19} color="#9ca3af" /></TouchableOpacity>
+                <TouchableOpacity key={key} onPress={() => setCategory(key)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, padding: 15, borderRadius: 15, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}><Icon name="alert-circle" size={19} color={colors.destructive} /><Text style={{ flex: 1, marginLeft: 11, color: colors.secondaryText, fontWeight: '700' }}>{group.label}</Text><Icon name="chevron-right" size={19} color={colors.icon} /></TouchableOpacity>
               ))}
             </View>
           ) : (
             <View>
-              <Text style={{ marginBottom: 12, color: '#111827', fontWeight: '800' }}>Why are you reporting this post?</Text>
+              <Text style={{ marginBottom: 12, color: colors.text, fontWeight: '800' }}>Why are you reporting this post?</Text>
               {REPORT_REASONS[category].reasons.map((item) => (
-                <TouchableOpacity key={item} onPress={() => setReason(item)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 9, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: reason === item ? '#ef4444' : '#e5e7eb', backgroundColor: reason === item ? '#fef2f2' : '#ffffff' }}><View style={{ width: 19, height: 19, borderRadius: 10, borderWidth: 2, borderColor: reason === item ? '#ef4444' : '#d1d5db', alignItems: 'center', justifyContent: 'center' }}>{reason === item ? <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: '#ef4444' }} /> : null}</View><Text style={{ flex: 1, marginLeft: 11, color: reason === item ? '#991b1b' : '#374151', fontWeight: '600' }}>{item}</Text></TouchableOpacity>
+                <TouchableOpacity key={item} onPress={() => setReason(item)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 9, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: reason === item ? colors.destructive : colors.border, backgroundColor: reason === item ? colors.destructiveSurface : colors.surface }}><View style={{ width: 19, height: 19, borderRadius: 10, borderWidth: 2, borderColor: reason === item ? colors.destructive : colors.border, alignItems: 'center', justifyContent: 'center' }}>{reason === item ? <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: colors.destructive }} /> : null}</View><Text style={{ flex: 1, marginLeft: 11, color: reason === item ? colors.destructiveText : colors.secondaryText, fontWeight: '600' }}>{item}</Text></TouchableOpacity>
               ))}
-              {reason ? <TextInput value={description} onChangeText={setDescription} multiline maxLength={2000} placeholder="Additional details (optional)" style={{ minHeight: 105, marginTop: 10, padding: 13, borderRadius: 14, borderWidth: 1, borderColor: '#e5e7eb', textAlignVertical: 'top' }} /> : null}
+              {reason ? <TextInput value={description} onChangeText={setDescription} multiline maxLength={2000} placeholder="Additional details (optional)" placeholderTextColor={colors.mutedText} style={{ minHeight: 105, marginTop: 10, padding: 13, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, textAlignVertical: 'top' }} /> : null}
               {reason ? (
                 <View style={{ marginTop: 14 }}>
                   <TouchableOpacity onPress={() => void handlePickEvidence()} disabled={evidenceFiles.length >= 3} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 13, borderWidth: 1, borderStyle: 'dashed', borderColor: '#c64d53', borderRadius: 14 }}>
@@ -120,7 +128,7 @@ export default function ReportPostModal({ visible, post, onClose }: ReportPostMo
             </View>
           )}
         </ScrollView>
-        {category ? <View style={{ padding: 15, borderTopWidth: 1, borderTopColor: '#e5e7eb' }}><TouchableOpacity disabled={!reason || submitting} onPress={() => void handleSubmit()} style={{ alignItems: 'center', borderRadius: 17, paddingVertical: 13, backgroundColor: reason ? '#dc2626' : '#d1d5db' }}>{submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: '#ffffff', fontWeight: '800' }}>Submit Report</Text>}</TouchableOpacity></View> : null}
+        {category ? <View style={{ padding: 15, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface }}><TouchableOpacity disabled={!reason || submitting} onPress={() => void handleSubmit()} style={{ alignItems: 'center', borderRadius: 17, paddingVertical: 13, backgroundColor: reason ? colors.destructive : colors.disabled }}>{submitting ? <ActivityIndicator color={colors.onAccent} /> : <Text style={{ color: reason ? colors.onAccent : colors.disabledText, fontWeight: '800' }}>Submit Report</Text>}</TouchableOpacity></View> : null}
       </SafeAreaView>
     </Modal>
     <CustomModal visible={feedback !== null} type={feedback?.type} title={feedback?.title ?? ''} message={feedback?.message ?? ''} onClose={() => setFeedback(null)} />

@@ -4,6 +4,7 @@ import { ResourceErrorService } from './ResourceErrorService';
 import { RequestTimeoutService } from './RequestTimeoutService';
 import { useResourceStore, type FeedResourceData } from '@/lib/store/useResourceStore';
 import type { ResourceState } from '@/lib/types/resourceState';
+import { communityFeedResourceService } from './CommunityFeedResourceService';
 
 const FEED_NAMESPACE = 'feeds';
 const FEED_STALE_MS = 60_000;
@@ -58,7 +59,7 @@ export class FeedResourceService {
       status: 'ready',
       source: 'disk',
       updatedAt: cached.updatedAt,
-      isStale: cached.isExpired || Date.now() - cached.updatedAt >= FEED_STALE_MS,
+      isStale: cached.isExpired || hydratedData.isPartialSeed === true || Date.now() - cached.updatedAt >= FEED_STALE_MS,
       error: null,
     });
     await this.cacheService.touch(query.userId, FEED_NAMESPACE, key);
@@ -104,6 +105,7 @@ export class FeedResourceService {
       state.setFeed(key, { ...resource, data: nextData });
       await this.cacheService.write(userId, FEED_NAMESPACE, key, nextData, { expiresAt: Date.now() + FEED_RETENTION_MS });
     }));
+    await communityFeedResourceService.patchPost(updatedPost);
   }
 
   public async patchAuthor(userId: string, updates: { firstName: string; lastName: string; userName: string; profilePicture: string | null }): Promise<void> {
@@ -119,12 +121,14 @@ export class FeedResourceService {
 
   public async removePosts(predicate: (post: PostItem) => boolean): Promise<void> {
     const state = useResourceStore.getState();
+    const removedIds = Object.values(state.postEntities).filter(predicate).map((post) => post.id);
     await Promise.all(Object.entries(state.feeds).map(async ([key, resource]) => {
       if (!resource.data) return;
       const nextData = { ...resource.data, posts: resource.data.posts.filter((post) => !predicate(post)), pendingPosts: resource.data.pendingPosts.filter((post) => !predicate(post)) };
       state.setFeed(key, { ...resource, data: nextData });
       await this.cacheService.write(key.split(':')[0], FEED_NAMESPACE, key, nextData, { expiresAt: Date.now() + FEED_RETENTION_MS });
     }));
+    await Promise.all(removedIds.map((postId) => communityFeedResourceService.remove(postId)));
   }
 
   public async prependCreated(query: FeedResourceQuery, post: PostItem): Promise<void> {
@@ -132,6 +136,24 @@ export class FeedResourceService {
     const current = useResourceStore.getState().feeds[key];
     const data: FeedResourceData = current?.data ? { ...current.data, posts: this.dedupe([post, ...current.data.posts]) } : { posts: [post], nextCursor: null, hasMore: false, pendingPosts: [], scrollOffset: 0 };
     await this.commit(query, data, 'memory');
+  }
+
+  public async seedDerivedFilters(userId: string, scope: FeedScope): Promise<void> {
+    const allQuery: FeedResourceQuery = { userId, scope, filter: 'all' };
+    const allResource = useResourceStore.getState().feeds[this.getKey(allQuery)];
+    if (!allResource?.data) return;
+    const filters: Exclude<FeedFilter, 'all'>[] = ['photo', 'video', 'audio', 'poll', 'event'];
+    await Promise.all(filters.map(async (filter) => {
+      const query: FeedResourceQuery = { userId, scope, filter };
+      const key = this.getKey(query);
+      if (useResourceStore.getState().feeds[key]?.data) return;
+      const posts = allResource.data!.posts.filter((post) => this.matchesFilter(post, filter));
+      const data: FeedResourceData = { posts, nextCursor: null, hasMore: true, pendingPosts: [], scrollOffset: 0, isPartialSeed: true };
+      const updatedAt = Date.now();
+      useResourceStore.getState().upsertPostEntities(posts);
+      useResourceStore.getState().setFeed(key, { data, status: 'ready', source: allResource.source, updatedAt, isStale: true, error: null });
+      await this.cacheService.write(userId, FEED_NAMESPACE, key, data, { expiresAt: updatedAt + FEED_RETENTION_MS });
+    }));
   }
 
   public setScrollOffset(query: FeedResourceQuery, scrollOffset: number): void {
@@ -157,7 +179,7 @@ export class FeedResourceService {
   private async performRefresh(query: FeedResourceQuery, options: { force?: boolean; bufferNewPosts?: boolean }): Promise<void> {
     const key = this.getKey(query);
     const current = useResourceStore.getState().feeds[key];
-    if (!options.force && current?.data && current.updatedAt && Date.now() - current.updatedAt < FEED_STALE_MS) return;
+    if (!options.force && current?.data && !current.isStale && current.updatedAt && Date.now() - current.updatedAt < FEED_STALE_MS) return;
     useResourceStore.getState().setFeed(key, this.withState(current, { status: current?.data ? 'refreshing' : 'hydrating', error: null }));
     try {
       const page = await this.timeoutService.run(this.postService.fetchFeedPage({ limit: 20, filter: query.filter, scope: query.scope, authorId: query.authorId }), 'Feed request');
@@ -172,6 +194,7 @@ export class FeedResourceService {
         hasMore: page.hasMore,
         pendingPosts: shouldBuffer ? this.dedupe([...(currentData?.pendingPosts ?? []), ...newPosts]) : [],
         scrollOffset: currentData?.scrollOffset ?? 0,
+        isPartialSeed: false,
       };
       await this.commit(query, data, 'network');
     } catch (error: unknown) {
@@ -185,7 +208,7 @@ export class FeedResourceService {
     const updatedAt = Date.now();
     useResourceStore.getState().upsertPostEntities([...data.posts, ...data.pendingPosts]);
     useResourceStore.getState().setFeed(key, { data, status: 'ready', source, updatedAt, isStale: false, error: null });
-    await this.cacheService.write(query.userId, FEED_NAMESPACE, key, data, { expiresAt: updatedAt + FEED_STALE_MS });
+    await this.cacheService.write(query.userId, FEED_NAMESPACE, key, data, { expiresAt: updatedAt + FEED_RETENTION_MS });
     await this.cacheService.prune({ userId: query.userId, namespace: FEED_NAMESPACE, maximumRecords: 24, maximumExpiredAgeMs: FEED_RETENTION_MS });
   }
 
@@ -195,6 +218,13 @@ export class FeedResourceService {
 
   private dedupe(posts: PostItem[]): PostItem[] {
     return Array.from(new Map(posts.map((post) => [post.id, post])).values());
+  }
+
+  private matchesFilter(post: PostItem, filter: Exclude<FeedFilter, 'all'>): boolean {
+    if (filter === 'poll' || filter === 'event') return post.type === filter;
+    if (filter === 'photo') return post.media.some((media) => media.type === 'image');
+    if (filter === 'video') return post.media.some((media) => media.type === 'video');
+    return false;
   }
 }
 

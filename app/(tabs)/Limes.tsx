@@ -23,11 +23,14 @@ import { Reel } from '@/types/userTypes';
 import type { LimeComment } from '@/lib/types/lime';
 import { limeService } from '@/lib/services/LimeService';
 import { AuthService } from '@/lib/services/AuthService';
+import { deepLinkService } from '@/lib/services/DeepLinkService';
+import { useLocalSearchParams } from 'expo-router';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const authService = AuthService.getInstance();
 
 export default function LimesScreen() {
+  const { limeId } = useLocalSearchParams<{ limeId?: string }>();
   const [limesList, setLimesList] = useState<Reel[]>([]);
   const [followingUserIds, setFollowingUserIds] = useState<Set<string>>(new Set());
   const [feedTab, setFeedTab] = useState<'forYou' | 'following'>('forYou');
@@ -42,15 +45,23 @@ export default function LimesScreen() {
     setLoading(true);
     try {
       const result = await limeService.fetchFeed(authService.getCurrentUser()?.uid ?? '');
+      const requestedLime = limeId
+        ? result.reels.find((reel) => reel.id === limeId) ?? await limeService.fetchLimeById(limeId)
+        : null;
+      const orderedReels = requestedLime
+        ? [requestedLime, ...result.reels.filter((reel) => reel.id !== requestedLime.id)]
+        : result.reels;
       setFollowingUserIds(new Set(result.followingUserIds));
       setPreloadedCommentsMap(result.commentsByReel);
-      setLimesList(result.reels);
+      setLimesList(orderedReels);
+      setFeedTab('forYou');
+      setActiveIndex(0);
     } catch (err) {
       console.error('[LimesScreen] Error loading real limes:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [limeId]);
 
   useEffect(() => {
     void loadRealLimes();
@@ -389,7 +400,7 @@ function ReelItem({ reel, isActive, muted, currentUserId, onToggleMute, onCommen
 
   const handleShare = async () => {
     try {
-      const shareUrl = `https://ourlime.com/limes/${reel.id}`;
+      const shareUrl = deepLinkService.getLimeShareUrl(reel.id);
       const title = reel.caption || `Lime Reel by @${reel.user.userName}`;
       const message = `${reel.caption ? `"${reel.caption}"\n\n` : ''}Watch @${reel.user.userName}'s Lime reel on Ourlime:\n${shareUrl}`;
       await Share.share({ title, message, url: shareUrl });

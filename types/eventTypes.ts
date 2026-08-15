@@ -3,6 +3,11 @@ export type MediaItem = {
     url: string;
 };
 
+export type EventPermissionSet = {
+    canEdit: boolean;
+    canDelete: boolean;
+};
+
 export type Event = {
     id?: string; // Optional ID for the event, useful for Firestore documents
     title: string; // Title of the event
@@ -19,6 +24,8 @@ export type Event = {
     communityVariantId?: string; // ID of the community if this is a community event
     media?: MediaItem[]; // Media items for the event
     userRSVP?: boolean; // Whether the current user has RSVP'd
+    attendeeCount?: number;
+    permissions?: EventPermissionSet;
     description?: string; // Detailed description of the event
     tags?: string[];
-}
+};

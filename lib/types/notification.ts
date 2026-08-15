@@ -5,8 +5,34 @@ export type NotificationType =
   | 'follow'
   | 'like'
   | 'comment'
+  | 'repost'
   | 'mention'
-  | 'community_invite';
+  | 'community_invite'
+  | 'role_change'
+  | 'community_report'
+  | 'report_action'
+  | 'community_accepted'
+  | 'community_rejected'
+  | 'community_removed'
+  | 'beta_management';
+
+export type PushOnlyNotificationType = 'message' | 'voice_call' | 'video_call';
+
+export type NotificationMetadata = {
+  sourceId?: string;
+  sourceUserId?: string;
+  actionUrl?: string;
+  postId?: string;
+  sourceUserName?: string;
+  senderId?: string;
+  communityId?: string;
+  limeId?: string;
+  reelId?: string;
+  reportId?: string;
+  chatId?: string;
+  path?: string;
+  sourceProfileImage?: string;
+};
 
 export type NotificationData = {
   id?: string;
@@ -16,18 +42,7 @@ export type NotificationData = {
   message: string;
   isRead: boolean;
   createdAt?: { seconds: number; nanoseconds?: number; toDate?: () => Date } | string | number | Date;
-  metadata?: Record<string, unknown> & {
-    sourceId?: string;
-    sourceUserId?: string;
-    actionUrl?: string;
-    postId?: string;
-    sourceUserName?: string;
-    senderId?: string;
-    communityId?: string;
-    limeId?: string;
-    reelId?: string;
-    sourceProfileImage?: string;
-  };
+  metadata?: NotificationMetadata;
   userDetails?: {
     uid?: string;
     userId?: string;
@@ -36,4 +51,11 @@ export type NotificationData = {
     lastName?: string;
     userName?: string;
   };
+};
+
+export type NotificationPage = {
+  notifications: NotificationData[];
+  unreadCount: number;
+  nextCursor: string | null;
+  hasMore: boolean;
 };

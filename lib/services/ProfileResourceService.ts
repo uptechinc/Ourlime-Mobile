@@ -4,6 +4,7 @@ import { RelationshipService } from './RelationshipService';
 import { LocalCacheService, type CachedRecord } from './LocalCacheService';
 import { ResourceErrorService } from './ResourceErrorService';
 import { RequestTimeoutService } from './RequestTimeoutService';
+import { PostService } from './PostService';
 import { useResourceStore, type OwnProfileResource } from '@/lib/store/useResourceStore';
 import type { ResourceState } from '@/lib/types/resourceState';
 
@@ -21,6 +22,7 @@ export class ProfileResourceService {
   private readonly authService = AuthService.getInstance();
   private readonly profileService = ProfileService.getInstance();
   private readonly relationshipService = RelationshipService.getInstance();
+  private readonly postService = PostService.getInstance();
   private readonly cacheService = LocalCacheService.getInstance();
   private readonly errorService = ResourceErrorService.getInstance();
   private readonly timeoutService = RequestTimeoutService.getInstance();
@@ -107,12 +109,19 @@ export class ProfileResourceService {
         await this.commit(identifier, { profile, stats: initialStats }, 'network');
 
         try {
-          const networkStats = await this.timeoutService.run(
-            this.relationshipService.getNetworkStats(identifier.userId),
-            'Profile network statistics',
-            5_000,
-          );
-          await this.commit(identifier, { profile, stats: { posts: initialStats.posts, ...networkStats } }, 'network');
+          const [networkStats, posts] = await Promise.all([
+            this.timeoutService.run(
+              this.relationshipService.getNetworkStats(identifier.userId),
+              'Profile network statistics',
+              5_000,
+            ),
+            this.timeoutService.run(
+              this.postService.getAuthorPostCount(identifier.userId),
+              'Profile post statistics',
+              5_000,
+            ).catch(() => initialStats.posts),
+          ]);
+          await this.commit(identifier, { profile, stats: { posts, ...networkStats } }, 'network');
         } catch {
           // The profile is already ready; network counts are optional enrichment.
         }

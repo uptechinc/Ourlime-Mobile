@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Linking, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { extractDomain, openGraphService, type LinkPreviewData } from '@/lib/services/OpenGraphService';
+import { useDeepLinkNavigation } from '@/lib/hooks/useDeepLinkNavigation';
 
 type PostLinkPreviewProps = {
   url: string;
 };
 
 export default function PostLinkPreview({ url }: PostLinkPreviewProps) {
+  const { openLink } = useDeepLinkNavigation();
   const [preview, setPreview] = useState<LinkPreviewData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -32,7 +34,7 @@ export default function PostLinkPreview({ url }: PostLinkPreviewProps) {
       accessibilityRole="link"
       accessibilityLabel={`Open ${preview?.title ?? domain}`}
       activeOpacity={0.86}
-      onPress={() => void Linking.openURL(url)}
+      onPress={() => void openLink(url)}
       style={{ marginTop: 14, overflow: 'hidden', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f8fafc' }}
     >
       {preview?.image ? <Image source={{ uri: preview.image }} resizeMode="cover" style={{ width: '100%', aspectRatio: 16 / 9, backgroundColor: '#e2e8f0' }} /> : null}

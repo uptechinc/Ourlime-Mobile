@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { readAsStringAsync, EncodingType, getInfoAsync } from 'expo-file-system/legacy';
+import type { CallEventMessage } from '@/lib/types/call';
 import type { MessageData, ChatRoom, ReplyReference } from '@/lib/types/message';
 import type { UserProfile } from '@/lib/services/AuthService';
 import { ApiService } from '@/lib/services/ApiService';
@@ -72,6 +73,7 @@ export type FullMessage = MessageData & {
     stickerHeight?: number;
     audioUrl?: string;
     audioDuration?: number;
+    callEvent?: CallEventMessage;
 };
 
 /**
@@ -428,14 +430,48 @@ export class MessagingService {
             ? rawTimestamp
             : new Timestamp(typeof timestampRecord.seconds === 'number' ? timestampRecord.seconds : 0, typeof timestampRecord.nanoseconds === 'number' ? timestampRecord.nanoseconds : 0);
         if (typeof record.senderId !== 'string' || typeof record.receiverId !== 'string' || typeof record.message !== 'string' || timestamp.seconds <= 0) return null;
-        return {
+        const normalizedId = typeof record.id === 'string' && record.id.trim() ? record.id : undefined;
+        const normalizedMessage = {
             ...record,
+            id: normalizedId,
             senderId: record.senderId,
             receiverId: record.receiverId,
             message: record.message,
             timestamp,
             status: record.status === 'read' || record.status === 'delivered' ? record.status : 'sent',
         } as FullMessage;
+        return normalizedMessage.id
+            ? normalizedMessage
+            : { ...normalizedMessage, id: this.getMessageIdentity(normalizedMessage) };
+    }
+
+    public getMessageIdentity(message: FullMessage): string {
+        if (message.id) return message.id;
+        return this.getMessageFingerprint(message);
+    }
+
+    public getMessageFingerprint(message: FullMessage): string {
+        const attachmentIdentity = message.attachment
+            ? `${message.attachment.fileType}:${message.attachment.fileName}:${message.attachment.url}`
+            : '';
+        const stickerIdentity = message.stickerData?.stickerId
+            ?? message.stickerId
+            ?? message.stickerData?.stickerUrl
+            ?? message.stickerUrl
+            ?? '';
+        const voiceIdentity = message.voiceNoteData?.audioUrl ?? message.audioUrl ?? '';
+        return [
+            'legacy',
+            message.senderId,
+            message.receiverId,
+            message.timestamp.seconds,
+            message.timestamp.nanoseconds,
+            message.type ?? 'text',
+            message.message,
+            attachmentIdentity,
+            stickerIdentity,
+            voiceIdentity,
+        ].join(':');
     }
 
     /**

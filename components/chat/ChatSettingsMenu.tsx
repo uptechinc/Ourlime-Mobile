@@ -13,6 +13,7 @@ import Icon from 'react-native-vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { messagingService } from '@/lib/messaging/MessagingService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const relationshipService = RelationshipService.getInstance();
 
@@ -53,6 +54,7 @@ export function ChatSettingsMenu({
   onResetWallpaper,
   hasCustomWallpaper,
 }: ChatSettingsMenuProps) {
+  const { colors } = useAppTheme();
   const router = useRouter();
   const [showMuteOptions, setShowMuteOptions] = useState(false);
   const [mutedUntil, setMutedUntil] = useState<number | null>(null);
@@ -168,7 +170,7 @@ export function ChatSettingsMenu({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' }} onPress={onClose} />
+      <Pressable style={{ flex: 1, backgroundColor: colors.modalScrim }} onPress={onClose} />
 
       {/* Dropdown panel */}
       <View
@@ -177,7 +179,7 @@ export function ChatSettingsMenu({
           top: 90,
           right: 12,
           width: 240,
-          backgroundColor: '#ffffff',
+          backgroundColor: colors.elevated,
           borderRadius: 16,
           paddingVertical: 6,
           shadowColor: '#000',
@@ -186,22 +188,22 @@ export function ChatSettingsMenu({
           shadowRadius: 20,
           elevation: 14,
           borderWidth: 1,
-          borderColor: '#f1f5f9',
+          borderColor: colors.border,
           zIndex: 999,
         }}
       >
         {showMuteOptions ? (
           <>
             <TouchableOpacity onPress={() => setShowMuteOptions(false)} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
-              <Icon name="chevron-left" size={16} color="#475569" />
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#1e293b', marginLeft: 8 }}>
+              <Icon name="chevron-left" size={16} color={colors.icon} />
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginLeft: 8 }}>
                 Mute Notifications
               </Text>
             </TouchableOpacity>
-            <View style={{ height: 1, backgroundColor: '#f1f5f9', marginHorizontal: 12 }} />
+            <View style={{ height: 1, backgroundColor: colors.border, marginHorizontal: 12 }} />
             {MUTE_DURATIONS.map((duration) => (
               <TouchableOpacity key={duration} onPress={() => void handleMute(duration)} style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-                <Text style={{ fontSize: 14, color: '#374151' }}>{duration}</Text>
+                <Text style={{ fontSize: 14, color: colors.text }}>{duration}</Text>
               </TouchableOpacity>
             ))}
           </>
@@ -285,7 +287,7 @@ export function ChatSettingsMenu({
             />
 
             {/* Divider */}
-            <View style={{ height: 1, backgroundColor: '#f1f5f9', marginHorizontal: 12, marginVertical: 4 }} />
+            <View style={{ height: 1, backgroundColor: colors.border, marginHorizontal: 12, marginVertical: 4 }} />
 
             {/* Delete Chat */}
             <MenuItem
@@ -310,8 +312,9 @@ type MenuItemProps = {
 };
 
 function MenuItem({ icon, label, onPress, danger, chevron }: MenuItemProps) {
-  const color = danger ? '#ef4444' : '#374151';
-  const iconColor = danger ? '#ef4444' : '#6b7280';
+  const { colors } = useAppTheme();
+  const color = danger ? colors.destructiveText : colors.text;
+  const iconColor = danger ? colors.destructive : colors.icon;
 
   return (
     <TouchableOpacity
@@ -329,7 +332,7 @@ function MenuItem({ icon, label, onPress, danger, chevron }: MenuItemProps) {
         {label}
       </Text>
       {chevron && (
-        <Icon name="chevron-right" size={14} color="#94a3b8" />
+        <Icon name="chevron-right" size={14} color={colors.mutedText} />
       )}
     </TouchableOpacity>
   );

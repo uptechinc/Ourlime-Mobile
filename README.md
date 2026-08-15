@@ -49,7 +49,7 @@ The app follows a **Service-Oriented Object-Oriented Programming (OOP)** archite
 - Message reactions with emoji picker
 - Reply references with quoted message context
 - Long-press action menu (reply, forward, react, delete)
-- **Video calling** via Agora RTC (`components/chat/VideoCallModal.tsx`)
+- **Voice/video calling** through root-level authenticated call sessions, Agora RTC, Android Telecom/CallKeep, and iOS PushKit/CallKit (`lib/contexts/CallContext.tsx`, `components/calls/GlobalCallOverlay.tsx`)
 - Message status indicators (sent, delivered, read)
 - Delete for me / delete for everyone
 - Message search and pagination
@@ -151,6 +151,11 @@ cd Ourlime-Mobile
 npm install
 
 # 3. Start the development server
+npm run dev:full
+
+# This detects your LAN address, starts Ourlime-Web on 0.0.0.0:3000,
+# waits for /api/health, then starts Expo with the reachable API URL.
+# Use `npm run start` for the deployed HTTPS API instead.
 npm run start
 # or
 npx expo start

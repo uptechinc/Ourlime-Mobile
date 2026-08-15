@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Share, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { auth } from '@/lib/firebaseConfig';
-import { AuthService } from '@/lib/services/AuthService';
 import { PostService, type PostItem } from '@/lib/services/PostService';
 import ImageAndVideoPostSection from './ImageAndVideoPostSection/ImageAndVideoPostSection';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -18,17 +17,18 @@ import PostLocationMap from './PostLocationMap';
 import { EventService } from '@/lib/services/EventService';
 import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { useAppData } from '@/lib/contexts/AppDataContext';
 
 type PostCardSectionProps = {
   post: PostItem;
   isVisible?: boolean;
+  canModerateCommunityPost?: boolean;
   onCommentClick: (postId: string) => void;
   onPostDelete: (postId: string) => void;
   onAuthorBlocked: (userId: string) => void;
   onPostUpdate: (post: PostItem) => void;
 };
 
-const authService = AuthService.getInstance();
 const postService = PostService.getInstance();
 const eventService = EventService.getInstance();
 
@@ -42,11 +42,11 @@ const formatTimestamp = (createdAt: string): string => {
   return createdDate.toLocaleDateString();
 };
 
-export default function PostCardSection({ post, isVisible = false, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PostCardSectionProps) {
+export default function PostCardSection({ post, isVisible = false, canModerateCommunityPost = false, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PostCardSectionProps) {
   const router = useRouter();
   const { colors, isDark } = useAppTheme();
+  const { activeUserId: currentUserId } = useAppData();
   const postUrl = findFirstUrl(`${post.caption} ${post.description}`);
-  const currentUserId = auth.currentUser?.uid || authService.getCurrentUser()?.uid;
   const [isLiked, setIsLiked] = useState(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
   const [likeCount, setLikeCount] = useState(post.stats.likes);
   const [shareCount, setShareCount] = useState(post.stats.shares);
@@ -62,6 +62,14 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
     setIsReposted(post.repostedByViewer === true);
   }, [post.repostedByViewer]);
 
+  useEffect(() => {
+    setIsLiked(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
+  }, [currentUserId, post.likedUserIds]);
+
+  useEffect(() => {
+    setLikeCount(post.stats.likes);
+  }, [post.stats.likes]);
+
   const handleNavigateProfile = (userName?: string) => {
     const targetUser = userName || post.user.userName;
     if (targetUser) {
@@ -71,19 +79,17 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
 
   useEffect(() => {
     if (!post.eventId) return;
-    const activeUserId = auth.currentUser?.uid || authService.getCurrentUser()?.uid;
     setEventAttendanceLoading(true);
-    void eventService.getAttendance(post.eventId, activeUserId).then(setEventAttendance).catch((error: unknown) => {
+    void eventService.getAttendance(post.eventId).then(setEventAttendance).catch((error: unknown) => {
       console.warn('[PostCardSection.eventAttendance]', error instanceof Error ? error.message : 'Attendance unavailable');
     }).finally(() => setEventAttendanceLoading(false));
-  }, [post.eventId]);
+  }, [currentUserId, post.eventId]);
 
   const handleToggleAttendance = async () => {
-    const activeUserId = auth.currentUser?.uid || authService.getCurrentUser()?.uid;
-    if (!post.eventId || !activeUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to RSVP.' });
+    if (!post.eventId) return;
     setEventAttendanceLoading(true);
     try {
-      setEventAttendance(await eventService.toggleAttendance(post.eventId, activeUserId));
+      setEventAttendance(await eventService.toggleAttendance(post.eventId));
     } catch (error: unknown) {
       setFeedback({ title: 'RSVP not updated', message: error instanceof Error ? error.message : 'Please try again' });
     } finally {
@@ -92,8 +98,7 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
   };
 
   const handleLike = async () => {
-    const activeUserId = auth.currentUser?.uid || authService.getCurrentUser()?.uid;
-    if (!activeUserId) {
+    if (!currentUserId) {
       setFeedback({ title: 'Sign in required', message: 'Sign in to like posts.' });
       return;
     }
@@ -101,10 +106,13 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
     setIsLiked(!previousLiked);
     setLikeCount((count) => Math.max(0, count + (previousLiked ? -1 : 1)));
     try {
-      const result = await postService.toggleLike(post.id, activeUserId, previousLiked, Boolean(post.communityId), likeCount);
+      const result = await postService.toggleLike(post, currentUserId, !previousLiked);
       setIsLiked(result.liked);
       setLikeCount(result.likeCount);
-      onPostUpdate({ ...post, stats: { ...post.stats, likes: result.likeCount }, likedUserIds: result.liked ? [activeUserId] : [] });
+      const likedUserIds = result.liked
+        ? Array.from(new Set([...post.likedUserIds, currentUserId]))
+        : post.likedUserIds.filter((userId) => userId !== currentUserId);
+      onPostUpdate({ ...post, stats: { ...post.stats, likes: result.likeCount }, likedUserIds });
     } catch (error: unknown) {
       setIsLiked(previousLiked);
       setLikeCount((count) => Math.max(0, count + (previousLiked ? 1 : -1)));
@@ -127,8 +135,7 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
   };
 
   const handleRepost = async () => {
-    const activeUserId = auth.currentUser?.uid || authService.getCurrentUser()?.uid;
-    if (!activeUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to repost.' });
+    if (!currentUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to repost.' });
     try {
       if (isReposted) {
         await postService.removeRepost(post.id);
@@ -254,7 +261,7 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
 
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
           <TouchableOpacity onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
-            <Icon name="heart" size={22} color={isLiked ? '#c64d53' : colors.icon} />
+            <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 26, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#c64d53' : colors.mutedText, fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
           <TouchableOpacity onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 26, paddingVertical: 6 }}>
@@ -269,8 +276,8 @@ export default function PostCardSection({ post, isVisible = false, onCommentClic
         </View>
       </View>
 
-      <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} onPostUpdate={onPostUpdate} />
-      <LikesModal visible={likesVisible} postId={post.id} onClose={() => setLikesVisible(false)} />
+      <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} canModerateCommunityPost={canModerateCommunityPost} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} onPostUpdate={onPostUpdate} />
+      <LikesModal visible={likesVisible} postId={post.id} origin={post.origin} onClose={() => setLikesVisible(false)} />
     </View>
     <CustomModal visible={feedback !== null} type="danger" title={feedback?.title ?? ''} message={feedback?.message ?? ''} onClose={() => setFeedback(null)} />
     </>

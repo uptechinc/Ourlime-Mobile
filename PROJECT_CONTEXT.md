@@ -37,7 +37,7 @@ For a ready-to-copy external agent handoff, see [`docs/GEMINI-CONTINUATION-PROMP
 | Home feed scopes and failures | **Done in source; server deployment pending** | `home`, `friends`, and `communities` scopes reach the canonical API. Failed requests produce retryable errors and successful zero results produce empty states. Community membership filtering was added to the web feed server. |
 | Profiles and moderation | **Done in source; authenticated QA pending** | Public profiles use the canonical server response, author-filtered posts, privacy/block behavior, visible friends/communities, friendship cancellation/removal, block/unblock, report, and typed chat navigation. |
 | Push notifications | **Done in source; physical-device verification is an external release check** | Real Expo device tokens, Android channels, authenticated register/unregister/send APIs, foreground handling, and typed tap destinations are implemented. No client call to Expo's push gateway remains. |
-| Core social pages | **Partial; substantially implemented** | Home, Communities, Chat, Discover/Search, own/other profiles, and all twelve canonical Admin destinations use typed services and live contracts. Deeper profile, community moderation/events/polls, global search, and deeper Admin workflow parity remain. |
+| Core social pages | **Partial; substantially implemented** | Home, Communities, Chat, Discover/Search, own/other profiles, and all twelve canonical Admin destinations use typed services and live contracts. Communities now includes directory/detail/member/request/event/poll/moderation workspaces; invite delivery, event discussion/social depth, global search, deeper profile, and deeper Admin workflow parity remain. |
 | Active mock removal | **Not complete outside the current core scope** | Coming Soon overlays prevent normal access to Events, Jobs, Market, Blogs, E-Learning, Projects, Ads, Wallet, Saved, Games, E-Hub, and Help. Legacy prototype code remains behind those overlays and is not production behavior. |
 | OOP service migration | **Partial** | Exposed core social and Admin surfaces use service classes. Remaining web-only/Coming Soon domains still require service-backed implementations before enabling them. |
 | Zero `any` / React namespace discipline | **Previously reported complete; not revalidated** | The corrective audit did not execute repository scans. New work must continue to follow the zero-`any`, type-props, and direct-hook-import rules. |
@@ -354,13 +354,13 @@ The detailed control-level comparison is maintained in:
 **Mobile present**
 
 - Disk-first latest-30 message hydration, bounded 100-message local history, older-message cursor pagination, realtime message-head observation, optimistic text/attachment insertion, authenticated read state, and legacy-array fallback.
-- Text/media/document/sticker/voice-note messages, link previews, reply references, forwarded state, preview/save, reactions/delete, attachment menu, emoji/sticker keyboard, shared media/documents/links, forwarding, block/unblock, remove friend, clear chat, and video-call UI.
+- Text/media/document/sticker/voice-note messages, link previews, reply references, forwarded state, preview/save, reactions/delete, attachment menu, emoji/sticker keyboard, shared media/documents/links, forwarding, block/unblock, remove friend, clear chat, and a root-level authenticated Agora call experience.
 
 **To do**
 
 - [~] Read state, pagination, retryable cached failures, and optimistic send are implemented; delivery receipts, typing, presence, durable offline outbox, and attachment upload recovery remain.
 - [ ] Confirm Delete for Me versus Delete for Everyone permissions and time rules.
-- [ ] Verify call signaling, ringing/answered/declined/missed/end states, reconnect, permissions, speaker/mic/camera controls, and background calls on real devices.
+- [~] Server-authoritative call sessions, Agora credentials, native Answer/Decline integration, mute/speaker/camera/flip controls, and 45-second expiry are implemented in source. Signed native builds, credentials, deployment, reconnect testing, and physical-device verification remain external release work.
 - [ ] Replace system alerts and remaining route/icon casts with typed custom UI.
 - [ ] Confirm chat mute suppresses push but not in-app unread state.
 
@@ -411,7 +411,7 @@ The detailed control-level comparison is maintained in:
 **Mobile present**
 
 - Typed `SettingsService` loads account, appearance, notifications, privacy, security, and blocked-user records directly from canonical Firestore documents, so an unavailable web API no longer leaves Settings loading or fails the entire screen.
-- Persistent System/Light/Dark appearance selection is applied above Expo Router. System is the default for users without a saved preference and follows live phone appearance changes; Light and Dark remain fixed overrides. `ThemeStyleService` is synchronized before descendants render (not in a post-render effect), so legacy neutral backgrounds, text, and borders cannot receive the previous system palette during a live switch. The root stack and tab navigator are keyed by the resolved scheme to refresh retained native navigation surfaces.
+- Persistent System/Light/Dark appearance selection is applied above Expo Router. System is the default for users without a saved preference and follows live phone appearance changes; Light and Dark remain fixed overrides. Route-reachable components subscribe to `useAppTheme()` semantic colors; the obsolete global style preprocessor and theme-keyed Stack/Tab remount paths were removed so appearance changes do not reset navigation or cached resources.
 - Theme resolution stays inside `ThemeProvider`; it does not call native `Appearance.setColorScheme`, because the current Android React Native module rejects the null reset required by System mode.
 - Feed canvases, composer/filter controls, post and poll cards, Discover sections/cards/search, Search results, Chat lists/composer, Profile shell/tabs, Communities lists/filters, shared skeletons, the Home slide-out menu, Admin navigation/filter controls, shared page headers, and protected Jobs content now use semantic theme colors explicitly so selected/unselected controls retain readable contrast in both modes.
 - All visible confirmation/error states use `CustomModal`. Two-factor status is shown truthfully but cannot be enabled until its secure verification workflow is implemented.
@@ -422,10 +422,10 @@ The detailed control-level comparison is maintained in:
 - [x] Add persistent System/Light/Dark appearance with live device-theme following, activity/search visibility, granular notification controls, message permissions, data-sharing controls, and security-alert preferences.
 - [ ] Implement secure 2FA setup/disable, change password with reauthentication, connected accounts, sessions/activity logs, data/export controls, and delete-account workflow.
 - [ ] Verify settings are actually consumed by notifications, messages, search, and profile visibility.
-- [x] Apply Light/Dark throughout the route tree, shared navigation shell, status bars, drawers, and modern dialogs; new/touched screens must continue using explicit theme-aware semantic colors instead of adding legacy hard-coded neutrals.
+- [~] Semantic Light/Dark/System colors cover the navigation shell and core Feed, Discover, Chat, Profile/About/Friends, Communities, Settings, Admin navigation, calls, legal screens, drawers, and modern dialogs. Continue replacing unsafe hard-coded neutrals in older future-domain forms and secondary modals before calling the route-wide audit complete.
 - [x] Replace visible native alerts with `CustomModal`; destructive account actions still require reauthentication work.
 
-### 6.14 Communities list — `app/communities` — Partial
+### 6.14 Communities list — `app/communities` — Done in source / manual and deployment verification pending
 
 **Web baseline**
 
@@ -433,17 +433,23 @@ The detailed control-level comparison is maintained in:
 
 **Mobile present**
 
-- Live community reads; All/My Joined/Joined by Friends/New/My Created tabs; public/private/category filters; Popular/Newest/Active/Trending controls; search; create-community form with live categories; and Join/Request behavior.
-- `CommunityService` owns reads, normalization, categories, creation, and the authenticated join/request/leave API call. No dummy community fallback is used.
+- `GET /api/communities` is the canonical normalized directory contract. It supports All/Joined/Joined by Friends/New/Created, public/private, category, debounced search, Popular/Newest/Active/Trending, opaque cursor paging, bounded limits, result totals, and Community of the Week scoring.
+- The directory information hierarchy is now intentionally native: one primary Browse scope row remains visible, while visibility, category, and sorting live in a single `CommunityFiltersSheet`. The toolbar shows an active-filter count, removable summary chips, result count, and grid/list controls instead of four competing chip rows.
+- Cards and detail use `communityVariantMembershipAndLikeCount` in one server batch. Missing/invalid/stale-zero member counters are derived from unique active memberships plus the creator, fixing the mobile zero-member regression.
+- The shared native card renders banner fallback, category/privacy/verification, creator/avatar, description, members/likes/posts, top members, friends-here count, and canonical owner/member/pending/declined/banned actions.
+- `CommunitiesResourceService` persists independent viewer/query snapshots for five minutes stale / 48 hours retained, keeps cached content during refresh failure, paginates to bounded pages, and patches/removes all list/Discover copies after mutations.
+- Screen-owned first-page refreshes use foreground API health recovery while `AppPreloadService` keeps its directory request at background priority. Foreground and background in-flight keys are separated, so an early preload rejection cannot poison the first visible Communities visit. Silent reconciliation no longer displays the pull-to-refresh spinner.
+- Create uses an authenticated server transaction with name/slug availability and suggestions, live category, public/private, verified-members-only, posting permission, 3:1 image-picker crop, Storage upload/progress, optional URL, preview/remove, naming notice, and terms confirmation.
+- Join/request/cancel/leave and community likes are desired-state server transactions with deterministic documents, deduplication, authoritative non-negative counts, and owner/ban/identity-verification enforcement. No dummy community fallback is used.
 
 **To do**
 
-- [x] Move route-visible reads and membership calls into `CommunityService`; use live categories and truthful states.
-- [~] Real membership/request/leave exists; cancel request, complete owner/admin badges, cached paging, and server-backed trending/activity rank remain.
-- [ ] Use image picker/upload/crop instead of image URL entry.
-- [ ] Add the web Community-of-the-Week/statistics hierarchy only when a canonical ranking/metrics contract exists.
+- [x] Move route-visible reads, creation, likes, and membership calls into OOP services and authenticated web APIs; use live categories and truthful states.
+- [x] Add request cancellation, complete membership badges/actions, cached cursor paging, server ranking, Community of the Week, selected profile images, and image picker/crop/upload.
+- [ ] Deploy the adjacent web API source and manually compare every card/state on devices. No validation was run by the agent.
+- [ ] If Admin adds category ordering/paging beyond the current bounded live category collection, expose that order in the directory.
 
-### 6.15 Community detail — `app/communities/[id]` — Partial
+### 6.15 Community detail — `app/communities/[id]` — Substantially implemented / partial parity
 
 **Web baseline**
 
@@ -451,21 +457,29 @@ The detailed control-level comparison is maintained in:
 
 **Mobile present**
 
-- Canonical detail route with live access/privacy/banned state, banner/identity/counts, join/request/leave, native share, server-backed report, Posts/About, create post, likes/comments, refresh/error/empty state, and profile/community sublinks.
-- Detail reads first use the canonical web API, then fall back to canonical Firestore community/membership/request/count records only for network timeouts or server failures. Authorization/API failures are not hidden by the fallback.
+- The canonical route uses `CommunityDetailResourceService` plus separate cached detail, post, member, request, event, poll, and dashboard resources. Cached detail stays visible on recoverable reconciliation errors.
+- Header parity includes banner, title/description, category/privacy/verification badges, creator/avatar, created date, authoritative member/like/post counts, filled community-like state, share/report, join/request/cancel/leave, role, edit, dashboard/moderation, and delete.
+- Posts reuse canonical community-origin post cards, media, desired-state likes, likes lists, comments/replies, reports in `communityReports`, author/moderator server-cascade deletion with counter updates, and cross-feed/detail cache reconciliation.
+- Events are live and community-filtered with create/edit/delete, photo/video upload, recurrence, attendance state/counts, authenticated reporting, role authorization, and custom confirmation. Polls are live with two-to-five options, duration, multiple-choice behavior, results, expiry, report, vote, delete, and reconciliation.
+- About exposes category, privacy, verification policy, posting permission, rules, created date, description, and member count. Members provide server search, cursor paging, selected-avatar fallback, role/presence/friend context, profile links, and confirmed role/remove/ban action sheets.
+- The owner/moderator dashboard provides Overview, Members, Requests, Activity, and Reports with search/status filtering, approve/decline, role management, assign/dismiss/resolve/hide moderation, and server-checked report ownership. Opening the dashboard starts dashboard, member, and request hydration concurrently; Activity and Reports reuse the dashboard payload. Every workspace exposes a force-refresh action without clearing cached content. Edit supports the complete native create fields plus rules; server-owned cascade deletion is not limited to ten posts.
+- The dashboard is a true full-screen native modal with stable workspace loaders, explicit close handling, larger X/tab targets, Android back dismissal, and reset-on-close state. The slug-page Create Post, Host Event, Create Poll, Share Invite, tabs, edit, dashboard, membership, like, share, report, member, request, moderation, event, and poll entry points are connected to typed handlers; Host Event/Create Poll open their composer rather than only changing tabs. Community event cards now submit reports through the authenticated community-content report API.
 
 **Known prototype debt**
 
 - The legacy `mobile/CommunityDetail` implementation and its mock/TODO handlers were removed.
 - The canonical community list/detail routes use `CommunityService` and truthful missing/error states.
-- Advanced moderation, polls, member administration, and community creation remain P1 and are not exposed as simulated success actions.
+- The obsolete `RightSection/CommunityServie` and route-reachable mock event/poll components were removed. Live APIs return loading, cached, empty, retryable error, or ready states only.
 
 **To do**
 
-- [x] Choose one canonical community-detail route and remove the duplicate mock implementation.
-- [~] Community and post basics use typed services; dedicated Member/Poll/Event/dashboard services and contracts remain.
-- [~] Private access, join/request/leave, native share, and community report exist; invite, selectable report reasons, owner/admin moderation, edit/delete, dashboard, post moderation, poll, and event workflows remain.
-- [ ] Add real-time/paginated posts and member lists with native bottom-sheet actions.
+- [x] Choose one canonical community-detail route and remove duplicate mock implementations.
+- [x] Add service-backed Members, Requests, Polls, Events, About, Edit, and dashboard workspaces plus authenticated server authorization for privileged mutations.
+- [~] Share Invite currently uses canonical native/deep-link sharing. Add the web-equivalent searchable friend picker and authenticated invite-message delivery.
+- [~] Event attendance is live; event likes and discussion/replies remain. Date/location entry still uses validated ISO/location text rather than native date/time/map pickers.
+- [x] Community, community-post, event, and poll reports use themed selectable category/reason/details flows. Post reports additionally support bounded evidence attachments.
+- [~] The dashboard API accepts bounded report batches, but mobile still needs multi-select bulk-report UI and deeper activity preview/navigation.
+- [ ] Delete superseded Storage banner/event objects after successful replace/delete and manually verify owner/moderator/site-admin/private/pending/declined/banned states.
 
 ### 6.16 Events — `app/events` — Prototype
 
@@ -724,7 +738,7 @@ The following patterns are release blockers:
 
 ### P1 — Core social/product parity
 
-- [~] Communities list/create/join/private access/posts/comments are service-backed; moderation, polls, events, invites, and dashboard remain.
+- [~] Communities directory, create/edit/delete, membership/private access, posts/comments, live polls/events, members/requests/roles, selectable report flows, and moderation dashboard are service-backed. Searchable friend invites, event likes/discussions/native date-map inputs, dashboard bulk selection, and Storage cleanup remain.
 - [ ] Complete Events list/detail/RSVP/tickets/discussions/reviews.
 - [ ] Complete Jobs live list/detail/apply/create/manage.
 - [ ] Complete Market live list/detail/favorites/seller/product management.
@@ -893,3 +907,97 @@ The following 104 web page routes were included in this audit. Dynamic segments 
 ```
 
 The mobile app currently has logical screens for auth login/register/recovery/verification/legal flows, the five main tabs, chat detail, own/other profile, settings, communities list/detail, post detail, twelve native Admin workspaces plus report-detail slug routing, valid Coming Soon routes, and not-found. Future domains use canonical page-access enforcement. Duplicate web-style `page.tsx` aliases were removed.
+
+## 2026-08-13 device stabilization update
+
+- Done: the main tab bar now derives its height and bottom padding from `react-native-safe-area-context`, keeping Feed, Discover, Chat, and Profile above Android gesture and three-button navigation.
+- Done: Android development builds explicitly permit the configured local HTTP API through `expo-build-properties`. Production must still use HTTPS; changing this native property requires a new development/native build.
+- Done: `ApiService` maps React Native fetch and cleartext failures to typed `NETWORK_ERROR` results. Community detail can then use its canonical Firestore read fallback instead of displaying a raw Java networking exception.
+- Done: comments use explicit theme colors for their modal shell and composer inputs, including visible text and placeholders in light, dark, and system themes.
+- Done: own-profile Posts, Friends, Followers, and Following totals are enriched from Firestore when the API is unavailable. Friendship counts include accepted relationships only and deduplicate the peer UID.
+- Done: message detail synchronization listens only to the newest bounded `chats/{chatId}/messages` window. The authenticated cursor API supplies a bounded legacy-array fallback when needed, avoiding a competing full-array listener.
+- Done: native chat/call push payloads include the sender destination and use the high-priority Android call channel. Notification taps route to the correct peer and call type.
+- Superseded: legacy chat call markers remain readable, while active call state is now owned by the root `CallCoordinator` and authenticated call-session API.
+- Done: the `EventService` media normalizer returns a strict `MediaItem[]` and no longer leaks `undefined` elements.
+- Still to do externally: rebuild the Android development client for the cleartext/native plugin change, run the local web API on a LAN-reachable address, deploy the updated web push endpoint, and verify notification permission plus a real Expo push token on a physical-device development/release build. Expo Go cannot receive remote push notifications on current Expo SDKs.
+- Done in source: the preview-only call modal was removed. Mobile uses `react-native-agora`, CallKeep, Android FCM call data, iOS PushKit/APNs VoIP, and one global call screen; web uses the same opaque call sessions and session-bound Agora credentials. Runtime parity still depends on native builds, entitlements, credentials, deployed APIs, and physical-device verification.
+
+## 2026-08-13 instant-resource and deterministic-chat milestone
+
+- Done in source: chat detail now uses FlashList v2 bottom-first rendering and `maintainVisibleContentPosition`; timer, animation-frame, and content-size `scrollToEnd` positioning were removed.
+- Done in source: chat automatically follows new messages only near the latest message and otherwise exposes a “New messages” control. Dark chat text, incoming bubbles, header, composer, and attachment sheet use semantic theme colors.
+- Done in source: `DiscoverResourceService` and `CommunitiesResourceService` own SQLite hydration, stale-while-revalidate refresh, error retention, and Zustand presentation updates. Screens no longer own their canonical result arrays.
+- Done in source: `AppPreloadService` and `AppPreloadCoordinator` start Home independently, then preload authorized metadata with a two-request worker queue. Work pauses in the background and is cancelled on account changes.
+- Done in source: Home, Friends, and Communities feed scopes use separate `FeedResourceService` keys. `All` pages seed instant partial filter snapshots before authoritative filter refreshes.
+- Done in source: feed disk retention is 48 hours while the network-stale threshold remains 60 seconds. Newer reconciled posts stay behind the “New posts” pill.
+- Done in source: the web Communities feed reads joined `communityVariantDetails`, applies membership/block/visibility rules, paginates with an opaque cursor, and returns community name, slug, and avatar identity.
+- Done in source: community directory first load no longer performs one counter-document read per card, and Friends-filter loading no longer replaces cached directory content with a full-screen spinner.
+- Added project skills: `.agents/skills/instant-mobile-resources` and `.agents/skills/native-chat-experience` document the required cache/preload and chat-list patterns.
+- Manual verification pending: newest-message anchoring with late media, background preloads on a device, offline cache retention, all feed scope/filter combinations, community identities, and role/page-access suppression.
+- Deployment pending: the adjacent Ourlime-Web feed API change must be deployed before a released mobile client receives canonical community-scope results.
+
+### 2026-08-13 API resilience and bottom-inset follow-up
+
+- Root cause confirmed: the configured machine address was correct, but no process was listening on port 3000. The mobile client was reaching the machine and waiting for a server that was not running.
+- Added `npm run dev:full`, which starts Ourlime-Web and Expo together and reuses an API already listening on port 3000. This is the preferred local-development command.
+- Local web-server stdout and stderr can be retained under `Ourlime-Web/logs/` when the server is launched as a background process for mobile debugging.
+- Comment and reply reads now attempt the authenticated web contract first, then use typed Firestore recovery when the failure is specifically a timeout/network/server condition.
+- Community-post reads have matching service-owned Firestore recovery using the canonical web collection names.
+- Comment creation/editing, comment/post likes, sharing, and repost mutations remain server-authoritative so the mobile client cannot bypass moderation, privacy, ownership, counter, or notification rules.
+- Firestore read recovery never activates for authentication, validation, authorization, or not-found API responses. Deployed rules remain authoritative.
+- Chat detail uses FlashList bottom-first rendering and automatic top pagination; it performs no measured-content, timeout, animation-frame, or `scrollToEnd` positioning.
+- Chat, comment composers, emoji/sticker keyboards, forwarding sheets, and sticker sheets now use the live safe-area bottom inset so Android gesture/three-button navigation cannot cover their controls.
+
+### 2026-08-13 attendance, chat positioning, and app-link follow-up
+
+- Event-post RSVP now resolves the verified Firebase session inside `EventService`, while feed cards consume the shared verified-auth state above navigation instead of capturing a possibly empty user once during render. Attendance status and mutations continue to use the same `eventAttendees` schema as web.
+- Chat detail delegates newest-message anchoring and prepend preservation to FlashList. It auto-follows only near the bottom and otherwise shows the guarded New Messages action.
+- Regular and poll post cards use a filled red heart for the liked state and an outline heart otherwise.
+- `DeepLinkService` owns canonical post/profile/community/blog/Lime/event/job/market/report URLs, legacy normalization, pending-auth continuation, and native route resolution. Expo config claims the supported path inventory through Android App Links and iOS Universal Links while retaining the `ourlime://` scheme.
+- Ourlime-Web exposes canonical share construction, profile-link fallback routing, an app-open banner across supported share destinations, and environment-backed Android/iOS association endpoints.
+- Still to do externally: set `ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS` and `APPLE_TEAM_ID` in the deployed web environment, deploy the association routes/banner, and produce a new signed native build so operating systems verify the HTTPS links. These signing values are intentionally not guessed or committed.
+
+### 2026-08-13 canonical social synchronization milestone
+
+- Chat no longer contains imperative `scrollToEnd`/timer/content-size positioning. FlashList starts at the newest chronological item, automatically loads bounded history at the top, preserves visible content on prepend, and exposes a guarded New Messages jump only when the reader is away from the bottom.
+- `PostOrigin = 'home' | 'community'` is part of every normalized post. Community reactions use an authenticated desired-state server transaction with duplicate cleanup and authoritative non-negative counts. Feed/detail/poll cards preserve other liker IDs, sync from updated props, and query the correct likes collection.
+- The global `AppDrawerProvider` owns one typed drawer state machine above navigation. Feed and Profile no longer own competing modal booleans. `SlideOutMenu` now uses the same native `pageSheet` slide transition as `CommunityFiltersSheet`, eliminating the delayed mount-plus-custom-animation path while preserving queued navigation after close.
+
+- The shared post composer now subscribes to `useAppTheme()` and uses semantic canvas, surface, input, text, border, selection, disabled, and accent tokens. Community Create Post therefore follows fixed Dark and live System-dark appearance, and its enabled/disabled Post button remains contrast-safe in Light mode.
+- `NotificationService` now treats `/api/notifications` and its `unreadCount` as canonical, persists the latest page in SQLite, and uses the normalized notification subcollection only for invalidation. All web inbox types and separate chat/call push types have typed destination handling; cold-start/background responses are deduplicated.
+- `RelationshipResourceService` and `useRelationshipHub` provide shared SQLite/Zustand resources for Friends, Requests, Active, Following, Followers, and Suggestions. The authenticated hub API returns direction, relationship ID, privacy-aware presence, and allowed actions without per-card presence requests.
+- `PresenceService` and web auth lifecycle coordination send 60-second foreground heartbeats and best-effort offline state. The server enforces Activity Status, server timestamps, and a two-minute stale cutoff. Online state is surfaced in relationship rows and chat headers while chat summary contracts retain their batched presence fields.
+- Community detail now uses a viewer/community-keyed SQLite resource and shares reaction/create/delete patches with normalized Home/Communities feeds. Relationship mutual counts are batch-derived server-side. Remaining source work: add cursor pagination to the community-detail snapshot. Notification history paginates automatically near the modal end and relationship sections expose bounded Load more. Remaining external work: deploy adjacent web APIs and verify remote push/presence/reactions in a signed development or production build.
+- No automated validation was run because the project validation boundary assigns tests, type checks, lint, Metro, builds, and device verification to the user.
+
+## 2026-08-13 native calling, stable-history, requests, and semantic-theme milestone
+
+- Done in source: authenticated call sessions enforce `ringing -> connecting -> active -> ended`, accepted friendship/block rules, participant authorization, first-answer-wins device IDs, opaque UUID Agora channels, and terminal reasons (`declined`, `canceled`, `missed`, `remote_ended`, `failed`, `answered_elsewhere`). Session expiry is 45 seconds and expired calls cannot be answered.
+- Done in source: `CallService`, `AgoraCallService`, `NativeCallService`, the root `CallProvider`, and `GlobalCallOverlay` own signaling, RTC lifecycle, system-call reconciliation, mute, speaker, video, camera flip, minimize/restore, and one-time termination. Chat screens only request a call.
+- Done in source: iOS config includes VoIP background mode, PushKit registration, CallKit reporting, and distinct APNs VoIP token storage. Android config includes high-priority direct FCM call data, CallKeep/Telecom permissions, foreground-service support, full-screen intent permission, Answer/Decline events, and an entrypoint-level background handler. Ordinary notifications continue using Expo tokens.
+- Done in source: web call initiation/answer/end uses the same call-session API and participant-bound Agora credentials. Typed call events and deterministic call-end message records preserve legacy client visibility during migration.
+- Done in source: FlashList 2.3.1 renders chronological newest-30 chat pages with bottom-first anchoring, stable item types/keys, bounded 100-message retention, automatic gated top pagination, and no `scrollToEnd`, content-size, timer, or animation-frame race. The list remounts once when its first populated resource snapshot arrives, fixing empty initial layouts in long chats.
+- Done in source: Profile Friends -> Requests has independent Incoming and Outgoing resources, search, cursors, refresh, and mutation patching. Incoming is the default; Incoming exposes Accept/Decline and Outgoing exposes Cancel. Requests and Suggestions remain own-account-only.
+- Done in source: semantic theme tokens cover canvas/card/elevated/input/text/border/accent/selected/destructive/disabled/scrim/navigation/warning/success roles. Profile About values, chat content/accessories, call UI, relationship controls, legal pages, and navigation update live from `useAppTheme()` without keyed navigator remounts.
+- External release work: configure Agora, Firebase Android, APNs VoIP, Apple entitlements/team/signing, and production API environment values; deploy Ourlime-Web API changes plus the participant-readable/server-write-only `calls` Firestore rule; create signed development/production builds; and verify foreground/background/terminated/lock-screen behavior on physical Android and iOS devices. Expo Go cannot load these native modules.
+- Manual validation pending: all native call transitions and audio routing, web/mobile interoperability, long/short chat anchoring with late media, request mutations across caches, and remaining route-by-route theme contrast. No automated checks, Metro, builds, deployments, or device runs were performed by the agent.
+
+## 2026-08-14 reliable API startup and universal-link milestone
+
+- Root cause reconfirmed: Firebase authentication remained available, but `EXPO_PUBLIC_WEB_API_URL` targeted the development PC while no HTTP server was listening on port 3000. Notifications, chat friends, activity, and network statistics therefore timed out independently.
+- Done in source: Ourlime-Web exposes an uncached `/api/health` response. Mobile `dev:full` detects the active LAN IPv4 address, binds Next.js to `0.0.0.0:3000`, waits for the LAN health response, and injects the reachable API URL into Expo without rewriting `.env`.
+- Done in source: EAS development, preview, and production profiles explicitly use `https://ourlime.com`; local `dev:full` is the only workflow that injects cleartext LAN endpoints.
+- Done in source: `ApiService` owns typed availability state, a shared health probe, outage backoff, sibling-request cancellation, foreground retry probing, and one structured outage log. An unreachable host no longer causes every startup resource to wait through its own eight-second timeout.
+- Done in source: notification refreshes are coalesced. The initial Firestore invalidation snapshot no longer duplicates the cache-hydration reconciliation, and cached notifications stay visible when refresh fails.
+- Done in source: `DeepLinkService` owns typed share URL generation, canonical/legacy URL parsing, native-route resolution, and a 24-hour authenticated pending destination. Verified login resumes the original link rather than always replacing it with Home.
+- Done in source: canonical HTTPS and `ourlime://` links cover posts, profiles, communities by ID/slug, blogs, Limes, events, jobs, market products, and authorized Admin reports. Existing detail routes open exactly; Events/Jobs/Market retain their target in the parent route until native detail pages exist.
+- Done in source: Ourlime links tapped in chat/link previews navigate internally. External sites and file/media attachments continue through the operating system.
+- Done in source: mobile Android intent filters, iOS association paths, web association responses, web share builders, and the global Open in App banner cover the same destination inventory. Web and mobile shares use the canonical `https://ourlime.com` host.
+- External release work: deploy Ourlime-Web so `/api/health` and both `/.well-known` association responses exist publicly; set `ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS` and `APPLE_TEAM_ID`; create a new signed native build; then verify cold, background, authenticated, logged-out, unauthorized, and no-app-installed link behavior.
+- Validation note: source was reviewed only. No TypeScript, lint, tests, Metro, browser/device automation, build, deployment, or migration command was run.
+
+## 2026-08-14 type-safety, local native Android build, and search parity milestone
+
+- Done in source: resolved 16 ESLint and type-safety warnings across `Discover.tsx`, `Search.tsx`, `Communities`, `FriendsTab.tsx`, and `Admin` workspace components (`tsc --noEmit && expo lint && check-discipline.cjs` passing with 0 errors and 0 warnings across 354 source files).
+- Done in source: added [`scripts/build-local-apk.cjs`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/scripts/build-local-apk.cjs) to automate native Android prebuild and Gradle compilation directly on Windows (`bun run build:local`), with 8GB JVM Heap / 2GB Metaspace memory settings preventing D8 dex merger out-of-memory errors (`BUILD SUCCESSFUL in 11m 54s`).
+- Done in source: updated `Search.tsx` with multi-category search filter tabs (**People**, **Communities**, **Events**, **Jobs**) and direct **Add Friend** / **Sent** action buttons on user search rows using `RelationshipService`.

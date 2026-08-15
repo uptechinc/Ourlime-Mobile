@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Image,
   KeyboardAvoidingView,
@@ -35,11 +34,14 @@ import { RelationshipService, type RelationshipUser } from '@/lib/services/Relat
 import { dispatchMentionNotifications } from '@/lib/services/dispatchMentionNotifications';
 import { EventService } from '@/lib/services/EventService';
 import { SearchService } from '@/lib/services/SearchService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import CustomModal from '@/components/ui/CustomModal';
 
 type DraftPollOption = { id: string; text: string };
 type TextSelection = { start: number; end: number };
 type PollDurationChoice = { label: string; hours: number | 'custom' };
 type CustomPollUnit = 'seconds' | 'minutes' | 'hours' | 'days';
+type ComposerFeedback = { title: string; message: string };
 type CreatePostModalProps = {
   setTogglePostForm: Dispatch<SetStateAction<boolean>>;
   userProfile: UserProfile;
@@ -69,6 +71,7 @@ const pollDurations: PollDurationChoice[] = [
 const normalizeHashtag = (value: string): string => value.trim().replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '').toLowerCase();
 
 export default function CreatePostModal({ setTogglePostForm, userProfile, onCreatePost, communityId, communityName }: CreatePostModalProps) {
+  const { colors } = useAppTheme();
   const captionInputRef = useRef<TextInput>(null);
   const uploadControllerRef = useRef<AbortController | undefined>(undefined);
   const [postType, setPostType] = useState<PostType>('regular');
@@ -81,6 +84,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [hashtagInput, setHashtagInput] = useState('');
   const [location, setLocation] = useState<PostLocation>();
+  const [composerFeedback, setComposerFeedback] = useState<ComposerFeedback | null>(null);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [pollDurationChoice, setPollDurationChoice] = useState<number | 'custom'>(24);
@@ -215,12 +219,12 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
     const maximum = postType === 'poll' ? 1 : MAX_POST_MEDIA;
     const availableSlots = maximum - media.length - cropQueue.length;
     if (availableSlots <= 0) {
-      Alert.alert('Media limit reached', postType === 'poll' ? 'A poll can contain one optional image.' : `A post can contain up to ${MAX_POST_MEDIA} photos or videos.`);
+      setComposerFeedback({ title: 'Media limit reached', message: postType === 'poll' ? 'A poll can contain one optional image.' : `A post can contain up to ${MAX_POST_MEDIA} photos or videos.` });
       return;
     }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow photo access to attach images and videos.');
+      setComposerFeedback({ title: 'Permission needed', message: 'Allow photo access to attach images and videos.' });
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -231,7 +235,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
     });
     if (result.canceled) return;
     const validated = await mediaService.validateSelection(result.assets, media.length + cropQueue.length);
-    if (validated.errors.length > 0) Alert.alert('Some media could not be added', validated.errors.join('\n\n'));
+    if (validated.errors.length > 0) setComposerFeedback({ title: 'Some media could not be added', message: validated.errors.join('\n\n') });
     setMedia((current) => [...current, ...validated.videos].slice(0, maximum));
     setCropQueue((current) => [...current, ...validated.imagesToCrop].slice(0, maximum - media.length - validated.videos.length));
   };
@@ -373,7 +377,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
       setTogglePostForm(false);
     } catch (error: unknown) {
       console.error('[CreatePostModal.handleSubmit]', error);
-      Alert.alert('Post not created', error instanceof Error ? error.message : 'Please check your connection and try again.');
+      setComposerFeedback({ title: 'Post not created', message: error instanceof Error ? error.message : 'Please check your connection and try again.' });
     } finally {
       uploadControllerRef.current = undefined;
       setIsSubmitting(false);
@@ -382,48 +386,48 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
 
   return (
     <Modal visible animationType="slide" onRequestClose={handleClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={['top', 'left', 'right']}>
         <View style={{ width: '100%', alignItems: 'center', paddingVertical: 8 }} {...panResponder.panHandlers}>
-          <View style={{ width: 42, height: 5, borderRadius: 3, backgroundColor: '#d1d5db' }} />
+          <View style={{ width: 42, height: 5, borderRadius: 3, backgroundColor: colors.border }} />
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }} {...panResponder.panHandlers}>
-          <TouchableOpacity onPress={handleClose} disabled={isSubmitting} style={{ padding: 8 }}><Icon name="x" size={24} color="#374151" /></TouchableOpacity>
-          <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: '#111827' }}>{postType === 'poll' ? 'Create poll' : 'Create post'}</Text>
-          <TouchableOpacity onPress={() => void handleSubmit()} disabled={isPostDisabled} style={{ minWidth: 68, alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 18, backgroundColor: isPostDisabled ? '#d1d5db' : '#10b981' }}>
-            {isSubmitting ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={{ color: '#ffffff', fontWeight: '700' }}>Post</Text>}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }} {...panResponder.panHandlers}>
+          <TouchableOpacity onPress={handleClose} disabled={isSubmitting} style={{ padding: 8 }}><Icon name="x" size={24} color={colors.icon} /></TouchableOpacity>
+          <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: colors.text }}>{postType === 'poll' ? 'Create poll' : 'Create post'}</Text>
+          <TouchableOpacity onPress={() => void handleSubmit()} disabled={isPostDisabled} style={{ minWidth: 68, alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 18, backgroundColor: isPostDisabled ? colors.disabled : colors.accent }}>
+            {isSubmitting ? <ActivityIndicator size="small" color={colors.onAccent} /> : <Text style={{ color: isPostDisabled ? colors.disabledText : colors.onAccent, fontWeight: '800' }}>Post</Text>}
           </TouchableOpacity>
         </View>
 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
             {isSubmitting && media.length > 0 ? (
-              <View style={{ marginBottom: 14, padding: 12, borderRadius: 12, backgroundColor: '#ecfdf5' }}>
+              <View style={{ marginBottom: 14, padding: 12, borderRadius: 12, backgroundColor: colors.successSurface }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <ActivityIndicator size="small" color="#10b981" />
-                  <Text style={{ flex: 1, marginLeft: 9, color: '#047857', fontWeight: '700' }}>Uploading media… {uploadProgress}%</Text>
-                  <TouchableOpacity onPress={() => uploadControllerRef.current?.abort()}><Text style={{ color: '#c64d53', fontWeight: '700' }}>Cancel</Text></TouchableOpacity>
+                  <ActivityIndicator size="small" color={colors.accent} />
+                  <Text style={{ flex: 1, marginLeft: 9, color: colors.successText, fontWeight: '700' }}>Uploading media… {uploadProgress}%</Text>
+                  <TouchableOpacity onPress={() => uploadControllerRef.current?.abort()}><Text style={{ color: colors.destructiveText, fontWeight: '700' }}>Cancel</Text></TouchableOpacity>
                 </View>
-                <View style={{ height: 5, marginTop: 9, borderRadius: 3, backgroundColor: '#d1fae5', overflow: 'hidden' }}><View style={{ width: `${uploadProgress}%`, height: '100%', backgroundColor: '#10b981' }} /></View>
+                <View style={{ height: 5, marginTop: 9, borderRadius: 3, backgroundColor: colors.control, overflow: 'hidden' }}><View style={{ width: `${uploadProgress}%`, height: '100%', backgroundColor: colors.accent }} /></View>
               </View>
             ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 18 }}>
               <UserAvatar profileImage={userProfile.profilePicture} firstName={userProfile.firstName || userProfile.email} size={52} />
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>{userProfile.firstName} {userProfile.lastName}</Text>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{userProfile.firstName} {userProfile.lastName}</Text>
                 <View style={{ flexDirection: 'row', marginTop: 6 }}>
                   {(['public', 'friends', 'private'] as const).map((option) => (
-                    <TouchableOpacity key={option} onPress={() => setVisibility(option)} style={{ marginRight: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: visibility === option ? '#d1fae5' : '#f3f4f6' }}>
-                      <Text style={{ color: visibility === option ? '#047857' : '#6b7280', fontSize: 12, textTransform: 'capitalize' }}>{option}</Text>
+                    <TouchableOpacity key={option} onPress={() => setVisibility(option)} style={{ marginRight: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: visibility === option ? colors.selectedControl : colors.control }}>
+                      <Text style={{ color: visibility === option ? colors.selectedText : colors.secondaryText, fontSize: 12, textTransform: 'capitalize' }}>{option}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </View>
             </View>
 
-            <View style={{ flexDirection: 'row', backgroundColor: '#f3f4f6', borderRadius: 14, padding: 4, marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', backgroundColor: colors.control, borderRadius: 14, padding: 4, marginBottom: 16 }}>
               {(communityId ? (['regular'] as const) : (['regular', 'poll', 'event'] as const)).map((option) => (
-                <TouchableOpacity key={option} onPress={() => setPostType(option)} style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 11, backgroundColor: postType === option ? '#ffffff' : 'transparent' }}>
-                  <Text style={{ color: postType === option ? '#10b981' : '#6b7280', fontWeight: '700', textTransform: 'capitalize' }}>
+                <TouchableOpacity key={option} onPress={() => setPostType(option)} style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 11, backgroundColor: postType === option ? colors.surface : 'transparent' }}>
+                  <Text style={{ color: postType === option ? colors.accentText : colors.secondaryText, fontWeight: '700', textTransform: 'capitalize' }}>
                     {option === 'regular' ? 'Post' : option === 'poll' ? 'Poll' : '📅 Event'}
                   </Text>
                 </TouchableOpacity>
@@ -431,64 +435,68 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
             </View>
 
             {postType === 'event' ? (
-              <View style={{ marginBottom: 16, padding: 14, borderRadius: 16, backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#bbf7d0', gap: 10 }}>
-                <Text style={{ fontSize: 14, fontWeight: '800', color: '#166534' }}>Event Details</Text>
+              <View style={{ marginBottom: 16, padding: 14, borderRadius: 16, backgroundColor: colors.successSurface, borderWidth: 1, borderColor: colors.border, gap: 10 }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: colors.successText }}>Event Details</Text>
                 <TextInput
                   value={eventTitle}
                   onChangeText={setEventTitle}
                   placeholder="Event Title (e.g. Lime Party @ Maracas)"
-                  placeholderTextColor="#9ca3af"
-                  style={{ backgroundColor: '#ffffff', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#cbd5e1', color: '#0f172a', fontWeight: '600' }}
+                  placeholderTextColor={colors.mutedText}
+                  style={{ backgroundColor: colors.input, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: colors.border, color: colors.text, fontWeight: '600' }}
                 />
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155', marginBottom: 4 }}>Start Date</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.secondaryText, marginBottom: 4 }}>Start Date</Text>
                     <TextInput
                       value={eventStartDate}
                       onChangeText={setEventStartDate}
                       placeholder="YYYY-MM-DD"
-                      style={{ backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#cbd5e1', fontSize: 13, color: '#0f172a' }}
+                      placeholderTextColor={colors.mutedText}
+                      style={{ backgroundColor: colors.input, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: colors.border, fontSize: 13, color: colors.text }}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155', marginBottom: 4 }}>Start Time</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.secondaryText, marginBottom: 4 }}>Start Time</Text>
                     <TextInput
                       value={eventStartTime}
                       onChangeText={setEventStartTime}
                       placeholder="HH:MM"
-                      style={{ backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#cbd5e1', fontSize: 13, color: '#0f172a' }}
+                      placeholderTextColor={colors.mutedText}
+                      style={{ backgroundColor: colors.input, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: colors.border, fontSize: 13, color: colors.text }}
                     />
                   </View>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155', marginBottom: 4 }}>End Date</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.secondaryText, marginBottom: 4 }}>End Date</Text>
                     <TextInput
                       value={eventEndDate}
                       onChangeText={setEventEndDate}
                       placeholder="YYYY-MM-DD"
-                      style={{ backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#cbd5e1', fontSize: 13, color: '#0f172a' }}
+                      placeholderTextColor={colors.mutedText}
+                      style={{ backgroundColor: colors.input, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: colors.border, fontSize: 13, color: colors.text }}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155', marginBottom: 4 }}>End Time</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.secondaryText, marginBottom: 4 }}>End Time</Text>
                     <TextInput
                       value={eventEndTime}
                       onChangeText={setEventEndTime}
                       placeholder="HH:MM"
-                      style={{ backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#cbd5e1', fontSize: 13, color: '#0f172a' }}
+                      placeholderTextColor={colors.mutedText}
+                      style={{ backgroundColor: colors.input, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: colors.border, fontSize: 13, color: colors.text }}
                     />
                   </View>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155' }}>Recurrence:</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.secondaryText }}>Recurrence:</Text>
                   {(['none', 'weekly', 'monthly', 'yearly'] as const).map((r) => (
                     <TouchableOpacity
                       key={r}
                       onPress={() => setEventRecurrence(r)}
-                      style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: eventRecurrence === r ? '#065f46' : '#e2e8f0' }}
+                      style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: eventRecurrence === r ? colors.selectedControl : colors.control }}
                     >
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: eventRecurrence === r ? '#ffffff' : '#334155', textTransform: 'capitalize' }}>{r}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: eventRecurrence === r ? colors.selectedText : colors.secondaryText, textTransform: 'capitalize' }}>{r}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -496,36 +504,36 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
             ) : null}
 
             <View>
-              <TextInput ref={captionInputRef} value={caption} onChangeText={setCaption} selection={captionSelection} onSelectionChange={(event) => setCaptionSelection(event.nativeEvent.selection)} placeholder="Tell us what's on your mind (use @ to mention friends)" placeholderTextColor="#9ca3af" multiline maxLength={2200} style={{ minHeight: 112, padding: 16, paddingRight: 48, borderRadius: 16, backgroundColor: '#f9fafb', color: '#111827', fontSize: 17, textAlignVertical: 'top' }} />
-              <TouchableOpacity onPress={() => setShowEmojiPicker((value) => !value)} style={{ position: 'absolute', right: 10, bottom: 28, padding: 8 }}><Icon name="smile" size={22} color="#10b981" /></TouchableOpacity>
-              <Text style={{ textAlign: 'right', fontSize: 11, color: caption.length > 2100 ? '#ef4444' : '#9ca3af', marginTop: 4, marginRight: 6 }}>{caption.length}/2200</Text>
+              <TextInput ref={captionInputRef} value={caption} onChangeText={setCaption} selection={captionSelection} onSelectionChange={(event) => setCaptionSelection(event.nativeEvent.selection)} placeholder="Tell us what's on your mind (use @ to mention friends)" placeholderTextColor={colors.mutedText} multiline maxLength={2200} style={{ minHeight: 112, padding: 16, paddingRight: 48, borderRadius: 16, backgroundColor: colors.input, color: colors.text, fontSize: 17, textAlignVertical: 'top', borderWidth: 1, borderColor: colors.border }} />
+              <TouchableOpacity onPress={() => setShowEmojiPicker((value) => !value)} style={{ position: 'absolute', right: 10, bottom: 28, padding: 8 }}><Icon name="smile" size={22} color={colors.accent} /></TouchableOpacity>
+              <Text style={{ textAlign: 'right', fontSize: 11, color: caption.length > 2100 ? colors.destructive : colors.mutedText, marginTop: 4, marginRight: 6 }}>{caption.length}/2200</Text>
             </View>
             {mentionSuggestions.length > 0 ? (
-              <View style={{ marginTop: 7, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 13, overflow: 'hidden' }}>
-                {mentionSuggestions.map((friend) => <TouchableOpacity key={friend.id} onPress={() => handleInsertMention(friend)} style={{ flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}><UserAvatar profileImage={friend.profileImage} firstName={friend.firstName || friend.userName} size={34} /><View style={{ marginLeft: 9 }}><Text style={{ color: '#111827', fontWeight: '700' }}>{friend.firstName} {friend.lastName}</Text><Text style={{ color: '#6b7280', fontSize: 12 }}>@{friend.userName}</Text></View></TouchableOpacity>)}
+              <View style={{ marginTop: 7, borderWidth: 1, borderColor: colors.border, borderRadius: 13, overflow: 'hidden' }}>
+                {mentionSuggestions.map((friend) => <TouchableOpacity key={friend.id} onPress={() => handleInsertMention(friend)} style={{ flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><UserAvatar profileImage={friend.profileImage} firstName={friend.firstName || friend.userName} size={34} /><View style={{ marginLeft: 9 }}><Text style={{ color: colors.text, fontWeight: '700' }}>{friend.firstName} {friend.lastName}</Text><Text style={{ color: colors.mutedText, fontSize: 12 }}>@{friend.userName}</Text></View></TouchableOpacity>)}
               </View>
             ) : null}
             {showEmojiPicker ? (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, padding: 10, borderRadius: 14, backgroundColor: '#f3f4f6' }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, padding: 10, borderRadius: 14, backgroundColor: colors.control }}>
                 {emojis.map((emoji) => <TouchableOpacity key={emoji} onPress={() => handleInsertEmoji(emoji)} style={{ width: '20%', paddingVertical: 8, alignItems: 'center' }}><Text style={{ fontSize: 24 }}>{emoji}</Text></TouchableOpacity>)}
               </View>
             ) : null}
 
 
             <View style={{ marginTop: 14 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 14, paddingHorizontal: 13, backgroundColor: '#ffffff' }}>
-                <Icon name="at-sign" size={18} color="#10b981" />
+              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 14, paddingHorizontal: 13, backgroundColor: colors.input }}>
+                <Icon name="at-sign" size={18} color={colors.accent} />
                 <TextInput
                   value={mentionInput}
                   onChangeText={setMentionInput}
                   onSubmitEditing={() => handleAddMentionTag(mentionInput)}
                   returnKeyType="done"
                   placeholder="Mention friends (e.g. rishi or @rishi)"
-                  placeholderTextColor="#9ca3af"
-                  style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 12, color: '#111827' }}
+                  placeholderTextColor={colors.mutedText}
+                  style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 12, color: colors.text }}
                 />
                 <TouchableOpacity onPress={() => handleAddMentionTag(mentionInput)} disabled={!mentionInput.trim()}>
-                  <Icon name="plus-circle" size={21} color={mentionInput.trim() ? '#10b981' : '#9ca3af'} />
+                  <Icon name="plus-circle" size={21} color={mentionInput.trim() ? colors.accent : colors.disabledText} />
                 </TouchableOpacity>
               </View>
 
@@ -535,10 +543,10 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
                     <TouchableOpacity
                       key={tag}
                       onPress={() => setTaggedMentions((curr) => curr.filter((t) => t !== tag))}
-                      style={{ flexDirection: 'row', alignItems: 'center', marginRight: 7, marginBottom: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 15, backgroundColor: '#d1fae5' }}
+                      style={{ flexDirection: 'row', alignItems: 'center', marginRight: 7, marginBottom: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 15, backgroundColor: colors.successSurface }}
                     >
-                      <Text style={{ color: '#047857', fontWeight: '700' }}>@{tag}</Text>
-                      <Icon name="x" size={13} color="#047857" style={{ marginLeft: 4 }} />
+                      <Text style={{ color: colors.successText, fontWeight: '700' }}>@{tag}</Text>
+                      <Icon name="x" size={13} color={colors.successText} style={{ marginLeft: 4 }} />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -547,33 +555,33 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
 
             {postType === 'poll' ? (
               <View style={{ marginTop: 18 }}>
-                <Text style={{ marginBottom: 10, color: '#111827', fontWeight: '700' }}>Poll options</Text>
+                <Text style={{ marginBottom: 10, color: colors.text, fontWeight: '700' }}>Poll options</Text>
                 {pollOptions.map((option, index) => (
                   <View key={option.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                    <TextInput value={option.text} onChangeText={(text) => setPollOptions((current) => current.map((item) => item.id === option.id ? { ...item, text } : item))} maxLength={100} placeholder={`Option ${index + 1}`} style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#d1d5db', borderRadius: 12 }} />
-                    {index > 1 ? <TouchableOpacity onPress={() => setPollOptions((current) => current.filter((item) => item.id !== option.id))} style={{ padding: 10 }}><Icon name="trash-2" size={19} color="#c64d53" /></TouchableOpacity> : null}
+                    <TextInput value={option.text} onChangeText={(text) => setPollOptions((current) => current.map((item) => item.id === option.id ? { ...item, text } : item))} maxLength={100} placeholder={`Option ${index + 1}`} placeholderTextColor={colors.mutedText} style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.input, color: colors.text }} />
+                    {index > 1 ? <TouchableOpacity onPress={() => setPollOptions((current) => current.filter((item) => item.id !== option.id))} style={{ padding: 10 }}><Icon name="trash-2" size={19} color={colors.destructive} /></TouchableOpacity> : null}
                   </View>
                 ))}
-                {pollOptions.length < 4 ? <TouchableOpacity onPress={() => setPollOptions((current) => [...current, { id: `${Date.now()}`, text: '' }])} style={{ paddingVertical: 10 }}><Text style={{ color: '#10b981', fontWeight: '700' }}>+ Add option</Text></TouchableOpacity> : null}
-                <Text style={{ marginTop: 8, marginBottom: 8, color: '#6b7280' }}>Poll duration</Text>
+                {pollOptions.length < 4 ? <TouchableOpacity onPress={() => setPollOptions((current) => [...current, { id: `${Date.now()}`, text: '' }])} style={{ paddingVertical: 10 }}><Text style={{ color: colors.accentText, fontWeight: '700' }}>+ Add option</Text></TouchableOpacity> : null}
+                <Text style={{ marginTop: 8, marginBottom: 8, color: colors.secondaryText }}>Poll duration</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                  {pollDurations.map((choice) => <TouchableOpacity key={choice.label} onPress={() => setPollDurationChoice(choice.hours)} style={{ marginRight: 7, marginBottom: 7, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 14, backgroundColor: pollDurationChoice === choice.hours ? '#d1fae5' : '#f3f4f6' }}><Text style={{ color: pollDurationChoice === choice.hours ? '#047857' : '#6b7280' }}>{choice.label}</Text></TouchableOpacity>)}
+                  {pollDurations.map((choice) => <TouchableOpacity key={choice.label} onPress={() => setPollDurationChoice(choice.hours)} style={{ marginRight: 7, marginBottom: 7, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 14, backgroundColor: pollDurationChoice === choice.hours ? colors.selectedControl : colors.control }}><Text style={{ color: pollDurationChoice === choice.hours ? colors.selectedText : colors.secondaryText }}>{choice.label}</Text></TouchableOpacity>)}
                 </View>
                 {pollDurationChoice === 'custom' ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 7 }}>
-                    <TextInput value={customPollDuration} onChangeText={(value) => setCustomPollDuration(value.replace(/\D/g, ''))} keyboardType="number-pad" style={{ width: 78, padding: 11, borderWidth: 1, borderColor: '#d1d5db', borderRadius: 12 }} />
-                    {(['seconds', 'minutes', 'hours', 'days'] as const).map((unit) => <TouchableOpacity key={unit} onPress={() => setCustomPollUnit(unit)} style={{ marginLeft: 5, paddingHorizontal: 7, paddingVertical: 10, borderRadius: 12, backgroundColor: customPollUnit === unit ? '#d1fae5' : '#f3f4f6' }}><Text style={{ color: customPollUnit === unit ? '#047857' : '#6b7280', fontSize: 10 }}>{unit}</Text></TouchableOpacity>)}
+                    <TextInput value={customPollDuration} onChangeText={(value) => setCustomPollDuration(value.replace(/\D/g, ''))} keyboardType="number-pad" style={{ width: 78, padding: 11, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.input, color: colors.text }} />
+                    {(['seconds', 'minutes', 'hours', 'days'] as const).map((unit) => <TouchableOpacity key={unit} onPress={() => setCustomPollUnit(unit)} style={{ marginLeft: 5, paddingHorizontal: 7, paddingVertical: 10, borderRadius: 12, backgroundColor: customPollUnit === unit ? colors.selectedControl : colors.control }}><Text style={{ color: customPollUnit === unit ? colors.selectedText : colors.secondaryText, fontSize: 10 }}>{unit}</Text></TouchableOpacity>)}
                   </View>
                 ) : null}
                 <View style={{ marginTop: 16 }}>
-                  <Text style={{ marginBottom: 8, color: '#6b7280' }}>Poll image (optional)</Text>
-                  {media[0] ? <View style={{ alignSelf: 'flex-start' }}><Image source={{ uri: media[0].uri }} style={{ width: 130, height: 96, borderRadius: 12 }} /><TouchableOpacity onPress={() => setMedia([])} style={{ position: 'absolute', right: 4, top: 4, width: 25, height: 25, borderRadius: 13, backgroundColor: '#111827cc', alignItems: 'center', justifyContent: 'center' }}><Icon name="x" size={15} color="#ffffff" /></TouchableOpacity></View> : <TouchableOpacity onPress={() => void handlePickMedia()} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 13, borderWidth: 1, borderStyle: 'dashed', borderColor: '#10b981', borderRadius: 13 }}><Icon name="image" size={18} color="#10b981" /><Text style={{ marginLeft: 8, color: '#047857', fontWeight: '700' }}>Add poll image</Text></TouchableOpacity>}
+                  <Text style={{ marginBottom: 8, color: colors.secondaryText }}>Poll image (optional)</Text>
+                  {media[0] ? <View style={{ alignSelf: 'flex-start' }}><Image source={{ uri: media[0].uri }} style={{ width: 130, height: 96, borderRadius: 12 }} /><TouchableOpacity onPress={() => setMedia([])} style={{ position: 'absolute', right: 4, top: 4, width: 25, height: 25, borderRadius: 13, backgroundColor: '#111827cc', alignItems: 'center', justifyContent: 'center' }}><Icon name="x" size={15} color="#ffffff" /></TouchableOpacity></View> : <TouchableOpacity onPress={() => void handlePickMedia()} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 13, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.accent, borderRadius: 13, backgroundColor: colors.successSurface }}><Icon name="image" size={18} color={colors.accent} /><Text style={{ marginLeft: 8, color: colors.successText, fontWeight: '700' }}>Add poll image</Text></TouchableOpacity>}
                 </View>
               </View>
             ) : (
               <View style={{ marginTop: 18 }}>
-                <TouchableOpacity onPress={() => void handlePickMedia()} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderWidth: 1, borderStyle: 'dashed', borderColor: '#10b981', borderRadius: 14, backgroundColor: '#ecfdf5' }}>
-                  <Icon name="image" size={20} color="#10b981" /><Text style={{ marginLeft: 8, color: '#047857', fontWeight: '700' }}>Add photos or videos ({media.length}/{MAX_POST_MEDIA})</Text>
+                <TouchableOpacity onPress={() => void handlePickMedia()} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.accent, borderRadius: 14, backgroundColor: colors.successSurface }}>
+                  <Icon name="image" size={20} color={colors.accent} /><Text style={{ marginLeft: 8, color: colors.successText, fontWeight: '700' }}>Add photos or videos ({media.length}/{MAX_POST_MEDIA})</Text>
                 </TouchableOpacity>
                 {media.length > 0 ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
@@ -593,7 +601,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
             )}
 
             <View style={{ marginTop: 18 }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#6b7280', marginBottom: 6 }}>Suggested Hashtags</Text>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.secondaryText, marginBottom: 6 }}>Suggested Hashtags</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                 {SUGGESTED_HASHTAGS.map((tag) => {
                   const tagLower = tag.toLowerCase();
@@ -613,12 +621,12 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
                         paddingHorizontal: 11,
                         paddingVertical: 6,
                         borderRadius: 14,
-                        backgroundColor: isSelected ? '#10b981' : '#f1f5f9',
+                        backgroundColor: isSelected ? colors.selectedControl : colors.control,
                         borderWidth: 1,
-                        borderColor: isSelected ? '#10b981' : '#e2e8f0',
+                        borderColor: isSelected ? colors.selectedControl : colors.border,
                       }}
                     >
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: isSelected ? '#ffffff' : '#334155' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: isSelected ? colors.selectedText : colors.secondaryText }}>
                         #{tag}
                       </Text>
                     </TouchableOpacity>
@@ -626,22 +634,22 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
                 })}
               </ScrollView>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 14, paddingHorizontal: 13 }}>
-                <Icon name="hash" size={19} color="#10b981" />
-                <TextInput value={hashtagInput} onChangeText={setHashtagInput} onSubmitEditing={handleAddHashtag} returnKeyType="done" placeholder="Add a hashtag" style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 13 }} />
-                <TouchableOpacity onPress={handleAddHashtag} disabled={!normalizeHashtag(hashtagInput)}><Icon name="plus-circle" size={21} color={normalizeHashtag(hashtagInput) ? '#10b981' : '#9ca3af'} /></TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 14, paddingHorizontal: 13, backgroundColor: colors.input }}>
+                <Icon name="hash" size={19} color={colors.accent} />
+                <TextInput value={hashtagInput} onChangeText={setHashtagInput} onSubmitEditing={handleAddHashtag} returnKeyType="done" placeholder="Add a hashtag" placeholderTextColor={colors.mutedText} style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 13, color: colors.text }} />
+                <TouchableOpacity onPress={handleAddHashtag} disabled={!normalizeHashtag(hashtagInput)}><Icon name="plus-circle" size={21} color={normalizeHashtag(hashtagInput) ? colors.accent : colors.disabledText} /></TouchableOpacity>
               </View>
-              {hashtags.length > 0 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>{hashtags.map((tag) => <TouchableOpacity key={tag} onPress={() => setHashtags((current) => current.filter((item) => item !== tag))} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 7, marginBottom: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 15, backgroundColor: '#d1fae5' }}><Text style={{ color: '#047857', fontWeight: '700' }}>#{tag}</Text><Icon name="x" size={13} color="#047857" style={{ marginLeft: 4 }} /></TouchableOpacity>)}</View> : null}
+              {hashtags.length > 0 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>{hashtags.map((tag) => <TouchableOpacity key={tag} onPress={() => setHashtags((current) => current.filter((item) => item !== tag))} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 7, marginBottom: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 15, backgroundColor: colors.successSurface }}><Text style={{ color: colors.successText, fontWeight: '700' }}>#{tag}</Text><Icon name="x" size={13} color={colors.successText} style={{ marginLeft: 4 }} /></TouchableOpacity>)}</View> : null}
             </View>
 
             {postType === 'regular' ? (
               location ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, padding: 12, borderRadius: 14, backgroundColor: '#ecfdf5' }}>
-                  <Icon name="map-pin" size={19} color="#10b981" /><View style={{ flex: 1, marginLeft: 9 }}><Text style={{ color: '#047857', fontWeight: '700' }}>{location.name}</Text><Text numberOfLines={1} style={{ color: '#6b7280', fontSize: 12 }}>{location.address}</Text></View>
-                  <TouchableOpacity onPress={() => setLocation(undefined)} style={{ padding: 6 }}><Icon name="x" size={18} color="#6b7280" /></TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, padding: 12, borderRadius: 14, backgroundColor: colors.successSurface }}>
+                  <Icon name="map-pin" size={19} color={colors.accent} /><View style={{ flex: 1, marginLeft: 9 }}><Text style={{ color: colors.successText, fontWeight: '700' }}>{location.name}</Text><Text numberOfLines={1} style={{ color: colors.mutedText, fontSize: 12 }}>{location.address}</Text></View>
+                  <TouchableOpacity onPress={() => setLocation(undefined)} style={{ padding: 6 }}><Icon name="x" size={18} color={colors.icon} /></TouchableOpacity>
                 </View>
               ) : (
-                <TouchableOpacity onPress={() => setShowLocationPicker(true)} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 14, padding: 13 }}><Icon name="map-pin" size={19} color="#10b981" /><Text style={{ marginLeft: 10, color: '#6b7280' }}>Tag a location</Text></TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowLocationPicker(true)} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 13, backgroundColor: colors.input }}><Icon name="map-pin" size={19} color={colors.accent} /><Text style={{ marginLeft: 10, color: colors.secondaryText }}>Tag a location</Text></TouchableOpacity>
               )
             ) : null}
           </ScrollView>
@@ -650,6 +658,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
 
       {cropQueue[0] ? <MediaCropModal pending={cropQueue[0]} queueLength={cropQueue.length} onCancel={() => setCropQueue((current) => current.slice(1))} onComplete={handleCroppedMedia} /> : null}
       {showLocationPicker ? <LocationPickerModal initialLocation={location} onClose={() => setShowLocationPicker(false)} onSelect={(selectedLocation) => { setLocation(selectedLocation); setShowLocationPicker(false); }} /> : null}
+      <CustomModal visible={Boolean(composerFeedback)} title={composerFeedback?.title ?? 'Create post'} message={composerFeedback?.message ?? ''} type="error" onClose={() => setComposerFeedback(null)} />
     </Modal>
   );
 }

@@ -89,7 +89,10 @@ export class PushNotificationService {
       const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
       await AsyncStorage.setItem(DEVICE_TOKEN_KEY, token);
       return token;
-    } catch {
+    } catch (error: unknown) {
+      this.logger.warn('PushNotificationService', 'token:unavailable', {
+        reason: error instanceof Error ? error.message : 'Unknown notification error',
+      });
       return null;
     }
   }
@@ -98,11 +101,20 @@ export class PushNotificationService {
     if (!userId) return null;
     const token = await this.getDevicePushToken();
     if (!token) return null;
-    await this.apiService.request<PushTokenResponse>('/api/push-tokens', {
-      method: 'POST', authenticated: true, body: { token, platform: Platform.OS },
-    });
-    this.logger.success('PushNotificationService', 'token:registered', { userId, platform: Platform.OS });
-    return token;
+    try {
+      await this.apiService.request<PushTokenResponse>('/api/push-tokens', {
+        method: 'POST', authenticated: true, body: { token, platform: Platform.OS },
+      });
+      this.logger.success('PushNotificationService', 'token:registered', { userId, platform: Platform.OS });
+      return token;
+    } catch (error: unknown) {
+      this.logger.warn('PushNotificationService', 'token:registration-failed', {
+        userId,
+        platform: Platform.OS,
+        reason: error instanceof Error ? error.message : 'Unknown registration error',
+      });
+      return null;
+    }
   }
 
   public async unregisterCurrentDevice(): Promise<void> {
@@ -147,8 +159,8 @@ export class PushNotificationService {
     });
   }
 
-  public resolveNotificationDestination(data: Record<string, unknown>): Href {
-    return notificationDestinationRegistry.resolve(data);
+  public resolveNotificationDestination(data: unknown): Href {
+    return notificationDestinationRegistry.resolve(notificationDestinationRegistry.normalize(data));
   }
 }
 

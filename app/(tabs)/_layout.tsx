@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image, Platform } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthService } from '@/lib/services/AuthService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
@@ -9,7 +10,10 @@ const authService = AuthService.getInstance();
 
 const TabLayout = () => {
   const [isDeveloper, setIsDeveloper] = useState(false);
-  const { isDark } = useAppTheme();
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 20);
+  const tabBarHeight = 56 + bottomInset;
 
   useEffect(() => {
     const unsub = authService.subscribeToVerifiedAuthState((user) => {
@@ -27,18 +31,17 @@ const TabLayout = () => {
 
   return (
     <Tabs
-      key={isDark ? 'dark-tabs' : 'light-tabs'}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#10B981",
-        tabBarInactiveTintColor: isDark ? '#94A3B8' : '#6B7280',
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.mutedText,
         tabBarStyle: {
-          backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+          backgroundColor: colors.navigation,
           borderTopWidth: 1,
-          borderTopColor: isDark ? '#334155' : '#E5E7EB',
-          height: Platform.OS === 'ios' ? 84 : 64,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
-          paddingTop: 8,
+          borderTopColor: colors.navigationBorder,
+          height: tabBarHeight,
+          paddingBottom: bottomInset,
+          paddingTop: 6,
           elevation: 8,
           shadowColor: "#000000",
           shadowOffset: { width: 0, height: -2 },
@@ -89,16 +92,16 @@ const TabLayout = () => {
           title: "Limes",
           href: isDeveloper ? undefined : null,
           tabBarStyle: {
-            backgroundColor: isDark ? '#0f172a' : '#ffffff',
+            backgroundColor: colors.navigation,
             borderTopWidth: 1,
-            borderTopColor: isDark ? '#334155' : '#e5e7eb',
-            height: Platform.OS === 'ios' ? 84 : 64,
-            paddingBottom: Platform.OS === 'ios' ? 24 : 8,
-            paddingTop: 8,
+            borderTopColor: colors.navigationBorder,
+            height: tabBarHeight,
+            paddingBottom: bottomInset,
+            paddingTop: 6,
             elevation: 10,
           },
-          tabBarActiveTintColor: "#10B981",
-          tabBarInactiveTintColor: isDark ? '#94A3B8' : '#6B7280',
+          tabBarActiveTintColor: colors.accent,
+          tabBarInactiveTintColor: colors.mutedText,
           tabBarIcon: ({ focused }) => (
             <Image
               source={require('@/assets/images/logo.png')}

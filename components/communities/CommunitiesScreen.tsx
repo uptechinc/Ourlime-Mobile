@@ -1,166 +1,162 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Lock, Plus, Search, Users } from 'lucide-react-native';
-import { CommunityService, type CommunityCategory, type CommunitySummary } from '@/lib/services/CommunityService';
+import { Grid2X2, List, Plus, RefreshCw, Search, SlidersHorizontal, Users, X } from 'lucide-react-native';
+import { CommunityService } from '@/lib/services/CommunityService';
 import CreateCommunityModal from './CreateCommunityModal';
 import CustomModal from '@/components/ui/CustomModal';
-import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { useAppData } from '@/lib/contexts/AppDataContext';
+import { useCommunitiesResource } from '@/lib/hooks/useCommunitiesResource';
+import type { CommunityCardModel, CommunityDirectoryQuery, CommunityDirectoryScope, CommunityDirectorySort, CommunityDirectoryViewMode, CommunityDirectoryVisibility } from '@/lib/types/community';
+import CommunityCard from './CommunityCard';
+import CommunityOfTheWeek from './CommunityOfTheWeek';
+import { ModerationService } from '@/lib/services/ModerationService';
+import CommunityReportModal from './CommunityReportModal';
+import type { ReportReasonCategory } from '@/lib/services/ModerationService';
+import CommunityFiltersSheet from './CommunityFiltersSheet';
 
-type CommunityTab = 'all' | 'joined' | 'friends' | 'new' | 'created';
-type PrivacyFilter = 'all' | 'public' | 'private';
-type CommunitySort = 'popular' | 'newest' | 'active' | 'trending';
+type ConfirmationAction = 'leave' | null;
+type ConfirmationState = { action: ConfirmationAction; community: CommunityCardModel | null };
 
 const communityService = CommunityService.getInstance();
+const moderationService = ModerationService.getInstance();
+const SCOPES: { value: CommunityDirectoryScope; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'joined', label: 'Joined' },
+  { value: 'friends', label: 'Friends' },
+  { value: 'new', label: 'New' },
+  { value: 'created', label: 'Mine' },
+];
 
 export default function CommunitiesScreen() {
   const { colors } = useAppTheme();
-  const [communities, setCommunities] = useState<CommunitySummary[]>([]);
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<CommunityTab>('all');
+  const { width } = useWindowDimensions();
+  const { activeUserId } = useAppData();
+  const [searchText, setSearchText] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [scope, setScope] = useState<CommunityDirectoryScope>('all');
+  const [visibility, setVisibility] = useState<CommunityDirectoryVisibility>('all');
+  const [sort, setSort] = useState<CommunityDirectorySort>('popular');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<CommunityDirectoryViewMode>('grid');
   const [createVisible, setCreateVisible] = useState(false);
   const [busyCommunityId, setBusyCommunityId] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [friendCommunityIds, setFriendCommunityIds] = useState<Set<string>>(new Set());
-  const [friendFilterLoading, setFriendFilterLoading] = useState(false);
-  const [privacyFilter, setPrivacyFilter] = useState<PrivacyFilter>('all');
-  const [sort, setSort] = useState<CommunitySort>('popular');
-  const [categories, setCategories] = useState<CommunityCategory[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-
-  const loadCommunities = useCallback(async (refresh = false) => {
-    if (refresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-    setError(null);
-    try {
-      const [nextCommunities, nextCategories] = await Promise.all([
-        communityService.fetchCommunities(),
-        communityService.fetchCategories().catch(() => []),
-      ]);
-      setCommunities(nextCommunities);
-      setCategories(nextCategories);
-    } catch (loadError: unknown) {
-      console.error('[CommunitiesScreen.loadCommunities]', loadError);
-      setError('We could not load communities. Check your connection and try again.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => { void loadCommunities(); }, [loadCommunities]);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<ConfirmationState>({ action: null, community: null });
+  const [reportCommunity, setReportCommunity] = useState<CommunityCardModel | null>(null);
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  const columnCount = viewMode === 'grid' && width >= 720 ? 2 : 1;
+  const directoryQuery = useMemo<CommunityDirectoryQuery>(() => ({ scope, visibility, categoryId: selectedCategoryId, search: searchQuery, sort, cursor: null, limit: 20 }), [scope, visibility, selectedCategoryId, searchQuery, sort]);
+  const { resource, categories, refresh, loadMore, patchCommunity } = useCommunitiesResource(activeUserId ?? '', directoryQuery);
+  const selectedCategory = categories.data?.find((category) => category.id === selectedCategoryId) ?? null;
+  const activeFilterCount = (visibility === 'all' ? 0 : 1) + (selectedCategoryId ? 1 : 0) + (sort === 'popular' ? 0 : 1);
 
   useEffect(() => {
-    if (activeTab !== 'friends') return;
-    setFriendFilterLoading(true);
-    void communityService.fetchJoinedByFriendsIds()
-      .then(setFriendCommunityIds)
-      .catch((friendsError: unknown) => setActionMessage(friendsError instanceof Error ? friendsError.message : 'Friend communities could not be loaded.'))
-      .finally(() => setFriendFilterLoading(false));
-  }, [activeTab]);
+    const timeout = setTimeout(() => setSearchQuery(searchText.trim()), 350);
+    return () => clearTimeout(timeout);
+  }, [searchText]);
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    let visible = [...communities];
-    if (activeTab === 'joined') visible = visible.filter((community) => community.isMember);
-    if (activeTab === 'friends') visible = visible.filter((community) => friendCommunityIds.has(community.id));
-    if (activeTab === 'created') visible = visible.filter((community) => community.creatorId && community.isMember && community.creatorId === communityService.getCurrentUserId());
-    if (privacyFilter === 'public') visible = visible.filter((community) => !community.isPrivate);
-    if (privacyFilter === 'private') visible = visible.filter((community) => community.isPrivate);
-    if (selectedCategoryId) visible = visible.filter((community) => community.categoryId === selectedCategoryId);
-    if (query) visible = visible.filter((community) => `${community.title} ${community.description}`.toLowerCase().includes(query));
-    return visible.sort((first, second) => {
-      if (activeTab === 'new' || sort === 'newest') return second.createdAtMs - first.createdAtMs;
-      if (sort === 'active') return second.postCount - first.postCount;
-      if (sort === 'trending') return (second.membershipLikes * 2 + second.membershipCount) - (first.membershipLikes * 2 + first.membershipCount);
-      return second.membershipCount - first.membershipCount;
-    });
-  }, [activeTab, communities, friendCommunityIds, privacyFilter, search, selectedCategoryId, sort]);
+  const handleOpen = (community: CommunityCardModel): void => {
+    router.push({ pathname: '/communities/[id]', params: { id: community.slug || community.id } });
+  };
 
-  const handleCommunityAction = async (community: CommunitySummary) => {
-    if (busyCommunityId || community.isMember || community.requestStatus === 'pending') return;
+  const handleManualRefresh = async (): Promise<void> => {
+    if (manualRefreshing) return;
+    setManualRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setManualRefreshing(false);
+    }
+  };
+
+  const reconcileCommunity = async (communityId: string): Promise<void> => {
+    const community = await communityService.fetchCommunity(communityId);
+    await patchCommunity(community);
+    await refresh();
+  };
+
+  const handleMembershipAction = async (community: CommunityCardModel): Promise<void> => {
+    if (busyCommunityId) return;
     setBusyCommunityId(community.id);
     try {
-      const result = await communityService.joinOrRequestAccess(community);
-      setCommunities((current) => current.map((item) => item.id === community.id ? {
-        ...item,
-        isMember: result === 'joined',
-        requestStatus: result === 'requested' ? 'pending' : item.requestStatus,
-        membershipCount: item.membershipCount + (result === 'joined' ? 1 : 0),
-      } : item));
-      setActionMessage(result === 'joined' ? 'You joined the community.' : 'Your access request was sent.');
-    } catch (actionError: unknown) {
-      setActionMessage(actionError instanceof Error ? actionError.message : 'Community membership could not be updated');
+      if (community.membershipState === 'pending') await communityService.cancelRequest(community.id);
+      else await communityService.joinOrRequestAccess(community);
+      await reconcileCommunity(community.id);
+      setFeedback(community.membershipState === 'pending' ? 'Your join request was canceled.' : community.isPrivate ? 'Your access request was sent.' : `You joined ${community.title}.`);
+    } catch (error: unknown) {
+      setFeedback(error instanceof Error ? error.message : 'Community membership could not be updated.');
     } finally {
       setBusyCommunityId(null);
     }
   };
 
-  const renderCommunity = ({ item }: { item: CommunitySummary }) => (
-    <TouchableOpacity
-      onPress={() => router.push({ pathname: '/communities/[id]', params: { id: item.id } })}
-      style={{ marginHorizontal: 16, marginBottom: 14, backgroundColor: colors.surface, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}
-    >
-      {item.imageUrl ? (
-        <CachedImage uri={item.imageUrl} recyclingKey={`community-card-${item.id}-${item.imageUrl}`} style={{ width: '100%', height: 150 }} contentFit="cover" />
-      ) : (
-        <View style={{ height: 120, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}>
-          <Users size={38} color="#10b981" />
+  const handleConfirmedAction = async (): Promise<void> => {
+    const community = confirmation.community;
+    const action = confirmation.action;
+    if (!community || !action || busyCommunityId) return;
+    setBusyCommunityId(community.id);
+    try {
+      await communityService.leaveCommunity(community.id);
+      await reconcileCommunity(community.id);
+      setFeedback(`You left ${community.title}.`);
+    } catch (error: unknown) {
+      setFeedback(error instanceof Error ? error.message : 'The community action could not be completed.');
+    } finally {
+      setBusyCommunityId(null);
+      setConfirmation({ action: null, community: null });
+    }
+  };
+
+  const renderCommunity = ({ item, index }: { item: CommunityCardModel; index: number }) => (
+    <View style={{ flex: 1, marginLeft: columnCount === 2 && index % 2 === 1 ? 6 : 16, marginRight: columnCount === 2 && index % 2 === 0 ? 6 : 16, marginBottom: 14 }}>
+      <CommunityCard community={item} viewMode={viewMode} busy={busyCommunityId === item.id} onOpen={handleOpen} onMembershipAction={(community) => void handleMembershipAction(community)} onLeave={(community) => setConfirmation({ action: 'leave', community })} onReport={setReportCommunity} />
+    </View>
+  );
+
+  const listHeader = (
+    <View>
+      {resource.data?.communityOfTheWeek ? <CommunityOfTheWeek community={resource.data.communityOfTheWeek} onOpen={handleOpen} /> : null}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
+        <Text style={{ marginBottom: 8, color: colors.mutedText, fontWeight: '900', fontSize: 10, letterSpacing: 0.7 }}>BROWSE</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 8 }}>
+          {SCOPES.map((scopeOption) => <TouchableOpacity key={scopeOption.value} onPress={() => setScope(scopeOption.value)} style={{ marginRight: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: scope === scopeOption.value ? colors.selectedControl : colors.control }}><Text style={{ color: scope === scopeOption.value ? colors.selectedText : colors.secondaryText, fontWeight: '800', fontSize: 12 }}>{scopeOption.label}</Text></TouchableOpacity>)}
+        </ScrollView>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 13 }}>
+          <TouchableOpacity onPress={() => setFiltersVisible(true)} style={{ flex: 1, minHeight: 42, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: activeFilterCount ? colors.accent : colors.border }}>
+            <SlidersHorizontal size={17} color={activeFilterCount ? colors.accent : colors.icon} />
+            <Text style={{ flex: 1, marginLeft: 7, color: colors.text, fontWeight: '900' }}>Filters & sort</Text>
+            {activeFilterCount ? <View style={{ minWidth: 23, height: 23, paddingHorizontal: 6, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontSize: 11, fontWeight: '900' }}>{activeFilterCount}</Text></View> : <Text style={{ color: colors.mutedText, fontSize: 11, textTransform: 'capitalize' }}>{sort}</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity accessibilityLabel="Grid view" onPress={() => setViewMode('grid')} style={{ marginLeft: 8, padding: 8, borderRadius: 10, backgroundColor: viewMode === 'grid' ? colors.selectedControl : colors.control }}><Grid2X2 size={17} color={viewMode === 'grid' ? colors.selectedText : colors.icon} /></TouchableOpacity>
+          <TouchableOpacity accessibilityLabel="Compact list view" onPress={() => setViewMode('list')} style={{ marginLeft: 6, padding: 8, borderRadius: 10, backgroundColor: viewMode === 'list' ? colors.selectedControl : colors.control }}><List size={17} color={viewMode === 'list' ? colors.selectedText : colors.icon} /></TouchableOpacity>
         </View>
-      )}
-      <View style={{ padding: 14 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ flex: 1, fontSize: 17, fontWeight: '800', color: colors.text }}>{item.title}</Text>
-          {item.isPrivate ? <Lock size={15} color={colors.icon} /> : null}
-        </View>
-        {item.description ? <Text numberOfLines={2} style={{ color: colors.mutedText, marginTop: 6, lineHeight: 19 }}>{item.description}</Text> : null}
-        <Text style={{ color: '#059669', fontWeight: '700', marginTop: 10 }}>{item.membershipCount.toLocaleString()} members</Text>
-        {!item.isMember ? <TouchableOpacity disabled={busyCommunityId === item.id || item.requestStatus === 'pending'} onPress={() => void handleCommunityAction(item)} style={{ marginTop: 12, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: item.requestStatus === 'pending' ? colors.control : '#10b981' }}>{busyCommunityId === item.id ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: item.requestStatus === 'pending' ? colors.mutedText : '#fff', fontWeight: '800' }}>{item.requestStatus === 'pending' ? 'Request pending' : item.isPrivate ? 'Request access' : 'Join community'}</Text>}</TouchableOpacity> : <View style={{ marginTop: 12, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: '#d1fae5' }}><Text style={{ color: '#047857', fontWeight: '800', fontSize: 12 }}>Joined</Text></View>}
+        {activeFilterCount ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }} contentContainerStyle={{ paddingRight: 8 }}>
+          {visibility !== 'all' ? <TouchableOpacity onPress={() => setVisibility('all')} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.successSurface }}><Text style={{ color: colors.accentText, fontSize: 11, fontWeight: '800', textTransform: 'capitalize' }}>{visibility}</Text><X size={13} color={colors.accentText} style={{ marginLeft: 4 }} /></TouchableOpacity> : null}
+          {selectedCategory ? <TouchableOpacity onPress={() => setSelectedCategoryId(null)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.successSurface }}><Text style={{ color: colors.accentText, fontSize: 11, fontWeight: '800' }}>{selectedCategory.name}</Text><X size={13} color={colors.accentText} style={{ marginLeft: 4 }} /></TouchableOpacity> : null}
+          {sort !== 'popular' ? <TouchableOpacity onPress={() => setSort('popular')} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.successSurface }}><Text style={{ color: colors.accentText, fontSize: 11, fontWeight: '800', textTransform: 'capitalize' }}>{sort}</Text><X size={13} color={colors.accentText} style={{ marginLeft: 4 }} /></TouchableOpacity> : null}
+        </ScrollView> : null}
+        <Text style={{ marginTop: 12, color: colors.mutedText, fontSize: 12 }}>{resource.data ? `${resource.data.items.length} of ${resource.data.totalCount} communities` : 'Loading communities…'}</Text>
+        {resource.error && resource.data ? <Text style={{ marginTop: 8, color: colors.warningText, fontSize: 12 }}>Showing saved communities while the latest update is unavailable.</Text> : null}
       </View>
-    </TouchableOpacity>
+    </View>
   );
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
       <View style={{ backgroundColor: colors.surface, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ flex: 1, fontSize: 24, fontWeight: '900', color: colors.text }}>Communities</Text><TouchableOpacity onPress={() => setCreateVisible(true)} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#10b981', borderRadius: 13, paddingHorizontal: 12, paddingVertical: 9 }}><Plus size={17} color="#fff" /><Text style={{ marginLeft: 5, color: '#fff', fontWeight: '800' }}>Create</Text></TouchableOpacity></View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.control, borderRadius: 14, paddingHorizontal: 12, marginTop: 12 }}>
-          <Search size={18} color={colors.icon} />
-          <TextInput value={search} onChangeText={setSearch} placeholder="Search communities" placeholderTextColor={colors.mutedText} style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 11, color: colors.text }} />
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }} contentContainerStyle={{ paddingRight: 8 }}>
-          {(['all', 'joined', 'friends', 'new', 'created'] as const).map((tab) => <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={{ marginRight: 8, paddingHorizontal: 13, paddingVertical: 7, borderRadius: 999, backgroundColor: activeTab === tab ? '#10b981' : colors.control }}><Text style={{ color: activeTab === tab ? '#fff' : colors.mutedText, fontWeight: '800', textTransform: 'capitalize' }}>{tab === 'created' ? 'My communities' : tab === 'friends' ? 'Joined by friends' : tab}</Text></TouchableOpacity>)}
-        </ScrollView>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 9 }}><Text style={{ alignSelf: 'center', marginRight: 7, color: colors.mutedText, fontSize: 11, fontWeight: '800' }}>VISIBILITY</Text>{(['all', 'public', 'private'] as const).map((filter) => <TouchableOpacity key={filter} onPress={() => setPrivacyFilter(filter)} style={{ marginRight: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: privacyFilter === filter ? '#d1fae5' : colors.canvas }}><Text style={{ color: privacyFilter === filter ? '#047857' : colors.mutedText, fontSize: 11, fontWeight: '800', textTransform: 'capitalize' }}>{filter}</Text></TouchableOpacity>)}<Text style={{ alignSelf: 'center', marginHorizontal: 7, color: colors.mutedText, fontSize: 11, fontWeight: '800' }}>SORT</Text>{(['popular', 'newest', 'active', 'trending'] as const).map((sortOption) => <TouchableOpacity key={sortOption} onPress={() => setSort(sortOption)} style={{ marginRight: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: sort === sortOption ? '#d1fae5' : colors.canvas }}><Text style={{ color: sort === sortOption ? '#047857' : colors.mutedText, fontSize: 11, fontWeight: '800', textTransform: 'capitalize' }}>{sortOption}</Text></TouchableOpacity>)}</ScrollView>
-        {categories.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 9 }}><TouchableOpacity onPress={() => setSelectedCategoryId(null)} style={{ marginRight: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: selectedCategoryId === null ? '#10b981' : colors.control }}><Text style={{ color: selectedCategoryId === null ? '#fff' : colors.mutedText, fontSize: 11, fontWeight: '800' }}>All categories</Text></TouchableOpacity>{categories.map((category) => <TouchableOpacity key={category.id} onPress={() => setSelectedCategoryId(category.id)} style={{ marginRight: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: selectedCategoryId === category.id ? '#10b981' : colors.control }}><Text style={{ color: selectedCategoryId === category.id ? '#fff' : colors.mutedText, fontSize: 11, fontWeight: '800' }}>{category.name}</Text></TouchableOpacity>)}</ScrollView> : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ flex: 1, fontSize: 24, fontWeight: '900', color: colors.text }}>Communities</Text><TouchableOpacity disabled={manualRefreshing} onPress={() => void handleManualRefresh()} accessibilityLabel="Refresh communities" style={{ padding: 9, borderRadius: 12, backgroundColor: colors.control }}>{manualRefreshing ? <ActivityIndicator size="small" color={colors.accent} /> : <RefreshCw size={18} color={colors.icon} />}</TouchableOpacity><TouchableOpacity onPress={() => setCreateVisible(true)} style={{ marginLeft: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.accent, borderRadius: 13, paddingHorizontal: 12, paddingVertical: 9 }}><Plus size={17} color={colors.onAccent} /><Text style={{ marginLeft: 5, color: colors.onAccent, fontWeight: '800' }}>Create</Text></TouchableOpacity></View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.input, borderRadius: 14, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: colors.border }}><Search size={18} color={colors.icon} /><TextInput value={searchText} onChangeText={setSearchText} placeholder="Search communities" placeholderTextColor={colors.mutedText} style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 11, color: colors.text }} /></View>
       </View>
-      {loading || friendFilterLoading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color="#10b981" /></View>
-      ) : error ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
-          <Text style={{ color: colors.mutedText, textAlign: 'center', lineHeight: 21 }}>{error}</Text>
-          <TouchableOpacity onPress={() => void loadCommunities()} style={{ backgroundColor: '#10b981', paddingHorizontal: 22, paddingVertical: 11, borderRadius: 999, marginTop: 16 }}><Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text></TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          renderItem={renderCommunity}
-          contentContainerStyle={{ paddingTop: 16, paddingBottom: 40, flexGrow: filtered.length === 0 ? 1 : undefined }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadCommunities(true)} tintColor="#10b981" />}
-          ListEmptyComponent={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 30 }}><Users size={42} color="#10b981" /><Text style={{ fontSize: 19, fontWeight: '800', color: colors.text, marginTop: 12 }}>No communities found</Text><Text style={{ color: colors.mutedText, marginTop: 5 }}>Try a different search or check back later.</Text></View>}
-        />
-      )}
-      <CreateCommunityModal visible={createVisible} categories={categories} onClose={() => setCreateVisible(false)} onCreated={(community) => setCommunities((current) => [community, ...current])} />
-      <CustomModal visible={Boolean(actionMessage)} title="Community" message={actionMessage ?? ''} type="info" onClose={() => setActionMessage(null)} />
+      {!resource.data && (resource.status === 'idle' || resource.status === 'hydrating') ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.accent} /></View> : !resource.data && resource.status === 'error' ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}><Users size={42} color={colors.destructive} /><Text style={{ marginTop: 13, color: colors.text, fontWeight: '900', fontSize: 18 }}>Communities unavailable</Text><Text style={{ color: colors.mutedText, textAlign: 'center', lineHeight: 21, marginTop: 7 }}>{resource.error?.message ?? 'Check your connection and try again.'}</Text><TouchableOpacity onPress={() => void handleManualRefresh()} style={{ backgroundColor: colors.accent, paddingHorizontal: 22, paddingVertical: 11, borderRadius: 999, marginTop: 16 }}><Text style={{ color: colors.onAccent, fontWeight: '800' }}>Retry</Text></TouchableOpacity></View> : <FlatList key={`${viewMode}-${columnCount}`} data={resource.data?.items ?? []} numColumns={columnCount} keyExtractor={(community) => community.id} renderItem={renderCommunity} ListHeaderComponent={listHeader} contentContainerStyle={{ paddingBottom: 42, flexGrow: resource.data?.items.length ? undefined : 1 }} refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={() => void handleManualRefresh()} tintColor={colors.accent} />} onEndReached={() => void loadMore()} onEndReachedThreshold={0.35} ListFooterComponent={resource.status === 'refreshing' && resource.data?.hasMore && !manualRefreshing ? <ActivityIndicator color={colors.accent} style={{ marginVertical: 16 }} /> : null} ListEmptyComponent={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 30 }}><Users size={42} color={colors.accent} /><Text style={{ fontSize: 19, fontWeight: '800', color: colors.text, marginTop: 12 }}>No communities found</Text><Text style={{ color: colors.mutedText, marginTop: 5, textAlign: 'center' }}>Adjust your filters or create a community for this space.</Text><TouchableOpacity onPress={() => setCreateVisible(true)} style={{ marginTop: 14 }}><Text style={{ color: colors.accentText, fontWeight: '900' }}>Create a community</Text></TouchableOpacity></View>} />}
+      <CreateCommunityModal visible={createVisible} categories={categories.data ?? []} onClose={() => setCreateVisible(false)} onCreated={(community) => { void patchCommunity(community).then(() => refresh()); }} />
+      <CustomModal visible={Boolean(feedback)} title="Community" message={feedback ?? ''} type="info" onClose={() => setFeedback(null)} />
+      <CustomModal visible={confirmation.action !== null} title={`Leave ${confirmation.community?.title ?? 'community'}?`} message="You will lose access to member-only posts until you join again." type="warning" confirmText="Leave community" cancelText="Cancel" isLoading={Boolean(busyCommunityId)} onConfirm={() => void handleConfirmedAction()} onCancel={() => setConfirmation({ action: null, community: null })} onClose={() => setConfirmation({ action: null, community: null })} />
+      <CommunityReportModal visible={reportCommunity !== null} title="Report community" subjectLabel={reportCommunity?.title ?? ''} onClose={() => setReportCommunity(null)} onSubmit={async (category: ReportReasonCategory, reason: string, details: string) => { if (!reportCommunity) return; await moderationService.reportCommunity({ targetId: reportCommunity.id, reasonCategory: category, reason, description: details, routePath: `/communities/${reportCommunity.slug || reportCommunity.id}` }); setFeedback('Your report was sent to Ourlime moderation.'); }} />
+      <CommunityFiltersSheet visible={filtersVisible} categories={categories.data ?? []} visibility={visibility} sort={sort} categoryId={selectedCategoryId} onClose={() => setFiltersVisible(false)} onApply={(nextVisibility, nextSort, nextCategoryId) => { setVisibility(nextVisibility); setSort(nextSort); setSelectedCategoryId(nextCategoryId); }} />
     </SafeAreaView>
   );
 }

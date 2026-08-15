@@ -13,6 +13,7 @@ import Icon from 'react-native-vector-icons/Feather';
 import type { UserProfile } from '@/lib/services/AuthService';
 import { messagingService, type FullMessage } from '@/lib/messaging/MessagingService';
 import UserAvatar from '@/components/ui/UserAvatar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type ForwardMessageModalProps = {
   visible: boolean;
@@ -29,6 +30,7 @@ export function ForwardMessageModal({
   currentUserId,
   onForwardSuccess,
 }: ForwardMessageModalProps) {
+  const insets = useSafeAreaInsets();
   const [friends, setFriends] = useState<UserProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -94,6 +96,7 @@ export function ForwardMessageModal({
         borderTopRightRadius: 24,
         maxHeight: '75%',
         paddingTop: 12,
+        paddingBottom: insets.bottom,
       }}>
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 12 }}>

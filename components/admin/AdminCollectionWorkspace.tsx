@@ -13,7 +13,7 @@ type AdminCollectionWorkspaceProps = {
 };
 
 const workspaceService = AdminWorkspaceService.getInstance();
-const STATUS_FILTERS: ReadonlyArray<AdminWorkspaceStatus | 'all'> = ['all', 'active', 'pending', 'approved', 'rejected', 'archived', 'disabled'];
+const STATUS_FILTERS: readonly (AdminWorkspaceStatus | 'all')[] = ['all', 'active', 'pending', 'approved', 'rejected', 'archived', 'disabled'];
 
 export default function AdminCollectionWorkspace({ kind, title, subtitle }: AdminCollectionWorkspaceProps) {
   const [items, setItems] = useState<AdminWorkspaceItem[]>([]);

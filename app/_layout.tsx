@@ -1,6 +1,6 @@
 import '@/lib/shims/codegenNativeComponent';
 import { Stack, useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, LogBox, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useAuthGuard } from '@/lib/hooks/useAuthGuard';
@@ -13,6 +13,10 @@ import { AppDataProvider } from '@/lib/contexts/AppDataContext';
 import { AppErrorBoundary } from '@/components/ui/AppErrorBoundary';
 import { errorLogService } from '@/lib/services/ErrorLogService';
 import { ThemeProvider, useAppTheme } from '@/lib/contexts/ThemeContext';
+import AppPreloadCoordinator from '@/components/providers/AppPreloadCoordinator';
+import { AppDrawerProvider } from '@/lib/contexts/AppDrawerContext';
+import { CallProvider } from '@/lib/contexts/CallContext';
+import GlobalCallOverlay from '@/components/calls/GlobalCallOverlay';
 
 errorLogService.install();
 
@@ -25,18 +29,11 @@ LogBox.ignoreLogs([
   'transport errored',
   'Cannot connect to Expo CLI',
   'expo-notifications: Android Push notifications',
-  'Overwriting backgroundColor style attribute preprocessor',
-  'Overwriting color style attribute preprocessor',
-  'Overwriting borderColor style attribute preprocessor',
-  'Overwriting borderTopColor style attribute preprocessor',
-  'Overwriting borderRightColor style attribute preprocessor',
-  'Overwriting borderBottomColor style attribute preprocessor',
-  'Overwriting borderLeftColor style attribute preprocessor',
 ]);
 
 function AppRouteTree() {
   const { isInitializing } = useAuthGuard();
-  const { isDark, colors } = useAppTheme();
+  const { colors } = useAppTheme();
 
   if (isInitializing) {
     return (
@@ -49,9 +46,11 @@ function AppRouteTree() {
   return (
     <AppDataProvider>
       <PageAccessProvider>
+        <AppPreloadCoordinator />
+        <CallProvider>
+        <AppDrawerProvider>
         <NotificationProvider>
           <Stack
-            key={isDark ? 'dark-navigation' : 'light-navigation'}
             screenOptions={{
               headerShown: false,
               animation: 'slide_from_right',
@@ -64,7 +63,10 @@ function AppRouteTree() {
             <Stack.Screen name="(auth)/register" options={{ animation: 'slide_from_right' }} />
           </Stack>
           <PageAccessOverlay />
+          <GlobalCallOverlay />
         </NotificationProvider>
+        </AppDrawerProvider>
+        </CallProvider>
       </PageAccessProvider>
     </AppDataProvider>
   );
@@ -72,6 +74,7 @@ function AppRouteTree() {
 
 export default function Layout() {
   const router = useRouter();
+  const handledResponseIds = useRef(new Set<string>());
 
   useEffect(() => {
     pushNotificationService.configureForegroundPresentation();
@@ -81,8 +84,15 @@ export default function Layout() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const Notifications = require('expo-notifications') as typeof import('expo-notifications');
-      subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-        router.push(pushNotificationService.resolveNotificationDestination(response.notification.request.content.data ?? {}));
+      const handleResponse = (response: import('expo-notifications').NotificationResponse) => {
+        const responseId = response.notification.request.identifier;
+        if (handledResponseIds.current.has(responseId)) return;
+        handledResponseIds.current.add(responseId);
+        router.push(pushNotificationService.resolveNotificationDestination(response.notification.request.content.data));
+      };
+      subscription = Notifications.addNotificationResponseReceivedListener(handleResponse);
+      void Notifications.getLastNotificationResponseAsync().then((response) => {
+        if (response) handleResponse(response);
       });
     } catch {
       // Remote push listeners are unavailable in Expo Go.

@@ -5,6 +5,7 @@ import {
   doc,
   documentId,
   getDoc,
+  getCountFromServer,
   getDocs,
   increment,
   limit,
@@ -19,7 +20,8 @@ import {
 import { auth, db } from '../firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { AvatarService } from './AvatarService';
-import { ApiService } from './ApiService';
+import { ApiService, ApiServiceError } from './ApiService';
+import { DeepLinkService } from './DeepLinkService';
 import { PostMediaService, type MediaUploadProgress } from './PostMediaService';
 import type { PageResult } from '@/lib/types/serviceResults';
 import { buildFeedQuery } from '@/lib/posts/FeedQuery';
@@ -29,6 +31,8 @@ export type PostType = 'regular' | 'poll' | 'event';
 export type PostVisibility = 'public' | 'friends' | 'friends_followers' | 'private';
 export type FeedFilter = 'all' | 'photo' | 'video' | 'audio' | 'poll' | 'event';
 export type FeedScope = 'home' | 'friends' | 'communities';
+export type PostOrigin = 'home' | 'community';
+export type CommunityReactionResult = { liked: boolean; likeCount: number };
 
 export type PostMediaDraft = {
   uri: string;
@@ -77,6 +81,7 @@ export type RepostedFrom = {
 
 export type PostItem = {
   id: string;
+  origin: PostOrigin;
   userId: string;
   user: PostUser;
   type: PostType;
@@ -100,6 +105,8 @@ export type PostItem = {
   relationshipStatus?: PostRelationshipStatus;
   communityId?: string;
   communityName?: string;
+  communitySlug?: string;
+  communityAvatar?: string;
   eventId?: string;
   startDate?: string;
   endDate?: string;
@@ -168,6 +175,7 @@ export class PostService {
   private readonly logger = DiagnosticLogService.getInstance();
   private readonly avatarService = AvatarService.getInstance();
   private readonly apiService = ApiService.getInstance();
+  private readonly deepLinkService = DeepLinkService.getInstance();
   private readonly mediaService = PostMediaService.getInstance();
 
   private constructor() {}
@@ -181,16 +189,29 @@ export class PostService {
     return (await this.fetchFeedPage({ limit: fetchLimit })).posts;
   }
 
-  public async fetchCommunityPosts(communityId: string): Promise<PostItem[]> {
-    const response = await this.apiService.request<{ data?: unknown[]; error?: string }>(
-      `/api/communities/fetch?type=posts&id=${encodeURIComponent(communityId)}`,
-      { authenticated: true }
+  public async getAuthorPostCount(userId: string): Promise<number> {
+    if (!userId) return 0;
+    const snapshot = await getCountFromServer(
+      query(collection(db, 'feedPosts'), where('userId', '==', userId)),
     );
-    if (!response.data) throw new Error(response.error || 'Failed to load community posts');
-    return response.data.flatMap((record): PostItem[] => {
-      const mapped = this.mapApiPost(record);
-      return mapped ? [{ ...mapped, communityId }] : [];
-    });
+    return snapshot.data().count;
+  }
+
+  public async fetchCommunityPosts(communityId: string): Promise<PostItem[]> {
+    try {
+      const response = await this.apiService.request<{ data?: unknown[]; error?: string }>(
+        `/api/communities/fetch?type=posts&id=${encodeURIComponent(communityId)}`,
+        { authenticated: true, timeoutMs: 1_800 }
+      );
+      if (!response.data) throw new Error(response.error || 'Failed to load community posts');
+      return response.data.flatMap((record): PostItem[] => {
+        const mapped = this.mapApiPost(record);
+        return mapped ? [{ ...mapped, origin: 'community', communityId }] : [];
+      });
+    } catch (error: unknown) {
+      if (!this.canUseFirestore(error)) throw error;
+      return this.fetchCommunityPostsFromFirestore(communityId);
+    }
   }
 
   public async fetchFeedPage(options: {
@@ -224,9 +245,12 @@ export class PostService {
       };
     } catch (error: unknown) {
       if (options.signal?.aborted) throw error;
+      if (options.scope && options.scope !== 'home') {
+        this.logger.warn('PostService', 'feed-api:unavailable', { scope: options.scope, error: String(error) });
+        throw error;
+      }
       this.logger.warn('PostService', 'feed-api:fallback-to-firestore', { error: String(error) });
       try {
-        if (options.scope && options.scope !== 'home') throw error;
         return await this.fetchFeedPageFromFirestore(options);
       } catch (fsError: unknown) {
         this.logger.error('PostService', 'feed-firestore:error', fsError);
@@ -373,6 +397,7 @@ export class PostService {
         }));
         return {
           id: communityPost.id,
+          origin: 'community',
           userId: input.userId,
           user: input.user,
           type: 'regular',
@@ -434,6 +459,7 @@ export class PostService {
       }
       return {
         id: postId,
+        origin: 'home',
         userId: input.userId,
         user: input.user,
         type: input.type,
@@ -470,30 +496,27 @@ export class PostService {
     return post;
   }
 
-  public async toggleLike(postId: string, userId: string, isLiked: boolean, isCommunityPost = false, currentLikeCount = 0): Promise<{ liked: boolean; likeCount: number }> {
-    if (isCommunityPost) {
-      await this.apiService.request<{ status?: string; error?: string }>('/api/communities/like', {
+  public async toggleLike(post: Pick<PostItem, 'id' | 'origin'>, userId: string, desiredLiked: boolean): Promise<CommunityReactionResult> {
+    if (post.origin === 'community') {
+      const response = await this.apiService.request<{ status?: string; data?: CommunityReactionResult; error?: string }>('/api/communities/like', {
         method: 'POST',
         authenticated: true,
-        body: { postId, userId, isLiked },
+        body: { postId: post.id, desiredLiked },
       });
-      return { liked: !isLiked, likeCount: Math.max(0, currentLikeCount + (isLiked ? -1 : 1)) };
+      if (response.status !== 'success' || !response.data) throw new Error(response.error || 'Failed to update community like');
+      return response.data;
     }
     const response = await this.apiService.request<{
       success: boolean;
       data?: { liked?: boolean; likeCount?: number };
       error?: string;
-    }>('/api/home/MiddleSection/Post/Likes', {
-      method: 'POST',
-      authenticated: true,
-      body: { postId },
-    });
+    }>('/api/home/MiddleSection/Post/Likes', { method: 'POST', authenticated: true, body: { postId: post.id, desiredLiked } });
     if (!response.success || typeof response.data?.liked !== 'boolean') throw new Error(response.error || 'Failed to update like');
-    this.logger.success('PostService', 'like-api', { postId, userId, previousLiked: isLiked, liked: response.data.liked });
+    this.logger.success('PostService', 'like-api', { postId: post.id, userId, desiredLiked, liked: response.data.liked });
     return { liked: response.data.liked, likeCount: response.data.likeCount ?? 0 };
   }
 
-  public async fetchPostLikes(postId: string, cursor?: string | null): Promise<PostLikesPage> {
+  public async fetchPostLikes(postId: string, origin: PostOrigin, cursor?: string | null): Promise<PostLikesPage> {
     const search = new URLSearchParams({ postId });
     if (cursor) search.set('cursor', cursor);
     const response = await this.apiService.request<{
@@ -501,7 +524,7 @@ export class PostService {
       data?: unknown[];
       error?: string;
       pagination?: { nextCursor?: number | string | null; hasMore?: boolean };
-    }>(`/api/home/MiddleSection/Post/Likes?${search.toString()}`, { authenticated: Boolean(auth.currentUser) });
+    }>(`${origin === 'community' ? '/api/communities/like' : '/api/home/MiddleSection/Post/Likes'}?${search.toString()}`, { authenticated: Boolean(auth.currentUser) });
     if (!response.success) throw new Error(response.error || 'Failed to load likes');
     const users = (response.data ?? []).flatMap((value): PostUser[] => {
       if (!isRecord(value)) return [];
@@ -542,26 +565,22 @@ export class PostService {
   }
 
   public async recordShare(postId: string): Promise<{ path: string; shareCount: number }> {
-    const response = await this.apiService.request<{
-      success: boolean;
-      data?: { path?: string; shareCount?: number };
-      error?: string;
-    }>(`/api/posts/${encodeURIComponent(postId)}/share`, {
-      method: 'POST',
-      body: { increment: true },
-    });
+    const response = await this.apiService.request<{ success: boolean; data?: { path?: string; shareCount?: number }; error?: string }>(
+      `/api/posts/${encodeURIComponent(postId)}/share`,
+      { method: 'POST', body: { increment: true } },
+    );
     if (!response.success || !response.data?.path) throw new Error(response.error || 'Failed to record share');
     return { path: response.data.path, shareCount: response.data.shareCount ?? 0 };
   }
 
   public getPostUrl(postId: string): string {
-    return `${this.apiService.getBaseUrl()}/post/${encodeURIComponent(postId)}`;
+    return this.deepLinkService.getPostShareUrl(postId);
   }
 
   public async repost(postId: string): Promise<string> {
     const response = await this.apiService.request<{ success: boolean; data?: { postId?: string }; error?: string }>(
-      `/api/posts/${encodeURIComponent(postId)}/repost`,
-      { method: 'POST', authenticated: true }
+        `/api/posts/${encodeURIComponent(postId)}/repost`,
+        { method: 'POST', authenticated: true }
     );
     if (!response.success || !response.data?.postId) throw new Error(response.error || 'Failed to repost');
 
@@ -588,8 +607,8 @@ export class PostService {
 
   public async removeRepost(postId: string): Promise<void> {
     const response = await this.apiService.request<{ success: boolean; error?: string }>(
-      `/api/posts/${encodeURIComponent(postId)}/repost`,
-      { method: 'DELETE', authenticated: true }
+        `/api/posts/${encodeURIComponent(postId)}/repost`,
+        { method: 'DELETE', authenticated: true }
     );
     if (!response.success) throw new Error(response.error || 'Failed to remove repost');
   }
@@ -607,38 +626,11 @@ export class PostService {
   }
 
   public async deletePost(postId: string): Promise<void> {
-    let apiError: string | null = null;
-    try {
-      const response = await this.apiService.request<{ success: boolean; error?: string }>(
-        `/api/posts/${encodeURIComponent(postId)}`,
-        { method: 'DELETE', authenticated: true }
-      );
-      if (response.success) return;
-      if (response.error) apiError = response.error;
-    } catch (err) {
-      apiError = err instanceof Error ? err.message : 'API delete request failed';
-    }
-
-    // Direct Firestore deletion fallback for reels/posts/limes
-    let deletedDirectly = false;
-    try {
-      const collections = ['reels', 'posts', 'limes', 'feedPosts', 'communityVariantDetails'];
-      for (const col of collections) {
-        const docRef = doc(db, col, postId);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          await deleteDoc(docRef);
-          deletedDirectly = true;
-          break;
-        }
-      }
-    } catch (err) {
-      console.error('[PostService] deletePost direct fallback error:', err);
-    }
-
-    if (!deletedDirectly && apiError) {
-      throw new Error(apiError || 'Could not find post or lime to delete.');
-    }
+    const response = await this.apiService.request<{ success: boolean; error?: string }>(
+      `/api/posts/${encodeURIComponent(postId)}`,
+      { method: 'DELETE', authenticated: true }
+    );
+    if (!response.success) throw new Error(response.error || 'The post could not be deleted.');
   }
 
   private async getDocumentsByField(collectionName: string, field: string, values: string[]): Promise<DataDocument[]> {
@@ -838,6 +830,8 @@ export class PostService {
       } : undefined,
       communityId: readString(value.communityId) || undefined,
       communityName: readString(value.communityName) || readString(value.communityTitle) || undefined,
+      communitySlug: readString(value.communitySlug) || undefined,
+      communityAvatar: readString(value.communityAvatar) || undefined,
       eventId: readString(value.eventId) || undefined,
       startDate: readString(value.startDate) || undefined,
       endDate: readString(value.endDate) || undefined,
@@ -848,6 +842,56 @@ export class PostService {
 
   private readFriendshipStatus(value: unknown): PostRelationshipStatus['friendshipStatus'] {
     return value === 'pending' || value === 'accepted' || value === 'declined' ? value : 'none';
+  }
+
+  private async fetchCommunityPostsFromFirestore(communityId: string): Promise<PostItem[]> {
+    const snapshot = await getDocs(query(collection(db, 'communityVariantDetails'), where('communityVariantId', '==', communityId)));
+    const documents: DataDocument[] = snapshot.docs
+      .map((document) => ({ id: document.id, data: isRecord(document.data()) ? document.data() : {} }))
+      .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
+    const postIds = documents.map((document) => document.id);
+    const [mediaDocuments, likeDocuments, counters] = await Promise.all([
+      this.getDocumentsByField('communityVariantDetailsSummary', 'communityVariantDetailsId', postIds),
+      this.getDocumentsByField('communityVariantDetailsLikes', 'postId', postIds),
+      Promise.all(postIds.map((postId) => getDoc(doc(db, 'communityVariantDetailsCounter', postId)))),
+    ]);
+    const mediaByPost = new Map<string, PostMedia[]>();
+    mediaDocuments.forEach((document) => {
+      const postId = readString(document.data.communityVariantDetailsId);
+      const typeUrl = readString(document.data.typeUrl);
+      if (!postId || !typeUrl) return;
+      mediaByPost.set(postId, [...(mediaByPost.get(postId) ?? []), {
+        id: document.id,
+        type: document.data.type === 'video' ? 'video' : 'image',
+        typeUrl,
+        fileName: readString(document.data.fileName),
+      }]);
+    });
+    const likedUsersByPost = new Map<string, string[]>();
+    likeDocuments.forEach((document) => {
+      const postId = readString(document.data.postId);
+      const userId = readString(document.data.userId);
+      if (postId && userId) likedUsersByPost.set(postId, [...(likedUsersByPost.get(postId) ?? []), userId]);
+    });
+    const users = await this.loadUserCards(documents.map((document) => readString(document.data.userId)));
+    const posts = documents.map((document, index) => {
+      const userId = readString(document.data.userId);
+      const counter = counters[index]?.data() ?? {};
+      return this.mapPost(
+        document,
+        users.get(userId) ?? this.emptyUser(userId),
+        mediaByPost.get(document.id) ?? [],
+        { ...document.data, ...counter },
+        likedUsersByPost.get(document.id) ?? [],
+      );
+    });
+    this.logger.success('PostService', 'community-posts:firestore', { communityId, renderedPostCount: posts.length });
+    return posts;
+  }
+
+  private canUseFirestore(error: unknown): boolean {
+    return error instanceof ApiServiceError
+      && (error.code === 'REQUEST_TIMEOUT' || error.code === 'NETWORK_ERROR' || error.status >= 500);
   }
 
   private mapPost(document: DataDocument, user: PostUser, media: PostMedia[], counts: UnknownRecord, likedUserIds: string[]): PostItem {
@@ -875,6 +919,7 @@ export class PostService {
       : 'public';
     return {
       id: document.id,
+      origin: readString(record.communityId) || readString(record.communityVariantId) || readString(record.community_id) ? 'community' : 'home',
       userId: readString(record.userId, user.id),
       user,
       type: record.type === 'poll' || record.type === 'event' ? record.type : 'regular',
@@ -905,6 +950,8 @@ export class PostService {
         || readString(record.communityTitle)
         || readString(record.community_title)
         || (isRecord(record.community) ? readString(record.community.name, readString(record.community.title)) : undefined),
+      communitySlug: readString(record.communitySlug) || undefined,
+      communityAvatar: readString(record.communityAvatar) || undefined,
       location: locationName ? {
         name: locationName,
         address: locationRecord ? readString(locationRecord.address) || undefined : undefined,

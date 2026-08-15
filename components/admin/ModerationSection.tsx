@@ -6,7 +6,7 @@ import CustomModal from '@/components/ui/CustomModal';
 import { AdminModerationService, type AdminModerationReport, type AdminReportStatus } from '@/lib/services/AdminModerationService';
 
 const moderationService = AdminModerationService.getInstance();
-const STATUS_FILTERS: ReadonlyArray<AdminReportStatus | 'all'> = ['all', 'pending', 'under_review', 'action_taken', 'resolved', 'dismissed', 'escalated'];
+const STATUS_FILTERS: readonly (AdminReportStatus | 'all')[] = ['all', 'pending', 'under_review', 'action_taken', 'resolved', 'dismissed', 'escalated'];
 const SEVERITY_FILTERS = ['all', 'low', 'medium', 'high', 'critical'] as const;
 
 export default function ModerationSection() {

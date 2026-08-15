@@ -7,6 +7,7 @@ import {
   ScrollView,
   RefreshControl,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
@@ -15,7 +16,7 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
 import { useNotifications } from '@/lib/contexts/NotificationContext';
 import { notificationHelpers } from '@/lib/helpers/notificationHelpers';
-import { FriendshipService } from '@/lib/relationships/friendshipService';
+import { RelationshipService } from '@/lib/services/RelationshipService';
 import { AuthService } from '@/lib/services/AuthService';
 import { SkeletonNotificationRow } from './SkeletonLoaders';
 import type { NotificationData } from '@/lib/types/notification';
@@ -27,7 +28,7 @@ type NotificationsModalProps = {
   onClose: () => void;
 };
 
-const friendshipService = FriendshipService.getInstance();
+const relationshipService = RelationshipService.getInstance();
 const authService = AuthService.getInstance();
 
 type SortMode = 'unread_first' | 'newest_first';
@@ -51,8 +52,8 @@ const getNotificationTime = (createdAt: NotificationData['createdAt']): number =
 
 export default function NotificationsModal({ visible, onClose }: NotificationsModalProps) {
   const router = useRouter();
-  const { isDark } = useAppTheme();
-  const { notifications, unreadCount, isLoading, markAsRead, markAsUnread, markAllAsRead, refreshNotifications } = useNotifications();
+  const { isDark, colors } = useAppTheme();
+  const { notifications, unreadCount, isLoading, hasMore, loadMore, markAsRead, markAsUnread, markAllAsRead, deleteNotifications, refreshNotifications } = useNotifications();
 
   const [sortMode, setSortMode] = useState<SortMode>('unread_first');
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
@@ -60,6 +61,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
   const [selectionMode, setSelectionMode] = useState(false);
   const [showReadNotifs, setShowReadNotifs] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Track resolved friend request notifications (Web Parity)
   const [resolvedRequestIds, setResolvedRequestIds] = useState<Set<string>>(new Set());
@@ -78,6 +80,12 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
     setRefreshing(true);
     await refreshNotifications();
     setRefreshing(false);
+  };
+
+  const handleLoadMore = async () => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    try { await loadMore(); } finally { setLoadingMore(false); }
   };
 
   const closeDialog = () => setDialogState((prev) => ({ ...prev, visible: false }));
@@ -176,9 +184,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
       onConfirm: async () => {
         closeDialog();
         if (!currentUserId) return;
-        for (const id of selectedIds) {
-          await notificationHelpers.deleteNotification(currentUserId, id);
-        }
+        await deleteNotifications(Array.from(selectedIds));
         setSelectedIds(new Set());
         setSelectionMode(false);
         await refreshNotifications();
@@ -198,8 +204,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
       onConfirm: async () => {
         closeDialog();
         if (!currentUserId) return;
-        await notificationHelpers.deleteNotification(currentUserId, id);
-        await refreshNotifications();
+        await deleteNotifications([id]);
       },
     });
   };
@@ -237,14 +242,14 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
       await markAsRead(item.id);
     }
     const username = item.userDetails?.userName || item.metadata?.sourceUserName;
-    const destinationData: Record<string, unknown> = {
+    const destinationData = {
       ...item.metadata,
       type: item.type,
       userName: username,
       path: item.metadata?.actionUrl,
     };
     onClose();
-    router.push(notificationDestinationRegistry.resolve(destinationData));
+    router.push(notificationDestinationRegistry.resolve(notificationDestinationRegistry.normalize(destinationData)));
   };
 
   const handleAcceptFriendRequest = async (item: NotificationData) => {
@@ -262,26 +267,13 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
     }
 
     try {
-      let statusRes = await friendshipService.getFriendshipStatus(currentUserId, senderId);
-      let fData = Array.isArray(statusRes.data) ? statusRes.data[0] : statusRes.data;
-
-      if (!fData?.id) {
-        statusRes = await friendshipService.getFriendshipStatus(senderId, currentUserId);
-        fData = Array.isArray(statusRes.data) ? statusRes.data[0] : statusRes.data;
-      }
-
-      if (fData?.id) {
-        await friendshipService.updateFriendshipStatus(fData.id, 'accepted');
-      } else {
-        await friendshipService.sendFriendRequest(senderId, currentUserId);
-      }
+      await relationshipService.respondToFriendRequest(senderId, currentUserId, 'accept');
 
       if (item.id) {
         const nid = item.id;
         await markAsRead(nid);
         setResolvedRequestIds((prev) => new Set(prev).add(nid));
       }
-      await notificationHelpers.createFriendAcceptedNotification(senderId, currentUserId);
       await refreshNotifications();
 
       setDialogState({
@@ -308,17 +300,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
     if (!currentUserId || !senderId) return;
 
     try {
-      let statusRes = await friendshipService.getFriendshipStatus(currentUserId, senderId);
-      let fData = Array.isArray(statusRes.data) ? statusRes.data[0] : statusRes.data;
-
-      if (!fData?.id) {
-        statusRes = await friendshipService.getFriendshipStatus(senderId, currentUserId);
-        fData = Array.isArray(statusRes.data) ? statusRes.data[0] : statusRes.data;
-      }
-
-      if (fData?.id) {
-        await friendshipService.updateFriendshipStatus(fData.id, 'declined');
-      }
+      await relationshipService.respondToFriendRequest(senderId, currentUserId, 'decline');
       if (item.id) {
         const nid = item.id;
         await markAsRead(nid);
@@ -349,9 +331,9 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
           padding: 14,
           borderRadius: 16,
           marginBottom: 10,
-          backgroundColor: itemRead ? '#ffffff' : '#f0fdf4',
+          backgroundColor: itemRead ? colors.surface : colors.successSurface,
           borderWidth: 1,
-          borderColor: itemRead ? '#f1f5f9' : '#bbf7d0',
+          borderColor: itemRead ? colors.border : colors.successText,
         }}
       >
         {/* Checkbox (Shows when in Selection Mode or when item is selected) */}
@@ -371,7 +353,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
         {/* Card Content */}
         <View style={{ flex: 1, marginLeft: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: '#1e293b' }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
               {item.title || notificationHelpers.formatNotificationTitle(item.type)}
             </Text>
             <TouchableOpacity onPress={() => handlePromptSingleDelete(item.id)} style={{ padding: 4 }}>
@@ -379,11 +361,11 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
             </TouchableOpacity>
           </View>
 
-          <Text style={{ fontSize: 13, color: '#475569', marginTop: 4, lineHeight: 18 }}>
+          <Text style={{ fontSize: 13, color: colors.secondaryText, marginTop: 4, lineHeight: 18 }}>
             {item.message || notificationHelpers.formatNotificationMessage(item.type, item.userDetails?.userName || 'Someone')}
           </Text>
 
-          <Text style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: '500' }}>
+          <Text style={{ fontSize: 11, color: colors.mutedText, marginTop: 6, fontWeight: '500' }}>
             {timeAgoStr}
           </Text>
 
@@ -419,16 +401,16 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      backgroundColor: '#f1f5f9',
+                      backgroundColor: colors.control,
                       paddingHorizontal: 16,
                       paddingVertical: 8,
                       borderRadius: 20,
                       borderWidth: 1,
-                      borderColor: '#e2e8f0',
+                      borderColor: colors.border,
                     }}
                   >
-                    <Icon name="x" size={15} color="#64748b" style={{ marginRight: 4 }} />
-                    <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '700' }}>Decline</Text>
+                    <Icon name="x" size={15} color={colors.icon} style={{ marginRight: 4 }} />
+                    <Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '700' }}>Decline</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -445,8 +427,8 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#ffffff' }}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0f172a' : '#ffffff'} />
+      <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
 
         {/* Modern Confirmation Dialog */}
         <CustomModal
@@ -468,14 +450,15 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
           paddingHorizontal: 20,
           paddingVertical: 14,
           borderBottomWidth: 1,
-          borderBottomColor: '#f1f5f9',
+          borderBottomColor: colors.border,
+          backgroundColor: colors.surface,
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity onPress={onClose} style={{ padding: 6, marginRight: 8 }}>
-              <Icon name="x" size={24} color="#111827" />
+              <Icon name="x" size={24} color={colors.icon} />
             </TouchableOpacity>
             <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: '#111827' }}>Notifications</Text>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Notifications</Text>
               {unreadCount > 0 && (
                 <Text style={{ fontSize: 13, fontWeight: '600', color: '#10b981', marginLeft: 8 }}>
                   {unreadCount} unread
@@ -490,7 +473,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
         </View>
 
         {/* Filter Categories Pill Bar */}
-        <View style={{ borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: '#ffffff' }}>
+        <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10 }}>
             {[
               { id: 'all', label: 'All' },
@@ -511,10 +494,10 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
                     paddingVertical: 6,
                     borderRadius: 20,
                     marginRight: 8,
-                    backgroundColor: isActive ? '#10b981' : '#f1f5f9',
+                    backgroundColor: isActive ? colors.selectedControl : colors.control,
                   }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: isActive ? '#ffffff' : '#64748b' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: isActive ? colors.selectedText : colors.secondaryText }}>
                     {tab.label}
                   </Text>
                 </TouchableOpacity>
@@ -528,8 +511,8 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
           paddingHorizontal: 16,
           paddingVertical: 10,
           borderBottomWidth: 1,
-          borderBottomColor: '#f1f5f9',
-          backgroundColor: '#f8fafc',
+          borderBottomColor: colors.border,
+          backgroundColor: colors.canvas,
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
             {/* Select All / Deselect All */}
@@ -540,7 +523,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
                 color={selectedIds.size > 0 ? '#10b981' : '#64748b'}
                 style={{ marginRight: 6 }}
               />
-              <Text style={{ fontSize: 13, color: '#334155', fontWeight: '700' }}>
+              <Text style={{ fontSize: 13, color: colors.secondaryText, fontWeight: '700' }}>
                 {selectedIds.size === sortedNotifications.length && sortedNotifications.length > 0 ? 'Deselect all' : 'Select all'}
               </Text>
             </TouchableOpacity>
@@ -585,7 +568,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
                 style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}
               >
                 <Icon name="sliders" size={14} color="#64748b" style={{ marginRight: 4 }} />
-                <Text style={{ fontSize: 13, color: '#64748b', fontWeight: '600' }}>
+                <Text style={{ fontSize: 13, color: colors.mutedText, fontWeight: '600' }}>
                   {sortMode === 'unread_first' ? 'Unread first' : 'Newest first'}
                 </Text>
               </TouchableOpacity>
@@ -595,9 +578,14 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
 
         {/* Content List */}
         <ScrollView
-          style={{ flex: 1, backgroundColor: '#f8fafc' }}
+          style={{ flex: 1, backgroundColor: colors.canvas }}
           contentContainerStyle={{ padding: 16, paddingBottom: 60 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
+          onScroll={({ nativeEvent }) => {
+            const remaining = nativeEvent.contentSize.height - nativeEvent.contentOffset.y - nativeEvent.layoutMeasurement.height;
+            if (remaining < 180) void handleLoadMore();
+          }}
+          scrollEventThrottle={200}
         >
           {isLoading ? (
             <View>
@@ -608,8 +596,8 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
           ) : sortedNotifications.length === 0 ? (
             <View style={{ paddingVertical: 80, alignItems: 'center' }}>
               <Icon name="bell-off" size={48} color="#cbd5e1" />
-              <Text style={{ fontSize: 18, fontWeight: '700', color: '#334155', marginTop: 14 }}>No Notifications</Text>
-              <Text style={{ fontSize: 14, color: '#64748b', marginTop: 4, textAlign: 'center', paddingHorizontal: 30 }}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginTop: 14 }}>No Notifications</Text>
+              <Text style={{ fontSize: 14, color: colors.mutedText, marginTop: 4, textAlign: 'center', paddingHorizontal: 30 }}>
                 When someone likes your posts, comments, or sends friend requests, you will see them here.
               </Text>
             </View>
@@ -638,16 +626,16 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: '#ffffff',
+                      backgroundColor: colors.surface,
                       paddingVertical: 12,
                       paddingHorizontal: 16,
                       borderRadius: 14,
                       borderWidth: 1,
-                      borderColor: '#e2e8f0',
+                      borderColor: colors.border,
                     }}
                   >
                     <Icon name={showReadNotifs ? 'bell-off' : 'bell'} size={15} color="#64748b" style={{ marginRight: 8 }} />
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.secondaryText }}>
                       {showReadNotifs ? 'Hide read notifications' : 'Show read notifications'}
                     </Text>
                     <View style={{
@@ -672,6 +660,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
                   )}
                 </View>
               )}
+              {loadingMore ? <ActivityIndicator color="#10b981" style={{ marginVertical: 16 }} /> : null}
             </>
           )}
         </ScrollView>

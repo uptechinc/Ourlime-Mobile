@@ -6,11 +6,12 @@ import {
   ScrollView,
   Modal,
   Image,
-  Linking,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import type { FullMessage, Attachment } from '@/lib/messaging/MessagingService';
 import { DocumentPreviewModal } from './DocumentPreviewModal';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { useDeepLinkNavigation } from '@/lib/hooks/useDeepLinkNavigation';
 
 type ChatMediaPanelProps = {
   visible: boolean;
@@ -31,6 +32,8 @@ export function ChatMediaPanel({
   friendName,
   onImagePress,
 }: ChatMediaPanelProps) {
+  const { colors } = useAppTheme();
+  const { openLink } = useDeepLinkNavigation();
   const [activeTab, setActiveTab] = useState<MediaTab>('media');
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
 
@@ -93,20 +96,20 @@ export function ChatMediaPanel({
 
   return (
     <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: '#ffffff', paddingTop: 50 }}>
+      <View style={{ flex: 1, backgroundColor: colors.surface, paddingTop: 50 }}>
         {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
           <TouchableOpacity onPress={onClose} style={{ padding: 6, marginRight: 8 }}>
-            <Icon name="arrow-left" size={22} color="#1e293b" />
+            <Icon name="arrow-left" size={22} color={colors.icon} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: '#1e293b' }}>Shared Content</Text>
-            <Text style={{ fontSize: 12, color: '#64748b' }}>with {friendName}</Text>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>Shared Content</Text>
+            <Text style={{ fontSize: 12, color: colors.mutedText }}>with {friendName}</Text>
           </View>
         </View>
 
         {/* Tabs: Media | Documents | Links */}
-        <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: '#ffffff' }}>
+        <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
           {[
             { key: 'media', label: `Media (${mediaList.length})`, icon: 'image' },
             { key: 'documents', label: `Docs (${docList.length})`, icon: 'file-text' },
@@ -128,8 +131,8 @@ export function ChatMediaPanel({
                   gap: 6,
                 }}
               >
-                <Icon name={icon} size={15} color={isActive ? '#10b981' : '#64748b'} />
-                <Text style={{ fontSize: 13, fontWeight: isActive ? '700' : '500', color: isActive ? '#10b981' : '#64748b' }}>
+                <Icon name={icon} size={15} color={isActive ? colors.accent : colors.mutedText} />
+                <Text style={{ fontSize: 13, fontWeight: isActive ? '700' : '500', color: isActive ? colors.accentText : colors.mutedText }}>
                   {label}
                 </Text>
               </TouchableOpacity>
@@ -138,7 +141,7 @@ export function ChatMediaPanel({
         </View>
 
         {/* Content View */}
-        <ScrollView style={{ flex: 1, backgroundColor: '#f8fafc' }} contentContainerStyle={{ padding: 12 }}>
+        <ScrollView style={{ flex: 1, backgroundColor: colors.canvas }} contentContainerStyle={{ padding: 12 }}>
           {activeTab === 'media' && (
             mediaList.length === 0 ? (
               <EmptyState icon="image" title="No shared media" subtitle="Photos, videos, and stickers sent in chat will appear here." />
@@ -173,19 +176,19 @@ export function ChatMediaPanel({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    backgroundColor: '#ffffff',
+                    backgroundColor: colors.surface,
                     padding: 12,
                     borderRadius: 14,
                     marginBottom: 8,
                     borderWidth: 1,
-                    borderColor: '#f1f5f9',
+                    borderColor: colors.border,
                   }}
                 >
                   <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#dcfce7', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
                     <Icon name="file-text" size={20} color="#10b981" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#1e293b' }} numberOfLines={1}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }} numberOfLines={1}>
                       {attachment.fileName}
                     </Text>
                     {attachment.fileSize > 0 && (
@@ -195,7 +198,7 @@ export function ChatMediaPanel({
                     )}
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <View style={{ backgroundColor: '#f1f5f9', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}>
+                    <View style={{ backgroundColor: colors.control, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}>
                       <Text style={{ fontSize: 12, fontWeight: '700', color: '#10b981' }}>Preview</Text>
                     </View>
                   </View>
@@ -211,16 +214,16 @@ export function ChatMediaPanel({
               linkList.map((link) => (
                 <TouchableOpacity
                   key={link.id}
-                  onPress={() => Linking.openURL(link.url)}
+                  onPress={() => void openLink(link.url)}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    backgroundColor: '#ffffff',
+                    backgroundColor: colors.surface,
                     padding: 12,
                     borderRadius: 14,
                     marginBottom: 8,
                     borderWidth: 1,
-                    borderColor: '#f1f5f9',
+                    borderColor: colors.border,
                   }}
                 >
                   <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#eff6ff', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
@@ -248,13 +251,14 @@ export function ChatMediaPanel({
 }
 
 function EmptyState({ icon, title, subtitle }: { icon: string; title: string; subtitle: string }) {
+  const { colors } = useAppTheme();
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 60 }}>
-      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.control, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
         <Icon name={icon} size={28} color="#94a3b8" />
       </View>
-      <Text style={{ fontSize: 16, fontWeight: '700', color: '#334155', marginBottom: 4 }}>{title}</Text>
-      <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center', paddingHorizontal: 32 }}>{subtitle}</Text>
+      <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 }}>{title}</Text>
+      <Text style={{ fontSize: 13, color: colors.mutedText, textAlign: 'center', paddingHorizontal: 32 }}>{subtitle}</Text>
     </View>
   );
 }

@@ -8,10 +8,19 @@
     "scheme": "ourlime",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.ourlime.app",
       "supportsTablet": true,
+      "associatedDomains": [
+        "applinks:ourlime.com"
+      ],
       "infoPlist": {
         "NSCameraUsageDescription": "Ourlime requires camera access for video calls.",
         "NSMicrophoneUsageDescription": "Ourlime requires microphone access for voice and video calls.",
+        "UIBackgroundModes": [
+          "audio",
+          "voip",
+          "remote-notification"
+        ],
         "LSApplicationQueriesSchemes": [
           "googlegmail",
           "ms-outlook",
@@ -24,6 +33,64 @@
     },
     "android": {
       "package": "com.ourlime.app",
+      "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "ourlime.com",
+              "pathPrefix": "/post"
+            },
+            {
+              "scheme": "https",
+              "host": "ourlime.com",
+              "pathPrefix": "/profile"
+            },
+            {
+              "scheme": "https",
+              "host": "ourlime.com",
+              "pathPrefix": "/communities"
+            },
+            {
+              "scheme": "https",
+              "host": "ourlime.com",
+              "pathPrefix": "/blogs"
+            },
+            {
+              "scheme": "https",
+              "host": "ourlime.com",
+              "pathPrefix": "/limes"
+            },
+            {
+              "scheme": "https",
+              "host": "ourlime.com",
+              "pathPrefix": "/events"
+            },
+            {
+              "scheme": "https",
+              "host": "ourlime.com",
+              "pathPrefix": "/jobs"
+            },
+            {
+              "scheme": "https",
+              "host": "ourlime.com",
+              "pathPrefix": "/market"
+            },
+            {
+              "scheme": "https",
+              "host": "ourlime.com",
+              "pathPrefix": "/admin/reports"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -37,7 +104,14 @@
         "READ_EXTERNAL_STORAGE",
         "READ_MEDIA_VIDEO",
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MANAGE_OWN_CALLS",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.WAKE_LOCK",
+        "android.permission.VIBRATE"
       ]
     },
     "web": {
@@ -63,7 +137,18 @@
           "microphonePermission": "Ourlime requires microphone access for voice and video calls."
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
+      "./plugins/withOurlimeCalling.cjs",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

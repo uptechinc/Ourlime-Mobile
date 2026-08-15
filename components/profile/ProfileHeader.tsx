@@ -5,6 +5,10 @@ import { useRouter, type Href } from 'expo-router';
 import type { UserProfile } from '@/lib/services/AuthService';
 import CachedImage from '@/components/ui/CachedImage';
 import UserAvatar from '@/components/ui/UserAvatar';
+import { DeepLinkService } from '@/lib/services/DeepLinkService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
+
+const deepLinkService = DeepLinkService.getInstance();
 
 type ProfileHeaderProps = {
   profile: UserProfile;
@@ -26,6 +30,7 @@ export default function ProfileHeader({
   onFriendsPress,
 }: ProfileHeaderProps) {
   const router = useRouter();
+  const { colors } = useAppTheme();
   const displayName = `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() || profile.userName || 'Ourlime User';
   const handle = `@${profile.userName || 'user'}`;
   const isAdmin = profile.accountType === 'admin' || profile.isAdmin === true;
@@ -35,7 +40,7 @@ export default function ProfileHeader({
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Check out ${displayName}'s profile on Ourlime: https://ourlime.com/profile/${profile.userName}`,
+        message: `Check out ${displayName}'s profile on Ourlime: ${deepLinkService.getProfileShareUrl(profile.userName)}`,
       });
     } catch {
       // ignore
@@ -43,7 +48,7 @@ export default function ProfileHeader({
   };
 
   return (
-    <View style={{ backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+    <View style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
       {/* ── Cover Photo Banner ── */}
       <View style={{ height: 140, width: '100%', position: 'relative' }}>
         {coverImage ? (
@@ -76,7 +81,7 @@ export default function ProfileHeader({
             width: 84,
             height: 84,
             borderRadius: 42,
-            backgroundColor: '#ffffff',
+            backgroundColor: colors.surface,
             padding: 3,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 4 },
@@ -95,11 +100,11 @@ export default function ProfileHeader({
                 paddingHorizontal: 14,
                 paddingVertical: 8,
                 borderRadius: 14,
-                backgroundColor: '#10b981',
+                backgroundColor: colors.accent,
               }}
               activeOpacity={0.8}
             >
-              <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 13 }}>Edit Profile</Text>
+              <Text style={{ color: colors.onAccent, fontWeight: '700', fontSize: 13 }}>Edit Profile</Text>
             </TouchableOpacity> : null}
 
             {onCustomize ? <TouchableOpacity
@@ -108,13 +113,13 @@ export default function ProfileHeader({
                 width: 36,
                 height: 36,
                 borderRadius: 12,
-                backgroundColor: '#f1f5f9',
+                backgroundColor: colors.control,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
               activeOpacity={0.8}
             >
-              <Ionicons name="color-palette-outline" size={18} color="#475569" />
+              <Ionicons name="color-palette-outline" size={18} color={colors.icon} />
             </TouchableOpacity> : null}
 
             <TouchableOpacity
@@ -123,20 +128,20 @@ export default function ProfileHeader({
                 width: 36,
                 height: 36,
                 borderRadius: 12,
-                backgroundColor: '#f1f5f9',
+                backgroundColor: colors.control,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
               activeOpacity={0.8}
             >
-              <Ionicons name="share-outline" size={18} color="#475569" />
+              <Ionicons name="share-outline" size={18} color={colors.icon} />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Name & Handle */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ fontSize: 22, fontWeight: '800', color: '#0f172a' }}>{displayName}</Text>
+          <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text }}>{displayName}</Text>
           {isVerified && (
             <Ionicons name="checkmark-circle" size={20} color="#10b981" />
           )}
@@ -159,11 +164,11 @@ export default function ProfileHeader({
           )}
         </View>
 
-        <Text style={{ fontSize: 14, color: '#64748b', marginTop: 2 }}>{handle}</Text>
+        <Text style={{ fontSize: 14, color: colors.mutedText, marginTop: 2 }}>{handle}</Text>
 
         {/* Bio */}
         {profile.bio ? (
-          <Text style={{ fontSize: 14, color: '#334155', marginTop: 8, lineHeight: 20 }}>
+          <Text style={{ fontSize: 14, color: colors.secondaryText, marginTop: 8, lineHeight: 20 }}>
             {profile.bio}
           </Text>
         ) : null}
@@ -174,23 +179,25 @@ export default function ProfileHeader({
           marginTop: 16,
           paddingVertical: 12,
           paddingHorizontal: 16,
-          backgroundColor: '#f8fafc',
+          backgroundColor: colors.control,
+          borderWidth: 1,
+          borderColor: colors.border,
           borderRadius: 16,
           justifyContent: 'space-around',
         }}>
           <View style={{ alignItems: 'center' }}>
-            <Text style={{ fontSize: 17, fontWeight: '800', color: '#0f172a' }}>{postsCount}</Text>
-            <Text style={{ fontSize: 12, color: '#64748b', marginTop: 1, fontWeight: '500' }}>Posts</Text>
+            <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }}>{postsCount}</Text>
+            <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 1, fontWeight: '500' }}>Posts</Text>
           </View>
-          <View style={{ width: 1, height: '80%', backgroundColor: '#e2e8f0', alignSelf: 'center' }} />
+          <View style={{ width: 1, height: '80%', backgroundColor: colors.border, alignSelf: 'center' }} />
           <TouchableOpacity onPress={onFriendsPress} disabled={!onFriendsPress} style={{ alignItems: 'center' }}>
-            <Text style={{ fontSize: 17, fontWeight: '800', color: '#0f172a' }}>{friendsCount}</Text>
-            <Text style={{ fontSize: 12, color: '#64748b', marginTop: 1, fontWeight: '500' }}>Friends</Text>
+            <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }}>{friendsCount}</Text>
+            <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 1, fontWeight: '500' }}>Friends</Text>
           </TouchableOpacity>
-          <View style={{ width: 1, height: '80%', backgroundColor: '#e2e8f0', alignSelf: 'center' }} />
+          <View style={{ width: 1, height: '80%', backgroundColor: colors.border, alignSelf: 'center' }} />
           <View style={{ alignItems: 'center' }}>
-            <Text style={{ fontSize: 17, fontWeight: '800', color: '#0f172a' }}>{followingCount}</Text>
-            <Text style={{ fontSize: 12, color: '#64748b', marginTop: 1, fontWeight: '500' }}>Following</Text>
+            <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }}>{followingCount}</Text>
+            <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 1, fontWeight: '500' }}>Following</Text>
           </View>
         </View>
       </View>

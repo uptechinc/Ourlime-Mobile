@@ -10,11 +10,10 @@ import {
   type ViewToken,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebaseConfig';
 import type { UserProfile } from '@/lib/services/AuthService';
-import { PostService, type FeedFilter as ApiFeedFilter, type PostItem } from '@/lib/services/PostService';
-import { DiagnosticLogService } from '@/lib/services/DiagnosticLogService';
+import type { FeedFilter as ApiFeedFilter, FeedScope, PostItem } from '@/lib/services/PostService';
+import { FeedResourceService } from '@/lib/services/FeedResourceService';
+import { useFeedQuery } from '@/lib/hooks/useFeedQuery';
 import { CreatePostSection } from './MiddleSectionComponent/CreatePostSection/CreatePostSection';
 import { FeedsFilterSection, type FeedFilter, type FeedSource } from './MiddleSectionComponent/FeedsFilterSection/FeedsFilterSection';
 import CommentsModal from './MiddleSectionComponent/CommentsModal/CommentsModal';
@@ -24,6 +23,7 @@ import SuggestedUsersSection from '@/components/home/SuggestedUsersSection';
 import ActivityCard from '@/components/home/ActivityCard';
 import { SkeletonPostCard } from '@/components/home/SkeletonLoaders';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { useAppDrawer } from '@/lib/contexts/AppDrawerContext';
 
 type MiddleSectionProps = {
   userProfile: UserProfile;
@@ -31,9 +31,7 @@ type MiddleSectionProps = {
   onCreatePost: () => void;
 };
 
-const postService = PostService.getInstance();
-const diagnosticLogService = DiagnosticLogService.getInstance();
-type CachedFeed = { posts: PostItem[]; nextCursor: string | null; hasMore: boolean };
+const feedResourceService = FeedResourceService.getInstance();
 const apiFilterByUiFilter: Record<FeedFilter, ApiFeedFilter> = {
   All: 'all',
   Photos: 'photo',
@@ -83,180 +81,54 @@ function rowKey(row: FeedRow): string {
 
 export default function MiddleSection({ userProfile, createdPost, onCreatePost }: MiddleSectionProps) {
   const { colors, isDark } = useAppTheme();
-  const [posts, setPosts] = useState<PostItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [feedError, setFeedError] = useState<string | null>(null);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+  const { state: drawerState } = useAppDrawer();
   const [loadingMore, setLoadingMore] = useState(false);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FeedFilter>('All');
-  // Feed source: home | friends | communities
-  // TODO: When PostService supports per-source queries, pass activeFeedSource to fetchFeedPage
   const [activeFeedSource, setActiveFeedSource] = useState<FeedSource>('home');
   const [activePostId, setActivePostId] = useState<string | null>(null);
 
-  /* ── Communities & Friends Filter State ── */
-  const [joinedCommunityIds, setJoinedCommunityIds] = useState<Set<string>>(new Set());
-  const [friendUserIds, setFriendUserIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    const userId = auth.currentUser?.uid;
-    if (!userId) return;
-
-    const fetchUserCommunitiesAndFriends = async () => {
-      try {
-        const comSnap = await getDocs(query(collection(db, 'communityVariantMembership'), where('userId', '==', userId)));
-        const cSet = new Set<string>();
-        comSnap.docs.forEach((d) => {
-          const data = d.data();
-          if (data.communityVariantId) cSet.add(data.communityVariantId);
-          if (data.communityId) cSet.add(data.communityId);
-        });
-
-        const comSnap2 = await getDocs(query(collection(db, 'communityVariantMembershipAndLikeCount'), where('userId', '==', userId)));
-        comSnap2.docs.forEach((d) => {
-          if (d.data().communityVariantId) cSet.add(d.data().communityVariantId);
-          if (d.data().communityId) cSet.add(d.data().communityId);
-        });
-
-        setJoinedCommunityIds(cSet);
-
-        const friendSnap = await getDocs(query(collection(db, 'friendships'), where('users', 'array-contains', userId)));
-        const fSet = new Set<string>();
-        friendSnap.docs.forEach((d) => {
-          const users: string[] = d.data().users || [];
-          users.forEach((u) => { if (u !== userId) fSet.add(u); });
-        });
-        setFriendUserIds(fSet);
-      } catch (err) {
-        console.error('[MiddleSection] Error loading communities/friends filter data:', err);
-      }
-    };
-
-    void fetchUserCommunitiesAndFriends();
-  }, []);
-
-  const displayedPosts = useMemo(() => {
-    const userId = auth.currentUser?.uid || '';
-    return posts.filter((post) => {
-      if (activeFeedSource === 'communities') {
-        if (!post.communityId) return false;
-        if (joinedCommunityIds.size > 0) {
-          return joinedCommunityIds.has(post.communityId);
-        }
-        return true;
-      }
-
-      if (activeFeedSource === 'friends') {
-        if (post.communityId) return false;
-        if (friendUserIds.size > 0) {
-          return friendUserIds.has(post.userId) || post.userId === userId;
-        }
-        return true;
-      }
-
-      return true;
-    });
-  }, [posts, activeFeedSource, joinedCommunityIds, friendUserIds]);
+  const feedQuery = useMemo(() => ({
+    userId: userProfile.uid,
+    scope: activeFeedSource as FeedScope,
+    filter: apiFilterByUiFilter[activeFilter],
+  }), [activeFeedSource, activeFilter, userProfile.uid]);
+  const { resource, refresh: refreshFeed, loadMore: loadMoreFeed, revealPending, setScrollOffset } = useFeedQuery(feedQuery);
+  const posts = resource.data?.posts ?? [];
+  const displayedPosts = posts;
+  const isLoading = !resource.data && (resource.status === 'idle' || resource.status === 'hydrating');
+  const refreshing = resource.status === 'refreshing';
+  const feedError = resource.error?.message ?? null;
+  const nextCursor = resource.data?.nextCursor ?? null;
+  const hasMore = resource.data?.hasMore === true;
 
   // Track which post IDs are currently visible in the viewport (for video play/pause)
   const [visiblePostIds, setVisiblePostIds] = useState<Set<string>>(new Set());
 
-  const feedCache = useRef<Map<FeedFilter, CachedFeed>>(new Map());
-  const feedRequestRef = useRef<AbortController | null>(null);
-  const feedRequestIdRef = useRef(0);
-
-  const loadFeedPosts = useCallback(async (filter: FeedFilter = 'All', force = false) => {
-    const cached = feedCache.current.get(filter);
-    if (cached && !force) {
-      setPosts(cached.posts);
-      setNextCursor(cached.nextCursor);
-      setHasMore(cached.hasMore);
-      setIsLoading(false);
-      return;
-    }
-    feedRequestRef.current?.abort();
-    setLoadingMore(false);
-    const controller = new AbortController();
-    feedRequestRef.current = controller;
-    const requestId = ++feedRequestIdRef.current;
-    diagnosticLogService.info('MiddleSection', 'load-feed:start', { requestedLimit: 20, filter });
-    setFeedError(null);
-    try {
-      // NOTE: All feed sources currently map to 'all' — TODO: extend when backend supports source filtering
-      const page = await postService.fetchFeedPage({
-        limit: 20,
-        filter: apiFilterByUiFilter[filter],
-        signal: controller.signal,
-      });
-      if (requestId !== feedRequestIdRef.current) return;
-      feedCache.current.set(filter, page);
-      setPosts(page.posts);
-      setNextCursor(page.nextCursor);
-      setHasMore(page.hasMore);
-      diagnosticLogService.success('MiddleSection', 'load-feed', {
-        receivedPostCount: page.posts.length,
-        postIds: page.posts.map((post) => post.id),
-        hasMore: page.hasMore,
-      });
-    } catch (error: unknown) {
-      if (controller.signal.aborted) return;
-      const message = error instanceof Error ? error.message : 'Unknown Firestore feed error';
-      diagnosticLogService.error('MiddleSection', 'load-feed', error);
-      setFeedError(message);
-      setPosts([]);
-    } finally {
-      if (requestId === feedRequestIdRef.current) {
-        setIsLoading(false);
-        setRefreshing(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadFeedPosts('All');
-    return () => feedRequestRef.current?.abort();
-  }, [loadFeedPosts]);
-
-  // When feed source changes, clear cache and force refresh
-  useEffect(() => {
-    feedCache.current.clear();
-    setIsLoading(true);
-    void loadFeedPosts(activeFilter, true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFeedSource]);
-
   useEffect(() => {
     if (!createdPost) return;
-    const cachedAll = feedCache.current.get('All');
-    const nextAllPosts = [createdPost, ...(cachedAll?.posts ?? []).filter((post) => post.id !== createdPost.id)];
-    feedCache.current.set('All', {
-      posts: nextAllPosts,
-      nextCursor: cachedAll?.nextCursor ?? null,
-      hasMore: cachedAll?.hasMore ?? false,
-    });
-    setPosts(nextAllPosts);
-    setNextCursor(cachedAll?.nextCursor ?? null);
-    setHasMore(cachedAll?.hasMore ?? false);
     setActiveFilter('All');
-  }, [createdPost]);
+    void feedResourceService.prependCreated({ userId: userProfile.uid, scope: 'home', filter: 'all' }, createdPost);
+    if (createdPost.communityId) void feedResourceService.prependCreated({ userId: userProfile.uid, scope: 'communities', filter: 'all' }, createdPost);
+  }, [createdPost, userProfile.uid]);
 
   const activePost = activePostId ? posts.find((post) => post.id === activePostId) ?? null : null;
 
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    void loadFeedPosts(activeFilter, true);
-  }, [activeFilter, loadFeedPosts]);
+  const handleRefresh = useCallback(async () => {
+    if (isPullRefreshing) return;
+    setIsPullRefreshing(true);
+    try {
+      await refreshFeed();
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [isPullRefreshing, refreshFeed]);
 
   const handleFilterChange = useCallback((filter: FeedFilter) => {
     setActiveFilter(filter);
-    setFeedError(null);
     // Pause all videos while switching filters
     setVisiblePostIds(new Set());
-    if (!feedCache.current.has(filter)) setIsLoading(true);
-    void loadFeedPosts(filter);
-  }, [loadFeedPosts]);
+  }, []);
 
   const handleFeedSourceChange = useCallback((source: FeedSource) => {
     // Pause all videos while switching sources
@@ -266,55 +138,23 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
 
   const handleLoadMore = useCallback(async () => {
     if (!hasMore || !nextCursor || loadingMore || refreshing || isLoading) return;
-    feedRequestRef.current?.abort();
-    const controller = new AbortController();
-    feedRequestRef.current = controller;
-    const requestId = ++feedRequestIdRef.current;
     setLoadingMore(true);
     try {
-      const page = await postService.fetchFeedPage({
-        limit: 20,
-        cursor: nextCursor,
-        filter: apiFilterByUiFilter[activeFilter],
-        signal: controller.signal,
-      });
-      if (requestId !== feedRequestIdRef.current) return;
-      setPosts((current) => {
-        const reconciled = [...current, ...page.posts.filter((post) => !current.some((item) => item.id === post.id))];
-        feedCache.current.set(activeFilter, { posts: reconciled, nextCursor: page.nextCursor, hasMore: page.hasMore });
-        return reconciled;
-      });
-      setNextCursor(page.nextCursor);
-      setHasMore(page.hasMore);
-    } catch (error: unknown) {
-      if (controller.signal.aborted) return;
-      diagnosticLogService.error('MiddleSection', 'load-more', error, { nextCursor });
+      await loadMoreFeed();
     } finally {
-      if (requestId === feedRequestIdRef.current) setLoadingMore(false);
+      setLoadingMore(false);
     }
-  }, [activeFilter, hasMore, isLoading, loadingMore, nextCursor, refreshing]);
+  }, [hasMore, isLoading, loadMoreFeed, loadingMore, nextCursor, refreshing]);
 
   const handleCommentClick = (postId: string) => setActivePostId(postId);
   const handlePostDelete = (postId: string) => {
-    setPosts((current) => current.filter((post) => post.id !== postId));
-    feedCache.current.forEach((cached, key) =>
-      feedCache.current.set(key, { ...cached, posts: cached.posts.filter((post) => post.id !== postId) }),
-    );
+    void feedResourceService.removePosts((post) => post.id === postId);
   };
   const handleAuthorBlocked = (userId: string) => {
-    setPosts((current) => current.filter((post) => post.userId !== userId));
-    feedCache.current.forEach((cached, key) =>
-      feedCache.current.set(key, { ...cached, posts: cached.posts.filter((post) => post.userId !== userId) }),
-    );
+    void feedResourceService.removePosts((post) => post.userId === userId);
   };
   const handlePostUpdate = (updatedPost: PostItem) => {
-    setPosts((current) => current.map((post) => (post.id === updatedPost.id ? updatedPost : post)));
-    feedCache.current.forEach((cached, key) =>
-      feedCache.current.set(key, {
-        ...cached,
-        posts: cached.posts.map((post) => (post.id === updatedPost.id ? updatedPost : post)),
-      }),
-    );
+    void feedResourceService.patchPost(updatedPost);
   };
 
   // ── Viewability callback ─────────────────────────────────────────────────────
@@ -431,7 +271,7 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
                 Check Metro for logs beginning with [Ourlime.Mobile][PostService].
               </Text>
               <TouchableOpacity
-                onPress={() => { setIsLoading(true); void loadFeedPosts(activeFilter, true); }}
+                onPress={() => { void refreshFeed(); }}
                 style={{ marginTop: 18, paddingHorizontal: 20, paddingVertical: 11, borderRadius: 18, backgroundColor: '#10b981' }}
               >
                 <Text style={{ color: '#ffffff', fontWeight: '700' }}>Retry</Text>
@@ -526,6 +366,7 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
         data={rows}
         keyExtractor={rowKey}
         renderItem={renderRow}
+        scrollEnabled={drawerState === 'closed'}
         style={{ flex: 1, backgroundColor: colors.canvas }}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 48 }}
         showsVerticalScrollIndicator={false}
@@ -535,11 +376,13 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
         // ── Pagination ───────────────────────────────────────────────────────
         onEndReached={() => void handleLoadMore()}
         onEndReachedThreshold={0.4}
+        onScroll={(event) => setScrollOffset(event.nativeEvent.contentOffset.y)}
+        scrollEventThrottle={250}
         // ── Pull-to-refresh ─────────────────────────────────────────────────
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
+            refreshing={isPullRefreshing}
+            onRefresh={() => { void handleRefresh(); }}
             tintColor="#10b981"
             colors={['#10b981']}
           />
@@ -549,6 +392,12 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
         maxToRenderPerBatch={6}
         windowSize={7}
       />
+
+      {resource.data?.pendingPosts.length ? (
+        <TouchableOpacity onPress={() => void revealPending()} style={{ position: 'absolute', alignSelf: 'center', top: 12, zIndex: 20, backgroundColor: '#10b981', paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999 }}>
+          <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 12 }}>New posts</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {activePost ? (
         <CommentsModal

@@ -17,11 +17,11 @@ import Icon from 'react-native-vector-icons/Feather';
 import { useRouter } from 'expo-router';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { AuthService } from '@/lib/services/AuthService';
-import { CommunityService } from '@/lib/services/CommunityService';
-import { EventService } from '@/lib/services/EventService';
-import { JobsService } from '@/lib/job/JobsService';
 import { RelationshipService, type RelationshipSuggestion } from '@/lib/services/RelationshipService';
 import { SearchService } from '@/lib/services/SearchService';
+import { useAppData } from '@/lib/contexts/AppDataContext';
+import { useDiscoverResource } from '@/lib/hooks/useDiscoverResource';
+import type { DiscoverEvent } from '@/lib/types/discoverResources';
 import {
   SkeletonUserCard,
   SkeletonCommunityCard,
@@ -29,126 +29,34 @@ import {
   SkeletonJobCard,
 } from '@/components/home/SkeletonLoaders';
 import PostLocationMap from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostLocationMap';
+import { deepLinkService } from '@/lib/services/DeepLinkService';
 
 const authService = AuthService.getInstance();
-const communityService = CommunityService.getInstance();
-const eventService = EventService.getInstance();
-const jobsService = JobsService.getInstance();
 const relationshipService = RelationshipService.getInstance();
 const searchService = SearchService.getInstance();
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
-type DiscoverCommunity = {
-  id: string;
-  title: string;
-  membershipCount: number;
-  imageUrl: string | null;
-};
-
-type DiscoverEvent = {
-  id: string;
-  title: string;
-  date: string;
-  location: string;
-  image: string | null;
-};
-
-type DiscoverJob = {
-  id: string;
-  role: string;
-  company: string;
-  type: string;
-  salary: string;
-  image: string | null;
-};
-
 export default function DiscoverScreen() {
   const { isDark, colors } = useAppTheme();
   const router = useRouter();
+  const { activeUserId } = useAppData();
+  const { resource, refresh } = useDiscoverResource(activeUserId ?? '');
+  const suggestedPeople = useMemo(() => resource.data?.suggestedPeople ?? [], [resource.data?.suggestedPeople]);
+  const communities = useMemo(() => resource.data?.communities ?? [], [resource.data?.communities]);
+  const events = useMemo(() => resource.data?.events ?? [], [resource.data?.events]);
+  const jobs = useMemo(() => resource.data?.jobs ?? [], [resource.data?.jobs]);
   const [discoverQuery, setDiscoverQuery] = useState('');
-  const [suggestedPeople, setSuggestedPeople] = useState<RelationshipSuggestion[]>([]);
-  const [communities, setCommunities] = useState<DiscoverCommunity[]>([]);
-  const [events, setEvents] = useState<DiscoverEvent[]>([]);
-  const [jobs, setJobs] = useState<DiscoverJob[]>([]);
   const [userSearchResults, setUserSearchResults] = useState<RelationshipSuggestion[]>([]);
-  const [isLoadingPeople, setIsLoadingPeople] = useState(true);
-  const [isLoadingCommunities, setIsLoadingCommunities] = useState(true);
-  const [isLoadingEvents, setIsLoadingEvents] = useState(true);
-  const [isLoadingJobs, setIsLoadingJobs] = useState(true);
   const [isSearchingQuery, setIsSearchingQuery] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [friendSentIds, setFriendSentIds] = useState<Set<string>>(new Set());
+  const isLoadingPeople = suggestedPeople.length === 0 && (!resource.data || resource.data.sectionStatus.people === 'loading');
+  const isLoadingCommunities = communities.length === 0 && (!resource.data || resource.data.sectionStatus.communities === 'loading');
+  const isLoadingEvents = events.length === 0 && (!resource.data || resource.data.sectionStatus.events === 'loading');
+  const isLoadingJobs = jobs.length === 0 && (!resource.data || resource.data.sectionStatus.jobs === 'loading');
 
   const handleQueryChange = (text: string) => {
     setDiscoverQuery(text);
   };
-
-  const loadDiscoverData = useCallback(async () => {
-    setIsLoadingPeople(true);
-    setIsLoadingCommunities(true);
-    setIsLoadingEvents(true);
-    setIsLoadingJobs(true);
-
-    const loadPeople = async (): Promise<void> => {
-      try {
-        setSuggestedPeople(await relationshipService.getSuggestions(12));
-      } finally {
-        setIsLoadingPeople(false);
-      }
-    };
-
-    const loadCommunities = async (): Promise<void> => {
-      try {
-        const records = await communityService.fetchCommunities(40);
-        setCommunities(records.map((item) => ({
-          id: item.id,
-          title: item.title,
-          membershipCount: item.membershipCount,
-          imageUrl: item.imageUrl,
-        })));
-      } finally {
-        setIsLoadingCommunities(false);
-      }
-    };
-
-    const loadEvents = async (): Promise<void> => {
-      try {
-        const records = await eventService.fetchEvents();
-        setEvents(records.map((item, index) => ({
-          id: item.id || 'event-' + index,
-          title: item.title,
-          date: new Date(item.startDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-          location: item.location,
-          image: item.image || item.media?.find((media) => media.type === 'image')?.url || null,
-        })));
-      } finally {
-        setIsLoadingEvents(false);
-      }
-    };
-
-    const loadJobs = async (): Promise<void> => {
-      try {
-        const records = await jobsService.fetchJobs(12);
-        setJobs(records.map((item) => ({
-          id: item.id,
-          role: item.basic_info.title,
-          company: item.creator?.name || 'Ourlime member',
-          type: item.basic_info.type,
-          salary: '$' + item.basic_info.priceRange.from.toLocaleString() + ' - $' + item.basic_info.priceRange.to.toLocaleString(),
-          image: item.creator?.profileImage || null,
-        })));
-      } finally {
-        setIsLoadingJobs(false);
-      }
-    };
-
-    await Promise.allSettled([loadPeople(), loadCommunities(), loadEvents(), loadJobs()]);
-    setRefreshing(false);
-  }, []);
-
-  useEffect(() => {
-    void loadDiscoverData();
-  }, [loadDiscoverData]);
 
   useEffect(() => {
     const query = discoverQuery.trim();
@@ -186,9 +94,8 @@ export default function DiscoverScreen() {
   }, [discoverQuery]);
 
   const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    void loadDiscoverData();
-  }, [loadDiscoverData]);
+    void refresh();
+  }, [refresh]);
 
   const normalizedQuery = discoverQuery.trim().toLowerCase();
 
@@ -228,7 +135,7 @@ export default function DiscoverScreen() {
 
   const handleShareEvent = async (event: DiscoverEvent) => {
     try {
-      await Share.share({ message: `Check out ${event.title} at ${event.location} on Ourlime!` });
+      await Share.share({ message: `Check out ${event.title} at ${event.location} on Ourlime!\n${deepLinkService.getEventShareUrl(event.id)}` });
     } catch {
       // Ignored
     }
@@ -269,7 +176,7 @@ export default function DiscoverScreen() {
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.canvas }}
         contentContainerStyle={{ paddingBottom: 60 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
+        refreshControl={<RefreshControl refreshing={resource.status === 'refreshing'} onRefresh={onRefresh} tintColor="#10b981" />}
       >
         <View style={{ paddingVertical: 16 }}>
             {/* 1. Suggested Friends Section */}
@@ -281,7 +188,7 @@ export default function DiscoverScreen() {
                 </View>
               </View>
 
-              {isLoadingPeople || isSearchingQuery ? (
+              {isLoadingPeople || (isSearchingQuery && filteredPeople.length === 0) ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
                   {[0, 1, 2].map((item) => <SkeletonUserCard key={`person-skeleton-${item}`} />)}
                 </ScrollView>

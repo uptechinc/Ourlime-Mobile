@@ -1,27 +1,22 @@
 import { useState } from "react";
-import { router } from "expo-router";
 import { ActivityIndicator, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MiddleSection from "@/components/home/MiddleSection";
-import SlideOutMenu from "@/components/ui/SlideOutMenu";
-import { MenuItem } from "../../lib/types/componentProps";
 import AppHeader from "@/components/ui/AppHeader";
 import CreatePostModal from "@/components/home/MiddleSection/MiddleSectionComponent/CreatePostModal";
 import NotificationsModal from "@/components/home/NotificationsModal";
 import { AuthService } from "@/lib/services/AuthService";
 import type { PostItem } from "@/lib/services/PostService";
-import { getAppNavigationItems } from '@/lib/navigation/AppNavigation';
-import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { profileResourceService } from '@/lib/services/ProfileResourceService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { useAppDrawer } from '@/lib/contexts/AppDrawerContext';
 
 const authService = AuthService.getInstance();
 
 export default function FeedsScreen() {
-  const { authorization, getDecision } = usePageAccess();
+  const { open: openDrawer } = useAppDrawer();
   const { colors } = useAppTheme();
-  const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const currentUser = authService.getCurrentUser();
@@ -40,40 +35,6 @@ export default function FeedsScreen() {
     setIsCreatePostModalOpen(false);
   };
 
-  const handleMenuPress = () => {
-    setIsMenuVisible(true);
-  };
-
-  const handleCloseMenu = () => {
-    setIsMenuVisible(false);
-  };
-
-  const menuItems: MenuItem[] = [
-    ...getAppNavigationItems({
-      includeHome: false,
-      isAdmin: authorization.isAdmin,
-      resolveStatus: (route) => {
-        const decision = getDecision(route);
-        return { visible: decision.isVisibleInNavigation, status: decision.status, badge: decision.setting?.badgeText };
-      },
-    }).map((item) => ({
-      id: item.id,
-      title: item.label,
-      icon: item.ionicon,
-      route: item.route,
-      badge: item.badge || (item.status === 'coming_soon' ? 'Soon' : item.status === 'maintenance' ? 'Maintenance' : undefined),
-      onPress: () => router.push(item.route),
-    })),
-    {
-      id: "logout",
-      title: "Log Out",
-      icon: "log-out",
-      onPress: async () => {
-        await authService.logout();
-        router.replace("/(auth)/login");
-      },
-    },
-  ];
 
   if (!userProfile) {
     return (
@@ -99,7 +60,7 @@ export default function FeedsScreen() {
       <AppHeader
         showLogo={true}
         logoType="both"
-        onMenuPress={handleMenuPress}
+        onMenuPress={openDrawer}
         onNotificationPress={() => setIsNotificationsModalOpen(true)}
         profilePictureUrl={userProfile.profilePicture}
       />
@@ -121,21 +82,6 @@ export default function FeedsScreen() {
       <NotificationsModal
         visible={isNotificationsModalOpen}
         onClose={() => setIsNotificationsModalOpen(false)}
-      />
-
-      <SlideOutMenu
-        isVisible={isMenuVisible}
-        onClose={handleCloseMenu}
-        menuItems={menuItems}
-        userProfile={{
-          name: `${userProfile.firstName} ${userProfile.lastName}`.trim(),
-          email: userProfile.email,
-          avatar: userProfile.profilePicture ?? undefined,
-          firstName: userProfile.firstName,
-          lastName: userProfile.lastName,
-          userName: userProfile.userName,
-          profilePicture: userProfile.profilePicture,
-        }}
       />
 
     </View>

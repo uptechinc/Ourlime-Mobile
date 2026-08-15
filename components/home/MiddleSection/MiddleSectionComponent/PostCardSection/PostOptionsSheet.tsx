@@ -6,6 +6,7 @@ import { RelationshipService } from '@/lib/services/RelationshipService';
 import ReportPostModal from './ReportPostModal';
 import DeletePostModal from './DeletePostModal';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type ActionFeedback = {
   title: string;
@@ -17,6 +18,7 @@ type PostOptionsSheetProps = {
   visible: boolean;
   post: PostItem;
   currentUserId: string | null;
+  canModerateCommunityPost?: boolean;
   onClose: () => void;
   onDelete: (postId: string) => void;
   onBlock: (userId: string) => void;
@@ -26,7 +28,8 @@ type PostOptionsSheetProps = {
 const postService = PostService.getInstance();
 const relationshipService = RelationshipService.getInstance();
 
-export default function PostOptionsSheet({ visible, post, currentUserId, onClose, onDelete, onBlock, onPostUpdate }: PostOptionsSheetProps) {
+export default function PostOptionsSheet({ visible, post, currentUserId, canModerateCommunityPost = false, onClose, onDelete, onBlock, onPostUpdate }: PostOptionsSheetProps) {
+  const { colors } = useAppTheme();
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [following, setFollowing] = useState(post.relationshipStatus?.isFollowing === true);
   const [friendshipStatus, setFriendshipStatus] = useState(post.relationshipStatus?.friendshipStatus ?? 'none');
@@ -35,6 +38,7 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
   const [blockConfirmationVisible, setBlockConfirmationVisible] = useState(false);
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
   const isOwner = Boolean(currentUserId && currentUserId === post.userId);
+  const canDelete = isOwner || (post.origin === 'community' && canModerateCommunityPost);
 
   useEffect(() => {
     setFollowing(post.relationshipStatus?.isFollowing === true);
@@ -106,8 +110,8 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
     const isBusy = options?.action === busyAction;
     return (
       <TouchableOpacity disabled={options?.disabled || Boolean(busyAction)} onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 15, opacity: options?.disabled ? 0.45 : 1 }}>
-        {isBusy ? <ActivityIndicator size="small" color={options?.destructive ? '#dc2626' : '#10b981'} /> : <Icon name={icon} size={20} color={options?.destructive ? '#dc2626' : '#374151'} />}
-        <Text style={{ marginLeft: 13, color: options?.destructive ? '#dc2626' : '#374151', fontSize: 15, fontWeight: '700' }}>{label}</Text>
+        {isBusy ? <ActivityIndicator size="small" color={options?.destructive ? colors.destructive : colors.accent} /> : <Icon name={icon} size={20} color={options?.destructive ? colors.destructive : colors.icon} />}
+        <Text style={{ marginLeft: 13, color: options?.destructive ? colors.destructiveText : colors.secondaryText, fontSize: 15, fontWeight: '700' }}>{label}</Text>
       </TouchableOpacity>
     );
   };
@@ -117,7 +121,7 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
       <Modal visible={visible && !reportVisible} transparent animationType="fade" onRequestClose={onClose}>
         <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <TouchableOpacity activeOpacity={1} onPress={() => undefined} style={{ width: '85%', maxWidth: 320 }}>
-            <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 16, elevation: 10 }}>
+            <View style={{ backgroundColor: colors.elevated, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 16, elevation: 10 }}>
               {!isOwner ? (
                 <>
                   {/* 1. Add Friend */}
@@ -126,8 +130,8 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
                     onPress={handleFriendRequest}
                     style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, opacity: friendshipStatus !== 'none' ? 0.5 : 1 }}
                   >
-                    <Icon name="user-plus" size={20} color="#334155" />
-                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: '#1e293b' }}>
+                    <Icon name="user-plus" size={20} color={colors.icon} />
+                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: colors.text }}>
                       {friendshipStatus === 'accepted' ? 'Friends' : friendshipStatus === 'pending' ? 'Request Pending' : 'Add Friend'}
                     </Text>
                   </TouchableOpacity>
@@ -138,8 +142,8 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
                     onPress={handleFollow}
                     style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12 }}
                   >
-                    <Icon name={following ? 'user-check' : 'user'} size={20} color="#334155" />
-                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: '#1e293b' }}>
+                    <Icon name={following ? 'user-check' : 'user'} size={20} color={colors.icon} />
+                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: colors.text }}>
                       {following ? 'Unfollow' : 'Follow'}
                     </Text>
                   </TouchableOpacity>
@@ -149,8 +153,8 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
                     onPress={() => setReportVisible(true)}
                     style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12 }}
                   >
-                    <Icon name="flag" size={20} color="#ef4444" />
-                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: '#ef4444' }}>
+                    <Icon name="flag" size={20} color={colors.destructive} />
+                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: colors.destructiveText }}>
                       Report Post
                     </Text>
                   </TouchableOpacity>
@@ -167,14 +171,14 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
                     </Text>
                   </TouchableOpacity>
 
-                  <View style={{ height: 1, backgroundColor: '#f1f5f9', marginVertical: 4 }} />
+                  <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 4 }} />
                 </>
               ) : null}
 
               {/* 5. Delete Post / Remove Repost */}
-              {isOwner ? (
+              {canDelete ? (
                 <>
-                  {!post.communityId ? renderRow(
+                  {isOwner && !post.communityId ? renderRow(
                     post.visibility === 'private' ? 'globe' : 'lock',
                     post.visibility === 'private' ? 'Make Public' : 'Make Private (Friends only)',
                     handleVisibility,
@@ -185,9 +189,9 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
                     onPress={handleDelete}
                     style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12 }}
                   >
-                    <Icon name="trash-2" size={20} color="#ef4444" />
-                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: '#ef4444' }}>
-                      Delete Post
+                    <Icon name="trash-2" size={20} color={colors.destructive} />
+                    <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: colors.destructiveText }}>
+                      {isOwner ? 'Delete Post' : 'Remove Community Post'}
                     </Text>
                   </TouchableOpacity>
                 </>
@@ -196,9 +200,9 @@ export default function PostOptionsSheet({ visible, post, currentUserId, onClose
               {/* Close Button */}
               <TouchableOpacity
                 onPress={onClose}
-                style={{ marginTop: 8, paddingVertical: 10, alignItems: 'center', borderRadius: 12, backgroundColor: '#f8fafc' }}
+                style={{ marginTop: 8, paddingVertical: 10, alignItems: 'center', borderRadius: 12, backgroundColor: colors.control }}
               >
-                <Text style={{ fontSize: 14, fontWeight: '700', color: '#64748b' }}>Cancel</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.secondaryText }}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>

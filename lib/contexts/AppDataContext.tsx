@@ -8,6 +8,7 @@ import { ProfileResourceService } from '@/lib/services/ProfileResourceService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import { MessageResourceService } from '@/lib/services/MessageResourceService';
 import { FeedResourceService } from '@/lib/services/FeedResourceService';
+import { presenceService } from '@/lib/services/PresenceService';
 
 type AppDataContextValue = {
   activeUserId: string | null;
@@ -39,6 +40,7 @@ export function AppDataProvider({ children }: AppDataProviderProps) {
     if (previousUserId && previousUserId !== nextUserId) {
       conversationService.stopRealtime();
       useResourceStore.getState().clearUserResources();
+      void cacheService.clearUser(previousUserId).catch(() => undefined);
     }
     setActiveUserId(nextUserId);
     activeUserIdRef.current = nextUserId;
@@ -57,18 +59,29 @@ export function AppDataProvider({ children }: AppDataProviderProps) {
     const handleState = (status: AppStateStatus) => {
       if (!activeUserId) return;
       if (status === 'active') {
+        void presenceService.heartbeat('online').catch(() => undefined);
         conversationService.startRealtime(activeUserId);
         messageService.resumeRealtime();
         void conversationService.refresh(activeUserId);
         void profileService.refresh({ kind: 'own', userId: activeUserId });
         void feedService.reconcileCachedFeeds(activeUserId);
       } else {
+        void presenceService.heartbeat('offline').catch(() => undefined);
         conversationService.stopRealtime();
         messageService.pauseRealtime();
       }
     };
     const subscription = AppState.addEventListener('change', handleState);
     return () => subscription.remove();
+  }, [activeUserId]);
+
+  useEffect(() => {
+    if (!activeUserId) return;
+    void presenceService.heartbeat('online').catch(() => undefined);
+    const heartbeat = setInterval(() => {
+      if (AppState.currentState === 'active') void presenceService.heartbeat('online').catch(() => undefined);
+    }, 60_000);
+    return () => clearInterval(heartbeat);
   }, [activeUserId]);
 
   useEffect(() => {

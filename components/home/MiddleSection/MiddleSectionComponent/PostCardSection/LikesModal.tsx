@@ -3,18 +3,18 @@ import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import UserAvatar from '@/components/ui/UserAvatar';
-import { PostService, type PostUser } from '@/lib/services/PostService';
+import { PostService, type PostOrigin, type PostUser } from '@/lib/services/PostService';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { AuthService } from '@/lib/services/AuthService';
 import CustomModal from '@/components/ui/CustomModal';
 
-type LikesModalProps = { visible: boolean; postId: string; onClose: () => void };
+type LikesModalProps = { visible: boolean; postId: string; origin: PostOrigin; onClose: () => void };
 
 const postService = PostService.getInstance();
 const relationshipService = RelationshipService.getInstance();
 const authService = AuthService.getInstance();
 
-export default function LikesModal({ visible, postId, onClose }: LikesModalProps) {
+export default function LikesModal({ visible, postId, origin, onClose }: LikesModalProps) {
   const [users, setUsers] = useState<PostUser[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -27,7 +27,7 @@ export default function LikesModal({ visible, postId, onClose }: LikesModalProps
   const load = useCallback(async (nextCursor?: string | null) => {
     setLoading(true);
     try {
-      const page = await postService.fetchPostLikes(postId, nextCursor);
+      const page = await postService.fetchPostLikes(postId, origin, nextCursor);
       setUsers((current) => nextCursor ? [...current, ...page.users.filter((user) => !current.some((item) => item.id === user.id))] : page.users);
       setCursor(page.nextCursor);
       setHasMore(page.hasMore);
@@ -36,7 +36,7 @@ export default function LikesModal({ visible, postId, onClose }: LikesModalProps
     } finally {
       setLoading(false);
     }
-  }, [postId]);
+  }, [origin, postId]);
 
   const handleFriendRequest = async (userId: string) => {
     const currentUserId = authService.getCurrentUser()?.uid;

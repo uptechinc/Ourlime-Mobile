@@ -4,11 +4,11 @@ import {
   Text,
   TouchableOpacity,
   Image,
-  Linking,
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { openGraphService, extractDomain, type LinkPreviewData } from '@/lib/services/OpenGraphService';
+import { useDeepLinkNavigation } from '@/lib/hooks/useDeepLinkNavigation';
 
 type LinkPreviewMessageProps = {
   url: string;
@@ -19,6 +19,7 @@ type LinkPreviewMessageProps = {
  * LinkPreviewMessage — Card shown inside chat bubbles for messages containing links.
  */
 export function LinkPreviewMessage({ url, isOwn = false }: LinkPreviewMessageProps) {
+  const { openLink } = useDeepLinkNavigation();
   const [preview, setPreview] = useState<LinkPreviewData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -42,7 +43,7 @@ export function LinkPreviewMessage({ url, isOwn = false }: LinkPreviewMessagePro
 
   return (
     <TouchableOpacity
-      onPress={() => void Linking.openURL(url)}
+      onPress={() => void openLink(url)}
       activeOpacity={0.8}
       style={{
         marginTop: 6,

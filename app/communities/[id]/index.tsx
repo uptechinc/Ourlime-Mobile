@@ -2,147 +2,351 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, Share, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { CommunityService, type CommunitySummary } from '@/lib/services/CommunityService';
+import { ChevronLeft, Flag, Lock, MessageCircle, Plus, Share2 } from 'lucide-react-native';
 import { AuthService, type UserProfile } from '@/lib/services/AuthService';
-import { PostService, type PostItem } from '@/lib/services/PostService';
+import { CommunityService } from '@/lib/services/CommunityService';
+import { CommunityDetailResourceService } from '@/lib/services/CommunityDetailResourceService';
+import { CommunityDashboardService, type CommunityReportAction } from '@/lib/services/CommunityDashboardService';
+import { CommunitiesResourceService } from '@/lib/services/CommunitiesResourceService';
+import { CommunityFeedResourceService } from '@/lib/services/CommunityFeedResourceService';
+import { EventService } from '@/lib/services/EventService';
+import { ModerationService } from '@/lib/services/ModerationService';
+import { FeedResourceService } from '@/lib/services/FeedResourceService';
+import { deepLinkService } from '@/lib/services/DeepLinkService';
+import { useCommunityDetailResource } from '@/lib/hooks/useCommunityDetailResource';
+import { useCommunityFeedResource } from '@/lib/hooks/useCommunityFeedResource';
+import { useResourceStore } from '@/lib/store/useResourceStore';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import type { CommunityCardModel, CommunityDashboardData, CommunityJoinRequest, CommunityMember, CommunityPoll, CommunityReportItem, UpdateCommunityInput } from '@/lib/types/community';
+import type { ResourceState } from '@/lib/types/resourceState';
+import type { PostItem } from '@/lib/services/PostService';
+import type { CommunityEventDraft } from '@/components/communities/detail/CommunityEventsWorkspace';
+import type { Event } from '@/types/eventTypes';
 import PostCardSection from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
 import CreatePostModal from '@/components/home/MiddleSection/MiddleSectionComponent/CreatePostModal';
+import CommunityDetailHeader from '@/components/communities/detail/CommunityDetailHeader';
+import CommunityAboutWorkspace from '@/components/communities/detail/CommunityAboutWorkspace';
+import CommunityMembersWorkspace from '@/components/communities/detail/CommunityMembersWorkspace';
+import CommunityEventsWorkspace from '@/components/communities/detail/CommunityEventsWorkspace';
+import CommunityPollsWorkspace from '@/components/communities/detail/CommunityPollsWorkspace';
+import CommunityDashboardSheet from '@/components/communities/detail/CommunityDashboardSheet';
+import EditCommunityModal from '@/components/communities/detail/EditCommunityModal';
+import CommunityMemberActionSheet from '@/components/communities/detail/CommunityMemberActionSheet';
+import CommunityReportModal from '@/components/communities/CommunityReportModal';
 import CustomModal from '@/components/ui/CustomModal';
-import { ModerationService } from '@/lib/services/ModerationService';
-import CachedImage from '@/components/ui/CachedImage';
+import type { ReportReasonCategory } from '@/lib/services/ModerationService';
 
-type CommunityTab = 'posts' | 'about';
+type CommunityTab = 'posts' | 'events' | 'polls' | 'about' | 'members';
+type ConfirmationAction = 'leave' | 'delete' | 'poll-delete' | null;
+type ReportTarget = { kind: 'community' } | { kind: 'poll'; poll: CommunityPoll } | { kind: 'event'; event: Event };
+type ConfirmationState = {
+  visible: boolean;
+  action: ConfirmationAction;
+  title: string;
+  message: string;
+  poll: CommunityPoll | null;
+};
 
-const communityService = CommunityService.getInstance();
 const authService = AuthService.getInstance();
-const postService = PostService.getInstance();
+const communityService = CommunityService.getInstance();
+const detailService = CommunityDetailResourceService.getInstance();
+const dashboardService = CommunityDashboardService.getInstance();
+const directoryService = CommunitiesResourceService.getInstance();
+const communityFeedService = CommunityFeedResourceService.getInstance();
+const eventService = EventService.getInstance();
 const moderationService = ModerationService.getInstance();
+const feedService = FeedResourceService.getInstance();
 
-type CommunityAction = 'leave' | 'report';
-type CommunityActionModal = { visible: boolean; action: CommunityAction | null; title: string; message: string };
+const INITIAL_CONFIRMATION: ConfirmationState = {
+  visible: false,
+  action: null,
+  title: '',
+  message: '',
+  poll: null,
+};
+const EMPTY_DASHBOARD: ResourceState<CommunityDashboardData> = { data: null, status: 'idle', source: 'memory', updatedAt: null, isStale: true, error: null };
 
 export default function CommunityDetailScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const [community, setCommunity] = useState<CommunitySummary | null>(null);
-  const [posts, setPosts] = useState<PostItem[]>([]);
+  const params = useLocalSearchParams<{ id: string }>();
+  const identifier = Array.isArray(params.id) ? params.id[0] ?? '' : params.id ?? '';
+  const { colors } = useAppTheme();
+  const viewerId = authService.getCurrentUser()?.uid ?? '';
+  const resources = useCommunityDetailResource(viewerId, identifier);
+  const detailData = resources.detail.data;
+  const community = detailData?.community ?? null;
+  const communityId = community?.id ?? '';
+  const { resource: postResource, refresh: refreshPosts } = useCommunityFeedResource(viewerId, communityId, Boolean(community?.permissions.canView));
+  const posts = useMemo(() => postResource.data ?? [], [postResource.data]);
+  const categories = useResourceStore((state) => state.communityCategories.data ?? []);
+  const dashboard = useResourceStore((state) => state.communityDashboards[communityId] ?? EMPTY_DASHBOARD);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [activePostId, setActivePostId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<CommunityTab>('posts');
-  const [createVisible, setCreateVisible] = useState(false);
-  const [joining, setJoining] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [actionModal, setActionModal] = useState<CommunityActionModal>({ visible: false, action: null, title: '', message: '' });
+  const [activePostId, setActivePostId] = useState<string | null>(null);
+  const [createPostVisible, setCreatePostVisible] = useState(false);
+  const [dashboardVisible, setDashboardVisible] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [managedMember, setManagedMember] = useState<CommunityMember | null>(null);
+  const [confirmation, setConfirmation] = useState<ConfirmationState>(INITIAL_CONFIRMATION);
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  const [eventCreateRequestKey, setEventCreateRequestKey] = useState(0);
+  const [pollCreateRequestKey, setPollCreateRequestKey] = useState(0);
 
-  const loadCommunity = useCallback(async (refresh = false) => {
-    if (!id) return;
-    if (refresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-    setError(null);
-    try {
-      const nextCommunity = await communityService.fetchCommunity(id);
-      setCommunity(nextCommunity);
-      const userId = authService.getCurrentUser()?.uid;
-      const [nextProfile, nextPosts] = await Promise.all([
-        userId ? authService.getUserProfile(userId) : Promise.resolve(null),
-        nextCommunity.hasAccess ? postService.fetchCommunityPosts(nextCommunity.id) : Promise.resolve([]),
-      ]);
-      setProfile(nextProfile);
-      setPosts(nextPosts);
-    } catch (loadError: unknown) {
-      console.error('[CommunityDetailScreen.loadCommunity]', loadError);
-      setError(loadError instanceof Error ? loadError.message : 'This community could not be loaded.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [id]);
+  useEffect(() => {
+    if (!viewerId) return;
+    void authService.getUserProfile(viewerId).then(setProfile).catch(() => setProfile(null));
+  }, [viewerId]);
 
-  useEffect(() => { void loadCommunity(); }, [loadCommunity]);
+  useEffect(() => {
+    if (!communityId || !community?.permissions.canView) return;
+    if (activeTab === 'members') void resources.loadMembers();
+    if (activeTab === 'events') void resources.loadEvents();
+    if (activeTab === 'polls') void resources.loadPolls();
+  }, [activeTab, community?.permissions.canView, communityId, resources]);
 
   const activePost = useMemo(() => posts.find((post) => post.id === activePostId) ?? null, [activePostId, posts]);
-  const canPost = Boolean(community && profile && community.hasAccess && (
-    community.isOwner || (community.postingPermission === 'members' && community.isMember)
-  ));
 
-  const handleJoin = async () => {
-    if (!community || joining) return;
-    setJoining(true);
+  const reconcileCommunity = useCallback(async (): Promise<void> => {
+    if (!viewerId || !identifier) return;
+    await resources.refreshDetail();
+    const latest = useResourceStore.getState().communityDetails[identifier]?.data?.community;
+    if (latest) await directoryService.patchCommunity(viewerId, latest);
+  }, [identifier, resources, viewerId]);
+
+  const handleMembershipAction = async (): Promise<void> => {
+    if (!community || busy) return;
+    setBusy(true);
     try {
-      const result = await communityService.joinOrRequestAccess(community);
-      setCommunity((current) => current ? {
-        ...current,
-        isMember: result === 'joined',
-        requestStatus: result === 'requested' ? 'pending' : current.requestStatus,
-        membershipCount: current.membershipCount + (result === 'joined' ? 1 : 0),
-      } : current);
-      setMessage(result === 'joined' ? 'You joined this community.' : 'Your request was sent to the community administrators.');
-    } catch (joinError: unknown) {
-      setMessage(joinError instanceof Error ? joinError.message : 'Community membership could not be updated');
+      if (community.membershipState === 'pending') {
+        await communityService.cancelRequest(community.id);
+        setFeedback('Your membership request was canceled.');
+      } else {
+        const result = await communityService.joinOrRequestAccess(community);
+        setFeedback(result.membershipState === 'member' ? 'You joined the community.' : 'Your request was sent to the community team.');
+      }
+      await reconcileCommunity();
+    } catch (error: unknown) {
+      setFeedback(error instanceof Error ? error.message : 'Community membership could not be updated.');
     } finally {
-      setJoining(false);
+      setBusy(false);
     }
   };
 
-  const handlePostUpdate = (updatedPost: PostItem) => setPosts((current) => current.map((post) => post.id === updatedPost.id ? updatedPost : post));
-
-  const handleShare = async () => {
-    if (!community) return;
-    await Share.share({ message: `Join ${community.title} on Ourlime: https://ourlime.com/communities/${community.id}` });
-  };
-
-  const handleCommunityAction = async () => {
-    if (!community || !actionModal.action || joining) return;
-    setJoining(true);
+  const handleLike = async (): Promise<void> => {
+    if (!community || busy) return;
+    setBusy(true);
     try {
-      if (actionModal.action === 'leave') {
-        await communityService.leaveCommunity(community.id);
-        setCommunity((current) => current ? { ...current, isMember: false, hasAccess: !current.isPrivate, membershipCount: Math.max(0, current.membershipCount - 1) } : current);
-        setMessage('You left this community.');
-      } else {
-        await moderationService.reportCommunity({ targetId: community.id, reasonCategory: 'other', reason: 'Community guideline violation', routePath: `/communities/${community.id}` });
-        setMessage('Your report was sent to the Ourlime moderation team.');
-      }
-      setActionModal({ visible: false, action: null, title: '', message: '' });
-    } catch (actionError: unknown) {
-      setMessage(actionError instanceof Error ? actionError.message : 'The community action could not be completed.');
-    } finally { setJoining(false); }
+      const reaction = await communityService.toggleCommunityLike(community.id, !community.isLikedByViewer);
+      const updated: CommunityCardModel = { ...community, isLikedByViewer: reaction.liked, likeCount: reaction.likeCount };
+      useResourceStore.getState().setCommunityDetail(identifier, { ...resources.detail, data: detailData ? { ...detailData, community: updated } : null, status: 'ready', source: 'network', updatedAt: Date.now(), isStale: false, error: null });
+      await directoryService.patchCommunity(viewerId, updated);
+    } catch (error: unknown) {
+      setFeedback(error instanceof Error ? error.message : 'Community like could not be updated.');
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const handleShare = async (): Promise<void> => {
+    if (!community) return;
+    await Share.share({ title: community.title, message: `Join ${community.title} on Ourlime: ${deepLinkService.getCommunityShareUrl(community.slug || community.id)}` });
+  };
+
+  const handleRefresh = async (): Promise<void> => {
+    await Promise.all([resources.refreshDetail(), refreshPosts()]);
+    if (activeTab === 'members') await resources.loadMembers(true);
+    if (activeTab === 'events') await resources.loadEvents(true);
+    if (activeTab === 'polls') await resources.loadPolls(true);
+  };
+
+  const handlePostUpdate = (post: PostItem): void => { void feedService.patchPost(post); };
+  const handlePostDelete = (postId: string): void => { void feedService.removePosts((post) => post.id === postId); };
+
+  const handleCreateEvent = async (draft: CommunityEventDraft): Promise<void> => {
+    if (!community || !profile) throw new Error('Your verified profile is still loading.');
+    const start = new Date(draft.startDate);
+    const end = new Date(draft.endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) throw new Error('Enter valid start and end dates.');
+    await eventService.createCommunityEvent({
+      title: draft.title.trim(),
+      description: draft.summary.trim(),
+      summary: draft.summary.trim(),
+      startDate: start.toISOString(),
+      startTime: start.toLocaleTimeString(),
+      endDate: end.toISOString(),
+      endTime: end.toLocaleTimeString(),
+      location: draft.location.trim() || 'Online',
+      recurrence: draft.recurrence,
+      creatorId: viewerId,
+      userId: viewerId,
+      user: { id: viewerId, firstName: profile.firstName, lastName: profile.lastName, userName: profile.userName, profileImage: profile.profilePicture ?? null },
+      communityVariantId: community.id,
+      image: draft.imageUrl.trim() || undefined,
+      media: draft.media,
+    });
+    await resources.loadEvents(true);
+  };
+
+  const handleReviewRequest = async (request: CommunityJoinRequest, action: 'approve' | 'decline'): Promise<void> => {
+    if (!community) return;
+    await communityService.reviewJoinRequest(community.id, request.requestId, request.userId, action);
+    await Promise.all([resources.loadRequests(true), resources.loadMembers(true), reconcileCommunity()]);
+  };
+
+  const handleManageMember = (member: CommunityMember): void => {
+    setManagedMember(member);
+  };
+
+  const refreshMemberResources = async (): Promise<void> => {
+    await Promise.all([resources.loadMembers(true), resources.loadRequests(true), reconcileCommunity()]);
+  };
+
+  const handleMemberRoleChange = async (member: CommunityMember, role: 'member' | 'moderator' | 'admin'): Promise<void> => {
+    if (!community) return;
+    await communityService.updateMemberRole(community.id, member.userId, role);
+    await refreshMemberResources();
+  };
+
+  const handleRemoveMember = async (member: CommunityMember): Promise<void> => {
+    if (!community) return;
+    await communityService.removeMember(community.id, member.userId);
+    await refreshMemberResources();
+  };
+
+  const handleBanMember = async (member: CommunityMember): Promise<void> => {
+    if (!community) return;
+    await communityService.banMember(community.id, member.userId);
+    await refreshMemberResources();
+  };
+
+  const handleUpdateCommunity = async (updates: UpdateCommunityInput): Promise<void> => {
+    if (!community) return;
+    const updated = await communityService.updateCommunity(community.id, updates);
+    await directoryService.patchCommunity(viewerId, updated);
+    await reconcileCommunity();
+  };
+
+  const handleLoadDashboard = useCallback((force = false): void => {
+    if (!viewerId || !communityId) return;
+    void dashboardService.hydrate(viewerId, communityId).then(() => dashboardService.refresh(viewerId, communityId, force));
+  }, [communityId, viewerId]);
+
+  const handleLoadDashboardMembers = useCallback((force = false): void => {
+    void resources.loadMembers(force);
+  }, [resources]);
+
+  const handleLoadDashboardRequests = useCallback((force = false): void => {
+    void resources.loadRequests(force);
+  }, [resources]);
+
+  const handleOpenDashboard = useCallback((): void => {
+    setDashboardVisible(true);
+    handleLoadDashboard();
+    handleLoadDashboardMembers();
+    handleLoadDashboardRequests();
+  }, [handleLoadDashboard, handleLoadDashboardMembers, handleLoadDashboardRequests]);
+
+  const handleCloseDashboard = useCallback((): void => {
+    setDashboardVisible(false);
+  }, []);
+
+  const handleModerateReport = async (report: CommunityReportItem, action: CommunityReportAction): Promise<void> => {
+    if (!community) return;
+    await dashboardService.moderate(viewerId, { communityId: community.id, reportIds: [report.id], action, targetId: report.targetId, targetType: report.targetType, resolutionNote: action === 'hide' ? 'Content hidden by a community moderator.' : undefined });
+    if (action === 'hide' && report.targetType === 'post') await refreshPosts();
+    if (action === 'hide' && report.targetType === 'event') await resources.loadEvents(true);
+    if (action === 'hide' && report.targetType === 'poll') await resources.loadPolls(true);
+  };
+
+  const handleConfirm = async (): Promise<void> => {
+    if (!community || !confirmation.action || busy) return;
+    setBusy(true);
+    try {
+      if (confirmation.action === 'leave') {
+        await communityService.leaveCommunity(community.id);
+        await reconcileCommunity();
+        setFeedback('You left the community.');
+      } else if (confirmation.action === 'delete') {
+        await communityService.deleteCommunity(community.id);
+        await directoryService.removeCommunity(viewerId, community.id);
+        setConfirmation(INITIAL_CONFIRMATION);
+        router.back();
+        return;
+      } else if (confirmation.action === 'poll-delete' && confirmation.poll) {
+        await detailService.deletePoll(viewerId, community.id, confirmation.poll.id);
+      }
+      setConfirmation(INITIAL_CONFIRMATION);
+    } catch (error: unknown) {
+      setFeedback(error instanceof Error ? error.message : 'The community action could not be completed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const showConfirmation = (action: ConfirmationAction, title: string, message: string, poll: CommunityPoll | null = null): void => {
+    setConfirmation({ visible: true, action, title, message, poll });
+  };
+
+  const handleSubmitReport = async (category: ReportReasonCategory, reason: string, details: string): Promise<void> => {
+    if (!community || !reportTarget) return;
+    if (reportTarget.kind === 'community') {
+      await moderationService.reportCommunity({ targetId: community.id, reasonCategory: category, reason, description: details, routePath: `/communities/${community.slug || community.id}` });
+      setFeedback('Your report was sent to the Ourlime moderation team.');
+    } else {
+      const targetId = reportTarget.kind === 'poll' ? reportTarget.poll.id : reportTarget.event.id;
+      if (!targetId) throw new Error('The selected community content could not be identified.');
+      await communityService.reportContent({ communityId: community.id, targetId, targetType: reportTarget.kind, reason, details });
+      setFeedback(`The ${reportTarget.kind} was reported for review.`);
+    }
+    setReportTarget(null);
+  };
+
+  const tabs: { value: CommunityTab; label: string }[] = [
+    { value: 'posts', label: 'Posts' },
+    { value: 'events', label: 'Events' },
+    { value: 'polls', label: 'Polls' },
+    { value: 'about', label: 'About' },
+    { value: 'members', label: 'Members' },
+  ];
+
+  const initialLoading = !resources.detail.data && (resources.detail.status === 'idle' || resources.detail.status === 'hydrating');
+  const errorMessage = resources.detail.error?.message ?? 'This community could not be loaded.';
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#f8fafc' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4 }} accessibilityLabel="Back"><Ionicons name="chevron-back" size={26} color="#0f172a" /></TouchableOpacity>
-        <Text numberOfLines={1} style={{ flex: 1, marginLeft: 10, fontSize: 18, fontWeight: '800', color: '#0f172a' }}>{community?.title || 'Community'}</Text>
-        {community ? <><TouchableOpacity onPress={() => void handleShare()} style={{ padding: 6 }} accessibilityLabel="Share community"><Ionicons name="share-outline" size={21} color="#475569" /></TouchableOpacity><TouchableOpacity onPress={() => setActionModal({ visible: true, action: 'report', title: 'Report this community?', message: 'Ourlime moderators will review the community for guideline violations.' })} style={{ padding: 6 }} accessibilityLabel="Report community"><Ionicons name="flag-outline" size={20} color="#475569" /></TouchableOpacity></> : null}
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingHorizontal: 12, backgroundColor: colors.navigation, borderBottomWidth: 1, borderBottomColor: colors.navigationBorder }}>
+        <TouchableOpacity onPress={() => router.back()} accessibilityLabel="Back" style={{ padding: 8 }}><ChevronLeft size={27} color={colors.icon} /></TouchableOpacity>
+        <Text numberOfLines={1} style={{ flex: 1, marginHorizontal: 7, color: colors.text, fontSize: 18, fontWeight: '900' }}>{community?.title ?? 'Community'}</Text>
+        {community ? <><TouchableOpacity onPress={() => void handleShare()} accessibilityLabel="Share community" style={{ padding: 8 }}><Share2 size={20} color={colors.icon} /></TouchableOpacity>{community.permissions.canReport ? <TouchableOpacity onPress={() => setReportTarget({ kind: 'community' })} accessibilityLabel="Report community" style={{ padding: 8 }}><Flag size={19} color={colors.icon} /></TouchableOpacity> : null}</> : null}
       </View>
-      {loading ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color="#10b981" /></View> : error || !community ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}><Text style={{ color: '#475569', textAlign: 'center' }}>{error || 'Community not found.'}</Text><TouchableOpacity onPress={() => void loadCommunity()} style={{ marginTop: 15, paddingHorizontal: 22, paddingVertical: 11, borderRadius: 999, backgroundColor: '#10b981' }}><Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text></TouchableOpacity></View> : <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadCommunity(true)} tintColor="#10b981" />} contentContainerStyle={{ paddingBottom: 40 }}>
-        {community.imageUrl ? <CachedImage uri={community.imageUrl} recyclingKey={`community-cover-${community.id}-${community.imageUrl}`} style={{ width: '100%', height: 220 }} contentFit="cover" /> : <View style={{ height: 180, alignItems: 'center', justifyContent: 'center', backgroundColor: '#d1fae5' }}><Ionicons name="people" size={54} color="#10b981" /></View>}
-        <View style={{ backgroundColor: '#fff', padding: 20 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ flex: 1, fontSize: 24, fontWeight: '900', color: '#0f172a' }}>{community.title}</Text>{community.isPrivate ? <Ionicons name="lock-closed" size={18} color="#64748b" /> : null}</View>
-          <Text style={{ color: '#059669', fontWeight: '800', marginTop: 8 }}>{community.membershipCount.toLocaleString()} members</Text>
-          {community.isBanned ? <View style={{ marginTop: 14, padding: 12, borderRadius: 12, backgroundColor: '#fee2e2' }}><Text style={{ color: '#991b1b', fontWeight: '800' }}>You are banned from this community.</Text></View> : !community.isMember && !community.isOwner ? <TouchableOpacity disabled={joining || community.requestStatus === 'pending'} onPress={() => void handleJoin()} style={{ marginTop: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: community.requestStatus === 'pending' ? '#e2e8f0' : '#10b981' }}>{joining ? <ActivityIndicator color="#fff" /> : <Text style={{ color: community.requestStatus === 'pending' ? '#64748b' : '#fff', fontWeight: '900' }}>{community.requestStatus === 'pending' ? 'Request pending' : community.isPrivate ? 'Request access' : 'Join community'}</Text>}</TouchableOpacity> : <View style={{ marginTop: 14, flexDirection: 'row', alignItems: 'center' }}><View style={{ paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: '#d1fae5' }}><Text style={{ color: '#047857', fontWeight: '800' }}>{community.isOwner ? 'Owner' : 'Member'}</Text></View>{community.isMember && !community.isOwner ? <TouchableOpacity onPress={() => setActionModal({ visible: true, action: 'leave', title: 'Leave this community?', message: `You will stop seeing member-only posts from ${community.title}.` })} style={{ marginLeft: 8, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: '#fff1f2' }}><Text style={{ color: '#be123c', fontWeight: '800' }}>Leave</Text></TouchableOpacity> : null}</View>}
-        </View>
-        {!community.hasAccess ? <View style={{ margin: 16, padding: 20, borderRadius: 18, backgroundColor: '#fff', alignItems: 'center' }}><Ionicons name="lock-closed" size={34} color="#64748b" /><Text style={{ marginTop: 10, color: '#0f172a', fontSize: 17, fontWeight: '900' }}>Private community</Text><Text style={{ marginTop: 6, textAlign: 'center', color: '#64748b' }}>Join requests must be approved before posts and members are visible.</Text></View> : <>
-          <View style={{ flexDirection: 'row', margin: 16, padding: 4, borderRadius: 14, backgroundColor: '#e2e8f0' }}>{(['posts', 'about'] as const).map((tab) => <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 11, backgroundColor: activeTab === tab ? '#fff' : 'transparent' }}><Text style={{ color: activeTab === tab ? '#047857' : '#64748b', fontWeight: '900', textTransform: 'capitalize' }}>{tab}</Text></TouchableOpacity>)}</View>
-          {activeTab === 'about' ? <View style={{ marginHorizontal: 16, padding: 18, backgroundColor: '#fff', borderRadius: 18, borderWidth: 1, borderColor: '#e2e8f0' }}><Text style={{ fontSize: 17, fontWeight: '900', color: '#0f172a' }}>About this community</Text><Text style={{ color: '#475569', lineHeight: 22, marginTop: 10 }}>{community.description || 'This community has not added a description yet.'}</Text><Text style={{ color: '#64748b', marginTop: 14, fontSize: 12 }}>Posting permission: {community.postingPermission}</Text></View> : <View style={{ gap: 14 }}>
-            {canPost ? <TouchableOpacity onPress={() => setCreateVisible(true)} style={{ marginHorizontal: 16, padding: 15, borderRadius: 17, backgroundColor: '#fff', borderWidth: 1, borderColor: '#d1fae5', flexDirection: 'row', alignItems: 'center' }}><Ionicons name="add-circle" size={25} color="#10b981" /><Text style={{ marginLeft: 10, color: '#334155', fontWeight: '800' }}>Create a community post</Text></TouchableOpacity> : null}
-            {posts.length === 0 ? <View style={{ marginHorizontal: 16, padding: 28, borderRadius: 18, backgroundColor: '#fff', alignItems: 'center' }}><Ionicons name="chatbubbles-outline" size={38} color="#10b981" /><Text style={{ marginTop: 10, fontWeight: '900', color: '#0f172a' }}>No posts yet</Text><Text style={{ marginTop: 4, color: '#64748b' }}>Start the first community conversation.</Text></View> : posts.map((post) => <View key={post.id} style={{ width: '100%', marginBottom: 12 }}><PostCardSection post={post} onCommentClick={setActivePostId} onPostDelete={(postId) => setPosts((current) => current.filter((item) => item.id !== postId))} onAuthorBlocked={(userId) => setPosts((current) => current.filter((item) => item.userId !== userId))} onPostUpdate={handlePostUpdate} /></View>)}
-          </View>}
+
+      {initialLoading ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.accent} /><Text style={{ marginTop: 10, color: colors.mutedText }}>Loading community…</Text></View> : !detailData || !community ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}><Text style={{ color: colors.destructiveText, textAlign: 'center' }}>{errorMessage}</Text><TouchableOpacity onPress={() => void resources.refreshDetail()} style={{ marginTop: 14, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontWeight: '900' }}>Retry</Text></TouchableOpacity></View> : <ScrollView refreshControl={<RefreshControl refreshing={resources.detail.status === 'refreshing'} onRefresh={() => void handleRefresh()} tintColor={colors.accent} />} contentContainerStyle={{ paddingBottom: 48 }}>
+        <CommunityDetailHeader community={community} busyAction={busy} onMembershipAction={() => void handleMembershipAction()} onLeave={() => showConfirmation('leave', 'Leave community?', `You will stop seeing member-only content from ${community.title}.`)} onLike={() => void handleLike()} onShare={() => void handleShare()} onReport={() => setReportTarget({ kind: 'community' })} onEdit={() => setEditVisible(true)} onDashboard={handleOpenDashboard} />
+
+        {!community.permissions.canView ? <View style={{ margin: 16, padding: 26, alignItems: 'center', borderRadius: 19, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}><Lock size={38} color={colors.icon} /><Text style={{ marginTop: 11, color: colors.text, fontSize: 18, fontWeight: '900' }}>Private community</Text><Text style={{ marginTop: 6, color: colors.mutedText, textAlign: 'center' }}>An approved membership is required to view this community’s workspaces.</Text></View> : <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }} style={{ borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>{tabs.map((tab) => <TouchableOpacity key={tab.value} onPress={() => setActiveTab(tab.value)} style={{ marginHorizontal: 4, paddingHorizontal: 15, paddingVertical: 9, borderRadius: 999, backgroundColor: activeTab === tab.value ? colors.selectedControl : colors.control }}><Text style={{ color: activeTab === tab.value ? colors.selectedText : colors.secondaryText, fontWeight: '900' }}>{tab.label}</Text></TouchableOpacity>)}</ScrollView>
+
+          {(community.permissions.canPost || community.permissions.canHostEvent || community.permissions.canCreatePoll || community.permissions.canInvite) ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 13 }}>{community.permissions.canPost ? <TouchableOpacity onPress={() => { setActiveTab('posts'); setCreatePostVisible(true); }} style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 4, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 13, backgroundColor: colors.accent }}><Plus size={16} color={colors.onAccent} /><Text style={{ marginLeft: 5, color: colors.onAccent, fontWeight: '900' }}>Create Post</Text></TouchableOpacity> : null}{community.permissions.canHostEvent ? <TouchableOpacity onPress={() => { setActiveTab('events'); setEventCreateRequestKey((current) => current + 1); }} style={{ marginHorizontal: 4, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 13, backgroundColor: colors.control }}><Text style={{ color: colors.secondaryText, fontWeight: '900' }}>Host Event</Text></TouchableOpacity> : null}{community.permissions.canCreatePoll ? <TouchableOpacity onPress={() => { setActiveTab('polls'); setPollCreateRequestKey((current) => current + 1); }} style={{ marginHorizontal: 4, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 13, backgroundColor: colors.control }}><Text style={{ color: colors.secondaryText, fontWeight: '900' }}>Create Poll</Text></TouchableOpacity> : null}{community.permissions.canInvite ? <TouchableOpacity onPress={() => void handleShare()} style={{ marginHorizontal: 4, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 13, backgroundColor: colors.control }}><Text style={{ color: colors.secondaryText, fontWeight: '900' }}>Share Invite</Text></TouchableOpacity> : null}</ScrollView> : null}
+
+          {activeTab === 'posts' ? <View style={{ paddingTop: 13 }}>{postResource.data === null && (postResource.status === 'idle' || postResource.status === 'hydrating') ? <ActivityIndicator color={colors.accent} style={{ marginVertical: 30 }} /> : postResource.data === null && postResource.error ? <View style={{ margin: 16, padding: 25, alignItems: 'center', borderRadius: 18, backgroundColor: colors.surface }}><Text style={{ color: colors.destructiveText, textAlign: 'center' }}>{postResource.error.message}</Text><TouchableOpacity onPress={() => void refreshPosts()} style={{ marginTop: 12, paddingHorizontal: 17, paddingVertical: 9, borderRadius: 999, backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontWeight: '900' }}>Retry</Text></TouchableOpacity></View> : posts.length ? posts.map((post) => <View key={post.id} style={{ marginBottom: 13 }}><PostCardSection post={post} canModerateCommunityPost={community.permissions.canModerate} onCommentClick={setActivePostId} onPostDelete={handlePostDelete} onAuthorBlocked={(blockedUserId) => void feedService.removePosts((item) => item.userId === blockedUserId)} onPostUpdate={handlePostUpdate} /></View>) : <View style={{ margin: 16, padding: 28, alignItems: 'center', borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}><MessageCircle size={40} color={colors.accent} /><Text style={{ marginTop: 10, color: colors.text, fontWeight: '900' }}>No posts yet</Text><Text style={{ marginTop: 4, color: colors.mutedText }}>Start the first community conversation.</Text></View>}</View> : null}
+          {activeTab === 'events' ? <CommunityEventsWorkspace resource={resources.events} canCreate={community.permissions.canHostEvent} createRequestKey={eventCreateRequestKey} onRetry={() => void resources.loadEvents(true)} onCreate={handleCreateEvent} onToggleAttendance={async (eventId) => { await eventService.toggleCommunityAttendance(community.id, eventId); await resources.loadEvents(true); }} onUpdate={async (eventId, draft) => { await eventService.updateCommunityEvent(community.id, eventId, { title: draft.title, description: draft.summary, summary: draft.summary, startDate: draft.startDate, endDate: draft.endDate, location: draft.location, recurrence: draft.recurrence, image: draft.imageUrl || undefined, media: draft.media }); await resources.loadEvents(true); }} onDelete={async (eventId) => { await eventService.deleteCommunityEvent(community.id, eventId); await resources.loadEvents(true); }} onReport={(event) => setReportTarget({ kind: 'event', event })} /> : null}
+          {activeTab === 'polls' ? <CommunityPollsWorkspace resource={resources.polls} canCreate={community.permissions.canCreatePoll} createRequestKey={pollCreateRequestKey} onRetry={() => void resources.loadPolls(true)} onCreate={async (question, options, durationHours, allowMultiple) => detailService.createPoll(viewerId, { communityId: community.id, question, options, durationHours, allowMultiple })} onVote={(pollId, optionIndex) => detailService.votePoll(viewerId, community.id, pollId, optionIndex)} onDelete={(poll) => showConfirmation('poll-delete', 'Delete poll?', 'This poll and its votes will be permanently removed.', poll)} onReport={(poll) => setReportTarget({ kind: 'poll', poll })} /> : null}
+          {activeTab === 'about' ? <CommunityAboutWorkspace detail={detailData} /> : null}
+          {activeTab === 'members' ? <CommunityMembersWorkspace resource={resources.members} canManage={community.permissions.canManageMembers} onRetry={() => void resources.loadMembers(true)} onLoadMore={() => void resources.loadMoreMembers()} onSearch={(search) => void resources.searchMembers(search)} onOpenProfile={(member) => router.push({ pathname: '/profile/[username]', params: { username: member.userName || member.userId } })} onManageMember={handleManageMember} /> : null}
         </>}
       </ScrollView>}
-      {createVisible && profile && community ? <CreatePostModal setTogglePostForm={setCreateVisible} userProfile={profile} communityId={community.id} communityName={community.title} onCreatePost={(post) => setPosts((current) => [post, ...current])} /> : null}
+
+      {createPostVisible && profile && community ? <CreatePostModal setTogglePostForm={setCreatePostVisible} userProfile={profile} communityId={community.id} communityName={community.title} onCreatePost={(post) => { void Promise.all([communityFeedService.prepend(viewerId, community.id, post), feedService.prependCreated({ userId: viewerId, scope: 'communities', filter: 'all' }, post), feedService.prependCreated({ userId: viewerId, scope: 'home', filter: 'all' }, post)]); useResourceStore.getState().upsertPostEntities([post]); }} /> : null}
       {activePost && profile ? <CommentsModal post={activePost} userId={profile.uid} onClose={() => setActivePostId(null)} onPostUpdate={handlePostUpdate} /> : null}
-      <CustomModal visible={Boolean(message)} title="Community" message={message ?? ''} type="info" onClose={() => setMessage(null)} />
-      <CustomModal visible={actionModal.visible} title={actionModal.title} message={actionModal.message} type={actionModal.action === 'leave' ? 'warning' : 'danger'} confirmText={actionModal.action === 'leave' ? 'Leave community' : 'Submit report'} cancelText="Cancel" isLoading={joining} onConfirm={() => void handleCommunityAction()} onCancel={() => setActionModal({ visible: false, action: null, title: '', message: '' })} onClose={() => setActionModal({ visible: false, action: null, title: '', message: '' })} />
+      {community ? <CommunityDashboardSheet visible={dashboardVisible} community={community} members={resources.members} requests={resources.requests} dashboard={dashboard} onClose={handleCloseDashboard} onLoadMembers={handleLoadDashboardMembers} onLoadRequests={handleLoadDashboardRequests} onLoadDashboard={handleLoadDashboard} onReviewRequest={handleReviewRequest} onManageMember={handleManageMember} onModerateReport={handleModerateReport} /> : null}
+      {community && detailData ? <EditCommunityModal visible={editVisible} community={community} categories={categories} rules={detailData.rules} onClose={() => setEditVisible(false)} onSave={handleUpdateCommunity} onDelete={() => { setEditVisible(false); showConfirmation('delete', 'Delete community?', `${community.title} and its community data will be permanently removed.`); }} /> : null}
+      <CommunityMemberActionSheet visible={Boolean(managedMember)} member={managedMember} onClose={() => setManagedMember(null)} onRoleChange={handleMemberRoleChange} onRemove={handleRemoveMember} onBan={handleBanMember} />
+      <CustomModal visible={Boolean(feedback)} title="Community" message={feedback ?? ''} type="info" onClose={() => setFeedback(null)} />
+      <CustomModal visible={confirmation.visible} title={confirmation.title} message={confirmation.message} type={confirmation.action === 'leave' ? 'warning' : 'danger'} confirmText={confirmation.action === 'leave' ? 'Leave community' : 'Delete'} cancelText="Cancel" isLoading={busy} onConfirm={() => void handleConfirm()} onCancel={() => setConfirmation(INITIAL_CONFIRMATION)} onClose={() => setConfirmation(INITIAL_CONFIRMATION)} />
+      <CommunityReportModal visible={reportTarget !== null} title={reportTarget?.kind === 'poll' ? 'Report poll' : reportTarget?.kind === 'event' ? 'Report event' : 'Report community'} subjectLabel={reportTarget?.kind === 'poll' ? reportTarget.poll.question : reportTarget?.kind === 'event' ? reportTarget.event.title : community?.title ?? ''} onClose={() => setReportTarget(null)} onSubmit={handleSubmitReport} />
     </SafeAreaView>
   );
 }

@@ -7,6 +7,7 @@ import PostCardSection from '@/components/home/MiddleSection/MiddleSectionCompon
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
 import { FeedsFilterSection, type FeedFilter as UiFeedFilter } from '@/components/home/MiddleSection/MiddleSectionComponent/FeedsFilterSection/FeedsFilterSection';
 import { AuthService } from '@/lib/services/AuthService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type TimelineTabProps = { userId: string };
 
@@ -14,6 +15,7 @@ const authService = AuthService.getInstance();
 const apiFilters: Record<UiFeedFilter, FeedFilter> = { All: 'all', Photos: 'photo', Videos: 'video', Sound: 'audio', Polls: 'poll', Events: 'event' };
 
 export default function TimelineTab({ userId }: TimelineTabProps) {
+  const { colors } = useAppTheme();
   const viewerId = authService.getCurrentUser()?.uid ?? userId;
   const [activeFilter, setActiveFilter] = useState<UiFeedFilter>('All');
   const [activePostId, setActivePostId] = useState<string | null>(null);
@@ -33,11 +35,11 @@ export default function TimelineTab({ userId }: TimelineTabProps) {
         <View style={{ paddingVertical: 40, alignItems: 'center' }}><ActivityIndicator size="small" color="#10b981" /></View>
       ) : resource.error && posts.length === 0 ? (
         <View style={{ paddingVertical: 40, alignItems: 'center', paddingHorizontal: 24 }}>
-          <Text style={{ color: '#991b1b', textAlign: 'center' }}>{resource.error.message}</Text>
-          <TouchableOpacity onPress={() => void refresh()} style={{ marginTop: 13, paddingHorizontal: 17, paddingVertical: 9, borderRadius: 999, backgroundColor: '#10b981' }}><Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text></TouchableOpacity>
+          <Text style={{ color: colors.destructiveText, textAlign: 'center' }}>{resource.error.message}</Text>
+          <TouchableOpacity onPress={() => void refresh()} style={{ marginTop: 13, paddingHorizontal: 17, paddingVertical: 9, borderRadius: 999, backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontWeight: '800' }}>Retry</Text></TouchableOpacity>
         </View>
       ) : posts.length === 0 ? (
-        <View style={{ paddingVertical: 40, alignItems: 'center' }}><Text style={{ fontSize: 15, color: '#64748b', fontWeight: '500' }}>No posts yet</Text></View>
+        <View style={{ paddingVertical: 40, alignItems: 'center' }}><Text style={{ fontSize: 15, color: colors.mutedText, fontWeight: '500' }}>No posts yet</Text></View>
       ) : (
         <>
           {posts.map((post) => (
@@ -53,9 +55,9 @@ export default function TimelineTab({ userId }: TimelineTabProps) {
             </View>
           ))}
           {resource.data?.hasMore ? (
-            <TouchableOpacity onPress={() => void loadMore()} style={{ alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 9, borderRadius: 18, backgroundColor: '#ecfdf5' }}><Text style={{ color: '#059669', fontWeight: '700' }}>Load more posts</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => void loadMore()} style={{ alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 9, borderRadius: 18, backgroundColor: colors.successSurface }}><Text style={{ color: colors.successText, fontWeight: '700' }}>Load more posts</Text></TouchableOpacity>
           ) : null}
-          {resource.error ? <Text style={{ color: '#64748b', textAlign: 'center', fontSize: 12 }}>Showing saved posts</Text> : null}
+          {resource.error ? <Text style={{ color: colors.mutedText, textAlign: 'center', fontSize: 12 }}>Showing saved posts</Text> : null}
         </>
       )}
 

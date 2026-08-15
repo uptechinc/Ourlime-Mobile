@@ -133,6 +133,44 @@ export class LimeService {
     });
   }
 
+  public async fetchLimeById(reelId: string): Promise<Reel | null> {
+    const reelSnapshot = await getDoc(doc(db, 'reels', reelId));
+    if (!reelSnapshot.exists()) return null;
+    const data = recordOf(reelSnapshot.data());
+    const creatorId = stringOf(data.userId);
+    const profile = creatorId ? await this.authService.getUserProfile(creatorId) : null;
+    const comments = await this.fetchComments(reelId, 50);
+    const media = recordOf(data.media);
+    const stats = recordOf(data.stats);
+    const embeddedUser = recordOf(data.user);
+    return {
+      id: reelId,
+      userId: creatorId,
+      media: {
+        type: media.type === 'image' ? 'image' : 'video',
+        typeUrl: stringOf(media.typeUrl),
+        fileName: stringOf(media.fileName, 'reel.mp4'),
+        duration: numberOf(media.duration),
+      },
+      visibility: stringOf(data.visibility, 'public'),
+      category: stringOf(data.category, 'Lifestyle'),
+      caption: stringOf(data.caption),
+      createdAt: this.toDate(data.createdAt),
+      user: {
+        firstName: profile?.firstName || stringOf(embeddedUser.firstName, 'Lime'),
+        lastName: profile?.lastName || stringOf(embeddedUser.lastName, 'Creator'),
+        userName: profile?.userName || stringOf(embeddedUser.userName, 'user'),
+        profileImage: profile?.profilePicture || stringOf(embeddedUser.profileImage) || undefined,
+      },
+      stats: {
+        likes: numberOf(stats.likes) || stringArrayOf(data.likes).length,
+        comments: numberOf(stats.comments) || comments.items.length,
+        shares: numberOf(stats.shares),
+      },
+      likes: stringArrayOf(data.likes),
+    };
+  }
+
   public async toggleLike(reelId: string, userId: string, liked: boolean): Promise<void> {
     await updateDoc(doc(db, 'reels', reelId), { likes: liked ? arrayUnion(userId) : arrayRemove(userId) });
   }
