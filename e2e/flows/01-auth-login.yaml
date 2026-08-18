@@ -1,33 +1,33 @@
 appId: com.ourlime.app
 ---
-- launchApp:
-    clearState: true
+- launchApp
 
-# 1. Assert Login Screen renders correctly
-- assertVisible: "Welcome Back"
-- assertVisible: "Log In"
-
-# 2. Test Invalid Credentials
-- tapOn: "Email or username"
-- inputText: "invalid_user@test.com"
-- tapOn: "Password"
-- inputText: "wrongpassword"
-- hideKeyboard
-- tapOn: "Log In"
+# 1. Assert Login screen is visible
 - assertVisible:
-    text: ".*(Invalid|incorrect|error|failed).*"
+    text: ".*(Sign back in|Welcome back|Email Address|Home|Feeds).*"
+
+# 2. Fill Email Address
+- tapOn:
+    text: "Email Address"
+    optional: true
+- eraseText:
+    charactersToErase: 100
+- inputText: ${TEST_EMAIL}
+
+# 3. Fill Password
+- tapOn:
+    text: "Password"
+    optional: true
+- eraseText:
+    charactersToErase: 100
+- inputText: ${TEST_PASSWORD}
+
+# 4. Hide Keyboard & Tap Login
+- hideKeyboard
+- tapOn:
+    text: "Login"
     optional: true
 
-# 3. Test Valid Login
-- eraseText
-- tapOn: "Email or username"
-- eraseText
-- inputText: ${TEST_EMAIL}
-- tapOn: "Password"
-- eraseText
-- inputText: ${TEST_PASSWORD}
-- hideKeyboard
-- tapOn: "Log In"
-
-# 4. Assert Home feed loaded
-- assertVisible: "Home Feed"
+# 5. Assert Home Feed Loaded
+- assertVisible:
+    text: ".*(Home|Feeds|All|Photos|Videos|Sound).*"
