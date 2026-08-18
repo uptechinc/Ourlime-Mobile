@@ -1,0 +1,62 @@
+import type { PostItem } from '@/lib/services/PostService';
+
+export const mockPosts: PostItem[] = [
+  {
+    id: 'post_1',
+    origin: 'home',
+    userId: 'regular_user_id_999',
+    user: {
+      id: 'regular_user_id_999',
+      firstName: 'Aaron',
+      lastName: 'Tester',
+      userName: 'aaron_test',
+      profileImage: 'https://ourlime.com/avatars/aaron.png',
+    },
+    caption: 'Check out this awesome track on YouTube: https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    description: 'Let me know what you think @admin!',
+    type: 'regular',
+    visibility: 'public',
+    hashtags: ['music', 'youtube'],
+    mentions: ['admin'],
+    friendReferences: [],
+    media: [],
+    stats: {
+      likes: 14,
+      comments: 3,
+      shares: 1,
+    },
+    likedUserIds: [],
+    createdAt: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: 'post_poll_2',
+    origin: 'home',
+    userId: 'admin_user_id_123',
+    user: {
+      id: 'admin_user_id_123',
+      firstName: 'Admin',
+      lastName: 'Ourlime',
+      userName: 'admin',
+      profileImage: 'https://ourlime.com/avatars/admin.png',
+    },
+    caption: 'What feature should we launch next for Ourlime Mobile?',
+    description: 'Vote below!',
+    type: 'poll',
+    visibility: 'public',
+    hashtags: ['poll', 'roadmap'],
+    mentions: [],
+    friendReferences: [],
+    pollOptions: [
+      { id: 'opt_1', text: 'Voice Rooms', votes: 42 },
+      { id: 'opt_2', text: 'Market Escrow', votes: 28 },
+    ],
+    media: [],
+    stats: {
+      likes: 25,
+      comments: 8,
+      shares: 5,
+    },
+    likedUserIds: ['regular_user_id_999'],
+    createdAt: new Date(Date.now() - 7200000).toISOString(),
+  },
+];

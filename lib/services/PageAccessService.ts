@@ -1,6 +1,5 @@
 import { collection, onSnapshot, orderBy, query, type Unsubscribe } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
-import { db } from '@/lib/firebaseConfig';
 import { getDefaultMobilePageSettings } from '@/lib/pageAccess/PageRegistry';
 import { authorizationService, type AuthorizationState } from './AuthorizationService';
 import type { PageAccessSetting, PageAccessStatus } from '@/lib/types/pageAccess';
@@ -72,11 +71,22 @@ export class PageAccessService {
     onChange: (settings: PageAccessSetting[]) => void,
     onError: (error: Error) => void,
   ): Unsubscribe {
-    const settingsQuery = query(collection(db, 'pageAccessSettings'), orderBy('order', 'asc'));
-    return onSnapshot(settingsQuery, (snapshot) => {
-      const storedSettings = snapshot.docs.map((document, index) => this.normalizeSetting(document.id, document.data(), index));
-      onChange(this.mergeWithDefaults(storedSettings));
-    }, (error) => onError(error));
+    let unsubscribed = false;
+    let unsubscribeFn: Unsubscribe = () => {};
+
+    void import('@/lib/firebaseConfig').then(({ db }) => {
+      if (unsubscribed) return;
+      const settingsQuery = query(collection(db, 'pageAccessSettings'), orderBy('order', 'asc'));
+      unsubscribeFn = onSnapshot(settingsQuery, (snapshot) => {
+        const storedSettings = snapshot.docs.map((document, index) => this.normalizeSetting(document.id, document.data(), index));
+        onChange(this.mergeWithDefaults(storedSettings));
+      }, (error) => onError(error));
+    }).catch(onError);
+
+    return () => {
+      unsubscribed = true;
+      unsubscribeFn();
+    };
   }
 
   public getDefaultSettings(): PageAccessSetting[] {

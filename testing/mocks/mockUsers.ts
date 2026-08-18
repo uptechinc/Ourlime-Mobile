@@ -1,0 +1,47 @@
+import type { UserProfile } from '@/lib/services/AuthService';
+
+export const mockUsers: Record<string, UserProfile> = {
+  admin: {
+    uid: 'admin_user_id_123',
+    firstName: 'Admin',
+    lastName: 'Ourlime',
+    userName: 'admin',
+    email: 'admin@ourlime.com',
+    profilePicture: 'https://ourlime.com/avatars/admin.png',
+    role: 'admin',
+    accountType: 'personal',
+    isAdmin: true,
+    isDeveloper: true,
+  },
+  developer: {
+    uid: 'dev_user_id_456',
+    firstName: 'Dev',
+    lastName: 'User',
+    userName: 'developer',
+    email: 'dev@ourlime.com',
+    profilePicture: 'https://ourlime.com/avatars/dev.png',
+    role: 'developer',
+    accountType: 'personal',
+    isDeveloper: true,
+    isAdmin: false,
+  },
+  premium: {
+    uid: 'premium_user_id_789',
+    firstName: 'Premium',
+    lastName: 'Member',
+    userName: 'premium_user',
+    email: 'premium@ourlime.com',
+    role: 'premium',
+    accountType: 'premium',
+  },
+  regular: {
+    uid: 'regular_user_id_999',
+    firstName: 'Aaron',
+    lastName: 'Tester',
+    userName: 'aaron_test',
+    email: 'aaron@test.com',
+    profilePicture: 'https://ourlime.com/avatars/aaron.png',
+    role: 'user',
+    accountType: 'personal',
+  },
+};
