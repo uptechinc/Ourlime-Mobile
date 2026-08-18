@@ -120,6 +120,34 @@ export class NativeCallService {
       } catch (error: unknown) {
         this.logger.warn('NativeCallService', 'callkeep:display-failed', { message: error instanceof Error ? error.message : String(error) });
       }
+    } else if (Platform.OS === 'android') {
+      try {
+        const Notifications = await import('expo-notifications');
+        await Notifications.setNotificationChannelAsync('calls', {
+          name: 'Ourlime Calls',
+          importance: Notifications.AndroidImportance.MAX,
+          sound: 'default',
+          vibrationPattern: [0, 500, 250, 500, 250, 500],
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          bypassDnd: true,
+        });
+        const isVideo = payload.callType === 'video';
+        const callerName = payload.callerName || payload.callerUserName || 'Ourlime Caller';
+        await Notifications.scheduleNotificationAsync({
+          identifier: payload.callId,
+          content: {
+            title: isVideo ? `Incoming Video Call` : `Incoming Voice Call`,
+            body: `${callerName} is calling you...`,
+            sound: 'default',
+            priority: Notifications.AndroidNotificationPriority.MAX,
+            vibrate: [0, 500, 250, 500, 250, 500],
+            data: payload as unknown as Record<string, unknown>,
+          },
+          trigger: null,
+        });
+      } catch (error: unknown) {
+        this.logger.warn('NativeCallService', 'android:display-notification-failed', { message: error instanceof Error ? error.message : String(error) });
+      }
     }
     this.clearRingingTimer(payload.callId);
     const remainingMs = Math.max(0, payload.expiresAtMs - Date.now());
@@ -156,8 +184,16 @@ export class NativeCallService {
   }
 
   public async markConnected(callId: string): Promise<void> {
-    if (!this.isAvailable() || Platform.OS !== 'ios') return;
     this.clearRingingTimer(callId);
+    if (Platform.OS === 'android') {
+      try {
+        const Notifications = await import('expo-notifications');
+        await Notifications.dismissNotificationAsync(callId).catch(() => {});
+      } catch {
+        // ignore
+      }
+    }
+    if (!this.isAvailable() || Platform.OS !== 'ios') return;
     try {
       const RNCallKeep = (await import('react-native-callkeep')).default;
       RNCallKeep.reportConnectedOutgoingCallWithUUID(callId);
@@ -167,8 +203,16 @@ export class NativeCallService {
   }
 
   public async endNativeCall(callId: string, reason: CallEndReason | null): Promise<void> {
-    if (!this.isAvailable() || Platform.OS !== 'ios') return;
     this.clearRingingTimer(callId);
+    if (Platform.OS === 'android') {
+      try {
+        const Notifications = await import('expo-notifications');
+        await Notifications.dismissNotificationAsync(callId).catch(() => {});
+      } catch {
+        // ignore
+      }
+    }
+    if (!this.isAvailable() || Platform.OS !== 'ios') return;
     try {
       const callKeepModule = await import('react-native-callkeep');
       const RNCallKeep = callKeepModule.default;

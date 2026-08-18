@@ -59,6 +59,7 @@ export function ChatSettingsMenu({
   const router = useRouter();
   const [showMuteOptions, setShowMuteOptions] = useState(false);
   const [mutedUntil, setMutedUntil] = useState<number | null>(null);
+  const [isArchived, setIsArchived] = useState(false);
   const [isBlockedByMe, setIsBlockedByMe] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -70,14 +71,15 @@ export function ChatSettingsMenu({
 
     const loadState = async () => {
       try {
-        const [muteDoc, blockStatus] = await Promise.all([
+        const [muteDoc, blockStatus, archiveStatus] = await Promise.all([
           messagingService.getMuteUntil(currentUserId, friendId),
           relationshipService.checkBlockStatus(currentUserId, friendId),
+          messagingService.getArchiveStatus(currentUserId, friendId),
         ]);
 
         setIsBlockedByMe(blockStatus.isBlockedByMe);
-
         setMutedUntil(muteDoc);
+        setIsArchived(archiveStatus);
       } catch {
         // ignore
       } finally {
@@ -116,6 +118,35 @@ export function ChatSettingsMenu({
       await AsyncStorage.setItem(mutedKey, JSON.stringify(Array.from(set)));
     } catch (e) {
       console.error('[ChatSettingsMenu.handleUnmute]', e);
+    }
+    onClose();
+  };
+
+  const handleToggleArchive = async () => {
+    const nextArchived = !isArchived;
+    setIsArchived(nextArchived);
+    try {
+      await messagingService.setArchiveStatus(friendId, nextArchived);
+      const archivedKey = `ourlime_archived_chats_${currentUserId}`;
+      const val = await AsyncStorage.getItem(archivedKey);
+      const list = val ? (JSON.parse(val) as string[]) : [];
+      const set = new Set(list);
+      if (nextArchived) {
+        set.add(friendId);
+      } else {
+        set.delete(friendId);
+      }
+      await AsyncStorage.setItem(archivedKey, JSON.stringify(Array.from(set)));
+      Alert.alert(
+        nextArchived ? 'Chat Archived' : 'Chat Unarchived',
+        nextArchived
+          ? 'This conversation has been moved to Archived.'
+          : 'This conversation has been unarchived.'
+      );
+    } catch (e) {
+      console.error('[ChatSettingsMenu.handleToggleArchive]', e);
+      setIsArchived(!nextArchived);
+      Alert.alert('Error', 'Failed to update archive status.');
     }
     onClose();
   };
@@ -262,6 +293,13 @@ export function ChatSettingsMenu({
                 }}
               />
             )}
+
+            {/* Archive / Unarchive Chat */}
+            <MenuItem
+              icon={isArchived ? 'inbox' : 'archive'}
+              label={isArchived ? 'Unarchive Chat' : 'Archive Chat'}
+              onPress={() => void handleToggleArchive()}
+            />
 
             {/* Mute / Unmute */}
             {isLoading ? (

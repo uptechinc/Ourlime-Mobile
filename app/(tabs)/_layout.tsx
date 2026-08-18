@@ -70,7 +70,7 @@ const TabLayout = () => {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Feed",
+          title: "Feeds",
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "grid" : "grid-outline"}

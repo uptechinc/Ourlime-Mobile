@@ -270,22 +270,37 @@ export class PostService {
     if (options.scope === 'communities') {
       let communityIds: string[] = [];
       if (viewerId) {
-        const [membershipsSnap, createdSnap] = await Promise.all([
+        const [membershipsSnap, memberIdSnap, createdSnapUserId, createdSnapCreatorId] = await Promise.all([
           getDocs(query(collection(db, 'communityVariantMembership'), where('userId', '==', viewerId))).catch(() => null),
+          getDocs(query(collection(db, 'communityVariantMembership'), where('memberId', '==', viewerId))).catch(() => null),
           getDocs(query(collection(db, 'communityVariant'), where('userId', '==', viewerId))).catch(() => null),
+          getDocs(query(collection(db, 'communityVariant'), where('creatorId', '==', viewerId))).catch(() => null),
         ]);
         membershipsSnap?.docs.forEach((d) => {
           const m = d.data();
-          if (m.isMember === true) {
-            const cid = readString(m.communityVariantId);
+          if (m.isMember !== false && m.status !== 'banned' && m.isBanned !== true) {
+            const cid = readString(m.communityVariantId) || readString(m.communityId);
             if (cid) communityIds.push(cid);
           }
         });
-        createdSnap?.docs.forEach((d) => communityIds.push(d.id));
+        memberIdSnap?.docs.forEach((d) => {
+          const m = d.data();
+          if (m.isMember !== false && m.status !== 'banned' && m.isBanned !== true) {
+            const cid = readString(m.communityVariantId) || readString(m.communityId);
+            if (cid) communityIds.push(cid);
+          }
+        });
+        createdSnapUserId?.docs.forEach((d) => communityIds.push(d.id));
+        createdSnapCreatorId?.docs.forEach((d) => communityIds.push(d.id));
       }
       if (communityIds.length === 0) {
-        const publicSnap = await getDocs(query(collection(db, 'communityVariant'), limit(20))).catch(() => null);
-        publicSnap?.docs.forEach((d) => communityIds.push(d.id));
+        const publicSnap = await getDocs(query(collection(db, 'communityVariant'), limit(30))).catch(() => null);
+        publicSnap?.docs.forEach((d) => {
+          const data = d.data();
+          if (data.isPrivate !== true && data.privacy !== 'private') {
+            communityIds.push(d.id);
+          }
+        });
       }
       communityIds = [...new Set(communityIds.filter(Boolean))];
 
@@ -294,13 +309,32 @@ export class PostService {
       }
 
       const chunks = Array.from({ length: Math.ceil(communityIds.length / 30) }, (_, index) => communityIds.slice(index * 30, index * 30 + 30));
-      const postSnapshots = await Promise.all(
-        chunks.map((chunkIds) =>
-          getDocs(query(collection(db, 'communityVariantDetails'), where('communityVariantId', 'in', chunkIds), limit(scanLimit)))
-        )
-      );
-      let rawDocuments: DataDocument[] = postSnapshots.flatMap((s) => s.docs)
-        .map((document) => ({ id: document.id, data: isRecord(document.data()) ? document.data() : {} }))
+      const [variantSnapshots, idSnapshots] = await Promise.all([
+        Promise.all(
+          chunks.map((chunkIds) =>
+            getDocs(query(collection(db, 'communityVariantDetails'), where('communityVariantId', 'in', chunkIds), limit(scanLimit))).catch(() => null)
+          )
+        ),
+        Promise.all(
+          chunks.map((chunkIds) =>
+            getDocs(query(collection(db, 'communityVariantDetails'), where('communityId', 'in', chunkIds), limit(scanLimit))).catch(() => null)
+          )
+        ),
+      ]);
+
+      const allDocsMap = new Map<string, DataDocument>();
+      variantSnapshots.forEach((s) => {
+        s?.docs.forEach((docSnap) => {
+          allDocsMap.set(docSnap.id, { id: docSnap.id, data: isRecord(docSnap.data()) ? docSnap.data() : {} });
+        });
+      });
+      idSnapshots.forEach((s) => {
+        s?.docs.forEach((docSnap) => {
+          allDocsMap.set(docSnap.id, { id: docSnap.id, data: isRecord(docSnap.data()) ? docSnap.data() : {} });
+        });
+      });
+
+      let rawDocuments: DataDocument[] = Array.from(allDocsMap.values())
         .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
 
       if (rawDocuments.length === 0) {
@@ -321,7 +355,7 @@ export class PostService {
       }
 
       const postIds = rawDocuments.map((d) => d.id);
-      const uniqueCommunityIds = [...new Set(rawDocuments.map((d) => readString(d.data.communityVariantId)).filter(Boolean))];
+      const uniqueCommunityIds = [...new Set(rawDocuments.map((d) => readString(d.data.communityVariantId) || readString(d.data.communityId)).filter(Boolean))];
       const [mediaDocuments, likeDocuments, counters, communityDocuments] = await Promise.all([
         this.getDocumentsByField('communityVariantDetailsSummary', 'communityVariantDetailsId', postIds),
         viewerId ? this.getDocumentsByField('communityVariantDetailsLikes', 'postId', postIds) : Promise.resolve([]),
@@ -371,7 +405,7 @@ export class PostService {
       const posts = pageDocuments.map((document, index) => {
         const userId = readString(document.data.userId);
         const counter = counters[index]?.data() ?? {};
-        const cId = readString(document.data.communityVariantId);
+        const cId = readString(document.data.communityVariantId) || readString(document.data.communityId);
         const community = communityMap.get(cId) ?? {};
         const basePost = this.mapPost(
           document,
@@ -385,8 +419,8 @@ export class PostService {
           origin: 'community' as const,
           communityId: cId,
           communityName: readString(community.title, readString(community.name, 'Community')),
-          communitySlug: readString(community.uniqueName, cId),
-          communityAvatar: readString(community.imageUrl, readString(community.bannerImageUrl)),
+          communitySlug: readString(community.uniqueName, readString(community.slug, cId)),
+          communityAvatar: readString(community.imageUrl, readString(community.bannerImageUrl, readString(community.coverImage))),
         };
       });
 

@@ -478,6 +478,26 @@ export class MessagingService {
         ].join(':');
     }
 
+    public async getArchiveStatus(userId: string, peerId: string): Promise<boolean> {
+        try {
+            const summaryDoc = await getDoc(doc(this.db, 'users', userId, 'conversationSummaries', peerId));
+            if (summaryDoc.exists()) {
+                return Boolean(summaryDoc.data()?.isArchived);
+            }
+        } catch {
+            // fallback
+        }
+        return false;
+    }
+
+    public async setArchiveStatus(peerId: string, isArchived: boolean): Promise<void> {
+        await this.apiService.request('/api/messaging', {
+            authenticated: true,
+            method: 'PATCH',
+            body: { peerId, action: isArchived ? 'archive' : 'unarchive' },
+        });
+    }
+
     /**
      * Toggle an emoji reaction on a message
      */
