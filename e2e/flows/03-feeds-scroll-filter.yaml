@@ -1,0 +1,26 @@
+appId: com.ourlime.app
+---
+- launchApp
+
+# 1. Assert filter options are visible
+- assertVisible: "All"
+- assertVisible: "Photos"
+- assertVisible: "Videos"
+- assertVisible: "Sound"
+
+# 2. Tap Photos filter
+- tapOn: "Photos"
+- scroll
+
+# 3. Tap Videos filter
+- tapOn: "Videos"
+- scroll
+
+# 4. Tap Sound filter (Coming Soon)
+- tapOn: "Sound"
+- assertVisible: "Soon"
+
+# 5. Tap All filter & scroll feed
+- tapOn: "All"
+- scroll
+- scroll

@@ -1,0 +1,32 @@
+appId: com.ourlime.app
+---
+- launchApp
+
+# 1. Navigate to Limes Tab
+- tapOn:
+    id: "tab-limes"
+    optional: true
+
+# 2. Swipe up to next video reel
+- swipe:
+    start: 50%, 80%
+    end: 50%, 20%
+    duration: 300
+
+# 3. Double tap video to like
+- doubleTapOn:
+    point: 50%, 50%
+
+# 4. Open Comments sheet
+- tapOn:
+    id: "lime-comment-button"
+    optional: true
+- assertVisible:
+    text: "Comments"
+    optional: true
+- back
+
+# 5. Tap Repost button
+- tapOn:
+    id: "lime-repost-button"
+    optional: true

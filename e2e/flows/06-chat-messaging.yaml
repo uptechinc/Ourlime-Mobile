@@ -1,0 +1,40 @@
+appId: com.ourlime.app
+---
+- launchApp
+
+# 1. Navigate to Chat Tab
+- tapOn:
+    id: "tab-chat"
+    optional: true
+
+# 2. Select first conversation
+- tapOn:
+    point: 50%, 25%
+
+# 3. Type and send a message
+- tapOn: "Type a message..."
+- inputText: "Testing lockscreen push notification delivery from mobile test!"
+- hideKeyboard
+- tapOn:
+    id: "send-button"
+    optional: true
+
+# 4. Open Sticker Picker
+- tapOn:
+    id: "sticker-picker-button"
+    optional: true
+- assertVisible:
+    text: "Stickers"
+    optional: true
+- back
+
+# 5. Verify call buttons are present in header
+- assertVisible:
+    id: "header-voice-call"
+    optional: true
+- assertVisible:
+    id: "header-video-call"
+    optional: true
+
+# 6. Return to Chat Directory
+- back

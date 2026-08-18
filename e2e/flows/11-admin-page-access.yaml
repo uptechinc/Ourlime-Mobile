@@ -1,0 +1,25 @@
+appId: com.ourlime.app
+---
+- launchApp
+
+# 1. Open Navigation Drawer
+- tapOn:
+    id: "header-menu-button"
+    optional: true
+
+# 2. Tap Admin Portal
+- tapOn: "Admin Portal"
+
+# 3. Tap Page Access Controls
+- tapOn: "Page Access"
+- assertVisible: "Page Access Controls"
+
+# 4. Verify system route status badges
+- assertVisible: "Home"
+- assertVisible: "Communities"
+- assertVisible: "Events"
+- assertVisible: "E-Learning"
+
+# 5. Return to Home
+- back
+- back
