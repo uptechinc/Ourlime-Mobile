@@ -12,7 +12,7 @@ import PostLinkPreview from './PostLinkPreview';
 import { findFirstUrl } from '@/lib/services/OpenGraphService';
 import LikesModal from './LikesModal';
 import IdentityBadges from './IdentityBadges';
-import MentionText from '@/components/ui/MentionText';
+import RichTextContent from '@/components/ui/RichTextContent';
 import PostLocationMap from './PostLocationMap';
 import { EventService } from '@/lib/services/EventService';
 import CustomModal from '@/components/ui/CustomModal';
@@ -211,13 +211,13 @@ export default function PostCardSection({ post, isVisible = false, canModerateCo
 
         {/* 1. Text */}
         {post.caption ? (
-          <MentionText
+          <RichTextContent
             content={post.caption}
             style={{ marginTop: 14, color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: '600' }}
           />
         ) : null}
         {post.description && post.description !== post.caption ? (
-          <MentionText
+          <RichTextContent
             content={post.description}
             style={{ marginTop: 8, color: colors.mutedText, fontSize: 15, lineHeight: 22 }}
           />
