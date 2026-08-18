@@ -16,6 +16,7 @@
     "check:discipline": "node scripts/check-discipline.cjs",
     "check": "tsc --noEmit && expo lint && node scripts/check-discipline.cjs",
     "test": "bun test",
+    "test:integration": "bun test testing/integration/",
     "test:feeds": "bun test testing/suites/02-feeds.test.ts",
     "test:page-access": "bun test testing/suites/10-page-access.test.ts",
     "test:push": "bun test testing/suites/12-push-delivery.test.ts",
