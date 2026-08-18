@@ -7,7 +7,7 @@ import type { RelationshipHubPage, RelationshipHubSection } from '@/lib/types/re
 const IDLE_RELATIONSHIP_HUB = createIdleResource<RelationshipHubPage>();
 
 export function useRelationshipHub(userId: string, section: RelationshipHubSection, enabled = true) {
-  const resource = useResourceStore((state) => state.relationshipHub[section] ?? IDLE_RELATIONSHIP_HUB);
+  const resource = useResourceStore((state) => state.relationshipHub[section]) ?? IDLE_RELATIONSHIP_HUB;
   useEffect(() => {
     if (!enabled || !userId) return;
     void relationshipResourceService.hydrate(userId, section).then(() => relationshipResourceService.refresh(userId, section));

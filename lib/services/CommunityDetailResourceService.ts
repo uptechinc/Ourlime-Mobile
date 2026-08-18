@@ -41,7 +41,14 @@ export class CommunityDetailResourceService {
     if (current?.data) return;
     useResourceStore.getState().setCommunityDetail(identifier, this.withState(current, { status: 'hydrating', error: null }));
     await this.hydrateValue(userId, DETAIL_NAMESPACE, identifier, (data: CommunityDetailResource, updatedAt, isExpired) => {
-      useResourceStore.getState().setCommunityDetail(identifier, { data, status: 'ready', source: 'disk', updatedAt, isStale: isExpired || Date.now() - updatedAt >= STALE_MS, error: null });
+      const state = { data, status: 'ready' as const, source: 'disk' as const, updatedAt, isStale: isExpired || Date.now() - updatedAt >= STALE_MS, error: null };
+      useResourceStore.getState().setCommunityDetail(identifier, state);
+      if (data.community.id && data.community.id !== identifier) {
+        useResourceStore.getState().setCommunityDetail(data.community.id, state);
+      }
+      if (data.community.slug && data.community.slug !== identifier) {
+        useResourceStore.getState().setCommunityDetail(data.community.slug, state);
+      }
     }, () => useResourceStore.getState().setCommunityDetail(identifier, this.withState(null, { status: 'idle' })), (error) => useResourceStore.getState().setCommunityDetail(identifier, { ...this.withState(null, { status: 'error' }), error }));
   }
 
@@ -54,9 +61,17 @@ export class CommunityDetailResourceService {
     useResourceStore.getState().setCommunityDetail(identifier, this.withState(current, { status: current?.data ? 'refreshing' : 'hydrating', error: null }));
     const request = this.communityService.fetchCommunityDetail(identifier).then(async (data) => {
       const updatedAt = Date.now();
-      useResourceStore.getState().setCommunityDetail(identifier, { data, status: 'ready', source: 'network', updatedAt, isStale: false, error: null });
+      const state = { data, status: 'ready' as const, source: 'network' as const, updatedAt, isStale: false, error: null };
+      useResourceStore.getState().setCommunityDetail(identifier, state);
+      if (data.community.id && data.community.id !== identifier) {
+        useResourceStore.getState().setCommunityDetail(data.community.id, state);
+      }
+      if (data.community.slug && data.community.slug !== identifier) {
+        useResourceStore.getState().setCommunityDetail(data.community.slug, state);
+      }
       await Promise.all([
         this.cacheService.write(userId, DETAIL_NAMESPACE, identifier, data, { expiresAt: updatedAt + RETENTION_MS }),
+        data.community.id && data.community.id !== identifier ? this.cacheService.write(userId, DETAIL_NAMESPACE, data.community.id, data, { expiresAt: updatedAt + RETENTION_MS }) : Promise.resolve(),
         this.directoriesService.patchCommunity(userId, data.community),
       ]);
     }).catch((error: unknown) => {

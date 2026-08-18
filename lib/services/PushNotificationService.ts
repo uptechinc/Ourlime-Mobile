@@ -5,7 +5,9 @@ import * as Device from 'expo-device';
 import type { Href } from 'expo-router';
 import { ApiService } from './ApiService';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { platformEnvironmentService } from './PlatformEnvironmentService';
 import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
+import { authService } from './AuthService';
 
 const DEVICE_TOKEN_KEY = 'ourlime_device_push_token';
 
@@ -18,7 +20,7 @@ type PushTokenResponse = { success: boolean; error?: string };
 // We load it lazily so the module never throws at import time.
 // In Expo Go the require() will still throw at CALL time, which we catch per-method.
 function getNotifications(): typeof import('expo-notifications') | null {
-  if (Constants.appOwnership === 'expo') return null;
+  if (platformEnvironmentService.isExpoGo() || Platform.OS === 'web') return null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('expo-notifications') as typeof import('expo-notifications');
@@ -44,12 +46,39 @@ export class PushNotificationService {
     if (!Notifications) return;
     try {
       Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowBanner: true,
-          shouldShowList: true,
-          shouldPlaySound: true,
-          shouldSetBadge: true,
-        }),
+        handleNotification: async (notification) => {
+          const data = notification?.request?.content?.data as Record<string, unknown> | undefined;
+          const senderId = typeof data?.senderId === 'string' ? data.senderId : undefined;
+          if (senderId) {
+            try {
+              const currentUserId = authService.getCurrentUser()?.uid ?? '';
+              if (currentUserId) {
+                const [archivedRaw, mutedRaw] = await Promise.all([
+                  AsyncStorage.getItem(`ourlime_archived_chats_${currentUserId}`),
+                  AsyncStorage.getItem(`ourlime_muted_chats_${currentUserId}`),
+                ]);
+                const archivedList = archivedRaw ? (JSON.parse(archivedRaw) as string[]) : [];
+                const mutedList = mutedRaw ? (JSON.parse(mutedRaw) as string[]) : [];
+                if (archivedList.includes(senderId) || mutedList.includes(senderId)) {
+                  return {
+                    shouldShowBanner: false,
+                    shouldShowList: false,
+                    shouldPlaySound: false,
+                    shouldSetBadge: false,
+                  };
+                }
+              }
+            } catch {
+              // Ignore and use default
+            }
+          }
+          return {
+            shouldShowBanner: true,
+            shouldShowList: true,
+            shouldPlaySound: true,
+            shouldSetBadge: true,
+          };
+        },
       });
     } catch {
       // Not supported in Expo Go — silently skip.
@@ -71,12 +100,10 @@ export class PushNotificationService {
         await Notifications.setNotificationChannelAsync('default', {
           name: 'Ourlime notifications',
           importance: Notifications.AndroidImportance.HIGH,
-          sound: 'default',
         });
         await Notifications.setNotificationChannelAsync('calls', {
           name: 'Ourlime calls',
           importance: Notifications.AndroidImportance.MAX,
-          sound: 'default',
           vibrationPattern: [0, 250, 250, 250],
         });
       }

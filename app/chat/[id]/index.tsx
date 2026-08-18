@@ -45,6 +45,8 @@ import { useResourceStore } from '@/lib/store/useResourceStore';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { presenceService, type PresenceState } from '@/lib/services/PresenceService';
 import { useCallCoordinator } from '@/lib/contexts/CallContext';
+import { simpleChatMessageService } from '@/lib/services/SimpleChatMessageService';
+import { conversationResourceService } from '@/lib/services/ConversationResourceService';
 
 const authService = AuthService.getInstance();
 const relationshipService = RelationshipService.getInstance();
@@ -606,6 +608,13 @@ export default function ChatPage() {
         return () => clearInterval(timer);
     }, [friendId]);
 
+    // Mark messages as read immediately on open and whenever new messages arrive
+    useEffect(() => {
+        if (!friendId || !currentUserId) return;
+        void simpleChatMessageService.markRead(friendId);
+        void conversationResourceService.patchConversation(currentUserId, friendId, { unreadCount: 0 });
+    }, [friendId, currentUserId, messages.length]);
+
     useEffect(() => {
         const latest = messages[0];
         if (!latest || latest.senderId !== friendId) return;
@@ -668,7 +677,8 @@ export default function ChatPage() {
         if (!friendId) return;
         if (cachedFriend) setFriend(cachedFriend);
         authService.getUserProfile(friendId).then((p) => { if (p) setFriend(p); });
-    }, [cachedFriend, friendId]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [friendId]);
 
     // Send message
     const handleSend = useCallback(async () => {

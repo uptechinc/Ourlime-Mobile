@@ -9,7 +9,7 @@ const EMPTY_DIRECTORY_RESOURCE: ResourceState<CommunityDirectoryPage> = { data: 
 
 export function useCommunitiesResource(userId: string, query: CommunityDirectoryQuery = DEFAULT_COMMUNITY_QUERY) {
   const queryKey = communitiesResourceService.getQueryKey(query);
-  const resource = useResourceStore((state) => state.communityDirectories[queryKey] ?? EMPTY_DIRECTORY_RESOURCE);
+  const resource = useResourceStore((state) => state.communityDirectories[queryKey]) ?? EMPTY_DIRECTORY_RESOURCE;
   const categories = useResourceStore((state) => state.communityCategories);
 
   useEffect(() => {

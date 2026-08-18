@@ -139,16 +139,20 @@
       ],
       "expo-notifications",
       "@react-native-firebase/app",
+      "@react-native-firebase/crashlytics",
       "@react-native-firebase/messaging",
       "./plugins/withOurlimeCalling.cjs",
       [
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true
+            "usesCleartextTraffic": true,
+            "newArchEnabled": false,
+            "largeHeap": true
           }
         }
-      ]
+      ],
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true

@@ -71,6 +71,8 @@ export class AuthService {
   private static instance: AuthService;
   private readonly logger = DiagnosticLogService.getInstance();
   private readonly mediaService = PostMediaService.getInstance();
+  private readonly profilePromises = new Map<string, Promise<UserProfile | null>>();
+  private readonly profileMemoryCache = new Map<string, { profile: UserProfile; timestamp: number }>();
 
   private constructor() {}
 
@@ -79,6 +81,11 @@ export class AuthService {
       AuthService.instance = new AuthService();
     }
     return AuthService.instance;
+  }
+
+  public invalidateUserProfile(uid: string): void {
+    this.profileMemoryCache.delete(uid);
+    this.profilePromises.delete(uid);
   }
 
   /**
@@ -188,17 +195,35 @@ export class AuthService {
     };
 
     await setDoc(doc(db, 'users', user.uid), userProfile);
+    await sendEmailVerification(user).catch(() => undefined);
 
     return user;
   }
 
   /**
-   * Fetch user profile from Firestore
+   * Fetch user profile from Firestore with in-flight deduplication and memory caching
    */
-  public async getUserProfile(uid: string): Promise<UserProfile | null> {
-    // Guard: Firestore document path requires a non-empty uid.
-    // An empty string produces the path 'users' (no document segment) which throws invalid-argument.
+  public async getUserProfile(uid: string, force = false): Promise<UserProfile | null> {
     if (!uid) return null;
+    if (!force) {
+      const cached = this.profileMemoryCache.get(uid);
+      if (cached && Date.now() - cached.timestamp < 120_000) {
+        return cached.profile;
+      }
+      const inFlight = this.profilePromises.get(uid);
+      if (inFlight) {
+        return inFlight;
+      }
+    }
+
+    const promise = this.fetchUserProfileInternal(uid).finally(() => {
+      this.profilePromises.delete(uid);
+    });
+    this.profilePromises.set(uid, promise);
+    return promise;
+  }
+
+  private async fetchUserProfileInternal(uid: string): Promise<UserProfile | null> {
     this.logger.info('AuthService', 'profile:user-document:start', { uid, collection: 'users' });
     try {
       const snap = await getDoc(doc(db, 'users', uid));
@@ -288,6 +313,7 @@ export class AuthService {
           : [],
         createdAt: profileRecord.createdAt instanceof Timestamp ? profileRecord.createdAt : undefined,
       };
+      this.profileMemoryCache.set(uid, { profile, timestamp: Date.now() });
       this.logger.success('AuthService', 'profile:complete', {
         uid,
         firstName: profile.firstName,
@@ -329,7 +355,12 @@ export class AuthService {
     await nativeCallService.unregisterTokens().catch((error: unknown) => {
       this.logger.warn('AuthService', 'logout:call-token-unregister', { error: error instanceof Error ? error.message : String(error) });
     });
-    if (userId) await localCacheService.clearUser(userId).catch(() => undefined);
+    if (userId) {
+      this.invalidateUserProfile(userId);
+      await localCacheService.clearUser(userId).catch(() => undefined);
+    }
+    this.profileMemoryCache.clear();
+    this.profilePromises.clear();
     useResourceStore.getState().clearUserResources();
     await signOut(auth);
   }

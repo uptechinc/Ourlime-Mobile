@@ -4,9 +4,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image, Platform } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthService } from '@/lib/services/AuthService';
+import { ConversationResourceService } from '@/lib/services/ConversationResourceService';
+import { useResourceStore } from '@/lib/store/useResourceStore';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const authService = AuthService.getInstance();
+const conversationResourceService = ConversationResourceService.getInstance();
 
 const TabLayout = () => {
   const [isDeveloper, setIsDeveloper] = useState(false);
@@ -15,12 +18,18 @@ const TabLayout = () => {
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 20);
   const tabBarHeight = 56 + bottomInset;
 
+  const conversations = useResourceStore((state) => state.conversations.data);
+  const unreadChatCount = (conversations ?? []).reduce((sum, item) => sum + (item.unreadCount || 0), 0);
+
   useEffect(() => {
     const unsub = authService.subscribeToVerifiedAuthState((user) => {
       if (!user) {
         setIsDeveloper(false);
+        conversationResourceService.stopRealtime();
         return;
       }
+      conversationResourceService.startRealtime(user.uid);
+      void conversationResourceService.hydrate(user.uid).then(() => conversationResourceService.refresh(user.uid));
       void authService.getUserProfile(user.uid).then((profile) => {
         const role = profile?.accountType?.toLowerCase() ?? '';
         setIsDeveloper(role === 'developer' || role === 'dev' || profile?.isDeveloper === true);
@@ -119,6 +128,17 @@ const TabLayout = () => {
         name="Chat"
         options={{
           title: "Chat",
+          tabBarBadge: unreadChatCount > 0 ? (unreadChatCount > 99 ? '99+' : unreadChatCount) : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.accent,
+            color: colors.onAccent,
+            fontSize: 10,
+            fontWeight: '700',
+            minWidth: 18,
+            height: 18,
+            borderRadius: 9,
+            lineHeight: 18,
+          },
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "chatbubbles" : "chatbubbles-outline"}

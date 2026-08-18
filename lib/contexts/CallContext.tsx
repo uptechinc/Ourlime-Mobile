@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Vibration } from 'react-native';
 import { onAuthStateChanged } from 'firebase/auth';
-import type { Unsubscribe } from 'firebase/firestore';
-import { auth } from '@/lib/firebaseConfig';
+import { doc, updateDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebaseConfig';
 import { agoraCallService } from '@/lib/services/AgoraCallService';
 import { callService } from '@/lib/services/CallService';
 import { nativeCallService } from '@/lib/services/NativeCallService';
@@ -30,6 +31,7 @@ const CallContext = createContext<CallContextValue | null>(null);
 export function CallProvider({ children }: CallProviderProps) {
   const logger = useMemo(() => DiagnosticLogService.getInstance(), []);
   const callUnsubscribeRef = useRef<Unsubscribe | null>(null);
+  const incomingCallUnsubscribeRef = useRef<Unsubscribe | null>(null);
   const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const operationRef = useRef<Promise<void> | null>(null);
   const session = useCallStore((state) => state.session);
@@ -101,7 +103,25 @@ export function CallProvider({ children }: CallProviderProps) {
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (user?.emailVerified) {
+      if (user) {
+        incomingCallUnsubscribeRef.current?.();
+        incomingCallUnsubscribeRef.current = callService.subscribeToIncomingCalls(user.uid, (incomingSession) => {
+          if (incomingSession.state === 'ended') {
+            void agoraCallService.leave().catch(() => {});
+            Vibration.cancel();
+            useCallStore.getState().reset();
+            return;
+          }
+          const current = useCallStore.getState().session;
+          if (current?.id === incomingSession.id && current.state !== 'ended') return;
+          useCallStore.getState().setSession(incomingSession);
+          useCallStore.getState().setConnectionStatus('ringing');
+          subscribeToCall(incomingSession.id);
+          void nativeCallService.displayIncomingCallForSession(incomingSession);
+        }, (error) => {
+          logger.warn('CallCoordinator', 'incoming-listener', { message: error });
+        });
+
         void nativeCallService.initialize({
           onIncomingCall: (payload) => { void handleIncomingPayload(payload); },
           onAnswer: (callId) => {
@@ -128,6 +148,8 @@ export function CallProvider({ children }: CallProviderProps) {
           },
         }).catch((error: unknown) => logger.warn('CallCoordinator', 'native-unavailable', { message: error instanceof Error ? error.message : String(error) }));
       } else {
+        incomingCallUnsubscribeRef.current?.();
+        incomingCallUnsubscribeRef.current = null;
         callUnsubscribeRef.current?.();
         callUnsubscribeRef.current = null;
         void agoraCallService.leave();
@@ -137,12 +159,25 @@ export function CallProvider({ children }: CallProviderProps) {
     });
     return () => {
       unsubscribeAuth();
+      incomingCallUnsubscribeRef.current?.();
+      incomingCallUnsubscribeRef.current = null;
       callUnsubscribeRef.current?.();
       if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current);
       void agoraCallService.leave();
       nativeCallService.dispose();
     };
   }, [handleIncomingPayload, joinRtc, logger, subscribeToCall]);
+
+  useEffect(() => {
+    if (session?.state === 'ringing' && session.callee.userId === auth.currentUser?.uid) {
+      Vibration.vibrate([0, 500, 1000], true);
+    } else {
+      Vibration.cancel();
+    }
+    return () => {
+      Vibration.cancel();
+    };
+  }, [session?.callee.userId, session?.state]);
 
   useEffect(() => {
     if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current);
@@ -183,16 +218,35 @@ export function CallProvider({ children }: CallProviderProps) {
     if (!current) return;
     try {
       useCallStore.getState().setConnectionStatus(action === 'answer' ? 'connecting' : 'ending');
-      const updated = await callService.updateCall(current.id, action);
-      useCallStore.getState().setSession(updated);
-      if (action === 'answer') await joinRtc(updated);
-      if (action !== 'answer' && action !== 'connected') {
-        await agoraCallService.leave();
-        await nativeCallService.endNativeCall(updated.id, updated.endReason);
+      const updated = await callService.updateCall(current.id, action).catch(() => null);
+      if (action === 'answer') {
+        if (updated) {
+          useCallStore.getState().setSession(updated);
+          await joinRtc(updated);
+        } else {
+          useCallStore.getState().setConnectionStatus('active');
+        }
+      } else {
+        void (async () => {
+          try {
+            await updateDoc(doc(db, 'calls', current.id), {
+              state: 'ended',
+              endReason: action === 'decline' ? 'declined' : 'canceled',
+              endedAt: serverTimestamp(),
+            });
+          } catch {}
+        })();
+        await agoraCallService.leave().catch(() => {});
+        if (updated) await nativeCallService.endNativeCall(updated.id, updated.endReason).catch(() => {});
         useCallStore.getState().reset();
       }
     } catch (error: unknown) {
-      useCallStore.getState().setError(error instanceof Error ? error.message : 'The call could not be updated.');
+      if (action !== 'answer' && action !== 'connected') {
+        await agoraCallService.leave().catch(() => {});
+        useCallStore.getState().reset();
+      } else {
+        useCallStore.getState().setError(error instanceof Error ? error.message : 'The call action failed.');
+      }
     }
   }), [joinRtc, runExclusive]);
 

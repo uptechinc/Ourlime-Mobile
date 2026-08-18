@@ -1,4 +1,4 @@
-import { collection, doc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { addDoc, collection, doc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { ApiService, ApiServiceError } from './ApiService';
 import { DiagnosticLogService } from './DiagnosticLogService';
@@ -77,6 +77,53 @@ export class NotificationService {
   public markAllAsRead(): Promise<void> { return this.mutate('read-all'); }
   public delete(notificationIds: string[]): Promise<void> { return this.mutate('delete', notificationIds); }
 
+  public async dispatchMentionNotifications(params: {
+    actorUserId: string;
+    actorName: string;
+    actorProfileImage?: string;
+    content: string;
+    contentType: 'post' | 'comment' | 'lime';
+    postId: string;
+    commentId?: string;
+  }): Promise<void> {
+    const { actorUserId, actorName, actorProfileImage, content, contentType, postId, commentId } = params;
+    if (!content || !actorUserId) return;
+    const mentions = Array.from(content.matchAll(/@([a-zA-Z0-9._]+)/g), (match) => match[1].toLowerCase());
+    const uniqueMentions = [...new Set(mentions)].filter(Boolean);
+    if (uniqueMentions.length === 0) return;
+
+    try {
+      for (const userName of uniqueMentions) {
+        const userQuery = query(collection(db, 'users'), where('userName', '==', userName));
+        const userSnap = await getDocs(userQuery);
+        if (!userSnap.empty) {
+          const targetUserId = userSnap.docs[0].id;
+          if (targetUserId !== actorUserId) {
+            await addDoc(collection(db, `users/${targetUserId}/notifications`), {
+              type: 'mention',
+              title: 'Mentioned You',
+              message: `${actorName} mentioned you in a ${contentType}`,
+              isRead: false,
+              read: false,
+              sourceUserId: actorUserId,
+              senderId: actorUserId,
+              postId,
+              commentId: commentId ?? null,
+              contentType,
+              createdAt: serverTimestamp(),
+              userDetails: {
+                userName: actorName,
+                profileImage: actorProfileImage || null,
+              },
+            });
+          }
+        }
+      }
+    } catch (error: unknown) {
+      this.logger.error('NotificationService', 'dispatchMentionNotifications', error);
+    }
+  }
+
   public mergePages(current: NotificationData[], next: NotificationData[]): NotificationData[] {
     const merged = new Map(current.map((notification) => [notification.id ?? '', notification]));
     next.forEach((notification) => merged.set(notification.id ?? '', notification));
@@ -84,3 +131,5 @@ export class NotificationService {
     return Array.from(merged.values());
   }
 }
+
+export const notificationService = NotificationService.getInstance();

@@ -2,13 +2,13 @@ import '@/lib/shims/codegenNativeComponent';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator, LogBox, View } from 'react-native';
-import Constants from 'expo-constants';
 import { useAuthGuard } from '@/lib/hooks/useAuthGuard';
 import './globals.css';
 import { NotificationProvider } from '@/lib/contexts/NotificationContext';
 import { PageAccessProvider } from '@/lib/contexts/PageAccessContext';
 import PageAccessOverlay from '@/components/pageAccess/PageAccessOverlay';
 import { pushNotificationService } from '@/lib/services/PushNotificationService';
+import { platformEnvironmentService } from '@/lib/services/PlatformEnvironmentService';
 import { AppDataProvider } from '@/lib/contexts/AppDataContext';
 import { AppErrorBoundary } from '@/components/ui/AppErrorBoundary';
 import { errorLogService } from '@/lib/services/ErrorLogService';
@@ -17,6 +17,7 @@ import AppPreloadCoordinator from '@/components/providers/AppPreloadCoordinator'
 import { AppDrawerProvider } from '@/lib/contexts/AppDrawerContext';
 import { CallProvider } from '@/lib/contexts/CallContext';
 import GlobalCallOverlay from '@/components/calls/GlobalCallOverlay';
+import InAppNotificationBanner from '@/components/ui/InAppNotificationBanner';
 
 errorLogService.install();
 
@@ -64,6 +65,7 @@ function AppRouteTree() {
           </Stack>
           <PageAccessOverlay />
           <GlobalCallOverlay />
+          <InAppNotificationBanner />
         </NotificationProvider>
         </AppDrawerProvider>
         </CallProvider>
@@ -78,7 +80,7 @@ export default function Layout() {
 
   useEffect(() => {
     pushNotificationService.configureForegroundPresentation();
-    if (Constants.appOwnership === 'expo') return;
+    if (!platformEnvironmentService.isNativePushSupported()) return;
 
     let subscription: { remove: () => void } | null = null;
     try {

@@ -20,6 +20,7 @@ import { SkeletonChatRow } from '@/components/home/SkeletonLoaders';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { AuthService } from '@/lib/services/AuthService';
+import CustomModal from '@/components/ui/CustomModal';
 
 type SearchCategory = 'people' | 'communities' | 'events' | 'jobs';
 
@@ -36,9 +37,9 @@ export default function SearchScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<UserProfile[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [friendSentIds, setFriendSentIds] = useState<Set<string>>(new Set());
+  const [friendshipStatuses, setFriendshipStatuses] = useState<Record<string, 'none' | 'pending' | 'accepted'>>({});
   const [busyFriendId, setBusyFriendId] = useState<string | null>(null);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const performSearch = useCallback(async (queryText: string) => {
     setSearchError(null);
@@ -51,6 +52,21 @@ export default function SearchScreen() {
     try {
       const users = await searchService.searchUsers(queryText);
       setResults(users);
+      const currentUserId = authService.getCurrentUser()?.uid;
+      if (currentUserId && users.length > 0) {
+        const statuses: Record<string, 'none' | 'pending' | 'accepted'> = {};
+        await Promise.all(
+          users.map(async (u) => {
+            try {
+              const st = await relationshipService.checkFriendshipStatus(currentUserId, u.uid);
+              statuses[u.uid] = st;
+            } catch {
+              statuses[u.uid] = 'none';
+            }
+          })
+        );
+        setFriendshipStatuses((prev) => ({ ...prev, ...statuses }));
+      }
     } catch (error: unknown) {
       setResults([]);
       setSearchError(error instanceof Error ? error.message : 'Search is unavailable');
@@ -81,17 +97,44 @@ export default function SearchScreen() {
     router.push({ pathname: '/profile/[username]', params: { username } });
   };
 
-  const handleAddFriend = async (targetUid: string) => {
+  const [cancelModalUser, setCancelModalUser] = useState<UserProfile | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
+
+  const handleToggleFriend = async (user: UserProfile) => {
     const currentUserId = authService.getCurrentUser()?.uid;
-    if (!currentUserId || busyFriendId || friendSentIds.has(targetUid)) return;
+    if (!currentUserId || busyFriendId) return;
+    const targetUid = user.uid;
+    const currentStatus = friendshipStatuses[targetUid] || 'none';
+
+    if (currentStatus === 'pending') {
+      setCancelModalUser(user);
+      return;
+    }
+
     setBusyFriendId(targetUid);
     try {
       await relationshipService.sendFriendRequest(currentUserId, targetUid);
-      setFriendSentIds((prev) => new Set(prev).add(targetUid));
+      setFriendshipStatuses((prev) => ({ ...prev, [targetUid]: 'pending' }));
     } catch (error: unknown) {
       setSearchError(error instanceof Error ? error.message : 'Friend request could not be sent');
     } finally {
       setBusyFriendId(null);
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    const currentUserId = authService.getCurrentUser()?.uid;
+    if (!currentUserId || !cancelModalUser) return;
+    const targetUid = cancelModalUser.uid;
+    setCancelLoading(true);
+    try {
+      await relationshipService.cancelOrRemoveFriend(currentUserId, targetUid, 'pending');
+      setFriendshipStatuses((prev) => ({ ...prev, [targetUid]: 'none' }));
+      setCancelModalUser(null);
+    } catch (error: unknown) {
+      setSearchError(error instanceof Error ? error.message : 'Friend request could not be cancelled');
+    } finally {
+      setCancelLoading(false);
     }
   };
 
@@ -214,7 +257,9 @@ export default function SearchScreen() {
               Results ({results.length})
             </Text>
             {results.map((user) => {
-              const isSent = friendSentIds.has(user.uid);
+              const fStatus = friendshipStatuses[user.uid] || 'none';
+              const isPending = fStatus === 'pending';
+              const isAccepted = fStatus === 'accepted';
               const isBusy = busyFriendId === user.uid;
               return (
                 <TouchableOpacity
@@ -239,22 +284,26 @@ export default function SearchScreen() {
                     <Text style={{ fontSize: 13, color: colors.mutedText, marginTop: 2 }}>@{user.userName}</Text>
                   </View>
                   <TouchableOpacity
-                    disabled={isSent || isBusy}
-                    onPress={() => void handleAddFriend(user.uid)}
+                    disabled={isAccepted || isBusy}
+                    onPress={() => void handleToggleFriend(user)}
                     style={{
                       paddingHorizontal: 14,
                       paddingVertical: 7,
                       borderRadius: 16,
-                      backgroundColor: isSent ? colors.control : '#10b981',
-                      borderWidth: isSent ? 1 : 0,
-                      borderColor: colors.border,
+                      backgroundColor: isAccepted ? '#ecfdf5' : isPending ? '#fef3c7' : '#10b981',
+                      borderWidth: isPending ? 1 : 0,
+                      borderColor: '#f59e0b',
                     }}
                   >
                     {isBusy ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
+                      <ActivityIndicator size="small" color={isPending ? '#b45309' : '#ffffff'} />
                     ) : (
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: isSent ? colors.mutedText : '#ffffff' }}>
-                        {isSent ? 'Sent' : 'Add Friend'}
+                      <Text style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: isAccepted ? '#047857' : isPending ? '#b45309' : '#ffffff'
+                      }}>
+                        {isAccepted ? 'Friends' : isPending ? 'Cancel Request' : 'Add Friend'}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -264,6 +313,19 @@ export default function SearchScreen() {
           </View>
         )}
       </ScrollView>
+      {cancelModalUser ? (
+        <CustomModal
+          visible={Boolean(cancelModalUser)}
+          type="warning"
+          title="Cancel Friend Request?"
+          message={`Are you sure you want to cancel your friend request to ${cancelModalUser.firstName || cancelModalUser.userName} (@${cancelModalUser.userName})?`}
+          confirmText="Cancel Request"
+          cancelText="Keep Request"
+          isLoading={cancelLoading}
+          onConfirm={() => void handleConfirmCancel()}
+          onClose={() => setCancelModalUser(null)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

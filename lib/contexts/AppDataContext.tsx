@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
-import Constants from 'expo-constants';
 import { AuthService } from '@/lib/services/AuthService';
 import { LocalCacheService } from '@/lib/services/LocalCacheService';
 import { ConversationResourceService } from '@/lib/services/ConversationResourceService';
@@ -9,6 +8,7 @@ import { useResourceStore } from '@/lib/store/useResourceStore';
 import { MessageResourceService } from '@/lib/services/MessageResourceService';
 import { FeedResourceService } from '@/lib/services/FeedResourceService';
 import { presenceService } from '@/lib/services/PresenceService';
+import { platformEnvironmentService } from '@/lib/services/PlatformEnvironmentService';
 
 type AppDataContextValue = {
   activeUserId: string | null;
@@ -86,7 +86,7 @@ export function AppDataProvider({ children }: AppDataProviderProps) {
 
   useEffect(() => {
     if (!activeUserId) return;
-    if (Constants.appOwnership === 'expo') return;
+    if (!platformEnvironmentService.isNativePushSupported()) return;
     // expo-notifications remote push was removed from Expo Go in SDK 53.
     // Lazily load so the module never throws at import time.
     let subscription: { remove: () => void } | null = null;

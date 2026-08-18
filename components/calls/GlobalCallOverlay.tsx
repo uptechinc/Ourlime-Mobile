@@ -1,19 +1,39 @@
-import Constants from 'expo-constants';
-import { Modal, Pressable, Text, View } from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useEffect } from 'react';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import CachedImage from '@/components/ui/CachedImage';
+import UserAvatar from '@/components/ui/UserAvatar';
 import { useCallCoordinator } from '@/lib/contexts/CallContext';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { auth } from '@/lib/firebaseConfig';
 import { useCallStore } from '@/lib/store/useCallStore';
+import { platformEnvironmentService } from '@/lib/services/PlatformEnvironmentService';
 
 type CallControlProps = { icon: keyof typeof Ionicons.glyphMap; label: string; active?: boolean; destructive?: boolean; onPress: () => void };
 
 type AgoraVideoViewsProps = { remoteUid: number | null; showLocal: boolean };
 
+function SafeExpoCameraView() {
+  const [permission, requestPermission] = useCameraPermissions();
+
+  useEffect(() => {
+    if (!permission?.granted && permission?.canAskAgain) {
+      void requestPermission().catch(() => {});
+    }
+  }, [permission, requestPermission]);
+
+  if (!permission?.granted) {
+    return null;
+  }
+
+  return <CameraView facing="front" style={StyleSheet.absoluteFill} />;
+}
+
 function AgoraVideoViews({ remoteUid, showLocal }: AgoraVideoViewsProps) {
-  if (Constants.appOwnership === 'expo') return null;
+  if (!platformEnvironmentService.isNativeCallingSupported()) {
+    return showLocal ? <SafeExpoCameraView /> : null;
+  }
   // Native surfaces are resolved only inside a development/production build.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const Agora = require('react-native-agora') as typeof import('react-native-agora');
@@ -24,10 +44,18 @@ function AgoraVideoViews({ remoteUid, showLocal }: AgoraVideoViewsProps) {
   </View>;
 }
 
-function CallControl({ icon, label, active = false, destructive = false, onPress }: CallControlProps) {
+function CallControl({ icon, label, active = false, destructive = false, isAnswer = false, onPress }: CallControlProps & { isAnswer?: boolean }) {
   const { colors } = useAppTheme();
-  const backgroundColor = destructive ? colors.destructive : active ? colors.accent : colors.control;
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={{ alignItems: 'center', gap: 8 }}><View style={{ width: 58, height: 58, borderRadius: 29, backgroundColor, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={26} color={destructive || active ? colors.onAccent : colors.text} /></View><Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>{label}</Text></Pressable>;
+  const backgroundColor = isAnswer ? '#10b981' : destructive ? '#ef4444' : active ? colors.accent : colors.control;
+  const iconColor = isAnswer || destructive || active ? '#ffffff' : colors.text;
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={{ alignItems: 'center', gap: 8 }}>
+      <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor, alignItems: 'center', justifyContent: 'center', shadowColor: isAnswer ? '#10b981' : destructive ? '#ef4444' : '#000000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 }}>
+        <Ionicons name={icon} size={30} color={iconColor} />
+      </View>
+      <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{label}</Text>
+    </Pressable>
+  );
 }
 
 export default function GlobalCallOverlay() {
@@ -41,23 +69,86 @@ export default function GlobalCallOverlay() {
   const isSpeakerEnabled = useCallStore((state) => state.isSpeakerEnabled);
   const isMinimized = useCallStore((state) => state.isMinimized);
   const errorMessage = useCallStore((state) => state.errorMessage);
+
   if (!session) return null;
   const isIncoming = session.callee.userId === auth.currentUser?.uid && session.state === 'ringing';
   const peer = session.caller.userId === auth.currentUser?.uid ? session.callee : session.caller;
-  if (isMinimized) return <Pressable onPress={coordinator.restore} style={{ position: 'absolute', right: 16, top: 72, zIndex: 1000, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 24, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', gap: 8 }}><Ionicons name={session.type === 'video' ? 'videocam' : 'call'} size={18} color={colors.onAccent} /><Text style={{ color: colors.onAccent, fontWeight: '800' }}>{peer.displayName}</Text></Pressable>;
-  const nativeUnavailable = Constants.appOwnership === 'expo';
-  return <Modal visible transparent={false} animationType="slide" onRequestClose={coordinator.minimize}>
-    <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas, paddingHorizontal: 24 }}>
-      {session.type === 'video' && connectionStatus !== 'ringing' ? <AgoraVideoViews remoteUid={remoteUid} showLocal={!isVideoMuted} /> : null}
-      <Pressable onPress={coordinator.minimize} style={{ alignSelf: 'flex-start', width: 44, height: 44, borderRadius: 22, backgroundColor: colors.control, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="chevron-down" size={24} color={colors.text} /></Pressable>
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 18 }}>
-        {peer.profilePicture ? <CachedImage uri={peer.profilePicture} style={{ width: 116, height: 116, borderRadius: 58 }} accessibilityLabel={`${peer.displayName} profile picture`} /> : <View style={{ width: 116, height: 116, borderRadius: 58, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.onAccent, fontSize: 44, fontWeight: '800' }}>{peer.displayName.charAt(0).toUpperCase()}</Text></View>}
-        <Text style={{ color: colors.text, fontSize: 30, fontWeight: '800', textAlign: 'center' }}>{peer.displayName}</Text>
-        <Text style={{ color: colors.mutedText, fontSize: 17 }}>{errorMessage ?? (isIncoming ? `Incoming ${session.type} call` : connectionStatus === 'active' ? (remoteUid ? 'Connected' : 'Waiting for the other person…') : connectionStatus === 'connecting' ? 'Connecting…' : 'Ringing…')}</Text>
-        {nativeUnavailable && <Text style={{ color: colors.warningText, backgroundColor: colors.warningSurface, borderRadius: 12, padding: 12, textAlign: 'center' }}>System calling and Agora require an Ourlime development build. Expo Go cannot load the native call modules.</Text>}
-      </View>
-      {isIncoming ? <View style={{ flexDirection: 'row', justifyContent: 'space-evenly' }}><CallControl icon="call" label="Answer" active onPress={() => void coordinator.answerCall()} /><CallControl icon="call" label="Decline" destructive onPress={() => void coordinator.declineCall()} /></View>
-      : <View style={{ gap: 30 }}><View style={{ flexDirection: 'row', justifyContent: 'space-evenly', flexWrap: 'wrap', rowGap: 18 }}><CallControl icon={isMuted ? 'mic-off' : 'mic'} label={isMuted ? 'Unmute' : 'Mute'} active={isMuted} onPress={coordinator.toggleMute} /><CallControl icon={isSpeakerEnabled ? 'volume-high' : 'volume-medium'} label="Speaker" active={isSpeakerEnabled} onPress={coordinator.toggleSpeaker} />{session.type === 'video' && <CallControl icon={isVideoMuted ? 'videocam-off' : 'videocam'} label="Camera" active={isVideoMuted} onPress={coordinator.toggleVideo} />}{session.type === 'video' && <CallControl icon="camera-reverse" label="Flip" onPress={coordinator.switchCamera} />}</View><View style={{ alignItems: 'center' }}><CallControl icon="call" label="End" destructive onPress={() => void coordinator.endCall()} /></View></View>}
-    </SafeAreaView>
-  </Modal>;
+
+  if (isMinimized) {
+    return (
+      <Pressable onPress={coordinator.restore} style={{ position: 'absolute', right: 16, top: 72, zIndex: 1000, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 24, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', gap: 8, elevation: 8, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6 }}>
+        <Ionicons name={session.type === 'video' ? 'videocam' : 'call'} size={18} color={colors.onAccent} />
+        <Text style={{ color: colors.onAccent, fontWeight: '800' }}>{peer.displayName}</Text>
+      </Pressable>
+    );
+  }
+
+  const nativeUnavailable = !platformEnvironmentService.isNativeCallingSupported();
+
+  return (
+    <Modal visible transparent={false} animationType="slide" onRequestClose={coordinator.minimize}>
+      <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: '#0f172a', paddingHorizontal: 24, justifyContent: 'space-between', paddingVertical: 16 }}>
+        {session.type === 'video' ? <AgoraVideoViews remoteUid={remoteUid} showLocal={!isVideoMuted} /> : null}
+
+        {/* Top Header Bar */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Pressable onPress={coordinator.minimize} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="chevron-down" size={24} color="#ffffff" />
+          </Pressable>
+          <View style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)' }}>
+            <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Ourlime {session.type === 'video' ? 'Video' : 'Voice'} Call
+            </Text>
+          </View>
+          <View style={{ width: 44 }} />
+        </View>
+
+        {/* Center Caller Info */}
+        <View style={{ alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+          <View style={{ width: 140, height: 140, borderRadius: 70, borderWidth: 4, borderColor: isIncoming ? '#10b981' : 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(16,185,129,0.1)' }}>
+            <UserAvatar
+              profileImage={peer.profilePicture}
+              firstName={peer.displayName || peer.userName || 'User'}
+              size={124}
+            />
+          </View>
+
+          <View style={{ alignItems: 'center', gap: 4 }}>
+            <Text style={{ color: '#ffffff', fontSize: 28, fontWeight: '800', textAlign: 'center' }}>{peer.displayName}</Text>
+            {peer.userName ? <Text style={{ color: '#94a3b8', fontSize: 15, fontWeight: '500' }}>@{peer.userName}</Text> : null}
+          </View>
+
+          <Text style={{ color: isIncoming ? '#34d399' : '#cbd5e1', fontSize: 16, fontWeight: '600', textAlign: 'center' }}>
+            {errorMessage ?? (isIncoming ? `Incoming ${session.type} call...` : connectionStatus === 'active' ? (remoteUid ? 'Connected' : 'Waiting for answer…') : connectionStatus === 'connecting' ? 'Connecting…' : 'Ringing…')}
+          </Text>
+
+          {nativeUnavailable && (
+            <Text style={{ color: '#fbbf24', backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 12, padding: 12, textAlign: 'center', fontSize: 12, marginHorizontal: 16 }}>
+              System calling and Agora require an Ourlime build. Expo Go cannot load native WebRTC modules.
+            </Text>
+          )}
+        </View>
+
+        {/* Bottom Call Controls */}
+        {isIncoming ? (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingBottom: 24 }}>
+            <CallControl icon="call" label="Decline" destructive onPress={() => void coordinator.declineCall()} />
+            <CallControl icon="call" label="Answer" isAnswer onPress={() => void coordinator.answerCall()} />
+          </View>
+        ) : (
+          <View style={{ gap: 28, paddingBottom: 16 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-evenly', flexWrap: 'wrap', rowGap: 16 }}>
+              <CallControl icon={isMuted ? 'mic-off' : 'mic'} label={isMuted ? 'Unmute' : 'Mute'} active={isMuted} onPress={coordinator.toggleMute} />
+              <CallControl icon={isSpeakerEnabled ? 'volume-high' : 'volume-medium'} label="Speaker" active={isSpeakerEnabled} onPress={coordinator.toggleSpeaker} />
+              {session.type === 'video' && <CallControl icon={isVideoMuted ? 'videocam-off' : 'videocam'} label="Camera" active={isVideoMuted} onPress={coordinator.toggleVideo} />}
+              {session.type === 'video' && <CallControl icon="camera-reverse" label="Flip" onPress={coordinator.switchCamera} />}
+            </View>
+            <View style={{ alignItems: 'center' }}>
+              <CallControl icon="call" label="End Call" destructive onPress={() => void coordinator.endCall()} />
+            </View>
+          </View>
+        )}
+      </SafeAreaView>
+    </Modal>
+  );
 }

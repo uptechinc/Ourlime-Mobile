@@ -25,6 +25,10 @@ export type ConversationEntry = UserProfile & {
     lastMessageTime?: Timestamp;
     unreadCount: number;
     isOnline: boolean;
+    isPinned?: boolean;
+    isArchived?: boolean;
+    isMuted?: boolean;
+    mutedUntil?: number | null;
 };
 
 type UnknownRecord = Record<string, unknown>;

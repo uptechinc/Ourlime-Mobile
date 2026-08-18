@@ -39,7 +39,9 @@ type ProfileModalState = {
   type: CustomModalType;
   title: string;
   message: string;
-  action?: 'block' | 'unblock' | 'report';
+  confirmText?: string;
+  cancelText?: string;
+  action?: 'block' | 'unblock' | 'report' | 'cancel_friend_request';
 };
 
 type PublicProfileTab = 'timeline' | 'friends' | 'communities' | 'about' | 'gallery';
@@ -123,19 +125,28 @@ export default function UserProfileScreen() {
 
   const handleFriendRequest = async () => {
     if (!currentUserId || !profile) return;
-    if (friendshipStatus !== 'none') {
-      setActionLoading(true);
-      try {
-        await relationshipService.cancelOrRemoveFriend(currentUserId, profile.uid, friendshipStatus);
-        setFriendshipStatus('none');
-        if (friendshipStatus === 'accepted') await profileResourceService.adjustOwnStats(currentUserId, { friends: -1 });
-        void refreshProfile();
-      } catch (friendError: unknown) {
-        console.error('[UserProfileScreen.handleFriendRequest:remove]', friendError);
-        setModal({ visible: true, type: 'danger', title: 'Action failed', message: 'Could not update this friendship.' });
-      } finally {
-        setActionLoading(false);
-      }
+    if (friendshipStatus === 'pending') {
+      setModal({
+        visible: true,
+        type: 'warning',
+        title: 'Cancel Friend Request?',
+        message: `Are you sure you want to cancel your friend request to @${profile.userName}?`,
+        confirmText: 'Cancel Request',
+        cancelText: 'Keep Request',
+        action: 'cancel_friend_request',
+      });
+      return;
+    }
+    if (friendshipStatus === 'accepted') {
+      setModal({
+        visible: true,
+        type: 'danger',
+        title: 'Remove Friend?',
+        message: `Are you sure you want to remove @${profile.userName} as a friend?`,
+        confirmText: 'Remove Friend',
+        cancelText: 'Keep Friend',
+        action: 'cancel_friend_request',
+      });
       return;
     }
     setActionLoading(true);
@@ -171,6 +182,15 @@ export default function UserProfileScreen() {
     if (!profile || !modal.action) return setModal((previous) => ({ ...previous, visible: false }));
     setActionLoading(true);
     try {
+      if (modal.action === 'cancel_friend_request') {
+        await relationshipService.cancelOrRemoveFriend(currentUserId ?? '', profile.uid, friendshipStatus === 'none' ? 'pending' : friendshipStatus);
+        const wasAccepted = friendshipStatus === 'accepted';
+        setFriendshipStatus('none');
+        if (wasAccepted && currentUserId) await profileResourceService.adjustOwnStats(currentUserId, { friends: -1 });
+        setModal((previous) => ({ ...previous, visible: false, action: undefined }));
+        void refreshProfile();
+        return;
+      }
       if (modal.action === 'block') {
         await relationshipService.blockUser(profile.uid);
         setIsBlockedByMe(true);
@@ -274,16 +294,18 @@ export default function UserProfileScreen() {
 
                   <TouchableOpacity
                     onPress={() => void handleFriendRequest()}
-                  disabled={actionLoading}
+                    disabled={actionLoading}
                     style={{
                       paddingHorizontal: 14,
                       paddingVertical: 8,
                       borderRadius: 20,
                       backgroundColor: friendshipStatus === 'accepted' ? '#ecfdf5' : friendshipStatus === 'pending' ? '#fef3c7' : '#047857',
+                      borderWidth: friendshipStatus === 'pending' ? 1 : 0,
+                      borderColor: '#f59e0b',
                     }}
                   >
                     <Text style={{ color: friendshipStatus === 'accepted' ? '#047857' : friendshipStatus === 'pending' ? '#b45309' : '#ffffff', fontWeight: '700', fontSize: 13 }}>
-                      {friendshipStatus === 'accepted' ? 'Friends' : friendshipStatus === 'pending' ? 'Pending' : 'Add Friend'}
+                      {friendshipStatus === 'accepted' ? 'Friends' : friendshipStatus === 'pending' ? 'Cancel Request' : 'Add Friend'}
                     </Text>
                   </TouchableOpacity>
 
@@ -386,7 +408,17 @@ export default function UserProfileScreen() {
         </ScrollView>
       )}
       {!isOwnProfile && profile ? <TouchableOpacity onPress={() => setModal({ visible: true, type: 'warning', title: 'Report this profile?', message: 'Submit this profile to Ourlime moderation for suspicious account activity.', action: 'report' })} style={{ position: 'absolute', right: 18, bottom: 24, backgroundColor: '#fff', borderWidth: 1, borderColor: '#fecaca', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 }}><Text style={{ color: '#b91c1c', fontWeight: '700' }}>Report</Text></TouchableOpacity> : null}
-      <CustomModal visible={modal.visible} type={modal.type} title={modal.title} message={modal.message} confirmText={modal.action ? 'Confirm' : 'OK'} cancelText={modal.action ? 'Cancel' : undefined} isLoading={actionLoading} onConfirm={modal.action ? () => void handleProfileModeration() : undefined} onClose={() => setModal((previous) => ({ ...previous, visible: false, action: undefined }))} />
+      <CustomModal
+        visible={modal.visible}
+        type={modal.type}
+        title={modal.title}
+        message={modal.message}
+        confirmText={modal.confirmText || (modal.action ? 'Confirm' : 'OK')}
+        cancelText={modal.cancelText || (modal.action ? 'Cancel' : undefined)}
+        isLoading={actionLoading}
+        onConfirm={modal.action ? () => void handleProfileModeration() : undefined}
+        onClose={() => setModal((previous) => ({ ...previous, visible: false, action: undefined }))}
+      />
     </SafeAreaView>
   );
 }

@@ -1,5 +1,5 @@
-import Constants from 'expo-constants';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { platformEnvironmentService } from './PlatformEnvironmentService';
 import type { AgoraParticipantCredentials, CallType } from '@/lib/types/call';
 
 type AgoraStateListener = {
@@ -24,7 +24,7 @@ export class AgoraCallService {
   }
 
   public isAvailable(): boolean {
-    return Constants.appOwnership !== 'expo';
+    return platformEnvironmentService.isNativeCallingSupported();
   }
 
   public async join(credentials: AgoraParticipantCredentials, type: CallType, listener: AgoraStateListener): Promise<void> {

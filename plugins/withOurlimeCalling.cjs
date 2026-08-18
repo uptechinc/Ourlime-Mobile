@@ -37,6 +37,9 @@ function withCallingAndroid(config) {
     ANDROID_PERMISSIONS.forEach((permission) => {
       if (!existing.has(permission)) manifest['uses-permission'].push({ $: { 'android:name': permission } });
     });
+    if (manifest.application && manifest.application.length > 0) {
+      manifest.application[0].$['android:largeHeap'] = 'true';
+    }
     return result;
   });
 }

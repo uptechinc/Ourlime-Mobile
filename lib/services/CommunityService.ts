@@ -1,4 +1,4 @@
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { ApiService } from './ApiService';
@@ -46,6 +46,7 @@ type CommunityCardSource = {
   description?: unknown;
   imageUrl?: unknown;
   bannerImageUrl?: unknown;
+  coverImage?: unknown;
   categoryId?: unknown;
   categoryName?: unknown;
   creatorId?: unknown;
@@ -55,6 +56,7 @@ type CommunityCardSource = {
   creatorProfilePicture?: unknown;
   creatorProfileImage?: unknown;
   isPrivate?: unknown;
+  privacy?: unknown;
   isVerified?: unknown;
   verifiedMembersOnly?: unknown;
   postingPermission?: unknown;
@@ -161,20 +163,219 @@ export class CommunityService {
 
   public async fetchDirectory(query: CommunityDirectoryQuery, priority: ApiRequestPriority = 'foreground'): Promise<CommunityDirectoryPage> {
     this.logger.info('CommunityService', 'fetchDirectory:start', { scope: query.scope, sort: query.sort, hasCursor: Boolean(query.cursor), priority });
-    const response = await this.apiService.request<ApiResult<CommunityDirectoryPage>>(`/api/communities?${toQueryString(query)}`, {
-      authenticated: Boolean(auth.currentUser),
-      priority,
-    });
-    if (!response.success || !response.data) throw new Error(response.error || 'Communities could not be loaded.');
-    const page: CommunityDirectoryPage = {
-      items: response.data.items.map((community) => this.normalizeCommunity(community)),
-      communityOfTheWeek: response.data.communityOfTheWeek ? this.normalizeCommunity(response.data.communityOfTheWeek) : null,
-      nextCursor: typeof response.data.nextCursor === 'string' ? response.data.nextCursor : null,
-      hasMore: response.data.hasMore === true,
-      totalCount: readNumber(response.data.totalCount),
-    };
-    this.logger.success('CommunityService', 'fetchDirectory', { resultCount: page.items.length, totalCount: page.totalCount });
-    return page;
+    try {
+      const response = await this.apiService.request<ApiResult<CommunityDirectoryPage>>(`/api/communities?${toQueryString(query)}`, {
+        authenticated: Boolean(auth.currentUser),
+        priority,
+        timeoutMs: 25_000,
+      });
+      if (response.success && response.data) {
+        const page: CommunityDirectoryPage = {
+          items: response.data.items.map((community) => this.normalizeCommunity(community)),
+          communityOfTheWeek: response.data.communityOfTheWeek ? this.normalizeCommunity(response.data.communityOfTheWeek) : null,
+          nextCursor: typeof response.data.nextCursor === 'string' ? response.data.nextCursor : null,
+          hasMore: response.data.hasMore === true,
+          totalCount: readNumber(response.data.totalCount),
+        };
+        this.logger.success('CommunityService', 'fetchDirectory', { resultCount: page.items.length, totalCount: page.totalCount });
+        return page;
+      }
+    } catch (apiError: unknown) {
+      this.logger.warn('CommunityService', 'fetchDirectory:api-failed', {
+        error: apiError instanceof Error ? apiError.message : String(apiError),
+      });
+    }
+
+    return this.fetchDirectoryFromFirestore(query);
+  }
+
+  private async fetchDirectoryFromFirestore(directoryQuery: CommunityDirectoryQuery): Promise<CommunityDirectoryPage> {
+    this.logger.info('CommunityService', 'fetchDirectory:firestore-fallback:start', { scope: directoryQuery.scope, sort: directoryQuery.sort });
+    try {
+      const snap = await getDocs(query(collection(db, 'communityVariant'), limit(60)));
+      const currentUserId = this.getCurrentUserId();
+
+      const userMembershipMap = new Map<string, { role: string; isMember: boolean }>();
+      const userPendingSet = new Set<string>();
+      const userBannedSet = new Set<string>();
+      const friendIds = new Set<string>();
+
+      if (currentUserId) {
+        const [membershipsSnap, requestsSnap, bansSnap, friendsAsUser1, friendsAsUser2] = await Promise.all([
+          getDocs(query(collection(db, 'communityVariantMembership'), where('userId', '==', currentUserId))).catch(() => null),
+          getDocs(query(collection(db, 'communityRequests'), where('userId', '==', currentUserId))).catch(() => null),
+          getDocs(query(collection(db, 'bannedCommunityMembers'), where('userId', '==', currentUserId))).catch(() => null),
+          getDocs(query(collection(db, 'friends'), where('userId1', '==', currentUserId))).catch(() => null),
+          getDocs(query(collection(db, 'friends'), where('userId2', '==', currentUserId))).catch(() => null),
+        ]);
+
+        membershipsSnap?.docs.forEach((d) => {
+          const mData = d.data();
+          const cId = readString(mData.communityVariantId);
+          if (cId && mData.isMember === true) {
+            userMembershipMap.set(cId, { role: readString(mData.role).toLowerCase() || 'member', isMember: true });
+          }
+        });
+
+        requestsSnap?.docs.forEach((d) => {
+          const rData = d.data();
+          const cId = readString(rData.communityVariantId);
+          if (cId && rData.status === 'pending') userPendingSet.add(cId);
+        });
+
+        bansSnap?.docs.forEach((d) => {
+          const bData = d.data();
+          const cId = readString(bData.communityVariantId);
+          if (cId) userBannedSet.add(cId);
+        });
+
+        friendsAsUser1?.docs.forEach((d) => {
+          const fid = readString(d.data().userId2);
+          if (fid) friendIds.add(fid);
+        });
+        friendsAsUser2?.docs.forEach((d) => {
+          const fid = readString(d.data().userId1);
+          if (fid) friendIds.add(fid);
+        });
+      }
+
+      const items: CommunitySummary[] = [];
+
+      for (const docSnap of snap.docs) {
+        const data = docSnap.data();
+        const id = docSnap.id;
+        const slug = readString(data.uniqueName) || id;
+        const title = readString(data.title) || readString(data.name) || slug;
+        const description = readString(data.description);
+        const imageUrl = readString(data.imageUrl) || readString(data.bannerImageUrl) || readString(data.coverImage) || null;
+        const categoryId = readString(data.categoryId) || null;
+        const creatorId = readString(data.userId) || readString(data.creatorId);
+        const isPrivate = data.isPrivate === true || readString(data.privacy) === 'private';
+        const isOwner = Boolean(currentUserId && creatorId === currentUserId);
+
+        const membership = userMembershipMap.get(id);
+        const isMember = isOwner || (membership?.isMember === true);
+        const isPending = !isMember && userPendingSet.has(id);
+        const isBanned = userBannedSet.has(id);
+
+        const viewerRole: CommunitySummary['viewerRole'] = isOwner
+          ? 'owner'
+          : membership?.role === 'admin'
+            ? 'admin'
+            : membership?.role === 'moderator'
+              ? 'moderator'
+              : isMember
+                ? 'member'
+                : 'none';
+
+        const membershipState: CommunitySummary['membershipState'] = isBanned
+          ? 'banned'
+          : isOwner
+            ? 'owner'
+            : isMember
+              ? 'member'
+              : isPending
+                ? 'pending'
+                : 'none';
+
+        const hasAccess = !isBanned && (!isPrivate || isMember || isOwner);
+
+        items.push({
+          id,
+          slug,
+          title,
+          description,
+          imageUrl,
+          categoryId,
+          categoryName: '',
+          creatorId,
+          creatorName: isOwner ? 'You' : 'Community creator',
+          creatorUserName: '',
+          creatorProfilePicture: null,
+          isPrivate,
+          isVerified: readBoolean(data.isVerified),
+          verifiedMembersOnly: readBoolean(data.verifiedMembersOnly),
+          postingPermission: (readString(data.postingPermission) as CommunityCardModel['postingPermission']) || 'members',
+          createdAt: null,
+          createdAtMs: readDateMs(data.createdAt),
+          updatedAtMs: readDateMs(data.updatedAt) || readDateMs(data.createdAt),
+          memberCount: readNumber(data.memberCount) || 1,
+          likeCount: readNumber(data.likeCount) || 0,
+          postCount: readNumber(data.postCount) || 0,
+          topMembers: [],
+          friendMembers: [],
+          friendMemberCount: 0,
+          membershipState,
+          viewerRole,
+          isLikedByViewer: false,
+          permissions: {
+            canView: hasAccess,
+            canJoin: Boolean(currentUserId && !isPrivate && !isMember && !isBanned),
+            canRequestAccess: Boolean(currentUserId && isPrivate && !isMember && !isPending && !isBanned),
+            canCancelRequest: isPending,
+            canLeave: isMember && !isOwner,
+            canPost: hasAccess,
+            canHostEvent: hasAccess,
+            canCreatePoll: hasAccess,
+            canInvite: hasAccess && (isMember || isOwner),
+            canEdit: isOwner,
+            canDelete: isOwner,
+            canManageMembers: isOwner || viewerRole === 'admin',
+            canModerate: isOwner || viewerRole === 'admin' || viewerRole === 'moderator',
+            canReport: Boolean(currentUserId && !isOwner),
+          },
+        });
+      }
+
+      let filteredItems = items;
+
+      if (directoryQuery.scope === 'joined') {
+        filteredItems = filteredItems.filter((item) => item.membershipState === 'member' || item.membershipState === 'owner');
+      } else if (directoryQuery.scope === 'created') {
+        filteredItems = filteredItems.filter((item) => item.creatorId === currentUserId || item.membershipState === 'owner');
+      } else if (directoryQuery.scope === 'friends') {
+        filteredItems = filteredItems.filter((item) => item.friendMemberCount > 0);
+      } else if (directoryQuery.scope === 'new') {
+        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        filteredItems = filteredItems.filter((item) => item.createdAtMs >= thirtyDaysAgo);
+        filteredItems.sort((a, b) => b.createdAtMs - a.createdAtMs);
+      }
+
+      if (directoryQuery.search.trim()) {
+        const term = directoryQuery.search.trim().toLowerCase();
+        filteredItems = filteredItems.filter((item) => item.title.toLowerCase().includes(term) || item.description.toLowerCase().includes(term));
+      }
+      if (directoryQuery.visibility === 'public') {
+        filteredItems = filteredItems.filter((item) => !item.isPrivate);
+      } else if (directoryQuery.visibility === 'private') {
+        filteredItems = filteredItems.filter((item) => item.isPrivate);
+      }
+      if (directoryQuery.categoryId) {
+        filteredItems = filteredItems.filter((item) => item.categoryId === directoryQuery.categoryId);
+      }
+
+      if (directoryQuery.sort === 'popular') {
+        filteredItems.sort((a, b) => (b.memberCount * 2 + b.likeCount * 3 + b.postCount) - (a.memberCount * 2 + a.likeCount * 3 + a.postCount));
+      } else if (directoryQuery.sort === 'newest') {
+        filteredItems.sort((a, b) => b.createdAtMs - a.createdAtMs);
+      } else if (directoryQuery.sort === 'active' || directoryQuery.sort === 'trending') {
+        filteredItems.sort((a, b) => (b.postCount * 4 + b.likeCount * 2 + b.memberCount) - (a.postCount * 4 + a.likeCount * 2 + a.memberCount));
+      }
+
+      const paged = filteredItems.slice(0, directoryQuery.limit);
+      const page: CommunityDirectoryPage = {
+        items: paged,
+        communityOfTheWeek: paged[0] ?? null,
+        nextCursor: null,
+        hasMore: false,
+        totalCount: filteredItems.length,
+      };
+      this.logger.success('CommunityService', 'fetchDirectory:firestore-fallback:success', { count: page.items.length, total: page.totalCount });
+      return page;
+    } catch (fallbackError: unknown) {
+      this.logger.error('CommunityService', 'fetchDirectory:firestore-fallback:error', fallbackError);
+      throw fallbackError;
+    }
   }
 
   public async fetchCommunities(maxResults = 40): Promise<CommunitySummary[]> {
@@ -183,20 +384,143 @@ export class CommunityService {
   }
 
   public async fetchCommunity(identifier: string): Promise<CommunitySummary> {
-    const response = await this.apiService.request<ApiResult<unknown> & { resolvedId?: string }>(`/api/communities/fetch?type=community&id=${encodeURIComponent(identifier)}`, {
-      authenticated: Boolean(auth.currentUser),
-    });
-    if (!response.data) throw new Error(response.error || 'Community not found.');
-    return this.normalizeCommunity(response.data);
+    try {
+      const response = await this.apiService.request<ApiResult<unknown> & { resolvedId?: string }>(`/api/communities/fetch?type=community&id=${encodeURIComponent(identifier)}`, {
+        authenticated: Boolean(auth.currentUser),
+        timeoutMs: 15_000,
+      });
+      if (response.data) return this.normalizeCommunity(response.data);
+    } catch (error: unknown) {
+      this.logger.warn('CommunityService', 'fetchCommunity:api-failed', { identifier, error: error instanceof Error ? error.message : String(error) });
+    }
+    return this.fetchCommunityFromFirestore(identifier);
   }
 
   public async fetchCommunityDetail(identifier: string): Promise<CommunityDetailResource> {
-    const response = await this.apiService.request<ApiResult<unknown>>(`/api/communities/fetch?type=community&id=${encodeURIComponent(identifier)}`, { authenticated: Boolean(auth.currentUser) });
-    if (!response.data) throw new Error(response.error || 'Community not found.');
-    const source = typeof response.data === 'object' && response.data !== null ? response.data as CommunityCardSource & { rules?: unknown } : {};
+    try {
+      const response = await this.apiService.request<ApiResult<unknown>>(`/api/communities/fetch?type=community&id=${encodeURIComponent(identifier)}`, {
+        authenticated: Boolean(auth.currentUser),
+        timeoutMs: 15_000,
+      });
+      if (response.data) {
+        const source = typeof response.data === 'object' && response.data !== null ? response.data as CommunityCardSource & { rules?: unknown } : {};
+        return {
+          community: this.normalizeCommunity(source),
+          rules: Array.isArray(source.rules) ? source.rules.filter((rule): rule is string => typeof rule === 'string' && Boolean(rule.trim())).map((rule) => rule.trim()) : [],
+        };
+      }
+    } catch (error: unknown) {
+      this.logger.warn('CommunityService', 'fetchCommunityDetail:api-failed', { identifier, error: error instanceof Error ? error.message : String(error) });
+    }
+    const community = await this.fetchCommunityFromFirestore(identifier);
+    return { community, rules: [] };
+  }
+
+  private async fetchCommunityFromFirestore(identifier: string): Promise<CommunitySummary> {
+    const docRef = doc(db, 'communityVariant', identifier);
+    let docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
+      const querySnap = await getDocs(query(collection(db, 'communityVariant'), where('uniqueName', '==', identifier), limit(1)));
+      if (!querySnap.empty) docSnap = querySnap.docs[0];
+    }
+    if (!docSnap.exists()) throw new Error('Community not found.');
+
+    const data = docSnap.data();
+    const id = docSnap.id;
+    const viewerId = this.getCurrentUserId();
+    const creatorId = readString(data.userId) || readString(data.creatorId);
+    const isOwner = Boolean(viewerId && creatorId && creatorId === viewerId);
+
+    let isMember = isOwner;
+    let isPending = false;
+    let isBanned = false;
+    let viewerRole: CommunitySummary['viewerRole'] = isOwner ? 'owner' : 'none';
+
+    if (viewerId && !isOwner) {
+      const [membershipSnap, requestSnap, banSnap] = await Promise.all([
+        getDocs(query(collection(db, 'communityVariantMembership'), where('communityVariantId', '==', id), where('userId', '==', viewerId), where('isMember', '==', true), limit(1))).catch(() => null),
+        getDocs(query(collection(db, 'communityRequests'), where('communityVariantId', '==', id), where('userId', '==', viewerId), limit(1))).catch(() => null),
+        getDocs(query(collection(db, 'bannedCommunityMembers'), where('communityVariantId', '==', id), where('userId', '==', viewerId), limit(1))).catch(() => null),
+      ]);
+      if (banSnap && !banSnap.empty) isBanned = true;
+      if (membershipSnap && !membershipSnap.empty) {
+        const mData = membershipSnap.docs[0].data();
+        if (mData.isMember === true) {
+          isMember = true;
+          const role = readString(mData.role).toLowerCase();
+          viewerRole = role === 'admin' ? 'admin' : role === 'moderator' ? 'moderator' : 'member';
+        }
+      }
+      if (!isMember && requestSnap && !requestSnap.empty) {
+        const rData = requestSnap.docs[0].data();
+        if (rData.status === 'pending') isPending = true;
+      }
+    }
+
+    const countDoc = await getDoc(doc(db, 'communityVariantMembershipAndLikeCount', id)).catch(() => null);
+    const countData = countDoc?.exists() ? countDoc.data() : null;
+    const isPrivate = data.isPrivate === true || readString(data.privacy) === 'private';
+    const userLikes = Array.isArray(countData?.userLikes) ? countData.userLikes : [];
+    const isLiked = Boolean(viewerId && userLikes.includes(viewerId));
+
+    let creatorName = isOwner ? 'You' : 'Community creator';
+    let creatorProfilePicture: string | null = null;
+    if (creatorId) {
+      const creatorDoc = await getDoc(doc(db, 'users', creatorId)).catch(() => null);
+      if (creatorDoc?.exists()) {
+        const creatorData = creatorDoc.data();
+        creatorName = `${readString(creatorData?.firstName)} ${readString(creatorData?.lastName)}`.trim() || readString(creatorData?.userName) || (isOwner ? 'You' : 'Community creator');
+        creatorProfilePicture = readString(creatorData?.profilePicture) || readString(creatorData?.profileImage) || null;
+      }
+    }
+
+    const membershipState: CommunitySummary['membershipState'] = isBanned ? 'banned' : isOwner ? 'owner' : isMember ? 'member' : isPending ? 'pending' : 'none';
+    const hasAccess = isOwner || (!isBanned && (!isPrivate || isMember));
+
     return {
-      community: this.normalizeCommunity(source),
-      rules: Array.isArray(source.rules) ? source.rules.filter((rule): rule is string => typeof rule === 'string' && Boolean(rule.trim())).map((rule) => rule.trim()) : [],
+      id,
+      slug: readString(data.uniqueName) || id,
+      title: readString(data.title) || readString(data.name) || 'Untitled community',
+      description: readString(data.description),
+      imageUrl: readString(data.imageUrl) || readString(data.bannerImageUrl) || readString(data.coverImage) || null,
+      categoryId: readString(data.categoryId) || null,
+      categoryName: '',
+      creatorId,
+      creatorName,
+      creatorUserName: '',
+      creatorProfilePicture,
+      isPrivate,
+      isVerified: readBoolean(data.isVerified),
+      verifiedMembersOnly: readBoolean(data.verifiedMembersOnly),
+      postingPermission: (readString(data.postingPermission) as CommunityCardModel['postingPermission']) || 'members',
+      createdAt: null,
+      createdAtMs: readDateMs(data.createdAt),
+      updatedAtMs: readDateMs(data.updatedAt),
+      memberCount: readNumber(countData?.membershipCount) || readNumber(data.memberCount) || 1,
+      likeCount: readNumber(countData?.membershipLikes) || 0,
+      postCount: readNumber(countData?.postCount) || 0,
+      topMembers: [],
+      friendMembers: [],
+      friendMemberCount: 0,
+      membershipState,
+      viewerRole,
+      isLikedByViewer: isLiked,
+      permissions: {
+        canView: hasAccess,
+        canJoin: Boolean(!isOwner && viewerId && !isPrivate && !isMember && !isBanned),
+        canRequestAccess: Boolean(!isOwner && viewerId && isPrivate && !isMember && !isPending && !isBanned),
+        canCancelRequest: !isOwner && isPending,
+        canLeave: isMember && !isOwner,
+        canPost: hasAccess,
+        canHostEvent: hasAccess,
+        canCreatePoll: hasAccess,
+        canInvite: hasAccess,
+        canEdit: isOwner,
+        canDelete: isOwner,
+        canManageMembers: isOwner || viewerRole === 'admin',
+        canModerate: isOwner || viewerRole === 'admin' || viewerRole === 'moderator',
+        canReport: Boolean(viewerId && !isOwner),
+      },
     };
   }
 
@@ -230,13 +554,28 @@ export class CommunityService {
   }
 
   public async toggleCommunityLike(communityId: string, desiredLiked: boolean): Promise<CommunityReactionResult> {
-    const response = await this.apiService.request<ApiResult<CommunityReactionResult>>('/api/communities/community-like', {
-      method: 'POST',
-      authenticated: true,
-      body: { communityId, desiredLiked },
-    });
-    if (!response.success || !response.data) throw new Error(response.error || 'Community like could not be updated.');
-    return response.data;
+    try {
+      const response = await this.apiService.request<ApiResult<CommunityReactionResult>>('/api/communities/community-like', {
+        method: 'POST',
+        authenticated: true,
+        body: { communityId, desiredLiked },
+      });
+      if (response.success && response.data) return response.data;
+    } catch (error: unknown) {
+      this.logger.warn('CommunityService', 'toggleCommunityLike:api-failed', { communityId, error: error instanceof Error ? error.message : String(error) });
+    }
+
+    const viewerId = this.getCurrentUserId();
+    if (!viewerId) throw new Error('You must be signed in to like a community.');
+    const countDocRef = doc(db, 'communityVariantMembershipAndLikeCount', communityId);
+    const countSnap = await getDoc(countDocRef);
+    const currentLikes = readNumber(countSnap.data()?.membershipLikes) || 0;
+    const newLikes = desiredLiked ? currentLikes + 1 : Math.max(0, currentLikes - 1);
+    await setDoc(countDocRef, {
+      communityVariantId: communityId,
+      membershipLikes: newLikes,
+    }, { merge: true }).catch(() => undefined);
+    return { liked: desiredLiked, likeCount: newLikes };
   }
 
   public async createCommunity(input: CreateCommunityInput): Promise<CommunitySummary> {
@@ -334,13 +673,93 @@ export class CommunityService {
   }
 
   private async updateMembership(communityId: string, action: 'join' | 'request' | 'cancel_request' | 'leave'): Promise<CommunityMutationResult> {
-    const response = await this.apiService.request<ApiResult<{ state: CommunityMutationResult['membershipState']; memberCount: number }>>('/api/communities/membership', {
-      method: 'POST',
-      authenticated: true,
-      body: { communityId, action },
-    });
-    if (!response.success || !response.data) throw new Error(response.error || 'Community membership could not be updated.');
-    return { communityId, membershipState: response.data.state, memberCount: readNumber(response.data.memberCount) };
+    try {
+      const response = await this.apiService.request<ApiResult<{ state: CommunityMutationResult['membershipState']; memberCount: number }>>('/api/communities/membership', {
+        method: 'POST',
+        authenticated: true,
+        body: { communityId, action },
+        timeoutMs: 15_000,
+      });
+      if (response.success && response.data) {
+        return { communityId, membershipState: response.data.state, memberCount: readNumber(response.data.memberCount) };
+      }
+    } catch (error: unknown) {
+      this.logger.warn('CommunityService', 'updateMembership:api-failed', {
+        communityId,
+        action,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return this.updateMembershipInFirestore(communityId, action);
+  }
+
+  private async updateMembershipInFirestore(communityId: string, action: 'join' | 'request' | 'cancel_request' | 'leave'): Promise<CommunityMutationResult> {
+    const viewerId = this.getCurrentUserId();
+    if (!viewerId) throw new Error('You must be signed in to perform this action.');
+    this.logger.info('CommunityService', 'updateMembership:firestore:start', { communityId, action, viewerId });
+
+    const communityDocRef = doc(db, 'communityVariant', communityId);
+    const communitySnap = await getDoc(communityDocRef);
+    const communityData = communitySnap.exists() ? communitySnap.data() : null;
+    const isOwner = communityData?.userId === viewerId || communityData?.creatorId === viewerId;
+    const countDocRef = doc(db, 'communityVariantMembershipAndLikeCount', communityId);
+    const countSnap = await getDoc(countDocRef);
+    const currentMemberCount = readNumber(countSnap.data()?.membershipCount) || readNumber(communityData?.memberCount) || 1;
+
+    const membershipDocRef = doc(db, 'communityVariantMembership', `${communityId}_${viewerId}`);
+    const requestDocRef = doc(db, 'communityRequests', `${communityId}_${viewerId}`);
+
+    if (action === 'join') {
+      await setDoc(membershipDocRef, {
+        userId: viewerId,
+        communityVariantId: communityId,
+        isMember: true,
+        role: isOwner ? 'owner' : 'member',
+        status: 'active',
+        joinedAt: serverTimestamp(),
+        from: serverTimestamp(),
+        to: null,
+      }, { merge: true });
+      await deleteDoc(requestDocRef).catch(() => undefined);
+      const newCount = currentMemberCount + 1;
+      await setDoc(countDocRef, { communityVariantId: communityId, membershipCount: newCount }, { merge: true }).catch(() => undefined);
+      this.logger.success('CommunityService', 'updateMembership:firestore:joined', { communityId, newCount });
+      return { communityId, membershipState: isOwner ? 'owner' : 'member', memberCount: newCount };
+    }
+
+    if (action === 'request') {
+      await setDoc(requestDocRef, {
+        userId: viewerId,
+        communityVariantId: communityId,
+        status: 'pending',
+        requestedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      this.logger.success('CommunityService', 'updateMembership:firestore:requested', { communityId });
+      return { communityId, membershipState: 'pending', memberCount: currentMemberCount };
+    }
+
+    if (action === 'cancel_request') {
+      await deleteDoc(requestDocRef).catch(() => undefined);
+      this.logger.success('CommunityService', 'updateMembership:firestore:request-cancelled', { communityId });
+      return { communityId, membershipState: 'none', memberCount: currentMemberCount };
+    }
+
+    if (action === 'leave') {
+      if (isOwner) throw new Error('The community owner cannot leave the community.');
+      await setDoc(membershipDocRef, {
+        isMember: false,
+        status: 'left',
+        to: serverTimestamp(),
+      }, { merge: true });
+      const newCount = Math.max(0, currentMemberCount - 1);
+      await setDoc(countDocRef, { communityVariantId: communityId, membershipCount: newCount }, { merge: true }).catch(() => undefined);
+      this.logger.success('CommunityService', 'updateMembership:firestore:left', { communityId, newCount });
+      return { communityId, membershipState: 'none', memberCount: newCount };
+    }
+
+    return { communityId, membershipState: 'none', memberCount: currentMemberCount };
   }
 
   private normalizeCommunity(value: unknown): CommunitySummary {
@@ -353,49 +772,76 @@ export class CommunityService {
     const viewerRole: CommunitySummary['viewerRole'] = roleValue === 'owner' || roleValue === 'admin' || roleValue === 'moderator' || roleValue === 'member' ? roleValue : 'none';
     const postingValue = readString(source.postingPermission);
     const postingPermission: CommunitySummary['postingPermission'] = postingValue === 'everyone' || postingValue === 'admins' || postingValue === 'owner' ? postingValue : 'members';
+
+    const viewerId = this.getCurrentUserId();
+    const creatorId = readString(source.creatorId) || readString(source.userId);
+    const isOwner = membershipState === 'owner' || (Boolean(viewerId && creatorId) && creatorId === viewerId);
+    const isMember = isOwner || membershipState === 'member';
+    const isPrivate = readBoolean(source.isPrivate) || readString(source.privacy) === 'private';
+    const isBanned = membershipState === 'banned';
+    const hasAccess = isOwner || (permissionSource.canView !== undefined
+      ? readBoolean(permissionSource.canView)
+      : (!isPrivate || isMember));
+
+    const finalMembershipState: CommunitySummary['membershipState'] = isBanned
+      ? 'banned'
+      : isOwner
+        ? 'owner'
+        : membershipState === 'member'
+          ? 'member'
+          : membershipState === 'pending'
+            ? 'pending'
+            : membershipState === 'declined'
+              ? 'declined'
+              : 'none';
+
+    const finalViewerRole: CommunitySummary['viewerRole'] = isOwner
+      ? 'owner'
+      : viewerRole;
+
     return {
       id,
       slug: readString(source.slug) || readString(source.uniqueName) || id,
       title: readString(source.title) || readString(source.name) || 'Untitled community',
       description: readString(source.description),
-      imageUrl: readString(source.imageUrl) || readString(source.bannerImageUrl) || null,
+      imageUrl: readString(source.imageUrl) || readString(source.bannerImageUrl) || readString(source.coverImage) || null,
       categoryId: readString(source.categoryId) || null,
       categoryName: readString(source.categoryName),
-      creatorId: readString(source.creatorId) || readString(source.userId),
-      creatorName: readString(source.creatorName) || 'Unknown user',
+      creatorId,
+      creatorName: isOwner && !readString(source.creatorName) ? 'You' : (readString(source.creatorName) || 'Community creator'),
       creatorUserName: readString(source.creatorUserName),
       creatorProfilePicture: readString(source.creatorProfilePicture) || readString(source.creatorProfileImage) || null,
-      isPrivate: readBoolean(source.isPrivate),
+      isPrivate,
       isVerified: readBoolean(source.isVerified),
       verifiedMembersOnly: readBoolean(source.verifiedMembersOnly),
       postingPermission,
       createdAt: readString(source.createdAt) || null,
       createdAtMs: readNumber(source.createdAtMs) || readDateMs(source.createdAt),
       updatedAtMs: readNumber(source.updatedAtMs),
-      memberCount: readNumber(source.memberCount) || readNumber(source.membershipCount),
-      likeCount: readNumber(source.likeCount) || readNumber(source.membershipLikes),
-      postCount: readNumber(source.postCount),
+      memberCount: readNumber(source.memberCount) || readNumber(source.membershipCount) || 1,
+      likeCount: readNumber(source.likeCount) || readNumber(source.membershipLikes) || 0,
+      postCount: readNumber(source.postCount) || 0,
       topMembers: this.normalizePeople(source.topMembers),
       friendMembers: this.normalizePeople(source.friendMembers),
       friendMemberCount: readNumber(source.friendMemberCount),
-      membershipState,
-      viewerRole,
+      membershipState: finalMembershipState,
+      viewerRole: finalViewerRole,
       isLikedByViewer: readBoolean(source.isLikedByViewer),
       permissions: {
-        canView: readBoolean(permissionSource.canView),
-        canJoin: readBoolean(permissionSource.canJoin),
-        canRequestAccess: readBoolean(permissionSource.canRequestAccess),
-        canCancelRequest: readBoolean(permissionSource.canCancelRequest),
-        canLeave: readBoolean(permissionSource.canLeave),
-        canPost: readBoolean(permissionSource.canPost),
-        canHostEvent: readBoolean(permissionSource.canHostEvent),
-        canCreatePoll: readBoolean(permissionSource.canCreatePoll),
-        canInvite: readBoolean(permissionSource.canInvite),
-        canEdit: readBoolean(permissionSource.canEdit),
-        canDelete: readBoolean(permissionSource.canDelete),
-        canManageMembers: readBoolean(permissionSource.canManageMembers),
-        canModerate: readBoolean(permissionSource.canModerate),
-        canReport: readBoolean(permissionSource.canReport),
+        canView: isOwner || (permissionSource.canView !== undefined ? readBoolean(permissionSource.canView) : hasAccess),
+        canJoin: isOwner ? false : (permissionSource.canJoin !== undefined ? readBoolean(permissionSource.canJoin) : Boolean(viewerId && !isPrivate && !isMember && !isBanned)),
+        canRequestAccess: isOwner ? false : (permissionSource.canRequestAccess !== undefined ? readBoolean(permissionSource.canRequestAccess) : Boolean(viewerId && isPrivate && !isMember && finalMembershipState !== 'pending' && !isBanned)),
+        canCancelRequest: isOwner ? false : (permissionSource.canCancelRequest !== undefined ? readBoolean(permissionSource.canCancelRequest) : finalMembershipState === 'pending'),
+        canLeave: isOwner ? false : (permissionSource.canLeave !== undefined ? readBoolean(permissionSource.canLeave) : (isMember && !isOwner)),
+        canPost: isOwner ? true : (permissionSource.canPost !== undefined ? readBoolean(permissionSource.canPost) : (hasAccess && (postingPermission === 'everyone' || isMember))),
+        canHostEvent: isOwner ? true : (permissionSource.canHostEvent !== undefined ? readBoolean(permissionSource.canHostEvent) : (hasAccess && (postingPermission === 'everyone' || isMember))),
+        canCreatePoll: isOwner ? true : (permissionSource.canCreatePoll !== undefined ? readBoolean(permissionSource.canCreatePoll) : (hasAccess && (postingPermission === 'everyone' || isMember))),
+        canInvite: isOwner ? true : (permissionSource.canInvite !== undefined ? readBoolean(permissionSource.canInvite) : (hasAccess && isMember)),
+        canEdit: isOwner ? true : (permissionSource.canEdit !== undefined ? readBoolean(permissionSource.canEdit) : (finalViewerRole === 'admin')),
+        canDelete: isOwner ? true : (permissionSource.canDelete !== undefined ? readBoolean(permissionSource.canDelete) : false),
+        canManageMembers: isOwner ? true : (permissionSource.canManageMembers !== undefined ? readBoolean(permissionSource.canManageMembers) : (finalViewerRole === 'admin')),
+        canModerate: isOwner ? true : (permissionSource.canModerate !== undefined ? readBoolean(permissionSource.canModerate) : (finalViewerRole === 'admin' || finalViewerRole === 'moderator')),
+        canReport: isOwner ? false : (permissionSource.canReport !== undefined ? readBoolean(permissionSource.canReport) : Boolean(viewerId && !isOwner)),
       },
     };
   }

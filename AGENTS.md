@@ -86,6 +86,13 @@ npx expo start                          # Start Metro bundler
 
 ---
 
-## 5. Web Parity Master Directive
+## 5. Standalone Build & Native Stability Rules
+- **Firebase Config Integrity**: Maintain real `google-services.json` for Android package `com.ourlime.app`. All `@react-native-firebase/*` dependencies in `package.json` must have their matching plugins declared in `app.json`.
+- **TurboModule Interop Safety**: Guard platform-specific legacy libraries (e.g. `react-native-callkeep`) with `Platform.OS === 'ios'` and `try/catch` to avoid Java `@ReactMethod` overload reflection crashes on Android.
+- **Skill Reference**: See [`.agents/skills/native-build-stability/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/native-build-stability/SKILL.md) for full standalone build diagnostic and stability procedures.
+
+---
+
+## 6. Web Parity Master Directive
 - **Primary Goal:** Replicate all features, design aesthetics, domain logic, and real-time capabilities of `Ourlime-Web` into `Ourlime-Mobile`, tailored for high-end native mobile UX (iOS & Android).
 - Refer to [`PROJECT_CONTEXT.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/PROJECT_CONTEXT.md) for complete feature maps, OOP service architecture, real-time notification sync, lockscreen push dispatching, WhatsApp-style messaging parity, and modern glassmorphism dialog modal rules.

@@ -140,10 +140,11 @@ export class RelationshipService {
   private async getSuggestionsFromFirestore(maxResults: number): Promise<RelationshipSuggestion[]> {
     const viewerId = auth.currentUser?.uid;
     if (!viewerId) return [];
-    const [viewerDocument, asFirst, asSecond, usersSnapshot] = await Promise.all([
+    const [viewerDocument, asFirst, asSecond, pluralFriendships, usersSnapshot] = await Promise.all([
       getDoc(doc(db, 'users', viewerId)),
       getDocs(query(collection(db, 'friendship'), where('userId1', '==', viewerId))),
       getDocs(query(collection(db, 'friendship'), where('userId2', '==', viewerId))),
+      getDocs(query(collection(db, 'friendships'), where('users', 'array-contains', viewerId))).catch(() => null),
       getDocs(query(collection(db, 'users'), limit(Math.max(maxResults * 6, 30)))),
     ]);
     const excludedIds = new Set<string>([viewerId]);
@@ -152,6 +153,14 @@ export class RelationshipService {
       const otherId = relationship.userId1 === viewerId ? readString(relationship.userId2) : readString(relationship.userId1);
       if (otherId) excludedIds.add(otherId);
     });
+    if (pluralFriendships) {
+      pluralFriendships.docs.forEach((d) => {
+        const users = d.data().users as string[] | undefined;
+        if (Array.isArray(users)) {
+          users.forEach((u) => { if (u && u !== viewerId) excludedIds.add(u); });
+        }
+      });
+    }
     const viewerCountry = readString(viewerDocument.data()?.country);
     const candidates = usersSnapshot.docs
       .filter((document) => !excludedIds.has(document.id))

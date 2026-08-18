@@ -47,7 +47,7 @@ function VideoPostItem({
 
   // Double tap state tracking
   const lastTapRef = useRef<number>(0);
-  const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Enhanced Heart animation for double tap like
   const heartScale = useRef(new Animated.Value(0)).current;

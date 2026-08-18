@@ -1,13 +1,14 @@
 {
   "project_info": {
-    "project_number": "123456789012",
-    "project_id": "ourlime-app",
-    "storage_bucket": "ourlime-app.appspot.com"
+    "project_number": "854561867716",
+    "firebase_url": "https://ourlime-919f2-default-rtdb.firebaseio.com",
+    "project_id": "ourlime-919f2",
+    "storage_bucket": "ourlime-919f2.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:123456789012:android:abcdef1234567890",
+        "mobilesdk_app_id": "1:854561867716:android:c4ed7a6eb090868f84c691",
         "android_client_info": {
           "package_name": "com.ourlime.app"
         }
@@ -15,7 +16,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDummyKeyForLocalBuild"
+          "current_key": "AIzaSyDHrh58SMPd_Eh2VYPofWsQOGztTT9OZFw"
         }
       ],
       "services": {

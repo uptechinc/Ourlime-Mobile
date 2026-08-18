@@ -1,9 +1,9 @@
-import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from './ApiService';
 import { callService } from './CallService';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { platformEnvironmentService } from './PlatformEnvironmentService';
 import type { CallEndReason, CallPushPayload, CallSession } from '@/lib/types/call';
 
 type NativeCallCallbacks = {
@@ -44,41 +44,66 @@ export class NativeCallService {
   }
 
   public isAvailable(): boolean {
-    return Constants.appOwnership !== 'expo' && Platform.OS !== 'web';
+    return platformEnvironmentService.isNativeCallingSupported();
   }
 
   public async registerAndroidBackgroundHandler(): Promise<void> {
     if (Platform.OS !== 'android' || !this.isAvailable() || this.backgroundHandlerRegistered) return;
-    const messaging = (await import('@react-native-firebase/messaging')).default;
-    messaging().setBackgroundMessageHandler(async (message) => {
-      const payload = this.parsePayload(message.data);
-      if (payload) await this.displayIncomingCall(payload);
-    });
-    this.backgroundHandlerRegistered = true;
+    try {
+      const messagingModule = await import('@react-native-firebase/messaging');
+      const getMessaging = messagingModule.getMessaging || messagingModule.default;
+      if (typeof getMessaging !== 'function') return;
+      const messaging = getMessaging();
+      if (!messaging) return;
+
+      if (typeof messagingModule.setBackgroundMessageHandler === 'function') {
+        messagingModule.setBackgroundMessageHandler(messaging, async (message) => {
+          const payload = this.parsePayload(message.data);
+          if (payload) await this.displayIncomingCall(payload);
+        });
+        this.backgroundHandlerRegistered = true;
+      } else if (typeof messaging.setBackgroundMessageHandler === 'function') {
+        messaging.setBackgroundMessageHandler(async (message) => {
+          const payload = this.parsePayload(message.data);
+          if (payload) await this.displayIncomingCall(payload);
+        });
+        this.backgroundHandlerRegistered = true;
+      }
+    } catch (error: unknown) {
+      this.logger.warn('NativeCallService', 'fcm:bg-handler-unavailable', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   public async initialize(callbacks: NativeCallCallbacks): Promise<void> {
     this.callbacks = callbacks;
     if (this.initialized || !this.isAvailable()) return;
-    const RNCallKeep = (await import('react-native-callkeep')).default;
-    await RNCallKeep.setup({
-      ios: { appName: 'Ourlime', supportsVideo: true, maximumCallGroups: '1', maximumCallsPerCallGroup: '1', includesCallsInRecents: true },
-      android: {
-        alertTitle: 'Calling permission', alertDescription: 'Ourlime needs access to show incoming calls.',
-        cancelButton: 'Cancel', okButton: 'Allow', additionalPermissions: [], selfManaged: false,
-        foregroundService: { channelId: 'ourlime-calls', channelName: 'Ourlime calls', notificationTitle: 'Ourlime call in progress' },
-      },
-    });
-    this.subscriptions.push(
-      RNCallKeep.addEventListener('answerCall', ({ callUUID }) => this.callbacks?.onAnswer(callUUID)),
-      RNCallKeep.addEventListener('endCall', ({ callUUID }) => this.callbacks?.onDecline(callUUID)),
-      RNCallKeep.addEventListener('didLoadWithEvents', (events) => {
-        events.forEach((event) => {
-          if (event.name === 'RNCallKeepPerformAnswerCallAction') this.callbacks?.onAnswer(event.data.callUUID);
-          if (event.name === 'RNCallKeepPerformEndCallAction') this.callbacks?.onDecline(event.data.callUUID);
+    if (Platform.OS === 'ios') {
+      try {
+        const RNCallKeep = (await import('react-native-callkeep')).default;
+        await RNCallKeep.setup({
+          ios: { appName: 'Ourlime', supportsVideo: true, maximumCallGroups: '1', maximumCallsPerCallGroup: '1', includesCallsInRecents: true },
+          android: {
+            alertTitle: 'Calling permission', alertDescription: 'Ourlime needs access to show incoming calls.',
+            cancelButton: 'Cancel', okButton: 'Allow', additionalPermissions: [], selfManaged: false,
+            foregroundService: { channelId: 'ourlime-calls', channelName: 'Ourlime calls', notificationTitle: 'Ourlime call in progress' },
+          },
         });
-      }),
-    );
+        this.subscriptions.push(
+          RNCallKeep.addEventListener('answerCall', ({ callUUID }) => this.callbacks?.onAnswer(callUUID)),
+          RNCallKeep.addEventListener('endCall', ({ callUUID }) => this.callbacks?.onDecline(callUUID)),
+          RNCallKeep.addEventListener('didLoadWithEvents', (events) => {
+            events.forEach((event) => {
+              if (event.name === 'RNCallKeepPerformAnswerCallAction') this.callbacks?.onAnswer(event.data.callUUID);
+              if (event.name === 'RNCallKeepPerformEndCallAction') this.callbacks?.onDecline(event.data.callUUID);
+            });
+          }),
+        );
+      } catch (error: unknown) {
+        this.logger.warn('NativeCallService', 'callkeep:setup-failed', { message: error instanceof Error ? error.message : String(error) });
+      }
+    }
     await this.initializePushTransports();
     this.initialized = true;
     this.logger.info('NativeCallService', 'initialize', { platform: Platform.OS });
@@ -88,8 +113,14 @@ export class NativeCallService {
     this.callbacks?.onIncomingCall(payload);
     if (payload.type !== 'incoming_call' || Date.now() >= payload.expiresAtMs) return;
     if (!this.isAvailable()) return;
-    const RNCallKeep = (await import('react-native-callkeep')).default;
-    RNCallKeep.displayIncomingCall(payload.callId, payload.callerUserName || payload.callerId, payload.callerName, 'generic', payload.callType === 'video', payload);
+    if (Platform.OS === 'ios') {
+      try {
+        const RNCallKeep = (await import('react-native-callkeep')).default;
+        RNCallKeep.displayIncomingCall(payload.callId, payload.callerUserName || payload.callerId, payload.callerName, 'generic', payload.callType === 'video', payload);
+      } catch (error: unknown) {
+        this.logger.warn('NativeCallService', 'callkeep:display-failed', { message: error instanceof Error ? error.message : String(error) });
+      }
+    }
     this.clearRingingTimer(payload.callId);
     const remainingMs = Math.max(0, payload.expiresAtMs - Date.now());
     this.ringingTimers.set(payload.callId, setTimeout(() => {
@@ -100,30 +131,56 @@ export class NativeCallService {
     this.logger.info('NativeCallService', 'incoming:display', { callId: payload.callId, callType: payload.callType, expiresAtMs: payload.expiresAtMs });
   }
 
+  public async displayIncomingCallForSession(session: CallSession): Promise<void> {
+    const payload: CallPushPayload = {
+      type: 'incoming_call',
+      callId: session.id,
+      callerId: session.caller.userId,
+      callerName: session.caller.displayName,
+      callerUserName: session.caller.userName,
+      callerProfilePicture: session.caller.profilePicture,
+      callType: session.type,
+      expiresAtMs: session.expiresAtMs,
+    };
+    await this.displayIncomingCall(payload);
+  }
+
   public async startOutgoingCall(session: CallSession): Promise<void> {
-    if (!this.isAvailable()) return;
-    const RNCallKeep = (await import('react-native-callkeep')).default;
-    RNCallKeep.startCall(session.id, session.callee.userName || session.callee.userId, session.callee.displayName, 'generic', session.type === 'video');
+    if (!this.isAvailable() || Platform.OS !== 'ios') return;
+    try {
+      const RNCallKeep = (await import('react-native-callkeep')).default;
+      RNCallKeep.startCall(session.id, session.callee.userName || session.callee.userId, session.callee.displayName, 'generic', session.type === 'video');
+    } catch (error: unknown) {
+      this.logger.warn('NativeCallService', 'callkeep:start-failed', { message: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   public async markConnected(callId: string): Promise<void> {
-    if (!this.isAvailable()) return;
+    if (!this.isAvailable() || Platform.OS !== 'ios') return;
     this.clearRingingTimer(callId);
-    const RNCallKeep = (await import('react-native-callkeep')).default;
-    RNCallKeep.reportConnectedOutgoingCallWithUUID(callId);
+    try {
+      const RNCallKeep = (await import('react-native-callkeep')).default;
+      RNCallKeep.reportConnectedOutgoingCallWithUUID(callId);
+    } catch (error: unknown) {
+      this.logger.warn('NativeCallService', 'callkeep:markConnected-failed', { message: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   public async endNativeCall(callId: string, reason: CallEndReason | null): Promise<void> {
-    if (!this.isAvailable()) return;
+    if (!this.isAvailable() || Platform.OS !== 'ios') return;
     this.clearRingingTimer(callId);
-    const callKeepModule = await import('react-native-callkeep');
-    const RNCallKeep = callKeepModule.default;
-    const endReasons = callKeepModule.CONSTANTS.END_CALL_REASONS;
-    const nativeReason = reason === 'missed' ? endReasons.UNANSWERED
-      : reason === 'answered_elsewhere' ? endReasons.ANSWERED_ELSEWHERE
-      : reason === 'failed' ? endReasons.FAILED
-      : endReasons.REMOTE_ENDED;
-    RNCallKeep.reportEndCallWithUUID(callId, nativeReason);
+    try {
+      const callKeepModule = await import('react-native-callkeep');
+      const RNCallKeep = callKeepModule.default;
+      const endReasons = callKeepModule.CONSTANTS.END_CALL_REASONS;
+      const nativeReason = reason === 'missed' ? endReasons.UNANSWERED
+        : reason === 'answered_elsewhere' ? endReasons.ANSWERED_ELSEWHERE
+        : reason === 'failed' ? endReasons.FAILED
+        : endReasons.REMOTE_ENDED;
+      RNCallKeep.reportEndCallWithUUID(callId, nativeReason);
+    } catch (error: unknown) {
+      this.logger.warn('NativeCallService', 'callkeep:end-failed', { message: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   public async unregisterTokens(): Promise<void> {
@@ -144,46 +201,112 @@ export class NativeCallService {
   }
 
   private async initializePushTransports(): Promise<void> {
-    if (Platform.OS === 'android') await this.initializeFcm();
-    if (Platform.OS === 'ios') await this.initializeVoipPush();
+    try {
+      if (Platform.OS === 'android') await this.initializeFcm();
+      if (Platform.OS === 'ios') await this.initializeVoipPush();
+    } catch (error: unknown) {
+      this.logger.warn('NativeCallService', 'push-transports:unavailable', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async initializeFcm(): Promise<void> {
-    const messaging = (await import('@react-native-firebase/messaging')).default;
-    await this.registerAndroidBackgroundHandler();
-    await messaging().registerDeviceForRemoteMessages();
-    await messaging().requestPermission();
-    const token = await messaging().getToken();
-    await this.registerToken(token, 'android', 'fcm');
-    const foregroundSubscription = messaging().onMessage(async (message) => {
-      const payload = this.parsePayload(message.data);
-      if (payload) await this.displayIncomingCall(payload);
-    });
-    this.subscriptions.push({ remove: foregroundSubscription });
-    const tokenSubscription = messaging().onTokenRefresh((nextToken) => { void this.registerToken(nextToken, 'android', 'fcm'); });
-    this.subscriptions.push({ remove: tokenSubscription });
+    try {
+      const messagingModule = await import('@react-native-firebase/messaging');
+      const getMessaging = messagingModule.getMessaging || messagingModule.default;
+      if (typeof getMessaging !== 'function') return;
+      const messaging = getMessaging();
+      if (!messaging) return;
+
+      await this.registerAndroidBackgroundHandler();
+
+      if (typeof messagingModule.registerDeviceForRemoteMessages === 'function') {
+        await messagingModule.registerDeviceForRemoteMessages(messaging).catch(() => {});
+      } else if (typeof messaging.registerDeviceForRemoteMessages === 'function') {
+        await messaging.registerDeviceForRemoteMessages().catch(() => {});
+      }
+
+      if (typeof messagingModule.requestPermission === 'function') {
+        await messagingModule.requestPermission(messaging).catch(() => {});
+      } else if (typeof messaging.requestPermission === 'function') {
+        await messaging.requestPermission().catch(() => {});
+      }
+
+      let token: string | null = null;
+      if (typeof messagingModule.getToken === 'function') {
+        token = await messagingModule.getToken(messaging).catch(() => null);
+      } else if (typeof messaging.getToken === 'function') {
+        token = await messaging.getToken().catch(() => null);
+      }
+
+      if (token) {
+        await this.registerToken(token, 'android', 'fcm').catch(() => {});
+      }
+
+      const messageHandler = async (message: { data?: unknown }) => {
+        const payload = this.parsePayload(message.data);
+        if (payload) await this.displayIncomingCall(payload);
+      };
+
+      if (typeof messagingModule.onMessage === 'function') {
+        const unsub = messagingModule.onMessage(messaging, messageHandler);
+        this.subscriptions.push({ remove: unsub });
+      } else if (typeof messaging.onMessage === 'function') {
+        const unsub = messaging.onMessage(messageHandler);
+        this.subscriptions.push({ remove: unsub });
+      }
+
+      if (typeof messagingModule.onTokenRefresh === 'function') {
+        const unsub = messagingModule.onTokenRefresh(messaging, (nextToken: string) => {
+          void this.registerToken(nextToken, 'android', 'fcm').catch(() => {});
+        });
+        this.subscriptions.push({ remove: unsub });
+      } else if (typeof messaging.onTokenRefresh === 'function') {
+        const unsub = messaging.onTokenRefresh((nextToken: string) => {
+          void this.registerToken(nextToken, 'android', 'fcm').catch(() => {});
+        });
+        this.subscriptions.push({ remove: unsub });
+      }
+    } catch (error: unknown) {
+      this.logger.warn('NativeCallService', 'fcm:init-failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async initializeVoipPush(): Promise<void> {
-    const VoipPush = (await import('react-native-voip-push-notification')).default;
-    VoipPush.addEventListener('register', (token) => { void this.registerToken(token, 'ios', 'apns_voip'); });
-    VoipPush.addEventListener('notification', (notification) => {
-      const payload = this.parsePayload(notification);
-      if (payload) void this.displayIncomingCall(payload).finally(() => VoipPush.onVoipNotificationCompleted(payload.callId));
-    });
-    VoipPush.addEventListener('didLoadWithEvents', (events) => {
-      events.forEach((event) => {
-        if (event.name === 'RNVoipPushRemoteNotificationReceivedEvent') {
-          const payload = this.parsePayload(event.data);
-          if (payload) void this.displayIncomingCall(payload);
-        }
-        if (event.name === 'RNVoipPushRemoteNotificationsRegisteredEvent') void this.registerToken(event.data, 'ios', 'apns_voip');
+    try {
+      const VoipPush = (await import('react-native-voip-push-notification')).default;
+      if (!VoipPush || typeof VoipPush.addEventListener !== 'function') return;
+
+      VoipPush.addEventListener('register', (token) => { void this.registerToken(token, 'ios', 'apns_voip').catch(() => {}); });
+      VoipPush.addEventListener('notification', (notification) => {
+        const payload = this.parsePayload(notification);
+        if (payload) void this.displayIncomingCall(payload).finally(() => VoipPush.onVoipNotificationCompleted(payload.callId));
       });
-    });
-    VoipPush.registerVoipToken();
-    this.subscriptions.push({ remove: () => {
-      VoipPush.removeEventListener('register'); VoipPush.removeEventListener('notification'); VoipPush.removeEventListener('didLoadWithEvents');
-    } });
+      VoipPush.addEventListener('didLoadWithEvents', (events) => {
+        events.forEach((event) => {
+          if (event.name === 'RNVoipPushRemoteNotificationReceivedEvent') {
+            const payload = this.parsePayload(event.data);
+            if (payload) void this.displayIncomingCall(payload);
+          }
+          if (event.name === 'RNVoipPushRemoteNotificationsRegisteredEvent') void this.registerToken(event.data, 'ios', 'apns_voip').catch(() => {});
+        });
+      });
+      VoipPush.registerVoipToken();
+      this.subscriptions.push({ remove: () => {
+        try {
+          VoipPush.removeEventListener('register');
+          VoipPush.removeEventListener('notification');
+          VoipPush.removeEventListener('didLoadWithEvents');
+        } catch {}
+      } });
+    } catch (error: unknown) {
+      this.logger.warn('NativeCallService', 'voip-push:init-failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async registerToken(token: string, platform: 'android' | 'ios', transport: 'fcm' | 'apns_voip'): Promise<void> {

@@ -10,6 +10,7 @@ export function useConversations(userId: string) {
   useEffect(() => {
     if (!userId) return;
     void conversationResourceService.hydrate(userId).then(() => conversationResourceService.refresh(userId));
+    conversationResourceService.startRealtime(userId);
   }, [userId]);
 
   return {

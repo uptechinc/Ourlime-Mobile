@@ -569,7 +569,7 @@ export default function Register() {
                     {errors.terms ? <Text style={styles.fieldError}>{errors.terms}</Text> : null}
 
                     <TouchableOpacity onPress={() => setIsPrivacyAccepted(!isPrivacyAccepted)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <Ionicons name={isTermsAccepted ? 'checkbox' : 'square-outline'} size={20} color={isPrivacyAccepted ? GREEN_DARK : '#64748b'} />
+                      <Ionicons name={isPrivacyAccepted ? 'checkbox' : 'square-outline'} size={20} color={isPrivacyAccepted ? GREEN_DARK : '#64748b'} />
                       <Text style={{ color: '#cbd5e1', fontSize: 13, flex: 1 }}>
                         I accept the <Text onPress={() => setIsPrivacyOpen(true)} style={{ color: GREEN_DARK, fontWeight: '700', textDecorationLine: 'underline' }}>Privacy Policy</Text>
                       </Text>

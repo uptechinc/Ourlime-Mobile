@@ -151,6 +151,32 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       type: "sourceFile",
     };
   }
+
+  if (moduleName.startsWith("react-native-vector-icons/")) {
+    const family = moduleName.replace("react-native-vector-icons/", "");
+    try {
+      const expoIconPath = require.resolve(`@expo/vector-icons/${family}`);
+      return {
+        filePath: expoIconPath,
+        type: "sourceFile",
+      };
+    } catch {
+      // Fallback
+    }
+  }
+
+  if (moduleName === "react-native-vector-icons") {
+    try {
+      const expoIconsPath = require.resolve("@expo/vector-icons");
+      return {
+        filePath: expoIconsPath,
+        type: "sourceFile",
+      };
+    } catch {
+      // Fallback
+    }
+  }
+
   if (originalResolveRequest) {
     return originalResolveRequest(context, moduleName, platform);
   }

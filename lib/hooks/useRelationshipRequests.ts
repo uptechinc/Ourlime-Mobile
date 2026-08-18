@@ -13,7 +13,7 @@ export function useRelationshipRequests(
   enabled = true,
 ) {
   const key = relationshipRequestResourceService.key(userId, direction, search);
-  const resource = useResourceStore((state) => state.relationshipRequests[key] ?? IDLE_RELATIONSHIP_REQUESTS);
+  const resource = useResourceStore((state) => state.relationshipRequests[key]) ?? IDLE_RELATIONSHIP_REQUESTS;
   useEffect(() => {
     if (!enabled || !userId) return;
     void relationshipRequestResourceService.hydrate(userId, direction, search).then(() => relationshipRequestResourceService.refresh(userId, direction, search));

@@ -4,6 +4,7 @@ export type CommunityDirectorySort = 'popular' | 'newest' | 'active' | 'trending
 export type CommunityDirectoryViewMode = 'grid' | 'list';
 export type CommunityMemberRole = 'owner' | 'admin' | 'moderator' | 'member' | 'none';
 export type CommunityMembershipState = 'owner' | 'member' | 'pending' | 'declined' | 'banned' | 'none';
+export type CommunityTab = 'posts' | 'events' | 'polls' | 'about' | 'members';
 
 export type CommunityPersonPreview = {
   userId: string;

@@ -1,4 +1,4 @@
-import { File, Paths } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 type LogLevel = 'error' | 'warn';
 
@@ -41,6 +41,8 @@ export class ErrorLogService {
     return ErrorLogService.instance;
   }
 
+  private isCapturing = false;
+
   /** Patch console.error / console.warn and start capturing. */
   public install(): void {
     if (this.installed) return;
@@ -48,12 +50,28 @@ export class ErrorLogService {
 
     console.error = (...args: unknown[]) => {
       this.originalConsoleError(...args);
-      this.capture('error', args);
+      if (this.isCapturing) return;
+      this.isCapturing = true;
+      try {
+        this.capture('error', args);
+      } catch {
+        // Safe fallback
+      } finally {
+        this.isCapturing = false;
+      }
     };
 
     console.warn = (...args: unknown[]) => {
       this.originalConsoleWarn(...args);
-      this.capture('warn', args);
+      if (this.isCapturing) return;
+      this.isCapturing = true;
+      try {
+        this.capture('warn', args);
+      } catch {
+        // Safe fallback
+      } finally {
+        this.isCapturing = false;
+      }
     };
   }
 
@@ -71,7 +89,11 @@ export class ErrorLogService {
 
   /** Absolute path of the markdown log file on-device. */
   public getLogPath(): string {
-    return new File(Paths.document, LOG_FILENAME).uri;
+    try {
+      return FileSystem.documentDirectory ? `${FileSystem.documentDirectory}${LOG_FILENAME}` : '';
+    } catch {
+      return '';
+    }
   }
 
   /** Wipe the log file. */
@@ -92,6 +114,17 @@ export class ErrorLogService {
         return String(a ?? '');
       })
       .join(' ');
+
+    if (
+      !message ||
+      message.includes('@firebase') ||
+      message.includes('WebChannelConnection') ||
+      message.includes('transport errored') ||
+      message.includes('RPC') ||
+      message.includes('SafeAreaView has been deprecated')
+    ) {
+      return;
+    }
 
     // Build a synthetic stack from the current execution context.
     const syntheticError = new Error(message);
@@ -130,8 +163,13 @@ export class ErrorLogService {
   }
 
   private async writeFile(content: string): Promise<void> {
-    const file = new File(Paths.document, LOG_FILENAME);
-    file.write(content);
+    try {
+      const path = this.getLogPath();
+      if (!path) return;
+      await FileSystem.writeAsStringAsync(path, content, { encoding: FileSystem.EncodingType.UTF8 });
+    } catch {
+      // Silent error protection
+    }
   }
 
   /**

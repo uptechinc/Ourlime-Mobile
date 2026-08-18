@@ -17,7 +17,7 @@ import { useCommunityDetailResource } from '@/lib/hooks/useCommunityDetailResour
 import { useCommunityFeedResource } from '@/lib/hooks/useCommunityFeedResource';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import type { CommunityCardModel, CommunityDashboardData, CommunityJoinRequest, CommunityMember, CommunityPoll, CommunityReportItem, UpdateCommunityInput } from '@/lib/types/community';
+import type { CommunityCardModel, CommunityDashboardData, CommunityJoinRequest, CommunityMember, CommunityMutationResult, CommunityPoll, CommunityReportItem, CommunityTab, UpdateCommunityInput } from '@/lib/types/community';
 import type { ResourceState } from '@/lib/types/resourceState';
 import type { PostItem } from '@/lib/services/PostService';
 import type { CommunityEventDraft } from '@/components/communities/detail/CommunityEventsWorkspace';
@@ -33,11 +33,11 @@ import CommunityPollsWorkspace from '@/components/communities/detail/CommunityPo
 import CommunityDashboardSheet from '@/components/communities/detail/CommunityDashboardSheet';
 import EditCommunityModal from '@/components/communities/detail/EditCommunityModal';
 import CommunityMemberActionSheet from '@/components/communities/detail/CommunityMemberActionSheet';
+import CommunityDetailSkeleton from '@/components/communities/detail/CommunityDetailSkeleton';
 import CommunityReportModal from '@/components/communities/CommunityReportModal';
 import CustomModal from '@/components/ui/CustomModal';
 import type { ReportReasonCategory } from '@/lib/services/ModerationService';
 
-type CommunityTab = 'posts' | 'events' | 'polls' | 'about' | 'members';
 type ConfirmationAction = 'leave' | 'delete' | 'poll-delete' | null;
 type ReportTarget = { kind: 'community' } | { kind: 'poll'; poll: CommunityPoll } | { kind: 'event'; event: Event };
 type ConfirmationState = {
@@ -74,13 +74,28 @@ export default function CommunityDetailScreen() {
   const { colors } = useAppTheme();
   const viewerId = authService.getCurrentUser()?.uid ?? '';
   const resources = useCommunityDetailResource(viewerId, identifier);
-  const detailData = resources.detail.data;
+  const {
+    detail,
+    members,
+    requests,
+    events,
+    polls,
+    refreshDetail,
+    loadMembers,
+    loadMoreMembers,
+    searchMembers,
+    loadRequests,
+    loadEvents,
+    loadPolls,
+  } = resources;
+  const detailData = detail.data;
   const community = detailData?.community ?? null;
   const communityId = community?.id ?? '';
   const { resource: postResource, refresh: refreshPosts } = useCommunityFeedResource(viewerId, communityId, Boolean(community?.permissions.canView));
   const posts = useMemo(() => postResource.data ?? [], [postResource.data]);
-  const categories = useResourceStore((state) => state.communityCategories.data ?? []);
-  const dashboard = useResourceStore((state) => state.communityDashboards[communityId] ?? EMPTY_DASHBOARD);
+  const categoriesData = useResourceStore((state) => state.communityCategories.data);
+  const categories = useMemo(() => categoriesData ?? [], [categoriesData]);
+  const dashboard = useResourceStore((state) => (communityId ? state.communityDashboards[communityId] : undefined)) ?? EMPTY_DASHBOARD;
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [activeTab, setActiveTab] = useState<CommunityTab>('posts');
   const [activePostId, setActivePostId] = useState<string | null>(null);
@@ -102,31 +117,50 @@ export default function CommunityDetailScreen() {
 
   useEffect(() => {
     if (!communityId || !community?.permissions.canView) return;
-    if (activeTab === 'members') void resources.loadMembers();
-    if (activeTab === 'events') void resources.loadEvents();
-    if (activeTab === 'polls') void resources.loadPolls();
-  }, [activeTab, community?.permissions.canView, communityId, resources]);
+    if (activeTab === 'members') void loadMembers();
+    if (activeTab === 'events') void loadEvents();
+    if (activeTab === 'polls') void loadPolls();
+  }, [activeTab, community?.permissions.canView, communityId, loadEvents, loadMembers, loadPolls]);
 
   const activePost = useMemo(() => posts.find((post) => post.id === activePostId) ?? null, [activePostId, posts]);
 
   const reconcileCommunity = useCallback(async (): Promise<void> => {
     if (!viewerId || !identifier) return;
-    await resources.refreshDetail();
+    await refreshDetail();
     const latest = useResourceStore.getState().communityDetails[identifier]?.data?.community;
     if (latest) await directoryService.patchCommunity(viewerId, latest);
-  }, [identifier, resources, viewerId]);
+  }, [identifier, refreshDetail, viewerId]);
 
   const handleMembershipAction = async (): Promise<void> => {
     if (!community || busy) return;
     setBusy(true);
     try {
+      let result: CommunityMutationResult;
       if (community.membershipState === 'pending') {
-        await communityService.cancelRequest(community.id);
+        result = await communityService.cancelRequest(community.id);
         setFeedback('Your membership request was canceled.');
       } else {
-        const result = await communityService.joinOrRequestAccess(community);
+        result = await communityService.joinOrRequestAccess(community);
         setFeedback(result.membershipState === 'member' ? 'You joined the community.' : 'Your request was sent to the community team.');
       }
+      const updated: CommunityCardModel = {
+        ...community,
+        membershipState: result.membershipState,
+        memberCount: result.memberCount,
+        permissions: {
+          ...community.permissions,
+          canJoin: result.membershipState === 'none' && !community.isPrivate,
+          canRequestAccess: result.membershipState === 'none' && community.isPrivate,
+          canCancelRequest: result.membershipState === 'pending',
+          canLeave: result.membershipState === 'member',
+          canView: result.membershipState === 'member' || !community.isPrivate,
+        },
+      };
+      const state = { ...detail, data: detailData ? { ...detailData, community: updated } : null, status: 'ready' as const, source: 'network' as const, updatedAt: Date.now(), isStale: false, error: null };
+      useResourceStore.getState().setCommunityDetail(identifier, state);
+      if (community.id && community.id !== identifier) useResourceStore.getState().setCommunityDetail(community.id, state);
+      if (community.slug && community.slug !== identifier) useResourceStore.getState().setCommunityDetail(community.slug, state);
+      await directoryService.patchCommunity(viewerId, updated);
       await reconcileCommunity();
     } catch (error: unknown) {
       setFeedback(error instanceof Error ? error.message : 'Community membership could not be updated.');
@@ -141,7 +175,7 @@ export default function CommunityDetailScreen() {
     try {
       const reaction = await communityService.toggleCommunityLike(community.id, !community.isLikedByViewer);
       const updated: CommunityCardModel = { ...community, isLikedByViewer: reaction.liked, likeCount: reaction.likeCount };
-      useResourceStore.getState().setCommunityDetail(identifier, { ...resources.detail, data: detailData ? { ...detailData, community: updated } : null, status: 'ready', source: 'network', updatedAt: Date.now(), isStale: false, error: null });
+      useResourceStore.getState().setCommunityDetail(identifier, { ...detail, data: detailData ? { ...detailData, community: updated } : null, status: 'ready', source: 'network', updatedAt: Date.now(), isStale: false, error: null });
       await directoryService.patchCommunity(viewerId, updated);
     } catch (error: unknown) {
       setFeedback(error instanceof Error ? error.message : 'Community like could not be updated.');
@@ -156,10 +190,10 @@ export default function CommunityDetailScreen() {
   };
 
   const handleRefresh = async (): Promise<void> => {
-    await Promise.all([resources.refreshDetail(), refreshPosts()]);
-    if (activeTab === 'members') await resources.loadMembers(true);
-    if (activeTab === 'events') await resources.loadEvents(true);
-    if (activeTab === 'polls') await resources.loadPolls(true);
+    await Promise.all([refreshDetail(), refreshPosts()]);
+    if (activeTab === 'members') await loadMembers(true);
+    if (activeTab === 'events') await loadEvents(true);
+    if (activeTab === 'polls') await loadPolls(true);
   };
 
   const handlePostUpdate = (post: PostItem): void => { void feedService.patchPost(post); };
@@ -187,13 +221,13 @@ export default function CommunityDetailScreen() {
       image: draft.imageUrl.trim() || undefined,
       media: draft.media,
     });
-    await resources.loadEvents(true);
+    await loadEvents(true);
   };
 
   const handleReviewRequest = async (request: CommunityJoinRequest, action: 'approve' | 'decline'): Promise<void> => {
     if (!community) return;
     await communityService.reviewJoinRequest(community.id, request.requestId, request.userId, action);
-    await Promise.all([resources.loadRequests(true), resources.loadMembers(true), reconcileCommunity()]);
+    await Promise.all([loadRequests(true), loadMembers(true), reconcileCommunity()]);
   };
 
   const handleManageMember = (member: CommunityMember): void => {
@@ -201,7 +235,7 @@ export default function CommunityDetailScreen() {
   };
 
   const refreshMemberResources = async (): Promise<void> => {
-    await Promise.all([resources.loadMembers(true), resources.loadRequests(true), reconcileCommunity()]);
+    await Promise.all([loadMembers(true), loadRequests(true), reconcileCommunity()]);
   };
 
   const handleMemberRoleChange = async (member: CommunityMember, role: 'member' | 'moderator' | 'admin'): Promise<void> => {
@@ -235,12 +269,12 @@ export default function CommunityDetailScreen() {
   }, [communityId, viewerId]);
 
   const handleLoadDashboardMembers = useCallback((force = false): void => {
-    void resources.loadMembers(force);
-  }, [resources]);
+    void loadMembers(force);
+  }, [loadMembers]);
 
   const handleLoadDashboardRequests = useCallback((force = false): void => {
-    void resources.loadRequests(force);
-  }, [resources]);
+    void loadRequests(force);
+  }, [loadRequests]);
 
   const handleOpenDashboard = useCallback((): void => {
     setDashboardVisible(true);
@@ -257,8 +291,8 @@ export default function CommunityDetailScreen() {
     if (!community) return;
     await dashboardService.moderate(viewerId, { communityId: community.id, reportIds: [report.id], action, targetId: report.targetId, targetType: report.targetType, resolutionNote: action === 'hide' ? 'Content hidden by a community moderator.' : undefined });
     if (action === 'hide' && report.targetType === 'post') await refreshPosts();
-    if (action === 'hide' && report.targetType === 'event') await resources.loadEvents(true);
-    if (action === 'hide' && report.targetType === 'poll') await resources.loadPolls(true);
+    if (action === 'hide' && report.targetType === 'event') await loadEvents(true);
+    if (action === 'hide' && report.targetType === 'poll') await loadPolls(true);
   };
 
   const handleConfirm = async (): Promise<void> => {
@@ -266,7 +300,25 @@ export default function CommunityDetailScreen() {
     setBusy(true);
     try {
       if (confirmation.action === 'leave') {
-        await communityService.leaveCommunity(community.id);
+        const result = await communityService.leaveCommunity(community.id);
+        const updated: CommunityCardModel = {
+          ...community,
+          membershipState: 'none',
+          memberCount: result.memberCount,
+          permissions: {
+            ...community.permissions,
+            canJoin: !community.isPrivate,
+            canRequestAccess: community.isPrivate,
+            canCancelRequest: false,
+            canLeave: false,
+            canView: !community.isPrivate,
+          },
+        };
+        const state = { ...detail, data: detailData ? { ...detailData, community: updated } : null, status: 'ready' as const, source: 'network' as const, updatedAt: Date.now(), isStale: false, error: null };
+        useResourceStore.getState().setCommunityDetail(identifier, state);
+        if (community.id && community.id !== identifier) useResourceStore.getState().setCommunityDetail(community.id, state);
+        if (community.slug && community.slug !== identifier) useResourceStore.getState().setCommunityDetail(community.slug, state);
+        await directoryService.patchCommunity(viewerId, updated);
         await reconcileCommunity();
         setFeedback('You left the community.');
       } else if (confirmation.action === 'delete') {
@@ -312,8 +364,8 @@ export default function CommunityDetailScreen() {
     { value: 'members', label: 'Members' },
   ];
 
-  const initialLoading = !resources.detail.data && (resources.detail.status === 'idle' || resources.detail.status === 'hydrating');
-  const errorMessage = resources.detail.error?.message ?? 'This community could not be loaded.';
+  const initialLoading = !detail.data && (detail.status === 'idle' || detail.status === 'hydrating');
+  const errorMessage = detail.error?.message ?? 'This community could not be loaded.';
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
@@ -323,8 +375,18 @@ export default function CommunityDetailScreen() {
         {community ? <><TouchableOpacity onPress={() => void handleShare()} accessibilityLabel="Share community" style={{ padding: 8 }}><Share2 size={20} color={colors.icon} /></TouchableOpacity>{community.permissions.canReport ? <TouchableOpacity onPress={() => setReportTarget({ kind: 'community' })} accessibilityLabel="Report community" style={{ padding: 8 }}><Flag size={19} color={colors.icon} /></TouchableOpacity> : null}</> : null}
       </View>
 
-      {initialLoading ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.accent} /><Text style={{ marginTop: 10, color: colors.mutedText }}>Loading community…</Text></View> : !detailData || !community ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}><Text style={{ color: colors.destructiveText, textAlign: 'center' }}>{errorMessage}</Text><TouchableOpacity onPress={() => void resources.refreshDetail()} style={{ marginTop: 14, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontWeight: '900' }}>Retry</Text></TouchableOpacity></View> : <ScrollView refreshControl={<RefreshControl refreshing={resources.detail.status === 'refreshing'} onRefresh={() => void handleRefresh()} tintColor={colors.accent} />} contentContainerStyle={{ paddingBottom: 48 }}>
-        <CommunityDetailHeader community={community} busyAction={busy} onMembershipAction={() => void handleMembershipAction()} onLeave={() => showConfirmation('leave', 'Leave community?', `You will stop seeing member-only content from ${community.title}.`)} onLike={() => void handleLike()} onShare={() => void handleShare()} onReport={() => setReportTarget({ kind: 'community' })} onEdit={() => setEditVisible(true)} onDashboard={handleOpenDashboard} />
+      {initialLoading ? (
+        <CommunityDetailSkeleton activeTab={activeTab} />
+      ) : !detailData || !community ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
+          <Text style={{ color: colors.destructiveText, textAlign: 'center' }}>{errorMessage}</Text>
+          <TouchableOpacity onPress={() => void refreshDetail()} style={{ marginTop: 14, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: colors.accent }}>
+            <Text style={{ color: colors.onAccent, fontWeight: '900' }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView refreshControl={<RefreshControl refreshing={detail.status === 'refreshing'} onRefresh={() => void handleRefresh()} tintColor={colors.accent} />} contentContainerStyle={{ paddingBottom: 48 }}>
+          <CommunityDetailHeader community={community} busyAction={busy} onMembershipAction={() => void handleMembershipAction()} onLeave={() => showConfirmation('leave', 'Leave community?', `You will stop seeing member-only content from ${community.title}.`)} onLike={() => void handleLike()} onShare={() => void handleShare()} onReport={() => setReportTarget({ kind: 'community' })} onEdit={() => setEditVisible(true)} onDashboard={handleOpenDashboard} />
 
         {!community.permissions.canView ? <View style={{ margin: 16, padding: 26, alignItems: 'center', borderRadius: 19, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}><Lock size={38} color={colors.icon} /><Text style={{ marginTop: 11, color: colors.text, fontSize: 18, fontWeight: '900' }}>Private community</Text><Text style={{ marginTop: 6, color: colors.mutedText, textAlign: 'center' }}>An approved membership is required to view this community’s workspaces.</Text></View> : <>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }} style={{ borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>{tabs.map((tab) => <TouchableOpacity key={tab.value} onPress={() => setActiveTab(tab.value)} style={{ marginHorizontal: 4, paddingHorizontal: 15, paddingVertical: 9, borderRadius: 999, backgroundColor: activeTab === tab.value ? colors.selectedControl : colors.control }}><Text style={{ color: activeTab === tab.value ? colors.selectedText : colors.secondaryText, fontWeight: '900' }}>{tab.label}</Text></TouchableOpacity>)}</ScrollView>
@@ -332,16 +394,17 @@ export default function CommunityDetailScreen() {
           {(community.permissions.canPost || community.permissions.canHostEvent || community.permissions.canCreatePoll || community.permissions.canInvite) ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 13 }}>{community.permissions.canPost ? <TouchableOpacity onPress={() => { setActiveTab('posts'); setCreatePostVisible(true); }} style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 4, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 13, backgroundColor: colors.accent }}><Plus size={16} color={colors.onAccent} /><Text style={{ marginLeft: 5, color: colors.onAccent, fontWeight: '900' }}>Create Post</Text></TouchableOpacity> : null}{community.permissions.canHostEvent ? <TouchableOpacity onPress={() => { setActiveTab('events'); setEventCreateRequestKey((current) => current + 1); }} style={{ marginHorizontal: 4, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 13, backgroundColor: colors.control }}><Text style={{ color: colors.secondaryText, fontWeight: '900' }}>Host Event</Text></TouchableOpacity> : null}{community.permissions.canCreatePoll ? <TouchableOpacity onPress={() => { setActiveTab('polls'); setPollCreateRequestKey((current) => current + 1); }} style={{ marginHorizontal: 4, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 13, backgroundColor: colors.control }}><Text style={{ color: colors.secondaryText, fontWeight: '900' }}>Create Poll</Text></TouchableOpacity> : null}{community.permissions.canInvite ? <TouchableOpacity onPress={() => void handleShare()} style={{ marginHorizontal: 4, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 13, backgroundColor: colors.control }}><Text style={{ color: colors.secondaryText, fontWeight: '900' }}>Share Invite</Text></TouchableOpacity> : null}</ScrollView> : null}
 
           {activeTab === 'posts' ? <View style={{ paddingTop: 13 }}>{postResource.data === null && (postResource.status === 'idle' || postResource.status === 'hydrating') ? <ActivityIndicator color={colors.accent} style={{ marginVertical: 30 }} /> : postResource.data === null && postResource.error ? <View style={{ margin: 16, padding: 25, alignItems: 'center', borderRadius: 18, backgroundColor: colors.surface }}><Text style={{ color: colors.destructiveText, textAlign: 'center' }}>{postResource.error.message}</Text><TouchableOpacity onPress={() => void refreshPosts()} style={{ marginTop: 12, paddingHorizontal: 17, paddingVertical: 9, borderRadius: 999, backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontWeight: '900' }}>Retry</Text></TouchableOpacity></View> : posts.length ? posts.map((post) => <View key={post.id} style={{ marginBottom: 13 }}><PostCardSection post={post} canModerateCommunityPost={community.permissions.canModerate} onCommentClick={setActivePostId} onPostDelete={handlePostDelete} onAuthorBlocked={(blockedUserId) => void feedService.removePosts((item) => item.userId === blockedUserId)} onPostUpdate={handlePostUpdate} /></View>) : <View style={{ margin: 16, padding: 28, alignItems: 'center', borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}><MessageCircle size={40} color={colors.accent} /><Text style={{ marginTop: 10, color: colors.text, fontWeight: '900' }}>No posts yet</Text><Text style={{ marginTop: 4, color: colors.mutedText }}>Start the first community conversation.</Text></View>}</View> : null}
-          {activeTab === 'events' ? <CommunityEventsWorkspace resource={resources.events} canCreate={community.permissions.canHostEvent} createRequestKey={eventCreateRequestKey} onRetry={() => void resources.loadEvents(true)} onCreate={handleCreateEvent} onToggleAttendance={async (eventId) => { await eventService.toggleCommunityAttendance(community.id, eventId); await resources.loadEvents(true); }} onUpdate={async (eventId, draft) => { await eventService.updateCommunityEvent(community.id, eventId, { title: draft.title, description: draft.summary, summary: draft.summary, startDate: draft.startDate, endDate: draft.endDate, location: draft.location, recurrence: draft.recurrence, image: draft.imageUrl || undefined, media: draft.media }); await resources.loadEvents(true); }} onDelete={async (eventId) => { await eventService.deleteCommunityEvent(community.id, eventId); await resources.loadEvents(true); }} onReport={(event) => setReportTarget({ kind: 'event', event })} /> : null}
-          {activeTab === 'polls' ? <CommunityPollsWorkspace resource={resources.polls} canCreate={community.permissions.canCreatePoll} createRequestKey={pollCreateRequestKey} onRetry={() => void resources.loadPolls(true)} onCreate={async (question, options, durationHours, allowMultiple) => detailService.createPoll(viewerId, { communityId: community.id, question, options, durationHours, allowMultiple })} onVote={(pollId, optionIndex) => detailService.votePoll(viewerId, community.id, pollId, optionIndex)} onDelete={(poll) => showConfirmation('poll-delete', 'Delete poll?', 'This poll and its votes will be permanently removed.', poll)} onReport={(poll) => setReportTarget({ kind: 'poll', poll })} /> : null}
+          {activeTab === 'events' ? <CommunityEventsWorkspace resource={events} canCreate={community.permissions.canHostEvent} createRequestKey={eventCreateRequestKey} onRetry={() => void loadEvents(true)} onCreate={handleCreateEvent} onToggleAttendance={async (eventId) => { await eventService.toggleCommunityAttendance(community.id, eventId); await loadEvents(true); }} onUpdate={async (eventId, draft) => { await eventService.updateCommunityEvent(community.id, eventId, { title: draft.title, description: draft.summary, summary: draft.summary, startDate: draft.startDate, endDate: draft.endDate, location: draft.location, recurrence: draft.recurrence, image: draft.imageUrl || undefined, media: draft.media }); await loadEvents(true); }} onDelete={async (eventId) => { await eventService.deleteCommunityEvent(community.id, eventId); await loadEvents(true); }} onReport={(event) => setReportTarget({ kind: 'event', event })} /> : null}
+          {activeTab === 'polls' ? <CommunityPollsWorkspace resource={polls} canCreate={community.permissions.canCreatePoll} createRequestKey={pollCreateRequestKey} onRetry={() => void loadPolls(true)} onCreate={async (question, options, durationHours, allowMultiple) => detailService.createPoll(viewerId, { communityId: community.id, question, options, durationHours, allowMultiple })} onVote={(pollId, optionIndex) => detailService.votePoll(viewerId, community.id, pollId, optionIndex)} onDelete={(poll) => showConfirmation('poll-delete', 'Delete poll?', 'This poll and its votes will be permanently removed.', poll)} onReport={(poll) => setReportTarget({ kind: 'poll', poll })} /> : null}
           {activeTab === 'about' ? <CommunityAboutWorkspace detail={detailData} /> : null}
-          {activeTab === 'members' ? <CommunityMembersWorkspace resource={resources.members} canManage={community.permissions.canManageMembers} onRetry={() => void resources.loadMembers(true)} onLoadMore={() => void resources.loadMoreMembers()} onSearch={(search) => void resources.searchMembers(search)} onOpenProfile={(member) => router.push({ pathname: '/profile/[username]', params: { username: member.userName || member.userId } })} onManageMember={handleManageMember} /> : null}
+          {activeTab === 'members' ? <CommunityMembersWorkspace resource={members} canManage={community.permissions.canManageMembers} onRetry={() => void loadMembers(true)} onLoadMore={() => void loadMoreMembers()} onSearch={(search) => void searchMembers(search)} onOpenProfile={(member) => router.push({ pathname: '/profile/[username]', params: { username: member.userName || member.userId } })} onManageMember={handleManageMember} /> : null}
         </>}
-      </ScrollView>}
+      </ScrollView>
+      )}
 
       {createPostVisible && profile && community ? <CreatePostModal setTogglePostForm={setCreatePostVisible} userProfile={profile} communityId={community.id} communityName={community.title} onCreatePost={(post) => { void Promise.all([communityFeedService.prepend(viewerId, community.id, post), feedService.prependCreated({ userId: viewerId, scope: 'communities', filter: 'all' }, post), feedService.prependCreated({ userId: viewerId, scope: 'home', filter: 'all' }, post)]); useResourceStore.getState().upsertPostEntities([post]); }} /> : null}
       {activePost && profile ? <CommentsModal post={activePost} userId={profile.uid} onClose={() => setActivePostId(null)} onPostUpdate={handlePostUpdate} /> : null}
-      {community ? <CommunityDashboardSheet visible={dashboardVisible} community={community} members={resources.members} requests={resources.requests} dashboard={dashboard} onClose={handleCloseDashboard} onLoadMembers={handleLoadDashboardMembers} onLoadRequests={handleLoadDashboardRequests} onLoadDashboard={handleLoadDashboard} onReviewRequest={handleReviewRequest} onManageMember={handleManageMember} onModerateReport={handleModerateReport} /> : null}
+      {community ? <CommunityDashboardSheet visible={dashboardVisible} community={community} members={members} requests={requests} dashboard={dashboard} onClose={handleCloseDashboard} onLoadMembers={handleLoadDashboardMembers} onLoadRequests={handleLoadDashboardRequests} onLoadDashboard={handleLoadDashboard} onReviewRequest={handleReviewRequest} onManageMember={handleManageMember} onModerateReport={handleModerateReport} /> : null}
       {community && detailData ? <EditCommunityModal visible={editVisible} community={community} categories={categories} rules={detailData.rules} onClose={() => setEditVisible(false)} onSave={handleUpdateCommunity} onDelete={() => { setEditVisible(false); showConfirmation('delete', 'Delete community?', `${community.title} and its community data will be permanently removed.`); }} /> : null}
       <CommunityMemberActionSheet visible={Boolean(managedMember)} member={managedMember} onClose={() => setManagedMember(null)} onRoleChange={handleMemberRoleChange} onRemove={handleRemoveMember} onBan={handleBanMember} />
       <CustomModal visible={Boolean(feedback)} title="Community" message={feedback ?? ''} type="info" onClose={() => setFeedback(null)} />

@@ -61,7 +61,7 @@ export class ApiServiceError extends Error {
 
 const DEFAULT_API_BASE_URL = process.env.EXPO_PUBLIC_WEB_API_URL || 'https://ourlime.com';
 const API_UNAVAILABLE_BACKOFF_MS = 15_000;
-const API_HEALTH_TIMEOUT_MS = 1_500;
+const API_HEALTH_TIMEOUT_MS = 6_000;
 
 export class ApiService {
   private static instance: ApiService;
@@ -114,7 +114,7 @@ export class ApiService {
     const timeoutId = setTimeout(() => {
       didTimeout = true;
       requestController.abort();
-    }, options.timeoutMs ?? 8_000);
+    }, options.timeoutMs ?? 18_000);
 
     try {
       const response = await fetch(url, {
@@ -283,16 +283,13 @@ export class ApiService {
   }
 
   private markUnavailable(
-    currentController: AbortController | null,
+    _currentController: AbortController | null,
     operation: string,
     metadata: ApiAvailabilityLogMetadata,
   ): void {
     const shouldLog = this.availabilityState !== 'unavailable' || Date.now() >= this.unavailableUntil;
     this.availabilityState = 'unavailable';
     this.unavailableUntil = Date.now() + API_UNAVAILABLE_BACKOFF_MS;
-    this.activeRequestControllers.forEach((controller) => {
-      if (controller !== currentController) controller.abort();
-    });
     if (shouldLog) this.logger.warn('ApiService', operation, metadata);
   }
 

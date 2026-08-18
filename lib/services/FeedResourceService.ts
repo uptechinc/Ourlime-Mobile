@@ -143,17 +143,16 @@ export class FeedResourceService {
     const allResource = useResourceStore.getState().feeds[this.getKey(allQuery)];
     if (!allResource?.data) return;
     const filters: Exclude<FeedFilter, 'all'>[] = ['photo', 'video', 'audio', 'poll', 'event'];
-    await Promise.all(filters.map(async (filter) => {
+    for (const filter of filters) {
       const query: FeedResourceQuery = { userId, scope, filter };
       const key = this.getKey(query);
-      if (useResourceStore.getState().feeds[key]?.data) return;
+      if (useResourceStore.getState().feeds[key]?.data) continue;
       const posts = allResource.data!.posts.filter((post) => this.matchesFilter(post, filter));
       const data: FeedResourceData = { posts, nextCursor: null, hasMore: true, pendingPosts: [], scrollOffset: 0, isPartialSeed: true };
       const updatedAt = Date.now();
       useResourceStore.getState().upsertPostEntities(posts);
       useResourceStore.getState().setFeed(key, { data, status: 'ready', source: allResource.source, updatedAt, isStale: true, error: null });
-      await this.cacheService.write(userId, FEED_NAMESPACE, key, data, { expiresAt: updatedAt + FEED_RETENTION_MS });
-    }));
+    }
   }
 
   public setScrollOffset(query: FeedResourceQuery, scrollOffset: number): void {

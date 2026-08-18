@@ -1,4 +1,4 @@
-import { collection, limit, onSnapshot, orderBy, query, Timestamp, type DocumentData, type QueryDocumentSnapshot, type Unsubscribe } from 'firebase/firestore';
+import { collection, doc, getDoc, limit, onSnapshot, query, where, Timestamp, type DocumentData, type QueryDocumentSnapshot, type Unsubscribe } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { MessagingService, type ConversationEntry } from '@/lib/messaging/MessagingService';
 import { LocalCacheService, type CachedRecord } from './LocalCacheService';
@@ -6,6 +6,8 @@ import { ResourceErrorService } from './ResourceErrorService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { RequestTimeoutService } from './RequestTimeoutService';
+
+import { inAppNotificationService } from './InAppNotificationService';
 
 const CONVERSATION_NAMESPACE = 'conversations';
 const CONVERSATION_CACHE_KEY = 'latest';
@@ -20,7 +22,7 @@ export class ConversationResourceService {
   private readonly logger = DiagnosticLogService.getInstance();
   private readonly timeoutService = RequestTimeoutService.getInstance();
   private inFlight: Promise<void> | null = null;
-  private unsubscribe: Unsubscribe | null = null;
+  private unsubs: Unsubscribe[] = [];
   private activeUserId: string | null = null;
   private nextCursor: string | null = null;
 
@@ -61,32 +63,173 @@ export class ConversationResourceService {
   }
 
   public startRealtime(userId: string): void {
-    if (this.activeUserId === userId && this.unsubscribe) return;
+    if (this.activeUserId === userId && this.unsubs.length > 0) return;
     this.stopRealtime();
     this.activeUserId = userId;
-    this.logger.info('ConversationResourceService', 'listener:start', { limit: 50 });
-    const summariesQuery = query(collection(db, 'users', userId, 'conversationSummaries'), orderBy('lastActivityAt', 'desc'), limit(50));
-    this.unsubscribe = onSnapshot(summariesQuery, (snapshot) => {
+    this.logger.info('ConversationResourceService', 'listener:start', { userId });
+
+    // 1. Listen to user's conversationSummaries subcollection
+    let isInitialSummaries = true;
+    const summariesQuery = query(collection(db, 'users', userId, 'conversationSummaries'), limit(100));
+    const summariesUnsub = onSnapshot(summariesQuery, (snapshot) => {
       const incoming = snapshot.docs.map((document) => this.mapSummary(document)).filter((item): item is ConversationEntry => item !== null);
-      this.logger.info('ConversationResourceService', 'listener:reconcile', { changeCount: snapshot.docChanges().length, recordCount: incoming.length, fromCache: snapshot.metadata.fromCache });
-      if (incoming.length === 0) {
-        if (!snapshot.metadata.fromCache) {
-          void this.commit(userId, []);
-          void this.refresh(userId, true);
-        }
+      this.logger.info('ConversationResourceService', 'summaries:reconcile', { changeCount: snapshot.docChanges().length, recordCount: incoming.length });
+      if (incoming.length > 0) {
+        const existing = useResourceStore.getState().conversations.data ?? [];
+        this.scheduleCommit(userId, [...incoming, ...existing]);
+      }
+
+      if (isInitialSummaries) {
+        isInitialSummaries = false;
         return;
       }
-      const existing = useResourceStore.getState().conversations.data ?? [];
-      void this.commit(userId, [...incoming, ...existing]);
+
+      // Check for incoming new messages from modified summaries after initial load
+      for (const change of snapshot.docChanges()) {
+        if (change.type === 'modified' || change.type === 'added') {
+          const item = this.mapSummary(change.doc);
+          if (item && item.unreadCount > 0 && item.lastMessage) {
+            if (item.isArchived || item.isMuted) continue;
+            const isCall = item.lastMessage.includes('call') || item.lastMessage.includes('Call') || item.lastMessage.includes('[SYS:');
+            if (!isCall) {
+              inAppNotificationService.showNotification({
+                peerId: item.uid,
+                senderName: `${item.firstName} ${item.lastName}`.trim() || item.userName || 'Ourlime User',
+                avatarUrl: item.profilePicture ?? null,
+                messageText: item.lastMessage,
+              });
+            }
+          }
+        }
+      }
     }, (error) => {
-      const current = useResourceStore.getState().conversations;
-      useResourceStore.getState().setConversations({ ...current, status: current.data ? 'ready' : 'error', isStale: true, error: this.errorService.normalize(error, 'Realtime conversations are unavailable.') });
+      this.logger.warn('ConversationResourceService', 'summaries:error', { error: error.message });
     });
+    this.unsubs.push(summariesUnsub);
+
+    // 2. Listen to global chats collection for real-time updates when messages arrive
+    let isInitialChats = true;
+    const chatsQuery = query(collection(db, 'chats'), where('participants', 'array-contains', userId), limit(50));
+    const chatsUnsub = onSnapshot(chatsQuery, async (snapshot) => {
+      const changes = snapshot.docChanges();
+      if (changes.length === 0) return;
+      this.logger.info('ConversationResourceService', 'chats:reconcile', { changeCount: changes.length });
+
+      if (isInitialChats) {
+        isInitialChats = false;
+        return;
+      }
+
+      const currentList = [...(useResourceStore.getState().conversations.data ?? [])];
+      let hasUpdates = false;
+
+      for (const change of changes) {
+        const data = change.doc.data();
+        const participants = Array.isArray(data.participants) ? data.participants as string[] : [];
+        const messages = Array.isArray(data.messages) ? data.messages as Array<Record<string, unknown>> : [];
+        const latestMsg = messages[messages.length - 1] as Record<string, unknown> | undefined;
+
+        const peerId = latestMsg?.senderId && latestMsg.senderId !== userId
+          ? String(latestMsg.senderId)
+          : participants.find((p) => p !== userId);
+
+        if (!peerId || peerId === userId) continue;
+
+        const lastMessageTime = data.lastMessageTime instanceof Timestamp ? data.lastMessageTime : undefined;
+        const lastMessage = typeof data.lastMessage === 'string' ? data.lastMessage : (typeof latestMsg?.message === 'string' ? latestMsg.message : '');
+        const unreadCount = typeof data.unreadCount === 'number' ? data.unreadCount : 0;
+
+        const existingIndex = currentList.findIndex((item) => item.uid === peerId);
+        if (existingIndex >= 0) {
+          const prev = currentList[existingIndex];
+          currentList[existingIndex] = {
+            ...prev,
+            lastMessage: lastMessage || prev.lastMessage,
+            lastMessageTime: lastMessageTime ?? prev.lastMessageTime,
+            unreadCount: unreadCount > 0 ? unreadCount : prev.unreadCount,
+          };
+          hasUpdates = true;
+        } else {
+          try {
+            const userDoc = await getDoc(doc(db, 'users', peerId));
+            if (userDoc.exists()) {
+              const u = userDoc.data();
+              currentList.push({
+                uid: peerId,
+                firstName: typeof u.firstName === 'string' ? u.firstName : 'User',
+                lastName: typeof u.lastName === 'string' ? u.lastName : '',
+                userName: typeof u.userName === 'string' ? u.userName : 'user',
+                email: typeof u.email === 'string' ? u.email : '',
+                accountType: typeof u.accountType === 'string' ? u.accountType : 'user',
+                profilePicture: typeof u.profilePicture === 'string' ? u.profilePicture : null,
+                lastMessage,
+                lastMessageTime,
+                unreadCount,
+                isOnline: u.isOnline === true,
+              });
+              hasUpdates = true;
+            }
+          } catch {
+            // Silently continue
+          }
+        }
+
+        const isCall = lastMessage.includes('call') || lastMessage.includes('Call') || lastMessage.includes('[SYS:');
+        if (change.type === 'modified' && latestMsg?.senderId === peerId && lastMessage && !isCall) {
+          const peerEntry = currentList.find((item) => item.uid === peerId);
+          inAppNotificationService.showNotification({
+            peerId,
+            senderName: peerEntry ? `${peerEntry.firstName} ${peerEntry.lastName}`.trim() || peerEntry.userName : 'Ourlime User',
+            avatarUrl: peerEntry?.profilePicture ?? null,
+            messageText: lastMessage,
+          });
+        }
+      }
+
+      if (hasUpdates) {
+        this.scheduleCommit(userId, currentList);
+      }
+    }, (error) => {
+      this.logger.warn('ConversationResourceService', 'chats:error', { error: error.message });
+    });
+    this.unsubs.push(chatsUnsub);
+  }
+
+  private commitTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingCommitData: { userId: string; list: ConversationEntry[] } | null = null;
+
+  public scheduleCommit(userId: string, list: ConversationEntry[]): void {
+    const sorted = [...list].sort(this.sortByActivity);
+    const unique = Array.from(new Map(sorted.map((item) => [item.uid, item])).values()).slice(0, 200);
+    useResourceStore.getState().setConversations({
+      data: unique,
+      updatedAt: Date.now(),
+      status: 'ready',
+      source: 'network',
+      isStale: false,
+      error: null,
+    });
+
+    this.pendingCommitData = { userId, list: unique };
+    if (this.commitTimer) clearTimeout(this.commitTimer);
+    this.commitTimer = setTimeout(() => {
+      const data = this.pendingCommitData;
+      this.pendingCommitData = null;
+      this.commitTimer = null;
+      if (data) {
+        void this.commit(data.userId, data.list);
+      }
+    }, 300);
   }
 
   public stopRealtime(): void {
-    this.unsubscribe?.();
-    this.unsubscribe = null;
+    if (this.commitTimer) {
+      clearTimeout(this.commitTimer);
+      this.commitTimer = null;
+    }
+    this.pendingCommitData = null;
+    this.unsubs.forEach((unsub) => unsub());
+    this.unsubs = [];
     this.activeUserId = null;
     this.logger.info('ConversationResourceService', 'listener:stop', {});
   }
@@ -149,6 +292,10 @@ export class ConversationResourceService {
       lastMessageTime: timestamp,
       unreadCount: typeof record.unreadCount === 'number' ? record.unreadCount : 0,
       isOnline: record.isOnline === true,
+      isPinned: record.isPinned === true,
+      isArchived: record.isArchived === true,
+      isMuted: typeof record.mutedUntil === 'number' ? record.mutedUntil > Date.now() : false,
+      mutedUntil: typeof record.mutedUntil === 'number' ? record.mutedUntil : null,
     };
   }
 

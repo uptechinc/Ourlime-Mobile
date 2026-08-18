@@ -118,11 +118,35 @@ function checkSafeAreaView(sourceFile, node, safeAreaAliases) {
   }
 }
 
+function checkServiceFile(filePath, sourceFile) {
+  const normalized = filePath.replaceAll('\\', '/');
+  if (!normalized.includes('/lib/services/') || normalized.includes('/__tests__/') || normalized.endsWith('.d.ts')) {
+    return;
+  }
+
+  // Check that service file defines at least one class or function export
+  const hasClassDeclaration = sourceFile.statements.some((statement) => ts.isClassDeclaration(statement));
+  const hasFunctionDeclaration = sourceFile.statements.some((statement) => ts.isFunctionDeclaration(statement));
+  const hasExport = sourceFile.statements.some((statement) => {
+    return (
+      (ts.isExportDeclaration(statement)) ||
+      (ts.isClassDeclaration(statement) && statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) ||
+      (ts.isVariableStatement(statement) && statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword))
+    );
+  });
+
+  if (!hasClassDeclaration && !hasFunctionDeclaration && !hasExport) {
+    report(sourceFile, sourceFile, 'oop-service-architecture', 'Service files must define a TypeScript service class or exported singleton.');
+  }
+}
+
 function checkSourceFile(filePath) {
   const contents = fs.readFileSync(filePath, 'utf8');
   const scriptKind = filePath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const sourceFile = ts.createSourceFile(filePath, contents, ts.ScriptTarget.Latest, true, scriptKind);
   const safeAreaAliases = getSafeAreaAliases(sourceFile);
+
+  checkServiceFile(filePath, sourceFile);
 
   function visit(node) {
     if (ts.isInterfaceDeclaration(node)) {

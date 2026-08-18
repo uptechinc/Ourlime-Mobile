@@ -30,6 +30,7 @@ import {
 } from '@/components/home/SkeletonLoaders';
 import PostLocationMap from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostLocationMap';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
+import CustomModal from '@/components/ui/CustomModal';
 
 const authService = AuthService.getInstance();
 const relationshipService = RelationshipService.getInstance();
@@ -122,14 +123,41 @@ export default function DiscoverScreen() {
     return jobs.filter((j) => `${j.role} ${j.company} ${j.type}`.toLowerCase().includes(normalizedQuery));
   }, [jobs, normalizedQuery]);
 
-  const handleToggleFriend = async (uid: string) => {
+  const [cancelModalUser, setCancelModalUser] = useState<RelationshipSuggestion | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
+
+  const handleToggleFriend = async (person: RelationshipSuggestion) => {
     const currentUserId = authService.getCurrentUser()?.uid;
-    if (!currentUserId || friendSentIds.has(uid)) return;
+    if (!currentUserId) return;
+    if (friendSentIds.has(person.id)) {
+      setCancelModalUser(person);
+      return;
+    }
     try {
-      await relationshipService.sendFriendRequest(currentUserId, uid);
-      setFriendSentIds((previous) => new Set(previous).add(uid));
+      await relationshipService.sendFriendRequest(currentUserId, person.id);
+      setFriendSentIds((previous) => new Set(previous).add(person.id));
     } catch (friendError: unknown) {
       console.error('[DiscoverScreen.handleToggleFriend]', friendError);
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    const currentUserId = authService.getCurrentUser()?.uid;
+    if (!currentUserId || !cancelModalUser) return;
+    const targetUid = cancelModalUser.id;
+    setCancelLoading(true);
+    try {
+      await relationshipService.cancelOrRemoveFriend(currentUserId, targetUid, 'pending');
+      setFriendSentIds((prev) => {
+        const next = new Set(prev);
+        next.delete(targetUid);
+        return next;
+      });
+      setCancelModalUser(null);
+    } catch (error: unknown) {
+      console.error('[DiscoverScreen.handleConfirmCancel]', error);
+    } finally {
+      setCancelLoading(false);
     }
   };
 
@@ -224,19 +252,21 @@ export default function DiscoverScreen() {
                         @{person.userName}
                       </Text>
                       <TouchableOpacity
-                        onPress={() => void handleToggleFriend(person.id)}
+                        onPress={() => void handleToggleFriend(person)}
                         style={{
                           marginTop: 12,
                           paddingHorizontal: 14,
                           paddingVertical: 7,
                           borderRadius: 14,
-                          backgroundColor: isSent ? colors.control : '#10b981',
+                          backgroundColor: isSent ? '#fef3c7' : '#10b981',
+                          borderWidth: isSent ? 1 : 0,
+                          borderColor: '#f59e0b',
                           width: '100%',
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: isSent ? colors.mutedText : '#ffffff' }}>
-                          {isSent ? 'Pending' : 'Add Friend'}
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: isSent ? '#b45309' : '#ffffff' }}>
+                          {isSent ? 'Cancel Request' : 'Add Friend'}
                         </Text>
                       </TouchableOpacity>
                     </TouchableOpacity>
@@ -407,6 +437,19 @@ export default function DiscoverScreen() {
             </View>
         </View>
       </ScrollView>
+      {cancelModalUser ? (
+        <CustomModal
+          visible={Boolean(cancelModalUser)}
+          type="warning"
+          title="Cancel Friend Request?"
+          message={`Are you sure you want to cancel your friend request to ${cancelModalUser.firstName || cancelModalUser.userName} (@${cancelModalUser.userName})?`}
+          confirmText="Cancel Request"
+          cancelText="Keep Request"
+          isLoading={cancelLoading}
+          onConfirm={() => void handleConfirmCancel()}
+          onClose={() => setCancelModalUser(null)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

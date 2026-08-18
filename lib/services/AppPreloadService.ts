@@ -7,11 +7,9 @@ import type { PreloadTask } from '@/lib/types/preload';
 import { AdminMetricsService } from './AdminMetricsService';
 import { NotificationService } from './NotificationService';
 import { RelationshipResourceService } from './RelationshipResourceService';
-import type { RelationshipHubSection } from '@/lib/types/relationshipHub';
 import { ApiService } from './ApiService';
 
-const SCOPES: readonly FeedScope[] = ['home', 'friends', 'communities'];
-const RELATIONSHIP_SECTIONS: readonly RelationshipHubSection[] = ['friends', 'requests', 'active', 'following', 'followers', 'suggestions'];
+const SCOPES: readonly FeedScope[] = ['home', 'friends'];
 
 export class AppPreloadService {
   private static instance: AppPreloadService;
@@ -47,7 +45,7 @@ export class AppPreloadService {
     void this.feedService.refresh(homeQuery).then(() => this.feedService.seedDerivedFilters(userId, 'home'));
 
     const tasks = this.buildTasks(userId).filter((task) => canAccess(task.route));
-    this.logger.info('AppPreloadService', 'queue:start', { taskCount: tasks.length, concurrency: 2 });
+    this.logger.info('AppPreloadService', 'queue:start', { taskCount: tasks.length, concurrency: 1 });
     let nextIndex = 0;
     const worker = async (): Promise<void> => {
       while (nextIndex < tasks.length && generation === this.generation) {
@@ -59,7 +57,7 @@ export class AppPreloadService {
         if (this.activeKeys.has(task.key)) continue;
         this.activeKeys.add(task.key);
         const startedAt = Date.now();
-        this.logger.info('AppPreloadService', 'task:start', { key: task.key, route: task.route, priority: task.priority, mediaPolicy: task.mediaPolicy });
+        this.logger.info('AppPreloadService', 'task:start', { key: task.key, route: task.route, priority: task.priority });
         try {
           await task.run();
           this.logger.success('AppPreloadService', 'task:complete', { key: task.key, elapsedMs: Date.now() - startedAt });
@@ -68,13 +66,20 @@ export class AppPreloadService {
         } finally {
           this.activeKeys.delete(task.key);
         }
+        if (generation === this.generation && nextIndex < tasks.length) {
+          await new Promise((resolve) => setTimeout(resolve, 350));
+        }
       }
     };
-    await Promise.all([worker(), worker()]);
+    await worker();
   }
 
   private buildTasks(userId: string): PreloadTask[] {
     const tasks: PreloadTask[] = [
+      {
+        key: 'notifications:latest', route: '/notifications', priority: 'navigation', mediaPolicy: 'metadata',
+        run: async () => { await this.notificationService.hydrate(userId); await this.notificationService.fetchPage(userId); },
+      },
       {
         key: 'discover:overview', route: '/discover', priority: 'navigation', mediaPolicy: 'thumbnail',
         run: async () => { await this.discoverService.hydrate(userId); await this.discoverService.refresh(userId); },
@@ -84,12 +89,8 @@ export class AppPreloadService {
         run: async () => { await this.communitiesService.hydrate(userId); await this.communitiesService.refresh(userId, DEFAULT_COMMUNITY_QUERY, false, 'background'); },
       },
       {
-        key: 'admin:overview', route: '/admin', priority: 'background', mediaPolicy: 'metadata',
-        run: async () => { await this.adminMetricsService.fetchMetrics(); },
-      },
-      {
-        key: 'notifications:latest', route: '/notifications', priority: 'navigation', mediaPolicy: 'metadata',
-        run: async () => { await this.notificationService.hydrate(userId); await this.notificationService.fetchPage(userId); },
+        key: 'relationships:friends', route: '/profile', priority: 'navigation', mediaPolicy: 'thumbnail',
+        run: async () => { await this.relationshipService.hydrate(userId, 'friends'); await this.relationshipService.refresh(userId, 'friends'); },
       },
     ];
     SCOPES.filter((scope) => scope !== 'home').forEach((scope) => tasks.push({
@@ -100,10 +101,6 @@ export class AppPreloadService {
         await this.feedService.refresh(query);
         await this.feedService.seedDerivedFilters(userId, scope);
       },
-    }));
-    RELATIONSHIP_SECTIONS.forEach((section) => tasks.push({
-      key: `relationships:${section}`, route: '/profile', priority: section === 'friends' || section === 'requests' ? 'navigation' : 'background', mediaPolicy: 'thumbnail',
-      run: async () => { await this.relationshipService.hydrate(userId, section); await this.relationshipService.refresh(userId, section); },
     }));
     return tasks.sort((left, right) => this.priorityValue(left.priority) - this.priorityValue(right.priority));
   }

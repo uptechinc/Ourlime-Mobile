@@ -19,11 +19,9 @@ const getActionLabel = (community: CommunityCardModel): string => {
   if (community.membershipState === 'owner') return 'Owner';
   if (community.membershipState === 'member') return 'View';
   if (community.membershipState === 'pending') return 'Cancel request';
-  if (community.membershipState === 'declined' && community.permissions.canRequestAccess) return 'Request again';
-  if (community.permissions.canJoin) return 'Join';
-  if (community.permissions.canRequestAccess) return 'Request access';
-  if (community.verifiedMembersOnly) return 'Verification required';
-  return 'Unavailable';
+  if (community.membershipState === 'declined') return 'Request again';
+  if (community.isPrivate) return 'Request access';
+  return 'Join';
 };
 
 const getRoleLabel = (community: CommunityCardModel): string | null => {
@@ -34,11 +32,8 @@ const getRoleLabel = (community: CommunityCardModel): string | null => {
 export default function CommunityCard({ community, viewMode, busy, onOpen, onMembershipAction, onLeave, onReport }: CommunityCardProps) {
   const { colors } = useAppTheme();
   const isJoined = community.membershipState === 'member' || community.membershipState === 'owner';
-  const canUsePrimaryAction = isJoined
-    || community.permissions.canJoin
-    || community.permissions.canRequestAccess
-    || community.permissions.canCancelRequest;
-  const isDisabled = busy || !canUsePrimaryAction;
+  const isBanned = community.membershipState === 'banned';
+  const isDisabled = busy || isBanned;
   const actionLabel = getActionLabel(community);
   const roleLabel = getRoleLabel(community);
   const handleAction = (): void => {

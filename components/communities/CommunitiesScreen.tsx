@@ -9,16 +9,19 @@ import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { useCommunitiesResource } from '@/lib/hooks/useCommunitiesResource';
-import type { CommunityCardModel, CommunityDirectoryQuery, CommunityDirectoryScope, CommunityDirectorySort, CommunityDirectoryViewMode, CommunityDirectoryVisibility } from '@/lib/types/community';
+import type { CommunityCardModel, CommunityDirectoryQuery, CommunityDirectoryScope, CommunityDirectorySort, CommunityDirectoryViewMode, CommunityDirectoryVisibility, CommunityMutationResult } from '@/lib/types/community';
 import CommunityCard from './CommunityCard';
 import CommunityOfTheWeek from './CommunityOfTheWeek';
 import { ModerationService } from '@/lib/services/ModerationService';
 import CommunityReportModal from './CommunityReportModal';
 import type { ReportReasonCategory } from '@/lib/services/ModerationService';
 import CommunityFiltersSheet from './CommunityFiltersSheet';
+import CommunityCardSkeleton from './CommunityCardSkeleton';
 
 type ConfirmationAction = 'leave' | null;
 type ConfirmationState = { action: ConfirmationAction; community: CommunityCardModel | null };
+
+const SKELETON_PLACEHOLDERS = [1, 2, 3, 4];
 
 const communityService = CommunityService.getInstance();
 const moderationService = ModerationService.getInstance();
@@ -48,11 +51,18 @@ export default function CommunitiesScreen() {
   const [reportCommunity, setReportCommunity] = useState<CommunityCardModel | null>(null);
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [manualRefreshing, setManualRefreshing] = useState(false);
+  const [cachedHeroCommunity, setCachedHeroCommunity] = useState<CommunityCardModel | null>(null);
   const columnCount = viewMode === 'grid' && width >= 720 ? 2 : 1;
   const directoryQuery = useMemo<CommunityDirectoryQuery>(() => ({ scope, visibility, categoryId: selectedCategoryId, search: searchQuery, sort, cursor: null, limit: 20 }), [scope, visibility, selectedCategoryId, searchQuery, sort]);
   const { resource, categories, refresh, loadMore, patchCommunity } = useCommunitiesResource(activeUserId ?? '', directoryQuery);
   const selectedCategory = categories.data?.find((category) => category.id === selectedCategoryId) ?? null;
   const activeFilterCount = (visibility === 'all' ? 0 : 1) + (selectedCategoryId ? 1 : 0) + (sort === 'popular' ? 0 : 1);
+
+  useEffect(() => {
+    if (resource.data?.communityOfTheWeek) {
+      setCachedHeroCommunity(resource.data.communityOfTheWeek);
+    }
+  }, [resource.data?.communityOfTheWeek]);
 
   useEffect(() => {
     const timeout = setTimeout(() => setSearchQuery(searchText.trim()), 350);
@@ -83,10 +93,29 @@ export default function CommunitiesScreen() {
     if (busyCommunityId) return;
     setBusyCommunityId(community.id);
     try {
-      if (community.membershipState === 'pending') await communityService.cancelRequest(community.id);
-      else await communityService.joinOrRequestAccess(community);
+      let result: CommunityMutationResult;
+      if (community.membershipState === 'pending') {
+        result = await communityService.cancelRequest(community.id);
+        setFeedback('Your join request was canceled.');
+      } else {
+        result = await communityService.joinOrRequestAccess(community);
+        setFeedback(result.membershipState === 'member' ? `You joined ${community.title}.` : 'Your access request was sent.');
+      }
+      const updated: CommunityCardModel = {
+        ...community,
+        membershipState: result.membershipState,
+        memberCount: result.memberCount,
+        permissions: {
+          ...community.permissions,
+          canJoin: result.membershipState === 'none' && !community.isPrivate,
+          canRequestAccess: result.membershipState === 'none' && community.isPrivate,
+          canCancelRequest: result.membershipState === 'pending',
+          canLeave: result.membershipState === 'member',
+          canView: result.membershipState === 'member' || !community.isPrivate,
+        },
+      };
+      await patchCommunity(updated);
       await reconcileCommunity(community.id);
-      setFeedback(community.membershipState === 'pending' ? 'Your join request was canceled.' : community.isPrivate ? 'Your access request was sent.' : `You joined ${community.title}.`);
     } catch (error: unknown) {
       setFeedback(error instanceof Error ? error.message : 'Community membership could not be updated.');
     } finally {
@@ -100,7 +129,21 @@ export default function CommunitiesScreen() {
     if (!community || !action || busyCommunityId) return;
     setBusyCommunityId(community.id);
     try {
-      await communityService.leaveCommunity(community.id);
+      const result = await communityService.leaveCommunity(community.id);
+      const updated: CommunityCardModel = {
+        ...community,
+        membershipState: 'none',
+        memberCount: result.memberCount,
+        permissions: {
+          ...community.permissions,
+          canJoin: !community.isPrivate,
+          canRequestAccess: community.isPrivate,
+          canCancelRequest: false,
+          canLeave: false,
+          canView: !community.isPrivate,
+        },
+      };
+      await patchCommunity(updated);
       await reconcileCommunity(community.id);
       setFeedback(`You left ${community.title}.`);
     } catch (error: unknown) {
@@ -111,15 +154,26 @@ export default function CommunitiesScreen() {
     }
   };
 
-  const renderCommunity = ({ item, index }: { item: CommunityCardModel; index: number }) => (
-    <View style={{ flex: 1, marginLeft: columnCount === 2 && index % 2 === 1 ? 6 : 16, marginRight: columnCount === 2 && index % 2 === 0 ? 6 : 16, marginBottom: 14 }}>
-      <CommunityCard community={item} viewMode={viewMode} busy={busyCommunityId === item.id} onOpen={handleOpen} onMembershipAction={(community) => void handleMembershipAction(community)} onLeave={(community) => setConfirmation({ action: 'leave', community })} onReport={setReportCommunity} />
-    </View>
-  );
+  const isInitialLoading = !resource.data && (resource.status === 'idle' || resource.status === 'hydrating' || resource.status === 'refreshing');
+
+  const renderCommunity = ({ item, index }: { item: CommunityCardModel | number; index: number }) => {
+    if (typeof item === 'number') {
+      return (
+        <View style={{ flex: 1, marginLeft: columnCount === 2 && index % 2 === 1 ? 6 : 16, marginRight: columnCount === 2 && index % 2 === 0 ? 6 : 16, marginBottom: 14 }}>
+          <CommunityCardSkeleton viewMode={viewMode} />
+        </View>
+      );
+    }
+    return (
+      <View style={{ flex: 1, marginLeft: columnCount === 2 && index % 2 === 1 ? 6 : 16, marginRight: columnCount === 2 && index % 2 === 0 ? 6 : 16, marginBottom: 14 }}>
+        <CommunityCard community={item} viewMode={viewMode} busy={busyCommunityId === item.id} onOpen={handleOpen} onMembershipAction={(c) => void handleMembershipAction(c)} onLeave={(c) => setConfirmation({ action: 'leave', community: c })} onReport={setReportCommunity} />
+      </View>
+    );
+  };
 
   const listHeader = (
     <View>
-      {resource.data?.communityOfTheWeek ? <CommunityOfTheWeek community={resource.data.communityOfTheWeek} onOpen={handleOpen} /> : null}
+      {cachedHeroCommunity ? <CommunityOfTheWeek community={cachedHeroCommunity} onOpen={handleOpen} /> : null}
       <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
         <Text style={{ marginBottom: 8, color: colors.mutedText, fontWeight: '900', fontSize: 10, letterSpacing: 0.7 }}>BROWSE</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 8 }}>
@@ -145,13 +199,52 @@ export default function CommunitiesScreen() {
     </View>
   );
 
+  const renderEmptyComponent = () => {
+    if (isInitialLoading) return null;
+    if (!resource.data && resource.status === 'error') {
+      return (
+        <View style={{ alignItems: 'center', justifyContent: 'center', padding: 28 }}>
+          <Users size={42} color={colors.destructive} />
+          <Text style={{ marginTop: 13, color: colors.text, fontWeight: '900', fontSize: 18 }}>Communities unavailable</Text>
+          <Text style={{ color: colors.mutedText, textAlign: 'center', lineHeight: 21, marginTop: 7 }}>{resource.error?.message ?? 'Check your connection and try again.'}</Text>
+          <TouchableOpacity onPress={() => void handleManualRefresh()} style={{ backgroundColor: colors.accent, paddingHorizontal: 22, paddingVertical: 11, borderRadius: 999, marginTop: 16 }}>
+            <Text style={{ color: colors.onAccent, fontWeight: '800' }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return (
+      <View style={{ alignItems: 'center', justifyContent: 'center', padding: 30 }}>
+        <Users size={42} color={colors.accent} />
+        <Text style={{ fontSize: 19, fontWeight: '800', color: colors.text, marginTop: 12 }}>No communities found</Text>
+        <Text style={{ color: colors.mutedText, marginTop: 5, textAlign: 'center' }}>Adjust your filters or create a community for this space.</Text>
+        <TouchableOpacity onPress={() => setCreateVisible(true)} style={{ marginTop: 14 }}>
+          <Text style={{ color: colors.accentText, fontWeight: '900' }}>Create a community</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
       <View style={{ backgroundColor: colors.surface, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ flex: 1, fontSize: 24, fontWeight: '900', color: colors.text }}>Communities</Text><TouchableOpacity disabled={manualRefreshing} onPress={() => void handleManualRefresh()} accessibilityLabel="Refresh communities" style={{ padding: 9, borderRadius: 12, backgroundColor: colors.control }}>{manualRefreshing ? <ActivityIndicator size="small" color={colors.accent} /> : <RefreshCw size={18} color={colors.icon} />}</TouchableOpacity><TouchableOpacity onPress={() => setCreateVisible(true)} style={{ marginLeft: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.accent, borderRadius: 13, paddingHorizontal: 12, paddingVertical: 9 }}><Plus size={17} color={colors.onAccent} /><Text style={{ marginLeft: 5, color: colors.onAccent, fontWeight: '800' }}>Create</Text></TouchableOpacity></View>
         <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.input, borderRadius: 14, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: colors.border }}><Search size={18} color={colors.icon} /><TextInput value={searchText} onChangeText={setSearchText} placeholder="Search communities" placeholderTextColor={colors.mutedText} style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 11, color: colors.text }} /></View>
       </View>
-      {!resource.data && (resource.status === 'idle' || resource.status === 'hydrating') ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.accent} /></View> : !resource.data && resource.status === 'error' ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}><Users size={42} color={colors.destructive} /><Text style={{ marginTop: 13, color: colors.text, fontWeight: '900', fontSize: 18 }}>Communities unavailable</Text><Text style={{ color: colors.mutedText, textAlign: 'center', lineHeight: 21, marginTop: 7 }}>{resource.error?.message ?? 'Check your connection and try again.'}</Text><TouchableOpacity onPress={() => void handleManualRefresh()} style={{ backgroundColor: colors.accent, paddingHorizontal: 22, paddingVertical: 11, borderRadius: 999, marginTop: 16 }}><Text style={{ color: colors.onAccent, fontWeight: '800' }}>Retry</Text></TouchableOpacity></View> : <FlatList key={`${viewMode}-${columnCount}`} data={resource.data?.items ?? []} numColumns={columnCount} keyExtractor={(community) => community.id} renderItem={renderCommunity} ListHeaderComponent={listHeader} contentContainerStyle={{ paddingBottom: 42, flexGrow: resource.data?.items.length ? undefined : 1 }} refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={() => void handleManualRefresh()} tintColor={colors.accent} />} onEndReached={() => void loadMore()} onEndReachedThreshold={0.35} ListFooterComponent={resource.status === 'refreshing' && resource.data?.hasMore && !manualRefreshing ? <ActivityIndicator color={colors.accent} style={{ marginVertical: 16 }} /> : null} ListEmptyComponent={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 30 }}><Users size={42} color={colors.accent} /><Text style={{ fontSize: 19, fontWeight: '800', color: colors.text, marginTop: 12 }}>No communities found</Text><Text style={{ color: colors.mutedText, marginTop: 5, textAlign: 'center' }}>Adjust your filters or create a community for this space.</Text><TouchableOpacity onPress={() => setCreateVisible(true)} style={{ marginTop: 14 }}><Text style={{ color: colors.accentText, fontWeight: '900' }}>Create a community</Text></TouchableOpacity></View>} />}
+      <FlatList
+        key={`${viewMode}-${columnCount}`}
+        data={isInitialLoading ? SKELETON_PLACEHOLDERS : (resource.data?.items ?? [])}
+        numColumns={columnCount}
+        keyExtractor={(item, index) => typeof item === 'number' ? `skeleton-${item}-${index}` : item.id}
+        renderItem={renderCommunity}
+        ListHeaderComponent={listHeader}
+        contentContainerStyle={{ paddingBottom: 42, flexGrow: (isInitialLoading || resource.data?.items.length) ? undefined : 1 }}
+        refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={() => void handleManualRefresh()} tintColor={colors.accent} />}
+        onEndReached={() => { if (!isInitialLoading) void loadMore(); }}
+        onEndReachedThreshold={0.35}
+        ListFooterComponent={resource.status === 'refreshing' && resource.data?.hasMore && !manualRefreshing ? <ActivityIndicator color={colors.accent} style={{ marginVertical: 16 }} /> : null}
+        ListEmptyComponent={renderEmptyComponent}
+      />
       <CreateCommunityModal visible={createVisible} categories={categories.data ?? []} onClose={() => setCreateVisible(false)} onCreated={(community) => { void patchCommunity(community).then(() => refresh()); }} />
       <CustomModal visible={Boolean(feedback)} title="Community" message={feedback ?? ''} type="info" onClose={() => setFeedback(null)} />
       <CustomModal visible={confirmation.action !== null} title={`Leave ${confirmation.community?.title ?? 'community'}?`} message="You will lose access to member-only posts until you join again." type="warning" confirmText="Leave community" cancelText="Cancel" isLoading={Boolean(busyCommunityId)} onConfirm={() => void handleConfirmedAction()} onCancel={() => setConfirmation({ action: null, community: null })} onClose={() => setConfirmation({ action: null, community: null })} />

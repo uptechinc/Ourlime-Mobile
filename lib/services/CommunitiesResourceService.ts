@@ -3,7 +3,7 @@ import { LocalCacheService } from './LocalCacheService';
 import { ResourceErrorService } from './ResourceErrorService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import type { ResourceState } from '@/lib/types/resourceState';
-import type { CommunityCardModel, CommunityCategory, CommunityDirectoryPage, CommunityDirectoryQuery } from '@/lib/types/community';
+import type { CommunityCardModel, CommunityCategory, CommunityDirectoryPage, CommunityDirectoryQuery, CommunityDirectoryScope, CommunityDirectoryVisibility } from '@/lib/types/community';
 import { DiscoverResourceService } from './DiscoverResourceService';
 import type { ApiRequestPriority } from './ApiService';
 
@@ -207,6 +207,9 @@ export class CommunitiesResourceService {
     try {
       const page = await this.communityService.fetchDirectory({ ...query, cursor: null }, priority);
       await this.commit(userId, queryKey, page, 'network');
+      if (query.scope === 'all' && !query.categoryId && !query.search.trim()) {
+        this.seedDerivedScopes(userId, page.items);
+      }
     } catch (error: unknown) {
       const latest = useResourceStore.getState().communityDirectories[queryKey];
       useResourceStore.getState().setCommunityDirectory(queryKey, {
@@ -215,6 +218,62 @@ export class CommunitiesResourceService {
         error: this.errorService.normalize(error, 'We could not load communities.'),
       });
     }
+  }
+
+  private seedDerivedScopes(userId: string, allItems: CommunityCardModel[]): void {
+    const scopes: CommunityDirectoryScope[] = ['joined', 'friends', 'new', 'created'];
+    const visibilities: CommunityDirectoryVisibility[] = ['all', 'public', 'private'];
+
+    scopes.forEach((scope) => {
+      visibilities.forEach((visibility) => {
+        const query: CommunityDirectoryQuery = {
+          scope,
+          visibility,
+          categoryId: null,
+          search: '',
+          sort: 'popular',
+          cursor: null,
+          limit: 20,
+        };
+        const queryKey = this.getQueryKey(query);
+        const current = useResourceStore.getState().communityDirectories[queryKey];
+        if (current?.data && !current.isStale) return;
+
+        let filtered = allItems;
+        if (scope === 'joined') {
+          filtered = filtered.filter((item) => item.membershipState === 'member' || item.membershipState === 'owner');
+        } else if (scope === 'created') {
+          filtered = filtered.filter((item) => item.creatorId === userId || item.membershipState === 'owner');
+        } else if (scope === 'friends') {
+          filtered = filtered.filter((item) => item.friendMemberCount > 0);
+        } else if (scope === 'new') {
+          const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+          filtered = filtered.filter((item) => item.createdAtMs >= thirtyDaysAgo);
+        }
+
+        if (visibility === 'public') {
+          filtered = filtered.filter((item) => !item.isPrivate);
+        } else if (visibility === 'private') {
+          filtered = filtered.filter((item) => item.isPrivate);
+        }
+
+        const seededPage: CommunityDirectoryPage = {
+          items: filtered.slice(0, 20),
+          communityOfTheWeek: filtered[0] ?? null,
+          nextCursor: null,
+          hasMore: false,
+          totalCount: filtered.length,
+        };
+        useResourceStore.getState().setCommunityDirectory(queryKey, {
+          data: seededPage,
+          status: 'ready',
+          source: 'memory',
+          updatedAt: Date.now(),
+          isStale: true,
+          error: null,
+        });
+      });
+    });
   }
 
   private async commit(userId: string, queryKey: string, data: CommunityDirectoryPage, source: ResourceState<CommunityDirectoryPage>['source']): Promise<void> {

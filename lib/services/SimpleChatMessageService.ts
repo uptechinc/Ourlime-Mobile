@@ -76,12 +76,58 @@ export class SimpleChatMessageService {
     return this.sortNewestFirst([...messagesById.values()]).slice(0, RECENT_MESSAGE_LIMIT);
   }
 
+  private readonly markReadInFlight = new Set<string>();
+
   public async markRead(peerId: string): Promise<void> {
-    await this.apiService.request('/api/messaging', {
-      authenticated: true,
-      method: 'PATCH',
-      body: { peerId },
-    });
+    if (this.markReadInFlight.has(peerId)) return;
+    this.markReadInFlight.add(peerId);
+    try {
+      await this.apiService.request('/api/messaging', {
+        authenticated: true,
+        method: 'PATCH',
+        body: { peerId, action: 'read' },
+      });
+    } catch {
+      // Non-fatal
+    } finally {
+      setTimeout(() => this.markReadInFlight.delete(peerId), 2000);
+    }
+  }
+
+  public async markUnread(peerId: string): Promise<void> {
+    try {
+      await this.apiService.request('/api/messaging', {
+        authenticated: true,
+        method: 'PATCH',
+        body: { peerId, action: 'unread' },
+      });
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  public async setArchiveStatus(peerId: string, isArchived: boolean): Promise<void> {
+    try {
+      await this.apiService.request('/api/messaging', {
+        authenticated: true,
+        method: 'PATCH',
+        body: { peerId, action: isArchived ? 'archive' : 'unarchive' },
+      });
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  public async setPinStatus(peerId: string, isPinned: boolean): Promise<void> {
+    try {
+      await this.apiService.request('/api/messaging', {
+        authenticated: true,
+        method: 'PATCH',
+        body: { peerId, action: isPinned ? 'pin' : 'unpin' },
+      });
+    } catch {
+      // Non-fatal
+    }
   }
 
   private normalizeRecent(values: unknown[]): FullMessage[] {

@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { messagingService } from '@/lib/messaging/MessagingService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -91,6 +92,12 @@ export function ChatSettingsMenu({
     setMutedUntil(until);
     try {
       await messagingService.setMuteUntil(currentUserId, friendId, until);
+      const mutedKey = `ourlime_muted_chats_${currentUserId}`;
+      const val = await AsyncStorage.getItem(mutedKey);
+      const list = val ? (JSON.parse(val) as string[]) : [];
+      const set = new Set(list);
+      set.add(friendId);
+      await AsyncStorage.setItem(mutedKey, JSON.stringify(Array.from(set)));
     } catch (e) {
       console.error('[ChatSettingsMenu.handleMute]', e);
     }
@@ -101,6 +108,12 @@ export function ChatSettingsMenu({
     setMutedUntil(null);
     try {
       await messagingService.setMuteUntil(currentUserId, friendId, null);
+      const mutedKey = `ourlime_muted_chats_${currentUserId}`;
+      const val = await AsyncStorage.getItem(mutedKey);
+      const list = val ? (JSON.parse(val) as string[]) : [];
+      const set = new Set(list);
+      set.delete(friendId);
+      await AsyncStorage.setItem(mutedKey, JSON.stringify(Array.from(set)));
     } catch (e) {
       console.error('[ChatSettingsMenu.handleUnmute]', e);
     }

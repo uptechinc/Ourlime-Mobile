@@ -22,10 +22,8 @@ type Users = {
     profileImage?: string;
     profileImageId?: string;
     isAuthenticated?: boolean;
-    // Additional fields for user management
     accountStatus?: 'active' | 'pending' | 'suspended' | 'banned';
     role?: 'user' | 'premium' | 'moderator' | 'admin';
-    // Add these new properties
     _aboutData?: {
         interests: string[];
         skills: string[];
@@ -45,7 +43,7 @@ type Users = {
         frontIDVerified?: boolean;
         backIDVerified?: boolean;
     };
-}
+};
 
 type UserData = {
     id: string;
@@ -144,15 +142,15 @@ type Post = {
 
 type BasePost = {
     id: string;
-    title: string; // Add title
-    caption: string; // Add caption
-    content: string; // Add content
-    visibility: string; // Add visibility
-    createdAt: Date; // Add createdAt
-    userId: string; // Add userId
-    hashtags: Array<string>; // Add hashtags
-    media: string; // Add media
-    author: { // Add author object
+    title: string;
+    caption: string;
+    content: string;
+    visibility: string;
+    createdAt: Date;
+    userId: string;
+    hashtags: Array<string>;
+    media: string;
+    author: {
         id: string;
         firstName: string;
         lastName: string;
@@ -160,9 +158,9 @@ type BasePost = {
         role: string;
         profileImage?: string;
     };
-    timestamp: Date; // Add timestamp
+    timestamp: Date;
     mediaDetails: CommunityVariantDetailsSummary[];
-    commentCount?: number; // Add comment count
+    commentCount?: number;
 };
 
 type PostData = {
@@ -177,7 +175,7 @@ type Reel = {
     id: string;
     userId: string;
     media: {
-        type: 'video' | 'image'; // Support both video and image content
+        type: 'video' | 'image';
         typeUrl: string;
         fileName: string;
         duration: number;
@@ -196,9 +194,28 @@ type Reel = {
         likes: number;
         comments: number;
         shares: number;
+        reposts?: number;
     };
-    likes?: string[]; // Array of user IDs who liked the reel
-    comments?: Comment[]; // Array of comments on the reel
+    likes?: string[];
+    comments?: Comment[];
+    repostedFrom?: {
+        reelId?: string;
+        postId?: string;
+        userId: string;
+        userName: string;
+        firstName: string;
+        lastName: string;
+        profileImage?: string;
+    };
+    isRepost?: boolean;
+    repostedBy?: {
+        userId: string;
+        userName: string;
+        firstName: string;
+        lastName: string;
+        profileImage?: string;
+    };
+    reposts?: string[];
 };
 
 type Comment = {
@@ -234,22 +251,22 @@ type Contact = {
         contactId: string;
         setAs: string;
     }>;
-}
+};
 
 type ContactSectionProps = {
     userData: UserData;
-}
+};
 
 type AddressSectionProps = {
     userData: UserData;
-}
+};
 
 type AboutItem = {
     id: string;
     type: 'interests' | 'skills';
     value: string;
     createdAt: Timestamp;
-}
+};
 
 type UserMinimal = {
     id: string;
@@ -275,4 +292,4 @@ export type {
     Reel,
     UserMinimal,
     Comment
-}
+};

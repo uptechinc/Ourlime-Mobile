@@ -13,12 +13,12 @@ const EMPTY_EVENTS: ResourceState<Event[]> = { data: null, status: 'idle', sourc
 const EMPTY_POLLS: ResourceState<CommunityPoll[]> = { data: null, status: 'idle', source: 'memory', updatedAt: null, isStale: true, error: null };
 
 export function useCommunityDetailResource(userId: string, identifier: string) {
-  const detail = useResourceStore((state) => state.communityDetails[identifier] ?? EMPTY_DETAIL);
+  const detail = useResourceStore((state) => state.communityDetails[identifier]) ?? EMPTY_DETAIL;
   const resolvedId = detail.data?.community.id ?? identifier;
-  const members = useResourceStore((state) => state.communityMembers[resolvedId] ?? EMPTY_MEMBERS);
-  const requests = useResourceStore((state) => state.communityRequests[resolvedId] ?? EMPTY_REQUESTS);
-  const events = useResourceStore((state) => state.communityEvents[resolvedId] ?? EMPTY_EVENTS);
-  const polls = useResourceStore((state) => state.communityPolls[resolvedId] ?? EMPTY_POLLS);
+  const members = useResourceStore((state) => state.communityMembers[resolvedId]) ?? EMPTY_MEMBERS;
+  const requests = useResourceStore((state) => state.communityRequests[resolvedId]) ?? EMPTY_REQUESTS;
+  const events = useResourceStore((state) => state.communityEvents[resolvedId]) ?? EMPTY_EVENTS;
+  const polls = useResourceStore((state) => state.communityPolls[resolvedId]) ?? EMPTY_POLLS;
 
   useEffect(() => {
     if (!userId || !identifier) return;
