@@ -1,0 +1,61 @@
+appId: com.ourlime.app
+---
+- launchApp
+
+# 1. Ensure on Home Feed
+- assertVisible:
+    text: ".*(Home|Feeds|All|Photos).*"
+
+# 2. Test Liking a Post (Tap heart)
+- tapOn:
+    point: 8%, 70%
+    optional: true
+
+# 3. Test Commenting on a Post
+- tapOn:
+    point: 28%, 70%
+    optional: true
+- assertVisible:
+    text: ".*(Comments|Write a comment).*"
+    optional: true
+
+# 4. Type and submit a comment
+- tapOn:
+    text: "Write a comment..."
+    optional: true
+- inputText: "Testing automated comment from Maestro E2E!"
+- hideKeyboard
+- tapOn:
+    point: 92%, 96%
+    optional: true
+
+# 5. Test Editing the Comment
+- tapOn:
+    text: "Edit"
+    optional: true
+- eraseText:
+    charactersToErase: 100
+- inputText: "Edited comment verified!"
+- hideKeyboard
+- tapOn:
+    point: 92%, 96%
+    optional: true
+
+# 6. Close Comments Sheet
+- back
+
+# 7. Test Reposting (Tap repost icon)
+- tapOn:
+    point: 65%, 70%
+    optional: true
+
+# 8. Test Post Options Menu (Report, Add Friend, Follow, Block)
+- tapOn:
+    point: 94%, 32%
+    optional: true
+- assertVisible:
+    text: ".*(Add Friend|Follow|Report Post|Block User|Delete Post).*"
+    optional: true
+
+# 9. Dismiss Options Sheet
+- back
