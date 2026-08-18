@@ -20,8 +20,8 @@ export function useAuthGuard() {
       if (!verifiedUser) isResolvingPendingDestinationRef.current = false;
       setUser(verifiedUser);
       setIsInitializing(false);
-      if (verifiedUser) {
-        void pushNotificationService.registerForPushNotifications(verifiedUser.uid);
+      if (currentUser?.uid) {
+        void pushNotificationService.registerForPushNotifications(currentUser.uid);
       }
     });
 

@@ -126,22 +126,84 @@ export class PushNotificationService {
 
   public async registerForPushNotifications(userId: string): Promise<string | null> {
     if (!userId) return null;
-    const token = await this.getDevicePushToken();
-    if (!token) return null;
-    try {
-      await this.apiService.request<PushTokenResponse>('/api/push-tokens', {
-        method: 'POST', authenticated: true, body: { token, platform: Platform.OS },
-      });
-      this.logger.success('PushNotificationService', 'token:registered', { userId, platform: Platform.OS });
-      return token;
-    } catch (error: unknown) {
-      this.logger.warn('PushNotificationService', 'token:registration-failed', {
-        userId,
-        platform: Platform.OS,
-        reason: error instanceof Error ? error.message : 'Unknown registration error',
-      });
-      return null;
+    const Notifications = getNotifications();
+
+    // 1. On Android: Fetch and register the direct native Google FCM token
+    if (Platform.OS === 'android') {
+      try {
+        if (Notifications) {
+          const deviceTokenResult = await Notifications.getDevicePushTokenAsync().catch(() => null);
+          if (deviceTokenResult && deviceTokenResult.data) {
+            const fcmToken = deviceTokenResult.data;
+            const tokenType = deviceTokenResult.type ?? 'unknown';
+            console.log(`📱 [PushNotificationService] getDevicePushTokenAsync: type=${tokenType} token=${fcmToken.slice(0, 30)}... length=${fcmToken.length}`);
+            try {
+              const result = await this.apiService.request<PushTokenResponse>('/api/push-tokens', {
+                method: 'POST',
+                authenticated: true,
+                body: { token: fcmToken, platform: 'android', transport: 'fcm' },
+              });
+              console.log('✅ [PushNotificationService] fcm-device-token saved:', JSON.stringify(result));
+              this.logger.success('PushNotificationService', 'fcm-device-token:registered', { userId });
+            } catch (saveErr) {
+              console.error('❌ [PushNotificationService] fcm-device-token FAILED to save:', saveErr instanceof Error ? saveErr.message : String(saveErr));
+            }
+          }
+        }
+
+        // Also ensure @react-native-firebase/messaging token is synced
+        const messagingModule = await import('@react-native-firebase/messaging');
+        const getMessaging = messagingModule.getMessaging || messagingModule.default;
+        if (typeof getMessaging === 'function') {
+          const messaging = getMessaging();
+          let fcmToken: string | null = null;
+          if (typeof messagingModule.getToken === 'function') {
+            fcmToken = await messagingModule.getToken(messaging).catch(() => null);
+          } else if (typeof messaging?.getToken === 'function') {
+            fcmToken = await messaging.getToken().catch(() => null);
+          }
+          if (fcmToken) {
+            console.log(`📱 [PushNotificationService] firebase/messaging.getToken: token=${fcmToken.slice(0, 30)}... length=${fcmToken.length}`);
+            try {
+              const result = await this.apiService.request<PushTokenResponse>('/api/push-tokens', {
+                method: 'POST',
+                authenticated: true,
+                body: { token: fcmToken, platform: 'android', transport: 'fcm' },
+              });
+              console.log('✅ [PushNotificationService] fcm-firebase-token saved:', JSON.stringify(result));
+              this.logger.success('PushNotificationService', 'fcm-firebase-token:registered', { userId });
+            } catch (saveErr) {
+              console.error('❌ [PushNotificationService] fcm-firebase-token FAILED to save:', saveErr instanceof Error ? saveErr.message : String(saveErr));
+            }
+          }
+        }
+      } catch (fcmError) {
+        this.logger.warn('PushNotificationService', 'fcm:token-failed', {
+          message: fcmError instanceof Error ? fcmError.message : String(fcmError),
+        });
+      }
     }
+
+    // 2. Register Expo Push Token as auxiliary transport
+    const expoToken = await this.getDevicePushToken();
+    if (expoToken) {
+      try {
+        await this.apiService.request<PushTokenResponse>('/api/push-tokens', {
+          method: 'POST',
+          authenticated: true,
+          body: { token: expoToken, platform: Platform.OS, transport: 'expo' },
+        });
+        this.logger.success('PushNotificationService', 'expo-token:registered', { userId, platform: Platform.OS });
+      } catch (error: unknown) {
+        this.logger.warn('PushNotificationService', 'token:registration-failed', {
+          userId,
+          platform: Platform.OS,
+          reason: error instanceof Error ? error.message : 'Unknown registration error',
+        });
+      }
+    }
+
+    return expoToken;
   }
 
   public async unregisterCurrentDevice(): Promise<void> {
