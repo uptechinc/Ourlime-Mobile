@@ -1,6 +1,0 @@
-appId: com.ourlime.app
----
-- tapOn:
-    id: "header-menu-button"
-    optional: true
-- assertVisible: "Explore"
