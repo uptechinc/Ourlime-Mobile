@@ -103,18 +103,7 @@ export class PageAccessService {
     route: string,
     authorization: AuthorizationState,
   ): PageAccessDecision {
-    const configuredSetting = this.resolveSetting(settings, route);
-    const protectedFutureSetting = this.resolveSetting(
-      this.getDefaultSettings().filter((defaultSetting) => defaultSetting.status === 'coming_soon'),
-      route,
-    );
-    const setting = protectedFutureSetting
-      ? {
-          ...(configuredSetting ?? protectedFutureSetting),
-          status: 'coming_soon' as const,
-          badgeText: protectedFutureSetting.badgeText || 'Coming Soon',
-        }
-      : configuredSetting;
+    const setting = this.resolveSetting(settings, route);
     const status = setting?.status ?? 'enabled';
     const canAccess = authorizationService.canAccessStatus(status, authorization);
     return {
@@ -122,9 +111,12 @@ export class PageAccessService {
       status,
       canAccess,
       isVisibleInNavigation: setting
-        ? setting.showInNavigation && setting.status !== 'disabled' && (setting.status !== 'developer_only' || authorization.isDeveloper)
+        ? setting.showInNavigation &&
+          setting.status !== 'disabled' &&
+          (setting.status !== 'developer_only' || authorization.isDeveloper) &&
+          (setting.status !== 'admin_only' || authorization.isAdmin)
         : true,
-      isDeveloperPreview: authorization.isDeveloper && status !== 'enabled' && status !== 'disabled',
+      isDeveloperPreview: (authorization.isDeveloper || authorization.isAdmin) && status !== 'enabled' && status !== 'disabled',
     };
   }
 

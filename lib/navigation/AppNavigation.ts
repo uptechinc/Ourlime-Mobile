@@ -30,7 +30,6 @@ const APP_NAVIGATION_ITEMS: readonly AppNavigationItem[] = [
   { id: 'ads', label: 'Ads', ionicon: 'megaphone', featherIcon: 'radio', route: '/ads' as Href, pageRoute: '/ads', section: 'explore' },
   { id: 'saved', label: 'Saved Items', ionicon: 'bookmark', featherIcon: 'bookmark', route: '/saved' as Href, pageRoute: '/saved', section: 'account' },
   { id: 'wallet', label: 'E-Wallet', ionicon: 'wallet', featherIcon: 'credit-card', route: '/eWallet' as Href, pageRoute: '/eWallet', section: 'account' },
-  { id: 'games', label: 'Games', ionicon: 'game-controller', featherIcon: 'play-circle', route: '/games' as Href, pageRoute: '/games', section: 'explore' },
   { id: 'ehub', label: 'E-Hub', ionicon: 'grid', featherIcon: 'grid', route: '/ehub' as Href, pageRoute: '/ehub', section: 'explore' },
   { id: 'help', label: 'Help & Support', ionicon: 'help-circle', featherIcon: 'help-circle', route: '/help' as Href, pageRoute: '/help', section: 'account' },
   { id: 'chat', label: 'Chat', ionicon: 'chatbubbles', featherIcon: 'message-circle', route: '/(tabs)/Chat', pageRoute: '/chat', section: 'explore' },

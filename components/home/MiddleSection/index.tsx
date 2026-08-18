@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   RefreshControl,
   Text,
   TouchableOpacity,
@@ -93,7 +94,7 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
     scope: activeFeedSource as FeedScope,
     filter: apiFilterByUiFilter[activeFilter],
   }), [activeFeedSource, activeFilter, userProfile.uid]);
-  const { resource, refresh: refreshFeed, loadMore: loadMoreFeed, revealPending, setScrollOffset } = useFeedQuery(feedQuery);
+  const { resource, refresh: refreshFeed, loadMore: loadMoreFeed, setScrollOffset } = useFeedQuery(feedQuery);
   const posts = resource.data?.posts ?? [];
   const displayedPosts = posts;
   const isLoading = !resource.data && (resource.status === 'idle' || resource.status === 'hydrating');
@@ -126,12 +127,10 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
 
   const handleFilterChange = useCallback((filter: FeedFilter) => {
     setActiveFilter(filter);
-    // Pause all videos while switching filters
     setVisiblePostIds(new Set());
   }, []);
 
   const handleFeedSourceChange = useCallback((source: FeedSource) => {
-    // Pause all videos while switching sources
     setVisiblePostIds(new Set());
     setActiveFeedSource(source);
   }, []);
@@ -157,10 +156,6 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
     void feedResourceService.patchPost(updatedPost);
   };
 
-  // ── Viewability callback ─────────────────────────────────────────────────────
-  // Called by FlatList whenever the set of visible items changes.
-  // We extract the post IDs of visible rows and store them in a Set so each
-  // VideoPostItem can check whether it should be playing.
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       const ids = new Set<string>();
@@ -172,7 +167,6 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
     },
   ).current;
 
-  // Store randomized index for suggested users (>= 5, never in top 5 posts)
   const suggestedIndexRef = useRef<number>(5);
   useEffect(() => {
     if (posts.length >= 5) {
@@ -181,7 +175,6 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
     }
   }, [posts.length]);
 
-  // ── Build flat FeedRow list ──────────────────────────────────────────────────
   const rows: FeedRow[] = [
     { kind: 'header' },
     { kind: 'filters' },
@@ -193,10 +186,9 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
       ? [{ kind: 'empty' as const }]
       : displayedPosts.flatMap<FeedRow>((post, index) => {
           const rows: FeedRow[] = [{ kind: 'post', post, index }];
-          if (index === 1)  rows.push({ kind: 'promoted' });
-          if (index === 2)  rows.push({ kind: 'activity' });
+          if (index === 1) rows.push({ kind: 'promoted' });
+          if (index === 2) rows.push({ kind: 'activity' });
           if (index === suggestedIndexRef.current) rows.push({ kind: 'suggested' });
-          if (index === 6)  rows.push({ kind: 'games' });
           return rows;
         })),
     { kind: 'footer' },
@@ -282,17 +274,44 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
         case 'empty':
           return (
             <View style={{ minHeight: 360, paddingHorizontal: 32, alignItems: 'center', justifyContent: 'center' }}>
-              <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: isDark ? '#065f46' : '#d1fae5', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
-                <Icon name={activeFilter === 'All' ? 'inbox' : 'filter'} size={34} color="#10b981" />
-              </View>
-              <Text style={{ color: colors.text, fontSize: 21, fontWeight: '700' }}>
-                {activeFilter === 'All' ? 'Your feed is empty' : `No ${activeFilter.toLowerCase()} posts`}
+              <Image
+                source={require('@/assets/images/stickers/greetings/Hello.png')}
+                style={{ width: 140, height: 140, marginBottom: 14 }}
+                resizeMode="contain"
+                accessibilityLabel="Friendly Welcome"
+              />
+              <Text style={{ color: colors.text, fontSize: 22, fontWeight: '800', textAlign: 'center' }}>
+                {activeFilter === 'All' ? 'Your feed is quiet!' : `No ${activeFilter.toLowerCase()} posts yet`}
               </Text>
-              <Text style={{ marginTop: 8, color: colors.mutedText, fontSize: 15, textAlign: 'center' }}>
+              <Text style={{ marginTop: 8, color: colors.mutedText, fontSize: 15, textAlign: 'center', maxWidth: 280, lineHeight: 22 }}>
                 {activeFilter === 'All'
-                  ? 'Be the first to create a post!'
-                  : 'Try another filter or pull down to refresh.'}
+                  ? 'Say hello or share what is on your mind to get the lime started.'
+                  : 'Try selecting another filter or pulling down to refresh.'}
               </Text>
+              {activeFilter === 'All' ? (
+                <TouchableOpacity
+                  onPress={onCreatePost}
+                  activeOpacity={0.8}
+                  style={{
+                    marginTop: 18,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    paddingHorizontal: 22,
+                    paddingVertical: 12,
+                    borderRadius: 999,
+                    backgroundColor: '#10b981',
+                    shadowColor: '#10b981',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 8,
+                    elevation: 4,
+                  }}
+                >
+                  <Icon name="edit-3" size={16} color="#ffffff" />
+                  <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 14 }}>Create a Post</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           );
 
@@ -370,15 +389,12 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
         style={{ flex: 1, backgroundColor: colors.canvas }}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 48 }}
         showsVerticalScrollIndicator={false}
-        // ── Video visibility tracking ────────────────────────────────────────
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={VIEWABILITY_CONFIG}
-        // ── Pagination ───────────────────────────────────────────────────────
         onEndReached={() => void handleLoadMore()}
         onEndReachedThreshold={0.4}
         onScroll={(event) => setScrollOffset(event.nativeEvent.contentOffset.y)}
         scrollEventThrottle={250}
-        // ── Pull-to-refresh ─────────────────────────────────────────────────
         refreshControl={
           <RefreshControl
             refreshing={isPullRefreshing}
@@ -387,17 +403,11 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
             colors={['#10b981']}
           />
         }
-        // Performance
         removeClippedSubviews={true}
-        maxToRenderPerBatch={6}
-        windowSize={7}
+        maxToRenderPerBatch={8}
+        windowSize={11}
+        initialNumToRender={5}
       />
-
-      {resource.data?.pendingPosts.length ? (
-        <TouchableOpacity onPress={() => void revealPending()} style={{ position: 'absolute', alignSelf: 'center', top: 12, zIndex: 20, backgroundColor: '#10b981', paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999 }}>
-          <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 12 }}>New posts</Text>
-        </TouchableOpacity>
-      ) : null}
 
       {activePost ? (
         <CommentsModal

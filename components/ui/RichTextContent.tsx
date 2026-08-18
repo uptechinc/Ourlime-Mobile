@@ -1,16 +1,16 @@
-﻿import { useCallback, useMemo } from 'react';
-import { Linking, StyleProp, Text, TextStyle, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Linking, StyleProp, Text, TextStyle, TouchableOpacity, View } from 'react-native';
 import WebView from 'react-native-webview';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
 // --- Types ---
 
 type PlainSegment = { kind: 'text'; value: string };
 type MentionSegment = { kind: 'mention'; username: string; value: string };
-type UrlSegment = { kind: 'url'; url: string; value: string };
-type YoutubeSegment = { kind: 'youtube'; videoId: string };
+type UrlSegment = { kind: 'url'; url: string; value: string; isYouTube?: boolean };
 
-type ContentSegment = PlainSegment | MentionSegment | UrlSegment | YoutubeSegment;
+type ContentSegment = PlainSegment | MentionSegment | UrlSegment;
 
 type RichTextContentProps = {
   content: string;
@@ -27,23 +27,23 @@ const MENTION_REGEX = /(@[\w.-]+)/g;
 const TRAILING_PUNCT = /[),.!?;:\]}]+$/;
 
 /** Extract a YouTube video ID from common URL formats. Returns null if not YouTube. */
-function extractYouTubeVideoId(url: string): string | null {
+export function extractYouTubeVideoId(url: string): string | null {
   try {
     const parsed = new URL(url);
-    const host = parsed.hostname.replace(/^www\./, '');
-
-    if (host === 'youtube.com' && parsed.pathname === '/watch') {
-      return parsed.searchParams.get('v');
-    }
-
-    const pathMatch = parsed.pathname.match(/^\/(shorts|embed|v)\/([a-zA-Z0-9_-]{11})/);
-    if ((host === 'youtube.com' || host === 'm.youtube.com') && pathMatch) {
-      return pathMatch[2];
-    }
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
 
     if (host === 'youtu.be') {
       const id = parsed.pathname.slice(1).split('?')[0];
-      if (id.length === 11) return id;
+      if (id && id.length === 11) return id;
+    }
+
+    if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com') {
+      if (parsed.pathname === '/watch') {
+        const id = parsed.searchParams.get('v');
+        if (id && id.length === 11) return id;
+      }
+      const pathMatch = parsed.pathname.match(/^\/(shorts|embed|v|live)\/([a-zA-Z0-9_-]{11})/);
+      if (pathMatch) return pathMatch[2];
     }
 
     return null;
@@ -54,10 +54,11 @@ function extractYouTubeVideoId(url: string): string | null {
 
 /**
  * Parse a raw content string into typed segments.
- * Order: URLs (YouTube detected separately) > @mentions > plain text.
+ * Preserves all URLs (including YouTube URLs) as clickable spans in the text.
  */
-function parseSegments(content: string): ContentSegment[] {
+function parseSegments(content: string): { segments: ContentSegment[]; youtubeVideoIds: string[] } {
   const segments: ContentSegment[] = [];
+  const youtubeVideoIds: string[] = [];
 
   const urlParts = content.split(URL_REGEX);
   const urlMatches = content.match(URL_REGEX) ?? [];
@@ -80,14 +81,17 @@ function parseSegments(content: string): ContentSegment[] {
       const url = rawUrl.replace(TRAILING_PUNCT, '');
       const videoId = extractYouTubeVideoId(url);
       if (videoId) {
-        segments.push({ kind: 'youtube', videoId });
+        if (!youtubeVideoIds.includes(videoId)) {
+          youtubeVideoIds.push(videoId);
+        }
+        segments.push({ kind: 'url', url, value: url, isYouTube: true });
       } else {
         segments.push({ kind: 'url', url, value: url });
       }
     }
   });
 
-  return segments;
+  return { segments, youtubeVideoIds };
 }
 
 // --- YouTube embed ---
@@ -95,43 +99,106 @@ function parseSegments(content: string): ContentSegment[] {
 type YoutubeEmbedProps = { videoId: string };
 
 function YouTubeEmbed({ videoId }: YoutubeEmbedProps) {
-  const embedHtml = `<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; background: #000; }
-  iframe { width: 100%; height: 100%; border: none; display: block; }
-</style>
-</head>
-<body>
-<iframe
-  src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1"
-  allowfullscreen
-  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-></iframe>
-</body>
-</html>`;
+  const [hasError, setHasError] = useState(false);
+  const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&enablejsapi=1&rel=0&modestbranding=1&origin=https://ourlime.com`;
+
+  const handleOpenExternal = useCallback(async () => {
+    try {
+      const appUrl = `vnd.youtube://${videoId}`;
+      const canOpenApp = await Linking.canOpenURL(appUrl);
+      if (canOpenApp) {
+        await Linking.openURL(appUrl);
+        return;
+      }
+      await Linking.openURL(youtubeUrl);
+    } catch {
+      await Linking.openURL(youtubeUrl).catch(() => {});
+    }
+  }, [videoId, youtubeUrl]);
 
   return (
     <View
       style={{
         width: '100%',
-        aspectRatio: 16 / 9,
-        borderRadius: 12,
+        borderRadius: 14,
         overflow: 'hidden',
         marginTop: 10,
-        backgroundColor: '#000',
+        backgroundColor: '#0a0f1d',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.08)',
       }}
     >
-      <WebView
-        source={{ html: embedHtml }}
-        allowsFullscreenVideo
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        javaScriptEnabled
-        style={{ flex: 1, backgroundColor: '#000' }}
-      />
+      <View style={{ width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' }}>
+        {!hasError ? (
+          <WebView
+            source={{
+              uri: embedUrl,
+              headers: {
+                Referer: 'https://ourlime.com/',
+              },
+            }}
+            allowsFullscreenVideo
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
+            javaScriptEnabled
+            domStorageEnabled
+            mixedContentMode="always"
+            originWhitelist={['*']}
+            userAgent="Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+            onError={() => setHasError(true)}
+            onHttpError={() => setHasError(true)}
+            style={{ flex: 1, backgroundColor: '#000' }}
+          />
+        ) : (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={handleOpenExternal}
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#111827',
+              padding: 16,
+            }}
+          >
+            <Ionicons name="logo-youtube" size={48} color="#ef4444" />
+            <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 14, marginTop: 8 }}>
+              Watch on YouTube
+            </Text>
+            <Text style={{ color: '#9ca3af', fontSize: 12, marginTop: 2 }}>
+              Tap to play directly in YouTube app
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Quick Launch Bar */}
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={handleOpenExternal}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 12,
+          paddingVertical: 7,
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Ionicons name="logo-youtube" size={16} color="#ef4444" />
+          <Text style={{ color: '#e5e7eb', fontSize: 12, fontWeight: '600' }}>
+            YouTube Video
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+          <Text style={{ color: '#10b981', fontSize: 11, fontWeight: '700' }}>
+            Open App
+          </Text>
+          <Ionicons name="open-outline" size={13} color="#10b981" />
+        </View>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -169,56 +236,49 @@ export default function RichTextContent({
     }
   }, []);
 
-  const segments = useMemo(() => parseSegments(content), [content]);
+  const { segments, youtubeVideoIds } = useMemo(() => parseSegments(content || ''), [content]);
 
   if (!content) return null;
 
-  const youtubeSegments = segments.filter((s): s is YoutubeSegment => s.kind === 'youtube');
-  const inlineSegments = segments.filter(
-    (s): s is PlainSegment | MentionSegment | UrlSegment => s.kind !== 'youtube',
-  );
-
-  const hasInlineContent = inlineSegments.some(
-    (s) => s.kind !== 'text' || s.value.trim().length > 0,
-  );
-
   return (
     <View>
-      {hasInlineContent ? (
-        <Text style={style}>
-          {inlineSegments.map((segment, index) => {
-            const key = `${segment.kind}-${index}`;
-            if (segment.kind === 'mention') {
-              return (
-                <Text
-                  key={key}
-                  style={{ color: mentionColor, fontWeight: '800' }}
-                  onPress={() => handleMentionPress(segment.username)}
-                >
-                  {segment.value}
-                </Text>
-              );
-            }
-            if (segment.kind === 'url') {
-              return (
-                <Text
-                  key={key}
-                  style={{ color: linkColor, textDecorationLine: 'underline' }}
-                  onPress={() => void handleUrlPress(segment.url)}
-                  accessibilityRole="link"
-                  accessibilityLabel={`Open link: ${segment.url}`}
-                >
-                  {segment.value}
-                </Text>
-              );
-            }
-            return <Text key={key}>{segment.value}</Text>;
-          })}
-        </Text>
-      ) : null}
+      <Text style={style}>
+        {segments.map((segment, index) => {
+          const key = `${segment.kind}-${index}`;
+          if (segment.kind === 'mention') {
+            return (
+              <Text
+                key={key}
+                style={{ color: mentionColor, fontWeight: '800' }}
+                onPress={() => handleMentionPress(segment.username)}
+              >
+                {segment.value}
+              </Text>
+            );
+          }
+          if (segment.kind === 'url') {
+            return (
+              <Text
+                key={key}
+                style={{
+                  color: segment.isYouTube ? '#ef4444' : linkColor,
+                  fontWeight: '600',
+                  textDecorationLine: 'underline',
+                }}
+                onPress={() => void handleUrlPress(segment.url)}
+                accessibilityRole="link"
+                accessibilityLabel={`Open link: ${segment.url}`}
+              >
+                {segment.value}
+              </Text>
+            );
+          }
+          return <Text key={key}>{segment.value}</Text>;
+        })}
+      </Text>
 
-      {youtubeSegments.map((segment, index) => (
-        <YouTubeEmbed key={`yt-${segment.videoId}-${index}`} videoId={segment.videoId} />
+      {youtubeVideoIds.map((videoId) => (
+        <YouTubeEmbed key={`yt-${videoId}`} videoId={videoId} />
       ))}
     </View>
   );
