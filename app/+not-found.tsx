@@ -15,6 +15,11 @@ export default function NotFoundScreen() {
     router.replace('/(tabs)');
   }, [router]);
 
+  const handleGoBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)');
+  }, [router]);
+
   return (
     <>
       <Stack.Screen options={{ title: 'Page Not Found', headerShown: false }} />
@@ -79,6 +84,17 @@ export default function NotFoundScreen() {
             <Text className="text-white text-base font-bold tracking-wide">
               Go Home
             </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleGoBack}
+            activeOpacity={0.8}
+            className="flex-row items-center justify-center px-8 py-3 mt-3 rounded-full w-full max-w-xs gap-2"
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="arrow-back-outline" size={19} color={colors.secondaryText} />
+            <Text style={{ color: colors.secondaryText }} className="text-base font-bold">Go Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

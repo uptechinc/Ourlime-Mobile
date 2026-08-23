@@ -12,6 +12,7 @@ import type { FullMessage, Attachment } from '@/lib/messaging/MessagingService';
 import { DocumentPreviewModal } from './DocumentPreviewModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useDeepLinkNavigation } from '@/lib/hooks/useDeepLinkNavigation';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type ChatMediaPanelProps = {
   visible: boolean;
@@ -95,8 +96,8 @@ export function ChatMediaPanel({
   }, [messages]);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: colors.surface, paddingTop: 50 }}>
+    <Modal visible={visible} animationType="none" transparent presentationStyle="overFullScreen" onRequestClose={onClose}>
+      <SwipeDismissSurface visible={visible} onDismiss={onClose} handleColor={colors.border} accessibilityLabel="Swipe down to close shared content" style={{ flex: 1, backgroundColor: colors.surface, paddingTop: 50 }}>
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
           <TouchableOpacity onPress={onClose} style={{ padding: 6, marginRight: 8 }}>
@@ -245,7 +246,7 @@ export function ChatMediaPanel({
           attachment={previewAttachment}
           onClose={() => setPreviewAttachment(null)}
         />
-      </View>
+      </SwipeDismissSurface>
     </Modal>
   );
 }

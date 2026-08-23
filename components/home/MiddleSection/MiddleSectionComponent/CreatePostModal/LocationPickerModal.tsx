@@ -1,10 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
-import { ActivityIndicator, Alert, Animated, Modal, PanResponder, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useState, useEffect } from 'react';
+import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import Icon from 'react-native-vector-icons/Feather';
 import { LocationService, type LocationSearchResult } from '@/lib/services/LocationService';
 import type { PostLocation } from '@/lib/services/PostService';
+import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 
 type LocationPickerModalProps = {
   initialLocation?: PostLocation;
@@ -26,36 +29,7 @@ export default function LocationPickerModal({ initialLocation, onClose, onSelect
   const [results, setResults] = useState<LocationSearchResult[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const translateY = useRef(new Animated.Value(0)).current;
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) {
-          translateY.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          Animated.timing(translateY, {
-            toValue: 600,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => {
-            translateY.setValue(0);
-            onClose();
-          });
-        } else {
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 4,
-          }).start();
-        }
-      },
-    })
-  ).current;
+  const swipeDismiss = useSwipeDismiss({ visible: true, onDismiss: onClose, disabled: busy });
 
   // 400ms debounced automatic search
   useEffect(() => {
@@ -154,14 +128,13 @@ export default function LocationPickerModal({ initialLocation, onClose, onSelect
   `;
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
+      <Animated.View style={[{ flex: 1 }, swipeDismiss.animatedStyle]}>
       <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
-        <View style={{ width: '100%', alignItems: 'center', paddingVertical: 8 }} {...panResponder.panHandlers}>
-          <View style={{ width: 42, height: 5, borderRadius: 3, backgroundColor: '#d1d5db' }} />
-        </View>
+        <SwipeDismissHandle gesture={swipeDismiss.gesture} color="#d1d5db" animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close location picker" />
         
         {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }} {...panResponder.panHandlers}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }}>
           <TouchableOpacity onPress={onClose} style={{ padding: 8 }}><Icon name="x" size={24} color="#374151" /></TouchableOpacity>
           <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '800', color: '#111827' }}>Add location</Text>
           <TouchableOpacity onPress={() => selected && onSelect(selected)} disabled={!selected || busy} style={{ padding: 8 }}>
@@ -264,6 +237,7 @@ export default function LocationPickerModal({ initialLocation, onClose, onSelect
         </View>
 
       </SafeAreaView>
+      </Animated.View>
     </Modal>
   );
 }

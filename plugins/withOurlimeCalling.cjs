@@ -1,6 +1,13 @@
 const fs = require('fs');
 const path = require('path');
-const { withAndroidManifest, withDangerousMod, withEntitlementsPlist, withInfoPlist } = require('@expo/config-plugins');
+const {
+  withAndroidManifest,
+  withDangerousMod,
+  withEntitlementsPlist,
+  withInfoPlist,
+  withMainActivity,
+  withMainApplication,
+} = require('@expo/config-plugins');
 
 const ANDROID_PERMISSIONS = [
   'android.permission.MANAGE_OWN_CALLS',
@@ -42,6 +49,94 @@ function withCallingAndroid(config) {
     }
     return result;
   });
+}
+
+function withCallingMainApplication(config) {
+  return withMainApplication(config, (result) => {
+    if (result.modResults.language !== 'kt') return result;
+    let source = result.modResults.contents;
+    if (!source.includes('add(OurlimeIncomingCallPackage())')) {
+      source = source.replace(
+        /PackageList\(this\)\.packages\.apply \{/,
+        'PackageList(this).packages.apply {\n          add(OurlimeIncomingCallPackage())',
+      );
+    }
+    result.modResults.contents = source;
+    return result;
+  });
+}
+
+function withCallingMainActivity(config) {
+  return withMainActivity(config, (result) => {
+    if (result.modResults.language !== 'kt') return result;
+    let source = result.modResults.contents;
+    if (!source.includes('import android.content.Intent')) {
+      source = source.replace('import android.os.Bundle', 'import android.os.Bundle\nimport android.content.Intent');
+    }
+    if (!source.includes('import android.view.WindowManager')) {
+      source = source.replace('import android.content.Intent', 'import android.content.Intent\nimport android.view.WindowManager');
+    }
+    if (!source.includes('OurlimeIncomingCallModule.captureIntent(this, intent)')) {
+      source = source.replace('super.onCreate(null)', 'super.onCreate(null)\n    OurlimeIncomingCallModule.captureIntent(this, intent)');
+    }
+    if (!source.includes('override fun onNewIntent(intent: Intent)')) {
+      const marker = '  /**\n   * Returns the name of the main component registered from JavaScript.';
+      const method = `  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    OurlimeIncomingCallModule.captureIntent(this, intent)
+  }
+
+`;
+      source = source.replace(marker, `${method}${marker}`);
+    }
+    if (!source.includes('private fun configureIncomingCallWindow(intent: Intent?)')) {
+      source = source.replaceAll(
+        '    OurlimeIncomingCallModule.captureIntent(this, intent)',
+        '    configureIncomingCallWindow(intent)\n    OurlimeIncomingCallModule.captureIntent(this, intent)',
+      );
+      const marker = '  /**\n   * Returns the name of the main component registered from JavaScript.';
+      const method = `  private fun configureIncomingCallWindow(intent: Intent?) {
+    if (intent?.action?.startsWith("com.ourlime.app.INCOMING_CALL_") != true) return
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+      setShowWhenLocked(true)
+      setTurnScreenOn(true)
+    } else {
+      @Suppress("DEPRECATION")
+      window.addFlags(
+        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+          WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
+      )
+    }
+    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+  }
+
+`;
+      source = source.replace(marker, `${method}${marker}`);
+    }
+    result.modResults.contents = source;
+    return result;
+  });
+}
+
+function withCallingAndroidSources(config) {
+  return withDangerousMod(config, ['android', async (result) => {
+    const packageDirectory = path.join(
+      result.modRequest.platformProjectRoot,
+      'app',
+      'src',
+      'main',
+      'java',
+      'com',
+      'ourlime',
+      'app',
+    );
+    fs.mkdirSync(packageDirectory, { recursive: true });
+    ['OurlimeIncomingCallModule.kt', 'OurlimeIncomingCallPackage.kt'].forEach((fileName) => {
+      fs.copyFileSync(path.join(__dirname, 'native-call', fileName), path.join(packageDirectory, fileName));
+    });
+    return result;
+  }]);
 }
 
 function patchSwiftAppDelegate(source) {
@@ -114,5 +209,13 @@ function withCallingAppDelegate(config) {
 }
 
 module.exports = function withOurlimeCalling(config) {
-  return withCallingAppDelegate(withCallingAndroid(withCallingEntitlements(withCallingInfo(config))));
+  return withCallingAppDelegate(
+    withCallingAndroidSources(
+      withCallingMainActivity(
+        withCallingMainApplication(
+          withCallingAndroid(withCallingEntitlements(withCallingInfo(config))),
+        ),
+      ),
+    ),
+  );
 };

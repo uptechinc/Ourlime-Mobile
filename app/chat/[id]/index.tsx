@@ -47,6 +47,10 @@ import { presenceService, type PresenceState } from '@/lib/services/PresenceServ
 import { useCallCoordinator } from '@/lib/contexts/CallContext';
 import { simpleChatMessageService } from '@/lib/services/SimpleChatMessageService';
 import { conversationResourceService } from '@/lib/services/ConversationResourceService';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
+import Animated, { FadeInUp } from 'react-native-reanimated';
+import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
 
 const authService = AuthService.getInstance();
 const relationshipService = RelationshipService.getInstance();
@@ -259,6 +263,7 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
     }));
 
     return (
+        <Animated.View entering={FadeInUp.springify().damping(18).stiffness(220)}>
         <Pressable
             onLongPress={() => setShowActions(true)}
             style={{
@@ -478,15 +483,16 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                 )}
             </View>
 
-            <Modal visible={showActions} transparent animationType="fade" onRequestClose={() => setShowActions(false)}>
-                <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }} onPress={() => setShowActions(false)}>
-                    <View style={{ backgroundColor: colors.elevated, borderRadius: 20, padding: 8, minWidth: 240, shadowColor: '#000', shadowOpacity: isDark ? 0.45 : 0.2, shadowRadius: 16, elevation: 10 }}>
+            <Modal visible={showActions} transparent animationType="none" statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" onRequestClose={() => setShowActions(false)}>
+                <ModalBackdrop style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }} onPress={() => setShowActions(false)}>
+                    <ModalMotionSurface variant="dialog" style={{ minWidth: 240 }}>
+                    <Pressable onPress={(event) => event.stopPropagation()} style={{ backgroundColor: colors.elevated, borderRadius: 20, padding: 8, shadowColor: '#000', shadowOpacity: isDark ? 0.45 : 0.2, shadowRadius: 16, elevation: 10 }}>
                         {!isDeleted && (
                             <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 10, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                                 {REACTION_EMOJIS.map((emoji) => (
-                                    <TouchableOpacity key={emoji} onPress={() => { onReact(msg, emoji); setShowActions(false); }} style={{ padding: 6 }}>
+                                    <AnimatedActionButton key={emoji} onPress={() => { onReact(msg, emoji); setShowActions(false); }} feedback="like" accessibilityLabel={`React with ${emoji}`} style={{ padding: 6 }}>
                                         <Text style={{ fontSize: 22 }}>{emoji}</Text>
-                                    </TouchableOpacity>
+                                    </AnimatedActionButton>
                                 ))}
                             </View>
                         )}
@@ -495,10 +501,10 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                             { icon: 'corner-up-left', label: 'Reply', action: () => { onReply(msg); setShowActions(false); } },
                             { icon: 'corner-up-right', label: 'Forward', action: () => { onForward(msg); setShowActions(false); } },
                         ].map(({ icon, label, action }) => (
-                            <TouchableOpacity key={label} onPress={action} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 }}>
+                            <AnimatedActionButton key={label} onPress={action} accessibilityLabel={label} pressScale={0.97} playful={false} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 }}>
                                 <Icon name={icon} size={17} color={colors.icon} />
                                 <Text style={{ marginLeft: 14, fontSize: 15, color: colors.text, fontWeight: '500' }}>{label}</Text>
-                            </TouchableOpacity>
+                            </AnimatedActionButton>
                         ))}
 
                         {isOwn && !isDeleted && (
@@ -517,10 +523,12 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                                 <Text style={{ marginLeft: 14, fontSize: 15, color: '#ef4444', fontWeight: '500' }}>Delete</Text>
                             </TouchableOpacity>
                         )}
-                    </View>
-                </Pressable>
+                    </Pressable>
+                    </ModalMotionSurface>
+                </ModalBackdrop>
             </Modal>
         </Pressable>
+        </Animated.View>
     );
 }
 
@@ -716,6 +724,7 @@ export default function ChatPage() {
         try {
             const serverMessage = await messagingService.sendMessage(friendId, text, currentUserId, replyRef, attachment);
             addMessage(serverMessage);
+            void interactionFeedbackService.play('success');
         } catch (err) {
             Alert.alert('Error', `Failed to send message: ${err instanceof Error ? err.message : String(err)}`);
             setMessageText(text);
@@ -761,6 +770,7 @@ export default function ChatPage() {
         };
         try {
             addMessage(await messagingService.sendMessage(friendId, '', currentUserId, undefined, undefined, stickerData));
+            void interactionFeedbackService.play('success');
         } catch { Alert.alert('Error', 'Failed to send sticker.'); }
     }, [addMessage, friendId, currentUserId, isBlocked]);
 
@@ -1096,7 +1106,9 @@ export default function ChatPage() {
 
                             {/* Circular Action Button Outside Pill (Send or Mic) */}
                             {(messageText.trim().length > 0 || pendingAttachment) ? (
-                                <TouchableOpacity
+                                <AnimatedActionButton
+                                    feedback="message"
+                                    accessibilityLabel="Send message"
                                     onPress={handleSend}
                                     disabled={isSending}
                                     style={{
@@ -1112,14 +1124,13 @@ export default function ChatPage() {
                                         shadowRadius: 6,
                                         elevation: 4,
                                     }}
-                                    activeOpacity={0.8}
                                 >
                                     {isSending ? (
                                         <ActivityIndicator size="small" color="#ffffff" />
                                     ) : (
                                         <Icon name="send" size={18} color="#ffffff" style={{ marginLeft: 2 }} />
                                     )}
-                                </TouchableOpacity>
+                                </AnimatedActionButton>
                             ) : null}
                         </View>
                     </>
@@ -1127,13 +1138,18 @@ export default function ChatPage() {
             </KeyboardAvoidingView>
 
             {/* ── Attachment Modal ──────────────────────────────────────── */}
-            <Modal visible={showAttachModal} transparent animationType="fade" onRequestClose={() => setShowAttachModal(false)}>
-                <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }} onPress={() => setShowAttachModal(false)}>
-                    <View style={{ backgroundColor: colors.elevated, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 12 }}>
+            <Modal visible={showAttachModal} transparent animationType="none" statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" onRequestClose={() => setShowAttachModal(false)}>
+                <ModalBackdrop style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }} onPress={() => setShowAttachModal(false)}>
+                    <ModalMotionSurface variant="sheet">
+                    <Pressable onPress={(event) => event.stopPropagation()} style={{ backgroundColor: colors.elevated, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, gap: 12 }}>
                         <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 }}>Attach File</Text>
 
-                        <TouchableOpacity
+                        <AnimatedActionButton
                             onPress={() => void handleAttachImage()}
+                            feedback="share"
+                            accessibilityLabel="Attach photo or video"
+                            pressScale={0.97}
+                            playful={false}
                             style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.control, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}
                         >
                             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#dcfce7', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
@@ -1143,10 +1159,14 @@ export default function ChatPage() {
                                 <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>Photo or Video</Text>
                                 <Text style={{ fontSize: 12, color: colors.mutedText }}>Share images or videos from gallery</Text>
                             </View>
-                        </TouchableOpacity>
+                        </AnimatedActionButton>
 
-                        <TouchableOpacity
+                        <AnimatedActionButton
                             onPress={() => void handleAttachDoc()}
+                            feedback="share"
+                            accessibilityLabel="Attach document"
+                            pressScale={0.97}
+                            playful={false}
                             style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.control, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}
                         >
                             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#eff6ff', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
@@ -1156,9 +1176,10 @@ export default function ChatPage() {
                                 <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>Document</Text>
                                 <Text style={{ fontSize: 12, color: colors.mutedText }}>Share PDF, DOCX, code or text files</Text>
                             </View>
-                        </TouchableOpacity>
-                    </View>
-                </Pressable>
+                        </AnimatedActionButton>
+                    </Pressable>
+                    </ModalMotionSurface>
+                </ModalBackdrop>
             </Modal>
 
             {/* ── Document Preview Modal ─────────────────────────────────── */}

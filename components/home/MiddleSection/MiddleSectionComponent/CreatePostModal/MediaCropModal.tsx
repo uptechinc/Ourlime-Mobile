@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { PostMediaService, type CropPreset, type PendingImageCrop } from '@/lib/services/PostMediaService';
 import type { PostMediaDraft } from '@/lib/services/PostService';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type MediaCropModalProps = {
   pending: PendingImageCrop;
@@ -47,7 +48,8 @@ export default function MediaCropModal({ pending, queueLength, onCancel, onCompl
   };
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onCancel}>
+    <Modal visible transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={onCancel}>
+      <SwipeDismissSurface visible onDismiss={onCancel} handleColor="#475569" disabled={saving} accessibilityLabel="Swipe down to close media crop" style={{ flex: 1, backgroundColor: '#111827' }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: '#111827' }} edges={['top', 'left', 'right']}>
         <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}>
           <TouchableOpacity onPress={onCancel} disabled={saving} style={{ padding: 8 }}>
@@ -114,6 +116,7 @@ export default function MediaCropModal({ pending, queueLength, onCancel, onCompl
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+      </SwipeDismissSurface>
     </Modal>
   );
 }

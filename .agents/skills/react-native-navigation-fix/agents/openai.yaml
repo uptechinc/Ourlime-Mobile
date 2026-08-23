@@ -1,0 +1,4 @@
+interface:
+  display_name: "React Native Navigation & Safe Area Fix"
+  short_description: "Safe area header rendering, Android status bar insets, keyboard handling, and stack slide transitions"
+  default_prompt: "Use $react-native-navigation-fix to ensure headers render inside safe areas outside KeyboardAvoidingView with slide navigation."

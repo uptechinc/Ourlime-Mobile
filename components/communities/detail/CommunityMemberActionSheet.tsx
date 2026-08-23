@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { CommunityMember, CommunityMemberRole } from '@/lib/types/community';
 import CustomModal from '@/components/ui/CustomModal';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type MemberAction = 'role' | 'remove' | 'ban';
 type PendingMemberAction = { action: MemberAction; role: Exclude<CommunityMemberRole, 'owner' | 'none'> | null };
@@ -50,10 +51,11 @@ export default function CommunityMemberActionSheet({ visible, member, onClose, o
   };
 
   return (
-    <><Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <><Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: colors.modalScrim }}>
           <TouchableWithoutFeedback>
+            <SwipeDismissSurface visible={visible} onDismiss={onClose} handleColor={colors.border} disabled={Boolean(busyAction)} accessibilityLabel="Swipe down to close member actions" style={{ borderTopLeftRadius: 25, borderTopRightRadius: 25, backgroundColor: colors.elevated }}>
             <SafeAreaView edges={['top', 'left', 'right']} style={{ padding: 18, paddingBottom: 28, borderTopLeftRadius: 25, borderTopRightRadius: 25, backgroundColor: colors.elevated }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View style={{ flex: 1 }}>
@@ -74,6 +76,7 @@ export default function CommunityMemberActionSheet({ visible, member, onClose, o
                 <Ban size={20} color={colors.destructive} /><Text style={{ flex: 1, marginLeft: 11, color: colors.destructiveText, fontWeight: '900' }}>Ban member</Text>{busyAction === 'ban' ? <ActivityIndicator color={colors.destructive} /> : null}
               </TouchableOpacity>
             </SafeAreaView>
+            </SwipeDismissSurface>
           </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>

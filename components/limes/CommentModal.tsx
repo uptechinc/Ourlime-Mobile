@@ -8,20 +8,21 @@ import {
   Modal,
   StyleSheet,
   ActivityIndicator,
-  Dimensions,
-  Animated,
-  PanResponder,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { X, Send, Heart, CornerDownRight, Edit2, Trash2, Smile, ChevronDown } from 'lucide-react-native';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { dispatchMentionNotifications } from '@/lib/services/dispatchMentionNotifications';
 import { AuthService } from '@/lib/services/AuthService';
 import { limeService } from '@/lib/services/LimeService';
 import type { LimeComment, LimeCommentCursor } from '@/lib/types/lime';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
+import CustomModal from '@/components/ui/CustomModal';
 
 const authService = AuthService.getInstance();
 
@@ -125,50 +126,13 @@ export default function CommentModal({
   const currentFirstName =
     currentUser?.displayName?.split(' ')[0] || 'User';
 
-  /* ── Swipe-Down — we own the animation (animationType=none) ── */
-  const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
-
-  const closeSheet = useCallback(() => {
-    Animated.timing(translateY, {
-      toValue: SCREEN_HEIGHT,
-      duration: 260,
-      useNativeDriver: true,
-    }).start(() => {
-      translateY.setValue(SCREEN_HEIGHT);
-      onClose();
-    });
-  }, [translateY, onClose]);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 8 && g.dy > 0,
-      onPanResponderGrant: () => { translateY.setOffset(0); },
-      onPanResponderMove: (_, g) => {
-        if (g.dy > 0) translateY.setValue(g.dy);
-      },
-      onPanResponderRelease: (_, g) => {
-        translateY.flattenOffset();
-        if (g.dy > 120 || g.vy > 0.6) {
-          Animated.timing(translateY, {
-            toValue: SCREEN_HEIGHT,
-            duration: 220,
-            useNativeDriver: true,
-          }).start(() => {
-            translateY.setValue(SCREEN_HEIGHT);
-            onClose();
-          });
-        } else {
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 3,
-          }).start();
-        }
-      },
-    })
-  ).current;
+  const swipeDismiss = useSwipeDismiss({
+    visible: isOpen,
+    onDismiss: onClose,
+    disabled: submitting,
+    animateOnOpen: true,
+  });
 
   /* ── Load 50 comments from Firestore ── */
   const fetchComments = useCallback(async (replace = true) => {
@@ -222,13 +186,6 @@ export default function CommentModal({
   /* ── Seed initialComments immediately, then fetch real data ── */
   useEffect(() => {
     if (!isOpen) return;
-    // Slide-in animation
-    Animated.spring(translateY, {
-      toValue: 0,
-      useNativeDriver: true,
-      bounciness: 3,
-      speed: 16,
-    }).start();
     // Show pre-fetched data immediately
     if (initialComments && initialComments.length > 0) {
       const safe = initialComments.map((c) => safeParse(c)).filter(Boolean) as LimeComment[];
@@ -290,6 +247,7 @@ export default function CommentModal({
         postId: reelId,
         commentId,
       });
+      void interactionFeedbackService.play('success');
     } catch (err) {
       console.error('[LimeCommentModal] submit error:', err);
       // Roll back optimistic add
@@ -425,7 +383,7 @@ export default function CommentModal({
           )}
 
           <View style={styles.actionsRow}>
-            <TouchableOpacity onPress={() => handleToggleLike(comment.id)} style={styles.actionBtn}>
+            <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike Lime comment' : 'Like Lime comment'} onPress={() => handleToggleLike(comment.id)} style={styles.actionBtn}>
               <Heart
                 size={14}
                 color={isLiked ? '#ef4444' : '#64748b'}
@@ -434,7 +392,7 @@ export default function CommentModal({
               <Text style={[styles.actionText, isLiked && { color: '#ef4444' }]}>
                 {safeL.length > 0 ? safeL.length : 'Like'}
               </Text>
-            </TouchableOpacity>
+            </AnimatedActionButton>
 
             <TouchableOpacity
               onPress={() => {
@@ -493,7 +451,7 @@ export default function CommentModal({
                       </View>
                       <Text style={styles.commentContent}>{renderContent(reply.content ?? '')}</Text>
                       <View style={styles.actionsRow}>
-                        <TouchableOpacity onPress={() => handleToggleLike(reply.id)} style={styles.actionBtn}>
+                        <AnimatedActionButton feedback="like" accessibilityLabel={replyLiked ? 'Unlike Lime reply' : 'Like Lime reply'} onPress={() => handleToggleLike(reply.id)} style={styles.actionBtn}>
                           <Heart
                             size={13}
                             color={replyLiked ? '#ef4444' : '#64748b'}
@@ -502,7 +460,7 @@ export default function CommentModal({
                           <Text style={[styles.actionText, replyLiked && { color: '#ef4444' }]}>
                             {replyL.length > 0 ? replyL.length : 'Like'}
                           </Text>
-                        </TouchableOpacity>
+                        </AnimatedActionButton>
                         {replyOwner && (
                           <TouchableOpacity onPress={() => handleDelete(reply.id)} style={styles.actionBtn}>
                             <Trash2 size={12} color="#ef4444" />
@@ -540,20 +498,18 @@ export default function CommentModal({
     item.id ? item.id : `comment-${index}`;
 
   return (
-    <Modal visible={isOpen} animationType="none" transparent onRequestClose={closeSheet}>
+    <Modal visible={isOpen} animationType="none" transparent onRequestClose={swipeDismiss.dismissWithAnimation}>
       <View style={styles.overlay}>
-        <Animated.View style={[styles.modalCard, { transform: [{ translateY }] }]}>
+        <Animated.View style={[styles.modalCard, swipeDismiss.animatedStyle]}>
           {/* Top Drag Handle Bar */}
-          <View style={styles.dragHandleWrapper} {...panResponder.panHandlers}>
-            <View style={styles.dragHandleBar} />
-          </View>
+          <SwipeDismissHandle gesture={swipeDismiss.gesture} color="#cbd5e1" animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close Lime comments" />
 
           {/* Header */}
-          <View style={styles.headerRow} {...panResponder.panHandlers}>
+          <View style={styles.headerRow}>
             <Text style={styles.headerTitle}>
               Comments {comments.length > 0 ? `(${comments.length})` : ''}
             </Text>
-            <TouchableOpacity onPress={closeSheet} style={styles.closeBtn}>
+            <TouchableOpacity onPress={swipeDismiss.dismissWithAnimation} style={styles.closeBtn}>
               <X size={20} color="#64748b" />
             </TouchableOpacity>
           </View>
@@ -634,7 +590,9 @@ export default function CommentModal({
                 blurOnSubmit={false}
                 onSubmitEditing={handleSubmit}
               />
-              <TouchableOpacity
+              <AnimatedActionButton
+                feedback="comment"
+                accessibilityLabel={replyTarget ? 'Send Lime reply' : 'Send Lime comment'}
                 onPress={handleSubmit}
                 disabled={!commentText.trim() || submitting}
                 style={[
@@ -647,41 +605,22 @@ export default function CommentModal({
                 ) : (
                   <Send size={16} color="#ffffff" />
                 )}
-              </TouchableOpacity>
+              </AnimatedActionButton>
             </View>
           </KeyboardAvoidingView>
         </Animated.View>
       </View>
 
-      {/* Custom Delete Confirmation Sheet */}
-      <Modal
+      <CustomModal
         visible={deleteTargetId !== null}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setDeleteTargetId(null)}
-      >
-        <View style={styles.deleteOverlay}>
-          <View style={styles.deleteSheet}>
-            <View style={styles.deleteIconCircle}>
-              <Trash2 size={28} color="#ef4444" />
-            </View>
-            <Text style={styles.deleteTitle}>Delete comment?</Text>
-            <Text style={styles.deleteSubtitle}>
-              This will permanently remove your comment. This action cannot be undone.
-            </Text>
-            <TouchableOpacity onPress={confirmDelete} style={styles.deleteConfirmBtn} activeOpacity={0.85}>
-              <Text style={styles.deleteConfirmText}>Yes, delete it</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setDeleteTargetId(null)}
-              style={styles.deleteCancelBtn}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.deleteCancelText}>Keep comment</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        type="danger"
+        title="Delete comment?"
+        message="This permanently removes your comment and cannot be undone."
+        confirmText="Delete"
+        cancelText="Keep comment"
+        onConfirm={() => void confirmDelete()}
+        onClose={() => setDeleteTargetId(null)}
+      />
     </Modal>
   );
 }

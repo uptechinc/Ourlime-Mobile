@@ -4,6 +4,7 @@ import { Check, RotateCcw, SlidersHorizontal, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { CommunityCategory, CommunityDirectorySort, CommunityDirectoryVisibility } from '@/lib/types/community';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type CommunityFiltersSheetProps = {
   visible: boolean;
@@ -84,7 +85,8 @@ export default function CommunityFiltersSheet({ visible, categories, visibility,
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="none" presentationStyle="overFullScreen" onRequestClose={onClose}>
+      <SwipeDismissSurface visible={visible} onDismiss={onClose} handleColor={colors.border} accessibilityLabel="Swipe down to close community filters" style={{ flex: 1, backgroundColor: colors.canvas }}>
       <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 62, paddingHorizontal: 16, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
           <SlidersHorizontal size={21} color={colors.accent} />
@@ -125,6 +127,7 @@ export default function CommunityFiltersSheet({ visible, categories, visibility,
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+      </SwipeDismissSurface>
     </Modal>
   );
 }

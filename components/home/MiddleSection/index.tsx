@@ -321,6 +321,7 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
               {row.post.type === 'poll' ? (
                 <PollCardSection
                   post={row.post}
+                  isVisible={visiblePostIds.has(row.post.id)}
                   onCommentClick={handleCommentClick}
                   onPostDelete={handlePostDelete}
                   onAuthorBlocked={handleAuthorBlocked}

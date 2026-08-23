@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AlertCircle, ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 import { REPORT_REASONS, type ReportReasonCategory } from '@/lib/services/ModerationService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type CommunityReportModalProps = {
   visible: boolean;
@@ -50,7 +51,8 @@ export default function CommunityReportModal({ visible, title, subjectLabel, onC
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="none" presentationStyle="overFullScreen" onRequestClose={handleClose}>
+      <SwipeDismissSurface visible={visible} onDismiss={handleClose} handleColor={colors.border} disabled={submitting} accessibilityLabel="Swipe down to close community report" style={{ flex: 1, backgroundColor: colors.canvas }}>
       <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
         <View style={{ minHeight: 58, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
           {category ? <TouchableOpacity accessibilityLabel="Back to report categories" onPress={() => { setCategory(null); setReason(''); }} style={{ padding: 8 }}><ChevronLeft size={24} color={colors.icon} /></TouchableOpacity> : null}
@@ -70,6 +72,7 @@ export default function CommunityReportModal({ visible, title, subjectLabel, onC
         </ScrollView>
         {category ? <View style={{ padding: 15, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface }}><TouchableOpacity disabled={!reason || submitting} onPress={() => void handleSubmit()} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: reason ? colors.destructive : colors.disabled }}>{submitting ? <ActivityIndicator color={colors.onAccent} /> : <Text style={{ color: reason ? colors.onAccent : colors.disabledText, fontWeight: '900' }}>Submit report</Text>}</TouchableOpacity></View> : null}
       </SafeAreaView>
+      </SwipeDismissSurface>
     </Modal>
   );
 }

@@ -23,7 +23,7 @@ export class PresenceService {
 
   public async heartbeat(state: 'online' | 'offline'): Promise<void> {
     const response = await this.apiService.request<{ success: boolean; error?: string }>('/api/profile/presence', {
-      method: 'POST', authenticated: true, body: { state }, timeoutMs: 2_500,
+      method: 'POST', authenticated: true, body: { state }, timeoutMs: 15_000,
     });
     if (!response.success) throw new Error(response.error || 'Presence update failed');
     this.logger.info('PresenceService', 'heartbeat', { state });

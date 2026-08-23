@@ -2,13 +2,15 @@ import {
   Modal,
   View,
   Text,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
+  Pressable,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import Animated, { ZoomIn } from 'react-native-reanimated';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
 
 export type CustomModalType = 'success' | 'danger' | 'warning' | 'info' | 'error';
 
@@ -101,15 +103,19 @@ export default function CustomModal({
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType="none"
+      statusBarTranslucent
+      navigationBarTranslucent
+      presentationStyle="overFullScreen"
       onRequestClose={onClose}
     >
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.overlay}>
-          <TouchableWithoutFeedback>
-            <View style={[styles.card, themeStyles.card]}>
+      <ModalBackdrop onPress={onClose} style={styles.overlay}>
+        <ModalMotionSurface variant="dialog" style={[styles.card, themeStyles.card]}>
+          <Pressable onPress={(event) => event.stopPropagation()} style={styles.cardContent}>
               {/* Top Header Icon */}
-              {renderIcon()}
+              <Animated.View entering={ZoomIn.springify().damping(14).stiffness(260).delay(80)}>
+                {renderIcon()}
+              </Animated.View>
 
               {/* Title & Message */}
               <Text style={[styles.title, themeStyles.title]}>{title}</Text>
@@ -118,31 +124,33 @@ export default function CustomModal({
               {/* Action Buttons */}
               <View style={styles.buttonContainer}>
                 {cancelText ? (
-                  <TouchableOpacity
+                  <AnimatedActionButton
                     onPress={handleCancelPress}
                     disabled={isLoading}
                     style={[styles.cancelButton, themeStyles.cancelButton]}
+                    accessibilityLabel={cancelText}
                   >
                     <Text style={[styles.cancelButtonText, themeStyles.cancelButtonText]}>{cancelText}</Text>
-                  </TouchableOpacity>
+                  </AnimatedActionButton>
                 ) : null}
 
-                <TouchableOpacity
+                <AnimatedActionButton
                   onPress={handleConfirmPress}
                   disabled={isLoading}
                   style={[styles.confirmButton, getConfirmButtonStyle()]}
+                  feedback={type === 'danger' || type === 'error' ? 'warning' : 'selection'}
+                  accessibilityLabel={confirmText}
                 >
                   {isLoading ? (
                     <ActivityIndicator size="small" color="#ffffff" />
                   ) : (
                     <Text style={styles.confirmButtonText}>{confirmText}</Text>
                   )}
-                </TouchableOpacity>
+                </AnimatedActionButton>
               </View>
-            </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </TouchableWithoutFeedback>
+          </Pressable>
+        </ModalMotionSurface>
+      </ModalBackdrop>
     </Modal>
   );
 }
@@ -167,6 +175,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 20,
     elevation: 10,
+  },
+  cardContent: {
+    width: '100%',
+    alignItems: 'center',
   },
   iconContainer: {
     width: 64,

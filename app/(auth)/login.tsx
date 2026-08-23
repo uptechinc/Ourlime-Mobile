@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import {
   type TextStyle,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { authService, getAuthErrorCode } from '@/lib/services/AuthService';
 import type { Href } from 'expo-router';
 import Animated, {
@@ -28,14 +30,6 @@ import BackgroundSVG from '../../assets/images/login/mobileBackground.svg';
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GREEN = '#01eb53';
 const GREEN_DARK = '#10b981';
-
-// ─── Eye icons (inline SVG-based via text) ────────────────────────────────────
-const EyeIcon = () => (
-  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 18 }}>👁</Text>
-);
-const EyeOffIcon = () => (
-  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 18 }}>🙈</Text>
-);
 
 // ─── Simple email validator ───────────────────────────────────────────────────
 function validateEmail(email: string): string | null {
@@ -53,6 +47,8 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
+  const [canResendVerification, setCanResendVerification] = useState(false);
   const [success, setSuccess] = useState(false);
 
   // Error state
@@ -71,9 +67,29 @@ export default function LoginScreen() {
     btnScale.value = withSpring(1, { damping: 15 });
   };
 
+  const getLoginErrorMessage = (code: string, fallbackMessage: string): string => {
+    switch (code) {
+      case 'auth/user-not-found': return 'No user found with this email.';
+      case 'auth/wrong-password': return 'Incorrect password.';
+      case 'auth/invalid-email': return 'The email address is not valid.';
+      case 'auth/user-disabled': return 'This user account has been disabled.';
+      case 'auth/too-many-requests': return 'Too many login attempts. Please try again later.';
+      case 'auth/invalid-credential': return 'Invalid credentials provided.';
+      case 'EMAIL_NOT_VERIFIED': return 'Verify your email before signing in. You can resend the verification message below.';
+      case 'ACCOUNT_DISABLED': return 'This account is currently disabled.';
+      case 'ACCOUNT_DELETED': return 'This account has been deleted.';
+      case 'ACCOUNT_BANNED': return fallbackMessage;
+      case 'ACCOUNT_SUSPENDED': return fallbackMessage;
+      case 'BETA_ACCESS_REVOKED': return 'Your Ourlime beta access has been revoked. Contact support if you believe this is a mistake.';
+      case 'BETA_ACCESS_SUSPENDED': return 'Your Ourlime beta access is currently suspended.';
+      default: return fallbackMessage;
+    }
+  };
+
   // ── Validation + Submit ────────────────────────────────────────────────────
   const handleLogin = async () => {
     setErrorMsg('');
+    setCanResendVerification(false);
     setEmailError('');
     setPasswordError('');
 
@@ -103,29 +119,36 @@ export default function LoginScreen() {
     try {
       await authService.login(trimmedEmail, password);
       setSuccess(true);
-      setTimeout(() => {
-        router.replace('/(tabs)');
-      }, 600);
     } catch (error: unknown) {
-      const errorMessages: Record<string, string> = {
-        'auth/user-not-found': 'No user found with this email.',
-        'auth/wrong-password': 'Incorrect password.',
-        'auth/invalid-email': 'The email address is not valid.',
-        'auth/user-disabled': 'This user account has been disabled.',
-        'auth/too-many-requests': 'Too many login attempts. Please try again later.',
-        'auth/invalid-credential': 'Invalid credentials provided.',
-        EMAIL_NOT_VERIFIED: 'Verify your email before signing in. A new verification email was sent.',
-        ACCOUNT_DISABLED: 'This account is currently disabled.',
-        ACCOUNT_DELETED: 'This account has been deleted.',
-      };
       const code = getAuthErrorCode(error);
-      const customMsg = errorMessages[code];
       const fallbackMsg = error instanceof Error && error.message ? error.message : 'Failed to sign in. Please check your credentials.';
-      setErrorMsg(customMsg || fallbackMsg);
+      setCanResendVerification(code === 'EMAIL_NOT_VERIFIED');
+      setErrorMsg(getLoginErrorMessage(code, fallbackMsg));
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleResendVerification = async () => {
+    if (!email.trim() || !password || isResendingVerification) return;
+    setIsResendingVerification(true);
+    try {
+      await authService.resendEmailVerification(email, password);
+      setErrorMsg('Verification email sent. Check your inbox and spam folder, then sign in again.');
+      setCanResendVerification(false);
+    } catch (error: unknown) {
+      const fallbackMessage = error instanceof Error ? error.message : 'Unable to resend the verification email.';
+      setErrorMsg(getLoginErrorMessage(getAuthErrorCode(error), fallbackMessage));
+    } finally {
+      setIsResendingVerification(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!success) return undefined;
+    const navigationTimer = setTimeout(() => router.replace('/(tabs)'), 600);
+    return () => clearTimeout(navigationTimer);
+  }, [router, success]);
 
   return (
     <>
@@ -147,10 +170,8 @@ export default function LoginScreen() {
         />
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
+      <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView
           contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
           keyboardShouldPersistTaps="handled"
@@ -223,6 +244,19 @@ export default function LoginScreen() {
                 }}
               >
                 <Text style={{ color: '#ef4444', fontSize: 13 }}>{errorMsg}</Text>
+                {canResendVerification ? (
+                  <TouchableOpacity
+                    disabled={isResendingVerification}
+                    onPress={() => void handleResendVerification()}
+                    style={{ alignSelf: 'flex-start', marginTop: 10, borderRadius: 10, backgroundColor: 'rgba(16,185,129,0.2)', paddingHorizontal: 12, paddingVertical: 9 }}
+                  >
+                    {isResendingVerification ? (
+                      <ActivityIndicator size="small" color={GREEN} />
+                    ) : (
+                      <Text style={{ color: GREEN, fontWeight: '800' }}>Resend verification email</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
               </Animated.View>
             ) : null}
 
@@ -236,9 +270,10 @@ export default function LoginScreen() {
                   placeholder="Email Address"
                   placeholderTextColor="rgba(255,255,255,0.5)"
                   value={email}
-                  onChangeText={(v) => {
-                    setEmail(v);
+                  onChangeText={(value) => {
+                    setEmail(value);
                     if (emailError) setEmailError('');
+                    if (canResendVerification) setCanResendVerification(false);
                   }}
                   keyboardType="email-address"
                   autoCapitalize="none"
@@ -264,9 +299,10 @@ export default function LoginScreen() {
                     placeholder="Password"
                     placeholderTextColor="rgba(255,255,255,0.5)"
                     value={password}
-                    onChangeText={(v) => {
-                      setPassword(v);
+                    onChangeText={(value) => {
+                      setPassword(value);
                       if (passwordError) setPasswordError('');
+                      if (canResendVerification) setCanResendVerification(false);
                     }}
                     secureTextEntry={!showPassword}
                     returnKeyType="done"
@@ -283,7 +319,7 @@ export default function LoginScreen() {
                     onPress={() => setShowPassword(!showPassword)}
                     activeOpacity={0.7}
                   >
-                    {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={21} color="rgba(255,255,255,0.65)" />
                   </TouchableOpacity>
                 </View>
                 {passwordError ? (
@@ -347,7 +383,8 @@ export default function LoginScreen() {
             </Animated.View>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </>
   );
 }

@@ -1,6 +1,6 @@
 import {
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
+  signInWithCustomToken,
   onAuthStateChanged,
   signOut,
   sendPasswordResetEmail,
@@ -23,6 +23,7 @@ import {
   FieldValue,
   Timestamp,
   updateDoc,
+  type DocumentData,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
@@ -33,6 +34,7 @@ import { PostMediaService } from './PostMediaService';
 import { AuthServiceError } from '@/lib/auth/AuthErrors';
 import { presenceService } from './PresenceService';
 import { nativeCallService } from './NativeCallService';
+import { ApiService } from './ApiService';
 export { AuthServiceError, getAuthErrorCode } from '@/lib/auth/AuthErrors';
 export type { AuthServiceErrorCode } from '@/lib/auth/AuthErrors';
 
@@ -67,12 +69,48 @@ export type UserProfile = {
   createdAt?: FieldValue | Timestamp;
 };
 
+export type RegistrationVerificationType = 'student_id' | 'national_id' | 'guardian' | 'drivers_license' | 'skipped' | '';
+
+export type RegistrationInput = {
+  firstName: string;
+  lastName: string;
+  userName: string;
+  email: string;
+  password: string;
+  accountType: 'student' | 'regular' | '';
+  studentLevel?: string;
+  gender?: string;
+  dateOfBirth?: string;
+  country?: string;
+  city?: string;
+  phone?: string;
+  profilePicture?: string | null;
+  selectedInterests?: string[];
+  verificationType?: RegistrationVerificationType;
+  guardianEmail?: string;
+  referralToken?: string;
+  policyAcknowledgements: {
+    terms: boolean;
+    privacy: boolean;
+    childSafety: boolean;
+  };
+};
+
+type RegistrationStartResponse = {
+  success: boolean;
+  message: string;
+  userId: string;
+  customToken: string;
+};
+
 export class AuthService {
   private static instance: AuthService;
   private readonly logger = DiagnosticLogService.getInstance();
   private readonly mediaService = PostMediaService.getInstance();
+  private readonly apiService = ApiService.getInstance();
   private readonly profilePromises = new Map<string, Promise<UserProfile | null>>();
   private readonly profileMemoryCache = new Map<string, { profile: UserProfile; timestamp: number }>();
+  private readonly maximumProfileCacheEntries = 100;
 
   private constructor() {}
 
@@ -98,14 +136,7 @@ export class AuthService {
       const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
       const accountDocument = await getDoc(doc(db, 'users', credential.user.uid));
       const account = accountDocument.data();
-      if (account?.deletedAt || account?.status === 'deleted') {
-        await signOut(auth);
-        throw new AuthServiceError('ACCOUNT_DELETED', 'This account has been deleted.');
-      }
-      if (account?.disabled === true || account?.status === 'disabled' || account?.status === 'suspended') {
-        await signOut(auth);
-        throw new AuthServiceError('ACCOUNT_DISABLED', 'This account is currently disabled.');
-      }
+      await this.assertAccountCanSignIn(account);
       if (!credential.user.emailVerified) {
         await sendEmailVerification(credential.user).catch(() => undefined);
         await signOut(auth);
@@ -150,34 +181,36 @@ export class AuthService {
   /**
    * Register a new user and save profile to Firestore
    */
-  public async register(formData: {
-    firstName: string;
-    lastName: string;
-    userName: string;
-    email: string;
-    password: string;
-    accountType: string;
-    gender?: string;
-    dateOfBirth?: string;
-    country?: string;
-    city?: string;
-    phone?: string;
-    profilePicture?: string | null;
-    selectedInterests?: string[];
-  }): Promise<FirebaseUser> {
-    const credential = await createUserWithEmailAndPassword(
-      auth,
-      formData.email.trim(),
-      formData.password
-    );
+  public async register(formData: RegistrationInput): Promise<FirebaseUser> {
+    if (!formData.policyAcknowledgements.terms || !formData.policyAcknowledgements.privacy || !formData.policyAcknowledgements.childSafety) {
+      throw new AuthServiceError('UNKNOWN', 'Accept all required Ourlime policies before registering.');
+    }
 
+    const startResponse = await this.apiService.request<RegistrationStartResponse>('/api/auth/register/start', {
+      method: 'POST',
+      body: {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        userName: formData.userName,
+        email: formData.email,
+        password: formData.password,
+        accountType: formData.accountType,
+        referralToken: formData.referralToken,
+      },
+      timeoutMs: 30_000,
+    });
+    if (!startResponse.success || !startResponse.userId || !startResponse.customToken) {
+      throw new AuthServiceError('UNKNOWN', startResponse.message || 'Failed to start registration.');
+    }
+
+    const credential = await signInWithCustomToken(auth, startResponse.customToken);
     const user = credential.user;
-
-    // Create user profile in Firestore
-    const profilePicture = formData.profilePicture && /^(file:|content:)/i.test(formData.profilePicture)
-      ? await this.mediaService.uploadProfileImage({ userId: user.uid, uri: formData.profilePicture })
-      : formData.profilePicture || null;
-    const userProfile: UserProfile = {
+    try {
+      // Create user profile in Firestore
+      const profilePicture = formData.profilePicture && /^(file:|content:)/i.test(formData.profilePicture)
+        ? await this.mediaService.uploadProfileImage({ userId: user.uid, uri: formData.profilePicture })
+        : formData.profilePicture || null;
+      const userProfile: UserProfile = {
       uid: user.uid,
       firstName: formData.firstName.trim(),
       lastName: formData.lastName.trim(),
@@ -194,10 +227,97 @@ export class AuthService {
       createdAt: serverTimestamp(),
     };
 
-    await setDoc(doc(db, 'users', user.uid), userProfile);
-    await sendEmailVerification(user).catch(() => undefined);
+      const verificationType = formData.verificationType || 'skipped';
+      const verificationStatus = verificationType === 'skipped'
+        ? null
+        : verificationType === 'guardian'
+          ? 'pending'
+          : 'documents_required';
+      await setDoc(doc(db, 'users', user.uid), {
+      ...userProfile,
+      studentLevel: formData.studentLevel || '',
+      registrationStatus: 'complete',
+      currentStep: 8,
+      emailVerified: false,
+      verificationType,
+      verificationStatus,
+      guardianEmail: formData.guardianEmail?.trim() || null,
+      policyAcknowledgements: {
+        termsAcceptedAt: serverTimestamp(),
+        privacyAcceptedAt: serverTimestamp(),
+        childSafetyAcceptedAt: serverTimestamp(),
+        source: 'ourlime-mobile',
+      },
+      updatedAt: serverTimestamp(),
+      }, { merge: true });
 
-    return user;
+      if (verificationType === 'guardian' && formData.guardianEmail?.trim()) {
+        await this.apiService.request('/api/notify-guardian', {
+        method: 'POST',
+        authenticated: true,
+        body: {
+          guardianEmail: formData.guardianEmail.trim(),
+          childName: formData.firstName.trim() || formData.userName.trim(),
+        },
+        }).catch((error: unknown) => {
+          this.logger.warn('AuthService', 'register:guardian-notification', { error: error instanceof Error ? error.message : String(error) });
+        });
+      }
+
+      await sendEmailVerification(user, { url: 'https://ourlime.com/verify-email' }).catch((error: unknown) => {
+        this.logger.warn('AuthService', 'register:verification-email', { error: error instanceof Error ? error.message : String(error) });
+      });
+
+      return user;
+    } finally {
+      await signOut(auth).catch(() => undefined);
+    }
+  }
+
+  private async assertAccountCanSignIn(account: DocumentData | undefined): Promise<void> {
+    const deny = async (code: 'ACCOUNT_DELETED' | 'ACCOUNT_DISABLED' | 'ACCOUNT_BANNED' | 'ACCOUNT_SUSPENDED' | 'BETA_ACCESS_REVOKED' | 'BETA_ACCESS_SUSPENDED', message: string): Promise<never> => {
+      await signOut(auth);
+      throw new AuthServiceError(code, message);
+    };
+    if (!account) return;
+    if (account.deletedAt || account.status === 'deleted' || account.accountStatus === 'archived') {
+      await deny('ACCOUNT_DELETED', 'This account has been archived. Contact support if you believe this is a mistake.');
+    }
+    if (account.isBanned === true || account.accountStatus === 'banned' || account.status === 'banned') {
+      const reason = typeof account.statusReason === 'string' ? account.statusReason : typeof account.banReason === 'string' ? account.banReason : 'Violation of Ourlime community standards.';
+      await deny('ACCOUNT_BANNED', `Your account has been permanently banned from Ourlime. Reason: ${reason}`);
+    }
+    if (account.betaTesterStatus === 'removed') {
+      await deny('BETA_ACCESS_REVOKED', 'Your Ourlime beta access has been revoked.');
+    }
+    if (account.betaTesterStatus === 'suspended') {
+      await deny('BETA_ACCESS_SUSPENDED', 'Your Ourlime beta access is currently suspended.');
+    }
+    if (account.isSuspended === true || account.accountStatus === 'suspended' || account.status === 'suspended') {
+      const suspendedUntil = this.readAccountDate(account.suspendedUntil);
+      if (!suspendedUntil || suspendedUntil.getTime() > Date.now()) {
+        const reason = typeof account.statusReason === 'string' ? account.statusReason : typeof account.suspensionReason === 'string' ? account.suspensionReason : 'Violation of Ourlime community standards.';
+        const untilLabel = suspendedUntil ? ` until ${suspendedUntil.toLocaleString()}` : '';
+        await deny('ACCOUNT_SUSPENDED', `Your account is temporarily suspended${untilLabel}. Reason: ${reason}`);
+      }
+    }
+    if (account.disabled === true || account.status === 'disabled') {
+      await deny('ACCOUNT_DISABLED', 'This account is currently disabled.');
+    }
+  }
+
+  private readAccountDate(value: unknown): Date | null {
+    if (value instanceof Date) return value;
+    if (typeof value === 'string' || typeof value === 'number') {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    if (typeof value === 'object' && value !== null) {
+      const timestamp = value as { toDate?: unknown; seconds?: unknown };
+      if (typeof timestamp.toDate === 'function') return (timestamp.toDate as () => Date)();
+      if (typeof timestamp.seconds === 'number') return new Date(timestamp.seconds * 1000);
+    }
+    return null;
   }
 
   /**
@@ -208,8 +328,11 @@ export class AuthService {
     if (!force) {
       const cached = this.profileMemoryCache.get(uid);
       if (cached && Date.now() - cached.timestamp < 120_000) {
+        this.profileMemoryCache.delete(uid);
+        this.profileMemoryCache.set(uid, cached);
         return cached.profile;
       }
+      if (cached) this.profileMemoryCache.delete(uid);
       const inFlight = this.profilePromises.get(uid);
       if (inFlight) {
         return inFlight;
@@ -313,7 +436,7 @@ export class AuthService {
           : [],
         createdAt: profileRecord.createdAt instanceof Timestamp ? profileRecord.createdAt : undefined,
       };
-      this.profileMemoryCache.set(uid, { profile, timestamp: Date.now() });
+      this.cacheUserProfile(profile);
       this.logger.success('AuthService', 'profile:complete', {
         uid,
         firstName: profile.firstName,
@@ -324,6 +447,16 @@ export class AuthService {
     } catch (error: unknown) {
       this.logger.error('AuthService', 'profile', error, { uid });
       throw error;
+    }
+  }
+
+  private cacheUserProfile(profile: UserProfile): void {
+    this.profileMemoryCache.delete(profile.uid);
+    this.profileMemoryCache.set(profile.uid, { profile, timestamp: Date.now() });
+    while (this.profileMemoryCache.size > this.maximumProfileCacheEntries) {
+      const oldestUserId = this.profileMemoryCache.keys().next().value;
+      if (typeof oldestUserId !== 'string') return;
+      this.profileMemoryCache.delete(oldestUserId);
     }
   }
 

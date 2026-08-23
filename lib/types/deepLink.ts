@@ -33,7 +33,7 @@ export type DeepLinkResolution =
     }
   | {
       kind: 'invalid';
-      reason: 'empty' | 'malformed';
+      reason: 'empty' | 'malformed' | 'unsupported';
     };
 
 export type PendingDeepLink = {

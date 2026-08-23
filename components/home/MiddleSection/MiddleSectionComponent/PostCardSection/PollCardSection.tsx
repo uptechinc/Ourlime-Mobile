@@ -15,9 +15,14 @@ import LikesModal from './LikesModal';
 import IdentityBadges from './IdentityBadges';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
+import { useCountdownTicker } from '@/lib/hooks/useCountdownTicker';
+import RichTextContent from '@/components/ui/RichTextContent';
+import { linkPresentationService } from '@/lib/services/LinkPresentationService';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 
 type PollCardSectionProps = {
   post: PostItem;
+  isVisible?: boolean;
   onCommentClick: (postId: string) => void;
   onPostDelete: (postId: string) => void;
   onAuthorBlocked: (userId: string) => void;
@@ -26,7 +31,7 @@ type PollCardSectionProps = {
 
 const postService = PostService.getInstance();
 
-const getTimeRemaining = (endTime?: string, createdAt?: string, pollDuration?: number): string => {
+const getTimeRemaining = (nowMs: number, endTime?: string, createdAt?: string, pollDuration?: number): string => {
   let targetMs: number | null = null;
   if (endTime) {
     targetMs = new Date(endTime).getTime();
@@ -36,7 +41,7 @@ const getTimeRemaining = (endTime?: string, createdAt?: string, pollDuration?: n
     targetMs = new Date(createdAt).getTime() + durationHours * 3600 * 1000;
   }
   if (!targetMs || isNaN(targetMs)) return 'Active poll';
-  const difference = targetMs - Date.now();
+  const difference = targetMs - nowMs;
   if (difference <= 0) return 'Poll ended';
   const days = Math.floor(difference / (24 * 3600 * 1000));
   const hours = Math.floor((difference % (24 * 3600 * 1000)) / 3_600_000);
@@ -48,11 +53,15 @@ const getTimeRemaining = (endTime?: string, createdAt?: string, pollDuration?: n
   return `${seconds}s remaining`;
 };
 
-export default function PollCardSection({ post, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PollCardSectionProps) {
+export default function PollCardSection({ post, isVisible = false, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PollCardSectionProps) {
   const router = useRouter();
   const { isDark, colors } = useAppTheme();
   const { activeUserId: currentUserId } = useAppData();
   const postUrl = findFirstUrl(`${post.caption} ${post.description}`);
+  const locationPresentation = useMemo(
+    () => post.location ? linkPresentationService.presentLocation(post.location.name, post.location.address) : null,
+    [post.location],
+  );
   const [isLiked, setIsLiked] = useState(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
   const [likeCount, setLikeCount] = useState(post.stats.likes);
   const [shareCount, setShareCount] = useState(post.stats.shares);
@@ -65,11 +74,7 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
     Object.fromEntries((post.pollOptions ?? []).map((option) => [option.id, option.votes]))
   );
 
-  const [nowMs, setNowMs] = useState(Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const nowMs = useCountdownTicker(isVisible);
 
   useEffect(() => {
     setIsLiked(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
@@ -81,8 +86,7 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
   }, [post.stats.likes]);
 
   const timeRemaining = useMemo(
-    () => getTimeRemaining(post.pollEndTime, post.createdAt, post.pollDuration),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () => getTimeRemaining(nowMs, post.pollEndTime, post.createdAt, post.pollDuration),
     [post.pollEndTime, post.createdAt, post.pollDuration, nowMs]
   );
   const pollEnded = timeRemaining === 'Poll ended';
@@ -162,20 +166,20 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
           <UserAvatar profileImage={post.user.profileImage} firstName={post.user.firstName || post.user.userName} size={48} />
           <View style={{ flex: 1, marginLeft: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>{post.user.firstName} {post.user.lastName}</Text><IdentityBadges user={post.user} /></View>
-            <Text style={{ marginTop: 2, color: '#6b7280', fontSize: 13 }}>@{post.user.userName} · Poll</Text>
+            <Text style={{ marginTop: 2, color: colors.mutedText, fontSize: 13 }}>@{post.user.userName} · Poll</Text>
           </View>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setOptionsVisible(true)} style={{ padding: 8 }}><Icon name="more-horizontal" size={21} color={colors.icon} /></TouchableOpacity>
       </View>
 
-      {post.location ? <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}><Icon name="map-pin" size={14} color="#10b981" /><Text style={{ marginLeft: 5, color: '#6b7280' }}>{post.location.name}</Text></View> : null}
-      {post.caption ? <Text style={{ marginTop: 15, color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: '700' }}>{post.caption}</Text> : null}
-      {post.description && post.description !== post.caption ? <Text style={{ marginTop: 7, color: colors.mutedText, lineHeight: 21 }}>{post.description}</Text> : null}
+      {locationPresentation ? <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}><Icon name={locationPresentation.isOnline ? 'link' : 'map-pin'} size={14} color="#10b981" /><Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, marginLeft: 5, color: colors.mutedText }}>{locationPresentation.detail ? `${locationPresentation.title} · ${locationPresentation.detail}` : locationPresentation.title}</Text></View> : null}
+      {post.caption ? <RichTextContent content={post.caption} style={{ marginTop: 15, color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: '700' }} /> : null}
+      {post.description && post.description !== post.caption ? <RichTextContent content={post.description} style={{ marginTop: 7, color: colors.mutedText, lineHeight: 21 }} /> : null}
       {postUrl ? <PostLinkPreview url={postUrl} /> : null}
 
       {post.media && post.media.length > 0 ? (
         <View style={{ marginTop: 12 }}>
-          <ImageAndVideoPostSection media={post.media} />
+          <ImageAndVideoPostSection media={post.media} isParentVisible={isVisible} />
         </View>
       ) : null}
 
@@ -196,15 +200,15 @@ export default function PollCardSection({ post, onCommentClick, onPostDelete, on
         })}
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 3 }}>
-        <Text style={{ color: '#6b7280', fontSize: 13 }}>{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}</Text>
+        <Text style={{ color: colors.mutedText, fontSize: 13 }}>{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}</Text>
         <Text style={{ color: pollEnded ? '#c64d53' : '#059669', fontSize: 13, fontWeight: '600' }}>{timeRemaining}</Text>
       </View>
       {post.hashtags.length > 0 ? <Text style={{ marginTop: 12, color: '#059669', fontWeight: '600' }}>{post.hashtags.map((tag) => `#${tag}`).join(' ')}</Text> : null}
 
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 13, borderTopWidth: 1, borderTopColor: colors.border }}>
-        <TouchableOpacity onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} /></TouchableOpacity><TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 26, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#ef4444' : colors.mutedText, fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
-        <TouchableOpacity onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 26, paddingVertical: 6 }}><Icon name="message-circle" size={22} color="#6b7280" /><Text style={{ marginLeft: 7, color: '#6b7280', fontWeight: '600' }}>{post.stats.comments}</Text></TouchableOpacity>
-        <TouchableOpacity onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="share-2" size={22} color="#6b7280" /><Text style={{ marginLeft: 7, color: '#6b7280', fontWeight: '600' }}>{shareCount}</Text></TouchableOpacity>
+        <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike poll' : 'Like poll'} onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} /></AnimatedActionButton><TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 26, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#ef4444' : colors.mutedText, fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
+        <AnimatedActionButton feedback="comment" accessibilityLabel="Open poll comments" onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 26, paddingVertical: 6 }}><Icon name="message-circle" size={22} color={colors.icon} /><Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{post.stats.comments}</Text></AnimatedActionButton>
+        <AnimatedActionButton feedback="share" accessibilityLabel="Share poll" onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="share-2" size={22} color={colors.icon} /><Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text></AnimatedActionButton>
       </View>
       <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} onPostUpdate={onPostUpdate} />
       <LikesModal visible={likesVisible} postId={post.id} origin={post.origin} onClose={() => setLikesVisible(false)} />

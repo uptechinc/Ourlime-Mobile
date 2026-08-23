@@ -11,7 +11,9 @@ type LogEntry = {
 };
 
 const LOG_FILENAME = 'ourlime-error-log.md';
-const MAX_ENTRIES = 500;
+const MAX_ENTRIES = 120;
+const MAX_MESSAGE_CHARACTERS = 2_000;
+const MAX_STACK_CHARACTERS = 8_000;
 
 
 /**
@@ -62,6 +64,18 @@ export class ErrorLogService {
     };
 
     console.warn = (...args: unknown[]) => {
+      const message = args
+        .map((a) => (a instanceof Error ? a.message : typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a ?? '')))
+        .join(' ');
+      if (
+        message.includes('SafeAreaView has been deprecated') ||
+        message.includes('WebChannelConnection') ||
+        message.includes('@firebase') ||
+        message.includes('transport errored') ||
+        message.includes("RPC 'Listen' stream")
+      ) {
+        return;
+      }
       this.originalConsoleWarn(...args);
       if (this.isCapturing) return;
       this.isCapturing = true;
@@ -80,9 +94,9 @@ export class ErrorLogService {
     const entry: LogEntry = {
       level: 'error',
       timestamp: new Date().toISOString(),
-      message: error.message,
+      message: this.truncate(error.message, MAX_MESSAGE_CHARACTERS),
       source: this.extractSource(error.stack ?? componentStack),
-      stack: (error.stack ?? '') + '\n\nComponent Stack:\n' + componentStack,
+      stack: this.truncate((error.stack ?? '') + '\n\nComponent Stack:\n' + componentStack, MAX_STACK_CHARACTERS),
     };
     this.push(entry);
   }
@@ -131,9 +145,9 @@ export class ErrorLogService {
     const entry: LogEntry = {
       level,
       timestamp: new Date().toISOString(),
-      message,
+      message: this.truncate(message, MAX_MESSAGE_CHARACTERS),
       source: this.extractSource(syntheticError.stack ?? ''),
-      stack: syntheticError.stack ?? '',
+      stack: this.truncate(syntheticError.stack ?? '', MAX_STACK_CHARACTERS),
     };
     this.push(entry);
   }
@@ -188,6 +202,11 @@ export class ErrorLogService {
       return trimmed.replace(/^at\s+/, '');
     }
     return 'unknown';
+  }
+
+  private truncate(value: string, maximumCharacters: number): string {
+    if (value.length <= maximumCharacters) return value;
+    return `${value.slice(0, maximumCharacters)}\n...[truncated]`;
   }
 
   private buildMarkdown(entries: LogEntry[]): string {

@@ -15,6 +15,8 @@ import { useRouter } from 'expo-router';
 import { AuthService } from '@/lib/services/AuthService';
 import { SettingsService, type BlockedUserSummary } from '@/lib/profile/settings/SettingsService';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
+import DeleteAccountModal from '@/components/settings/DeleteAccountModal';
+import { accountLifecycleService } from '@/lib/services/AccountLifecycleService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { MessagePermission, SettingsTheme } from '@/lib/profile/settings/SettingsService';
 
@@ -31,6 +33,9 @@ export default function SettingsScreen() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('account');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // Account State
   const [firstName, setFirstName] = useState('');
@@ -130,6 +135,20 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleDeleteAccount = async (password: string) => {
+    setDeletingAccount(true);
+    setDeleteError('');
+    try {
+      await accountLifecycleService.permanentlyDeleteCurrentAccount(password);
+      setDeleteModalOpen(false);
+      router.replace('/(auth)/login');
+    } catch (deleteAccountError: unknown) {
+      setDeleteError(deleteAccountError instanceof Error ? deleteAccountError.message : 'Your account could not be deleted.');
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, isDark && styles.containerDark]}>
@@ -201,6 +220,10 @@ export default function SettingsScreen() {
               <Text style={styles.label}>First Name</Text>
               <TextInput value={firstName} onChangeText={setFirstName} style={styles.input} />
             </View>
+            <Text style={styles.sectionTitle}>Policies and account controls</Text>
+            <TouchableOpacity onPress={() => router.push('/policies')} style={styles.policyButton}><Icon name="file-text" size={18} color="#047857" /><Text style={styles.policyButtonText}>All Ourlime policies</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/child-safety-standards')} style={styles.policyButton}><Icon name="shield" size={18} color="#047857" /><Text style={styles.policyButtonText}>Child Safety Standards</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/delete-account')} style={styles.policyButton}><Icon name="info" size={18} color="#047857" /><Text style={styles.policyButtonText}>Account deletion information</Text></TouchableOpacity>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Last Name</Text>
               <TextInput value={lastName} onChangeText={setLastName} style={styles.input} />
@@ -307,10 +330,12 @@ export default function SettingsScreen() {
               <Icon name="log-out" size={18} color="#ef4444" />
               <Text style={styles.signOutText}>Sign Out of Ourlime</Text>
             </TouchableOpacity>
+            <View style={styles.dangerZone}><Text style={styles.dangerTitle}>Danger Zone</Text><Text style={styles.switchSubtext}>Permanently delete your account and associated data.</Text><TouchableOpacity onPress={() => { setDeleteError(''); setDeleteModalOpen(true); }} style={styles.deleteAccountBtn}><Icon name="trash-2" size={18} color="#ffffff" /><Text style={styles.deleteAccountText}>Delete Account</Text></TouchableOpacity></View>
           </View>
         )}
       </ScrollView>
       <CustomModal visible={modal.visible} type={modal.type} title={modal.title} message={modal.message} confirmText={modal.action === 'logout' ? 'Sign Out' : 'OK'} cancelText={modal.action === 'logout' ? 'Cancel' : undefined} onClose={() => setModal((current) => ({ ...current, visible: false }))} onConfirm={modal.action === 'logout' ? () => { void authService.logout().then(() => router.replace('/(auth)/login')); } : undefined} />
+      <DeleteAccountModal visible={deleteModalOpen} isPasswordRequired={authService.getVerifiedCurrentUser()?.providerData.some((provider) => provider.providerId === 'password') ?? false} deleting={deletingAccount} error={deleteError} onClose={() => setDeleteModalOpen(false)} onDelete={(password) => void handleDeleteAccount(password)} />
     </SafeAreaView>
   );
 }
@@ -353,6 +378,12 @@ const createStyles = (isDark: boolean) => StyleSheet.create({
   unblockText: { color: '#ef4444', fontSize: 13, fontWeight: '700' },
   signOutBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, backgroundColor: '#fee2e2', marginTop: 12 },
   signOutText: { color: '#ef4444', fontSize: 15, fontWeight: '800' },
+  policyButton: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 13, backgroundColor: isDark ? '#052e2b' : '#ecfdf5' },
+  policyButtonText: { color: isDark ? '#6ee7b7' : '#047857', fontWeight: '800', fontSize: 14 },
+  dangerZone: { gap: 10, padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#fecaca', backgroundColor: isDark ? '#450a0a' : '#fff7f7', marginTop: 10 },
+  dangerTitle: { color: '#ef4444', fontSize: 16, fontWeight: '900' },
+  deleteAccountBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 44, backgroundColor: '#dc2626', borderRadius: 12 },
+  deleteAccountText: { color: '#ffffff', fontWeight: '900' },
   themeCard: { flex: 1, minHeight: 105, borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 18, alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#ffffff' },
   themeCardDark: { borderColor: '#334155', backgroundColor: '#0f172a' },
   themeCardSelected: { borderColor: '#10b981', borderWidth: 2, backgroundColor: isDark ? '#052e2b' : '#ecfdf5' },

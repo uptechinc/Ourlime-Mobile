@@ -18,6 +18,7 @@ import { EventService } from '@/lib/services/EventService';
 import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 
 type PostCardSectionProps = {
   post: PostItem;
@@ -260,19 +261,19 @@ export default function PostCardSection({ post, isVisible = false, canModerateCo
         ) : null}
 
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
-          <TouchableOpacity onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
+          <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike post' : 'Like post'} onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
             <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} />
-          </TouchableOpacity>
+          </AnimatedActionButton>
           <TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 26, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#c64d53' : colors.mutedText, fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 26, paddingVertical: 6 }}>
+          <AnimatedActionButton feedback="comment" accessibilityLabel="Open post comments" onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 26, paddingVertical: 6 }}>
             <Icon name="message-circle" size={22} color={colors.icon} />
             <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{post.stats.comments}</Text>
-          </TouchableOpacity>
-          {!post.communityId ? <TouchableOpacity onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24, paddingVertical: 6 }}>
+          </AnimatedActionButton>
+          {!post.communityId ? <AnimatedActionButton feedback="share" accessibilityLabel="Share post" onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24, paddingVertical: 6 }}>
             <Icon name="share-2" size={22} color={colors.icon} />
             <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text>
-          </TouchableOpacity> : null}
-          {!post.communityId ? <TouchableOpacity onPress={() => void handleRepost()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }} accessibilityLabel={isReposted ? 'Remove repost' : 'Repost'}><Icon name="repeat" size={22} color={isReposted ? '#10b981' : colors.icon} /></TouchableOpacity> : null}
+          </AnimatedActionButton> : null}
+          {!post.communityId ? <AnimatedActionButton onPress={() => void handleRepost()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }} accessibilityLabel={isReposted ? 'Remove repost' : 'Repost'}><Icon name="repeat" size={22} color={isReposted ? '#10b981' : colors.icon} /></AnimatedActionButton> : null}
         </View>
       </View>
 

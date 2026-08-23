@@ -1,4 +1,4 @@
-import { Modal, Text, TouchableOpacity, View } from "react-native";
+import CustomModal from '@/components/ui/CustomModal';
 
 type ConfirmationModalProps = {
   isOpen: boolean;
@@ -15,8 +15,6 @@ export default function ConfirmationModal({
   userName,
   action,
 }: ConfirmationModalProps) {
-  if (!isOpen) return null;
-
   const actionText = action === "remove" ? "remove" : "ban";
   const actionTitle = action === "remove" ? "Remove Member" : "Ban Member";
   const actionDescription =
@@ -24,138 +22,5 @@ export default function ConfirmationModal({
       ? `Are you sure you want to remove ${userName} from this community?`
       : `Are you sure you want to ban ${userName} from this community? This action cannot be undone.`;
 
-  return (
-    <Modal
-      transparent
-      visible={isOpen}
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(0,0,0,0.5)",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <View
-          style={{
-            width: "80%",
-            backgroundColor: "#fff",
-            borderRadius: 8,
-            padding: 16,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 18,
-              fontWeight: "bold",
-              marginBottom: 12,
-            }}
-          >
-            {actionTitle}
-          </Text>
-          <Text
-            style={{
-              color: "#555",
-              marginBottom: 16,
-            }}
-          >
-            {actionDescription}
-          </Text>
-
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "flex-end",
-            }}
-          >
-            <TouchableOpacity
-              onPress={onClose}
-              style={{
-                paddingVertical: 8,
-                paddingHorizontal: 12,
-                marginRight: 12,
-              }}
-            >
-              <Text
-                style={[
-                  {
-                    color: "#fff",
-                    fontSize: 14,
-                  },
-                  { color: "#555" },
-                ]}
-              >
-                Cancel
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={onConfirm}
-              style={{
-                backgroundColor: "#f33",
-                borderRadius: 4,
-                paddingVertical: 8,
-                paddingHorizontal: 12,
-              }}
-            >
-              <Text
-                style={{
-                  color: "#fff",
-                  fontSize: 14,
-                }}
-              >
-                {actionText.charAt(0).toUpperCase() + actionText.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
+  return <CustomModal visible={isOpen} type="danger" title={actionTitle} message={actionDescription} confirmText={actionText.charAt(0).toUpperCase() + actionText.slice(1)} cancelText="Cancel" onConfirm={onConfirm} onClose={onClose} />;
 }
-
-// const styles = StyleSheet.create({
-//   overlay: {
-//     flex: 1,
-//     backgroundColor: "rgba(0,0,0,0.5)",
-//     justifyContent: "center",
-//     alignItems: "center",
-//   },
-//   modalContainer: {
-//     width: "80%",
-//     backgroundColor: "#fff",
-//     borderRadius: 8,
-//     padding: 16,
-//   },
-//   title: {
-//     fontSize: 18,
-//     fontWeight: "bold",
-//     marginBottom: 12,
-//   },
-//   description: {
-//     color: "#555",
-//     marginBottom: 16,
-//   },
-//   buttonsRow: {
-//     flexDirection: "row",
-//     justifyContent: "flex-end",
-//   },
-//   cancelButton: {
-//     paddingVertical: 8,
-//     paddingHorizontal: 12,
-//     marginRight: 12,
-//   },
-//   confirmButton: {
-//     backgroundColor: "#f33",
-//     borderRadius: 4,
-//     paddingVertical: 8,
-//     paddingHorizontal: 12,
-//   },
-//   buttonText: {
-//     color: "#fff",
-//     fontSize: 14,
-//   },
-// });

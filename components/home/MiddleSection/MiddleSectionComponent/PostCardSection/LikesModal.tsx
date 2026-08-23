@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -7,6 +8,9 @@ import { PostService, type PostOrigin, type PostUser } from '@/lib/services/Post
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { AuthService } from '@/lib/services/AuthService';
 import CustomModal from '@/components/ui/CustomModal';
+import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
+import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 
 type LikesModalProps = { visible: boolean; postId: string; origin: PostOrigin; onClose: () => void };
 
@@ -15,6 +19,8 @@ const relationshipService = RelationshipService.getInstance();
 const authService = AuthService.getInstance();
 
 export default function LikesModal({ visible, postId, origin, onClose }: LikesModalProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [users, setUsers] = useState<PostUser[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -23,6 +29,7 @@ export default function LikesModal({ visible, postId, origin, onClose }: LikesMo
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [friendRequestedIds, setFriendRequestedIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(null);
+  const swipeDismiss = useSwipeDismiss({ visible, onDismiss: onClose, disabled: loading || Boolean(actingUserId) });
 
   const load = useCallback(async (nextCursor?: string | null) => {
     setLoading(true);
@@ -76,33 +83,61 @@ export default function LikesModal({ visible, postId, origin, onClose }: LikesMo
 
   return (
     <>
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }}>
-          <Text style={{ flex: 1, fontSize: 18, fontWeight: '800', color: '#111827' }}>Likes</Text>
-          <TouchableOpacity onPress={onClose} style={{ padding: 7 }}><Icon name="x" size={23} color="#374151" /></TouchableOpacity>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
+      <Animated.View style={[styles.safeArea, swipeDismiss.animatedStyle]}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close likes" />
+        <View style={styles.header}>
+          <Text style={styles.title}>Likes</Text>
+          <TouchableOpacity onPress={onClose} style={styles.closeButton}><Icon name="x" size={23} color={colors.icon} /></TouchableOpacity>
         </View>
-        <ScrollView contentContainerStyle={{ padding: 16, flexGrow: 1 }}>
+        <ScrollView contentContainerStyle={styles.content}>
           {users.map((user) => (
-            <View key={user.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}>
+            <View key={user.id} style={styles.userRow}>
               <UserAvatar profileImage={user.profileImage} firstName={user.firstName || user.userName} size={46} />
-              <View style={{ flex: 1, marginLeft: 11 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ color: '#111827', fontWeight: '800' }}>{user.firstName} {user.lastName}</Text>{user.emailVerified ? <Icon name="check-circle" size={14} color="#10b981" style={{ marginLeft: 4 }} /> : null}</View>
-                <Text style={{ color: '#6b7280', fontSize: 13 }}>@{user.userName}</Text>
+              <View style={styles.userCopy}>
+                <View style={styles.nameRow}><Text style={styles.name}>{user.firstName} {user.lastName}</Text>{user.emailVerified ? <Icon name="check-circle" size={14} color={colors.accent} style={styles.verifiedIcon} /> : null}</View>
+                <Text style={styles.username}>@{user.userName}</Text>
               </View>
-              <TouchableOpacity onPress={() => void handleFollow(user.id)} disabled={followedIds.has(user.id) || actingUserId === user.id} style={{ minWidth: 82, paddingHorizontal: 13, paddingVertical: 8, alignItems: 'center', borderRadius: 16, backgroundColor: followedIds.has(user.id) ? '#f3f4f6' : '#10b981' }}>
-                {actingUserId === user.id ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={{ color: followedIds.has(user.id) ? '#6b7280' : '#ffffff', fontWeight: '700' }}>{followedIds.has(user.id) ? 'Following' : 'Follow'}</Text>}
+              <TouchableOpacity onPress={() => void handleFollow(user.id)} disabled={followedIds.has(user.id) || actingUserId === user.id} style={[styles.followButton, followedIds.has(user.id) && styles.followingButton]}>
+                {actingUserId === user.id ? <ActivityIndicator size="small" color={colors.onAccent} /> : <Text style={[styles.followText, followedIds.has(user.id) && styles.followingText]}>{followedIds.has(user.id) ? 'Following' : 'Follow'}</Text>}
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => void handleFriendRequest(user.id)} disabled={friendRequestedIds.has(user.id) || actingUserId === user.id} style={{ marginLeft: 7, width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: friendRequestedIds.has(user.id) ? '#d1fae5' : '#f3f4f6' }}><Icon name={friendRequestedIds.has(user.id) ? 'check' : 'user-plus'} size={17} color={friendRequestedIds.has(user.id) ? '#047857' : '#4b5563'} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => void handleFriendRequest(user.id)} disabled={friendRequestedIds.has(user.id) || actingUserId === user.id} style={[styles.friendButton, friendRequestedIds.has(user.id) && styles.friendRequestedButton]}><Icon name={friendRequestedIds.has(user.id) ? 'check' : 'user-plus'} size={17} color={friendRequestedIds.has(user.id) ? colors.successText : colors.icon} /></TouchableOpacity>
             </View>
           ))}
-          {!loading && users.length === 0 ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Icon name="heart" size={38} color="#d1d5db" /><Text style={{ marginTop: 10, color: '#6b7280' }}>No likes yet</Text></View> : null}
-          {loading ? <ActivityIndicator style={{ margin: 20 }} color="#10b981" /> : null}
-          {hasMore && !loading ? <TouchableOpacity onPress={() => void load(cursor)} style={{ alignItems: 'center', padding: 14 }}><Text style={{ color: '#10b981', fontWeight: '800' }}>Load more</Text></TouchableOpacity> : null}
+          {!loading && users.length === 0 ? <View style={styles.empty}><Icon name="heart" size={38} color={colors.disabledText} /><Text style={styles.emptyText}>No likes yet</Text></View> : null}
+          {loading ? <ActivityIndicator style={styles.loader} color={colors.accent} /> : null}
+          {hasMore && !loading ? <TouchableOpacity onPress={() => void load(cursor)} style={styles.loadMore}><Text style={styles.loadMoreText}>Load more</Text></TouchableOpacity> : null}
         </ScrollView>
       </SafeAreaView>
+      </Animated.View>
     </Modal>
     <CustomModal visible={feedback !== null} type="danger" title={feedback?.title ?? ''} message={feedback?.message ?? ''} onClose={() => setFeedback(null)} />
     </>
   );
 }
+
+const createStyles = (colors: AppThemeColors) => StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: colors.canvas },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
+  title: { flex: 1, fontSize: 18, fontWeight: '800', color: colors.text },
+  closeButton: { padding: 7 },
+  content: { padding: 16, flexGrow: 1 },
+  userRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  userCopy: { flex: 1, marginLeft: 11 },
+  nameRow: { flexDirection: 'row', alignItems: 'center' },
+  name: { color: colors.text, fontWeight: '800' },
+  verifiedIcon: { marginLeft: 4 },
+  username: { color: colors.mutedText, fontSize: 13 },
+  followButton: { minWidth: 82, paddingHorizontal: 13, paddingVertical: 8, alignItems: 'center', borderRadius: 16, backgroundColor: colors.accent },
+  followingButton: { backgroundColor: colors.control },
+  followText: { color: colors.onAccent, fontWeight: '700' },
+  followingText: { color: colors.mutedText },
+  friendButton: { marginLeft: 7, width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
+  friendRequestedButton: { backgroundColor: colors.successSurface },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emptyText: { marginTop: 10, color: colors.mutedText },
+  loader: { margin: 20 },
+  loadMore: { alignItems: 'center', padding: 14 },
+  loadMoreText: { color: colors.accentText, fontWeight: '800' },
+});

@@ -14,26 +14,26 @@ export class DiagnosticLogService {
   }
 
   public info(scope: string, step: string, details: LogDetails = {}): void {
-    console.log(this.formatPrefix(scope, step), details);
+    console.log(this.formatPrefix('INFO', scope, step), details);
   }
 
   public success(scope: string, step: string, details: LogDetails = {}): void {
-    console.log(this.formatPrefix(scope, `${step}:success`), details);
+    console.log(this.formatPrefix('SUCCESS', scope, `${step}:success`), details);
   }
 
   public warn(scope: string, step: string, details: LogDetails = {}): void {
-    console.log(this.formatPrefix(scope, `${step}:warning`), details);
+    console.warn(this.formatPrefix('WARN', scope, `${step}:warning`), details);
   }
 
   public error(scope: string, step: string, error: unknown, details: LogDetails = {}): void {
-    console.log(this.formatPrefix(scope, `${step}:error`), {
+    console.error(this.formatPrefix('ERROR', scope, `${step}:error`), {
       ...details,
       error: this.describeError(error),
     });
   }
 
-  private formatPrefix(scope: string, step: string): string {
-    return `[${this.prefix}][${new Date().toISOString()}][${scope}][${step}]`;
+  private formatPrefix(level: 'INFO' | 'SUCCESS' | 'WARN' | 'ERROR', scope: string, step: string): string {
+    return `[${this.prefix}][${new Date().toISOString()}][${level}][${scope}][${step}]`;
   }
 
   private describeError(error: unknown): LogDetails {

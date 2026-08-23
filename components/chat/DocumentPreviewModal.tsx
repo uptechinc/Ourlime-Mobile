@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import type { Attachment } from '@/lib/messaging/MessagingService';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type DocumentPreviewModalProps = {
   visible: boolean;
@@ -102,8 +103,8 @@ export function DocumentPreviewModal({ visible, attachment, onClose }: DocumentP
   const googleDocsViewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(attachment.url)}`;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: '#0f172a', paddingTop: 44 }}>
+    <Modal visible={visible} animationType="none" transparent presentationStyle="overFullScreen" onRequestClose={onClose}>
+      <SwipeDismissSurface visible={visible} onDismiss={onClose} handleColor="#475569" accessibilityLabel="Swipe down to close document preview" style={{ flex: 1, backgroundColor: '#0f172a', paddingTop: 44 }}>
         {/* Header */}
         <View style={{
           flexDirection: 'row',
@@ -234,7 +235,7 @@ export function DocumentPreviewModal({ visible, attachment, onClose }: DocumentP
             </View>
           )}
         </View>
-      </View>
+      </SwipeDismissSurface>
     </Modal>
   );
 }

@@ -14,6 +14,9 @@ import type { UserProfile } from '@/lib/services/AuthService';
 import { messagingService, type FullMessage } from '@/lib/messaging/MessagingService';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 
 type ForwardMessageModalProps = {
   visible: boolean;
@@ -67,6 +70,7 @@ export function ForwardMessageModal({
         messageToForward.voiceNoteData,
         true // isForwarded = true
       );
+      void interactionFeedbackService.play('success');
       onForwardSuccess(`${friend.firstName} ${friend.lastName}`);
       onClose();
     } catch (e) {
@@ -83,10 +87,10 @@ export function ForwardMessageModal({
   });
 
   return (
-    <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="none" transparent presentationStyle="overFullScreen" onRequestClose={onClose}>
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }} onPress={onClose} />
 
-      <View style={{
+      <SwipeDismissSurface visible={visible} onDismiss={onClose} handleColor="#d1d5db" accessibilityLabel="Swipe down to close message forwarding" style={{
         position: 'absolute',
         bottom: 0,
         left: 0,
@@ -135,7 +139,9 @@ export function ForwardMessageModal({
             {filteredFriends.map((friend) => {
               const isSending = sendingToId === friend.uid;
               return (
-                <TouchableOpacity
+                <AnimatedActionButton
+                  feedback="message"
+                  accessibilityLabel={`Forward message to ${friend.firstName}`}
                   key={friend.uid}
                   onPress={() => void handleForwardTo(friend)}
                   disabled={isSending}
@@ -163,12 +169,12 @@ export function ForwardMessageModal({
                       <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '700' }}>Send</Text>
                     )}
                   </View>
-                </TouchableOpacity>
+                </AnimatedActionButton>
               );
             })}
           </ScrollView>
         )}
-      </View>
+      </SwipeDismissSurface>
     </Modal>
   );
 }

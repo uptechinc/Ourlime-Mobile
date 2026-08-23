@@ -84,10 +84,7 @@ export class DeepLinkService {
       return { kind: 'invalid', reason: 'malformed' };
     }
     if (!destination) {
-      return {
-        kind: 'external',
-        url: parsedUrl.protocol === `${this.nativeScheme}:` ? this.webBaseUrl : parsedUrl.toString(),
-      };
+      return { kind: 'invalid', reason: 'unsupported' };
     }
 
     return {

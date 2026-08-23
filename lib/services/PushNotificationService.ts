@@ -7,12 +7,17 @@ import { ApiService } from './ApiService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { platformEnvironmentService } from './PlatformEnvironmentService';
 import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
-import { authService } from './AuthService';
+import type { NotificationType } from '@/lib/types/notification';
 
 const DEVICE_TOKEN_KEY = 'ourlime_device_push_token';
+const MESSAGE_CHANNEL_ID = 'ourlime-messages-v2';
+const CALL_CHANNEL_ID = 'ourlime-calls-v2';
+const CALL_NOTIFICATION_CATEGORY_ID = 'ourlime-incoming-call';
+const CALL_ANSWER_ACTION_ID = 'ourlime-call-answer';
+const CALL_DECLINE_ACTION_ID = 'ourlime-call-decline';
 
-export type PushMessageType = 'message' | 'voice_call' | 'video_call';
-export type PushMessagePayload = { title: string; body: string; type: PushMessageType; senderId: string; channelId?: string };
+export type PushMessageType = 'message' | 'voice_call' | 'video_call' | NotificationType;
+export type PushMessagePayload = { title: string; body: string; type: PushMessageType; senderId: string; channelId?: string; path?: string };
 
 type PushTokenResponse = { success: boolean; error?: string };
 
@@ -45,13 +50,37 @@ export class PushNotificationService {
     const Notifications = getNotifications();
     if (!Notifications) return;
     try {
+      void this.configureAndroidChannels();
       Notifications.setNotificationHandler({
         handleNotification: async (notification) => {
-          const data = notification?.request?.content?.data as Record<string, unknown> | undefined;
+          const notificationBody = notification?.request?.content?.body?.trim() ?? '';
+          if (/^\[SYS:[A-Z0-9_]+\]$/.test(notificationBody)) {
+            return {
+              shouldShowBanner: false,
+              shouldShowList: false,
+              shouldPlaySound: false,
+              shouldSetBadge: false,
+            };
+          }
+          const data = notification?.request?.content?.data as { type?: unknown; senderId?: unknown } | undefined;
+          if (data?.type === 'incoming_call' || data?.type === 'call_state' || data?.type === 'voice_call' || data?.type === 'video_call') {
+            return {
+              shouldShowBanner: false,
+              shouldShowList: false,
+              shouldPlaySound: false,
+              shouldSetBadge: false,
+            };
+          }
           const senderId = typeof data?.senderId === 'string' ? data.senderId : undefined;
           if (senderId) {
             try {
-              const currentUserId = authService.getCurrentUser()?.uid ?? '';
+              let currentUserId = '';
+              try {
+                const { authService } = await import('./AuthService');
+                currentUserId = authService.getCurrentUser()?.uid ?? '';
+              } catch {
+                // Ignore fallback
+              }
               if (currentUserId) {
                 const [archivedRaw, mutedRaw] = await Promise.all([
                   AsyncStorage.getItem(`ourlime_archived_chats_${currentUserId}`),
@@ -85,6 +114,52 @@ export class PushNotificationService {
     }
   }
 
+  public async configureAndroidChannels(): Promise<void> {
+    if (Platform.OS !== 'android') return;
+    const Notifications = getNotifications();
+    if (!Notifications) return;
+    try {
+      await Promise.all([
+        Notifications.setNotificationChannelAsync(MESSAGE_CHANNEL_ID, {
+          name: 'Ourlime messages',
+          description: 'Messages and social activity from Ourlime',
+          importance: Notifications.AndroidImportance.HIGH,
+          sound: 'default',
+          enableVibrate: true,
+          vibrationPattern: [0, 250, 150, 250],
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          showBadge: true,
+          audioAttributes: {
+            usage: Notifications.AndroidAudioUsage.NOTIFICATION_COMMUNICATION_INSTANT,
+            contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+          },
+        }),
+        Notifications.setNotificationChannelAsync(CALL_CHANNEL_ID, {
+          name: 'Ourlime incoming calls',
+          description: 'Incoming Ourlime voice and video calls',
+          importance: Notifications.AndroidImportance.MAX,
+          sound: 'default',
+          enableVibrate: true,
+          vibrationPattern: [0, 700, 350, 700, 350, 700],
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          showBadge: false,
+          audioAttributes: {
+            usage: Notifications.AndroidAudioUsage.NOTIFICATION_RINGTONE,
+            contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+          },
+        }),
+        Notifications.setNotificationCategoryAsync(CALL_NOTIFICATION_CATEGORY_ID, [
+          { identifier: CALL_DECLINE_ACTION_ID, buttonTitle: 'Decline', options: { opensAppToForeground: true, isDestructive: true } },
+          { identifier: CALL_ANSWER_ACTION_ID, buttonTitle: 'Answer', options: { opensAppToForeground: true } },
+        ]),
+      ]);
+    } catch (error: unknown) {
+      this.logger.warn('PushNotificationService', 'channels:configuration-failed', {
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   public async getDevicePushToken(): Promise<string | null> {
     if (Platform.OS === 'web' || !Device.isDevice) return null;
     const Notifications = getNotifications();
@@ -97,15 +172,7 @@ export class PushNotificationService {
       if (permission.status !== 'granted') return null;
 
       if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('default', {
-          name: 'Ourlime notifications',
-          importance: Notifications.AndroidImportance.HIGH,
-        });
-        await Notifications.setNotificationChannelAsync('calls', {
-          name: 'Ourlime calls',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-        });
+        await this.configureAndroidChannels();
       }
 
       const projectId = Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.eas?.projectId;
@@ -136,45 +203,50 @@ export class PushNotificationService {
           if (deviceTokenResult && deviceTokenResult.data) {
             const fcmToken = deviceTokenResult.data;
             const tokenType = deviceTokenResult.type ?? 'unknown';
-            console.log(`📱 [PushNotificationService] getDevicePushTokenAsync: type=${tokenType} token=${fcmToken.slice(0, 30)}... length=${fcmToken.length}`);
+            this.logger.info('PushNotificationService', 'getDevicePushTokenAsync', { type: tokenType });
             try {
               const result = await this.apiService.request<PushTokenResponse>('/api/push-tokens', {
                 method: 'POST',
                 authenticated: true,
                 body: { token: fcmToken, platform: 'android', transport: 'fcm' },
               });
-              console.log('✅ [PushNotificationService] fcm-device-token saved:', JSON.stringify(result));
               this.logger.success('PushNotificationService', 'fcm-device-token:registered', { userId });
             } catch (saveErr) {
-              console.error('❌ [PushNotificationService] fcm-device-token FAILED to save:', saveErr instanceof Error ? saveErr.message : String(saveErr));
+              this.logger.error('PushNotificationService', 'fcm-device-token:failed-to-save', saveErr, { userId });
             }
           }
         }
 
-        // Also ensure @react-native-firebase/messaging token is synced
-        const messagingModule = await import('@react-native-firebase/messaging');
-        const getMessaging = messagingModule.getMessaging || messagingModule.default;
-        if (typeof getMessaging === 'function') {
-          const messaging = getMessaging();
-          let fcmToken: string | null = null;
-          if (typeof messagingModule.getToken === 'function') {
-            fcmToken = await messagingModule.getToken(messaging).catch(() => null);
-          } else if (typeof messaging?.getToken === 'function') {
-            fcmToken = await messaging.getToken().catch(() => null);
-          }
-          if (fcmToken) {
-            console.log(`📱 [PushNotificationService] firebase/messaging.getToken: token=${fcmToken.slice(0, 30)}... length=${fcmToken.length}`);
-            try {
-              const result = await this.apiService.request<PushTokenResponse>('/api/push-tokens', {
-                method: 'POST',
-                authenticated: true,
-                body: { token: fcmToken, platform: 'android', transport: 'fcm' },
-              });
-              console.log('✅ [PushNotificationService] fcm-firebase-token saved:', JSON.stringify(result));
-              this.logger.success('PushNotificationService', 'fcm-firebase-token:registered', { userId });
-            } catch (saveErr) {
-              console.error('❌ [PushNotificationService] fcm-firebase-token FAILED to save:', saveErr instanceof Error ? saveErr.message : String(saveErr));
+        // Also ensure @react-native-firebase/messaging token is synced ONLY if native module exists
+        if (platformEnvironmentService.hasNativeFirebaseMessaging()) {
+          try {
+            const messagingModule = await import('@react-native-firebase/messaging');
+            const getMessaging = messagingModule.getMessaging || messagingModule.default;
+            if (typeof getMessaging === 'function') {
+              const messaging = getMessaging();
+              let fcmToken: string | null = null;
+              if (typeof messagingModule.getToken === 'function') {
+                fcmToken = await messagingModule.getToken(messaging).catch(() => null);
+              } else if (typeof messaging?.getToken === 'function') {
+                fcmToken = await messaging.getToken().catch(() => null);
+              }
+              if (fcmToken) {
+                try {
+                  const result = await this.apiService.request<PushTokenResponse>('/api/push-tokens', {
+                    method: 'POST',
+                    authenticated: true,
+                    body: { token: fcmToken, platform: 'android', transport: 'fcm' },
+                  });
+                  this.logger.success('PushNotificationService', 'fcm-firebase-token:registered', { userId });
+                } catch (saveErr) {
+                  this.logger.error('PushNotificationService', 'fcm-firebase-token:failed-to-save', saveErr, { userId });
+                }
+              }
             }
+          } catch (fcmImportErr) {
+            this.logger.warn('PushNotificationService', 'fcm:module-import-skipped', {
+              message: fcmImportErr instanceof Error ? fcmImportErr.message : String(fcmImportErr),
+            });
           }
         }
       } catch (fcmError) {
@@ -239,6 +311,9 @@ export class PushNotificationService {
       authenticated: true,
       body: {
         receiverId,
+        title: payload.title,
+        type: payload.type,
+        path: payload.path,
         message: payload.type === 'video_call'
           ? '[SYS:VIDEO_CALL_INVITE]'
           : payload.type === 'voice_call'

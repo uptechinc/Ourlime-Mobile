@@ -2,6 +2,7 @@ import '@/lib/shims/codegenNativeComponent';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator, LogBox, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAuthGuard } from '@/lib/hooks/useAuthGuard';
 import './globals.css';
 import { NotificationProvider } from '@/lib/contexts/NotificationContext';
@@ -18,8 +19,15 @@ import { AppDrawerProvider } from '@/lib/contexts/AppDrawerContext';
 import { CallProvider } from '@/lib/contexts/CallContext';
 import GlobalCallOverlay from '@/components/calls/GlobalCallOverlay';
 import InAppNotificationBanner from '@/components/ui/InAppNotificationBanner';
+import { crashReportingService } from '@/lib/services/CrashReportingService';
+import { memoryPressureService } from '@/lib/services/MemoryPressureService';
+import { nativeCallService } from '@/lib/services/NativeCallService';
+
+export { RouteErrorBoundary as ErrorBoundary } from '@/components/ui/AppErrorBoundary';
 
 errorLogService.install();
+memoryPressureService.install();
+void crashReportingService.initialize();
 
 LogBox.ignoreLogs([
   'SafeAreaView has been deprecated',
@@ -86,15 +94,22 @@ export default function Layout() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const Notifications = require('expo-notifications') as typeof import('expo-notifications');
-      const handleResponse = (response: import('expo-notifications').NotificationResponse) => {
-        const responseId = response.notification.request.identifier;
+      const handleResponse = async (response: import('expo-notifications').NotificationResponse) => {
+        const responseId = `${response.notification.request.identifier}:${response.actionIdentifier}`;
         if (handledResponseIds.current.has(responseId)) return;
         handledResponseIds.current.add(responseId);
+        const handledAsCall = await nativeCallService.handleNotificationResponse(
+          response.notification.request.content.data,
+          response.actionIdentifier,
+        );
+        if (handledAsCall) return;
         router.push(pushNotificationService.resolveNotificationDestination(response.notification.request.content.data));
       };
-      subscription = Notifications.addNotificationResponseReceivedListener(handleResponse);
+      subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+        void handleResponse(response);
+      });
       void Notifications.getLastNotificationResponseAsync().then((response) => {
-        if (response) handleResponse(response);
+        if (response) void handleResponse(response);
       });
     } catch {
       // Remote push listeners are unavailable in Expo Go.
@@ -103,10 +118,12 @@ export default function Layout() {
   }, [router]);
 
   return (
-    <AppErrorBoundary>
-      <ThemeProvider>
-        <AppRouteTree />
-      </ThemeProvider>
-    </AppErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppErrorBoundary>
+        <ThemeProvider>
+          <AppRouteTree />
+        </ThemeProvider>
+      </AppErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

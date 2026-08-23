@@ -18,7 +18,7 @@ import {
 export type JobRecord = {
     id: string;
     basic_info: {
-        type: string;
+        type: 'professional' | 'quickTask';
         title: string;
         description: string;
         userId: string;
@@ -26,10 +26,11 @@ export type JobRecord = {
         priceRange: { from: number; to: number };
         createdAt?: { seconds: number };
         category?: string;
+        status?: 'draft' | 'published' | 'closed' | 'archived' | 'active';
     };
     category?: string;
     details: { skills: string[]; requirements?: string[]; qualifications?: string[] };
-    category_specific: Record<string, unknown> & {
+    category_specific: {
         name?: string;
         type?: string;
         industry?: string;
@@ -39,6 +40,11 @@ export type JobRecord = {
         duration?: string;
         complexity?: string;
         timeline?: string;
+        employmentType?: string;
+        currency?: string;
+        paymentPeriod?: string;
+        contactPreference?: string;
+        applicationDeadline?: string;
     };
     questions?: { id: string; question?: string; type?: string; options?: string[] }[];
     creator?: { name: string; username: string; profileImage: string; email?: string };
@@ -215,7 +221,7 @@ export class JobsService {
                 return {
                     id: docSnapshot.id,
                     basic_info: {
-                        type: typeof basicInfo.type === 'string' ? basicInfo.type : 'Job',
+                        type: basicInfo.type === 'quickTask' ? 'quickTask' : 'professional',
                         title: typeof basicInfo.title === 'string' ? basicInfo.title : 'Untitled opportunity',
                         description: typeof basicInfo.description === 'string' ? basicInfo.description : '',
                         userId,
@@ -228,6 +234,7 @@ export class JobsService {
                             : { from: 0, to: 0 },
                         createdAt: basicInfo.createdAt,
                         category: typeof basicInfo.category === 'string' ? basicInfo.category : undefined,
+                        status: basicInfo.status === 'draft' || basicInfo.status === 'closed' || basicInfo.status === 'archived' || basicInfo.status === 'active' ? basicInfo.status : 'published',
                     },
                     details: data.details && typeof data.details === 'object'
                         ? { ...data.details, skills: Array.isArray(data.details.skills) ? data.details.skills : [] }
@@ -243,7 +250,7 @@ export class JobsService {
                 } as JobRecord;
             }));
     
-            return jobs;
+            return jobs.filter((job) => job.basic_info.status === 'published' || job.basic_info.status === 'active');
         } catch (error) {
             console.error('Error in fetchJobs:', error);
             throw new Error('Failed to fetch jobs');

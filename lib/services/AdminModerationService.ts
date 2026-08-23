@@ -45,7 +45,7 @@ export class AdminModerationService {
       return await this.fetchReportsFromFirestore();
     } catch (firestoreError: unknown) {
       console.warn('[AdminModerationService] Firestore reports unavailable; trying the secure API.', firestoreError);
-      const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>('/api/moderation/reports', { authenticated: true, timeoutMs: 2_500 });
+      const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>('/api/moderation/reports', { authenticated: true, timeoutMs: 18_000 });
       if (!response.success) throw new Error(response.error || 'Failed to load reports');
       return this.normalizeReports(response.data ?? []);
     }

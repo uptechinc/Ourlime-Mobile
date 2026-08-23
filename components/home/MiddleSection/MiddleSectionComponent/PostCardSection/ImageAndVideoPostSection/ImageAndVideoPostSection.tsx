@@ -77,6 +77,7 @@ function VideoPostItem({
 
   // Track progress position smoothly while playing
   useEffect(() => {
+    if (!isActiveSlide || !isParentVisible || isSeeking) return;
     const interval = setInterval(() => {
       try {
         if (player && !isSeeking) {
@@ -88,7 +89,7 @@ function VideoPostItem({
       }
     }, 200);
     return () => clearInterval(interval);
-  }, [player, isSeeking]);
+  }, [isActiveSlide, isParentVisible, player, isSeeking]);
 
   const progressPercent = isSeeking ? seekPercent : Math.min(100, Math.max(0, (currentTime / duration) * 100));
 
@@ -434,19 +435,23 @@ export default function ImageAndVideoPostSection({
             key={item.id ?? `${item.typeUrl}-${index}`}
             style={{ width: MEDIA_WIDTH, height: 330, backgroundColor: '#111827' }}
           >
-            {item.type === 'video' ? (
+            {item.type === 'video' && index === activeIndex && isParentVisible ? (
               <VideoPostItem
                 url={item.typeUrl}
                 isActiveSlide={index === activeIndex}
                 isParentVisible={isParentVisible}
                 onLike={onLike}
               />
-            ) : (
+            ) : item.type === 'image' ? (
               <CachedImage
                 uri={item.typeUrl}
                 style={{ width: '100%', height: '100%' }}
                 recyclingKey={item.id ?? item.typeUrl}
               />
+            ) : (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111827' }}>
+                <Ionicons name="play-circle-outline" size={54} color="#d1d5db" />
+              </View>
             )}
           </View>
         ))}

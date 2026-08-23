@@ -9,6 +9,7 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { auth } from '@/lib/firebaseConfig';
 import { useCallStore } from '@/lib/store/useCallStore';
 import { platformEnvironmentService } from '@/lib/services/PlatformEnvironmentService';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type CallControlProps = { icon: keyof typeof Ionicons.glyphMap; label: string; active?: boolean; destructive?: boolean; onPress: () => void };
 
@@ -86,7 +87,8 @@ export default function GlobalCallOverlay() {
   const nativeUnavailable = !platformEnvironmentService.isNativeCallingSupported();
 
   return (
-    <Modal visible transparent={false} animationType="slide" onRequestClose={coordinator.minimize}>
+    <Modal visible transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={coordinator.minimize}>
+      <SwipeDismissSurface visible onDismiss={coordinator.minimize} handleColor="#475569" accessibilityLabel="Swipe down to minimize call" style={{ flex: 1, backgroundColor: '#0f172a' }}>
       <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: '#0f172a', paddingHorizontal: 24, justifyContent: 'space-between', paddingVertical: 16 }}>
         {session.type === 'video' ? <AgoraVideoViews remoteUid={remoteUid} showLocal={!isVideoMuted} /> : null}
 
@@ -149,6 +151,7 @@ export default function GlobalCallOverlay() {
           </View>
         )}
       </SafeAreaView>
+      </SwipeDismissSurface>
     </Modal>
   );
 }

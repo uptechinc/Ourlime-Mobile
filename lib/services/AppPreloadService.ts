@@ -23,6 +23,7 @@ export class AppPreloadService {
   private readonly logger = DiagnosticLogService.getInstance();
   private generation = 0;
   private activeKeys = new Set<string>();
+  private activeRun: { generation: number; userId: string; promise: Promise<void> } | null = null;
 
   private constructor() {}
 
@@ -34,15 +35,33 @@ export class AppPreloadService {
   public cancel(): void {
     this.generation += 1;
     this.activeKeys.clear();
+    this.apiService.cancelBackgroundRequests();
     this.logger.info('AppPreloadService', 'queue:cancel');
   }
 
-  public async preload(userId: string, canAccess: (route: string) => boolean): Promise<void> {
+  public preload(userId: string, canAccess: (route: string) => boolean): Promise<void> {
+    if (this.activeRun) {
+      if (this.activeRun.userId === userId && this.activeRun.generation === this.generation) {
+        return this.activeRun.promise;
+      }
+      return this.activeRun.promise.then(() => this.preload(userId, canAccess));
+    }
+
     const generation = ++this.generation;
+    const promise = this.performPreload(userId, canAccess, generation).finally(() => {
+      if (this.activeRun?.generation === generation) this.activeRun = null;
+    });
+    this.activeRun = { generation, userId, promise };
+    return promise;
+  }
+
+  private async performPreload(userId: string, canAccess: (route: string) => boolean, generation: number): Promise<void> {
     const homeQuery = { userId, scope: 'home' as const, filter: 'all' as const };
     await this.feedService.hydrate(homeQuery);
     if (generation !== this.generation) return;
-    void this.feedService.refresh(homeQuery).then(() => this.feedService.seedDerivedFilters(userId, 'home'));
+    await this.feedService.refresh(homeQuery);
+    if (generation !== this.generation) return;
+    await this.feedService.seedDerivedFilters(userId, 'home');
 
     const tasks = this.buildTasks(userId).filter((task) => canAccess(task.route));
     this.logger.info('AppPreloadService', 'queue:start', { taskCount: tasks.length, concurrency: 1 });

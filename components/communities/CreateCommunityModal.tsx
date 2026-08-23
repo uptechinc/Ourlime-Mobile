@@ -9,6 +9,7 @@ import type { CommunityCardModel, CommunityCategory, CreateCommunityInput } from
 import CustomModal from '@/components/ui/CustomModal';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type CreateCommunityModalProps = {
   visible: boolean;
@@ -123,7 +124,8 @@ export default function CreateCommunityModal({ visible, onClose, onCreated, cate
 
   return (
     <>
-      <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+      <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="none" presentationStyle="overFullScreen" onRequestClose={handleClose}>
+        <SwipeDismissSurface visible={visible} onDismiss={handleClose} handleColor={colors.border} disabled={submitting} accessibilityLabel="Swipe down to close community creation" style={{ flex: 1, backgroundColor: colors.canvas }}>
         <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><Text style={{ flex: 1, fontSize: 20, fontWeight: '900', color: colors.text }}>Create community</Text><TouchableOpacity onPress={handleClose} accessibilityLabel="Close create community"><X size={24} color={colors.icon} /></TouchableOpacity></View>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -167,6 +169,7 @@ export default function CreateCommunityModal({ visible, onClose, onCreated, cate
             </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
+        </SwipeDismissSurface>
       </Modal>
       <CustomModal visible={Boolean(error)} title="Community not created" message={error ?? ''} type="error" onClose={() => setError(null)} />
     </>

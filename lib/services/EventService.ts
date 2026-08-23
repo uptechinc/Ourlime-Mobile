@@ -40,7 +40,7 @@ export class EventService {
   public async fetchEvents(): Promise<Event[]> {
     try {
       const response = await this.apiService.request<{ status: 'success'; data: Event[] }>('/api/events/fetch', {
-        timeoutMs: 2_500,
+        timeoutMs: 18_000,
       });
       return Array.isArray(response.data) ? response.data : [];
     } catch {

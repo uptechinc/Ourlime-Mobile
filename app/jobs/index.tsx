@@ -1,423 +1,76 @@
-// components/jobs/JobsPage.tsx
-import { useState, useEffect } from 'react';
-import {
-  ScrollView,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Dimensions,
-  Platform,
-} from 'react-native';
-import {
-  Search,
-  Clock,
-  Sliders,
-  Code,
-  Palette,
-  LineChart,
-  Building2,
-  BookOpen,
-  Wrench,
-  Landmark,
-  ShoppingBag,
-  Utensils,
-  Stethoscope,
-  Briefcase,
-  Plus,
-  type LucideIcon,
-} from 'lucide-react-native';
-
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Briefcase, ClipboardList, Clock, Plus, Search, Settings2 } from 'lucide-react-native';
+import { useRouter, type Href } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import PageHeader from '@/components/ui/PageHeader';
 import { ProfessionalJobsList } from '@/components/jobs/ProfessionalJobsList';
 import { QuickTasksList } from '@/components/jobs/QuickTasksList';
-import { FreelanceProjectsList } from '@/components/jobs/FreelanceProjectsList';
 import JobCreationModal from '@/components/jobs/createJobsModal/jobCreationModal';
-import PageHeader from '@/components/ui/PageHeader';
-import {useRouter} from 'expo-router';
-import type { JobRecord } from '@/lib/job/JobsService';
+import { JobsService, type JobRecord } from '@/lib/job/JobsService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
-const { width } = Dimensions.get('window');
-
-// Dummy data
-const dummyJobs: JobRecord[] = [
-  // Professional
-  {
-    id: 'p1',
-    basic_info: {
-      type: 'professional',
-      title: 'Senior React Native Engineer',
-      description: 'Build high-performance mobile apps with Expo & TypeScript.',
-      userId: 'u1',
-      location: { type: 'remote', city: '', country: '' },
-      priceRange: { from: 60, to: 80 },
-      createdAt: { seconds: 1620000000 },
-    },
-    category: 'Development',
-    category_specific: {
-      name: 'Acme Corp',
-      industry: 'Technology',
-      size: '201-500',
-      benefits: ['Health Insurance', '401k Matching'],
-    },
-    details: { skills: ['React Native', 'TypeScript', 'Expo'] },
-  },
-  // Quick Task
-  {
-    id: 'q1',
-    basic_info: {
-      type: 'quickTask',
-      title: 'Logo Design',
-      description: 'Design a modern logo for our fintech startup.',
-      userId: 'u2',
-      location: { type: 'remote', city: '', country: '' },
-      priceRange: { from: 50, to: 100 },
-      createdAt: { seconds: 1625000000 },
-    },
-    details: { skills: ['Illustrator', 'Creativity'] },
-    category_specific: { urgency: 'medium', duration: '2 days', complexity: 'simple' },
-  },
-  // Freelance Promote
-  {
-    id: 'f1',
-    basic_info: {
-      type: 'freelancer',
-      title: 'Full-Stack Developer Available',
-      description: 'Experienced Node & React dev ready for your projects.',
-      userId: 'u3',
-      location: { type: 'remote', city: '', country: '' },
-      priceRange: { from: 40, to: 40 },
-      createdAt: { seconds: 1630000000 },
-    },
-    details: { skills: ['Node.js', 'React', 'GraphQL'] },
-    category_specific: { type: 'promote', proposals: 3, timeline: 'Flexible' },
-  },
-  // Freelance Request
-  {
-    id: 'f2',
-    basic_info: {
-      type: 'freelancer',
-      title: 'E-commerce Site Build',
-      description: 'Need an e-commerce site with Next.js and Stripe.',
-      userId: 'u4',
-      location: { type: 'onsite', city: 'London', country: 'UK' },
-      priceRange: { from: 2000, to: 5000 },
-      createdAt: { seconds: 1635000000 },
-    },
-    details: { skills: ['Next.js', 'Stripe', 'Tailwind'] },
-    category_specific: {
-      type: 'request',
-      proposals: 0,
-      timeline: '1 month',
-      deliverables: ['Setup Next.js', 'Integrate Stripe', 'Deploy to Vercel'],
-    },
-  },
-];
+type JobTab = 'professional' | 'quickTask';
+const jobsService = JobsService.getInstance();
 
 export default function JobsPage() {
   const router = useRouter();
   const { colors } = useAppTheme();
-  const [jobs] = useState(dummyJobs);
-  const [filtered, setFiltered] = useState(dummyJobs);
-  const [categories, setCategories] = useState<
-    { name: string; count: number; icon: LucideIcon }[]
-  >([]);
-  const [activeJobType, setActiveJobType] = useState<'professional' | 'quicktasks' | 'freelance'>(
-    'professional'
-  );
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const [jobs, setJobs] = useState<JobRecord[]>([]);
+  const [activeTab, setActiveTab] = useState<JobTab>('professional');
   const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
 
-  // Derive categories & filter by search
-  useEffect(() => {
-    const iconMap: Record<string, LucideIcon> = {
-      'Development': Code,
-      'Design': Palette,
-      'Marketing': LineChart,
-      'Business': Building2,
-      'Teaching': BookOpen,
-      'Plumbing': Wrench,
-      'Banking': Landmark,
-      'Retail': ShoppingBag,
-      'Food Service': Utensils,
-      'Healthcare': Stethoscope,
-      'Uncategorized': Briefcase,
-    };
+  const loadJobs = useCallback(async () => {
+    setError('');
+    try { setJobs(await jobsService.fetchJobs(30)); }
+    catch (loadError: unknown) { setError(loadError instanceof Error ? loadError.message : 'Jobs could not be loaded.'); }
+    finally { setLoading(false); setRefreshing(false); }
+  }, []);
 
-    // categories
-    const counts: Record<string, number> = {};
-    jobs.forEach((job: (typeof dummyJobs)[number]) => {
-      const categoryName = job.category ?? 'Uncategorized';
-      counts[categoryName] = (counts[categoryName] ?? 0) + 1;
+  useEffect(() => { void loadJobs(); }, [loadJobs]);
+
+  const categories = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const job of jobs) {
+      const category = job.basic_info.category || job.category || 'Uncategorized';
+      counts.set(category, (counts.get(category) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((leftCategory, rightCategory) => rightCategory[1] - leftCategory[1]);
+  }, [jobs]);
+
+  const filteredJobs = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+    return jobs.filter((job) => {
+      if (job.basic_info.type !== activeTab) return false;
+      const category = job.basic_info.category || job.category || 'Uncategorized';
+      if (selectedCategory && category !== selectedCategory) return false;
+      if (!normalizedSearch) return true;
+      return [job.basic_info.title, job.basic_info.description, category, job.category_specific.name ?? '', ...job.details.skills]
+        .some((value) => value.toLowerCase().includes(normalizedSearch));
     });
-    const cats = Object.entries(counts)
-      .map(([name, count]) => ({ name, count, icon: iconMap[name] ?? Briefcase }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-    setCategories(cats);
+  }, [activeTab, jobs, search, selectedCategory]);
 
-    // filter
-    if (!search.trim()) {
-      setFiltered(jobs);
-    } else {
-      const q = search.toLowerCase();
-      setFiltered(
-        jobs.filter(
-          (job: (typeof dummyJobs)[number]) =>
-            job.basic_info.title.toLowerCase().includes(q) ||
-            job.basic_info.description.toLowerCase().includes(q) ||
-            (job.category_specific.name?.toLowerCase() ?? '').includes(q) ||
-            job.details.skills.some((skill: string) => skill.toLowerCase().includes(q))
-        )
-      );
-    }
-  }, [jobs, search]);
-
-  const renderList = () => {
-    if (!filtered.length) {
-      return (
-        <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-          <Text style={{ color: '#6B7280' }}>No jobs found.</Text>
-        </View>
-      );
-    }
-    if (activeJobType === 'professional') return <ProfessionalJobsList jobs={filtered} />;
-    if (activeJobType === 'quicktasks') return <QuickTasksList jobs={filtered} />;
-    return <FreelanceProjectsList jobs={filtered} />;
-  };
-
-  return (
-    <>
-      <ScrollView style={{ flex: 1, backgroundColor: colors.canvas }} contentContainerStyle={{ paddingBottom: 40 }}>
-        <PageHeader 
-        title="Jobs"
-        onBackPress={() => router.back()}
-        />
-        {/* Hero */}
-        <View style={{ paddingHorizontal: 20, paddingTop: 40, alignItems: 'center' }}>
-          <Text style={{ fontSize: 24, fontWeight: '700', color: colors.text, textAlign: 'center' }}>
-            Find Your Next Career Opportunity
-          </Text>
-          <Text style={{ fontSize: 16, color: colors.mutedText, marginTop: 8, textAlign: 'center' }}>
-            Discover{' '}
-            <Text style={{ color: '#01eb53', fontWeight: '700' }}>{jobs.length}</Text> opportunities
-          </Text>
-        </View>
-
-        {/* Search + Filters */}
-        <View
-          style={{
-            marginHorizontal: 20,
-            marginTop: 16,
-            padding: 16,
-            backgroundColor: colors.surface,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 16,
-            // iOS shadow
-            shadowColor: '#000',
-            shadowOpacity: 0.05,
-            shadowRadius: 6,
-            shadowOffset: { width: 0, height: 2 },
-            // Android shadow
-            elevation: 2,
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View
-              style={{
-                flex: 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: colors.control,
-                borderRadius: 12,
-                paddingHorizontal: 12,
-                height: Platform.OS === 'ios' ? 40 : 44,
-              }}
-            >
-              <Search size={20} color="#9CA3AF" />
-              <TextInput
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Search jobs..."
-                placeholderTextColor={colors.mutedText}
-                style={{
-                  flex: 1,
-                  marginLeft: 8,
-                  fontSize: 14,
-                  height: '100%',
-                  color: colors.text,
-                }}
-                returnKeyType="search"
-                onSubmitEditing={() => setSearch(search.trim())}
-              />
-            </View>
-            <TouchableOpacity
-              onPress={() => setSearch(search.trim())}
-              style={{
-                marginLeft: 12,
-                backgroundColor: '#01eb53',
-                borderRadius: 12,
-                paddingHorizontal: 20,
-                height: Platform.OS === 'ios' ? 40 : 44,
-                justifyContent: 'center',
-              }}
-            >
-              <Text style={{ color: '#FFF', fontWeight: '600' }}>Search</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Quick Tags */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ marginTop: 12 }}
-            contentContainerStyle={{ paddingVertical: 4 }}
-          >
-            {['Remote', 'Full-time', 'Tech', 'Marketing', 'Design'].map((tag) => (
-              <View
-                key={tag}
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  backgroundColor: colors.surface,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 999,
-                  marginRight: 8,
-                }}
-              >
-                <Text style={{ fontSize: 12, color: colors.mutedText }}>{tag}</Text>
-              </View>
-            ))}
-            <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 999,
-                backgroundColor: '#F0FDF4',
-              }}
-            >
-              <Sliders size={16} color="#10B981" />
-              <Text style={{ fontSize: 12, color: '#10B981', marginLeft: 4 }}>Advanced</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-
-        {/* Create Job */}
-        <TouchableOpacity
-          onPress={() => setModalOpen(true)}
-          style={{
-            flexDirection: 'row',
-            alignSelf: 'flex-end',
-            backgroundColor: '#01eb53',
-            paddingHorizontal: 20,
-            paddingVertical: 10,
-            borderRadius: 999,
-            marginRight: 20,
-            marginTop: 16,
-            alignItems: 'center',
-          }}
-        >
-          <Plus size={18} color="#FFF" />
-          <Text style={{ color: '#FFF', fontWeight: '600', marginLeft: 6 }}>Create Job</Text>
-        </TouchableOpacity>
-
-        {/* Categories Carousel */}
-        {categories.length > 0 && (
-          <View style={{ marginTop: 32 }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingHorizontal: 20,
-                marginBottom: 12,
-              }}
-            >
-              <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>
-                Popular Categories
-              </Text>
-              <TouchableOpacity>
-                <Text style={{ color: '#01eb53', fontSize: 14 }}>View All</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              decelerationRate="fast"
-              snapToInterval={width}
-              contentContainerStyle={{ paddingVertical: 2 }}
-            >
-              {categories.map((c) => (
-                <View
-                  key={c.name}
-                  style={{
-                    backgroundColor: colors.surface,
-                    borderRadius: 16,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    marginHorizontal: 20,
-                    width: width - 40,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: 20,
-                    height: 140,
-                  }}
-                >
-                  <c.icon size={32} color="#01eb53" style={{ marginBottom: 12 }} />
-                  <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: 4 }}>
-                    {c.name}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: colors.mutedText }}>{c.count} jobs</Text>
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Job Type Tabs */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 24, paddingLeft: 20, marginBottom: 12 }}>
-          {([
-            { id: 'professional', label: 'Professional Jobs', icon: Briefcase },
-            { id: 'quicktasks',  label: 'Quick Tasks',        icon: Clock    },
-            { id: 'freelance',   label: 'Freelance',          icon: Code     },
-          ] as const).map((t) => {
-            const active = t.id === activeJobType;
-            return (
-              <TouchableOpacity
-                key={t.id}
-                onPress={() => setActiveJobType(t.id)}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingHorizontal: 20,
-                  paddingVertical: 10,
-                  borderRadius: 999,
-                  backgroundColor: active ? '#01eb53' : '#FFF',
-                  borderWidth: 1,
-                  borderColor: '#E5E7EB',
-                  marginRight: 12,
-                }}
-              >
-                <t.icon size={18} color={active ? '#FFF' : '#01eb53'} />
-                <Text style={{ marginLeft: 6, color: active ? '#FFF' : '#000000', fontWeight: active ? '600' : '400' }}>
-                  {t.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* Listings */}
-        {renderList()}
-      </ScrollView>
-
-      {/* Job Creation Modal */}
-      {modalOpen && <JobCreationModal isOpen onClose={() => setModalOpen(false)} />}
-    </>
-  );
+  return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+    <PageHeader title="Jobs" onBackPress={() => router.back()} />
+    <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void loadJobs(); }} tintColor="#10b981" />}>
+      <View style={styles.hero}><Briefcase size={30} color="#052e16" /><View style={styles.heroCopy}><Text style={styles.heroTitle}>Find your next opportunity</Text><Text style={styles.heroText}>{jobs.length} live professional jobs and quick tasks</Text></View></View>
+      <View style={styles.searchRow}><View style={styles.searchBox}><Search size={19} color={colors.mutedText} /><TextInput value={search} onChangeText={setSearch} placeholder="Search jobs, skills, companies…" placeholderTextColor={colors.mutedText} style={styles.searchInput} /></View><TouchableOpacity accessibilityRole="button" accessibilityLabel="My applications" onPress={() => router.push('/jobs/applications' as Href)} style={styles.applicationsButton}><ClipboardList size={19} color="#ffffff" /></TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Manage posted jobs" onPress={() => router.push('/jobs/manage')} style={styles.manageButton}><Settings2 size={19} color="#ffffff" /></TouchableOpacity></View>
+      {categories.length > 0 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}><TouchableOpacity onPress={() => setSelectedCategory(null)} style={[styles.chip, !selectedCategory && styles.chipActive]}><Text style={[styles.chipText, !selectedCategory && styles.chipTextActive]}>All</Text></TouchableOpacity>{categories.map(([category, count]) => <TouchableOpacity key={category} onPress={() => setSelectedCategory(category)} style={[styles.chip, selectedCategory === category && styles.chipActive]}><Text style={[styles.chipText, selectedCategory === category && styles.chipTextActive]}>{category} ({count})</Text></TouchableOpacity>)}</ScrollView> : null}
+      <View style={styles.toolbar}><View style={styles.tabs}>{([{ id: 'professional', label: 'Professional', Icon: Briefcase }, { id: 'quickTask', label: 'Quick Tasks', Icon: Clock }] as const).map(({ id, label, Icon }) => <TouchableOpacity key={id} onPress={() => setActiveTab(id)} style={[styles.tab, activeTab === id && styles.tabActive]}><Icon size={17} color={activeTab === id ? '#ffffff' : '#10b981'} /><Text style={[styles.tabText, activeTab === id && styles.tabTextActive]}>{label}</Text></TouchableOpacity>)}</View><TouchableOpacity onPress={() => setModalOpen(true)} style={styles.addButton}><Plus size={18} color="#ffffff" /></TouchableOpacity></View>
+      {error ? <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text><TouchableOpacity onPress={() => void loadJobs()}><Text style={styles.retryText}>Try again</Text></TouchableOpacity></View> : null}
+      {loading ? <ActivityIndicator size="large" color="#10b981" style={styles.loader} /> : activeTab === 'professional' ? <ProfessionalJobsList jobs={filteredJobs} /> : <QuickTasksList jobs={filteredJobs} />}
+    </ScrollView>
+    <JobCreationModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onCreated={() => void loadJobs()} />
+  </SafeAreaView>;
 }
+
+type ThemeColors = ReturnType<typeof useAppTheme>['colors'];
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: colors.canvas }, content: { paddingBottom: 50, gap: 16 }, hero: { marginHorizontal: 18, marginTop: 12, padding: 18, borderRadius: 20, backgroundColor: '#34d399', flexDirection: 'row', alignItems: 'center', gap: 12 }, heroCopy: { flex: 1 }, heroTitle: { color: '#052e16', fontSize: 21, fontWeight: '900' }, heroText: { color: '#065f46', marginTop: 4 }, searchRow: { marginHorizontal: 18, flexDirection: 'row', gap: 8 }, searchBox: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 14, paddingHorizontal: 13 }, searchInput: { flex: 1, color: colors.text, paddingVertical: 12 }, applicationsButton: { width: 46, height: 46, borderRadius: 14, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }, manageButton: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#0f766e', alignItems: 'center', justifyContent: 'center' }, chips: { paddingHorizontal: 18, gap: 8 }, chip: { borderRadius: 20, paddingHorizontal: 13, paddingVertical: 7, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, chipActive: { backgroundColor: '#10b981', borderColor: '#10b981' }, chipText: { color: colors.mutedText, fontSize: 12, fontWeight: '700' }, chipTextActive: { color: '#ffffff' }, toolbar: { paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 10 }, tabs: { flex: 1, flexDirection: 'row', gap: 8 }, tab: { flex: 1, minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, tabActive: { backgroundColor: colors.accent, borderColor: colors.accent }, tabText: { color: colors.text, fontSize: 12, fontWeight: '800' }, tabTextActive: { color: colors.onAccent }, addButton: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }, errorBox: { marginHorizontal: 18, backgroundColor: colors.destructiveSurface, padding: 14, borderRadius: 12 }, errorText: { color: colors.destructiveText }, retryText: { color: colors.successText, fontWeight: '800', marginTop: 8 }, loader: { marginVertical: 50 },
+});

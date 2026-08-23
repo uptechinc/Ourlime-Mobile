@@ -1,0 +1,4 @@
+interface:
+  display_name: "Native Build Stability"
+  short_description: "Standalone Android APK and iOS build diagnostic and stability procedures"
+  default_prompt: "Use $native-build-stability to diagnose standalone build crashes, Firebase configuration, or TurboModules reflection issues."

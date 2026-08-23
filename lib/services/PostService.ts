@@ -201,7 +201,7 @@ export class PostService {
     try {
       const response = await this.apiService.request<{ data?: unknown[]; error?: string }>(
         `/api/communities/fetch?type=posts&id=${encodeURIComponent(communityId)}`,
-        { authenticated: true, timeoutMs: 1_800 }
+        { authenticated: true, timeoutMs: 18_000 }
       );
       if (!response.data) throw new Error(response.error || 'Failed to load community posts');
       return response.data.flatMap((record): PostItem[] => {
@@ -226,7 +226,7 @@ export class PostService {
     try {
       const response = await this.apiService.request<FeedApiResponse>(
         `/api/home/MiddleSection/Post?${search}`,
-        { authenticated: Boolean(auth.currentUser), signal: options.signal, timeoutMs: 15_000 }
+        { authenticated: Boolean(auth.currentUser), signal: options.signal, timeoutMs: 20_000 }
       );
       if (!response.success) throw new Error(response.error || 'Failed to load posts');
       const posts = (response.data ?? []).flatMap((record): PostItem[] => {

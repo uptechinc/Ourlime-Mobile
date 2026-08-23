@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStickers } from '@/lib/hooks/useStickers';
 import type { Sticker } from '@/lib/types/sticker';
 import { getLocalStickerSource } from '@/assets/images/stickers/stickerMap';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type StickerPickerProps = {
   visible: boolean;
@@ -43,7 +44,7 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent
       presentationStyle="overFullScreen"
       onRequestClose={onClose}
@@ -55,7 +56,11 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
       />
 
       {/* Panel */}
-      <View
+      <SwipeDismissSurface
+        visible={visible}
+        onDismiss={onClose}
+        handleColor="#d1d5db"
+        accessibilityLabel="Swipe down to close sticker picker"
         style={{
           position: 'absolute',
           bottom: 0,
@@ -226,7 +231,7 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
             )}
           </ScrollView>
         )}
-      </View>
+      </SwipeDismissSurface>
     </Modal>
   );
 }

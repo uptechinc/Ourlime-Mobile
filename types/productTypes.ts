@@ -14,6 +14,8 @@ export type Product = {
     createdAt: unknown;
     views?: string;
     contactInfo?: ContactInfoItem[];
+    images?: string[];
+    status?: 'pending' | 'approved' | 'active' | 'rejected';
 };
 
 export type Colors = {
@@ -48,6 +50,33 @@ export type ProductVariant = {
     price: number;
     quantity: number;
     status: 'active' | 'inactive';
+};
+
+export type ProductSubImage = {
+    id: string;
+    productId: string;
+    imageName: string;
+};
+
+export type ProductOwnership = {
+    id: string;
+    productId: string;
+    userId: string;
+    sellerType: 'business' | 'personal';
+    profileImage?: string;
+    businessDetails?: {
+        name?: string;
+        description?: string;
+        location?: string;
+        established?: string;
+        contact?: { email?: string; phone?: string; website?: string };
+    };
+    businessOwner?: { name?: string; email?: string };
+    businessProfile?: {
+        rating?: { overall?: number; service?: number; delivery?: number; product?: number };
+        feedback?: { satisfaction?: number; resolution?: number; responseTime?: number };
+        reviews?: { total?: number; positive?: number; negative?: number };
+    };
 };
 
 export type ProductFormData = {

@@ -1,7 +1,8 @@
-import { Component } from 'react';
+import { Component, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { errorLogService } from '@/lib/services/ErrorLogService';
+import { crashReportingService } from '@/lib/services/CrashReportingService';
 
 type AppErrorBoundaryProps = {
   children: ReactNode;
@@ -12,6 +13,61 @@ type AppErrorBoundaryState = {
   error: Error | null;
   componentStack: string;
 };
+
+export type RouteErrorBoundaryProps = {
+  error: Error;
+  retry: () => Promise<void> | void;
+};
+
+/**
+ * RouteErrorBoundary
+ *
+ * Expo Router route-level error boundary. Renders a full recovery card and
+ * writes the error trace to the on-device log file.
+ */
+export function RouteErrorBoundary({ error, retry }: RouteErrorBoundaryProps): ReactNode {
+  useEffect(() => {
+    errorLogService.captureRenderError(error, error.stack ?? 'RouteErrorBoundary');
+    crashReportingService.recordError(error, 'RouteErrorBoundary');
+  }, [error]);
+
+  const logPath = errorLogService.getLogPath();
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.card}>
+        <View style={styles.iconWrapper}>
+          <Text style={styles.iconText}>⚠️</Text>
+        </View>
+
+        <Text style={styles.title}>Screen Error</Text>
+        <Text style={styles.subtitle}>
+          An unexpected error occurred while rendering this page.
+        </Text>
+
+        <View style={styles.errorBox}>
+          <Text style={styles.errorLabel}>Details</Text>
+          <Text style={styles.errorMessage} numberOfLines={4}>
+            {error?.message || 'Unknown runtime error'}
+          </Text>
+        </View>
+
+        {Boolean(logPath) && (
+          <View style={styles.pathBox}>
+            <Text style={styles.pathLabel}>📄 Diagnostics Log</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <Text style={styles.pathText} selectable>{logPath}</Text>
+            </ScrollView>
+          </View>
+        )}
+
+        <TouchableOpacity style={styles.retryButton} onPress={() => void retry()} activeOpacity={0.8}>
+          <Text style={styles.retryText}>Reload Screen</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
 
 /**
  * AppErrorBoundary
@@ -33,6 +89,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
   componentDidCatch(error: Error, info: { componentStack: string }): void {
     errorLogService.captureRenderError(error, info.componentStack);
+    crashReportingService.recordError(error, 'AppErrorBoundary');
   }
 
   private handleRetry = (): void => {
@@ -66,12 +123,14 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
           </View>
 
           {/* Log file path */}
-          <View style={styles.pathBox}>
-            <Text style={styles.pathLabel}>📄 Log file</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <Text style={styles.pathText} selectable>{logPath}</Text>
-            </ScrollView>
-          </View>
+          {Boolean(logPath) && (
+            <View style={styles.pathBox}>
+              <Text style={styles.pathLabel}>📄 Log file</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <Text style={styles.pathText} selectable>{logPath}</Text>
+              </ScrollView>
+            </View>
+          )}
 
           <Text style={styles.hint}>
             Pull this file from the device to review all grouped errors and warnings.

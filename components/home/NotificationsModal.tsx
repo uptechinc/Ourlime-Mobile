@@ -9,6 +9,7 @@ import {
   StatusBar,
   ActivityIndicator,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useRouter } from 'expo-router';
@@ -22,6 +23,8 @@ import { SkeletonNotificationRow } from './SkeletonLoaders';
 import type { NotificationData } from '@/lib/types/notification';
 import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 
 type NotificationsModalProps = {
   visible: boolean;
@@ -53,6 +56,7 @@ const getNotificationTime = (createdAt: NotificationData['createdAt']): number =
 export default function NotificationsModal({ visible, onClose }: NotificationsModalProps) {
   const router = useRouter();
   const { isDark, colors } = useAppTheme();
+  const swipeDismiss = useSwipeDismiss({ visible, onDismiss: onClose });
   const { notifications, unreadCount, isLoading, hasMore, loadMore, markAsRead, markAsUnread, markAllAsRead, deleteNotifications, refreshNotifications } = useNotifications();
 
   const [sortMode, setSortMode] = useState<SortMode>('unread_first');
@@ -426,9 +430,11 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
+      <Animated.View style={[{ flex: 1 }, swipeDismiss.animatedStyle]}>
       <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
+        <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close notifications" />
 
         {/* Modern Confirmation Dialog */}
         <CustomModal
@@ -665,6 +671,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
           )}
         </ScrollView>
       </SafeAreaView>
+      </Animated.View>
     </Modal>
   );
 }

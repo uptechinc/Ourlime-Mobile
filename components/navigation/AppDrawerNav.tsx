@@ -1,7 +1,6 @@
 import {
   View,
   Text,
-  TouchableOpacity,
   Modal,
   StyleSheet,
   ScrollView,
@@ -14,6 +13,8 @@ import { AuthService, type UserProfile } from '@/lib/services/AuthService';
 import { getAppNavigationItems, type AppNavigationItem } from '@/lib/navigation/AppNavigation';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
 
 type AppDrawerNavProps = {
   isOpen: boolean;
@@ -45,11 +46,10 @@ export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawer
   });
 
   return (
-    <Modal visible={isOpen} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={isOpen} transparent animationType="none" statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-        
-        <SafeAreaView edges={['top', 'left', 'right']} style={[styles.drawerCard, themeStyles.drawerCard]}>
+        <ModalMotionSurface variant="drawer" style={styles.drawerCard}>
+        <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={[styles.drawerContent, themeStyles.drawerCard]}>
           {/* Header Profile Section */}
           <View style={[styles.profileHeader, themeStyles.divider]}>
             <UserAvatar
@@ -63,19 +63,21 @@ export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawer
               </Text>
               <Text style={styles.profileHandle}>@{userProfile?.userName || 'user'}</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <AnimatedActionButton onPress={onClose} style={styles.closeBtn} accessibilityLabel="Close navigation">
               <Icon name="x" size={22} color={isDark ? '#cbd5e1' : '#64748b'} />
-            </TouchableOpacity>
+            </AnimatedActionButton>
           </View>
 
           {/* Navigation Links */}
           <ScrollView style={styles.menuScroll} contentContainerStyle={{ paddingVertical: 12, gap: 4 }}>
             {navItems.map((item) => (
-              <TouchableOpacity
+              <AnimatedActionButton
                 key={item.id}
                 onPress={() => navigateTo(item)}
                 style={[styles.menuRow, themeStyles.menuRow]}
-                activeOpacity={0.7}
+                accessibilityLabel={item.label}
+                pressScale={0.96}
+                playful={false}
               >
                 <View style={styles.iconCircle}>
                   <Icon name={item.featherIcon} size={18} color="#10b981" />
@@ -85,24 +87,29 @@ export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawer
                   <View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{item.badge || 'Soon'}</Text></View>
                 ) : null}
                 <Icon name="chevron-right" size={16} color={isDark ? '#cbd5e1' : '#94a3b8'} />
-              </TouchableOpacity>
+              </AnimatedActionButton>
             ))}
           </ScrollView>
 
           {/* Footer Sign Out */}
           <View style={[styles.footer, themeStyles.divider]}>
-            <TouchableOpacity
+            <AnimatedActionButton
               onPress={() => {
                 onClose();
                 void authService.logout().then(() => router.replace('/(auth)/login'));
               }}
               style={styles.signOutRow}
+              feedback="warning"
+              accessibilityLabel="Sign out"
+              pressScale={0.96}
             >
               <Icon name="log-out" size={18} color="#ef4444" />
               <Text style={styles.signOutText}>Sign Out</Text>
-            </TouchableOpacity>
+            </AnimatedActionButton>
           </View>
         </SafeAreaView>
+        </ModalMotionSurface>
+        <ModalBackdrop style={styles.backdrop} onPress={onClose} accessibilityLabel="Close navigation" />
       </View>
     </Modal>
   );
@@ -112,20 +119,23 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
   },
   backdrop: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
   },
   drawerCard: {
     width: 290,
-    backgroundColor: '#ffffff',
     height: '100%',
     shadowColor: '#000',
     shadowOffset: { width: 4, height: 0 },
     shadowOpacity: 0.15,
     shadowRadius: 16,
     elevation: 12,
+  },
+  drawerContent: {
+    flex: 1,
+    backgroundColor: '#ffffff',
   },
   profileHeader: {
     flexDirection: 'row',

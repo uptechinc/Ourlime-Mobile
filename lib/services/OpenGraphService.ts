@@ -7,8 +7,7 @@ export type LinkPreviewData = {
   domain?: string;
 };
 
-const cache = new Map<string, LinkPreviewData | null>();
-const pending = new Map<string, Promise<LinkPreviewData | null>>();
+const MAX_CACHE_ENTRIES = 100;
 
 const URL_PATTERN = /https?:\/\/[^\s<]+/gi;
 const TRAILING_PUNCTUATION = /[),.!?;:\]}]+$/;
@@ -34,6 +33,8 @@ export function extractDomain(url: string): string {
  */
 export class OpenGraphService {
   private static instance: OpenGraphService;
+  private readonly cache = new Map<string, LinkPreviewData | null>();
+  private readonly pending = new Map<string, Promise<LinkPreviewData | null>>();
 
   private constructor() {}
 
@@ -50,12 +51,19 @@ export class OpenGraphService {
       return null;
     }
 
-    if (cache.has(cleanUrl)) return cache.get(cleanUrl) ?? null;
-    if (pending.has(cleanUrl)) return pending.get(cleanUrl)!;
+    if (this.cache.has(cleanUrl)) {
+      const cached = this.cache.get(cleanUrl) ?? null;
+      this.cache.delete(cleanUrl);
+      this.cache.set(cleanUrl, cached);
+      return cached;
+    }
+    const pendingPreview = this.pending.get(cleanUrl);
+    if (pendingPreview) return pendingPreview;
 
     const promise = this.doFetch(cleanUrl)
       .then((data) => {
-        if (data) cache.set(cleanUrl, data);
+        this.cache.set(cleanUrl, data);
+        this.trimCache();
         return data;
       })
       .catch((e) => {
@@ -63,11 +71,24 @@ export class OpenGraphService {
         return null;
       })
       .finally(() => {
-        pending.delete(cleanUrl);
+        this.pending.delete(cleanUrl);
       });
 
-    pending.set(cleanUrl, promise);
+    this.pending.set(cleanUrl, promise);
     return promise;
+  }
+
+  public clearMemoryCache(): void {
+    this.cache.clear();
+    this.pending.clear();
+  }
+
+  private trimCache(): void {
+    while (this.cache.size > MAX_CACHE_ENTRIES) {
+      const oldestKey = this.cache.keys().next().value;
+      if (typeof oldestKey !== 'string') return;
+      this.cache.delete(oldestKey);
+    }
   }
 
   private async doFetch(url: string): Promise<LinkPreviewData | null> {

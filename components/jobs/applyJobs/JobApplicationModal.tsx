@@ -1,530 +1,70 @@
-import { Fragment, useState } from 'react';
-import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
-import {
-  X,
-  FileText,
-  CheckCircle,
-} from 'lucide-react-native';
-// Firebase disabled for now – uncomment & configure when ready
-// import { storage, db, auth } from '@/lib/firebaseConfig';
-// import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import * as DocumentPicker from 'expo-document-picker';
+import { Check, FileText, X } from 'lucide-react-native';
+import { jobApplicationService, type JobApplicationAnswers, type ResumeAsset } from '@/lib/services/JobApplicationService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 
-type Question = {
-  id: string;
-  question?: string;
-  type?: string;
-  options?: string[];
-};
-
+type Question = { id: string; question?: string; type?: string; options?: string[] };
 type JobApplicationModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  job: {
-    id: string;
-    basic_info: { title: string };
-    category_specific: { name?: string };
-    creator?: { name: string; profileImage?: string; email?: string };
-    questions?: Question[];
-  };
-  jobType: 'professional' | 'quicktasks' | 'freelance';
+  job: { id: string; basic_info: { title: string }; category_specific: { name?: string }; questions?: Question[] };
+  jobType: 'professional' | 'quicktasks' | 'quickTask';
 };
 
-export default function JobApplicationModal({
-  isOpen,
-  onClose,
-  job,
-  jobType,
-}: JobApplicationModalProps) {
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
-  const [coverLetter, setCoverLetter] = useState('');
-  const [resumeFile] = useState<string | null>(null); // path / uri
-  const [portfolioLink, setPortfolioLink] = useState('');
-  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const totalSteps = 3;
-
-  const handleAnswerChange = (
-    questionId: string,
-    value: string | string[],
-  ) => {
-    setAnswers(prev => ({ ...prev, [questionId]: value }));
-  };
-
-  const validateCurrentStep = () => {
-    switch (currentStep) {
-      case 1:
-        return coverLetter.trim().length >= 100;
-      case 2:
-        return Boolean(resumeFile);
-      case 3:
-        return (
-          (job.questions?.length ?? 0) > 0 &&
-          Object.keys(answers).length === job.questions?.length
-        );
-      default:
-        return false;
-    }
-  };
-
-  const handleNext = () => {
-    if (validateCurrentStep()) {
-      setCurrentStep(prev => (prev < 3 ? (prev + 1) as 2 | 3 : prev));
-    } else {
-      // Replace with your Toast lib of choice
-      console.warn('Please complete all required fields.');
-    }
-  };
-
-  const handleBack = () => {
-    setCurrentStep(prev => (prev > 1 ? (prev - 1) as 1 | 2 : prev));
-  };
+export default function JobApplicationModal({ isOpen, onClose, job, jobType }: JobApplicationModalProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const [coverLetter, setCoverLetter] = useState(''); const [resume, setResume] = useState<ResumeAsset | null>(null); const [portfolioLink, setPortfolioLink] = useState('');
+  const [answers, setAnswers] = useState<JobApplicationAnswers>({}); const [accepted, setAccepted] = useState(false); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState(''); const [success, setSuccess] = useState(false);
+  const isQuickTask = jobType === 'quicktasks' || jobType === 'quickTask';
 
   const handleFilePick = async () => {
-    // 👉🏾 Use any picker you prefer, e.g. expo-document-picker
-    // const result = await DocumentPicker.getDocumentAsync({ type: '*/*' });
-    // if (result.type === 'success') setResumeFile(result.uri);
-    console.warn('Document picker not wired yet.');
+    const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], copyToCacheDirectory: true, multiple: false });
+    if (!result.canceled && result.assets[0]) { const asset = result.assets[0]; setResume({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType }); }
   };
+
+  const handleAnswer = (questionId: string, value: string) => setAnswers((current) => ({ ...current, [questionId]: value }));
 
   const handleSubmit = async () => {
-    if (!validateCurrentStep()) return;
-    setIsSubmitting(true);
-
+    if (!isQuickTask && coverLetter.trim().length < 100) { setError('Your cover letter must be at least 100 characters.'); return; }
+    if (!isQuickTask && !resume) { setError('Select a PDF, DOC, or DOCX resume.'); return; }
+    const missingQuestion = job.questions?.find((question) => { const answer = answers[question.id]; return !answer || (Array.isArray(answer) ? answer.length === 0 : !answer.trim()); });
+    if (missingQuestion) { setError('Answer every screening question.'); return; }
+    if (!accepted) { setError('Accept the applicant disclaimer before submitting.'); return; }
+    setSubmitting(true); setError('');
     try {
-      /* ========= TODO / Firebase upload & submit ==============
-      let resumeUrl = '';
-      if (resumeFile) {
-        const filename = resumeFile.split('/').pop()!;
-        const storageRef = ref(storage, `applications/${auth.currentUser?.uid}/${filename}`);
-        const fileBlob = await fetch(resumeFile).then(r => r.blob());
-        const uploadResult = await uploadBytes(storageRef, fileBlob);
-        resumeUrl = await getDownloadURL(uploadResult.ref);
-      }
-
-      const applicationData = {
-        userId: auth.currentUser?.uid,
-        jobId: job.id,
-        jobType,
-        coverLetter,
-        resumeUrl,
-        portfolioLink: portfolioLink || null,
-        answers,
-      };
-      // send to your API / Firestore
-      =========================================================*/
-      console.log('🚀 SUBMIT PAYLOAD', {
-        jobType,
-        coverLetter,
-        resumeFile,
-        portfolioLink,
-        answers,
-      });
-      // Replace with toast success
-      console.log('Application submitted successfully!');
-      onClose();
-    } catch (err) {
-      console.error('Submission error', err);
-    } finally {
-      setIsSubmitting(false);
-    }
+      await jobApplicationService.createApplication({ jobId: job.id, jobType: isQuickTask ? 'quickTask' : 'professional', coverLetter, resume: resume ?? undefined, portfolioLink, answers });
+      setSuccess(true);
+    } catch (submitError: unknown) { setError(submitError instanceof Error ? submitError.message : 'Your application could not be submitted.'); }
+    finally { setSubmitting(false); }
   };
 
-  if (!isOpen || !job) return null;
-
-  /* ---------- UI helpers ---------- */
-  const StepDot = ({ step }: { step: 1 | 2 | 3 }) => {
-    const bg =
-      currentStep === step
-        ? styles.stepActive
-        : currentStep > step
-        ? styles.stepDone
-        : styles.stepInactive;
-    return (
-      <View style={[styles.stepCircle, bg]}>
-        {currentStep > step ? (
-          <CheckCircle size={14} color="#01eb53" />
-        ) : (
-          <Text style={styles.stepNumber}>{step}</Text>
-        )}
-      </View>
-    );
-  };
-
-  return (
-    <Modal
-      visible={isOpen}
-      animationType="slide"
-      onRequestClose={onClose}
-      transparent
-    >
-      {/* Backdrop */}
-      <TouchableOpacity style={{
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  }} activeOpacity={1} onPress={onClose} />
-
-      {/* Sheet */}
-      <View style={styles.sheet}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <X size={20} />
-          </TouchableOpacity>
-
-          <Text style={styles.title}>{job.basic_info.title}</Text>
-          <Text style={styles.subTitle}>{job.category_specific.name}</Text>
-
-          {/* Progress */}
-          <View style={styles.progressRow}>
-            {[1, 2, 3].map(s => (
-              <Fragment key={s}>
-                <StepDot step={s as 1 | 2 | 3} />
-                {s < 3 && (
-                  <View
-                    style={[
-                      styles.stepLine,
-                      currentStep > s && { backgroundColor: '#10B981' },
-                    ]}
-                  />
-                )}
-              </Fragment>
-            ))}
-          </View>
-        </View>
-
-        {/* Body */}
-        <ScrollView contentContainerStyle={styles.content}>
-          {currentStep === 1 && (
-            <>
-              <Text style={styles.sectionTitle}>Cover Letter</Text>
-              <Text style={styles.sectionHint}>
-                Tell us why you’re the perfect fit for this role.
-              </Text>
-              <TextInput
-                value={coverLetter}
-                onChangeText={setCoverLetter}
-                placeholder="Write your cover letter here..."
-                multiline
-                style={styles.textArea}
-              />
-              <Text style={styles.charCount}>
-                {coverLetter.length} / 100 characters
-              </Text>
-            </>
-          )}
-
-          {currentStep === 2 && (
-            <>
-              <Text style={styles.sectionTitle}>Resume Upload</Text>
-              <TouchableOpacity
-                style={styles.uploadBox}
-                onPress={handleFilePick}
-              >
-                {resumeFile ? (
-                  <>
-                    <FileText size={32} color="#10B981" />
-                    <Text style={styles.uploadName}>
-                      {resumeFile.split('/').pop()}
-                    </Text>
-                    <Text style={styles.uploadHint}>Tap to change file</Text>
-                  </>
-                ) : (
-                  <>
-                    <FileText size={32} color="#9CA3AF" />
-                    <Text style={styles.uploadName}>Tap to pick file</Text>
-                    <Text style={styles.uploadHint}>PDF / DOC / DOCX</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-
-              <Text style={[styles.sectionTitle, { marginTop: 24 }]}>
-                Portfolio Link (optional)
-              </Text>
-              <TextInput
-                value={portfolioLink}
-                onChangeText={setPortfolioLink}
-                placeholder="https://your-portfolio.com"
-                style={styles.input}
-                autoCapitalize="none"
-                keyboardType={Platform.OS === 'ios' ? 'url' : 'default'}
-              />
-            </>
-          )}
-
-          {currentStep === 3 && (
-            <>
-              <Text style={styles.sectionTitle}>Screening Questions</Text>
-              {job.questions?.map(q => (
-                <View key={q.id} style={styles.questionBox}>
-                  <Text style={styles.questionLabel}>{q.question}</Text>
-
-                  {q.type === 'input' && (
-                    <TextInput
-                      placeholder="Your answer"
-                      style={styles.input}
-                      onChangeText={v => handleAnswerChange(q.id, v)}
-                    />
-                  )}
-
-                  {q.type === 'dropdown' && (
-                    <View style={styles.dropdown}>
-                      {q.options?.map(opt => (
-                        <TouchableOpacity
-                          key={opt}
-                          style={styles.dropdownItem}
-                          onPress={() => handleAnswerChange(q.id, opt)}
-                        >
-                          <Text>{opt}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-
-                  {q.type === 'checkbox' && (
-                    q.options?.map(opt => {
-                      const selected = (answers[q.id] as string[] | undefined)?.includes(opt);
-                      return (
-                        <TouchableOpacity
-                          key={opt}
-                          style={[
-                            styles.checkboxRow,
-                            selected && styles.checkboxRowSelected,
-                          ]}
-                          onPress={() => {
-                            const arr = (answers[q.id] as string[]) || [];
-                            const newArr = selected
-                              ? arr.filter(a => a !== opt)
-                              : [...arr, opt];
-                            handleAnswerChange(q.id, newArr);
-                          }}
-                        >
-                          <View
-                            style={[
-                              styles.checkbox,
-                              selected && styles.checkboxChecked,
-                            ]}
-                          />
-                          <Text>{opt}</Text>
-                        </TouchableOpacity>
-                      );
-                    })
-                  )}
-                </View>
-              ))}
-            </>
-          )}
-        </ScrollView>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          {currentStep > 1 && (
-            <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
-              <Text style={styles.backText}>Back</Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            style={[
-              styles.nextBtn,
-              !validateCurrentStep() && { opacity: 0.5 },
-            ]}
-            disabled={!validateCurrentStep() || isSubmitting}
-            onPress={currentStep === totalSteps ? handleSubmit : handleNext}
-          >
-            {isSubmitting ? (
-              <>
-                <ActivityIndicator color="#FFF" />
-                <Text style={styles.nextText}>Submitting...</Text>
-              </>
-            ) : (
-              <Text style={styles.nextText}>
-                {currentStep === totalSteps ? 'Submit Application' : 'Continue'}
-              </Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
+  const handleClose = () => { setSuccess(false); onClose(); };
+  const swipeDismiss = useSwipeDismiss({ visible: isOpen, onDismiss: handleClose, disabled: submitting });
+  return <Modal visible={isOpen} transparent animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}><View style={styles.backdrop}><Animated.View style={[styles.sheet, swipeDismiss.animatedStyle]}>
+    <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close job application" />
+    <View style={styles.header}><View style={styles.headerCopy}><Text style={styles.title}>{success ? 'Application sent' : `Apply for ${job.basic_info.title}`}</Text><Text style={styles.subtitle}>{job.category_specific.name || (isQuickTask ? 'Quick Task' : 'Professional Job')}</Text></View><TouchableOpacity onPress={swipeDismiss.dismissWithAnimation}><X size={22} color={colors.icon} /></TouchableOpacity></View>
+    {success ? <View style={styles.success}><View style={styles.successIcon}><Check size={32} color="#ffffff" /></View><Text style={styles.successTitle}>Application submitted</Text><Text style={styles.hint}>The employer can now review your application from their Jobs workspace.</Text><TouchableOpacity onPress={handleClose} style={styles.submit}><Text style={styles.submitText}>Done</Text></TouchableOpacity></View> : <>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {!isQuickTask ? <><Text style={styles.label}>Cover letter</Text><TextInput value={coverLetter} onChangeText={setCoverLetter} placeholder="Explain why you're a strong fit…" placeholderTextColor={colors.mutedText} multiline style={[styles.input, styles.textArea]} /><Text style={styles.hint}>{coverLetter.trim().length}/100 minimum characters</Text>
+        <Text style={styles.label}>Resume</Text><TouchableOpacity onPress={() => void handleFilePick()} style={styles.upload}><FileText size={27} color={resume ? colors.accent : colors.icon} /><Text style={styles.uploadText}>{resume?.name || 'Choose PDF, DOC, or DOCX'}</Text></TouchableOpacity>
+        <Text style={styles.label}>Portfolio link (optional)</Text><TextInput value={portfolioLink} onChangeText={setPortfolioLink} autoCapitalize="none" keyboardType="url" placeholder="https://…" placeholderTextColor={colors.mutedText} style={styles.input} /></> : <Text style={styles.hint}>Quick tasks use a short application. Answer the questions below, if any, and submit.</Text>}
+        {(job.questions ?? []).map((question) => { const answer = answers[question.id]; const textAnswer = typeof answer === 'string' ? answer : ''; return <View key={question.id} style={styles.question}><Text style={styles.label}>{question.question || 'Screening question'}</Text>{question.options?.length ? <View style={styles.options}>{question.options.map((option) => <TouchableOpacity key={option} onPress={() => handleAnswer(question.id, option)} style={[styles.option, answer === option && styles.optionSelected]}><Text style={[styles.optionText, answer === option && styles.optionTextSelected]}>{option}</Text></TouchableOpacity>)}</View> : <TextInput value={textAnswer} onChangeText={(value) => handleAnswer(question.id, value)} placeholder="Your answer" placeholderTextColor={colors.mutedText} style={styles.input} />}</View>; })}
+        <TouchableOpacity onPress={() => setAccepted((current) => !current)} style={styles.disclaimer}><View style={[styles.checkbox, accepted && styles.checkboxSelected]}>{accepted ? <Check size={14} color="#ffffff" /> : null}</View><Text style={styles.disclaimerText}>I confirm this information is accurate and agree it may be shared with the employer for this application.</Text></TouchableOpacity>
+        {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+      </ScrollView>
+      <View style={styles.footer}><TouchableOpacity onPress={handleClose} style={styles.cancel}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity><TouchableOpacity disabled={submitting} onPress={() => void handleSubmit()} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.submitText}>Submit application</Text>}</TouchableOpacity></View>
+    </>}
+  </Animated.View></View></Modal>;
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  sheet: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: '100%',
-    maxWidth: 600,
-    backgroundColor: '#FFF',
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 10,
-  },
-  header: {
-    padding: 20,
-    backgroundColor: '#ECFDF5',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  closeBtn: {
-    position: 'absolute',
-    left: 16,
-    top: 16,
-    padding: 8,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-    color: '#111827',
-  },
-  subTitle: {
-    textAlign: 'center',
-    color: '#4B5563',
-    marginTop: 4,
-  },
-  progressRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  stepCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepActive: {
-    backgroundColor: '#10B981',
-  },
-  stepDone: {
-    backgroundColor: '#D1FAE5',
-  },
-  stepInactive: {
-    backgroundColor: '#F3F4F6',
-  },
-  stepNumber: { color: '#FFF', fontWeight: '600' },
-  stepLine: {
-    width: 48,
-    height: 2,
-    backgroundColor: '#E5E7EB',
-  },
-  content: { padding: 20 },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  sectionHint: { color: '#6B7280', marginBottom: 12 },
-  textArea: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    padding: 12,
-    minHeight: 160,
-    textAlignVertical: 'top',
-  },
-  charCount: {
-    alignSelf: 'flex-end',
-    marginTop: 4,
-    color: '#6B7280',
-  },
-  uploadBox: {
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    paddingVertical: 32,
-    alignItems: 'center',
-  },
-  uploadName: { fontWeight: '600', color: '#111827', marginTop: 8 },
-  uploadHint: { fontSize: 12, color: '#6B7280' },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 8,
-  },
-  questionBox: {
-    marginTop: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 16,
-  },
-  questionLabel: { fontWeight: '500', marginBottom: 8 },
-  dropdown: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  dropdownItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 6,
-  },
-  checkboxRowSelected: { backgroundColor: '#ECFDF5', borderRadius: 8 },
-  checkbox: {
-    width: 18,
-    height: 18,
-    borderWidth: 1,
-    borderColor: '#9CA3AF',
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  checkboxChecked: { backgroundColor: '#10B981', borderColor: '#10B981' },
-  footer: {
-    flexDirection: 'row',
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    gap: 12,
-  },
-  backBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  backText: { fontWeight: '600', color: '#111827' },
-  nextBtn: {
-    flex: 1,
-    backgroundColor: '#10B981',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  nextText: { color: '#FFF', fontWeight: '600' },
+type ThemeColors = ReturnType<typeof useAppTheme>['colors'];
+
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: colors.modalScrim, justifyContent: 'flex-end' }, sheet: { backgroundColor: colors.surface, maxHeight: '92%', borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' }, header: { flexDirection: 'row', alignItems: 'center', padding: 18, borderBottomWidth: 1, borderBottomColor: colors.border }, headerCopy: { flex: 1 }, title: { color: colors.text, fontSize: 18, fontWeight: '900' }, subtitle: { color: colors.mutedText, marginTop: 3 }, content: { padding: 18, gap: 12 }, label: { color: colors.secondaryText, fontSize: 13, fontWeight: '800' }, input: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 11, color: colors.text, backgroundColor: colors.input }, textArea: { minHeight: 130, textAlignVertical: 'top' }, hint: { color: colors.mutedText, fontSize: 12, lineHeight: 18 }, upload: { minHeight: 92, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, backgroundColor: colors.input, alignItems: 'center', justifyContent: 'center', gap: 7 }, uploadText: { color: colors.secondaryText, fontWeight: '700' }, question: { gap: 8, paddingTop: 8 }, options: { gap: 7 }, option: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, borderRadius: 10, padding: 10 }, optionSelected: { borderColor: colors.accent, backgroundColor: colors.successSurface }, optionText: { color: colors.secondaryText }, optionTextSelected: { color: colors.successText, fontWeight: '700' }, disclaimer: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 10 }, checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }, checkboxSelected: { backgroundColor: colors.accent, borderColor: colors.accent }, disclaimerText: { flex: 1, color: colors.secondaryText, fontSize: 12, lineHeight: 18 }, error: { color: colors.destructiveText, backgroundColor: colors.destructiveSurface, padding: 10, borderRadius: 10 }, footer: { flexDirection: 'row', gap: 10, padding: 18, borderTopWidth: 1, borderTopColor: colors.border }, cancel: { flex: 1, minHeight: 46, borderRadius: 12, backgroundColor: colors.control, alignItems: 'center', justifyContent: 'center' }, cancelText: { color: colors.secondaryText, fontWeight: '800' }, submit: { flex: 1, minHeight: 46, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }, submitText: { color: colors.onAccent, fontWeight: '900' }, disabled: { opacity: 0.5 }, success: { alignItems: 'center', padding: 30, gap: 14 }, successIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }, successTitle: { color: colors.text, fontSize: 21, fontWeight: '900' },
 });

@@ -8,6 +8,7 @@ export type NotificationType =
   | 'repost'
   | 'mention'
   | 'community_invite'
+  | 'project_invite'
   | 'role_change'
   | 'community_report'
   | 'report_action'
@@ -26,6 +27,7 @@ export type NotificationMetadata = {
   sourceUserName?: string;
   senderId?: string;
   communityId?: string;
+  projectId?: string;
   limeId?: string;
   reelId?: string;
   reportId?: string;

@@ -1,6 +1,7 @@
 import { View, Text, Image, TextInput, ScrollView } from 'react-native';
 import { Heart, MessageCircle, Share } from 'lucide-react-native';
 import type { SocialPosts } from '@/types/global';
+import { linkPresentationService } from '@/lib/services/LinkPresentationService';
 
 function formatDate(time: number | { seconds: number }): string {
   // Accepts either a JS timestamp or a Firestore Timestamp-like object
@@ -51,7 +52,7 @@ export default function AllPosts({ allPosts }: { allPosts: SocialPosts[] }) {
               <Text style={{ marginLeft: 'auto', fontSize: 13, color: '#888' }}>{formatDate(post.time)}</Text>
             </View>
             <View style={{ marginTop: 12 }}>
-              <Text style={{ fontSize: 16 }}>{post.content}</Text>
+              <Text style={{ fontSize: 16 }}>{linkPresentationService.compactUrlsInText(post.content)}</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
                 {post.type.video?.length > 1 && (
                   <View style={{ width: '100%', height: 240, backgroundColor: '#00000022', justifyContent: 'center', alignItems: 'center', borderRadius: 8 }}>

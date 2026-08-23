@@ -67,7 +67,7 @@ export class AdminUserService {
       return await this.fetchUsersFromFirestore(cursor);
     } catch (firestoreError: unknown) {
       console.warn('[AdminUserService] Firestore users unavailable; trying the secure API.', firestoreError);
-      const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string; pagination?: { hasMore?: boolean; nextCursor?: string | null } }>(`/api/admin/users?${search.toString()}`, { authenticated: true, timeoutMs: 2_500 });
+      const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string; pagination?: { hasMore?: boolean; nextCursor?: string | null } }>(`/api/admin/users?${search.toString()}`, { authenticated: true, timeoutMs: 18_000 });
       if (!response.success) throw new Error(response.error || 'Unable to load users');
       return this.createPage(response.data ?? [], response.pagination?.hasMore === true, response.pagination?.nextCursor ?? null);
     }
@@ -75,7 +75,7 @@ export class AdminUserService {
 
   public async updateRole(userId: string, role: AdminUserRole): Promise<void> {
     try {
-      await this.apiService.request(`/api/admin/users/${encodeURIComponent(userId)}/role`, { method: 'PATCH', authenticated: true, body: { role }, timeoutMs: 8_000 });
+      await this.apiService.request(`/api/admin/users/${encodeURIComponent(userId)}/role`, { method: 'PATCH', authenticated: true, body: { role }, timeoutMs: 18_000 });
     } catch (error: unknown) {
       if (error instanceof ApiServiceError && error.code === 'REQUEST_TIMEOUT') {
         throw new Error('Role changes require the secure Ourlime server, which is currently unavailable.');
@@ -86,7 +86,7 @@ export class AdminUserService {
 
   public async updateLifecycle(userId: string, action: 'archive' | 'unarchive' | 'delete_permanently'): Promise<void> {
     try {
-      await this.apiService.request(`/api/admin/users/${encodeURIComponent(userId)}/lifecycle`, { method: 'POST', authenticated: true, body: { action }, timeoutMs: 8_000 });
+      await this.apiService.request(`/api/admin/users/${encodeURIComponent(userId)}/lifecycle`, { method: 'POST', authenticated: true, body: { action }, timeoutMs: 18_000 });
     } catch (error: unknown) {
       if (error instanceof ApiServiceError && error.code === 'REQUEST_TIMEOUT') {
         throw new Error('Account lifecycle actions require the secure Ourlime server, which is currently unavailable.');

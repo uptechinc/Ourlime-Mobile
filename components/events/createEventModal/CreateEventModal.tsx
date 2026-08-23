@@ -9,11 +9,15 @@ import {
   Image,
   Platform,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Save, Send, X, XCircle, Plus } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Toast from 'react-native-toast-message';
 import { AuthService } from '@/lib/services/AuthService';
 import { EventService } from '@/lib/services/EventService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 
 const authService = AuthService.getInstance();
 const eventService = EventService.getInstance();
@@ -22,6 +26,7 @@ const eventService = EventService.getInstance();
 type CreateEventModalProps = {
   visible: boolean;
   onClose: () => void;
+  onCreated?: () => void;
 };
 type MediaSource = { url: string; type: 'image' | 'video'; isVerified: boolean };
 
@@ -53,7 +58,8 @@ const END_FIELDS: DateField[] = [
 ];
 
 /* ─────────── Component ─────────── */
-export default function CreateEventModal({ visible, onClose }: CreateEventModalProps) {
+export default function CreateEventModal({ visible, onClose, onCreated }: CreateEventModalProps) {
+  const { colors } = useAppTheme();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentTag, setCurrentTag] = useState('');
   const [currentMediaUrl, setCurrentMediaUrl] = useState('');
@@ -71,6 +77,7 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
     recurrence: 'none',
     category: '',
   });
+  const swipeDismiss = useSwipeDismiss({ visible, onDismiss: onClose, disabled: isSubmitting });
 
   /* ───────── File handling ───────── */
   const pickCoverImage = async () => {
@@ -151,6 +158,7 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
           profileImage: profile?.profilePicture || user.photoURL || null,
         },
       });
+      onCreated?.();
       Toast.show({ type: 'success', text1: 'Event created!' });
       resetForm();
       onClose();
@@ -181,23 +189,27 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
 
   /* ───────── UI ───────── */
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
       <View
         style={{
           flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.45)',
+          backgroundColor: colors.modalScrim,
           justifyContent: 'center',
           paddingHorizontal: 12,
         }}
       >
-        <View
-          style={{
-            backgroundColor: '#fff',
-            borderRadius: 20,
-            maxHeight: '92%',
-            overflow: 'hidden',
-          }}
+        <Animated.View
+          style={[
+            {
+              backgroundColor: colors.surface,
+              borderRadius: 20,
+              maxHeight: '92%',
+              overflow: 'hidden',
+            },
+            swipeDismiss.animatedStyle,
+          ]}
         >
+          <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close event creation" />
           {/* Header */}
           <View
             style={{
@@ -206,35 +218,38 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
               paddingVertical: 14,
               paddingHorizontal: 20,
               borderBottomWidth: 0.5,
-              borderColor: '#e5e7eb',
+              borderColor: colors.border,
             }}
           >
             <View>
-              <Text style={{ fontSize: 18, fontWeight: '600', color: '#111827' }}>
+              <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>
                 Create New Event
               </Text>
-              <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+              <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 2 }}>
                 Host a gathering, workshop, or celebration
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} hitSlop={12}>
-              <XCircle size={22} color="#6b7280" />
+              <XCircle size={22} color={colors.icon} />
             </TouchableOpacity>
           </View>
 
           {/* Body */}
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
             {/* Title */}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
               Title <Text style={{ color: '#ef4444' }}>*</Text>
             </Text>
             <TextInput
               placeholder="Event title"
               value={formData.title}
               onChangeText={v => setFormData(p => ({ ...p, title: v }))}
+              placeholderTextColor={colors.mutedText}
               style={{
                 borderWidth: 1,
-                borderColor: '#d1d5db',
+                borderColor: colors.border,
+                backgroundColor: colors.input,
+                color: colors.text,
                 borderRadius: 8,
                 paddingHorizontal: 10,
                 paddingVertical: Platform.OS === 'ios' ? 12 : 8,
@@ -246,16 +261,19 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
             {/* Dates & Times */}
             {START_FIELDS.map(field => (
               <View key={field.key} style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
                   {field.label} <Text style={{ color: '#ef4444' }}>*</Text>
                 </Text>
                 <TextInput
                   placeholder={field.ph}
                   value={formData[field.key]}
                   onChangeText={v => setFormData(p => ({ ...p, [field.key]: v }))}
+                  placeholderTextColor={colors.mutedText}
                   style={{
                     borderWidth: 1,
-                    borderColor: '#d1d5db',
+                    borderColor: colors.border,
+                    backgroundColor: colors.input,
+                    color: colors.text,
                     borderRadius: 8,
                     paddingHorizontal: 10,
                     paddingVertical: Platform.OS === 'ios' ? 12 : 8,
@@ -268,16 +286,19 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
             {/* End date/time */}
             {END_FIELDS.map(field => (
               <View key={field.key} style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
                   {field.label} <Text style={{ color: '#ef4444' }}>*</Text>
                 </Text>
                 <TextInput
                   placeholder={field.ph}
                   value={formData[field.key]}
                   onChangeText={v => setFormData(p => ({ ...p, [field.key]: v }))}
+                  placeholderTextColor={colors.mutedText}
                   style={{
                     borderWidth: 1,
-                    borderColor: '#d1d5db',
+                    borderColor: colors.border,
+                    backgroundColor: colors.input,
+                    color: colors.text,
                     borderRadius: 8,
                     paddingHorizontal: 10,
                     paddingVertical: Platform.OS === 'ios' ? 12 : 8,
@@ -288,7 +309,7 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
             ))}
 
             {/* Recurrence */}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
               Recurrence
             </Text>
             <TextInput
@@ -297,9 +318,12 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
               onChangeText={v =>
                 setFormData(p => ({ ...p, recurrence: v as CreateEventForm['recurrence'] }))
               }
+              placeholderTextColor={colors.mutedText}
               style={{
                 borderWidth: 1,
-                borderColor: '#d1d5db',
+                borderColor: colors.border,
+                backgroundColor: colors.input,
+                color: colors.text,
                 borderRadius: 8,
                 paddingHorizontal: 10,
                 paddingVertical: Platform.OS === 'ios' ? 12 : 8,
@@ -309,16 +333,19 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
             />
 
             {/* Location */}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
               Location
             </Text>
             <TextInput
               placeholder="Venue or online link"
               value={formData.location}
               onChangeText={v => setFormData(p => ({ ...p, location: v }))}
+              placeholderTextColor={colors.mutedText}
               style={{
                 borderWidth: 1,
-                borderColor: '#d1d5db',
+                borderColor: colors.border,
+                backgroundColor: colors.input,
+                color: colors.text,
                 borderRadius: 8,
                 paddingHorizontal: 10,
                 paddingVertical: Platform.OS === 'ios' ? 12 : 8,
@@ -328,7 +355,7 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
             />
 
             {/* Summary */}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
               Summary
             </Text>
             <TextInput
@@ -336,9 +363,12 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
               multiline
               value={formData.summary}
               onChangeText={v => setFormData(p => ({ ...p, summary: v }))}
+              placeholderTextColor={colors.mutedText}
               style={{
                 borderWidth: 1,
-                borderColor: '#d1d5db',
+                borderColor: colors.border,
+                backgroundColor: colors.input,
+                color: colors.text,
                 borderRadius: 8,
                 paddingHorizontal: 10,
                 paddingVertical: 8,
@@ -350,7 +380,7 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
             />
 
             {/* Cover */}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
               Cover Image <Text style={{ color: '#ef4444' }}>*</Text>
             </Text>
             {formData.coverMedia ? (
@@ -379,7 +409,7 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
                 style={{
                   borderWidth: 1,
                   borderStyle: 'dashed',
-                  borderColor: '#d1d5db',
+                  borderColor: colors.border,
                   borderRadius: 10,
                   paddingVertical: 24,
                   alignItems: 'center',
@@ -387,15 +417,15 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
                   marginBottom: 12,
                 }}
               >
-                <Plus size={28} color="#737373" />
-                <Text style={{ fontSize: 12, color: '#737373', marginTop: 6 }}>
+                <Plus size={28} color={colors.icon} />
+                <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 6 }}>
                   Tap to pick an image ≤ 5 MB
                 </Text>
               </TouchableOpacity>
             )}
 
             {/* Additional media */}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
               Additional Media (URL)
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
@@ -403,10 +433,13 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
                 placeholder="https://…"
                 value={currentMediaUrl}
                 onChangeText={setCurrentMediaUrl}
+                placeholderTextColor={colors.mutedText}
                 style={{
                   flex: 1,
                   borderWidth: 1,
-                  borderColor: '#d1d5db',
+                  borderColor: colors.border,
+                  backgroundColor: colors.input,
+                  color: colors.text,
                   borderRadius: 8,
                   paddingHorizontal: 10,
                   paddingVertical: Platform.OS === 'ios' ? 12 : 8,
@@ -457,7 +490,7 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
             </ScrollView>
 
             {/* Tags */}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginTop: 12, marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginTop: 12, marginBottom: 4 }}>
               Tags
             </Text>
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center', marginBottom: 12 }}>
@@ -465,10 +498,13 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
                 placeholder="Add a tag"
                 value={currentTag}
                 onChangeText={setCurrentTag}
+                placeholderTextColor={colors.mutedText}
                 style={{
                   flex: 1,
                   borderWidth: 1,
-                  borderColor: '#d1d5db',
+                  borderColor: colors.border,
+                  backgroundColor: colors.input,
+                  color: colors.text,
                   borderRadius: 8,
                   paddingHorizontal: 10,
                   paddingVertical: Platform.OS === 'ios' ? 12 : 8,
@@ -496,32 +532,35 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 4,
-                    backgroundColor: '#f3f4f6',
+                    backgroundColor: colors.control,
                     borderRadius: 14,
                     paddingHorizontal: 10,
                     paddingVertical: 4,
                     marginTop: 6,
                   }}
                 >
-                  <Text>{tag}</Text>
+                  <Text style={{ color: colors.secondaryText }}>{tag}</Text>
                   <TouchableOpacity hitSlop={8} onPress={() => removeTag(tag)}>
-                    <X size={12} color="#6b7280" />
+                    <X size={12} color={colors.icon} />
                   </TouchableOpacity>
                 </View>
               ))}
             </View>
 
             {/* Category */}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: '#374151', marginTop: 12, marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginTop: 12, marginBottom: 4 }}>
               Category
             </Text>
             <TextInput
               placeholder="e.g. Cultural"
               value={formData.category}
               onChangeText={v => setFormData(p => ({ ...p, category: v }))}
+              placeholderTextColor={colors.mutedText}
               style={{
                 borderWidth: 1,
-                borderColor: '#d1d5db',
+                borderColor: colors.border,
+                backgroundColor: colors.input,
+                color: colors.text,
                 borderRadius: 8,
                 paddingHorizontal: 10,
                 paddingVertical: Platform.OS === 'ios' ? 12 : 8,
@@ -540,7 +579,7 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
               paddingHorizontal: 20,
               paddingVertical: 14,
               borderTopWidth: 0.5,
-              borderColor: '#e5e7eb',
+              borderColor: colors.border,
             }}
           >
             <TouchableOpacity
@@ -571,7 +610,7 @@ export default function CreateEventModal({ visible, onClose }: CreateEventModalP
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

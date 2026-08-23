@@ -7,6 +7,8 @@ import { AuthService } from '@/lib/services/AuthService';
 import { ConversationResourceService } from '@/lib/services/ConversationResourceService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import PlayfulTabIcon from '@/components/navigation/PlayfulTabIcon';
+import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 
 const authService = AuthService.getInstance();
 const conversationResourceService = ConversationResourceService.getInstance();
@@ -40,8 +42,14 @@ const TabLayout = () => {
 
   return (
     <Tabs
+      screenListeners={{
+        tabPress: () => {
+          void interactionFeedbackService.play('selection');
+        },
+      }}
       screenOptions={{
         headerShown: false,
+        lazy: true,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.mutedText,
         tabBarStyle: {
@@ -72,11 +80,13 @@ const TabLayout = () => {
         options={{
           title: "Feeds",
           tabBarIcon: ({ color, size, focused }) => (
+            <PlayfulTabIcon focused={focused}>
             <Ionicons
               name={focused ? "grid" : "grid-outline"}
               size={focused ? 23 : 21}
               color={color}
             />
+            </PlayfulTabIcon>
           ),
         }}
       />
@@ -86,11 +96,13 @@ const TabLayout = () => {
         options={{
           title: "Discover",
           tabBarIcon: ({ color, size, focused }) => (
+            <PlayfulTabIcon focused={focused}>
             <Ionicons
               name={focused ? "compass" : "compass-outline"}
               size={focused ? 24 : 22}
               color={color}
             />
+            </PlayfulTabIcon>
           ),
         }}
       />
@@ -112,6 +124,7 @@ const TabLayout = () => {
           tabBarActiveTintColor: colors.accent,
           tabBarInactiveTintColor: colors.mutedText,
           tabBarIcon: ({ focused }) => (
+            <PlayfulTabIcon focused={focused}>
             <Image
               source={require('@/assets/images/logo.png')}
               style={{
@@ -120,6 +133,7 @@ const TabLayout = () => {
                 resizeMode: 'contain',
               }}
             />
+            </PlayfulTabIcon>
           ),
         }}
       />
@@ -140,11 +154,13 @@ const TabLayout = () => {
             lineHeight: 18,
           },
           tabBarIcon: ({ color, size, focused }) => (
+            <PlayfulTabIcon focused={focused}>
             <Ionicons
               name={focused ? "chatbubbles" : "chatbubbles-outline"}
               size={focused ? 24 : 22}
               color={color}
             />
+            </PlayfulTabIcon>
           ),
         }}
       />
@@ -154,11 +170,13 @@ const TabLayout = () => {
         options={{
           title: "Profile",
           tabBarIcon: ({ color, size, focused }) => (
+            <PlayfulTabIcon focused={focused}>
             <Ionicons
               name={focused ? "person" : "person-outline"}
               size={focused ? 24 : 22}
               color={color}
             />
+            </PlayfulTabIcon>
           ),
         }}
       />

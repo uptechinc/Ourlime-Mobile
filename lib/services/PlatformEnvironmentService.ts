@@ -1,5 +1,5 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import { Platform } from 'react-native';
+import { NativeModules, Platform, TurboModuleRegistry } from 'react-native';
 
 export class PlatformEnvironmentService {
   private static instance: PlatformEnvironmentService;
@@ -29,6 +29,34 @@ export class PlatformEnvironmentService {
    */
   public isStandaloneOrDevClient(): boolean {
     return !this.isExpoGo() && Platform.OS !== 'web';
+  }
+
+  /**
+   * Checks if native Firebase App module (RNFBAppModule) is compiled and present in the binary.
+   */
+  public hasNativeFirebaseApp(): boolean {
+    if (Platform.OS === 'web' || this.isExpoGo()) return false;
+    try {
+      const hasInNativeModules = Boolean(NativeModules && NativeModules.RNFBAppModule);
+      const hasInTurboModule = typeof TurboModuleRegistry?.get === 'function' && Boolean(TurboModuleRegistry.get('RNFBAppModule'));
+      return hasInNativeModules || hasInTurboModule;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Checks if native Firebase Messaging module (RNFBMessagingModule) is compiled and present in the binary.
+   */
+  public hasNativeFirebaseMessaging(): boolean {
+    if (!this.hasNativeFirebaseApp()) return false;
+    try {
+      const hasInNativeModules = Boolean(NativeModules && NativeModules.RNFBMessagingModule);
+      const hasInTurboModule = typeof TurboModuleRegistry?.get === 'function' && Boolean(TurboModuleRegistry.get('RNFBMessagingModule'));
+      return hasInNativeModules || hasInTurboModule;
+    } catch {
+      return false;
+    }
   }
 
   /**

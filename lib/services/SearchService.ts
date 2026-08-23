@@ -2,7 +2,7 @@ import { ApiService } from './ApiService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { AuthService, type UserProfile } from './AuthService';
 import { auth, db } from '@/lib/firebaseConfig';
-import { collection, getDocs, limit, query } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, query } from 'firebase/firestore';
 
 type UnknownRecord = Record<string, unknown>;
 const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -28,7 +28,7 @@ export class SearchService {
     try {
       const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string; message?: string }>(
         `/api/users/search?q=${encodeURIComponent(trimmed)}&limit=${encodeURIComponent(String(Math.min(20, Math.max(1, maxResults))))}`,
-        { authenticated: true, timeoutMs: 2_500 }
+        { authenticated: true, timeoutMs: 18_000 }
       );
       if (!response.success) throw new Error(response.error || response.message || 'Search failed');
       const profiles = this.normalizeProfiles(response.data ?? []);
@@ -78,12 +78,34 @@ export class SearchService {
         return searchable.includes(normalizedQuery);
       })
       .slice(0, Math.min(20, Math.max(1, maxResults)));
+    const visibilityResults = await Promise.allSettled(
+      candidates.map(async (candidateDocument) => ({
+        candidateDocument,
+        visible: await this.isSearchVisible(candidateDocument.id),
+      })),
+    );
+    const visibleCandidates = visibilityResults.flatMap((result) => (
+      result.status === 'fulfilled' && result.value.visible ? [result.value.candidateDocument] : []
+    ));
     const profileResults = await Promise.allSettled(
-      candidates.map((document) => this.authService.getUserProfile(document.id)),
+      visibleCandidates.map((candidateDocument) => this.authService.getUserProfile(candidateDocument.id)),
     );
     return profileResults.flatMap((result): UserProfile[] => (
       result.status === 'fulfilled' && result.value ? [result.value] : []
     ));
+  }
+
+  private async isSearchVisible(userId: string): Promise<boolean> {
+    try {
+      const privacyDocument = await getDoc(doc(db, 'users', userId, 'userPrivacySettings', 'privacy'));
+      return privacyDocument.data()?.searchVisibility !== false;
+    } catch (error: unknown) {
+      this.logger.warn('SearchService', 'searchVisibility:fallback', {
+        userId,
+        error: error instanceof Error ? error.message : 'Unknown privacy lookup error',
+      });
+      return true;
+    }
   }
 }
 

@@ -43,6 +43,7 @@ import { limeService } from '@/lib/services/LimeService';
 import type { LimeFeedCursor } from '@/lib/services/LimeService';
 import { AuthService } from '@/lib/services/AuthService';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const authService = AuthService.getInstance();
@@ -756,32 +757,32 @@ function ReelItem({
           {muted ? <VolumeX size={26} color="#ffffff" /> : <Volume2 size={26} color="#ffffff" />}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={toggleLikeButton} style={styles.actionBtn} activeOpacity={0.7}>
+        <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike Lime' : 'Like Lime'} onPress={toggleLikeButton} style={styles.actionBtn}>
           <Heart
             size={28}
             color={isLiked ? '#ef4444' : '#ffffff'}
             fill={isLiked ? '#ef4444' : 'none'}
           />
           <Text style={styles.actionCount}>{likeCount}</Text>
-        </TouchableOpacity>
+        </AnimatedActionButton>
 
-        <TouchableOpacity onPress={onCommentPress} style={styles.actionBtn} activeOpacity={0.7}>
+        <AnimatedActionButton feedback="comment" accessibilityLabel="Open Lime comments" onPress={onCommentPress} style={styles.actionBtn}>
           <MessageCircle size={28} color="#ffffff" />
           <Text style={styles.actionCount}>{reel.stats?.comments ?? 0}</Text>
-        </TouchableOpacity>
+        </AnimatedActionButton>
 
-        <TouchableOpacity onPress={() => void toggleRepostButton()} style={styles.actionBtn} activeOpacity={0.7}>
+        <AnimatedActionButton accessibilityLabel={isReposted ? 'Remove Lime repost' : 'Repost Lime'} onPress={() => void toggleRepostButton()} style={styles.actionBtn}>
           <Repeat2
             size={27}
             color={isReposted ? '#10b981' : '#ffffff'}
           />
           <Text style={[styles.actionCount, isReposted && { color: '#10b981' }]}>{repostCount}</Text>
-        </TouchableOpacity>
+        </AnimatedActionButton>
 
-        <TouchableOpacity onPress={() => void handleShare()} style={styles.actionBtn} activeOpacity={0.7}>
+        <AnimatedActionButton feedback="share" accessibilityLabel="Share Lime" onPress={() => void handleShare()} style={styles.actionBtn}>
           <Send size={26} color="#ffffff" />
           <Text style={styles.actionCount}>{shareCount}</Text>
-        </TouchableOpacity>
+        </AnimatedActionButton>
 
         <TouchableOpacity
           onPress={() => setShowOptionsMenu((prev) => !prev)}

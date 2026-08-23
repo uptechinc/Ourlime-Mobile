@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Linking, StyleProp, Text, TextStyle, TouchableOpacity, View } from 'react-native';
+import { Linking, StyleProp, Text, TextStyle, TouchableOpacity, View, type TextProps } from 'react-native';
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { linkPresentationService } from '@/lib/services/LinkPresentationService';
 
 // --- Types ---
 
@@ -17,6 +18,9 @@ type RichTextContentProps = {
   style?: StyleProp<TextStyle>;
   linkColor?: string;
   mentionColor?: string;
+  numberOfLines?: number;
+  ellipsizeMode?: TextProps['ellipsizeMode'];
+  renderYouTubeEmbeds?: boolean;
   onMentionPress?: (username: string) => void;
 };
 
@@ -210,6 +214,9 @@ export default function RichTextContent({
   style,
   linkColor = '#10b981',
   mentionColor = '#059669',
+  numberOfLines,
+  ellipsizeMode,
+  renderYouTubeEmbeds = true,
   onMentionPress,
 }: RichTextContentProps) {
   const router = useRouter();
@@ -242,7 +249,7 @@ export default function RichTextContent({
 
   return (
     <View>
-      <Text style={style}>
+      <Text style={style} numberOfLines={numberOfLines} ellipsizeMode={ellipsizeMode}>
         {segments.map((segment, index) => {
           const key = `${segment.kind}-${index}`;
           if (segment.kind === 'mention') {
@@ -269,7 +276,7 @@ export default function RichTextContent({
                 accessibilityRole="link"
                 accessibilityLabel={`Open link: ${segment.url}`}
               >
-                {segment.value}
+                {linkPresentationService.formatUrl(segment.url)}
               </Text>
             );
           }
@@ -277,9 +284,11 @@ export default function RichTextContent({
         })}
       </Text>
 
-      {youtubeVideoIds.map((videoId) => (
-        <YouTubeEmbed key={`yt-${videoId}`} videoId={videoId} />
-      ))}
+      {renderYouTubeEmbeds
+        ? youtubeVideoIds.map((videoId) => (
+            <YouTubeEmbed key={`yt-${videoId}`} videoId={videoId} />
+          ))
+        : null}
     </View>
   );
 }

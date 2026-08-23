@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStickers } from '@/lib/hooks/useStickers';
 import type { Sticker } from '@/lib/types/sticker';
 import { getLocalStickerSource } from '@/assets/images/stickers/stickerMap';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type KeyboardTab = 'emojis' | 'stickers';
 
@@ -168,7 +169,7 @@ export function EmojiStickerKeyboard({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent
       presentationStyle="overFullScreen"
       onRequestClose={onClose}
@@ -177,7 +178,11 @@ export function EmojiStickerKeyboard({
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }} onPress={onClose} />
 
       {/* WhatsApp Keyboard Sheet Container */}
-      <View
+      <SwipeDismissSurface
+        visible={visible}
+        onDismiss={onClose}
+        handleColor="#d1d5db"
+        accessibilityLabel="Swipe down to close emoji and sticker picker"
         style={{
           position: 'absolute',
           bottom: 0,
@@ -449,7 +454,7 @@ export function EmojiStickerKeyboard({
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </SwipeDismissSurface>
     </Modal>
   );
 }

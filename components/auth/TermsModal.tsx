@@ -1,5 +1,6 @@
 import { Modal, View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type TermsModalProps = {
   isOpen: boolean;
@@ -16,9 +17,9 @@ export default function TermsModal({ isOpen, onClose, onAccept }: TermsModalProp
   };
 
   return (
-    <Modal visible={isOpen} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={isOpen} transparent animationType="none" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
-        <View style={{ width: '100%', maxWidth: 540, maxHeight: '85%', backgroundColor: '#090d16', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: 24, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20 }}>
+        <SwipeDismissSurface visible={isOpen} onDismiss={onClose} handleColor="#475569" accessibilityLabel="Swipe down to close terms" style={{ width: '100%', maxWidth: 540, maxHeight: '85%', backgroundColor: '#090d16', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: 24, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20 }}>
           {/* Header */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', paddingBottom: 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -69,7 +70,7 @@ export default function TermsModal({ isOpen, onClose, onAccept }: TermsModalProp
               </TouchableOpacity>
             )}
           </View>
-        </View>
+        </SwipeDismissSurface>
       </View>
     </Modal>
   );

@@ -3,6 +3,13 @@ import { auth, db } from '@/lib/firebaseConfig';
 import { ApiService, ApiServiceError } from './ApiService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 
+export type CommentMediaAsset = {
+  id: string;
+  name: string;
+  imageUrl: string;
+  type: 'sticker' | 'gif';
+};
+
 export type CommentAuthor = {
   id: string;
   firstName: string;
@@ -20,6 +27,7 @@ export type PostComment = {
   replyCount: number;
   isLiked: boolean;
   author: CommentAuthor;
+  sticker?: CommentMediaAsset | null;
 };
 
 export type PostReply = {
@@ -32,6 +40,7 @@ export type PostReply = {
   parentReplyId?: string | null;
   replyToUserName?: string | null;
   author: CommentAuthor;
+  sticker?: CommentMediaAsset | null;
 };
 
 export type CommentPage<TItem> = {
@@ -70,10 +79,17 @@ export class CommentService {
       const search = cursor ? `?limit=20&cursor=${cursor}` : '?limit=20';
       const response = await this.apiService.request<PaginatedApiResponse<PostComment>>(
         `/api/posts/${encodeURIComponent(postId)}/comments${search}`,
-        { authenticated: true, timeoutMs: 1_800 }
+        { authenticated: true, timeoutMs: 18_000 }
       );
       if (!response.success) throw new Error(response.error || 'Failed to load comments');
-      return this.toPage(response);
+      const page = this.toPage(response);
+      return {
+        ...page,
+        items: page.items.map((comment) => ({
+          ...comment,
+          sticker: this.readCommentMedia(comment.sticker),
+        })),
+      };
     } catch (error: unknown) {
       if (!this.canUseFirestore(error)) throw error;
       return this.fetchCommentsFromFirestore(postId, cursor);
@@ -85,24 +101,33 @@ export class CommentService {
       const search = cursor ? `?limit=20&cursor=${cursor}` : '?limit=20';
       const response = await this.apiService.request<PaginatedApiResponse<PostReply>>(
         `/api/posts/comments/${encodeURIComponent(commentId)}/replies${search}`,
-        { authenticated: true, timeoutMs: 1_800 }
+        { authenticated: true, timeoutMs: 18_000 }
       );
       if (!response.success) throw new Error(response.error || 'Failed to load replies');
-      return this.toPage(response);
+      const page = this.toPage(response);
+      return {
+        ...page,
+        items: page.items.map((reply) => ({
+          ...reply,
+          sticker: this.readCommentMedia(reply.sticker),
+        })),
+      };
     } catch (error: unknown) {
       if (!this.canUseFirestore(error)) throw error;
       return this.fetchRepliesFromFirestore(commentId, cursor);
     }
   }
 
-  public async createComment(postId: string, content: string): Promise<PostComment> {
+  public async createComment(postId: string, content: string, sticker?: CommentMediaAsset): Promise<PostComment> {
+    const normalizedContent = content.trim();
+    if (!normalizedContent && !sticker) throw new Error('Add text, an emoji, a sticker, or a GIF to your comment');
     const response = await this.apiService.request<ItemApiResponse<PostComment>>(
       `/api/posts/${encodeURIComponent(postId)}/comments`,
-      { method: 'POST', authenticated: true, body: { content: this.validateContent(content, 'Comment') } }
+      { method: 'POST', authenticated: true, body: { content: normalizedContent ? this.validateContent(normalizedContent, 'Comment') : '', sticker: sticker ?? null } }
     );
     if (!response.success || !response.data) throw new Error(response.error || 'Failed to post comment');
     this.logger.success('CommentService', 'create-comment', { postId, commentId: response.data.id });
-    return response.data;
+    return { ...response.data, sticker: this.readCommentMedia(response.data.sticker) };
   }
 
   public async createReply(input: {
@@ -110,22 +135,26 @@ export class CommentService {
     content: string;
     parentReplyId?: string | null;
     replyToUserName?: string | null;
+    sticker?: CommentMediaAsset;
   }): Promise<PostReply> {
+    const normalizedContent = input.content.trim();
+    if (!normalizedContent && !input.sticker) throw new Error('Add text, an emoji, a sticker, or a GIF to your reply');
     const response = await this.apiService.request<ItemApiResponse<PostReply>>(
         `/api/posts/comments/${encodeURIComponent(input.commentId)}/replies`,
         {
           method: 'POST',
           authenticated: true,
           body: {
-            content: this.validateContent(input.content, 'Reply'),
+            content: normalizedContent ? this.validateContent(normalizedContent, 'Reply') : '',
             parentReplyId: input.parentReplyId ?? null,
             replyToUserName: input.replyToUserName ?? null,
+            sticker: input.sticker ?? null,
           },
         },
       );
       if (!response.success || !response.data) throw new Error(response.error || 'Failed to post reply');
       this.logger.success('CommentService', 'create-reply', { commentId: input.commentId, replyId: response.data.id });
-      return response.data;
+      return { ...response.data, sticker: this.readCommentMedia(response.data.sticker) };
   }
 
   public async editComment(postId: string, commentId: string, content: string): Promise<number> {
@@ -177,6 +206,7 @@ export class CommentService {
         replyCount: typeof data.replyCount === 'number' ? data.replyCount : 0,
         isLiked: like?.exists() === true,
         author,
+        sticker: this.readCommentMedia(data.sticker),
       };
     }));
     return { items, hasMore: sorted.length > 20, nextCursor: sorted.length > 20 ? items.at(-1)?.createdAtMs ?? null : null };
@@ -205,6 +235,7 @@ export class CommentService {
         parentReplyId: typeof data.parentReplyId === 'string' ? data.parentReplyId : null,
         replyToUserName: typeof data.replyToUserName === 'string' ? data.replyToUserName : null,
         author,
+        sticker: this.readCommentMedia(data.sticker),
       };
     }));
     return { items, hasMore: sorted.length > 20, nextCursor: sorted.length > 20 ? items.at(-1)?.createdAtMs ?? null : null };
@@ -248,6 +279,18 @@ export class CommentService {
     const normalized = content.trim();
     if (!normalized || normalized.length > 2000) throw new Error(`${label} must be between 1 and 2000 characters`);
     return normalized;
+  }
+
+  private readCommentMedia(value: unknown): CommentMediaAsset | null {
+    if (!value || typeof value !== 'object') return null;
+    const sticker = value as { id?: unknown; name?: unknown; imageUrl?: unknown; type?: unknown };
+    if (typeof sticker.id !== 'string' || typeof sticker.name !== 'string' || typeof sticker.imageUrl !== 'string') return null;
+    return {
+      id: sticker.id,
+      name: sticker.name,
+      imageUrl: sticker.imageUrl,
+      type: sticker.type === 'gif' ? 'gif' : 'sticker',
+    };
   }
 }
 

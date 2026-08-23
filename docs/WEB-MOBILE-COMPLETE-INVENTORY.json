@@ -1,0 +1,4446 @@
+{
+  "schemaVersion": 1,
+  "baselines": {
+    "webRoot": "C:/Users/aaron/Github/Ourlime-Web",
+    "mobileRoot": "C:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile"
+  },
+  "counts": {
+    "webPages": 113,
+    "webApiRoutes": 181,
+    "webComponents": 437,
+    "webTypes": 41,
+    "mobileRoutes": 58,
+    "mobileComponents": 143,
+    "mobileServices": 68,
+    "mobileTypes": 22
+  },
+  "web": {
+    "pages": [
+      {
+        "file": "app/admin/seed-stickers/page.tsx",
+        "route": "/admin/seed-stickers",
+        "family": "admin",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/admin/stickers/seed"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/create/page.tsx",
+        "route": "/ads/create",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ads/AdPreview.tsx",
+            "components/ads/steps/AdBudgetStep.tsx",
+            "components/ads/steps/AdCreativeStep.tsx",
+            "components/ads/steps/AdObjectiveStep.tsx",
+            "components/ads/steps/AdReviewStep.tsx",
+            "components/ads/steps/AdTargetingStep.tsx",
+            "components/ui/modern-date-picker.tsx"
+          ],
+          "types": [
+            "types/adTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/notify-guardian"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/admin/proof-verification/page.tsx",
+        "route": "/ads/marketplace/admin/proof-verification",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/ads/bookings?bookingId=${proof.bookingId}",
+            "/api/ads/proof",
+            "/api/ads/proof/pending",
+            "/api/users/${user.uid}"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/become-host/business/page.tsx",
+        "route": "/ads/marketplace/become-host/business",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [
+            "helpers/firebaseStorage.ts"
+          ],
+          "apiReferences": [
+            "/api/ads/hosts",
+            "/api/ads/hosts?userId=${user.uid}"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/become-host/influencer/page.tsx",
+        "route": "/ads/marketplace/become-host/influencer",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [
+            "helpers/firebaseStorage.ts"
+          ],
+          "apiReferences": [
+            "/api/ads/hosts",
+            "/api/ads/hosts?userId=${user.uid}"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/become-host/page.tsx",
+        "route": "/ads/marketplace/become-host",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [
+            "helpers/firebaseStorage.ts"
+          ],
+          "apiReferences": [
+            "/api/ads/hosts",
+            "/api/ads/hosts?userId=${user.uid}"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/bookings/[bookingId]/page.tsx",
+        "route": "/ads/marketplace/bookings/[bookingId]",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/ads/bookings?bookingId=${bookingId}",
+            "/api/ads/hosts?hostId=${bookingInfo.hostId}",
+            "/api/ads/offers?offerId=${bookingInfo.offerId}"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/bookings/[bookingId]/payment/page.tsx",
+        "route": "/ads/marketplace/bookings/[bookingId]/payment",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/ads/bookings?bookingId=${bookingId}",
+            "/api/ads/offers?offerId=${bookingInfo.offerId}",
+            "/api/ads/payments",
+            "/api/wallet/balance?userId=${user.uid}",
+            "/api/wallet/transfer"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/bookings/[bookingId]/proof/page.tsx",
+        "route": "/ads/marketplace/bookings/[bookingId]/proof",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts"
+          ],
+          "apiReferences": [
+            "/api/ads/bookings?bookingId=${bookingId}",
+            "/api/ads/hosts?hostId=${bookingInfo.hostId}",
+            "/api/ads/proof"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/bookings/[bookingId]/review/page.tsx",
+        "route": "/ads/marketplace/bookings/[bookingId]/review",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/ads/bookings?bookingId=${bookingId}",
+            "/api/ads/clients?clientId=${bookingInfo.clientId}",
+            "/api/ads/hosts?hostId=${bookingInfo.hostId}",
+            "/api/ads/offers?offerId=${bookingInfo.offerId}",
+            "/api/ads/reviews"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/browse/page.tsx",
+        "route": "/ads/marketplace/browse",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/ads/hosts?hostId=${hostId}",
+            "/api/ads/offers?${params.toString"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/create-offer/page.tsx",
+        "route": "/ads/marketplace/create-offer",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts"
+          ],
+          "apiReferences": [
+            "/api/ads/hosts?userId=${user.uid}",
+            "/api/ads/offers"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/host-dashboard/page.tsx",
+        "route": "/ads/marketplace/host-dashboard",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/ads/bookings?hostId=${hostId}",
+            "/api/ads/hosts?userId=${user.uid}",
+            "/api/ads/offers?hostId=${hostId}"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/my-bookings/page.tsx",
+        "route": "/ads/marketplace/my-bookings",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/ads/bookings?${params.toString",
+            "/api/ads/clients"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/my-offers/page.tsx",
+        "route": "/ads/marketplace/my-offers",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/ads/hosts",
+            "/api/ads/offers",
+            "/api/ads/offers?${params.toString",
+            "/api/ads/offers?offerId=${offerId}"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/offers/[offerId]/book/page.tsx",
+        "route": "/ads/marketplace/offers/[offerId]/book",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts"
+          ],
+          "apiReferences": [
+            "/api/ads/bookings",
+            "/api/ads/clients",
+            "/api/ads/clients?clientId=${createData.clientId}",
+            "/api/ads/clients?userId=${user.uid}",
+            "/api/ads/offers?offerId=${offerId}",
+            "/api/users/${user.uid}"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/offers/[offerId]/edit/page.tsx",
+        "route": "/ads/marketplace/offers/[offerId]/edit",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts"
+          ],
+          "apiReferences": [
+            "/api/ads/bookings?hostId=${offerData.hostId}",
+            "/api/ads/offers",
+            "/api/ads/offers?offerId=${offerId}"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/offers/[offerId]/page.tsx",
+        "route": "/ads/marketplace/offers/[offerId]",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/ads/hosts?hostId=${data.data.hostId}",
+            "/api/ads/offers?offerId=${offerId}"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/marketplace/verification/page.tsx",
+        "route": "/ads/marketplace/verification",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/adsMarketplaceTypes.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts"
+          ],
+          "apiReferences": [
+            "/api/ads/hosts?userId=${user.uid}"
+          ]
+        }
+      },
+      {
+        "file": "app/ads/page.tsx",
+        "route": "/ads",
+        "family": "ads",
+        "dependencies": {
+          "components": [
+            "components/ads/AdCampaignCard.tsx",
+            "components/ads/AdStatsOverview.tsx"
+          ],
+          "types": [
+            "types/adTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/notify-guardian"
+          ]
+        }
+      },
+      {
+        "file": "app/blogs/[id]/page.tsx",
+        "route": "/blogs/[id]",
+        "family": "blogs",
+        "dependencies": {
+          "components": [
+            "components/blogs/CreateBlogModal.tsx",
+            "components/moderation/ReportModal.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/blog.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/blogs&articles",
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent"
+          ]
+        }
+      },
+      {
+        "file": "app/blogs/page.tsx",
+        "route": "/blogs",
+        "family": "blogs",
+        "dependencies": {
+          "components": [
+            "components/auth/VerificationUploadModal.tsx",
+            "components/blog/BlogCard.tsx",
+            "components/blog/CategoryFilter.tsx",
+            "components/blog/HeroBanner.tsx",
+            "components/blog/Sidebar.tsx",
+            "components/blogs/CreateBlogModal.tsx",
+            "components/blogs/VerificationRequiredModal.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/blog.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/blogs&articles",
+            "/api/blogs&articles?${params.toString",
+            "/api/notify-guardian"
+          ]
+        }
+      },
+      {
+        "file": "app/child-safety-standards/page.tsx",
+        "route": "/child-safety-standards",
+        "family": "child-safety-standards",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/communities/[id]/page.tsx",
+        "route": "/communities/[id]",
+        "family": "communities",
+        "dependencies": {
+          "components": [
+            "components/ConfirmationModal.tsx",
+            "components/PollList.tsx",
+            "components/PollModal.tsx",
+            "components/Portal.tsx",
+            "components/comm/Portal.tsx",
+            "components/comments/CommentEnhancements.tsx",
+            "components/common/VerifiedLimeBadge.tsx",
+            "components/communities/CommunityDashboardModal.tsx",
+            "components/communities/CommunityPostCommentsModal.tsx",
+            "components/communities/PostMedia.tsx",
+            "components/communities/ReportCommunityModal.tsx",
+            "components/communities/ShareCommunityModal.tsx",
+            "components/communities/communityDetails/CommunityEditForm.tsx",
+            "components/communities/communityDetails/CommunityHeader.tsx",
+            "components/communities/communityDetails/CommunityRightSidebar.tsx",
+            "components/communities/communityDetails/CommunitySidebar.tsx",
+            "components/communities/communityDetails/PostItem.tsx",
+            "components/communities/communityDetails/PostModerationModal.tsx",
+            "components/communities/communityDetails/ReportModal.tsx",
+            "components/events/CommunityEventsModal.tsx",
+            "components/events/EventCommentModal.tsx",
+            "components/events/EventDateTimePicker.tsx",
+            "components/events/EventDropdown.tsx",
+            "components/events/EventImageCropper.tsx",
+            "components/events/EventRecurrenceFields.tsx",
+            "components/events/EventsList.tsx",
+            "components/events/createEventModal/CreateEventModal.tsx",
+            "components/events/editEventModal/EditEventModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ImageAndVideoPostSection/ImageAndVideoPostSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/LikesModal/LikesModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostLocationMap.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/YouTubePostPreview.tsx",
+            "components/home/feed/CreatePost.tsx",
+            "components/home/feed/LocationPickerModal.tsx",
+            "components/home/feed/SharePostModal.tsx",
+            "components/home/video/FeedVideoPlayer.tsx",
+            "components/moderation/ReportModal.tsx",
+            "components/polls/CreatePollModal.tsx",
+            "components/polls/PollResponses.tsx",
+            "components/ui/FriendMentionTextarea.tsx",
+            "components/ui/LimeyIcon.tsx",
+            "components/ui/button.tsx",
+            "components/ui/input.tsx",
+            "components/ui/modern-calendar.tsx",
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx",
+            "components/ui/textarea.tsx"
+          ],
+          "types": [
+            "lib/types/comment.ts",
+            "lib/types/course.ts",
+            "lib/types/email.ts",
+            "lib/types/friendship.ts",
+            "lib/types/global.ts",
+            "lib/types/index.ts",
+            "lib/types/mention.ts",
+            "lib/types/message.ts",
+            "lib/types/notification.ts",
+            "lib/types/post.ts",
+            "lib/types/reel.ts",
+            "lib/types/sticker.ts",
+            "lib/types/user.ts",
+            "lib/types/video.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/eventTypes.ts",
+            "types/friendTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Events.ts",
+            "helpers/Posts.ts",
+            "helpers/communities.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/relationshipHelpers.ts",
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/cropImage.ts",
+            "lib/helpers/imageOptimization.ts",
+            "lib/helpers/mediaValidation.ts",
+            "lib/helpers/notificationHelpers.ts"
+          ],
+          "apiReferences": [
+            "/api/admin/community-categories",
+            "/api/auth/session",
+            "/api/communities/ban-user",
+            "/api/communities/check-ban?userId=${currentUserId}&communityId=${effectiveCommunityId}",
+            "/api/communities/communitylikes?communityId=${canonicalCommunityId}&userId=${currentUserId}",
+            "/api/communities/delete",
+            "/api/communities/edit",
+            "/api/communities/fetch?type=community&id=${communityVariantId}",
+            "/api/communities/fetch?type=members&id=${effectiveCommunityId}",
+            "/api/communities/fetch?type=posts&id=${effectiveCommunityId}",
+            "/api/communities/fetch?type=requests&id=${effectiveCommunityId}",
+            "/api/communities/like",
+            "/api/communities/membership",
+            "/api/communities/posts",
+            "/api/communities/posts?userId=${currentUserId}&communityId=${effectiveCommunityId}",
+            "/api/communities/remove-user",
+            "/api/communities/requests",
+            "/api/communities/update-role",
+            "/api/events/${encodeURIComponent",
+            "/api/gifs?q=${encodeURIComponent",
+            "/api/home/MiddleSection/Post/Likes",
+            "/api/home/MiddleSection/Post/createPost",
+            "/api/messaging",
+            "/api/messaging/actions",
+            "/api/messaging?${parameters.toString",
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent",
+            "/api/notifications",
+            "/api/posts/${post.id}",
+            "/api/posts/${post.id}/comments",
+            "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
+            "/api/posts/${post.id}/repost",
+            "/api/posts/${post.id}/share",
+            "/api/posts/comments/${commentId}/replies?limit=20${cursorQuery}",
+            "/api/posts/comments/${editTarget.rootCommentId}/replies",
+            "/api/posts/comments/${replyTarget.commentId}/replies",
+            "/api/posts/comments/${targetId}/like",
+            "/api/posts/drafts",
+            "/api/posts/drafts?mediaIndex=${index}",
+            "/api/profile/blocklist",
+            "/api/profile/presence",
+            "/api/push-messages",
+            "/api/relationships/followers",
+            "/api/relationships/friends",
+            "/api/relationships/status?userId=${encodeURIComponent",
+            "/api/relationships/status?userId=${userId}&type=friends",
+            "/api/stickers",
+            "/api/triniGeoGuesser/geocode",
+            "/api/triniGeoGuesser/reverse"
+          ]
+        }
+      },
+      {
+        "file": "app/communities/page.tsx",
+        "route": "/communities",
+        "family": "communities",
+        "dependencies": {
+          "components": [
+            "components/communities/CategoryPills.tsx",
+            "components/communities/CommunityCard.tsx",
+            "components/communities/CommunityGridControls.tsx",
+            "components/communities/CommunityHero.tsx",
+            "components/communities/CommunitySearch.tsx",
+            "components/communities/CreateCommunityModal.tsx",
+            "components/communities/ReportCommunityModal.tsx",
+            "components/moderation/ReportModal.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/communities.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/admin/community-categories",
+            "/api/auth/session",
+            "/api/communities/joined-by-friends",
+            "/api/communities/membership",
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/delete-account/page.tsx",
+        "route": "/delete-account",
+        "family": "delete-account",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/discover/page.tsx",
+        "route": "/discover",
+        "family": "discover",
+        "dependencies": {
+          "components": [
+            "components/home/mobile/Mobile.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/comment.ts",
+            "lib/types/course.ts",
+            "lib/types/email.ts",
+            "lib/types/friendship.ts",
+            "lib/types/global.ts",
+            "lib/types/index.ts",
+            "lib/types/message.ts",
+            "lib/types/notification.ts",
+            "lib/types/post.ts",
+            "lib/types/reel.ts",
+            "lib/types/sticker.ts",
+            "lib/types/user.ts",
+            "lib/types/video.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/home/RightSection?${searchParams.toString",
+            "/api/relationships/friends",
+            "/api/relationships/friends?userId=${currentUserId}&action=friends-list",
+            "/api/relationships/friends?userId=${currentUserId}&action=pending-requests",
+            "/api/relationships/status?userId=${currentUserId}&type=discover",
+            "/api/relationships/suggestions?limit=12",
+            "/api/temp-messaging",
+            "/api/temp-messaging/${encodeURIComponent",
+            "/api/users/search?q=${encodeURIComponent"
+          ]
+        }
+      },
+      {
+        "file": "app/ehub/page.tsx",
+        "route": "/ehub",
+        "family": "ehub",
+        "dependencies": {
+          "components": [
+            "components/ehub/CartSidebar.tsx",
+            "components/ehub/ComboMultiplier.tsx",
+            "components/ehub/FlashCountdown.tsx",
+            "components/ehub/FloatingActions.tsx",
+            "components/ehub/FreelancerCard.tsx",
+            "components/ehub/Header.tsx",
+            "components/ehub/ImageWithFallback.tsx",
+            "components/ehub/LiveActivityFeed.tsx",
+            "components/ehub/MobileHeader.tsx",
+            "components/ehub/MobileNav.tsx",
+            "components/ehub/ParticleBackground.tsx",
+            "components/ehub/ProductCard.tsx",
+            "components/ehub/StickyPromo.tsx",
+            "components/ehub/StreakCounter.tsx",
+            "components/ehub/XPSystem.tsx",
+            "components/ehub/confetti.ts"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/eLearning/courses/[courseId]/announcements/page.tsx",
+        "route": "/eLearning/courses/[courseId]/announcements",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/eLearning/courses/[courseId]/assignment/[assignmentId]/page.tsx",
+        "route": "/eLearning/courses/[courseId]/assignment/[assignmentId]",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/CourseSidebar.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/courses/[courseId]/assignments/create/page.tsx",
+        "route": "/eLearning/courses/[courseId]/assignments/create",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/BackButton.tsx",
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts",
+            "lib/helpers/courseManagement.ts"
+          ],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/eLearning/courses/[courseId]/assignments/page.tsx",
+        "route": "/eLearning/courses/[courseId]/assignments",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/CourseSidebar.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/courses/[courseId]/discussions/page.tsx",
+        "route": "/eLearning/courses/[courseId]/discussions",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/CourseSidebar.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/courses/[courseId]/grades/page.tsx",
+        "route": "/eLearning/courses/[courseId]/grades",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/CourseSidebar.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/courses/[courseId]/lesson/[lessonId]/page.tsx",
+        "route": "/eLearning/courses/[courseId]/lesson/[lessonId]",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/CourseSidebar.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/courses/[courseId]/modules/page.tsx",
+        "route": "/eLearning/courses/[courseId]/modules",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/CourseSidebar.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/courses/[courseId]/page.tsx",
+        "route": "/eLearning/courses/[courseId]",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/BackButton.tsx",
+            "components/eLearning/CourseSidebar.tsx",
+            "components/eLearning/PaymentModal.tsx",
+            "components/eLearning/StudentCourseDashboard.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/courses/[courseId]/quiz/[quizId]/page.tsx",
+        "route": "/eLearning/courses/[courseId]/quiz/[quizId]",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/CourseSidebar.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/courses/[courseId]/quizzes/create/page.tsx",
+        "route": "/eLearning/courses/[courseId]/quizzes/create",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts"
+          ],
+          "services": [
+            "lib/helpers/courseManagement.ts"
+          ],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/eLearning/courses/[courseId]/quizzes/page.tsx",
+        "route": "/eLearning/courses/[courseId]/quizzes",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/CourseSidebar.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/courses/create/page.tsx",
+        "route": "/eLearning/courses/create",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/BackButton.tsx",
+            "components/eLearning/HorizontalScroller.tsx",
+            "components/eLearning/courseCreation/BasicsStep.tsx",
+            "components/eLearning/courseCreation/ContentStep.tsx",
+            "components/eLearning/courseCreation/CourseStepper.tsx",
+            "components/eLearning/courseCreation/CurriculumStep.tsx",
+            "components/eLearning/courseCreation/PublishStep.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/instructorRegistration.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/courses/page.tsx",
+        "route": "/eLearning/courses",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/BackButton.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/instructorRegistration.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/cxc/forums/page.tsx",
+        "route": "/eLearning/cxc/forums",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/eLearning/cxc/mcq/page.tsx",
+        "route": "/eLearning/cxc/mcq",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/eLearning/cxc/page.tsx",
+        "route": "/eLearning/cxc",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/BackButton.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/eLearning/cxc/past-papers/page.tsx",
+        "route": "/eLearning/cxc/past-papers",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/eLearning/instructor/courses/page.tsx",
+        "route": "/eLearning/instructor/courses",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/BackButton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/instructorRegistration.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/instructor/grading/page.tsx",
+        "route": "/eLearning/instructor/grading",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/BackButton.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/instructorRegistration.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/instructor/register/page.tsx",
+        "route": "/eLearning/instructor/register",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/auth/VerificationUploadModal.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/instructorRegistration.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/notify-guardian",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/my-learning/page.tsx",
+        "route": "/eLearning/my-learning",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/BackButton.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence"
+          ]
+        }
+      },
+      {
+        "file": "app/eLearning/page.tsx",
+        "route": "/eLearning",
+        "family": "eLearning",
+        "dependencies": {
+          "components": [
+            "components/eLearning/BackButton.tsx",
+            "components/eLearning/HorizontalScroller.tsx",
+            "components/eLearning/courseMessages/page.tsx",
+            "components/eLearning/heroSection/page.tsx",
+            "components/eLearning/learningMaterials/page.tsx",
+            "components/eLearning/resources/page.tsx",
+            "components/eLearning/schedules/page.tsx",
+            "components/eLearning/tutors/page.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/course.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/courseManagement.ts",
+            "lib/helpers/initializeData.ts",
+            "lib/helpers/instructorRegistration.ts",
+            "lib/helpers/sampleData.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/profile/presence",
+            "/api/schedules",
+            "/api/schedules/template",
+            "/api/schedules/template?userId=${userData.id}",
+            "/api/schedules?userId=${userData.id}",
+            "/api/schedules?userId=${userData.id}&scheduleId=${selectedSchedule.id}"
+          ]
+        }
+      },
+      {
+        "file": "app/events/[id]/page.tsx",
+        "route": "/events/[id]",
+        "family": "events",
+        "dependencies": {
+          "components": [
+            "components/moderation/ReportModal.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent"
+          ]
+        }
+      },
+      {
+        "file": "app/events/page.tsx",
+        "route": "/events",
+        "family": "events",
+        "dependencies": {
+          "components": [
+            "components/events/EventDateTimePicker.tsx",
+            "components/events/EventDropdown.tsx",
+            "components/events/EventImageCropper.tsx",
+            "components/events/EventRecurrenceFields.tsx",
+            "components/events/createEventModal/CreateEventModal.tsx",
+            "components/events/editEventModal/EditEventModal.tsx",
+            "components/ui/button.tsx",
+            "components/ui/modern-calendar.tsx",
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/eventTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Events.ts",
+            "lib/helpers/cropImage.ts"
+          ],
+          "apiReferences": [
+            "/api/events/${encodeURIComponent",
+            "/api/home/MiddleSection/Post/createPost"
+          ]
+        }
+      },
+      {
+        "file": "app/events/upcoming/page.tsx",
+        "route": "/events/upcoming",
+        "family": "events",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/eventTypes.ts"
+          ],
+          "services": [
+            "helpers/Events.ts"
+          ],
+          "apiReferences": [
+            "/api/events/${encodeURIComponent"
+          ]
+        }
+      },
+      {
+        "file": "app/eWallet/page.tsx",
+        "route": "/eWallet",
+        "family": "eWallet",
+        "dependencies": {
+          "components": [
+            "components/commonProfileHeader/ProfileHeader.tsx",
+            "components/commonProfileHeader/ProfileImageViewer.tsx",
+            "components/pageAccess/PageAccessBadge.tsx",
+            "components/profile/ChangeCoverImageModal.tsx",
+            "components/profile/ChangeProfileImageModal.tsx",
+            "components/profile/ProfileSidebar.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/ShareProfileModal.tsx",
+            "components/profile/SocialLinksDisplay.tsx",
+            "components/profile/navigation/ProfileNavigationContext.tsx",
+            "components/profile/sidebarNavLinks/sidebarItems.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/pageAccess.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Unmount.ts",
+            "lib/helpers/cropImage.ts"
+          ],
+          "apiReferences": [
+            "/api/profile/header",
+            "/api/profile/header/upload",
+            "/api/profile/header?userId=${user.uid}",
+            "/api/relationships/followers?userId=${uid}&action=counts",
+            "/api/relationships/followers?userId=${user.uid}&action=counts",
+            "/api/relationships/status?userId=${uid}&type=friends",
+            "/api/relationships/status?userId=${user.uid}&type=friends"
+          ]
+        }
+      },
+      {
+        "file": "app/forgot-password/page.tsx",
+        "route": "/forgot-password",
+        "family": "forgot-password",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/password-reset"
+          ]
+        }
+      },
+      {
+        "file": "app/games/page.tsx",
+        "route": "/games",
+        "family": "games",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/home/LeftSection/games"
+          ]
+        }
+      },
+      {
+        "file": "app/jobs/page.tsx",
+        "route": "/jobs",
+        "family": "jobs",
+        "dependencies": {
+          "components": [
+            "components/auth/VerificationUploadModal.tsx",
+            "components/jobs/IdentityVerificationModal.tsx",
+            "components/jobs/JobCardActions.tsx",
+            "components/jobs/JobDetailsModal.tsx",
+            "components/jobs/JobFilters.tsx",
+            "components/jobs/ProfessionalJobsList.tsx",
+            "components/jobs/QuickTasksList.tsx",
+            "components/jobs/applyJobs/JobApplicationModal.tsx",
+            "components/jobs/createJobsModel/BasicInformationForm.tsx",
+            "components/jobs/createJobsModel/CompanyDetailsForm.tsx",
+            "components/jobs/createJobsModel/QuickTaskCreationModal.tsx",
+            "components/jobs/createJobsModel/jobCreationModal.tsx",
+            "components/moderation/ReportModal.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/jobTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/jobs",
+            "/api/jobs/applications",
+            "/api/jobs/applications?jobId=${job.id}&userId=${userId}",
+            "/api/jobs/email",
+            "/api/jobs?${params.toString",
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent",
+            "/api/notify-guardian"
+          ]
+        }
+      },
+      {
+        "file": "app/lime/[id]/page.tsx",
+        "route": "/lime/[id]",
+        "family": "lime",
+        "dependencies": {
+          "components": [
+            "components/comments/CommentEnhancements.tsx",
+            "components/common/ConfirmationDialog.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ImageAndVideoPostSection/ImageAndVideoPostSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/YouTubePostPreview.tsx",
+            "components/home/feed/SharePostModal.tsx",
+            "components/home/video/FeedVideoPlayer.tsx",
+            "components/limes/CreateLimeModal.tsx",
+            "components/limes/ReportModal.tsx",
+            "components/moderation/ReportModal.tsx",
+            "components/ui/FriendMentionTextarea.tsx",
+            "components/ui/LimeyIcon.tsx",
+            "components/ui/button.tsx",
+            "components/ui/input.tsx",
+            "components/ui/skeleton.tsx",
+            "components/ui/textarea.tsx"
+          ],
+          "types": [
+            "lib/types/comment.ts",
+            "lib/types/course.ts",
+            "lib/types/email.ts",
+            "lib/types/friendship.ts",
+            "lib/types/global.ts",
+            "lib/types/index.ts",
+            "lib/types/mention.ts",
+            "lib/types/message.ts",
+            "lib/types/notification.ts",
+            "lib/types/post.ts",
+            "lib/types/reel.ts",
+            "lib/types/sticker.ts",
+            "lib/types/user.ts",
+            "lib/types/video.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Posts.ts",
+            "lib/helpers/imageOptimization.ts"
+          ],
+          "apiReferences": [
+            "/api/gifs?q=${encodeURIComponent",
+            "/api/limes",
+            "/api/limes/${encodeURIComponent",
+            "/api/limes?category=${encodeURIComponent",
+            "/api/messaging",
+            "/api/messaging/actions",
+            "/api/messaging?${parameters.toString",
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent",
+            "/api/posts/${post.id}/comments",
+            "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
+            "/api/posts/comments/${commentId}/replies?limit=20${cursorQuery}",
+            "/api/posts/comments/${editTarget.rootCommentId}/replies",
+            "/api/posts/comments/${replyTarget.commentId}/replies",
+            "/api/posts/comments/${targetId}/like",
+            "/api/push-messages",
+            "/api/relationships/status?userId=${encodeURIComponent",
+            "/api/relationships/status?userId=${userId}&type=friends",
+            "/api/stickers"
+          ]
+        }
+      },
+      {
+        "file": "app/limes/[id]/page.tsx",
+        "route": "/limes/[id]",
+        "family": "limes",
+        "dependencies": {
+          "components": [
+            "components/comments/CommentEnhancements.tsx",
+            "components/common/ConfirmationDialog.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ImageAndVideoPostSection/ImageAndVideoPostSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/YouTubePostPreview.tsx",
+            "components/home/feed/SharePostModal.tsx",
+            "components/home/video/FeedVideoPlayer.tsx",
+            "components/limes/CreateLimeModal.tsx",
+            "components/limes/ReportModal.tsx",
+            "components/moderation/ReportModal.tsx",
+            "components/ui/FriendMentionTextarea.tsx",
+            "components/ui/LimeyIcon.tsx",
+            "components/ui/button.tsx",
+            "components/ui/input.tsx",
+            "components/ui/skeleton.tsx",
+            "components/ui/textarea.tsx"
+          ],
+          "types": [
+            "lib/types/comment.ts",
+            "lib/types/course.ts",
+            "lib/types/email.ts",
+            "lib/types/friendship.ts",
+            "lib/types/global.ts",
+            "lib/types/index.ts",
+            "lib/types/mention.ts",
+            "lib/types/message.ts",
+            "lib/types/notification.ts",
+            "lib/types/post.ts",
+            "lib/types/reel.ts",
+            "lib/types/sticker.ts",
+            "lib/types/user.ts",
+            "lib/types/video.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Posts.ts",
+            "lib/helpers/imageOptimization.ts"
+          ],
+          "apiReferences": [
+            "/api/gifs?q=${encodeURIComponent",
+            "/api/limes",
+            "/api/limes/${encodeURIComponent",
+            "/api/limes?category=${encodeURIComponent",
+            "/api/messaging",
+            "/api/messaging/actions",
+            "/api/messaging?${parameters.toString",
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent",
+            "/api/posts/${post.id}/comments",
+            "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
+            "/api/posts/comments/${commentId}/replies?limit=20${cursorQuery}",
+            "/api/posts/comments/${editTarget.rootCommentId}/replies",
+            "/api/posts/comments/${replyTarget.commentId}/replies",
+            "/api/posts/comments/${targetId}/like",
+            "/api/push-messages",
+            "/api/relationships/status?userId=${encodeURIComponent",
+            "/api/relationships/status?userId=${userId}&type=friends",
+            "/api/stickers"
+          ]
+        }
+      },
+      {
+        "file": "app/limes/page.tsx",
+        "route": "/limes",
+        "family": "limes",
+        "dependencies": {
+          "components": [
+            "components/comments/CommentEnhancements.tsx",
+            "components/common/ConfirmationDialog.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ImageAndVideoPostSection/ImageAndVideoPostSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/YouTubePostPreview.tsx",
+            "components/home/feed/SharePostModal.tsx",
+            "components/home/video/FeedVideoPlayer.tsx",
+            "components/limes/CreateLimeModal.tsx",
+            "components/limes/ReportModal.tsx",
+            "components/moderation/ReportModal.tsx",
+            "components/ui/FriendMentionTextarea.tsx",
+            "components/ui/LimeyIcon.tsx",
+            "components/ui/button.tsx",
+            "components/ui/input.tsx",
+            "components/ui/skeleton.tsx",
+            "components/ui/textarea.tsx"
+          ],
+          "types": [
+            "lib/types/comment.ts",
+            "lib/types/course.ts",
+            "lib/types/email.ts",
+            "lib/types/friendship.ts",
+            "lib/types/global.ts",
+            "lib/types/index.ts",
+            "lib/types/mention.ts",
+            "lib/types/message.ts",
+            "lib/types/notification.ts",
+            "lib/types/post.ts",
+            "lib/types/reel.ts",
+            "lib/types/sticker.ts",
+            "lib/types/user.ts",
+            "lib/types/video.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Posts.ts",
+            "lib/helpers/imageOptimization.ts"
+          ],
+          "apiReferences": [
+            "/api/gifs?q=${encodeURIComponent",
+            "/api/limes",
+            "/api/limes/${encodeURIComponent",
+            "/api/limes?category=${encodeURIComponent",
+            "/api/messaging",
+            "/api/messaging/actions",
+            "/api/messaging?${parameters.toString",
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent",
+            "/api/posts/${post.id}/comments",
+            "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
+            "/api/posts/comments/${commentId}/replies?limit=20${cursorQuery}",
+            "/api/posts/comments/${editTarget.rootCommentId}/replies",
+            "/api/posts/comments/${replyTarget.commentId}/replies",
+            "/api/posts/comments/${targetId}/like",
+            "/api/push-messages",
+            "/api/relationships/status?userId=${encodeURIComponent",
+            "/api/relationships/status?userId=${userId}&type=friends",
+            "/api/stickers"
+          ]
+        }
+      },
+      {
+        "file": "app/loading.tsx",
+        "route": "/(loading)",
+        "family": "(loading)",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/navigation/ProfileRouteSkeleton.tsx",
+            "components/ui/route-skeleton.tsx",
+            "components/ui/skeleton.tsx",
+            "components/viewOthers/ViewOtherProfileSkeleton.tsx"
+          ],
+          "types": [
+            "lib/types/profileNavigation.ts"
+          ],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/login/page.tsx",
+        "route": "/login",
+        "family": "login",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/initialDataFetch.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/notify-guardian"
+          ]
+        }
+      },
+      {
+        "file": "app/market/[id]/page.tsx",
+        "route": "/market/[id]",
+        "family": "market",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/notify-guardian"
+          ]
+        }
+      },
+      {
+        "file": "app/market/page.tsx",
+        "route": "/market",
+        "family": "market",
+        "dependencies": {
+          "components": [
+            "components/market/filters/ProductFilter.tsx",
+            "components/market/products/MarketProductCard.tsx",
+            "components/market/products/ProductDetailsSidebar.tsx",
+            "components/market/promotion/PromotionSlider.tsx"
+          ],
+          "types": [
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/productTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/market/fetch",
+            "/api/market/search_and_filter",
+            "/api/market/search_and_filter?${params.toString",
+            "/api/temp-messaging",
+            "/api/temp-messaging/${receiverId}?productId=${encodeURIComponent"
+          ]
+        }
+      },
+      {
+        "file": "app/notifications/page.tsx",
+        "route": "/notifications",
+        "family": "notifications",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/notification.ts"
+          ],
+          "services": [
+            "lib/helpers/notificationHelpers.ts"
+          ],
+          "apiReferences": [
+            "/api/notifications",
+            "/api/notifications?limit=20${cursorQuery}",
+            "/api/relationships/friends"
+          ]
+        }
+      },
+      {
+        "file": "app/page.tsx",
+        "route": "/",
+        "family": "home",
+        "dependencies": {
+          "components": [
+            "components/Portal.tsx",
+            "components/auth/VerificationUploadModal.tsx",
+            "components/comm/Portal.tsx",
+            "components/comments/CommentEnhancements.tsx",
+            "components/common/ConfirmationDialog.tsx",
+            "components/common/VerifiedLimeBadge.tsx",
+            "components/events/EventDateTimePicker.tsx",
+            "components/events/EventDropdown.tsx",
+            "components/events/EventImageCropper.tsx",
+            "components/events/EventRecurrenceFields.tsx",
+            "components/events/createEventModal/CreateEventModal.tsx",
+            "components/events/editEventModal/EditEventModal.tsx",
+            "components/header/NotificationDropdown.tsx",
+            "components/header/ProfileDropdown.tsx",
+            "components/home/LeftSection/LeftSectionComponents/ActivitySection/ActivitySection.tsx",
+            "components/home/LeftSection/LeftSectionComponents/GamesSection/GameSection.tsx",
+            "components/home/LeftSection/LeftSectionComponents/NavigationLinks/NavigationLinks.tsx",
+            "components/home/LeftSection/LeftSectionComponents/ProfileSection/ProfileSection.tsx",
+            "components/home/LeftSection/LeftSectionComponents/UserListSection/UserListSection.tsx",
+            "components/home/LeftSection/LeftSectionComponents/UserModal/UserModal.tsx",
+            "components/home/LeftSection/index.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Content/Caption/Caption.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Content/Description/Description.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Content/Hashtags/Hashtags.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Content/MediaUpload/MediaUpload.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Content/Poll/Poll.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Footer/PostFooter.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Header/PostHeader.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/index.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CreatePostSection/CreatePostSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ExpandedReel/CommentSection/CommentSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ExpandedReel/ExpandedReel.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ImageAndVideoPostSection/ImageAndVideoPostSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/LikesModal/LikesModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PollCardSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostLocationMap.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/YouTubePostPreview.tsx",
+            "components/home/MiddleSection/index.tsx",
+            "components/home/RightSection/RightSectionComponent/ActivitySection/ActivitySection.tsx",
+            "components/home/RightSection/index.tsx",
+            "components/home/SkeletonLoader.tsx",
+            "components/home/feed/AchievementToast.tsx",
+            "components/home/feed/Confetti.tsx",
+            "components/home/feed/CreatePost.tsx",
+            "components/home/feed/CursorTrail.tsx",
+            "components/home/feed/FeedFilters.tsx",
+            "components/home/feed/FeedHeader.tsx",
+            "components/home/feed/FloatingParticles.tsx",
+            "components/home/feed/LivePresence.tsx",
+            "components/home/feed/LocationPickerModal.tsx",
+            "components/home/feed/SharePostModal.tsx",
+            "components/home/feed/SkeletonPost.tsx",
+            "components/home/mobile/Mobile.tsx",
+            "components/home/video/FeedVideoPlayer.tsx",
+            "components/moderation/ReportModal.tsx",
+            "components/pageAccess/PageAccessBadge.tsx",
+            "components/polls/CreatePollModal.tsx",
+            "components/polls/PollResponses.tsx",
+            "components/search/UserSearch.tsx",
+            "components/ui/FriendMentionTextarea.tsx",
+            "components/ui/LimeyIcon.tsx",
+            "components/ui/button.tsx",
+            "components/ui/input.tsx",
+            "components/ui/modern-calendar.tsx",
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx",
+            "components/ui/textarea.tsx"
+          ],
+          "types": [
+            "lib/types/comment.ts",
+            "lib/types/course.ts",
+            "lib/types/email.ts",
+            "lib/types/friendship.ts",
+            "lib/types/global.ts",
+            "lib/types/index.ts",
+            "lib/types/mention.ts",
+            "lib/types/message.ts",
+            "lib/types/notification.ts",
+            "lib/types/post.ts",
+            "lib/types/reel.ts",
+            "lib/types/sticker.ts",
+            "lib/types/user.ts",
+            "lib/types/video.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/eventTypes.ts",
+            "types/firebase-schema-phase2.ts",
+            "types/friendTypes.ts",
+            "types/pageAccess.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/Posts.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/notificationHelpers.ts",
+            "helpers/relationshipHelpers.ts",
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/cropImage.ts",
+            "lib/helpers/imageOptimization.ts",
+            "lib/helpers/mediaValidation.ts",
+            "lib/helpers/notificationHelpers.ts",
+            "lib/services/dispatchMentionNotifications.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/gifs?q=${encodeURIComponent",
+            "/api/home/LeftSection/activity",
+            "/api/home/LeftSection/games",
+            "/api/home/MiddleSection/Post/Likes",
+            "/api/home/MiddleSection/Post/createPost",
+            "/api/home/MiddleSection/Post?pageSize=${BATCH_SIZE}&filter=${activeFilterKey}&scope=${feedScope}${cursorQuery}",
+            "/api/home/MiddleSection/Reel",
+            "/api/home/RightSection?${searchParams.toString",
+            "/api/home/promotions?limit=6",
+            "/api/messaging",
+            "/api/messaging/actions",
+            "/api/messaging?${parameters.toString",
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent",
+            "/api/notifications",
+            "/api/notifications/friend-request",
+            "/api/notifications?limit=20${cursorQuery}",
+            "/api/notify-guardian",
+            "/api/posts/${post.id}",
+            "/api/posts/${post.id}/comments",
+            "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
+            "/api/posts/${post.id}/repost",
+            "/api/posts/${post.id}/share",
+            "/api/posts/${post.id}/vote",
+            "/api/posts/comments/${commentId}/replies?limit=20${cursorQuery}",
+            "/api/posts/comments/${editTarget.rootCommentId}/replies",
+            "/api/posts/comments/${replyTarget.commentId}/replies",
+            "/api/posts/comments/${targetId}/like",
+            "/api/posts/drafts",
+            "/api/posts/drafts?mediaIndex=${index}",
+            "/api/profile/blocklist",
+            "/api/profile/presence",
+            "/api/push-messages",
+            "/api/reels/${reel.id}/like",
+            "/api/reels/${reelId}/comments",
+            "/api/reels/${reelId}/comments/replies",
+            "/api/relationships/followers",
+            "/api/relationships/friends",
+            "/api/relationships/friends?userId=${currentUserId}&action=friends-list",
+            "/api/relationships/friends?userId=${currentUserId}&action=pending-requests",
+            "/api/relationships/status?userId1=${selectedUserId}&userId2=${userId}&type=network-stats",
+            "/api/relationships/status?userId=${currentUserId}&type=discover",
+            "/api/relationships/status?userId=${currentUserId}&type=discover&limit=4",
+            "/api/relationships/status?userId=${currentUserId}&type=followers",
+            "/api/relationships/status?userId=${currentUserId}&type=friends",
+            "/api/relationships/status?userId=${encodeURIComponent",
+            "/api/relationships/status?userId=${userId}&type=friends",
+            "/api/relationships/suggestions?limit=12",
+            "/api/stickers",
+            "/api/temp-messaging",
+            "/api/temp-messaging/${encodeURIComponent",
+            "/api/triniGeoGuesser/geocode",
+            "/api/triniGeoGuesser/reverse",
+            "/api/users/search?q=${encodeURIComponent"
+          ]
+        }
+      },
+      {
+        "file": "app/policies/page.tsx",
+        "route": "/policies",
+        "family": "policies",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/post/[id]/page.tsx",
+        "route": "/post/[id]",
+        "family": "post",
+        "dependencies": {
+          "components": [
+            "components/Portal.tsx",
+            "components/comments/CommentEnhancements.tsx",
+            "components/common/VerifiedLimeBadge.tsx",
+            "components/events/EventDateTimePicker.tsx",
+            "components/events/EventDropdown.tsx",
+            "components/events/EventImageCropper.tsx",
+            "components/events/EventRecurrenceFields.tsx",
+            "components/events/editEventModal/EditEventModal.tsx",
+            "components/home/LeftSection/LeftSectionComponents/ActivitySection/ActivitySection.tsx",
+            "components/home/LeftSection/LeftSectionComponents/GamesSection/GameSection.tsx",
+            "components/home/LeftSection/LeftSectionComponents/NavigationLinks/NavigationLinks.tsx",
+            "components/home/LeftSection/LeftSectionComponents/ProfileSection/ProfileSection.tsx",
+            "components/home/LeftSection/LeftSectionComponents/UserListSection/UserListSection.tsx",
+            "components/home/LeftSection/index.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ImageAndVideoPostSection/ImageAndVideoPostSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/LikesModal/LikesModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PollCardSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostLocationMap.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/YouTubePostPreview.tsx",
+            "components/home/RightSection/RightSectionComponent/ActivitySection/ActivitySection.tsx",
+            "components/home/RightSection/index.tsx",
+            "components/home/feed/SharePostModal.tsx",
+            "components/home/feed/SkeletonPost.tsx",
+            "components/home/video/FeedVideoPlayer.tsx",
+            "components/moderation/ReportModal.tsx",
+            "components/polls/PollResponses.tsx",
+            "components/ui/FriendMentionTextarea.tsx",
+            "components/ui/LimeyIcon.tsx",
+            "components/ui/button.tsx",
+            "components/ui/input.tsx",
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx",
+            "components/ui/textarea.tsx"
+          ],
+          "types": [
+            "lib/types/comment.ts",
+            "lib/types/course.ts",
+            "lib/types/email.ts",
+            "lib/types/friendship.ts",
+            "lib/types/global.ts",
+            "lib/types/index.ts",
+            "lib/types/mention.ts",
+            "lib/types/message.ts",
+            "lib/types/notification.ts",
+            "lib/types/post.ts",
+            "lib/types/reel.ts",
+            "lib/types/sticker.ts",
+            "lib/types/user.ts",
+            "lib/types/video.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/eventTypes.ts",
+            "types/firebase-schema-phase2.ts",
+            "types/friendTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Posts.ts",
+            "helpers/relationshipHelpers.ts",
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/cropImage.ts",
+            "lib/helpers/imageOptimization.ts",
+            "lib/helpers/notificationHelpers.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/gifs?q=${encodeURIComponent",
+            "/api/home/LeftSection/activity",
+            "/api/home/LeftSection/games",
+            "/api/home/MiddleSection/Post/Likes",
+            "/api/home/promotions?limit=6",
+            "/api/messaging",
+            "/api/messaging/actions",
+            "/api/messaging?${parameters.toString",
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent",
+            "/api/notifications",
+            "/api/posts/${post.id}",
+            "/api/posts/${post.id}/comments",
+            "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
+            "/api/posts/${post.id}/repost",
+            "/api/posts/${post.id}/share",
+            "/api/posts/${post.id}/vote",
+            "/api/posts/comments/${commentId}/replies?limit=20${cursorQuery}",
+            "/api/posts/comments/${editTarget.rootCommentId}/replies",
+            "/api/posts/comments/${replyTarget.commentId}/replies",
+            "/api/posts/comments/${targetId}/like",
+            "/api/posts/shared/${encodeURIComponent",
+            "/api/profile/blocklist",
+            "/api/profile/presence",
+            "/api/push-messages",
+            "/api/relationships/followers",
+            "/api/relationships/friends",
+            "/api/relationships/status?userId=${currentUserId}&type=discover",
+            "/api/relationships/status?userId=${currentUserId}&type=discover&limit=4",
+            "/api/relationships/status?userId=${currentUserId}&type=followers",
+            "/api/relationships/status?userId=${currentUserId}&type=friends",
+            "/api/relationships/status?userId=${encodeURIComponent",
+            "/api/relationships/status?userId=${userId}&type=friends",
+            "/api/stickers"
+          ]
+        }
+      },
+      {
+        "file": "app/privacy-policy/page.tsx",
+        "route": "/privacy-policy",
+        "family": "privacy-policy",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/profile/[username]/page.tsx",
+        "route": "/profile/[username]",
+        "family": "profile",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/profile/admin/analytics/page.tsx",
+        "route": "/profile/admin/analytics",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/admin/analytics/AdminSocialAnalyticsDashboard.tsx",
+            "components/profile/admin/analytics/AnalyticsDateTimeFilter.tsx",
+            "components/profile/navigation/ProfileRouteSkeleton.tsx",
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/adminAnalytics.ts",
+            "lib/types/profileNavigation.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/initialDataFetch.ts",
+            "helpers/userAccountStatus.ts",
+            "lib/services/AdminAnalyticsService.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/notify-guardian"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/admin/categories/page.tsx",
+        "route": "/profile/admin/categories",
+        "family": "profile",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/profile/admin/communities/page.tsx",
+        "route": "/profile/admin/communities",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/navigation/ProfileRouteSkeleton.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/profileNavigation.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/admin/communities?${params.toString"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/admin/community-categories/page.tsx",
+        "route": "/profile/admin/community-categories",
+        "family": "profile",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/profile/admin/dashboard/page.tsx",
+        "route": "/profile/admin/dashboard",
+        "family": "profile",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/profile/admin/jobs/page.tsx",
+        "route": "/profile/admin/jobs",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/navigation/ProfileRouteSkeleton.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/profileNavigation.ts"
+          ],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/profile/admin/moderation/page.tsx",
+        "route": "/profile/admin/moderation",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/admin/moderation/AdminModerationPageContent.tsx",
+            "components/profile/navigation/ProfileRouteSkeleton.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/profileNavigation.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/initialDataFetch.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/moderation/reports/${encodeURIComponent",
+            "/api/notify-guardian"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/admin/page-access/page.tsx",
+        "route": "/profile/admin/page-access",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/pageAccess/PageAccessAdminTable.tsx",
+            "components/pageAccess/PageAccessAuditLog.tsx",
+            "components/pageAccess/PageAccessEditModal.tsx",
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/navigation/ProfileRouteSkeleton.tsx",
+            "components/ui/skeleton.tsx",
+            "components/ui/tabs.tsx"
+          ],
+          "types": [
+            "lib/types/profileNavigation.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/pageAccess.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/initialDataFetch.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/notify-guardian"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/admin/products/page.tsx",
+        "route": "/profile/admin/products",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/navigation/ProfileRouteSkeleton.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/profileNavigation.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/admin/products?${params.toString"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/admin/reports/page.tsx",
+        "route": "/profile/admin/reports",
+        "family": "profile",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/profile/admin/stickers/page.tsx",
+        "route": "/profile/admin/stickers",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/navigation/ProfileRouteSkeleton.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/profileNavigation.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/sticker-packs",
+            "/api/sticker-packs/${editingPack.id}",
+            "/api/sticker-packs/${id}",
+            "/api/stickers",
+            "/api/stickers/${editingSticker.id}",
+            "/api/stickers/${id}",
+            "/api/stickers?packId=${selectedPackId}",
+            "/api/user/profile"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/admin/testers/page.tsx",
+        "route": "/profile/admin/testers",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/admin/testers/TestersManagement.tsx",
+            "components/profile/navigation/ProfileRouteSkeleton.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/profileNavigation.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/initialDataFetch.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/beta/admin/applications/${row.id}",
+            "/api/beta/admin/invitations",
+            "/api/beta/admin/invitations/${invitationToDelete.id}",
+            "/api/beta/admin/invitations/${row.id}",
+            "/api/beta/admin/overview",
+            "/api/beta/admin/testers/${row.id}",
+            "/api/beta/admin/testers/${testerToRemove.id}",
+            "/api/beta/registration-mode",
+            "/api/notify-guardian"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/admin/user-management/page.tsx",
+        "route": "/profile/admin/user-management",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/admin/user-management/modals/UserAuthenticateModal.tsx",
+            "components/profile/admin/user-management/modals/UserDeleteModal.tsx",
+            "components/profile/admin/user-management/modals/UserRoleModal.tsx",
+            "components/profile/admin/user-management/modals/UserStatusModal.tsx",
+            "components/profile/admin/user-management/modals/UserViewModal.tsx",
+            "components/profile/admin/user-management/modals/VerifyUserModal.tsx",
+            "components/profile/navigation/ProfileRouteSkeleton.tsx",
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/profileNavigation.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/UserTierHelper.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/initialDataFetch.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/admin/users/${encodeURIComponent",
+            "/api/admin/users?${params.toString",
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/notify-guardian",
+            "/api/notify-verification"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/business-account/page.tsx",
+        "route": "/profile/business-account",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/business-account/BusinessAccountContent.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/business-account"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/friends/page.tsx",
+        "route": "/profile/friends",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/moderation/ReportModal.tsx",
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/notification.ts"
+          ],
+          "services": [
+            "lib/helpers/notificationHelpers.ts"
+          ],
+          "apiReferences": [
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent",
+            "/api/notifications",
+            "/api/profile/blocklist",
+            "/api/relationships/followers",
+            "/api/relationships/followers?userId=${userId}&action=followers",
+            "/api/relationships/followers?userId=${userId}&action=following",
+            "/api/relationships/friends",
+            "/api/relationships/friends?userId=${userId}&action=pending-requests",
+            "/api/relationships/status?userId=${userId}&type=discover",
+            "/api/relationships/status?userId=${userId}&type=friends",
+            "/api/user?userId=${follow.followeeId}",
+            "/api/user?userId=${follower.followerId}",
+            "/api/user?userId=${otherUserId}",
+            "/api/user?userId=${userId}"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/jobs/add/page.tsx",
+        "route": "/profile/jobs/add",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/jobs/createJobsModel/BasicInformationForm.tsx",
+            "components/jobs/createJobsModel/CompanyDetailsForm.tsx",
+            "components/jobs/createJobsModel/jobCreationModal.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/jobTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/jobs"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/jobs/delete/page.tsx",
+        "route": "/profile/jobs/delete",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/jobs/manage/JobDeleteModal.tsx",
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/jobs/delete",
+            "/api/jobs/myJobs/applications?jobId=${job.id}&userId=${uid}",
+            "/api/jobs/myJobs/audit",
+            "/api/jobs/myJobs/close",
+            "/api/jobs/myJobs?userId=${uid}"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/jobs/manage/page.tsx",
+        "route": "/profile/jobs/manage",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/jobs/manage/ApplicantFilterBar.tsx",
+            "components/jobs/manage/AuditHistoryPanel.tsx",
+            "components/jobs/manage/BulkActionsBar.tsx",
+            "components/jobs/manage/EmployerNotesPanel.tsx",
+            "components/jobs/manage/InterviewSchedulerModal.tsx",
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/jobs/myJobs/applications",
+            "/api/jobs/myJobs/applications?jobId=${job.id}",
+            "/api/jobs/myJobs/applications?jobId=${selectedJob.id}",
+            "/api/jobs/myJobs/applications?userId=${userId}",
+            "/api/jobs/myJobs/audit",
+            "/api/jobs/myJobs/audit?jobId=${jobId}",
+            "/api/jobs/myJobs/bulk",
+            "/api/jobs/myJobs/close",
+            "/api/jobs/myJobs/interviews",
+            "/api/jobs/myJobs/notes",
+            "/api/jobs/myJobs/notes?applicationId=${applicationId}",
+            "/api/jobs/myJobs/notes?noteId=${noteId}"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/jobs/my-applications/page.tsx",
+        "route": "/profile/jobs/my-applications",
+        "family": "profile",
+        "dependencies": {
+          "components": [],
+          "types": [
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/jobs/applications/my-applications",
+            "/api/jobs/applications/my-applications?userId=${userId}"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/jobs/update/page.tsx",
+        "route": "/profile/jobs/update",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/jobTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/jobs/email",
+            "/api/jobs/myJobs/applications?jobId=${job.id}",
+            "/api/jobs/myJobs/applications?jobId=${selectedJob.id}",
+            "/api/jobs/myJobs?userId=${user.uid}",
+            "/api/jobs?jobId=${selectedJob.id}"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/loading.tsx",
+        "route": "/profile",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/navigation/ProfileRouteSkeleton.tsx",
+            "components/ui/skeleton.tsx",
+            "components/viewOthers/ViewOtherProfileSkeleton.tsx"
+          ],
+          "types": [
+            "lib/types/profileNavigation.ts"
+          ],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/profile/page.tsx",
+        "route": "/profile",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/Portal.tsx",
+            "components/comm/Portal.tsx",
+            "components/comments/CommentEnhancements.tsx",
+            "components/common/VerifiedLimeBadge.tsx",
+            "components/commonProfileHeader/ProfileHeader.tsx",
+            "components/commonProfileHeader/ProfileImageViewer.tsx",
+            "components/events/EventDateTimePicker.tsx",
+            "components/events/EventDropdown.tsx",
+            "components/events/EventImageCropper.tsx",
+            "components/events/EventRecurrenceFields.tsx",
+            "components/events/editEventModal/EditEventModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ExpandedReel/CommentSection/CommentSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ExpandedReel/ExpandedReel.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ImageAndVideoPostSection/ImageAndVideoPostSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/LikesModal/LikesModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PollCardSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostLocationMap.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ReelCardSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/YouTubePostPreview.tsx",
+            "components/home/feed/SharePostModal.tsx",
+            "components/home/video/FeedVideoPlayer.tsx",
+            "components/moderation/ReportModal.tsx",
+            "components/polls/PollResponses.tsx",
+            "components/profile/ChangeCoverImageModal.tsx",
+            "components/profile/ChangeProfileImageModal.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/ShareProfileModal.tsx",
+            "components/profile/SocialLinksDisplay.tsx",
+            "components/profile/links/AboutContent.tsx",
+            "components/profile/links/GalleryContent.tsx",
+            "components/profile/links/ProfileCustomizationContent.tsx",
+            "components/profile/links/RepostsContent.tsx",
+            "components/profile/links/TimelineContent.tsx",
+            "components/profile/links/abouts/AddressSection.tsx",
+            "components/profile/links/abouts/BasicInfoSection.tsx",
+            "components/profile/links/abouts/ContactSection.tsx",
+            "components/profile/links/abouts/EducationSection.tsx",
+            "components/profile/links/abouts/InterestsSkillsSection.tsx",
+            "components/profile/links/abouts/SocialLinksSection.tsx",
+            "components/profile/links/abouts/WorkExperienceSection.tsx",
+            "components/profile/links/abouts/component/addressCompoent/AddressCardSection.tsx",
+            "components/profile/links/abouts/component/addressCompoent/AddressFormSection.tsx",
+            "components/profile/links/gallery/headerContent/GalleryHeaderContent.tsx",
+            "components/profile/links/gallery/mainContent/GalleryMainContent.tsx",
+            "components/profile/links/gallery/modals/CreateAlbumModal.tsx",
+            "components/profile/links/gallery/modals/EditAlbumModal.tsx",
+            "components/profile/links/gallery/modals/ImagePreviewModal.tsx",
+            "components/profile/links/gallery/modals/UploadModal.tsx",
+            "components/ui/FriendMentionTextarea.tsx",
+            "components/ui/LimeyIcon.tsx",
+            "components/ui/button.tsx",
+            "components/ui/input.tsx",
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx",
+            "components/ui/textarea.tsx"
+          ],
+          "types": [
+            "lib/types/comment.ts",
+            "lib/types/course.ts",
+            "lib/types/email.ts",
+            "lib/types/friendship.ts",
+            "lib/types/global.ts",
+            "lib/types/index.ts",
+            "lib/types/mention.ts",
+            "lib/types/message.ts",
+            "lib/types/notification.ts",
+            "lib/types/post.ts",
+            "lib/types/profileNavigation.ts",
+            "lib/types/reel.ts",
+            "lib/types/sticker.ts",
+            "lib/types/user.ts",
+            "lib/types/video.ts",
+            "types/addressTypes.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/eventTypes.ts",
+            "types/friendTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Posts.ts",
+            "helpers/relationshipHelpers.ts",
+            "lib/helpers/cropImage.ts",
+            "lib/helpers/imageOptimization.ts",
+            "lib/helpers/notificationHelpers.ts"
+          ],
+          "apiReferences": [
+            "/api/gifs?q=${encodeURIComponent",
+            "/api/home/MiddleSection/Post/Likes",
+            "/api/home/MiddleSection/Post/createPost",
+            "/api/home/MiddleSection/Post?authorId=${encodeURIComponent",
+            "/api/home/MiddleSection/Reel?userId=${encodeURIComponent",
+            "/api/limes?viewerId=${encodeURIComponent",
+            "/api/messaging",
+            "/api/messaging/actions",
+            "/api/messaging?${parameters.toString",
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent",
+            "/api/notifications",
+            "/api/posts/${post.id}",
+            "/api/posts/${post.id}/comments",
+            "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
+            "/api/posts/${post.id}/repost",
+            "/api/posts/${post.id}/share",
+            "/api/posts/${post.id}/vote",
+            "/api/posts/comments/${commentId}/replies?limit=20${cursorQuery}",
+            "/api/posts/comments/${editTarget.rootCommentId}/replies",
+            "/api/posts/comments/${replyTarget.commentId}/replies",
+            "/api/posts/comments/${targetId}/like",
+            "/api/posts/reposts?pageSize=20",
+            "/api/profile/abouts/education",
+            "/api/profile/abouts/education?userId=${userId}",
+            "/api/profile/abouts/education?userId=${userId}&educationId=${id}",
+            "/api/profile/abouts/interests",
+            "/api/profile/abouts/interests?userId=${userId}",
+            "/api/profile/abouts/interests?userId=${userId}&id=${id}",
+            "/api/profile/abouts/workExperience",
+            "/api/profile/abouts/workExperience?userId=${userId}",
+            "/api/profile/abouts/workExperience?userId=${userId}&experienceId=${id}",
+            "/api/profile/address",
+            "/api/profile/address?addressId=${addressId}",
+            "/api/profile/address?typeId=${typeId}",
+            "/api/profile/address?userId=${user.uid}",
+            "/api/profile/basicInformation",
+            "/api/profile/blocklist",
+            "/api/profile/gallery",
+            "/api/profile/gallery?albumId=${activeAlbumId}&mediaIds=${mediaId}",
+            "/api/profile/gallery?albumId=${activeAlbumId}&relationshipIds=${selectedImages.join",
+            "/api/profile/gallery?albumId=${albumId}",
+            "/api/profile/gallery?batchCheckUsage=true&mediaIds=${mediaIds.join",
+            "/api/profile/gallery?checkUsage=true&mediaId=${mediaId}",
+            "/api/profile/gallery?mediaId=${mediaId}&force=true",
+            "/api/profile/gallery?mediaId=${mediaId}&mediaType=gallery",
+            "/api/profile/gallery?userId=${user.uid}",
+            "/api/profile/gallery?userId=${user.uid}&albumId=${albumId}",
+            "/api/profile/gallery?userId=${user.uid}&section=${section}&${cursorParameter}=${encodeURIComponent",
+            "/api/profile/header",
+            "/api/profile/header/upload",
+            "/api/profile/header?userId=${user.uid}",
+            "/api/profile/social-links",
+            "/api/push-messages",
+            "/api/reels/${reel.id}/like",
+            "/api/reels/${reelId}/comments",
+            "/api/reels/${reelId}/comments/replies",
+            "/api/reels/${reelId}/like",
+            "/api/relationships/followers",
+            "/api/relationships/followers?userId=${uid}&action=counts",
+            "/api/relationships/friends",
+            "/api/relationships/status?userId=${encodeURIComponent",
+            "/api/relationships/status?userId=${uid}&type=friends",
+            "/api/relationships/status?userId=${userId}&type=friends",
+            "/api/stickers"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/products/add/page.tsx",
+        "route": "/profile/products/add",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/common/Stepper.tsx",
+            "components/profile/products/add/steps/BasicInfo.tsx",
+            "components/profile/products/add/steps/MediaUpload.tsx",
+            "components/profile/products/add/steps/PricingDetails.tsx",
+            "components/profile/products/add/steps/SaveProduct.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/productTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/admin/categories",
+            "/api/profile/products/addProduct"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/products/edit/[id]/page.tsx",
+        "route": "/profile/products/edit/[id]",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/common/ConfirmationDialog.tsx",
+            "components/common/Stepper.tsx",
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/profile/ProfileSkeletons.tsx",
+            "components/profile/navigation/ProfileRouteSkeleton.tsx",
+            "components/profile/products/edit/steps/BasicInfo.tsx",
+            "components/profile/products/edit/steps/MediaUpload.tsx",
+            "components/profile/products/edit/steps/PricingDetails.tsx",
+            "components/profile/products/edit/steps/SaveProduct.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "lib/types/profileNavigation.ts",
+            "types/productTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/admin/categories",
+            "/api/profile/products/deleteProduct?productId=${productId}&userId=${auth.currentUser?.uid",
+            "/api/profile/products/getProduct?productId=${productId}",
+            "/api/profile/products/updateProduct"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/products/page.tsx",
+        "route": "/profile/products",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/common/ProductDeleteModal.tsx",
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/productTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/profile/products/deleteProduct?productId=${productId}&userId=${auth.currentUser?.uid",
+            "/api/profile/products/getProduct?productId=${productId}"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/products/update/page.tsx",
+        "route": "/profile/products/update",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/productTypes.ts"
+          ],
+          "services": [],
+          "apiReferences": [
+            "/api/profile/products/deleteProduct?productId=${productId}&userId=${auth.currentUser?.uid",
+            "/api/profile/products/getProduct?productId=${productId}"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/settings/page.tsx",
+        "route": "/profile/settings",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/profile/BlockList.tsx",
+            "components/profile/ProfileDestinationSkeletons.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/notify-guardian",
+            "/api/profile/blocklist",
+            "/api/profile/delete-account",
+            "/api/profile/settings",
+            "/api/profile/settings/privacy-security",
+            "/api/profile/settings/privacy-security?type=connected-accounts&userId=${user?.uid}",
+            "/api/profile/settings/privacy-security?type=login-activity&userId=${user?.uid}",
+            "/api/profile/settings/privacy-security?type=privacy&userId=${user?.uid}",
+            "/api/profile/settings/privacy-security?type=security&userId=${user?.uid}",
+            "/api/profile/settings?type=account&userId=${user?.uid}",
+            "/api/profile/settings?type=notifications&userId=${user?.uid}",
+            "/api/users",
+            "/api/users/search?q=${encodeURIComponent"
+          ]
+        }
+      },
+      {
+        "file": "app/profile/viewOtherProfile/[username]/page.tsx",
+        "route": "/profile/viewOtherProfile/[username]",
+        "family": "profile",
+        "dependencies": {
+          "components": [
+            "components/Portal.tsx",
+            "components/comments/CommentEnhancements.tsx",
+            "components/common/VerifiedLimeBadge.tsx",
+            "components/commonProfileHeader/ProfileImageViewer.tsx",
+            "components/commonProfileHeader/ViewOtherProfileHeader.tsx",
+            "components/events/EventDateTimePicker.tsx",
+            "components/events/EventDropdown.tsx",
+            "components/events/EventImageCropper.tsx",
+            "components/events/EventRecurrenceFields.tsx",
+            "components/events/editEventModal/EditEventModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ImageAndVideoPostSection/ImageAndVideoPostSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/LikesModal/LikesModal.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PollCardSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostLocationMap.tsx",
+            "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/YouTubePostPreview.tsx",
+            "components/home/feed/SharePostModal.tsx",
+            "components/home/video/FeedVideoPlayer.tsx",
+            "components/moderation/ReportModal.tsx",
+            "components/polls/PollResponses.tsx",
+            "components/profile/SocialLinksDisplay.tsx",
+            "components/ui/FriendMentionTextarea.tsx",
+            "components/ui/LimeyIcon.tsx",
+            "components/ui/button.tsx",
+            "components/ui/input.tsx",
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx",
+            "components/ui/textarea.tsx",
+            "components/viewOthers/AboutDetails.tsx",
+            "components/viewOthers/FriendDetails.tsx",
+            "components/viewOthers/PhotosAndVideosDetails.tsx",
+            "components/viewOthers/PostAndDetails.tsx",
+            "components/viewOthers/ViewOtherProfileSkeleton.tsx",
+            "components/viewOthers/about/about.tsx",
+            "components/viewOthers/communitySlider/CommunitySlider.tsx",
+            "components/viewOthers/followerSlider/FollowingSlider.tsx",
+            "components/viewOthers/followingSlider/FollowingSlider.tsx",
+            "components/viewOthers/imageSlider/ImageSlider.tsx"
+          ],
+          "types": [
+            "lib/types/comment.ts",
+            "lib/types/course.ts",
+            "lib/types/email.ts",
+            "lib/types/friendship.ts",
+            "lib/types/global.ts",
+            "lib/types/index.ts",
+            "lib/types/mention.ts",
+            "lib/types/message.ts",
+            "lib/types/notification.ts",
+            "lib/types/post.ts",
+            "lib/types/reel.ts",
+            "lib/types/sticker.ts",
+            "lib/types/user.ts",
+            "lib/types/video.ts",
+            "types/betaTypes.ts",
+            "types/communityTypes.ts",
+            "types/eventTypes.ts",
+            "types/friendTypes.ts",
+            "types/userTypes.ts"
+          ],
+          "services": [
+            "helpers/Posts.ts",
+            "helpers/relationshipHelpers.ts",
+            "helpers/userAccountStatus.ts",
+            "lib/helpers/cropImage.ts",
+            "lib/helpers/imageOptimization.ts",
+            "lib/helpers/notificationHelpers.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/session",
+            "/api/gifs?q=${encodeURIComponent",
+            "/api/home/MiddleSection/Post/Likes",
+            "/api/home/MiddleSection/Post?authorId=${encodeURIComponent",
+            "/api/messaging",
+            "/api/messaging/actions",
+            "/api/messaging?${parameters.toString",
+            "/api/moderation/reports",
+            "/api/moderation/reports/${encodeURIComponent",
+            "/api/notifications",
+            "/api/posts/${post.id}",
+            "/api/posts/${post.id}/comments",
+            "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
+            "/api/posts/${post.id}/repost",
+            "/api/posts/${post.id}/share",
+            "/api/posts/${post.id}/vote",
+            "/api/posts/comments/${commentId}/replies?limit=20${cursorQuery}",
+            "/api/posts/comments/${editTarget.rootCommentId}/replies",
+            "/api/posts/comments/${replyTarget.commentId}/replies",
+            "/api/posts/comments/${targetId}/like",
+            "/api/profile/blocklist",
+            "/api/profile/presence",
+            "/api/profile/presence?userId=${encodeURIComponent",
+            "/api/profile/viewOtherProfile?username=${username}",
+            "/api/push-messages",
+            "/api/relationships/followers",
+            "/api/relationships/friends",
+            "/api/relationships/status?userId1=${currentUserId}&userId2=${friendId}&type=all",
+            "/api/relationships/status?userId1=${encodeURIComponent",
+            "/api/relationships/status?userId=${encodeURIComponent",
+            "/api/relationships/status?userId=${userId}&type=friends",
+            "/api/stickers"
+          ]
+        }
+      },
+      {
+        "file": "app/projectManagement/[projectId]/page.tsx",
+        "route": "/projectManagement/[projectId]",
+        "family": "projectManagement",
+        "dependencies": {
+          "components": [
+            "components/common/ConfirmationDialog.tsx",
+            "components/projectManagement/projectDetails/InviteUserModal.tsx",
+            "components/projectManagement/projectDetails/ProjectHeader.tsx",
+            "components/projectManagement/projectDetails/ProjectSettingsModal.tsx",
+            "components/projectManagement/projectDetails/ProjectSidebar.tsx",
+            "components/projectManagement/projectDetails/ProjectStatsOverview.tsx",
+            "components/projectManagement/projectDetails/TaskBoard.tsx",
+            "components/projectManagement/projectDetails/TaskCreationModal.tsx",
+            "components/projectManagement/projectDetails/TaskDetailModal.tsx",
+            "components/projectManagement/projectDetails/auditConfig.ts",
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/projectManagement.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts"
+          ],
+          "apiReferences": [
+            "/api/notifications",
+            "/api/projects/invite"
+          ]
+        }
+      },
+      {
+        "file": "app/projectManagement/page.tsx",
+        "route": "/projectManagement",
+        "family": "projectManagement",
+        "dependencies": {
+          "components": [
+            "components/ConfirmationModal.tsx",
+            "components/Portal.tsx",
+            "components/common/ConfirmationDialog.tsx",
+            "components/projectManagement/CreateProjectModal.tsx",
+            "components/projectManagement/ProjectCard.tsx",
+            "components/projectManagement/ProjectInviteCard.tsx",
+            "components/projectManagement/ProjectListItem.tsx",
+            "components/projectManagement/ProjectStats.tsx",
+            "components/projectManagement/ProjectToolbar.tsx",
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [
+            "types/projectManagement.ts"
+          ],
+          "services": [
+            "helpers/firebaseStorage.ts"
+          ],
+          "apiReferences": [
+            "/api/projects/invite",
+            "/api/projects/respondInvite",
+            "/api/users/search?q=${encodeURIComponent"
+          ]
+        }
+      },
+      {
+        "file": "app/register/page.tsx",
+        "route": "/register",
+        "family": "register",
+        "dependencies": {
+          "components": [
+            "components/register/AccountTypeStep.tsx",
+            "components/register/AvatarStep.tsx",
+            "components/register/BetaAccessView.tsx",
+            "components/register/BetaApplicationModal.tsx",
+            "components/register/ChildSafetyPolicyModal.tsx",
+            "components/register/DemographicsStep.tsx",
+            "components/register/FirstStep.tsx",
+            "components/register/InterestsStep.tsx",
+            "components/register/InvitationBadge.tsx",
+            "components/register/LocationStep.tsx",
+            "components/register/PrivacyModal.tsx",
+            "components/register/SecondStepOptional.tsx",
+            "components/register/TermsModal.tsx",
+            "components/register/VerificationStep.tsx",
+            "components/register/WelcomeStep.tsx",
+            "components/ui/modern-date-picker.tsx",
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/registration-availability",
+            "/api/auth/session",
+            "/api/auth/verification-status?userId=${encodeURIComponent",
+            "/api/beta/apply",
+            "/api/beta/registration-mode",
+            "/api/beta/validate-token?token=${encodeURIComponent",
+            "/api/notify-guardian",
+            "https://countriesnow.space/api/v0.1/countries/cities"
+          ]
+        }
+      },
+      {
+        "file": "app/reset-password/page.tsx",
+        "route": "/reset-password",
+        "family": "reset-password",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/terms-and-conditions/page.tsx",
+        "route": "/terms-and-conditions",
+        "family": "terms-and-conditions",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/triniGeoGuesser/game/page.tsx",
+        "route": "/triniGeoGuesser/game",
+        "family": "triniGeoGuesser",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/triniGeoGuesser/game"
+          ]
+        }
+      },
+      {
+        "file": "app/triniGeoGuesser/leaderboard/page.tsx",
+        "route": "/triniGeoGuesser/leaderboard",
+        "family": "triniGeoGuesser",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/triniGeoGuesser/page.tsx",
+        "route": "/triniGeoGuesser",
+        "family": "triniGeoGuesser",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/verify-email/failure/page.tsx",
+        "route": "/verify-email/failure",
+        "family": "verify-email",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/verify-email/loading.tsx",
+        "route": "/verify-email",
+        "family": "verify-email",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/verify-email/page.tsx",
+        "route": "/verify-email",
+        "family": "verify-email",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [
+            "helpers/Auth.ts",
+            "helpers/firebaseStorage.ts",
+            "helpers/userAccountStatus.ts"
+          ],
+          "apiReferences": [
+            "/api/auth/register/start",
+            "/api/auth/session",
+            "/api/notify-guardian"
+          ]
+        }
+      },
+      {
+        "file": "app/verify-email/success/page.tsx",
+        "route": "/verify-email/success",
+        "family": "verify-email",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/verify/[uId]/page.tsx",
+        "route": "/verify/[uId]",
+        "family": "verify",
+        "dependencies": {
+          "components": [
+            "components/ui/skeleton.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/wordle-game/page.tsx",
+        "route": "/wordle-game",
+        "family": "wordle-game",
+        "dependencies": {
+          "components": [
+            "components/wordle-game/Game/GameBoard.module.css",
+            "components/wordle-game/Game/GameBoard.tsx",
+            "components/wordle-game/Grid/Grid.module.css",
+            "components/wordle-game/Grid/Grid.tsx",
+            "components/wordle-game/Grid/Row.tsx",
+            "components/wordle-game/Grid/index.ts",
+            "components/wordle-game/Header/Header.module.css",
+            "components/wordle-game/Header/Header.tsx",
+            "components/wordle-game/Header/index.ts",
+            "components/wordle-game/Keyboard/Key.tsx",
+            "components/wordle-game/Keyboard/Keyboard.module.css",
+            "components/wordle-game/Keyboard/Keyboard.tsx",
+            "components/wordle-game/Keyboard/index.ts",
+            "components/wordle-game/Message/Message.module.css",
+            "components/wordle-game/Message/Message.tsx",
+            "components/wordle-game/Message/index.ts",
+            "components/wordle-game/Modal/GameOverModal.tsx",
+            "components/wordle-game/Modal/HelpModal.tsx",
+            "components/wordle-game/Modal/Modal.module.css",
+            "components/wordle-game/Modal/index.ts",
+            "components/wordle-game/Tile/Tile.module.css",
+            "components/wordle-game/Tile/Tile.tsx"
+          ],
+          "types": [
+            "types/game.types.ts",
+            "types/index.ts",
+            "types/keyboard.types.ts"
+          ],
+          "services": [],
+          "apiReferences": []
+        }
+      }
+    ],
+    "apiRoutes": [
+      "app/api/admin/categories/route.ts",
+      "app/api/admin/communities/route.ts",
+      "app/api/admin/community-categories/route.ts",
+      "app/api/admin/metrics/route.ts",
+      "app/api/admin/products/route.ts",
+      "app/api/admin/stickers/seed/route.ts",
+      "app/api/admin/users/[userId]/lifecycle/route.ts",
+      "app/api/admin/users/[userId]/role/route.ts",
+      "app/api/admin/users/route.ts",
+      "app/api/ads/bookings/route.ts",
+      "app/api/ads/clients/route.ts",
+      "app/api/ads/hosts/route.ts",
+      "app/api/ads/hosts/verify/route.ts",
+      "app/api/ads/offers/route.ts",
+      "app/api/ads/payments/route.ts",
+      "app/api/ads/proof/route.ts",
+      "app/api/ads/reviews/route.ts",
+      "app/api/agora/token/route.ts",
+      "app/api/auth/register/start/route.ts",
+      "app/api/auth/registration-availability/route.ts",
+      "app/api/auth/session/route.ts",
+      "app/api/auth/verification-status/route.ts",
+      "app/api/beta/admin/applications/[id]/route.ts",
+      "app/api/beta/admin/audit-log/route.ts",
+      "app/api/beta/admin/invitations/[id]/route.ts",
+      "app/api/beta/admin/invitations/route.ts",
+      "app/api/beta/admin/overview/route.ts",
+      "app/api/beta/admin/testers/[uid]/route.ts",
+      "app/api/beta/apply/route.ts",
+      "app/api/beta/registration-mode/route.ts",
+      "app/api/beta/validate-token/route.ts",
+      "app/api/blogs&articles/route.ts",
+      "app/api/business-account/metrics/route.ts",
+      "app/api/business-account/route.ts",
+      "app/api/business-account/validate/route.ts",
+      "app/api/calls/[callId]/route.ts",
+      "app/api/calls/[callId]/rtc-token/route.ts",
+      "app/api/calls/route.ts",
+      "app/api/chat/attachment-preview/route.ts",
+      "app/api/chat/friends/route.ts",
+      "app/api/chat/route.ts",
+      "app/api/communities/ban-user/route.ts",
+      "app/api/communities/check-ban/route.ts",
+      "app/api/communities/check-membership/route.ts",
+      "app/api/communities/community-like/route.ts",
+      "app/api/communities/communitylikes/route.ts",
+      "app/api/communities/dashboard/route.ts",
+      "app/api/communities/delete/route.ts",
+      "app/api/communities/edit/route.ts",
+      "app/api/communities/events/route.ts",
+      "app/api/communities/fetch/route.ts",
+      "app/api/communities/joined-by-friends/route.ts",
+      "app/api/communities/like/route.ts",
+      "app/api/communities/members/route.ts",
+      "app/api/communities/membership/route.ts",
+      "app/api/communities/polls/route.ts",
+      "app/api/communities/post/route.ts",
+      "app/api/communities/posts/route.ts",
+      "app/api/communities/remove-user/route.ts",
+      "app/api/communities/reports/route.ts",
+      "app/api/communities/requests/route.ts",
+      "app/api/communities/route.ts",
+      "app/api/communities/update-role/route.ts",
+      "app/api/events/[id]/route.ts",
+      "app/api/events/fetch/route.ts",
+      "app/api/find-user/route.ts",
+      "app/api/gifs/route.ts",
+      "app/api/health/route.ts",
+      "app/api/home/LeftSection/activity/route.ts",
+      "app/api/home/LeftSection/games/route.ts",
+      "app/api/home/LeftSection/route.ts",
+      "app/api/home/MiddleSection/Moments/route.ts",
+      "app/api/home/MiddleSection/Post/createPost/route.ts",
+      "app/api/home/MiddleSection/Post/Likes/route.ts",
+      "app/api/home/MiddleSection/Post/route.ts",
+      "app/api/home/MiddleSection/Reel/route.ts",
+      "app/api/home/promotions/route.ts",
+      "app/api/home/RightSection/route.ts",
+      "app/api/jobs/applications/my-applications/route.ts",
+      "app/api/jobs/applications/route.ts",
+      "app/api/jobs/categories/route.ts",
+      "app/api/jobs/delete/route.ts",
+      "app/api/jobs/email/route.ts",
+      "app/api/jobs/myJobs/applications/[applicationId]/route.ts",
+      "app/api/jobs/myJobs/applications/route.ts",
+      "app/api/jobs/myJobs/audit/route.ts",
+      "app/api/jobs/myJobs/bulk/route.ts",
+      "app/api/jobs/myJobs/close/route.ts",
+      "app/api/jobs/myJobs/interviews/route.ts",
+      "app/api/jobs/myJobs/notes/route.ts",
+      "app/api/jobs/myJobs/route.ts",
+      "app/api/jobs/route.ts",
+      "app/api/limes/[id]/repost/route.ts",
+      "app/api/limes/[id]/route.ts",
+      "app/api/limes/[id]/share/route.ts",
+      "app/api/limes/route.ts",
+      "app/api/link-preview/route.ts",
+      "app/api/manual-verify/route.ts",
+      "app/api/market/fetch/route.ts",
+      "app/api/market/search_and_filter/route.ts",
+      "app/api/messaging/[receiverId]/route.ts",
+      "app/api/messaging/actions/route.ts",
+      "app/api/messaging/route.ts",
+      "app/api/moderation/notifications/route.ts",
+      "app/api/moderation/reports/[reportId]/action/route.ts",
+      "app/api/moderation/reports/[reportId]/route.ts",
+      "app/api/moderation/reports/route.ts",
+      "app/api/notifications/friend-request/route.ts",
+      "app/api/notifications/route.ts",
+      "app/api/notify-admin-id/route.ts",
+      "app/api/notify-guardian/route.ts",
+      "app/api/notify-verification/route.ts",
+      "app/api/page-access/route.ts",
+      "app/api/password-reset/route.ts",
+      "app/api/posts/[id]/comments/route.ts",
+      "app/api/posts/[id]/repost/route.ts",
+      "app/api/posts/[id]/route.ts",
+      "app/api/posts/[id]/share/route.ts",
+      "app/api/posts/[id]/vote/route.ts",
+      "app/api/posts/comments/[commentId]/like/route.ts",
+      "app/api/posts/comments/[commentId]/replies/route.ts",
+      "app/api/posts/comments/update-count/route.ts",
+      "app/api/posts/drafts/route.ts",
+      "app/api/posts/like/route.ts",
+      "app/api/posts/reposts/route.ts",
+      "app/api/posts/shared/[postId]/route.ts",
+      "app/api/profile/abouts/education/route.ts",
+      "app/api/profile/abouts/interests/route.ts",
+      "app/api/profile/abouts/workExperience/route.ts",
+      "app/api/profile/address/route.ts",
+      "app/api/profile/admin/products/approve/route.ts",
+      "app/api/profile/admin/products/reject/route.ts",
+      "app/api/profile/basicInformation/route.ts",
+      "app/api/profile/blocklist/route.ts",
+      "app/api/profile/delete-account/route.ts",
+      "app/api/profile/gallery/route.ts",
+      "app/api/profile/header/route.ts",
+      "app/api/profile/header/upload/route.ts",
+      "app/api/profile/presence/route.ts",
+      "app/api/profile/products/addProduct/route.ts",
+      "app/api/profile/products/deleteProduct/route.ts",
+      "app/api/profile/products/getProduct/route.ts",
+      "app/api/profile/products/updateProduct/route.ts",
+      "app/api/profile/rightSidebar/route.ts",
+      "app/api/profile/settings/privacy-security/route.ts",
+      "app/api/profile/settings/route.ts",
+      "app/api/profile/social-links/route.ts",
+      "app/api/profile/viewOtherProfile/route.ts",
+      "app/api/projects/invite/route.ts",
+      "app/api/projects/respondInvite/route.ts",
+      "app/api/push-messages/route.ts",
+      "app/api/push-tokens/route.ts",
+      "app/api/reels/[id]/comments/replies/route.ts",
+      "app/api/reels/[id]/comments/route.ts",
+      "app/api/reels/[id]/like/route.ts",
+      "app/api/register/verificationEmail/route.ts",
+      "app/api/relationships/followers/route.ts",
+      "app/api/relationships/friends/route.ts",
+      "app/api/relationships/hub/route.ts",
+      "app/api/relationships/status/route.ts",
+      "app/api/relationships/suggestions/route.ts",
+      "app/api/reminders/email/route.ts",
+      "app/api/resend-verification/route.ts",
+      "app/api/schedules/notifications/email/route.ts",
+      "app/api/schedules/route.ts",
+      "app/api/schedules/template/route.ts",
+      "app/api/sticker-packs/[id]/route.ts",
+      "app/api/sticker-packs/route.ts",
+      "app/api/stickers/[id]/route.ts",
+      "app/api/stickers/route.ts",
+      "app/api/temp-messaging/[receiverId]/route.ts",
+      "app/api/temp-messaging/route.ts",
+      "app/api/triniGeoGuesser/admin/upload/route.ts",
+      "app/api/triniGeoGuesser/game/route.ts",
+      "app/api/triniGeoGuesser/geocode/route.ts",
+      "app/api/triniGeoGuesser/leaderboard/route.ts",
+      "app/api/user/route.ts",
+      "app/api/users/list/route.ts",
+      "app/api/users/route.ts",
+      "app/api/users/search/route.ts",
+      "app/api/verify-email/route.ts"
+    ],
+    "components": [
+      "components/admin/Dashboard.tsx",
+      "components/admin/Header.tsx",
+      "components/admin/MobileNavbar.tsx",
+      "components/admin/PcNavbar.tsx",
+      "components/admin/settings/AI.tsx",
+      "components/admin/settings/Chat.tsx",
+      "components/admin/settings/EmailAndSms.tsx",
+      "components/admin/settings/FileUploadConfiguration.tsx",
+      "components/admin/settings/GeneralConfiguration.tsx",
+      "components/admin/settings/SocialLogin.tsx",
+      "components/admin/settings/WebsiteInformation.tsx",
+      "components/admin/SwitchButton.tsx",
+      "components/admin/Visualization.tsx",
+      "components/ads/AdCampaignCard.tsx",
+      "components/ads/AdPreview.tsx",
+      "components/ads/AdStatsOverview.tsx",
+      "components/ads/steps/AdBudgetStep.tsx",
+      "components/ads/steps/AdCreativeStep.tsx",
+      "components/ads/steps/AdObjectiveStep.tsx",
+      "components/ads/steps/AdReviewStep.tsx",
+      "components/ads/steps/AdTargetingStep.tsx",
+      "components/advertise/AdvertiseHeader.tsx",
+      "components/advertise/DetailsSection.tsx",
+      "components/advertise/MediaSection.tsx",
+      "components/advertise/TargetingSection.tsx",
+      "components/album/CreateAlbum.tsx",
+      "components/analytics/RouteAnalyticsTracker.tsx",
+      "components/auth/VerificationUploadModal.tsx",
+      "components/blog/BlogCard.tsx",
+      "components/blog/Categories.tsx",
+      "components/blog/CategoryFilter.tsx",
+      "components/blog/HeroBanner.tsx",
+      "components/blog/PopularPosts.tsx",
+      "components/blog/RecentArticles.tsx",
+      "components/blog/Sidebar.tsx",
+      "components/blogs/CreateBlogModal.tsx",
+      "components/blogs/VerificationRequiredModal.tsx",
+      "components/chat/AttachmentComposerPreview.tsx",
+      "components/chat/ChatButton/ChatButton.tsx",
+      "components/chat/ChatWindow/ChatWindow.tsx",
+      "components/chat/ChatWindow/renderContent/business/Business.tsx",
+      "components/chat/ChatWindow/renderContent/discover/Discover.tsx",
+      "components/chat/ChatWindow/renderContent/friends/Friends.tsx",
+      "components/chat/ChatWindow/renderMessages/business/Business.tsx",
+      "components/chat/ChatWindow/renderMessages/friends/ChatEmojiPicker.tsx",
+      "components/chat/ChatWindow/renderMessages/friends/ChatMediaPanel.tsx",
+      "components/chat/ChatWindow/renderMessages/friends/ChatMessageMenu.tsx",
+      "components/chat/ChatWindow/renderMessages/friends/ChatReactionPicker.tsx",
+      "components/chat/ChatWindow/renderMessages/friends/ChatSettingsMenu.tsx",
+      "components/chat/ChatWindow/renderMessages/friends/DocumentPreviewModal.tsx",
+      "components/chat/ChatWindow/renderMessages/friends/Friends.tsx",
+      "components/chat/ChatWindow/renderTabs/RenderTabs.tsx",
+      "components/chat/DeleteMessageModal.tsx",
+      "components/chat/ForwardMessageModal.tsx",
+      "components/chat/GlobalWebIncomingCallModal.tsx",
+      "components/chat/LinkPreviewMessage.tsx",
+      "components/chat/VideoCall/VideoCall.tsx",
+      "components/chat/VoiceNotePlayer.tsx",
+      "components/comm/AdminLayout.tsx",
+      "components/comm/BlogCard.tsx",
+      "components/comm/Footer.tsx",
+      "components/comm/Portal.tsx",
+      "components/comm/Slider.tsx",
+      "components/comm/TopNav.tsx",
+      "components/comments/CommentEnhancements.tsx",
+      "components/common/ConfirmationDialog.tsx",
+      "components/common/ProductDeleteModal.tsx",
+      "components/common/Stepper.tsx",
+      "components/common/UserAvatar.tsx",
+      "components/common/VerifiedLimeBadge.tsx",
+      "components/commonProfileHeader/headerHolder.tsx",
+      "components/commonProfileHeader/ProfileHeader.tsx",
+      "components/commonProfileHeader/ProfileImageViewer.tsx",
+      "components/commonProfileHeader/ViewOtherProfileHeader.tsx",
+      "components/communities/CategoryPills.tsx",
+      "components/communities/CommunityCard.tsx",
+      "components/communities/CommunityDashboardModal.tsx",
+      "components/communities/communityDetails/CommunityEditForm.tsx",
+      "components/communities/communityDetails/CommunityHeader.tsx",
+      "components/communities/communityDetails/CommunityRightSidebar.tsx",
+      "components/communities/communityDetails/CommunitySidebar.tsx",
+      "components/communities/communityDetails/PostItem.tsx",
+      "components/communities/communityDetails/PostModerationModal.tsx",
+      "components/communities/communityDetails/ReportModal.tsx",
+      "components/communities/CommunityFilters.tsx",
+      "components/communities/CommunityGridControls.tsx",
+      "components/communities/CommunityHero.tsx",
+      "components/communities/CommunityPostCommentsModal.tsx",
+      "components/communities/CommunitySearch.tsx",
+      "components/communities/CommunityStats.tsx",
+      "components/communities/CreateCommunities.tsx",
+      "components/communities/CreateCommunityModal.tsx",
+      "components/communities/CreateCommunityPosts.tsx",
+      "components/communities/PostMedia.tsx",
+      "components/communities/ReportCommunityModal.tsx",
+      "components/communities/ShareCommunityModal.tsx",
+      "components/ConfirmationModal.tsx",
+      "components/ehub/CartSidebar.tsx",
+      "components/ehub/ComboMultiplier.tsx",
+      "components/ehub/confetti.ts",
+      "components/ehub/DailyRewards.tsx",
+      "components/ehub/FlashCountdown.tsx",
+      "components/ehub/FloatingActions.tsx",
+      "components/ehub/FloatingPromo.tsx",
+      "components/ehub/FreelancerCard.tsx",
+      "components/ehub/Header.tsx",
+      "components/ehub/ImageWithFallback.tsx",
+      "components/ehub/LiveActivityFeed.tsx",
+      "components/ehub/MobileHeader.tsx",
+      "components/ehub/MobileNav.tsx",
+      "components/ehub/ParticleBackground.tsx",
+      "components/ehub/ProductCard.tsx",
+      "components/ehub/SpinWheel.tsx",
+      "components/ehub/StickyPromo.tsx",
+      "components/ehub/StreakCounter.tsx",
+      "components/ehub/XPSystem.tsx",
+      "components/eLearning/BackButton.tsx",
+      "components/eLearning/courseCreation/BasicsStep.tsx",
+      "components/eLearning/courseCreation/ContentStep.tsx",
+      "components/eLearning/courseCreation/CourseStepper.tsx",
+      "components/eLearning/courseCreation/CurriculumStep.tsx",
+      "components/eLearning/courseCreation/PublishStep.tsx",
+      "components/eLearning/courseMessages/page.tsx",
+      "components/eLearning/CourseSidebar.tsx",
+      "components/eLearning/ErrorBoundary.tsx",
+      "components/eLearning/heroSection/page.tsx",
+      "components/eLearning/HorizontalScroller.tsx",
+      "components/eLearning/learningMaterials/page.tsx",
+      "components/eLearning/PaymentModal.tsx",
+      "components/eLearning/resources/page.tsx",
+      "components/eLearning/schedules/page.tsx",
+      "components/eLearning/StudentCourseDashboard.tsx",
+      "components/eLearning/tutors/page.tsx",
+      "components/events/CommunityEventsModal.tsx",
+      "components/events/ContentSection.tsx",
+      "components/events/createEventModal/CreateEventModal.tsx",
+      "components/events/editEventModal/EditEventModal.tsx",
+      "components/events/EventCommentModal.tsx",
+      "components/events/EventDateTimePicker.tsx",
+      "components/events/eventDetailModal/EventDetailModal.tsx",
+      "components/events/EventDropdown.tsx",
+      "components/events/EventImageCropper.tsx",
+      "components/events/EventRecurrenceFields.tsx",
+      "components/events/EventsList.tsx",
+      "components/events/FilterSection.tsx",
+      "components/events/PopularEvents.tsx",
+      "components/events/PostEventModal.tsx",
+      "components/Header.tsx",
+      "components/header/DesktopHeader.tsx",
+      "components/header/HeaderSkeleton.tsx",
+      "components/header/MobileHeader.tsx",
+      "components/header/MobileMenu.tsx",
+      "components/header/Navigation.tsx",
+      "components/header/NotificationDropdown.tsx",
+      "components/header/NotificationItem.tsx",
+      "components/header/ProfileDropdown.tsx",
+      "components/header/TabletHeader.tsx",
+      "components/home/AddStory.tsx",
+      "components/home/ChatBubbles/ChatBubbles.tsx",
+      "components/home/feed/AchievementToast.tsx",
+      "components/home/feed/AnimatedCounter.tsx",
+      "components/home/feed/AuthGuardModal.tsx",
+      "components/home/feed/Confetti.tsx",
+      "components/home/feed/CreatePost.tsx",
+      "components/home/feed/CursorTrail.tsx",
+      "components/home/feed/EngagementTracker.tsx",
+      "components/home/feed/FeedFilters.tsx",
+      "components/home/feed/FeedHeader.tsx",
+      "components/home/feed/FeedPost.tsx",
+      "components/home/feed/FloatingParticles.tsx",
+      "components/home/feed/FloatingReaction.tsx",
+      "components/home/feed/HeartBurst.tsx",
+      "components/home/feed/LeftSidebar.tsx",
+      "components/home/feed/LivePresence.tsx",
+      "components/home/feed/LoadMoreButton.tsx",
+      "components/home/feed/LocationPickerMapInner.tsx",
+      "components/home/feed/LocationPickerModal.tsx",
+      "components/home/feed/RippleEffect.tsx",
+      "components/home/feed/SharePostModal.tsx",
+      "components/home/feed/SkeletonPost.tsx",
+      "components/home/feed/StoryRing.tsx",
+      "components/home/feed/SuggestedUsers.tsx",
+      "components/home/feed/TiltCard.tsx",
+      "components/home/LeftSection/index.tsx",
+      "components/home/LeftSection/LeftSectionComponents/ActivitySection/ActivitySection.tsx",
+      "components/home/LeftSection/LeftSectionComponents/GamesSection/GameSection.tsx",
+      "components/home/LeftSection/LeftSectionComponents/NavigationLinks/GlobalNavigationLinks.tsx",
+      "components/home/LeftSection/LeftSectionComponents/NavigationLinks/NavigationLinks.tsx",
+      "components/home/LeftSection/LeftSectionComponents/ProfileSection/ProfileSection.tsx",
+      "components/home/LeftSection/LeftSectionComponents/UserListSection/UserListSection.tsx",
+      "components/home/LeftSection/LeftSectionComponents/UserModal/UserModal.tsx",
+      "components/home/MiddleSection/index.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Content/Caption/Caption.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Content/Description/Description.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Content/Hashtags/Hashtags.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Content/MediaUpload/MediaUpload.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Content/Poll/Poll.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Footer/PostFooter.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/components/Header/PostHeader.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/index.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostSection/CreatePostSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/FeedsFilterSection/FeedsFilterSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ExpandedReel/CommentSection/CommentSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ExpandedReel/ExpandedReel.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ImageAndVideoPostSection/ImageAndVideoPostSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/LikesModal/LikesModal.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PollCardSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCard/PostCard.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostLocationMap.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ReelCardSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/YouTubePostPreview.tsx",
+      "components/home/mobile/Mobile.tsx",
+      "components/home/posts/DesktopPostForm.tsx",
+      "components/home/posts/filteredPosts/AllPosts.tsx",
+      "components/home/posts/filteredPosts/PhotosPosts.tsx",
+      "components/home/posts/filteredPosts/TextPosts.tsx",
+      "components/home/posts/filteredPosts/VideosPosts.tsx",
+      "components/home/posts/MobilePostForm.tsx",
+      "components/home/posts/Post.tsx",
+      "components/home/posts/PostFilter.tsx",
+      "components/home/posts/PostForm.tsx",
+      "components/home/posts/Posts.tsx",
+      "components/home/RightSection/index.tsx",
+      "components/home/RightSection/RightSectionComponent/ActivitySection/ActivitySection.tsx",
+      "components/home/RightSection/RightSectionComponent/CommunitySection/CommunitySection.tsx",
+      "components/home/RightSection/RightSectionComponent/Engagement/EngagementSection.tsx",
+      "components/home/RightSection/RightSectionComponent/EventSection/EventSection.tsx",
+      "components/home/RightSection/RightSectionComponent/FriendSuggestions/FriendSuggestions.tsx",
+      "components/home/RightSection/RightSectionComponent/JobsSection/JobsSection.tsx",
+      "components/home/RightSection/RightSectionComponent/OnlineFriends/OnlineFriends.tsx",
+      "components/home/SkeletonLoader.tsx",
+      "components/home/video/FeedVideoPlayer.tsx",
+      "components/ImageCropper.tsx",
+      "components/jobs/applyJobs/JobApplicationModal.tsx",
+      "components/jobs/createJobsModel/BasicInformationForm.tsx",
+      "components/jobs/createJobsModel/CompanyDetailsForm.tsx",
+      "components/jobs/createJobsModel/jobCreationModal.tsx",
+      "components/jobs/createJobsModel/jobTypeSelection.tsx",
+      "components/jobs/createJobsModel/QuickTaskCreationModal.tsx",
+      "components/jobs/createJobsModel/TaskDetailsForm.tsx",
+      "components/jobs/IdentityVerificationModal.tsx",
+      "components/jobs/JobCardActions.tsx",
+      "components/jobs/JobDetailsModal.tsx",
+      "components/jobs/JobFilters.tsx",
+      "components/jobs/manage/ApplicantFilterBar.tsx",
+      "components/jobs/manage/AuditHistoryPanel.tsx",
+      "components/jobs/manage/BulkActionsBar.tsx",
+      "components/jobs/manage/EmployerNotesPanel.tsx",
+      "components/jobs/manage/InterviewSchedulerModal.tsx",
+      "components/jobs/manage/JobDeleteModal.tsx",
+      "components/jobs/ProfessionalJobsList.tsx",
+      "components/jobs/QuickTasksList.tsx",
+      "components/limes/CommentModal.tsx",
+      "components/limes/CreateLimeModal.tsx",
+      "components/limes/ReportModal.tsx",
+      "components/limes/ShareLimeModal.tsx",
+      "components/LocationInput.tsx",
+      "components/market/filters/ProductFilter.tsx",
+      "components/market/products/MarketProductCard.tsx",
+      "components/market/products/ProductDetailsSidebar.tsx",
+      "components/market/promotion/PromotionSlider.tsx",
+      "components/moderation/ReportModal.tsx",
+      "components/navigation/GlobalMobileBottomNav.tsx",
+      "components/navigation/OpenInAppBanner.tsx",
+      "components/navigation/RouteScrollManager.tsx",
+      "components/notifications/NativePushRegistration.tsx",
+      "components/pageAccess/index.ts",
+      "components/pageAccess/Overlays.tsx",
+      "components/pageAccess/PageAccessAdminTable.tsx",
+      "components/pageAccess/PageAccessAuditLog.tsx",
+      "components/pageAccess/PageAccessBadge.tsx",
+      "components/pageAccess/PageAccessEditModal.tsx",
+      "components/pageAccess/PageAccessGuard.tsx",
+      "components/pageAccess/PageAccessOverlay.tsx",
+      "components/pageAccess/PageAvailabilityWrapper.tsx",
+      "components/PollList.tsx",
+      "components/PollModal.tsx",
+      "components/polls/CreatePollModal.tsx",
+      "components/polls/PollResponses.tsx",
+      "components/Portal.tsx",
+      "components/profile/admin/analytics/AdminSocialAnalyticsDashboard.tsx",
+      "components/profile/admin/analytics/AnalyticsDateTimeFilter.tsx",
+      "components/profile/admin/moderation/AdminModerationPageContent.tsx",
+      "components/profile/admin/testers/TestersManagement.tsx",
+      "components/profile/admin/user-management/modals/UserAuthenticateModal.tsx",
+      "components/profile/admin/user-management/modals/UserDeleteModal.tsx",
+      "components/profile/admin/user-management/modals/UserRoleModal.tsx",
+      "components/profile/admin/user-management/modals/UserStatusModal.tsx",
+      "components/profile/admin/user-management/modals/UserViewModal.tsx",
+      "components/profile/admin/user-management/modals/VerifyUserModal.tsx",
+      "components/profile/BlockList.tsx",
+      "components/profile/business-account/BusinessAccountContent.tsx",
+      "components/profile/ChangeCoverImageModal.tsx",
+      "components/profile/ChangeProfileImageModal.tsx",
+      "components/profile/filters/About.tsx",
+      "components/profile/filters/PhotosPosts.tsx",
+      "components/profile/filters/TimelinePosts.tsx",
+      "components/profile/filters/VideosPosts.tsx",
+      "components/profile/links/AboutContent.tsx",
+      "components/profile/links/abouts/AddressSection.tsx",
+      "components/profile/links/abouts/BasicInfoSection.tsx",
+      "components/profile/links/abouts/component/addressCompoent/AddressCardSection.tsx",
+      "components/profile/links/abouts/component/addressCompoent/AddressFormSection.tsx",
+      "components/profile/links/abouts/component/galleryComponent/AlbumSection.tsx",
+      "components/profile/links/abouts/component/galleryComponent/GallerySection.tsx",
+      "components/profile/links/abouts/ContactSection.tsx",
+      "components/profile/links/abouts/EducationSection.tsx",
+      "components/profile/links/abouts/InterestsSkillsSection.tsx",
+      "components/profile/links/abouts/SocialLinksSection.tsx",
+      "components/profile/links/abouts/WorkExperienceSection.tsx",
+      "components/profile/links/FriendsContent.tsx",
+      "components/profile/links/gallery/headerContent/GalleryHeaderContent.tsx",
+      "components/profile/links/gallery/mainContent/GalleryMainContent.tsx",
+      "components/profile/links/gallery/modals/CreateAlbumModal.tsx",
+      "components/profile/links/gallery/modals/EditAlbumModal.tsx",
+      "components/profile/links/gallery/modals/ImagePreviewModal.tsx",
+      "components/profile/links/gallery/modals/UploadModal.tsx",
+      "components/profile/links/GalleryContent.tsx",
+      "components/profile/links/ProfileCustomizationContent.tsx",
+      "components/profile/links/RepostsContent.tsx",
+      "components/profile/links/TimelineContent.tsx",
+      "components/profile/navigation/ProfileNavigationContext.tsx",
+      "components/profile/navigation/ProfileRouteSkeleton.tsx",
+      "components/profile/navigation/ProfileSectionHeader.tsx",
+      "components/profile/navigation/ProfileWorkspaceShell.tsx",
+      "components/profile/products/add/steps/BasicInfo.tsx",
+      "components/profile/products/add/steps/MediaUpload.tsx",
+      "components/profile/products/add/steps/PricingDetails.tsx",
+      "components/profile/products/add/steps/SaveProduct.tsx",
+      "components/profile/products/add/steps/StepIndicator.tsx",
+      "components/profile/products/edit/steps/BasicInfo.tsx",
+      "components/profile/products/edit/steps/index.ts",
+      "components/profile/products/edit/steps/MediaUpload.tsx",
+      "components/profile/products/edit/steps/PricingDetails.tsx",
+      "components/profile/products/edit/steps/SaveProduct.tsx",
+      "components/profile/ProfileDestinationSkeletons.tsx",
+      "components/profile/profilePosts.tsx",
+      "components/profile/ProfileRightSidebar.tsx",
+      "components/profile/ProfileSidebar.tsx",
+      "components/profile/ProfileSkeletons.tsx",
+      "components/profile/ShareProfileModal.tsx",
+      "components/profile/sidebarNavLinks/sidebarItems.tsx",
+      "components/profile/SocialLinksDisplay.tsx",
+      "components/projectManagement/CreateProjectModal.tsx",
+      "components/projectManagement/ProjectCard.tsx",
+      "components/projectManagement/projectDetails/auditConfig.ts",
+      "components/projectManagement/projectDetails/InviteUserModal.tsx",
+      "components/projectManagement/projectDetails/ProjectHeader.tsx",
+      "components/projectManagement/projectDetails/ProjectSettingsModal.tsx",
+      "components/projectManagement/projectDetails/ProjectSidebar.tsx",
+      "components/projectManagement/projectDetails/ProjectStatsOverview.tsx",
+      "components/projectManagement/projectDetails/TaskBoard.tsx",
+      "components/projectManagement/projectDetails/TaskCreationModal.tsx",
+      "components/projectManagement/projectDetails/TaskDetailModal.tsx",
+      "components/projectManagement/ProjectInviteCard.tsx",
+      "components/projectManagement/ProjectListItem.tsx",
+      "components/projectManagement/ProjectStats.tsx",
+      "components/projectManagement/ProjectToolbar.tsx",
+      "components/register/AccountTypeStep.tsx",
+      "components/register/Authentication.tsx",
+      "components/register/AvatarStep.tsx",
+      "components/register/BetaAccessView.tsx",
+      "components/register/BetaApplicationModal.tsx",
+      "components/register/ChildSafetyPolicyModal.tsx",
+      "components/register/DemographicsStep.tsx",
+      "components/register/FirstStep.tsx",
+      "components/register/FirstStepHolder.tsx",
+      "components/register/FourthStep.tsx",
+      "components/register/InterestsStep.tsx",
+      "components/register/InvitationBadge.tsx",
+      "components/register/LocationStep.tsx",
+      "components/register/PrivacyModal.tsx",
+      "components/register/SecondStep.tsx",
+      "components/register/SecondStepOptional.tsx",
+      "components/register/SixthStep.tsx",
+      "components/register/TermsModal.tsx",
+      "components/register/ThirdStep.tsx",
+      "components/register/VerificationStep.tsx",
+      "components/register/WelcomeStep.tsx",
+      "components/reminder/GlobalReminderComponent.tsx",
+      "components/search/UserSearch.tsx",
+      "components/settings/download/data.tsx",
+      "components/settings/friend/filterBox.tsx",
+      "components/settings/nav/page.tsx",
+      "components/sticker/FavoriteStickers.tsx",
+      "components/sticker/RecentStickers.tsx",
+      "components/sticker/StickerFullscreen.tsx",
+      "components/sticker/StickerGrid.tsx",
+      "components/sticker/StickerItem.tsx",
+      "components/sticker/StickerMessage.tsx",
+      "components/sticker/StickerPackTabs.tsx",
+      "components/sticker/StickerPicker.tsx",
+      "components/sticker/StickerSearch.tsx",
+      "components/sticker/StickerSkeleton.tsx",
+      "components/ui/button.tsx",
+      "components/ui/card.tsx",
+      "components/ui/chart.tsx",
+      "components/ui/FriendMentionTextarea.tsx",
+      "components/ui/input.tsx",
+      "components/ui/LimeyIcon.tsx",
+      "components/ui/modern-calendar.tsx",
+      "components/ui/modern-date-picker.tsx",
+      "components/ui/popover.tsx",
+      "components/ui/rich-text-editor.tsx",
+      "components/ui/route-skeleton.tsx",
+      "components/ui/skeleton.tsx",
+      "components/ui/tabs.tsx",
+      "components/ui/textarea.tsx",
+      "components/viewOthers/about/about.tsx",
+      "components/viewOthers/AboutDetails.tsx",
+      "components/viewOthers/communitySlider/CommunitySlider.tsx",
+      "components/viewOthers/followerSlider/FollowingSlider.tsx",
+      "components/viewOthers/followingSlider/FollowingSlider.tsx",
+      "components/viewOthers/FriendDetails.tsx",
+      "components/viewOthers/imageSlider/ImageSlider.tsx",
+      "components/viewOthers/PhotosAndVideosDetails.tsx",
+      "components/viewOthers/PostAndDetails.tsx",
+      "components/viewOthers/ViewOtherProfileSkeleton.tsx",
+      "components/wordle-game/Game/GameBoard.tsx",
+      "components/wordle-game/Game/index.ts",
+      "components/wordle-game/Grid/Grid.tsx",
+      "components/wordle-game/Grid/index.ts",
+      "components/wordle-game/Grid/Row.tsx",
+      "components/wordle-game/Header/Header.tsx",
+      "components/wordle-game/Header/index.ts",
+      "components/wordle-game/Keyboard/index.ts",
+      "components/wordle-game/Keyboard/Key.tsx",
+      "components/wordle-game/Keyboard/Keyboard.tsx",
+      "components/wordle-game/Message/index.ts",
+      "components/wordle-game/Message/Message.tsx",
+      "components/wordle-game/Modal/GameOverModal.tsx",
+      "components/wordle-game/Modal/HelpModal.tsx",
+      "components/wordle-game/Modal/index.ts",
+      "components/wordle-game/Tile/index.ts",
+      "components/wordle-game/Tile/Tile.tsx"
+    ],
+    "types": [
+      "lib/types/adminAnalytics.ts",
+      "lib/types/blog.ts",
+      "lib/types/chat.ts",
+      "lib/types/comment.ts",
+      "lib/types/course.ts",
+      "lib/types/email.ts",
+      "lib/types/friendship.ts",
+      "lib/types/global.ts",
+      "lib/types/index.ts",
+      "lib/types/linkPreview.ts",
+      "lib/types/mention.ts",
+      "lib/types/message.ts",
+      "lib/types/nativePush.ts",
+      "lib/types/notification.ts",
+      "lib/types/post.ts",
+      "lib/types/profileNavigation.ts",
+      "lib/types/reel.ts",
+      "lib/types/sticker.ts",
+      "lib/types/user.ts",
+      "lib/types/video.ts",
+      "types/adTypes.ts",
+      "types/addressTypes.ts",
+      "types/adsMarketplaceTypes.ts",
+      "types/advertise.ts",
+      "types/betaTypes.ts",
+      "types/bun-test.d.ts",
+      "types/businessTypes.ts",
+      "types/communityTypes.ts",
+      "types/eventTypes.ts",
+      "types/firebase-schema-phase2.ts",
+      "types/friendTypes.ts",
+      "types/game.types.ts",
+      "types/global.d.ts",
+      "types/index.ts",
+      "types/jobTypes.ts",
+      "types/keyboard.types.ts",
+      "types/momentTypes.ts",
+      "types/pageAccess.ts",
+      "types/productTypes.ts",
+      "types/projectManagement.ts",
+      "types/userTypes.ts"
+    ]
+  },
+  "mobile": {
+    "routes": [
+      {
+        "file": "app/(auth)/login.tsx",
+        "route": "/login"
+      },
+      {
+        "file": "app/(auth)/register.tsx",
+        "route": "/register"
+      },
+      {
+        "file": "app/(tabs)/Chat.tsx",
+        "route": "/Chat"
+      },
+      {
+        "file": "app/(tabs)/Discover.tsx",
+        "route": "/Discover"
+      },
+      {
+        "file": "app/(tabs)/index.tsx",
+        "route": "/"
+      },
+      {
+        "file": "app/(tabs)/Limes.tsx",
+        "route": "/Limes"
+      },
+      {
+        "file": "app/(tabs)/Profile.tsx",
+        "route": "/Profile"
+      },
+      {
+        "file": "app/(tabs)/Search.tsx",
+        "route": "/Search"
+      },
+      {
+        "file": "app/+not-found.tsx",
+        "route": "/404"
+      },
+      {
+        "file": "app/admin/analytics/index.tsx",
+        "route": "/admin/analytics"
+      },
+      {
+        "file": "app/admin/categories/index.tsx",
+        "route": "/admin/categories"
+      },
+      {
+        "file": "app/admin/communities/index.tsx",
+        "route": "/admin/communities"
+      },
+      {
+        "file": "app/admin/community-categories/index.tsx",
+        "route": "/admin/community-categories"
+      },
+      {
+        "file": "app/admin/dashboard/index.tsx",
+        "route": "/admin/dashboard"
+      },
+      {
+        "file": "app/admin/index.tsx",
+        "route": "/admin"
+      },
+      {
+        "file": "app/admin/moderation/index.tsx",
+        "route": "/admin/moderation"
+      },
+      {
+        "file": "app/admin/page-access/index.tsx",
+        "route": "/admin/page-access"
+      },
+      {
+        "file": "app/admin/products/index.tsx",
+        "route": "/admin/products"
+      },
+      {
+        "file": "app/admin/reports/[reportId]/index.tsx",
+        "route": "/admin/reports/[reportId]"
+      },
+      {
+        "file": "app/admin/reports/index.tsx",
+        "route": "/admin/reports"
+      },
+      {
+        "file": "app/admin/stickers/index.tsx",
+        "route": "/admin/stickers"
+      },
+      {
+        "file": "app/admin/testers/index.tsx",
+        "route": "/admin/testers"
+      },
+      {
+        "file": "app/admin/user-management/index.tsx",
+        "route": "/admin/user-management"
+      },
+      {
+        "file": "app/ads/create/index.tsx",
+        "route": "/ads/create"
+      },
+      {
+        "file": "app/ads/index.tsx",
+        "route": "/ads"
+      },
+      {
+        "file": "app/ads/manage/index.tsx",
+        "route": "/ads/manage"
+      },
+      {
+        "file": "app/blogs/[id]/index.tsx",
+        "route": "/blogs/[id]"
+      },
+      {
+        "file": "app/blogs/index.tsx",
+        "route": "/blogs"
+      },
+      {
+        "file": "app/chat/[id]/index.tsx",
+        "route": "/chat/[id]"
+      },
+      {
+        "file": "app/chat/index.tsx",
+        "route": "/chat"
+      },
+      {
+        "file": "app/child-safety-standards.tsx",
+        "route": "/child-safety-standards"
+      },
+      {
+        "file": "app/communities/[id]/index.tsx",
+        "route": "/communities/[id]"
+      },
+      {
+        "file": "app/communities/index.tsx",
+        "route": "/communities"
+      },
+      {
+        "file": "app/delete-account.tsx",
+        "route": "/delete-account"
+      },
+      {
+        "file": "app/ehub/index.tsx",
+        "route": "/ehub"
+      },
+      {
+        "file": "app/eLearning/index.tsx",
+        "route": "/eLearning"
+      },
+      {
+        "file": "app/events/index.tsx",
+        "route": "/events"
+      },
+      {
+        "file": "app/eWallet/index.tsx",
+        "route": "/eWallet"
+      },
+      {
+        "file": "app/forgot-password.tsx",
+        "route": "/forgot-password"
+      },
+      {
+        "file": "app/games/index.tsx",
+        "route": "/games"
+      },
+      {
+        "file": "app/help/index.tsx",
+        "route": "/help"
+      },
+      {
+        "file": "app/index.tsx",
+        "route": "/"
+      },
+      {
+        "file": "app/jobs/applications.tsx",
+        "route": "/jobs/applications"
+      },
+      {
+        "file": "app/jobs/index.tsx",
+        "route": "/jobs"
+      },
+      {
+        "file": "app/jobs/manage.tsx",
+        "route": "/jobs/manage"
+      },
+      {
+        "file": "app/market/index.tsx",
+        "route": "/market"
+      },
+      {
+        "file": "app/policies.tsx",
+        "route": "/policies"
+      },
+      {
+        "file": "app/post/[id].tsx",
+        "route": "/post/[id]"
+      },
+      {
+        "file": "app/privacy-policy.tsx",
+        "route": "/privacy-policy"
+      },
+      {
+        "file": "app/profile/[username].tsx",
+        "route": "/profile/[username]"
+      },
+      {
+        "file": "app/projectManagement/index.tsx",
+        "route": "/projectManagement"
+      },
+      {
+        "file": "app/reset-password.tsx",
+        "route": "/reset-password"
+      },
+      {
+        "file": "app/saved/index.tsx",
+        "route": "/saved"
+      },
+      {
+        "file": "app/settings/index.tsx",
+        "route": "/settings"
+      },
+      {
+        "file": "app/terms-and-conditions.tsx",
+        "route": "/terms-and-conditions"
+      },
+      {
+        "file": "app/triniGeoGuesser/index.tsx",
+        "route": "/triniGeoGuesser"
+      },
+      {
+        "file": "app/verify-email.tsx",
+        "route": "/verify-email"
+      },
+      {
+        "file": "app/wordle-game.tsx",
+        "route": "/wordle-game"
+      }
+    ],
+    "components": [
+      "components/admin/AdminAnalyticsWorkspace.tsx",
+      "components/admin/AdminCategoryWorkspace.tsx",
+      "components/admin/AdminCollectionWorkspace.tsx",
+      "components/admin/AdminTestersWorkspace.tsx",
+      "components/admin/AdminWorkspaceShell.tsx",
+      "components/admin/ModerationSection.tsx",
+      "components/admin/PageAccessAdminSection.tsx",
+      "components/admin/UserManagementSection.tsx",
+      "components/advertise/AdvertiseHeader.tsx",
+      "components/advertise/DetailsSection.tsx",
+      "components/advertise/TargetingSection.tsx",
+      "components/album/CreateAlbum.tsx",
+      "components/auth/AuthFlowScreen.tsx",
+      "components/auth/BetaAccessView.tsx",
+      "components/auth/BetaApplicationModal.tsx",
+      "components/auth/ChildSafetyPolicyModal.tsx",
+      "components/auth/LegalDocumentScreen.tsx",
+      "components/auth/PrivacyModal.tsx",
+      "components/auth/TermsModal.tsx",
+      "components/blog/Categories.tsx",
+      "components/blog/PopularPosts.tsx",
+      "components/blog/RecentArticles.tsx",
+      "components/blogs/CreateBlogModal.tsx",
+      "components/calls/GlobalCallOverlay.tsx",
+      "components/chat/ChatMediaPanel.tsx",
+      "components/chat/ChatSettingsMenu.tsx",
+      "components/chat/DocumentPreviewModal.tsx",
+      "components/chat/EmojiStickerKeyboard.tsx",
+      "components/chat/ForwardMessageModal.tsx",
+      "components/chat/LinkPreviewMessage.tsx",
+      "components/chat/VoiceNotePlayer.tsx",
+      "components/Collapsible.tsx",
+      "components/comments/GifPickerModal.tsx",
+      "components/communities/CommunitiesScreen.tsx",
+      "components/communities/CommunityCard.tsx",
+      "components/communities/CommunityCardSkeleton.tsx",
+      "components/communities/CommunityFiltersSheet.tsx",
+      "components/communities/CommunityOfTheWeek.tsx",
+      "components/communities/CommunityReportModal.tsx",
+      "components/communities/CreateCommunityModal.tsx",
+      "components/communities/detail/CommunityAboutWorkspace.tsx",
+      "components/communities/detail/CommunityDashboardSheet.tsx",
+      "components/communities/detail/CommunityDetailHeader.tsx",
+      "components/communities/detail/CommunityDetailSkeleton.tsx",
+      "components/communities/detail/CommunityEventsWorkspace.tsx",
+      "components/communities/detail/CommunityMemberActionSheet.tsx",
+      "components/communities/detail/CommunityMembersWorkspace.tsx",
+      "components/communities/detail/CommunityPollsWorkspace.tsx",
+      "components/communities/detail/EditCommunityModal.tsx",
+      "components/communities/PostMedia.tsx",
+      "components/ConfirmationModal.tsx",
+      "components/eLearning/courseMessages/CourseMessages.tsx",
+      "components/eLearning/heroSection/HeroSection.tsx",
+      "components/eLearning/learningMaterials/LearningMaterials.tsx",
+      "components/eLearning/resources/Resources.tsx",
+      "components/eLearning/schedules/Schedules.tsx",
+      "components/eLearning/tutors/Tutors.tsx",
+      "components/events/createEventModal/CreateEventModal.tsx",
+      "components/ExternalLink.tsx",
+      "components/HapticTab.tsx",
+      "components/HelloWave.tsx",
+      "components/home/ActivityCard.tsx",
+      "components/home/AddStory.tsx",
+      "components/home/MiddleSection/index.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/index.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/LocationPickerModal.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostModal/MediaCropModal.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/CreatePostSection/CreatePostSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/FeedsFilterSection/FeedsFilterSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/DeletePostModal.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/feedCardStyles.ts",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/IdentityBadges.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ImageAndVideoPostSection/ImageAndVideoPostSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/LikesModal.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PollCardSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostLinkPreview.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostLocationMap.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostOptionsSheet.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ReelCardSection.tsx",
+      "components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ReportPostModal.tsx",
+      "components/home/NotificationsModal.tsx",
+      "components/home/posts/filteredPosts/AllPost.tsx",
+      "components/home/posts/filteredPosts/PhotosPosts.tsx",
+      "components/home/posts/filteredPosts/TextPosts.tsx",
+      "components/home/posts/filteredPosts/VideosPosts.tsx",
+      "components/home/posts/PostFilter.tsx",
+      "components/home/posts/Posts.tsx",
+      "components/home/SkeletonLoaders.tsx",
+      "components/home/SuggestedUsersSection.tsx",
+      "components/jobs/applyJobs/JobApplicationModal.tsx",
+      "components/jobs/createJobsModal/BasicInformationForm.tsx",
+      "components/jobs/createJobsModal/CompanyDetailsForm.tsx",
+      "components/jobs/createJobsModal/jobCreationModal.tsx",
+      "components/jobs/createJobsModal/TaskDetailsForm.tsx",
+      "components/jobs/manage/JobManagementSheets.tsx",
+      "components/jobs/ProfessionalJobsList.tsx",
+      "components/jobs/QuickTasksList.tsx",
+      "components/limes/CommentModal.tsx",
+      "components/limes/CreateLimeModal.tsx",
+      "components/limes/ReportLimeModal.tsx",
+      "components/market/filters/ProductFilter.tsx",
+      "components/market/products/ProductDetailsSidebar.tsx",
+      "components/market/promotion/PromotionSlider.tsx",
+      "components/navigation/AppDrawerNav.tsx",
+      "components/navigation/PlayfulTabIcon.tsx",
+      "components/pageAccess/ComingSoonRouteScreen.tsx",
+      "components/pageAccess/PageAccessOverlay.tsx",
+      "components/ParallaxScrollView.tsx",
+      "components/PollModal.tsx",
+      "components/profile/AboutTab.tsx",
+      "components/profile/AdminTab.tsx",
+      "components/profile/EditProfileModal.tsx",
+      "components/profile/FriendsTab.tsx",
+      "components/profile/GalleryTab.tsx",
+      "components/profile/ProfileHeader.tsx",
+      "components/profile/ProfileSkeleton.tsx",
+      "components/profile/TimelineTab.tsx",
+      "components/providers/AppPreloadCoordinator.tsx",
+      "components/settings/DeleteAccountModal.tsx",
+      "components/sticker/StickerPicker.tsx",
+      "components/ThemedText.tsx",
+      "components/ThemedView.tsx",
+      "components/ui/AnimatedActionButton.tsx",
+      "components/ui/AppErrorBoundary.tsx",
+      "components/ui/AppHeader.tsx",
+      "components/ui/CachedImage.tsx",
+      "components/ui/CustomModal.tsx",
+      "components/ui/IconSymbol.ios.tsx",
+      "components/ui/IconSymbol.tsx",
+      "components/ui/InAppNotificationBanner.tsx",
+      "components/ui/MentionText.tsx",
+      "components/ui/ModalMotion.tsx",
+      "components/ui/PageHeader.tsx",
+      "components/ui/RichTextContent.tsx",
+      "components/ui/Skeleton.tsx",
+      "components/ui/SlideOutMenu.tsx",
+      "components/ui/SwipeDismissHandle.tsx",
+      "components/ui/SwipeDismissSurface.tsx",
+      "components/ui/TabBarBackground.ios.tsx",
+      "components/ui/TabBarBackground.tsx",
+      "components/ui/UserAvatar.tsx"
+    ],
+    "services": [
+      "lib/services/AccountLifecycleService.ts",
+      "lib/services/ActivityService.ts",
+      "lib/services/AdminAccessService.ts",
+      "lib/services/AdminMetricsService.ts",
+      "lib/services/AdminModerationService.ts",
+      "lib/services/AdminPageAccessService.ts",
+      "lib/services/AdminUserService.ts",
+      "lib/services/AdminWorkspaceService.ts",
+      "lib/services/AgoraCallService.ts",
+      "lib/services/ApiService.ts",
+      "lib/services/AppPreloadService.ts",
+      "lib/services/AuthorizationService.ts",
+      "lib/services/AuthService.ts",
+      "lib/services/AvatarService.ts",
+      "lib/services/CallService.ts",
+      "lib/services/CommentService.ts",
+      "lib/services/CommunitiesResourceService.ts",
+      "lib/services/CommunityDashboardService.ts",
+      "lib/services/CommunityDetailResourceService.ts",
+      "lib/services/CommunityFeedResourceService.ts",
+      "lib/services/CommunityMediaService.ts",
+      "lib/services/CommunityPollService.ts",
+      "lib/services/CommunityService.ts",
+      "lib/services/ConversationResourceService.ts",
+      "lib/services/CountdownTickerService.ts",
+      "lib/services/CrashReportingService.ts",
+      "lib/services/DeepLinkService.ts",
+      "lib/services/DiagnosticLogService.ts",
+      "lib/services/DiscoverResourceService.ts",
+      "lib/services/dispatchMentionNotifications.ts",
+      "lib/services/ErrorLogService.ts",
+      "lib/services/EventService.ts",
+      "lib/services/FeedResourceService.ts",
+      "lib/services/GifService.ts",
+      "lib/services/InAppNotificationService.ts",
+      "lib/services/InteractionFeedbackService.ts",
+      "lib/services/JobApplicationService.ts",
+      "lib/services/JobManagementService.ts",
+      "lib/services/LimeService.ts",
+      "lib/services/LinkPresentationService.ts",
+      "lib/services/LocalCacheService.ts",
+      "lib/services/LocationService.ts",
+      "lib/services/MarketService.ts",
+      "lib/services/MemoryPressureService.ts",
+      "lib/services/MessageResourceService.ts",
+      "lib/services/ModerationService.ts",
+      "lib/services/NativeCallService.ts",
+      "lib/services/NotificationService.ts",
+      "lib/services/OpenGraphService.ts",
+      "lib/services/PageAccessService.ts",
+      "lib/services/PlatformEnvironmentService.ts",
+      "lib/services/PostMediaService.ts",
+      "lib/services/PostService.ts",
+      "lib/services/PreloadRegistryService.ts",
+      "lib/services/PresenceService.ts",
+      "lib/services/ProfileMediaService.ts",
+      "lib/services/ProfileResourceService.ts",
+      "lib/services/ProfileService.ts",
+      "lib/services/ProjectService.ts",
+      "lib/services/PushNotificationService.ts",
+      "lib/services/RelationshipRequestResourceService.ts",
+      "lib/services/RelationshipResourceService.ts",
+      "lib/services/RelationshipService.ts",
+      "lib/services/RequestTimeoutService.ts",
+      "lib/services/ResourceErrorService.ts",
+      "lib/services/SearchService.ts",
+      "lib/services/SimpleChatMessageService.ts",
+      "lib/services/WordleService.ts"
+    ],
+    "types": [
+      "lib/types/call.ts",
+      "lib/types/comment.ts",
+      "lib/types/community.ts",
+      "lib/types/componentProps.ts",
+      "lib/types/deepLink.ts",
+      "lib/types/discoverResources.ts",
+      "lib/types/email.ts",
+      "lib/types/friendship.ts",
+      "lib/types/index.ts",
+      "lib/types/lime.ts",
+      "lib/types/message.ts",
+      "lib/types/notification.ts",
+      "lib/types/pageAccess.ts",
+      "lib/types/preload.ts",
+      "lib/types/project.ts",
+      "lib/types/reel.ts",
+      "lib/types/relationshipHub.ts",
+      "lib/types/resourceState.ts",
+      "lib/types/serviceResults.ts",
+      "lib/types/sticker.ts",
+      "lib/types/user.ts",
+      "lib/types/video.ts"
+    ]
+  }
+}

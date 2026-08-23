@@ -23,6 +23,7 @@ import { cartoonAvatars, realisticAvatars } from './registrationAvatars';
 import BetaAccessView, { type BetaAccessState } from '@/components/auth/BetaAccessView';
 import TermsModal from '@/components/auth/TermsModal';
 import PrivacyModal from '@/components/auth/PrivacyModal';
+import ChildSafetyPolicyModal from '@/components/auth/ChildSafetyPolicyModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GREEN = '#01eb53';
@@ -50,6 +51,9 @@ type FormData = {
   verificationType: 'student_id' | 'national_id' | 'guardian' | 'drivers_license' | 'skipped' | '';
   guardianEmail: string;
 };
+
+type RegistrationErrorField = keyof FormData | 'terms' | 'privacy' | 'childSafety' | 'interests' | 'global';
+type RegistrationErrors = Partial<Record<RegistrationErrorField, string>>;
 
 const INTERESTS = [
   'Technology', 'Music', 'Sports', 'Art', 'Travel', 'Food', 'Gaming',
@@ -82,8 +86,10 @@ export default function Register() {
   // Modals & Availability
   const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [isChildSafetyOpen, setIsChildSafetyOpen] = useState(false);
   const [isTermsAccepted, setIsTermsAccepted] = useState(false);
   const [isPrivacyAccepted, setIsPrivacyAccepted] = useState(false);
+  const [isChildSafetyAccepted, setIsChildSafetyAccepted] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // Username / Email Availability
@@ -118,7 +124,7 @@ export default function Register() {
     guardianEmail: '',
   });
 
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<RegistrationErrors>({});
 
   // ── Beta Registration Access Check ───────────────────────────────────────
   useEffect(() => {
@@ -228,7 +234,7 @@ export default function Register() {
 
   // ── Step Validation ────────────────────────────────────────────────────────
   const validateStep = (): boolean => {
-    const newErrors: Record<string, string> = {};
+    const newErrors: RegistrationErrors = {};
 
     if (step === 1) {
       if (!formData.accountType) newErrors.accountType = 'Please select an account type.';
@@ -248,6 +254,7 @@ export default function Register() {
       if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match.';
       if (!isTermsAccepted) newErrors.terms = 'You must accept the Terms and Conditions.';
       if (!isPrivacyAccepted) newErrors.privacy = 'You must accept the Privacy Policy.';
+      if (!isChildSafetyAccepted) newErrors.childSafety = 'You must accept the Child Safety Standards Policy.';
     }
 
     if (step === 3) {
@@ -271,6 +278,12 @@ export default function Register() {
       if (formData.selectedInterests.length < 3) newErrors.interests = 'Please select at least 3 interests.';
     }
 
+    if (step === 7 && formData.verificationType === 'guardian') {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.guardianEmail.trim())) {
+        newErrors.guardianEmail = 'Enter a valid parent or guardian email address.';
+      }
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return false;
@@ -292,7 +305,15 @@ export default function Register() {
     if (!validateStep()) return;
     setIsSubmitting(true);
     try {
-      await authService.register(formData);
+      await authService.register({
+        ...formData,
+        referralToken,
+        policyAcknowledgements: {
+          terms: isTermsAccepted,
+          privacy: isPrivacyAccepted,
+          childSafety: isChildSafetyAccepted,
+        },
+      });
       setShowSuccessModal(true);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Registration failed. Please try again.';
@@ -575,6 +596,14 @@ export default function Register() {
                       </Text>
                     </TouchableOpacity>
                     {errors.privacy ? <Text style={styles.fieldError}>{errors.privacy}</Text> : null}
+
+                    <TouchableOpacity onPress={() => setIsChildSafetyAccepted(!isChildSafetyAccepted)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Ionicons name={isChildSafetyAccepted ? 'checkbox' : 'square-outline'} size={20} color={isChildSafetyAccepted ? GREEN_DARK : '#64748b'} />
+                      <Text style={{ color: '#cbd5e1', fontSize: 13, flex: 1 }}>
+                        I accept the <Text onPress={() => setIsChildSafetyOpen(true)} style={{ color: GREEN_DARK, fontWeight: '700', textDecorationLine: 'underline' }}>Child Safety Standards Policy</Text>
+                      </Text>
+                    </TouchableOpacity>
+                    {errors.childSafety ? <Text style={styles.fieldError}>{errors.childSafety}</Text> : null}
                   </View>
                 </View>
 
@@ -778,24 +807,42 @@ export default function Register() {
                 <Text style={styles.stepSubtitle}>Help keep Ourlime safe by verifying your identity (optional).</Text>
 
                 <View style={{ gap: 12, marginVertical: 16 }}>
-                  {[
+                  {([
                     { id: 'skipped', label: 'Skip Verification for Now', desc: 'Proceed directly to registration.' },
-                    { id: 'student_id', label: 'Student ID', desc: 'Upload your valid school ID.' },
-                    { id: 'national_id', label: 'National ID / Passport', desc: 'Upload government-issued identification.' },
-                  ].map((opt) => (
+                    { id: 'student_id', label: 'Student ID', desc: 'Choose this method now and securely submit the documents from Account Verification.' },
+                    { id: 'national_id', label: 'National ID / Passport', desc: 'Choose this method now and securely submit the documents from Account Verification.' },
+                    { id: 'drivers_license', label: 'Driver\'s License', desc: 'Choose this method now and securely submit the documents from Account Verification.' },
+                    { id: 'guardian', label: 'Parent or Guardian', desc: 'Send a consent request to a parent or guardian.' },
+                  ] as const).map((option) => (
                     <TouchableOpacity
-                      key={opt.id}
-                      onPress={() => updateField('verificationType', opt.id as FormData['verificationType'])}
-                      style={[styles.typeCard, formData.verificationType === opt.id && styles.typeCardActive]}
+                      key={option.id}
+                      onPress={() => updateField('verificationType', option.id)}
+                      style={[styles.typeCard, formData.verificationType === option.id && styles.typeCardActive]}
                     >
-                      <Ionicons name={formData.verificationType === opt.id ? 'radio-button-on' : 'radio-button-off'} size={20} color={formData.verificationType === opt.id ? GREEN_DARK : '#64748b'} style={{ marginRight: 10 }} />
+                      <Ionicons name={formData.verificationType === option.id ? 'radio-button-on' : 'radio-button-off'} size={20} color={formData.verificationType === option.id ? GREEN_DARK : '#64748b'} style={{ marginRight: 10 }} />
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.typeCardTitle, formData.verificationType === opt.id && { color: GREEN }]}>{opt.label}</Text>
-                        <Text style={styles.typeCardDesc}>{opt.desc}</Text>
+                        <Text style={[styles.typeCardTitle, formData.verificationType === option.id && { color: GREEN }]}>{option.label}</Text>
+                        <Text style={styles.typeCardDesc}>{option.desc}</Text>
                       </View>
                     </TouchableOpacity>
                   ))}
                 </View>
+
+                {formData.verificationType === 'guardian' ? (
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={styles.label}>Guardian email address</Text>
+                    <TextInput
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                      value={formData.guardianEmail}
+                      onChangeText={(value) => updateField('guardianEmail', value)}
+                      placeholder="guardian@example.com"
+                      placeholderTextColor="#64748b"
+                      style={styles.input}
+                    />
+                    {errors.guardianEmail ? <Text style={styles.fieldError}>{errors.guardianEmail}</Text> : null}
+                  </View>
+                ) : null}
 
                 <TouchableOpacity onPress={handleSubmit} disabled={isSubmitting} style={styles.primaryButton}>
                   {isSubmitting ? (
@@ -815,6 +862,7 @@ export default function Register() {
       {/* Terms & Privacy Modals */}
       <TermsModal isOpen={isTermsOpen} onClose={() => setIsTermsOpen(false)} onAccept={() => setIsTermsAccepted(true)} />
       <PrivacyModal isOpen={isPrivacyOpen} onClose={() => setIsPrivacyOpen(false)} onAccept={() => setIsPrivacyAccepted(true)} />
+      <ChildSafetyPolicyModal isOpen={isChildSafetyOpen} onClose={() => setIsChildSafetyOpen(false)} onAccept={() => setIsChildSafetyAccepted(true)} />
 
       {/* Success / Email Verification Polling Modal */}
       <Modal visible={showSuccessModal} transparent animationType="fade">

@@ -9,6 +9,7 @@ export type NotificationDestinationInput = {
   userName?: string;
   sourceUserName?: string;
   communityId?: string;
+  projectId?: string;
   postId?: string;
   limeId?: string;
   reelId?: string;
@@ -20,7 +21,7 @@ export type NotificationDestinationInput = {
 
 type UnknownDestinationSource = {
   type?: unknown; senderId?: unknown; sourceUserId?: unknown; userName?: unknown; sourceUserName?: unknown;
-  communityId?: unknown; postId?: unknown; limeId?: unknown; reelId?: unknown; reportId?: unknown;
+  communityId?: unknown; projectId?: unknown; postId?: unknown; limeId?: unknown; reelId?: unknown; reportId?: unknown;
   chatId?: unknown; path?: unknown; actionUrl?: unknown; notificationType?: unknown;
 };
 
@@ -38,7 +39,7 @@ export class NotificationDestinationRegistry {
     return {
       type: this.readString(source.type) || this.readString(source.notificationType), senderId: this.readString(source.senderId),
       sourceUserId: this.readString(source.sourceUserId), userName: this.readString(source.userName), sourceUserName: this.readString(source.sourceUserName),
-      communityId: this.readString(source.communityId), postId: this.readString(source.postId), limeId: this.readString(source.limeId),
+      communityId: this.readString(source.communityId), projectId: this.readString(source.projectId), postId: this.readString(source.postId), limeId: this.readString(source.limeId),
       reelId: this.readString(source.reelId), reportId: this.readString(source.reportId), chatId: this.readString(source.chatId),
       path: this.readString(source.path), actionUrl: this.readString(source.actionUrl),
     };
@@ -55,6 +56,7 @@ export class NotificationDestinationRegistry {
       const resolution = deepLinkService.resolve(path);
       if (resolution.kind === 'internal') return resolution.route as Href;
     }
+    if (type === 'project_invite' || data.projectId) return '/projectManagement';
     const communityId = data.communityId || this.pathSegment(path, '/communities/');
     if (communityId) return { pathname: '/communities/[id]', params: { id: communityId } };
     if (data.postId) return { pathname: '/post/[id]', params: { id: data.postId } };

@@ -1,6 +1,7 @@
 import { View, Text, Image, TextInput, ScrollView } from 'react-native';
 import { Heart, MessageCircle, Share } from 'lucide-react-native';
 import type { SocialPosts } from '@/types/global';
+import { linkPresentationService } from '@/lib/services/LinkPresentationService';
 
 function formatDate(time: number | { seconds: number }): string {
   let date: Date;
@@ -52,7 +53,7 @@ export default function PhotosPosts({ socialPosts }: { socialPosts: SocialPosts[
               <Text style={{ marginLeft: 'auto', fontSize: 15, color: '#888' }}>{formatDate(post.time)}</Text>
             </View>
             <View style={{ marginTop: 12 }}>
-              <Text style={{ fontSize: 16 }}>{post.content}</Text>
+              <Text style={{ fontSize: 16 }}>{linkPresentationService.compactUrlsInText(post.content)}</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
                 {post.video && (
                   <View style={{ width: '100%', height: 240, backgroundColor: '#00000022', justifyContent: 'center', alignItems: 'center', borderRadius: 8 }}>

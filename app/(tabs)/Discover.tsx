@@ -31,6 +31,7 @@ import {
 import PostLocationMap from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostLocationMap';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
 import CustomModal from '@/components/ui/CustomModal';
+import { linkPresentationService } from '@/lib/services/LinkPresentationService';
 
 const authService = AuthService.getInstance();
 const relationshipService = RelationshipService.getInstance();
@@ -345,8 +346,12 @@ export default function DiscoverScreen() {
                   <SkeletonEventCard />
                   <SkeletonEventCard />
                 </>
-              ) : filteredEvents.length > 0 ? filteredEvents.map((evt) => (
-                <View
+              ) : filteredEvents.length > 0 ? filteredEvents.map((evt) => {
+                const locationPresentation = linkPresentationService.presentLocation(evt.location);
+                const locationLabel = locationPresentation.detail
+                  ? `${locationPresentation.title} · ${locationPresentation.detail}`
+                  : locationPresentation.title;
+                return <View
                   key={evt.id}
                   style={{
                     backgroundColor: colors.surface,
@@ -364,7 +369,7 @@ export default function DiscoverScreen() {
                       <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginTop: 2 }}>{evt.title}</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                         <Icon name="map-pin" size={12} color={colors.icon} />
-                        <Text style={{ fontSize: 12, color: colors.mutedText, marginLeft: 4 }}>{evt.location}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, fontSize: 12, color: colors.mutedText, marginLeft: 4 }}>{locationLabel}</Text>
                       </View>
                     </View>
                     <TouchableOpacity onPress={() => void handleShareEvent(evt)} style={{ padding: 8 }}>
@@ -376,8 +381,8 @@ export default function DiscoverScreen() {
                   {evt.location && evt.location !== 'Online' ? (
                     <PostLocationMap location={{ name: evt.title, address: evt.location }} />
                   ) : null}
-                </View>
-              )) : (
+                </View>;
+              }) : (
                 <Text style={{ color: colors.mutedText, fontSize: 13 }}>
                   {normalizedQuery ? 'No events match your search.' : 'No upcoming events are available yet.'}
                 </Text>

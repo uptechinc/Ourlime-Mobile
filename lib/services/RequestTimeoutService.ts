@@ -15,7 +15,7 @@ export class RequestTimeoutService {
     return RequestTimeoutService.instance;
   }
 
-  public run<TData>(operation: Promise<TData>, operationName: string, timeoutMs = 12_000): Promise<TData> {
+  public run<TData>(operation: Promise<TData>, operationName: string, timeoutMs = 25_000): Promise<TData> {
     return new Promise<TData>((resolve, reject) => {
       const timeoutId = setTimeout(() => reject(new RequestTimeoutError(operationName, timeoutMs)), timeoutMs);
       operation.then(

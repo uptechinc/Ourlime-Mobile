@@ -9,6 +9,7 @@ import { MessageResourceService } from '@/lib/services/MessageResourceService';
 import { FeedResourceService } from '@/lib/services/FeedResourceService';
 import { presenceService } from '@/lib/services/PresenceService';
 import { platformEnvironmentService } from '@/lib/services/PlatformEnvironmentService';
+import { crashReportingService } from '@/lib/services/CrashReportingService';
 
 type AppDataContextValue = {
   activeUserId: string | null;
@@ -44,6 +45,7 @@ export function AppDataProvider({ children }: AppDataProviderProps) {
     }
     setActiveUserId(nextUserId);
     activeUserIdRef.current = nextUserId;
+    void crashReportingService.setUserId(nextUserId);
     if (!nextUserId) return;
     void Promise.all([
       conversationService.hydrate(nextUserId),

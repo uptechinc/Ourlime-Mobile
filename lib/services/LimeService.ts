@@ -25,6 +25,7 @@ import type { Reel } from '@/types/userTypes';
 import type { CreateLimeCommentInput, CreateLimeInput, LimeComment, LimeCommentCursor, LimeCommentPage } from '@/lib/types/lime';
 import { AuthService } from './AuthService';
 import { RelationshipService } from './RelationshipService';
+import { moderationService, type ReportReasonCategory } from './ModerationService';
 
 export type LimeFeedCursor = QueryDocumentSnapshot;
 
@@ -398,15 +399,15 @@ export class LimeService {
     reportType: 'lime' | 'user',
     reason: string,
     reporterId: string,
+    reasonCategory: ReportReasonCategory = 'other',
   ): Promise<void> {
-    await addDoc(collection(db, 'reports'), {
-      type: reportType,
+    if (!reporterId) throw new Error('Sign in to submit a report');
+    await moderationService.reportContent(reportType === 'lime' ? 'lime' : 'user', {
       targetId: reportType === 'lime' ? reelId : reportedUserId,
-      reelId,
       reportedUserId,
-      reporterId,
+      reasonCategory,
       reason,
-      createdAt: serverTimestamp(),
+      routePath: reportType === 'lime' ? `/limes?limeId=${reelId}` : `/profile/${reportedUserId}`,
     });
   }
 

@@ -3,7 +3,8 @@ import { deleteObject, getDownloadURL, ref, uploadBytes, type StorageReference }
 import { auth, storage } from '../firebaseConfig';
 
 export const REPORT_REASONS = {
-  safety_abuse: { label: 'Safety and Abuse', reasons: ['Harassment or bullying', 'Hate speech', 'Threats of violence', 'Encouraging violence', 'Self-harm or suicide content', 'Sexual harassment', 'Stalking or intimidation', 'Child safety concern'] },
+  child_safety: { label: 'Child Safety / Sexual Exploitation', reasons: ['Child sexual abuse or exploitation', 'Suspected child sexual abuse material', 'Grooming or predatory behavior', 'Sexualization of a minor', 'Child trafficking or exploitation', 'Other urgent child safety concern'] },
+  safety_abuse: { label: 'Safety and Abuse', reasons: ['Harassment or bullying', 'Hate speech', 'Threats of violence', 'Encouraging violence', 'Self-harm or suicide content', 'Sexual harassment', 'Stalking or intimidation'] },
   misleading: { label: 'Misleading or Harmful Content', reasons: ['False or misleading information', 'Scam or fraud', 'Impersonation', 'Dangerous advice', 'Manipulated or deceptive media', 'Fake giveaway or promotion'] },
   inappropriate: { label: 'Inappropriate Content', reasons: ['Nudity or sexual content', 'Graphic or disturbing content', 'Excessive violence', 'Offensive language', 'Inappropriate content involving minors'] },
   spam: { label: 'Spam and Platform Abuse', reasons: ['Spam', 'Repetitive posting', 'Fake engagement', 'Bot activity', 'Malicious links', 'Phishing', 'Selling prohibited items', 'Unauthorized advertising'] },
@@ -13,6 +14,8 @@ export const REPORT_REASONS = {
 } as const;
 
 export type ReportReasonCategory = keyof typeof REPORT_REASONS;
+export const CHILD_SAFETY_REASON_CATEGORY: ReportReasonCategory = 'child_safety';
+export type ReportContentType = 'post' | 'user' | 'community' | 'lime';
 
 export type SubmitReportInput = {
   targetId: string;
@@ -39,12 +42,17 @@ export class ModerationService {
   }
 
   public async reportPost(input: SubmitReportInput): Promise<string> {
+    return this.reportContent('post', input);
+  }
+
+  public async reportContent(contentType: ReportContentType, input: SubmitReportInput): Promise<string> {
     if (!input.reason.trim()) throw new Error('Select a reason for reporting this post');
     if (input.reason === 'Other' && !input.description?.trim()) throw new Error('Describe why you are reporting this post');
+    const isChildSafetyReport = input.reasonCategory === CHILD_SAFETY_REASON_CATEGORY;
     const uploadedReferences: StorageReference[] = [];
     try {
-      const evidence = [...(input.evidence ?? [])];
-      for (const [index, file] of (input.evidenceFiles ?? []).entries()) {
+      const evidence = isChildSafetyReport ? [] : [...(input.evidence ?? [])];
+      for (const [index, file] of (isChildSafetyReport ? [] : input.evidenceFiles ?? []).entries()) {
         if ((file.fileSize ?? 0) > 10 * 1024 * 1024) throw new Error(`${file.fileName} exceeds the 10 MB evidence limit.`);
         const response = await fetch(file.uri);
         if (!response.ok) throw new Error(`Could not read ${file.fileName}`);
@@ -62,15 +70,15 @@ export class ModerationService {
           method: 'POST',
           authenticated: true,
           body: {
-            contentType: 'post',
+            contentType,
             targetId: input.targetId,
             reportedUserId: input.reportedUserId ?? null,
             reasonCategory: input.reasonCategory,
             reason: input.reason,
             description: input.description?.trim() ?? '',
             evidence,
-            severity: input.reasonCategory === 'safety_abuse' ? 'high' : 'medium',
-            routePath: input.routePath ?? `/post/${input.targetId}`,
+            severity: isChildSafetyReport ? 'critical' : input.reasonCategory === 'safety_abuse' ? 'high' : 'medium',
+            routePath: input.routePath ?? this.getDefaultRoute(contentType, input.targetId),
             contentUrl: input.contentUrl ?? null,
           },
         }
@@ -86,49 +94,18 @@ export class ModerationService {
   }
 
   public async reportUser(input: Omit<SubmitReportInput, 'reportedUserId'>): Promise<string> {
-    if (!input.reason.trim()) throw new Error('Select a reason for reporting this user');
-    const response = await this.apiService.request<{ success: boolean; data?: { id?: string }; error?: string }>(
-      '/api/moderation/reports',
-      {
-        method: 'POST',
-        authenticated: true,
-        body: {
-          contentType: 'user',
-          targetId: input.targetId,
-          reportedUserId: input.targetId,
-          reasonCategory: input.reasonCategory,
-          reason: input.reason,
-          description: input.description?.trim() ?? '',
-          evidence: input.evidence ?? [],
-          severity: 'medium',
-          routePath: input.routePath ?? `/profile/${input.targetId}`,
-          contentUrl: input.contentUrl ?? null,
-        },
-      }
-    );
-    if (!response.success || !response.data?.id) throw new Error(response.error || 'Failed to submit report');
-    return response.data.id;
+    return this.reportContent('user', { ...input, reportedUserId: input.targetId });
   }
 
   public async reportCommunity(input: Omit<SubmitReportInput, 'reportedUserId'>): Promise<string> {
-    if (!input.reason.trim()) throw new Error('Select a reason for reporting this community');
-    const response = await this.apiService.request<{ success: boolean; data?: { id?: string }; error?: string }>('/api/moderation/reports', {
-      method: 'POST',
-      authenticated: true,
-      body: {
-        contentType: 'community',
-        targetId: input.targetId,
-        reasonCategory: input.reasonCategory,
-        reason: input.reason,
-        description: input.description?.trim() ?? '',
-        evidence: input.evidence ?? [],
-        severity: 'medium',
-        routePath: input.routePath ?? `/communities/${input.targetId}`,
-        contentUrl: input.contentUrl ?? null,
-      },
-    });
-    if (!response.success || !response.data?.id) throw new Error(response.error || 'Failed to submit community report');
-    return response.data.id;
+    return this.reportContent('community', input);
+  }
+
+  private getDefaultRoute(contentType: ReportContentType, targetId: string): string {
+    if (contentType === 'community') return `/communities/${targetId}`;
+    if (contentType === 'user') return `/profile/${targetId}`;
+    if (contentType === 'lime') return `/limes?limeId=${targetId}`;
+    return `/post/${targetId}`;
   }
 }
 

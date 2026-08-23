@@ -65,7 +65,7 @@ export class RelationshipService {
         method: 'POST',
         authenticated: true,
         body: { userId1, userId2, action: 'send-request' },
-        timeoutMs: 2_500,
+        timeoutMs: 18_000,
       });
       if (!response.success) throw new Error(response.error || response.message || 'Failed to send friend request');
     } catch {
@@ -110,7 +110,7 @@ export class RelationshipService {
     try {
       const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>(
         `/api/relationships/suggestions?limit=${encodeURIComponent(String(maxResults))}`,
-        { authenticated: true, timeoutMs: 2_500 }
+        { authenticated: true, timeoutMs: 18_000 }
       );
       if (!response.success) throw new Error(response.error || 'Failed to load suggested users');
       return this.normalizeSuggestions(response.data ?? []);
@@ -297,7 +297,7 @@ export class RelationshipService {
     if (auth.currentUser?.uid === userId) return this.getOwnFriendsFromFirestore(userId);
     const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>(
       `/api/relationships/status?userId=${encodeURIComponent(userId)}&type=friends`,
-      { authenticated: true, timeoutMs: 2_500 }
+      { authenticated: true, timeoutMs: 18_000 }
     );
     if (!response.success) throw new Error(response.error || 'Failed to load friends');
     return this.normalizeFriends(response.data ?? []);

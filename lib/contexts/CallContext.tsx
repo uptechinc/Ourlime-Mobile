@@ -92,7 +92,12 @@ export function CallProvider({ children }: CallProviderProps) {
     }
     try {
       const incomingSession = await callService.getCall(payload.callId);
-      if (incomingSession.state !== 'ringing' || incomingSession.expiresAtMs <= Date.now()) return;
+      const currentUserId = auth.currentUser?.uid;
+      if (!currentUserId
+        || incomingSession.callee.userId !== currentUserId
+        || incomingSession.caller.userId === currentUserId
+        || incomingSession.state !== 'ringing'
+        || incomingSession.expiresAtMs <= Date.now()) return;
       useCallStore.getState().setSession(incomingSession);
       useCallStore.getState().setConnectionStatus('ringing');
       subscribeToCall(incomingSession.id);
@@ -106,6 +111,7 @@ export function CallProvider({ children }: CallProviderProps) {
       if (user) {
         incomingCallUnsubscribeRef.current?.();
         incomingCallUnsubscribeRef.current = callService.subscribeToIncomingCalls(user.uid, (incomingSession) => {
+          if (incomingSession.callee.userId !== user.uid || incomingSession.caller.userId === user.uid) return;
           if (incomingSession.state === 'ended') {
             void agoraCallService.leave().catch(() => {});
             Vibration.cancel();
@@ -126,6 +132,9 @@ export function CallProvider({ children }: CallProviderProps) {
           onIncomingCall: (payload) => { void handleIncomingPayload(payload); },
           onAnswer: (callId) => {
             void callService.getCall(callId).then((current) => {
+              if (current.callee.userId !== auth.currentUser?.uid || current.caller.userId === auth.currentUser?.uid) {
+                throw new Error('This call is not addressed to the current account.');
+              }
               useCallStore.getState().setSession(current);
               subscribeToCall(callId);
               return callService.updateCall(callId, 'answer');
@@ -199,6 +208,7 @@ export function CallProvider({ children }: CallProviderProps) {
 
   const startCall = useCallback(async (calleeId: string, type: CallType) => runExclusive(async () => {
     useCallStore.getState().setError(null);
+    useCallStore.getState().setMinimized(false);
     useCallStore.getState().setConnectionStatus('connecting');
     try {
       if (!agoraCallService.isAvailable()) throw new Error('Calls require an Ourlime development or production build.');

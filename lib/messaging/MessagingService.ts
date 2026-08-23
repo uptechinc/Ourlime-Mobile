@@ -1,5 +1,4 @@
 import { db, storage } from '@/lib/firebaseConfig';
-import { pushNotificationService } from '@/lib/services/PushNotificationService';
 import {
     collection,
     doc,
@@ -347,14 +346,6 @@ export class MessagingService {
         const serverMessage = this.normalizeMessage(response.data);
         if (!serverMessage) throw new Error('The messaging server returned an invalid message.');
 
-        const isCall = message === '[SYS:VIDEO_CALL_INVITE]' || message === '[SYS:VOICE_CALL_INVITE]';
-        const isVideoCall = message === '[SYS:VIDEO_CALL_INVITE]';
-        void pushNotificationService.sendPushNotification(receiverId, {
-            title: isCall ? 'Incoming Call' : 'New Message',
-            body: isVideoCall ? 'Incoming video call...' : isCall ? 'Incoming voice call...' : (message || attachment?.fileName || 'Sent a sticker'),
-            type: isVideoCall ? 'video_call' : isCall ? 'voice_call' : 'message',
-            senderId,
-        });
         return serverMessage;
 
         /* Legacy direct-write implementation remains below only as a temporary
@@ -410,16 +401,6 @@ export class MessagingService {
                 lastMessage: message || (stickerData ? '🎨 Sticker' : voiceNoteData ? '🎤 Voice note' : attachment?.fileName || 'Attachment'),
             });
         }
-
-        // Dispatch push notification (handles calls, messages, and mute check)
-        const isCall = message === '[SYS:VIDEO_CALL_INVITE]' || message === '[SYS:VOICE_CALL_INVITE]';
-        const isVideoCall = message === '[SYS:VIDEO_CALL_INVITE]';
-        void pushNotificationService.sendPushNotification(receiverId, {
-            title: isCall ? 'Incoming Call' : 'New Message',
-            body: isVideoCall ? 'Incoming video call...' : isCall ? 'Incoming voice call...' : (message || attachment?.fileName || 'Sent a sticker'),
-            type: isVideoCall ? 'video_call' : isCall ? 'voice_call' : 'message',
-            senderId,
-        });
 
         return messageData;
         }

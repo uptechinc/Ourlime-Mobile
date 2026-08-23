@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -9,20 +9,23 @@ import {
   Alert,
   ActivityIndicator,
   StyleSheet,
-  Dimensions,
-  Animated,
-  PanResponder,
   Image,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { X, Upload, Globe, Users, Lock, Film, Sparkles, Laugh, Lightbulb, Video as VideoIcon, Music2, Compass } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { AuthService } from '@/lib/services/AuthService';
 import { SearchService } from '@/lib/services/SearchService';
 import { limeService } from '@/lib/services/LimeService';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 const authService = AuthService.getInstance();
 const searchService = SearchService.getInstance();
+const MAX_LIME_VIDEO_DURATION_SECONDS = 30;
+const MAX_LIME_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
+const ALLOWED_LIME_VIDEO_TYPES = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
 
 const CATEGORIES = [
   { name: 'Comedy', icon: Laugh, color: '#f59e0b' },
@@ -66,43 +69,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
   const [, setMentionQuery] = useState('');
 
-  /* ── Swipe-Down PanResponder ── */
-  const translateY = useRef(new Animated.Value(0)).current;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) {
-          translateY.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          Animated.timing(translateY, {
-            toValue: SCREEN_HEIGHT,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => {
-            translateY.setValue(0);
-            onClose();
-          });
-        } else {
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 4,
-          }).start();
-        }
-      },
-    })
-  ).current;
-
-  /* Reset translateY when modal opens */
-  useEffect(() => {
-    if (isOpen) translateY.setValue(0);
-  }, [isOpen, translateY]);
+  const swipeDismiss = useSwipeDismiss({ visible: isOpen, onDismiss: onClose, disabled: isUploading });
 
   /* ── Mention Search Handler ── */
   const handleCaptionChange = async (text: string) => {
@@ -163,11 +130,29 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
         allowsEditing: true,
         aspect: [9, 16], // Instagram Reels standard 9:16 portrait ratio
         quality: 0.8,
-        videoMaxDuration: 60,
+        videoMaxDuration: MAX_LIME_VIDEO_DURATION_SECONDS,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedAsset(result.assets[0]);
+        const asset = result.assets[0];
+        const durationSeconds = typeof asset.duration === 'number' ? asset.duration / 1000 : 0;
+        if (asset.mimeType && !ALLOWED_LIME_VIDEO_TYPES.has(asset.mimeType.toLowerCase())) {
+          Alert.alert('Unsupported video', 'Please select an MP4, MOV, or WebM video.');
+          return;
+        }
+        if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+          Alert.alert('Unreadable video', 'The video duration could not be read. Please select another video.');
+          return;
+        }
+        if (durationSeconds > MAX_LIME_VIDEO_DURATION_SECONDS) {
+          Alert.alert('Video too long', `Limes can be up to ${MAX_LIME_VIDEO_DURATION_SECONDS} seconds.`);
+          return;
+        }
+        if (typeof asset.fileSize === 'number' && asset.fileSize > MAX_LIME_VIDEO_SIZE_BYTES) {
+          Alert.alert('Video too large', 'Lime videos can be up to 100 MB.');
+          return;
+        }
+        setSelectedAsset(asset);
       }
     } catch (error) {
       console.error('[CreateLimeModal] Video pick error:', error);
@@ -191,6 +176,12 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
       return;
     }
 
+    const durationSeconds = typeof selectedAsset.duration === 'number' ? selectedAsset.duration / 1000 : 0;
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > MAX_LIME_VIDEO_DURATION_SECONDS) {
+      Alert.alert('Invalid video', `Choose a readable video that is ${MAX_LIME_VIDEO_DURATION_SECONDS} seconds or shorter.`);
+      return;
+    }
+
     setIsUploading(true);
     setUploadProgress(10);
 
@@ -201,7 +192,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
       await limeService.createLime({
         userId: user.uid,
         uri: selectedAsset.uri,
-        durationSeconds: selectedAsset.duration ? Math.round(selectedAsset.duration / 1000) : 15,
+        durationSeconds: Math.round(durationSeconds),
         visibility,
         category,
         caption: caption.trim(),
@@ -210,6 +201,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
 
       setUploadProgress(100);
       setIsUploading(false);
+      void interactionFeedbackService.play('success');
       setShowSuccessModal(true);
     } catch (error: unknown) {
       console.error('[CreateLimeModal] Submit error:', error);
@@ -229,17 +221,15 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
   };
 
   return (
-    <Modal visible={isOpen} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={isOpen} animationType="none" transparent onRequestClose={swipeDismiss.dismissWithAnimation}>
       <View style={styles.overlay}>
-        <Animated.View style={[styles.modalCard, { transform: [{ translateY }] }]}>
+        <Animated.View style={[styles.modalCard, swipeDismiss.animatedStyle]}>
           
           {/* Top Drag Handle Bar for Swipe-Down to Dismiss */}
-          <View style={styles.dragHandleWrapper} {...panResponder.panHandlers}>
-            <View style={styles.dragHandleBar} />
-          </View>
+          <SwipeDismissHandle gesture={swipeDismiss.gesture} color="#cbd5e1" animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close Lime creation" />
 
           {/* Header */}
-          <View style={styles.headerRow} {...panResponder.panHandlers}>
+          <View style={styles.headerRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Film size={22} color="#10b981" />
               <Text style={styles.modalTitle}>Create a Lime</Text>
@@ -356,7 +346,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
                   <Upload size={24} color="#10b981" />
                 </View>
                 <Text style={styles.uploadTitle}>Tap to select a video</Text>
-                <Text style={styles.uploadSubtitle}>Instagram 9:16 Portrait • Up to 60s</Text>
+                <Text style={styles.uploadSubtitle}>MP4, MOV, or WebM • Up to {MAX_LIME_VIDEO_DURATION_SECONDS}s • Max 100 MB</Text>
               </TouchableOpacity>
             )}
 
@@ -381,7 +371,9 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            <AnimatedActionButton
+              feedback="post"
+              accessibilityLabel="Post Lime"
               onPress={handleSubmit}
               style={[styles.submitBtn, (!selectedAsset || isUploading) && styles.submitBtnDisabled]}
               disabled={!selectedAsset || isUploading}
@@ -394,7 +386,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
                   <Sparkles size={16} color="#ffffff" />
                 </>
               )}
-            </TouchableOpacity>
+            </AnimatedActionButton>
           </View>
 
         </Animated.View>

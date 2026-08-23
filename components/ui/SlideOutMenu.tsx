@@ -3,16 +3,19 @@ import type { ComponentProps } from 'react';
 import {
     View,
     Text,
-    TouchableOpacity,
     Image,
     ScrollView,
     Modal,
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { SlideOutMenuProps } from '../../lib/types/componentProps';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 
 type SectionItem = {
     id: string;
@@ -41,6 +44,7 @@ export default function SlideOutMenu({
 }: SlideOutMenuProps) {
     const { colors } = useAppTheme();
     const interactionEnabled = state === 'open' || state === 'opening';
+    const swipeDismiss = useSwipeDismiss({ visible: interactionEnabled, onDismiss: onClose, disabled: !interactionEnabled });
 
     useEffect(() => {
         if (state === 'closing') onClosed();
@@ -146,14 +150,16 @@ export default function SlideOutMenu({
         : userProfile?.email ?? '';
     const avatarUrl = userProfile?.profilePicture ?? userProfile?.avatar ?? null;
 
-    const renderAccountShortcut = (item: SectionItem) => {
+    const renderAccountShortcut = (item: SectionItem, index: number) => {
         const badgeLabel = getBadgeLabel(item.badge);
         return (
-            <View key={item.id} style={{ flex: 1 }}>
-                <TouchableOpacity
-                    onPress={item.onPress}
+            <Animated.View key={item.id} entering={FadeInDown.springify().damping(18).stiffness(230).delay(index * 45)} style={{ flex: 1 }}>
+                <AnimatedActionButton
+                    onPress={item.onPress ?? (() => undefined)}
                     disabled={!interactionEnabled}
-                    activeOpacity={0.75}
+                    accessibilityLabel={item.title}
+                    pressScale={0.95}
+                    playful={false}
                     style={{
                         minHeight: 96,
                         alignItems: 'center',
@@ -184,16 +190,16 @@ export default function SlideOutMenu({
                             <Text style={{ color: '#ffffff', fontSize: 9, fontWeight: '800' }}>{badgeLabel}</Text>
                         </View>
                     ) : null}
-                </TouchableOpacity>
-            </View>
+                </AnimatedActionButton>
+            </Animated.View>
         );
     };
 
-    const renderSectionItem = (item: SectionItem) => {
+    const renderSectionItem = (item: SectionItem, index: number) => {
         const badgeLabel = getBadgeLabel(item.badge);
         return (
-        <View key={item.id}>
-            <TouchableOpacity
+        <Animated.View key={item.id} entering={FadeInDown.springify().damping(18).stiffness(230).delay(90 + index * 35)}>
+            <AnimatedActionButton
                 style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -211,9 +217,11 @@ export default function SlideOutMenu({
                     shadowRadius: 4,
                     elevation: 1,
                 }}
-                onPress={item.onPress}
+                onPress={item.onPress ?? (() => undefined)}
                 disabled={!interactionEnabled}
-                activeOpacity={0.7}
+                accessibilityLabel={item.title}
+                pressScale={0.97}
+                playful={false}
             >
                 <View style={{
                     width: 42,
@@ -254,8 +262,8 @@ export default function SlideOutMenu({
                     ) : null}
                     <Ionicons name="chevron-forward" size={14} color={colors.icon} />
                 </View>
-            </TouchableOpacity>
-        </View>
+            </AnimatedActionButton>
+        </Animated.View>
         );
     };
 
@@ -277,11 +285,15 @@ export default function SlideOutMenu({
     return (
         <Modal
             visible={state === 'opening' || state === 'open'}
-            animationType="slide"
-            presentationStyle="pageSheet"
+            transparent
+            statusBarTranslucent
+            navigationBarTranslucent
+            animationType="none"
+            presentationStyle="overFullScreen"
             onShow={onOpened}
-            onRequestClose={() => { if (interactionEnabled) onClose(); }}
+            onRequestClose={swipeDismiss.dismissWithAnimation}
         >
+            <Animated.View style={[{ flex: 1 }, swipeDismiss.animatedStyle]}>
             <SafeAreaView edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal style={{ flex: 1, backgroundColor: colors.canvas }}>
 
                         {/* ─── Profile Header ─── */}
@@ -295,9 +307,7 @@ export default function SlideOutMenu({
                                 paddingBottom: 18,
                             }}
                         >
-                            <View style={{ minHeight: 22, alignItems: 'center', justifyContent: 'flex-start', marginBottom: 6 }}>
-                                <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.58)' }} />
-                            </View>
+                            <SwipeDismissHandle gesture={swipeDismiss.gesture} color="rgba(255,255,255,0.58)" animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close navigation" />
 
                             {/* Avatar + Name */}
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -347,10 +357,9 @@ export default function SlideOutMenu({
                                         </Text>
                                     ) : null}
                                 </View>
-                                <TouchableOpacity
-                                    onPress={onClose}
+                                <AnimatedActionButton
+                                    onPress={swipeDismiss.dismissWithAnimation}
                                     disabled={!interactionEnabled}
-                                    accessibilityRole="button"
                                     accessibilityLabel="Close menu"
                                     style={{
                                         width: 40,
@@ -362,7 +371,7 @@ export default function SlideOutMenu({
                                     }}
                                 >
                                     <Ionicons name="close" size={21} color="#fff" />
-                                </TouchableOpacity>
+                                </AnimatedActionButton>
                             </View>
                         </LinearGradient>
 
@@ -377,18 +386,18 @@ export default function SlideOutMenu({
                             {/* Account section */}
                             {renderSectionLabel('My Account')}
                             <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12 }}>
-                                {accountSection.map((item) => renderAccountShortcut(item))}
+                                {accountSection.map((item, index) => renderAccountShortcut(item, index))}
                             </View>
 
                             {/* Explore section */}
                             {renderSectionLabel('Explore')}
-                            {featureSection.map((item) => renderSectionItem(item))}
+                            {featureSection.map((item, index) => renderSectionItem(item, index))}
 
                             {/* Advertising section */}
                             {adsSection.length > 0 && (
                                 <>
                                     {renderSectionLabel('Advertising')}
-                                    {adsSection.map((item) => renderSectionItem(item))}
+                                    {adsSection.map((item, index) => renderSectionItem(item, index))}
                                 </>
                             )}
 
@@ -396,7 +405,7 @@ export default function SlideOutMenu({
                             {supportSection.length > 0 && (
                                 <>
                                     {renderSectionLabel('Support')}
-                                    {supportSection.map((item) => renderSectionItem(item))}
+                                    {supportSection.map((item, index) => renderSectionItem(item, index))}
                                 </>
                             )}
                         </ScrollView>
@@ -411,7 +420,7 @@ export default function SlideOutMenu({
                                 backgroundColor: colors.canvas,
                             }}
                         >
-                            <TouchableOpacity
+                            <AnimatedActionButton
                                 style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
@@ -426,7 +435,9 @@ export default function SlideOutMenu({
                                     logoutItem?.onPress?.();
                                 }}
                                 disabled={!interactionEnabled}
-                                activeOpacity={0.75}
+                                feedback="warning"
+                                accessibilityLabel="Log out"
+                                pressScale={0.97}
                             >
                                 <Ionicons name="log-out-outline" size={18} color={colors.destructive} />
                                 <Text style={{
@@ -437,9 +448,10 @@ export default function SlideOutMenu({
                                 }}>
                                     Log Out
                                 </Text>
-                            </TouchableOpacity>
+                            </AnimatedActionButton>
                         </View>
             </SafeAreaView>
+            </Animated.View>
         </Modal>
     );
 }

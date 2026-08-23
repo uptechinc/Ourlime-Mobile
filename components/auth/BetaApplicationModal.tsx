@@ -4,7 +4,6 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -12,6 +11,8 @@ import {
 } from 'react-native';
 import { ApiService } from '@/lib/services/ApiService';
 import { Ionicons } from '@expo/vector-icons';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { ModalMotionSurface } from '@/components/ui/ModalMotion';
 
 type BetaApplicationModalProps = {
   isOpen: boolean;
@@ -61,21 +62,21 @@ export default function BetaApplicationModal({ isOpen, onClose }: BetaApplicatio
   };
 
   return (
-    <Modal visible={isOpen} transparent animationType="fade" onRequestClose={handleClose}>
+    <Modal visible={isOpen} transparent animationType="none" statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" onRequestClose={handleClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center', padding: 20 }}
       >
-        <View style={{ width: '100%', maxWidth: 500, backgroundColor: '#090d16', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: 24, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20 }}>
+        <ModalMotionSurface variant="dialog" style={{ width: '100%', maxWidth: 500, backgroundColor: '#090d16', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: 24, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20 }}>
           {/* Header */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 22, fontWeight: '800', color: '#ffffff' }}>Apply to Be a Beta Tester</Text>
               <Text style={{ fontSize: 14, color: '#94a3b8', marginTop: 4 }}>Tell us who you are and how to contact you.</Text>
             </View>
-            <TouchableOpacity onPress={handleClose} style={{ padding: 6, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)' }}>
+            <AnimatedActionButton onPress={handleClose} accessibilityLabel="Close beta application" style={{ padding: 6, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)' }}>
               <Ionicons name="close" size={20} color="#94a3b8" />
-            </TouchableOpacity>
+            </AnimatedActionButton>
           </View>
 
           {submitted ? (
@@ -86,9 +87,9 @@ export default function BetaApplicationModal({ isOpen, onClose }: BetaApplicatio
               <Text style={{ fontSize: 15, color: '#cbd5e1', textAlign: 'center', lineHeight: 22 }}>
                 Thank you for applying to become an OurLime beta tester. We will email you if your application is approved.
               </Text>
-              <TouchableOpacity onPress={handleClose} style={{ marginTop: 24, width: '100%', backgroundColor: '#10b981', paddingVertical: 14, borderRadius: 14, alignItems: 'center' }}>
+              <AnimatedActionButton onPress={handleClose} feedback="success" accessibilityLabel="Close successful application" style={{ marginTop: 24, width: '100%', backgroundColor: '#10b981', paddingVertical: 14, borderRadius: 14, alignItems: 'center' }}>
                 <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 16 }}>Done</Text>
-              </TouchableOpacity>
+              </AnimatedActionButton>
             </View>
           ) : (
             <ScrollView keyboardShouldPersistTaps="handled">
@@ -142,9 +143,11 @@ export default function BetaApplicationModal({ isOpen, onClose }: BetaApplicatio
                 </View>
               ) : null}
 
-              <TouchableOpacity
+              <AnimatedActionButton
                 onPress={submitApplication}
                 disabled={submitting}
+                feedback="post"
+                accessibilityLabel="Submit beta application"
                 style={{ backgroundColor: '#10b981', paddingVertical: 14, borderRadius: 14, alignItems: 'center', opacity: submitting ? 0.6 : 1 }}
               >
                 {submitting ? (
@@ -152,10 +155,10 @@ export default function BetaApplicationModal({ isOpen, onClose }: BetaApplicatio
                 ) : (
                   <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 16 }}>Submit Application</Text>
                 )}
-              </TouchableOpacity>
+              </AnimatedActionButton>
             </ScrollView>
           )}
-        </View>
+        </ModalMotionSurface>
       </KeyboardAvoidingView>
     </Modal>
   );

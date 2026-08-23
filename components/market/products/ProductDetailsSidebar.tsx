@@ -5,6 +5,7 @@ import { Product, ColorVariants, SizeVariants, ProductVariant } from '@/types/pr
 import { useTempMessages } from '@/src/hooks/useTempMessages';
 import { useProfileStore } from '@/src/store/useProfileStore';
 import { useChatStore } from '@/src/chatExpand/useChatStore';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 export type MarketOwnership = {
     id: string;
@@ -185,11 +186,14 @@ export default function ProductDetailsSidebar({ isOpen, onClose, product, market
     return (
         <Modal
             visible={isOpen}
-            animationType="slide"
-            presentationStyle="pageSheet"
+            transparent
+            statusBarTranslucent
+            navigationBarTranslucent
+            animationType="none"
+            presentationStyle="overFullScreen"
             onRequestClose={onClose}
         >
-            <View style={{ flex: 1, backgroundColor: '#ffffff' }}>
+            <SwipeDismissSurface visible={isOpen} onDismiss={onClose} handleColor="#d1d5db" disabled={isSubmitting} accessibilityLabel="Swipe down to close product details" style={{ flex: 1, backgroundColor: '#ffffff' }}>
                 {/* Header */}
                 <View style={{ 
                     height: 56, 
@@ -635,7 +639,7 @@ export default function ProductDetailsSidebar({ isOpen, onClose, product, market
                         </TouchableOpacity>
                     </View>
                 </View>
-            </View>
+            </SwipeDismissSurface>
         </Modal>
     );
 }

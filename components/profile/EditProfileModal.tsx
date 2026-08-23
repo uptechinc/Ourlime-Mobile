@@ -18,6 +18,7 @@ import { feedResourceService } from '@/lib/services/FeedResourceService';
 import { ProfileMediaService } from '@/lib/services/ProfileMediaService';
 import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 const authService = AuthService.getInstance();
 const profileMediaService = ProfileMediaService.getInstance();
@@ -140,12 +141,9 @@ export default function EditProfileModal({
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={[styles.overlay, { backgroundColor: colors.modalScrim }]}>
-        <View style={[styles.card, { backgroundColor: colors.surface }]}>
-          <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 2 }}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.mutedText }} />
-          </View>
+        <SwipeDismissSurface visible={visible} onDismiss={onClose} handleColor={colors.mutedText} disabled={saving} accessibilityLabel="Swipe down to close profile editor" style={[styles.card, { backgroundColor: colors.surface }]}>
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: colors.border }]}>
             <TouchableOpacity onPress={onClose} disabled={saving} style={styles.closeBtn}>
@@ -255,23 +253,16 @@ export default function EditProfileModal({
               />
             </View>
           </ScrollView>
-        </View>
+        </SwipeDismissSurface>
 
-        {/* Modern Success Dialog Modal */}
-        <Modal visible={showSuccessModal} transparent animationType="fade" onRequestClose={handleSuccessClose}>
-          <View style={[styles.successOverlay, { backgroundColor: colors.modalScrim }]}>
-            <View style={[styles.successCard, { backgroundColor: colors.elevated }]}>
-              <View style={[styles.successIconBadge, { backgroundColor: colors.accent }]}>
-                <Icon name="check" size={32} color={colors.onAccent} />
-              </View>
-              <Text style={[styles.successTitle, { color: colors.text }]}>Profile Updated!</Text>
-              <Text style={[styles.successMessage, { color: colors.mutedText }]}>Your profile information and images have been saved successfully.</Text>
-              <TouchableOpacity onPress={handleSuccessClose} style={[styles.successBtn, { backgroundColor: colors.accent }]}>
-                <Text style={[styles.successBtnText, { color: colors.onAccent }]}>Great!</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+        <CustomModal
+          visible={showSuccessModal}
+          type="success"
+          title="Profile updated!"
+          message="Your profile information and images were saved successfully."
+          confirmText="Great!"
+          onClose={handleSuccessClose}
+        />
         <CustomModal visible={Boolean(errorMessage)} type="error" title="Profile not updated" message={errorMessage ?? ''} onClose={() => setErrorMessage(null)} />
       </View>
     </Modal>

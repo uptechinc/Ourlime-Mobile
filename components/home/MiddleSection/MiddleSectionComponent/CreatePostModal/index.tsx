@@ -2,11 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   Image,
   KeyboardAvoidingView,
   Modal,
-  PanResponder,
   Platform,
   ScrollView,
   Text,
@@ -14,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import Icon from 'react-native-vector-icons/Feather';
@@ -36,6 +35,11 @@ import { EventService } from '@/lib/services/EventService';
 import { SearchService } from '@/lib/services/SearchService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import CustomModal from '@/components/ui/CustomModal';
+import { linkPresentationService } from '@/lib/services/LinkPresentationService';
+import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 
 type DraftPollOption = { id: string; text: string };
 type TextSelection = { start: number; end: number };
@@ -273,36 +277,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
     });
   };
 
-  const translateY = useRef(new Animated.Value(0)).current;
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) {
-          translateY.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          Animated.timing(translateY, {
-            toValue: 600,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => {
-            translateY.setValue(0);
-            handleClose();
-          });
-        } else {
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 4,
-          }).start();
-        }
-      },
-    })
-  ).current;
+  const swipeDismiss = useSwipeDismiss({ visible: true, onDismiss: handleClose, disabled: isSubmitting });
 
   const getPollDurationHours = (): number => {
     if (pollDurationChoice !== 'custom') return pollDurationChoice;
@@ -374,6 +349,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
         contentType: 'post',
         postId: createdPost.id,
       });
+      void interactionFeedbackService.play('success');
       setTogglePostForm(false);
     } catch (error: unknown) {
       console.error('[CreatePostModal.handleSubmit]', error);
@@ -385,17 +361,16 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
   };
 
   return (
-    <Modal visible animationType="slide" onRequestClose={handleClose}>
+    <Modal visible transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
+      <Animated.View style={[{ flex: 1 }, swipeDismiss.animatedStyle]}>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={['top', 'left', 'right']}>
-        <View style={{ width: '100%', alignItems: 'center', paddingVertical: 8 }} {...panResponder.panHandlers}>
-          <View style={{ width: 42, height: 5, borderRadius: 3, backgroundColor: colors.border }} />
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }} {...panResponder.panHandlers}>
+        <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close post composer" />
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
           <TouchableOpacity onPress={handleClose} disabled={isSubmitting} style={{ padding: 8 }}><Icon name="x" size={24} color={colors.icon} /></TouchableOpacity>
           <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: colors.text }}>{postType === 'poll' ? 'Create poll' : 'Create post'}</Text>
-          <TouchableOpacity onPress={() => void handleSubmit()} disabled={isPostDisabled} style={{ minWidth: 68, alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 18, backgroundColor: isPostDisabled ? colors.disabled : colors.accent }}>
+          <AnimatedActionButton feedback="post" accessibilityLabel="Publish post" onPress={() => void handleSubmit()} disabled={isPostDisabled} style={{ minWidth: 68, alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 18, backgroundColor: isPostDisabled ? colors.disabled : colors.accent }}>
             {isSubmitting ? <ActivityIndicator size="small" color={colors.onAccent} /> : <Text style={{ color: isPostDisabled ? colors.disabledText : colors.onAccent, fontWeight: '800' }}>Post</Text>}
-          </TouchableOpacity>
+          </AnimatedActionButton>
         </View>
 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -645,7 +620,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
             {postType === 'regular' ? (
               location ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, padding: 12, borderRadius: 14, backgroundColor: colors.successSurface }}>
-                  <Icon name="map-pin" size={19} color={colors.accent} /><View style={{ flex: 1, marginLeft: 9 }}><Text style={{ color: colors.successText, fontWeight: '700' }}>{location.name}</Text><Text numberOfLines={1} style={{ color: colors.mutedText, fontSize: 12 }}>{location.address}</Text></View>
+                  <Icon name="map-pin" size={19} color={colors.accent} /><View style={{ flex: 1, marginLeft: 9 }}><Text numberOfLines={1} ellipsizeMode="tail" style={{ color: colors.successText, fontWeight: '700' }}>{linkPresentationService.compactUrlsInText(location.name)}</Text><Text numberOfLines={1} ellipsizeMode="tail" style={{ color: colors.mutedText, fontSize: 12 }}>{linkPresentationService.compactUrlsInText(location.address ?? '')}</Text></View>
                   <TouchableOpacity onPress={() => setLocation(undefined)} style={{ padding: 6 }}><Icon name="x" size={18} color={colors.icon} /></TouchableOpacity>
                 </View>
               ) : (
@@ -659,6 +634,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
       {cropQueue[0] ? <MediaCropModal pending={cropQueue[0]} queueLength={cropQueue.length} onCancel={() => setCropQueue((current) => current.slice(1))} onComplete={handleCroppedMedia} /> : null}
       {showLocationPicker ? <LocationPickerModal initialLocation={location} onClose={() => setShowLocationPicker(false)} onSelect={(selectedLocation) => { setLocation(selectedLocation); setShowLocationPicker(false); }} /> : null}
       <CustomModal visible={Boolean(composerFeedback)} title={composerFeedback?.title ?? 'Create post'} message={composerFeedback?.message ?? ''} type="error" onClose={() => setComposerFeedback(null)} />
+      </Animated.View>
     </Modal>
   );
 }

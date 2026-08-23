@@ -61,13 +61,13 @@ export class ApiServiceError extends Error {
 
 const DEFAULT_API_BASE_URL = process.env.EXPO_PUBLIC_WEB_API_URL || 'https://ourlime.com';
 const API_UNAVAILABLE_BACKOFF_MS = 15_000;
-const API_HEALTH_TIMEOUT_MS = 6_000;
+const API_HEALTH_TIMEOUT_MS = 12_000;
 
 export class ApiService {
   private static instance: ApiService;
   private readonly logger = DiagnosticLogService.getInstance();
   private readonly baseUrl: string;
-  private readonly activeRequestControllers = new Set<AbortController>();
+  private readonly activeRequestControllers = new Map<AbortController, ApiRequestPriority>();
   private availabilityState: ApiAvailabilityState = 'unknown';
   private healthProbe: Promise<boolean> | null = null;
   private unavailableUntil = 0;
@@ -107,14 +107,14 @@ export class ApiService {
     const url = `${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     this.logger.info('ApiService', 'request:start', { requestId, method, path });
     const requestController = new AbortController();
-    this.activeRequestControllers.add(requestController);
+    this.activeRequestControllers.set(requestController, options.priority ?? 'foreground');
     let didTimeout = false;
     const handleExternalAbort = () => requestController.abort();
     options.signal?.addEventListener('abort', handleExternalAbort, { once: true });
     const timeoutId = setTimeout(() => {
       didTimeout = true;
       requestController.abort();
-    }, options.timeoutMs ?? 18_000);
+    }, options.timeoutMs ?? 25_000);
 
     try {
       const response = await fetch(url, {
@@ -218,6 +218,12 @@ export class ApiService {
 
   public getAvailabilityState(): ApiAvailabilityState {
     return this.availabilityState;
+  }
+
+  public cancelBackgroundRequests(): void {
+    for (const [requestController, priority] of this.activeRequestControllers) {
+      if (priority === 'background') requestController.abort();
+    }
   }
 
   public async checkHealth(force = false): Promise<ApiHealthResult | null> {

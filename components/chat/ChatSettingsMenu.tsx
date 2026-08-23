@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   Modal,
-  Pressable,
   Alert,
   ActivityIndicator,
 } from 'react-native';
@@ -15,6 +14,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { messagingService } from '@/lib/messaging/MessagingService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
 
 const relationshipService = RelationshipService.getInstance();
 
@@ -213,11 +214,12 @@ export function ChatSettingsMenu({
   const isMuted = mutedUntil !== null && mutedUntil > Date.now();
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: colors.modalScrim }} onPress={onClose} />
+    <Modal visible={visible} transparent animationType="none" statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" onRequestClose={onClose}>
+      <ModalBackdrop style={{ flex: 1, backgroundColor: colors.modalScrim }} onPress={onClose} />
 
       {/* Dropdown panel */}
-      <View
+      <ModalMotionSurface
+        variant="dialog"
         style={{
           position: 'absolute',
           top: 90,
@@ -349,7 +351,7 @@ export function ChatSettingsMenu({
             />
           </>
         )}
-      </View>
+      </ModalMotionSurface>
     </Modal>
   );
 }
@@ -368,7 +370,7 @@ function MenuItem({ icon, label, onPress, danger, chevron }: MenuItemProps) {
   const iconColor = danger ? colors.destructive : colors.icon;
 
   return (
-    <TouchableOpacity
+    <AnimatedActionButton
       onPress={onPress}
       style={{
         flexDirection: 'row',
@@ -376,7 +378,10 @@ function MenuItem({ icon, label, onPress, danger, chevron }: MenuItemProps) {
         paddingHorizontal: 16,
         paddingVertical: 12,
       }}
-      activeOpacity={0.65}
+      accessibilityLabel={label}
+      feedback={danger ? 'warning' : 'selection'}
+      pressScale={0.97}
+      playful={false}
     >
       <Icon name={icon} size={16} color={iconColor} />
       <Text style={{ flex: 1, fontSize: 14, color, marginLeft: 12, fontWeight: '500' }}>
@@ -385,6 +390,6 @@ function MenuItem({ icon, label, onPress, danger, chevron }: MenuItemProps) {
       {chevron && (
         <Icon name="chevron-right" size={14} color={colors.mutedText} />
       )}
-    </TouchableOpacity>
+    </AnimatedActionButton>
   );
 }

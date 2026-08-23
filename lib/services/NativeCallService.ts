@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { AppState, NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from './ApiService';
 import { callService } from './CallService';
@@ -16,8 +16,30 @@ type NativeCallCallbacks = {
 type NativeSubscription = { remove: () => void };
 type StoredNativeToken = { token: string; platform: 'android' | 'ios'; transport: 'fcm' | 'apns_voip' };
 type PushTokenResponse = { success: boolean };
+type CallNotificationAction = 'open' | 'answer' | 'decline';
+type PendingCallInteraction = { payload: CallPushPayload; action: CallNotificationAction };
+type AndroidIncomingCallModule = {
+  displayIncomingCall: (payload: CallPushPayload) => Promise<void>;
+  cancelIncomingCall: (callId: string) => Promise<void>;
+  startRingtone: () => Promise<void>;
+  stopRingtone: () => Promise<void>;
+  consumePendingInteraction: () => Promise<unknown>;
+  addListener: (eventName: string) => void;
+  removeListeners: (count: number) => void;
+};
 
 const TOKENS_KEY = 'ourlime:native-call-tokens';
+const ANDROID_CALL_CHANNEL_ID = 'ourlime-calls-v2';
+const CALL_NOTIFICATION_CATEGORY_ID = 'ourlime-incoming-call';
+const CALL_ANSWER_ACTION_ID = 'ourlime-call-answer';
+const CALL_DECLINE_ACTION_ID = 'ourlime-call-decline';
+const ANDROID_CALL_INTERACTION_EVENT = 'OurlimeIncomingCallInteraction';
+
+function getAndroidIncomingCallModule(): AndroidIncomingCallModule | null {
+  if (Platform.OS !== 'android') return null;
+  const modules = NativeModules as { OurlimeIncomingCall?: AndroidIncomingCallModule };
+  return modules.OurlimeIncomingCall ?? null;
+}
 
 function isStoredNativeToken(value: unknown): value is StoredNativeToken {
   if (!value || typeof value !== 'object') return false;
@@ -33,8 +55,10 @@ export class NativeCallService {
   private callbacks: NativeCallCallbacks | null = null;
   private subscriptions: NativeSubscription[] = [];
   private readonly ringingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly pendingInteractions = new Map<string, PendingCallInteraction>();
   private initialized = false;
   private backgroundHandlerRegistered = false;
+  private androidInteractionSubscription: NativeSubscription | null = null;
 
   private constructor() {}
 
@@ -49,6 +73,7 @@ export class NativeCallService {
 
   public async registerAndroidBackgroundHandler(): Promise<void> {
     if (Platform.OS !== 'android' || !this.isAvailable() || this.backgroundHandlerRegistered) return;
+    if (!platformEnvironmentService.hasNativeFirebaseMessaging()) return;
     try {
       const messagingModule = await import('@react-native-firebase/messaging');
       const getMessaging = messagingModule.getMessaging || messagingModule.default;
@@ -78,6 +103,8 @@ export class NativeCallService {
 
   public async initialize(callbacks: NativeCallCallbacks): Promise<void> {
     this.callbacks = callbacks;
+    await this.initializeAndroidInteractionBridge();
+    this.drainPendingInteractions();
     if (this.initialized || !this.isAvailable()) return;
     if (Platform.OS === 'ios') {
       try {
@@ -110,8 +137,9 @@ export class NativeCallService {
   }
 
   public async displayIncomingCall(payload: CallPushPayload): Promise<void> {
-    this.callbacks?.onIncomingCall(payload);
-    if (payload.type !== 'incoming_call' || Date.now() >= payload.expiresAtMs) return;
+    if (payload.type === 'incoming_call' && Date.now() >= payload.expiresAtMs) return;
+    this.dispatchInteraction(payload, 'open');
+    if (payload.type !== 'incoming_call') return;
     if (!this.isAvailable()) return;
     if (Platform.OS === 'ios') {
       try {
@@ -120,31 +148,17 @@ export class NativeCallService {
       } catch (error: unknown) {
         this.logger.warn('NativeCallService', 'callkeep:display-failed', { message: error instanceof Error ? error.message : String(error) });
       }
+    } else if (Platform.OS === 'android' && AppState.currentState === 'active') {
+      await getAndroidIncomingCallModule()?.startRingtone().catch((error: unknown) => {
+        this.logger.warn('NativeCallService', 'android:ringtone-start-failed', {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
     } else if (Platform.OS === 'android') {
       try {
-        const Notifications = await import('expo-notifications');
-        await Notifications.setNotificationChannelAsync('calls', {
-          name: 'Ourlime Calls',
-          importance: Notifications.AndroidImportance.MAX,
-          sound: 'default',
-          vibrationPattern: [0, 500, 250, 500, 250, 500],
-          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-          bypassDnd: true,
-        });
-        const isVideo = payload.callType === 'video';
-        const callerName = payload.callerName || payload.callerUserName || 'Ourlime Caller';
-        await Notifications.scheduleNotificationAsync({
-          identifier: payload.callId,
-          content: {
-            title: isVideo ? `Incoming Video Call` : `Incoming Voice Call`,
-            body: `${callerName} is calling you...`,
-            sound: 'default',
-            priority: Notifications.AndroidNotificationPriority.MAX,
-            vibrate: [0, 500, 250, 500, 250, 500],
-            data: payload as unknown as Record<string, unknown>,
-          },
-          trigger: null,
-        });
+        const nativeModule = getAndroidIncomingCallModule();
+        if (nativeModule) await nativeModule.displayIncomingCall(payload);
+        else await this.displayFallbackAndroidNotification(payload);
       } catch (error: unknown) {
         this.logger.warn('NativeCallService', 'android:display-notification-failed', { message: error instanceof Error ? error.message : String(error) });
       }
@@ -187,6 +201,8 @@ export class NativeCallService {
     this.clearRingingTimer(callId);
     if (Platform.OS === 'android') {
       try {
+        await getAndroidIncomingCallModule()?.stopRingtone().catch(() => {});
+        await getAndroidIncomingCallModule()?.cancelIncomingCall(callId).catch(() => {});
         const Notifications = await import('expo-notifications');
         await Notifications.dismissNotificationAsync(callId).catch(() => {});
       } catch {
@@ -204,8 +220,11 @@ export class NativeCallService {
 
   public async endNativeCall(callId: string, reason: CallEndReason | null): Promise<void> {
     this.clearRingingTimer(callId);
+    this.pendingInteractions.delete(callId);
     if (Platform.OS === 'android') {
       try {
+        await getAndroidIncomingCallModule()?.stopRingtone().catch(() => {});
+        await getAndroidIncomingCallModule()?.cancelIncomingCall(callId).catch(() => {});
         const Notifications = await import('expo-notifications');
         await Notifications.dismissNotificationAsync(callId).catch(() => {});
       } catch {
@@ -236,10 +255,12 @@ export class NativeCallService {
   }
 
   public dispose(): void {
+    void getAndroidIncomingCallModule()?.stopRingtone().catch(() => {});
     this.subscriptions.forEach((subscription) => subscription.remove());
     this.subscriptions = [];
     this.callbacks = null;
     this.initialized = false;
+    this.androidInteractionSubscription = null;
     this.ringingTimers.forEach((timer) => clearTimeout(timer));
     this.ringingTimers.clear();
   }
@@ -255,7 +276,134 @@ export class NativeCallService {
     }
   }
 
+  public async handleNotificationResponse(value: unknown, actionIdentifier: string): Promise<boolean> {
+    const payload = this.parsePayload(value);
+    if (!payload) return false;
+    if (payload.type === 'incoming_call' && Date.now() >= payload.expiresAtMs) {
+      await this.endNativeCall(payload.callId, 'missed').catch(() => {});
+      return true;
+    }
+    const action: CallNotificationAction = actionIdentifier === CALL_ANSWER_ACTION_ID
+      ? 'answer'
+      : actionIdentifier === CALL_DECLINE_ACTION_ID
+        ? 'decline'
+        : 'open';
+    this.dispatchInteraction(payload, action);
+    return true;
+  }
+
+  private async initializeAndroidInteractionBridge(): Promise<void> {
+    if (Platform.OS !== 'android') return;
+    const nativeModule = getAndroidIncomingCallModule();
+    if (!nativeModule) return;
+    if (!this.androidInteractionSubscription) {
+      const emitter = new NativeEventEmitter(nativeModule);
+      this.androidInteractionSubscription = emitter.addListener(ANDROID_CALL_INTERACTION_EVENT, () => {
+        void this.consumePendingAndroidInteraction();
+      });
+      this.subscriptions.push(this.androidInteractionSubscription);
+    }
+    await this.consumePendingAndroidInteraction();
+  }
+
+  private async consumePendingAndroidInteraction(): Promise<void> {
+    const nativeModule = getAndroidIncomingCallModule();
+    if (!nativeModule) return;
+    try {
+      const interaction = await nativeModule.consumePendingInteraction();
+      const payload = this.parsePayload(interaction);
+      if (!payload) return;
+      const action = this.parseNotificationAction(interaction);
+      if (payload.type === 'incoming_call' && Date.now() >= payload.expiresAtMs) {
+        await this.endNativeCall(payload.callId, 'missed').catch(() => {});
+        return;
+      }
+      this.dispatchInteraction(payload, action);
+    } catch (error: unknown) {
+      this.logger.warn('NativeCallService', 'android:interaction-failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private dispatchInteraction(payload: CallPushPayload, action: CallNotificationAction): void {
+    if (!this.callbacks) {
+      this.pendingInteractions.set(payload.callId, { payload, action });
+      return;
+    }
+    if (action === 'answer') {
+      this.callbacks.onAnswer(payload.callId);
+      return;
+    }
+    if (action === 'decline') {
+      this.callbacks.onDecline(payload.callId);
+      return;
+    }
+    this.callbacks.onIncomingCall(payload);
+  }
+
+  private drainPendingInteractions(): void {
+    if (!this.callbacks || this.pendingInteractions.size === 0) return;
+    const interactions = [...this.pendingInteractions.values()];
+    this.pendingInteractions.clear();
+    interactions.forEach(({ payload, action }) => this.dispatchInteraction(payload, action));
+  }
+
+  private parseNotificationAction(value: unknown): CallNotificationAction {
+    if (!value || typeof value !== 'object') return 'open';
+    const candidate = value as { action?: unknown };
+    return candidate.action === 'answer' || candidate.action === 'decline' ? candidate.action : 'open';
+  }
+
+  private async displayFallbackAndroidNotification(payload: CallPushPayload): Promise<void> {
+    const Notifications = await import('expo-notifications');
+    await Notifications.setNotificationChannelAsync(ANDROID_CALL_CHANNEL_ID, {
+      name: 'Ourlime incoming calls',
+      description: 'Incoming Ourlime voice and video calls',
+      importance: Notifications.AndroidImportance.MAX,
+      sound: 'default',
+      enableVibrate: true,
+      vibrationPattern: [0, 700, 350, 700, 350, 700],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      showBadge: false,
+      audioAttributes: {
+        usage: Notifications.AndroidAudioUsage.NOTIFICATION_RINGTONE,
+        contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+      },
+    });
+    await Notifications.setNotificationCategoryAsync(CALL_NOTIFICATION_CATEGORY_ID, [
+      { identifier: CALL_DECLINE_ACTION_ID, buttonTitle: 'Decline', options: { opensAppToForeground: true, isDestructive: true } },
+      { identifier: CALL_ANSWER_ACTION_ID, buttonTitle: 'Answer', options: { opensAppToForeground: true } },
+    ]);
+    const callerName = payload.callerName || payload.callerUserName || 'Ourlime caller';
+    await Notifications.scheduleNotificationAsync({
+      identifier: payload.callId,
+      content: {
+        title: payload.callType === 'video' ? 'Incoming video call' : 'Incoming voice call',
+        body: `${callerName} is calling you`,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        vibrate: [0, 700, 350, 700, 350, 700],
+        sticky: true,
+        autoDismiss: false,
+        categoryIdentifier: CALL_NOTIFICATION_CATEGORY_ID,
+        data: {
+          type: payload.type,
+          callId: payload.callId,
+          callType: payload.callType,
+          callerId: payload.callerId,
+          callerName: payload.callerName,
+          callerUserName: payload.callerUserName,
+          ...(payload.callerProfilePicture ? { callerProfilePicture: payload.callerProfilePicture } : {}),
+          expiresAtMs: payload.expiresAtMs,
+        },
+      },
+      trigger: { channelId: ANDROID_CALL_CHANNEL_ID },
+    });
+  }
+
   private async initializeFcm(): Promise<void> {
+    if (!platformEnvironmentService.hasNativeFirebaseMessaging()) return;
     try {
       const messagingModule = await import('@react-native-firebase/messaging');
       const getMessaging = messagingModule.getMessaging || messagingModule.default;

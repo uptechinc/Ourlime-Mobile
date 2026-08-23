@@ -67,7 +67,7 @@ export class AdminPageAccessService {
       return await this.fetchSettingsFromFirestore();
     } catch (firestoreError: unknown) {
       console.warn('[AdminPageAccessService] Firestore settings unavailable; trying the secure API.', firestoreError);
-      const response = await apiService.request<PageAccessResponse>('/api/page-access', { authenticated: true, timeoutMs: 2_500 });
+      const response = await apiService.request<PageAccessResponse>('/api/page-access', { authenticated: true, timeoutMs: 18_000 });
       return this.mergeWithDefaults(response.settings.map((item, index) => this.normalize(item, index)));
     }
   }
@@ -92,7 +92,7 @@ export class AdminPageAccessService {
         method: 'PUT',
         authenticated: true,
         body: { id, updates },
-        timeoutMs: 2_500,
+        timeoutMs: 18_000,
       });
     }
   }
@@ -110,7 +110,7 @@ export class AdminPageAccessService {
         method: 'POST',
         authenticated: true,
         body: { action: 'bulk_update', ids, updates },
-        timeoutMs: 2_500,
+        timeoutMs: 18_000,
       });
     }
   }
@@ -124,7 +124,7 @@ export class AdminPageAccessService {
         method: 'POST',
         authenticated: true,
         body: { action: 'reset_defaults' },
-        timeoutMs: 2_500,
+        timeoutMs: 18_000,
       });
     }
   }
@@ -138,7 +138,7 @@ export class AdminPageAccessService {
         method: 'POST',
         authenticated: true,
         body: { action: 'initialize' },
-        timeoutMs: 2_500,
+        timeoutMs: 18_000,
       });
     }
   }

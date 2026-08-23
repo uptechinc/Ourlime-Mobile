@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,6 @@ import {
   RefreshControl,
   StatusBar,
   Modal,
-  StyleSheet,
-  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
@@ -23,8 +21,10 @@ import { messagingService, type ConversationEntry } from '@/lib/messaging/Messag
 import { simpleChatMessageService } from '@/lib/services/SimpleChatMessageService';
 import { conversationResourceService } from '@/lib/services/ConversationResourceService';
 import { Timestamp } from 'firebase/firestore';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import { useConversations } from '@/lib/hooks/useConversations';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import CustomModal from '@/components/ui/CustomModal';
 
 const authService = AuthService.getInstance();
 
@@ -66,7 +66,7 @@ export default function ChatTabScreen() {
 
   const currentUserId = authService.getCurrentUser()?.uid ?? '';
   const { resource, refresh, loadMore, hasMore } = useConversations(currentUserId);
-  const conversations: ConversationEntry[] = resource.data ?? [];
+  const conversations: ConversationEntry[] = useMemo(() => resource.data ?? [], [resource.data]);
   const isLoading = resource.data === null && (resource.status === 'idle' || resource.status === 'hydrating');
   const refreshing = resource.status === 'refreshing';
   const loadError = resource.error?.message ?? null;
@@ -691,31 +691,20 @@ export default function ChatTabScreen() {
         )}
       </ScrollView>
 
-      {/* Delete Confirmation Modal */}
-      <Modal visible={showDeleteConfirm} transparent animationType="fade" onRequestClose={() => setShowDeleteConfirm(false)}>
-        <Pressable onPress={() => setShowDeleteConfirm(false)} style={styles.modalOverlay}>
-          <Pressable onPress={(e) => e.stopPropagation()} style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: '#fee2e2', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-              <Feather name="trash-2" size={26} color="#ef4444" />
-            </View>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Delete {selectedUids.size} Chat{selectedUids.size > 1 ? 's' : ''}?</Text>
-            <Text style={[styles.modalSubtitle, { color: colors.mutedText }]}>
-              This will clear the message history for the selected conversations from your device.
-            </Text>
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setShowDeleteConfirm(false)} style={[styles.modalButton, { backgroundColor: colors.control }]}>
-                <Text style={[styles.modalButtonText, { color: colors.text }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleConfirmDelete} style={[styles.modalButton, { backgroundColor: '#ef4444' }]}>
-                <Text style={[styles.modalButtonText, { color: '#ffffff' }]}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <CustomModal
+        visible={showDeleteConfirm}
+        type="danger"
+        title={`Delete ${selectedUids.size} chat${selectedUids.size === 1 ? '' : 's'}?`}
+        message="This clears the selected conversation history from this device."
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={() => void handleConfirmDelete()}
+        onClose={() => setShowDeleteConfirm(false)}
+      />
 
       {/* New Message Compose Modal */}
-      <Modal visible={composeVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setComposeVisible(false)}>
+      <Modal visible={composeVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="none" presentationStyle="overFullScreen" onRequestClose={() => setComposeVisible(false)}>
+        <SwipeDismissSurface visible={composeVisible} onDismiss={() => setComposeVisible(false)} handleColor={colors.border} accessibilityLabel="Swipe down to close new message" style={{ flex: 1, backgroundColor: colors.canvas }}>
         <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <Text style={{ flex: 1, fontSize: 20, fontWeight: '900', color: colors.text }}>New message</Text>
@@ -747,58 +736,8 @@ export default function ChatTabScreen() {
             )}
           </ScrollView>
         </SafeAreaView>
+        </SwipeDismissSurface>
       </Modal>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 360,
-    borderRadius: 22,
-    padding: 22,
-    alignItems: 'center',
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-});

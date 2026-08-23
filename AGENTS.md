@@ -96,3 +96,21 @@ npx expo start                          # Start Metro bundler
 ## 6. Web Parity Master Directive
 - **Primary Goal:** Replicate all features, design aesthetics, domain logic, and real-time capabilities of `Ourlime-Web` into `Ourlime-Mobile`, tailored for high-end native mobile UX (iOS & Android).
 - Refer to [`PROJECT_CONTEXT.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/PROJECT_CONTEXT.md) for complete feature maps, OOP service architecture, real-time notification sync, lockscreen push dispatching, WhatsApp-style messaging parity, and modern glassmorphism dialog modal rules.
+
+---
+
+## 7. Skills & AI Compatibility Index (Antigravity, ChatGPT, Codex)
+All skills in `.agents/skills/` are configured with standard `agents/openai.yaml` descriptors and markdown instructions:
+
+- **`instant-mobile-resources`**: [`.agents/skills/instant-mobile-resources/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/instant-mobile-resources/SKILL.md) — SQLite SWR caching & background preloading.
+- **`native-chat-experience`**: [`.agents/skills/native-chat-experience/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/native-chat-experience/SKILL.md) — Deterministic newest-message positioning and FlashList pagination.
+- **`oop-service-architecture`**: [`.agents/skills/oop-service-architecture/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/oop-service-architecture/SKILL.md) — Service-oriented OOP patterns.
+- **`type-safety`**: [`.agents/skills/type-safety/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/type-safety/SKILL.md) — Zero-any policy and direct React imports.
+- **`naming-conventions`**: [`.agents/skills/naming-conventions/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/naming-conventions/SKILL.md) — Strict naming and prop discipline.
+- **`react-native-navigation-fix`**: [`.agents/skills/react-native-navigation-fix/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/react-native-navigation-fix/SKILL.md) — Safe areas, header layout, and transitions.
+- **`native-build-stability`**: [`.agents/skills/native-build-stability/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/native-build-stability/SKILL.md) — Standalone APK/IPA stability.
+
+AI Assistant files available across the repository:
+- [`CHATGPT.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/CHATGPT.md) — ChatGPT Projects & OpenAI workspace context.
+- [`.github/copilot-instructions.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.github/copilot-instructions.md) — GitHub Copilot & OpenAI Codex instructions.
+- [`AGENTS.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/AGENTS.md) — Antigravity & AI Agent system rules.

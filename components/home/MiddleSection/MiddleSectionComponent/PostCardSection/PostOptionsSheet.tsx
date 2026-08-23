@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { PostService, type PostItem } from '@/lib/services/PostService';
 import { RelationshipService } from '@/lib/services/RelationshipService';
@@ -7,6 +7,7 @@ import ReportPostModal from './ReportPostModal';
 import DeletePostModal from './DeletePostModal';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
 
 type ActionFeedback = {
   title: string;
@@ -118,9 +119,10 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
 
   return (
     <>
-      <Modal visible={visible && !reportVisible} transparent animationType="fade" onRequestClose={onClose}>
-        <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <TouchableOpacity activeOpacity={1} onPress={() => undefined} style={{ width: '85%', maxWidth: 320 }}>
+      <Modal visible={visible && !reportVisible} transparent animationType="none" statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" onRequestClose={onClose}>
+        <ModalBackdrop onPress={onClose} style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <ModalMotionSurface variant="dialog" style={{ width: '85%', maxWidth: 320 }}>
+          <Pressable onPress={(event) => event.stopPropagation()}>
             <View style={{ backgroundColor: colors.elevated, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 16, elevation: 10 }}>
               {!isOwner ? (
                 <>
@@ -205,8 +207,9 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
                 <Text style={{ fontSize: 14, fontWeight: '700', color: colors.secondaryText }}>Cancel</Text>
               </TouchableOpacity>
             </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
+          </Pressable>
+          </ModalMotionSurface>
+        </ModalBackdrop>
       </Modal>
       <ReportPostModal visible={reportVisible} post={post} onClose={() => { setReportVisible(false); onClose(); }} />
       <DeletePostModal

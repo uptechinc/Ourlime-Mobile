@@ -1,6 +1,9 @@
-import { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, ActivityIndicator, StyleSheet } from 'react-native';
+import { useMemo, useState } from 'react';
+import { View, Text, Pressable, Modal, ActivityIndicator, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
+import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
 
 type DeletePostModalProps = {
   visible: boolean;
@@ -9,6 +12,8 @@ type DeletePostModalProps = {
 };
 
 export default function DeletePostModal({ visible, onClose, onConfirmDelete }: DeletePostModalProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [deleteState, setDeleteState] = useState<'idle' | 'deleting' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -37,32 +42,33 @@ export default function DeletePostModal({ visible, onClose, onConfirmDelete }: D
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.card}>
+    <Modal visible={visible} transparent animationType="none" statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" onRequestClose={onClose}>
+      <ModalBackdrop onPress={deleteState === 'deleting' ? undefined : onClose} style={styles.overlay}>
+        <ModalMotionSurface variant="dialog" style={styles.card}>
+        <Pressable onPress={(event) => event.stopPropagation()} style={styles.cardContent}>
           {deleteState === 'idle' && (
             <>
               <View style={styles.iconBadgeDanger}>
-                <Icon name="trash-2" size={28} color="#ef4444" />
+                <Icon name="trash-2" size={28} color={colors.destructive} />
               </View>
               <Text style={styles.title}>Delete this post?</Text>
               <Text style={styles.subtitle}>
                 This action cannot be undone. This post will be permanently removed from your profile and feed.
               </Text>
               <View style={styles.buttonRow}>
-                <TouchableOpacity onPress={onClose} style={styles.cancelBtn}>
+                <AnimatedActionButton onPress={onClose} style={styles.cancelBtn} accessibilityLabel="Cancel deletion">
                   <Text style={styles.cancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleStartDelete} style={styles.deleteBtn}>
+                </AnimatedActionButton>
+                <AnimatedActionButton onPress={handleStartDelete} style={styles.deleteBtn} feedback="warning" accessibilityLabel="Delete post">
                   <Text style={styles.deleteText}>Delete</Text>
-                </TouchableOpacity>
+                </AnimatedActionButton>
               </View>
             </>
           )}
 
           {deleteState === 'deleting' && (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#ef4444" style={{ marginBottom: 16 }} />
+              <ActivityIndicator size="large" color={colors.destructive} style={{ marginBottom: 16 }} />
               <Text style={styles.title}>Deleting post...</Text>
               <Text style={styles.subtitle}>Please wait while we remove this post.</Text>
             </View>
@@ -71,43 +77,44 @@ export default function DeletePostModal({ visible, onClose, onConfirmDelete }: D
           {deleteState === 'success' && (
             <>
               <View style={styles.iconBadgeSuccess}>
-                <Icon name="check" size={30} color="#10b981" />
+                <Icon name="check" size={30} color={colors.successText} />
               </View>
               <Text style={styles.title}>Done, post deleted!</Text>
               <Text style={styles.subtitle}>Your post has been successfully removed.</Text>
-              <TouchableOpacity onPress={handleCloseSuccess} style={styles.successBtn}>
+              <AnimatedActionButton onPress={handleCloseSuccess} style={styles.successBtn} feedback="success" accessibilityLabel="Close success message">
                 <Text style={styles.successBtnText}>Great!</Text>
-              </TouchableOpacity>
+              </AnimatedActionButton>
             </>
           )}
 
           {deleteState === 'error' && (
             <>
               <View style={styles.iconBadgeDanger}>
-                <Icon name="alert-triangle" size={28} color="#ef4444" />
+                <Icon name="alert-triangle" size={28} color={colors.destructive} />
               </View>
               <Text style={styles.title}>Action Failed</Text>
               <Text style={styles.subtitle}>{errorMessage || 'Could not delete post. Please try again.'}</Text>
               <View style={styles.buttonRow}>
-                <TouchableOpacity onPress={handleReset} style={styles.cancelBtn}>
+                <AnimatedActionButton onPress={handleReset} style={styles.cancelBtn} accessibilityLabel="Try deleting again">
                   <Text style={styles.cancelText}>Try Again</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={onClose} style={styles.deleteBtn}>
+                </AnimatedActionButton>
+                <AnimatedActionButton onPress={onClose} style={styles.deleteBtn} accessibilityLabel="Close error message">
                   <Text style={styles.deleteText}>Close</Text>
-                </TouchableOpacity>
+                </AnimatedActionButton>
               </View>
             </>
           )}
-        </View>
-      </View>
+        </Pressable>
+        </ModalMotionSurface>
+      </ModalBackdrop>
     </Modal>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    backgroundColor: colors.modalScrim,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
@@ -115,7 +122,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 320,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     borderRadius: 24,
     padding: 24,
     alignItems: 'center',
@@ -125,11 +132,15 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 10,
   },
+  cardContent: {
+    width: '100%',
+    alignItems: 'center',
+  },
   iconBadgeDanger: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#fee2e2',
+    backgroundColor: colors.destructiveSurface,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -138,7 +149,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#dcfce7',
+    backgroundColor: colors.successSurface,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -146,13 +157,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 19,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.mutedText,
     textAlign: 'center',
     lineHeight: 18,
     marginBottom: 20,
@@ -165,37 +176,37 @@ const styles = StyleSheet.create({
   },
   cancelBtn: {
     flex: 1,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.control,
     paddingVertical: 12,
     borderRadius: 14,
     alignItems: 'center',
   },
   cancelText: {
-    color: '#475569',
+    color: colors.secondaryText,
     fontSize: 14,
     fontWeight: '700',
   },
   deleteBtn: {
     flex: 1,
-    backgroundColor: '#ef4444',
+    backgroundColor: colors.destructive,
     paddingVertical: 12,
     borderRadius: 14,
     alignItems: 'center',
   },
   deleteText: {
-    color: '#ffffff',
+    color: colors.onAccent,
     fontSize: 14,
     fontWeight: '700',
   },
   successBtn: {
     width: '100%',
-    backgroundColor: '#10b981',
+    backgroundColor: colors.accent,
     paddingVertical: 12,
     borderRadius: 14,
     alignItems: 'center',
   },
   successBtnText: {
-    color: '#ffffff',
+    color: colors.onAccent,
     fontSize: 14,
     fontWeight: '700',
   },

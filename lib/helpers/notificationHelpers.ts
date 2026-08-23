@@ -102,8 +102,9 @@ export const notificationHelpers = {
       void pushNotificationService.sendPushNotification(notification.userId, {
         title: notification.title || 'Ourlime Notification',
         body: notification.message || 'You have a new notification',
-        type: 'message',
+        type: notification.type,
         senderId: notification.userDetails?.uid || notification.userDetails?.userId || '',
+        path: typeof notification.metadata?.actionUrl === 'string' ? notification.metadata.actionUrl : '/notifications',
       });
 
       return true;
