@@ -407,7 +407,11 @@ export default function SlideOutMenu({
                              <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12 }}>
                                  {accountSection.map((item, index) => renderAccountShortcut(item, index))}
                              </View>
-                            {accountListSection.map((item, index) => renderSectionItem(item, index))}
+                            {accountListSection.length > 0 && (
+                                <View style={{ marginTop: 8 }}>
+                                    {accountListSection.map((item, index) => renderSectionItem(item, index))}
+                                </View>
+                            )}
 
                             {/* Explore section */}
                             {renderSectionLabel('Explore')}
