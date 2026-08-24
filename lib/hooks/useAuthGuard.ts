@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { useRouter, useSegments, type Href } from 'expo-router';
+import { useLocalSearchParams, useRouter, useSegments, type Href } from 'expo-router';
 import { auth } from '../firebaseConfig';
 import { pageAccessService } from '../services/PageAccessService';
 import { deepLinkService } from '../services/DeepLinkService';
@@ -12,6 +12,7 @@ export function useAuthGuard() {
   const [user, setUser] = useState<User | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const segments = useSegments();
+  const { next } = useLocalSearchParams<{ next?: string }>();
   const router = useRouter();
   const isResolvingPendingDestinationRef = useRef(false);
 
@@ -37,6 +38,11 @@ export function useAuthGuard() {
 
     if (targetRedirect) {
       if (user?.emailVerified === true && targetRedirect === '/(tabs)') {
+        const postAuthenticationRedirect = pageAccessService.getPostAuthenticationRedirect(next);
+        if (postAuthenticationRedirect !== '/(tabs)') {
+          router.replace(postAuthenticationRedirect as Href);
+          return;
+        }
         if (isResolvingPendingDestinationRef.current) return;
         isResolvingPendingDestinationRef.current = true;
         void notificationNavigationService.hasPending()
@@ -52,7 +58,7 @@ export function useAuthGuard() {
       }
       router.replace(targetRedirect as Href);
     }
-  }, [user, isInitializing, segments, router]);
+  }, [user, isInitializing, next, segments, router]);
 
   return { user, isInitializing };
 }

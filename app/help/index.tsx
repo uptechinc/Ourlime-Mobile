@@ -11,25 +11,63 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
+import { auth } from '@/lib/firebaseConfig';
+
+type ProtectedHelpRoute =
+	| '/help/tickets/new'
+	| '/help/tickets'
+	| '/help/child-safety/report'
+	| '/help/child-safety/reports';
+
+type ChildSafetyHelpParameters = {
+	targetType?: string;
+	targetId?: string;
+	ownerUserId?: string;
+	parentId?: string;
+	routePath?: string;
+};
+
+function buildChildSafetyReportDestination(parameters: ChildSafetyHelpParameters): string {
+	const queryParts: string[] = [];
+	const appendParameter = (name: string, value?: string) => {
+		if (value) queryParts.push(`${encodeURIComponent(name)}=${encodeURIComponent(value)}`);
+	};
+	appendParameter('targetType', parameters.targetType || 'other');
+	appendParameter('targetId', parameters.targetId);
+	appendParameter('ownerUserId', parameters.ownerUserId);
+	appendParameter('parentId', parameters.parentId);
+	appendParameter('routePath', parameters.routePath);
+	return `/help/child-safety/report${queryParts.length ? `?${queryParts.join('&')}` : ''}`;
+}
 
 export default function HelpRoute() {
 	const router = useRouter();
 	const { colors } = useAppTheme();
 	const { authorization } = usePageAccess();
-	const parameters = useLocalSearchParams<{
-		targetType?: string;
-		targetId?: string;
-		ownerUserId?: string;
-		parentId?: string;
-		routePath?: string;
-	}>();
+	const isSignedIn = auth.currentUser?.emailVerified === true;
+	const parameters = useLocalSearchParams<ChildSafetyHelpParameters>();
 	useEffect(() => {
 		if (!parameters.targetId) return;
+		if (!isSignedIn) {
+			router.replace({
+				pathname: '/(auth)/login',
+				params: { next: buildChildSafetyReportDestination(parameters) },
+			});
+			return;
+		}
 		router.replace({
 			pathname: '/help/child-safety/report',
 			params: { ...parameters, targetType: parameters.targetType || 'other' },
 		});
-	}, [parameters, router]);
+	}, [isSignedIn, parameters, router]);
+
+	const handleProtectedNavigation = (route: ProtectedHelpRoute) => {
+		if (isSignedIn) {
+			router.push(route as Href);
+			return;
+		}
+		router.push({ pathname: '/(auth)/login', params: { next: route } });
+	};
 
 	return (
 		<SafeAreaView
@@ -92,6 +130,12 @@ export default function HelpRoute() {
 						Find community rules, reporting guidance, policies, and the
 						confidential child-safety reporting channel.
 					</Text>
+					<View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center' }}>
+						<Ionicons name="lock-closed" size={14} color={colors.accent} />
+						<Text style={{ flex: 1, marginLeft: 7, color: colors.accentText, fontSize: 12, fontWeight: '800' }}>
+							Help resources are public. Sign in to open or manage reports.
+						</Text>
+					</View>
 				</View>
 				<View style={{ marginTop: 15, gap: 14 }}>
 					<HelpGroup
@@ -103,15 +147,17 @@ export default function HelpRoute() {
 							title="Open Support Ticket"
 							detail="Start a private text and image conversation"
 							icon="chatbubbles"
-							onPress={() => router.push('/help/tickets/new')}
+							onPress={() => handleProtectedNavigation('/help/tickets/new')}
 							colors={colors}
+							authenticationRequired={!isSignedIn}
 						/>
 						<HelpLink
 							title="My Tickets"
 							detail="Replies, status, and ticket history"
 							icon="ticket"
-							onPress={() => router.push('/help/tickets' as Href)}
+							onPress={() => handleProtectedNavigation('/help/tickets')}
 							colors={colors}
+							authenticationRequired={!isSignedIn}
 						/>
 					</HelpGroup>
 
@@ -125,17 +171,19 @@ export default function HelpRoute() {
 							title="Report a Child Safety Concern"
 							detail="Submit a detailed restricted report"
 							icon="warning"
-							onPress={() => router.push('/help/child-safety/report')}
+							onPress={() => handleProtectedNavigation('/help/child-safety/report')}
 							colors={colors}
 							danger
+							authenticationRequired={!isSignedIn}
 						/>
 						<HelpLink
 							title="My Safety Reports"
 							detail="Safe status, evidence, and secure updates"
 							icon="shield"
-							onPress={() => router.push('/help/child-safety/reports' as Href)}
+							onPress={() => handleProtectedNavigation('/help/child-safety/reports')}
 							colors={colors}
 							danger
+							authenticationRequired={!isSignedIn}
 						/>
 						<HelpLink
 							title="Child Safety Standards"
@@ -289,6 +337,7 @@ type HelpLinkProps = {
 	onPress: () => void;
 	colors: AppThemeColors;
 	danger?: boolean;
+	authenticationRequired?: boolean;
 };
 function HelpLink({
 	title,
@@ -297,6 +346,7 @@ function HelpLink({
 	onPress,
 	colors,
 	danger = false,
+	authenticationRequired = false,
 }: HelpLinkProps) {
 	return (
 		<TouchableOpacity
@@ -334,6 +384,14 @@ function HelpLink({
 				<Text style={{ marginTop: 2, color: colors.mutedText, fontSize: 12 }}>
 					{detail}
 				</Text>
+				{authenticationRequired ? (
+					<View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center' }}>
+						<Ionicons name="lock-closed" size={11} color={colors.mutedText} />
+						<Text style={{ marginLeft: 4, color: colors.mutedText, fontSize: 10, fontWeight: '800' }}>
+							Sign in required
+						</Text>
+					</View>
+				) : null}
 			</View>
 			<Ionicons name="chevron-forward" size={18} color={colors.icon} />
 		</TouchableOpacity>

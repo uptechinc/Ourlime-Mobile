@@ -13,6 +13,7 @@ const PUBLIC_ROUTES = new Set([
   '/verify-email',
   '/terms-and-conditions',
   '/privacy-policy',
+  '/help',
 ]);
 
 const EXPO_ROUTE_ALIASES: Readonly<Record<string, string>> = {
@@ -66,6 +67,18 @@ export class PageAccessService {
     if (!isAuthenticatedAndVerified && !isPublic) return '/(auth)/login';
     if (isAuthenticatedAndVerified && (normalized === '/(auth)/login' || normalized === '/(auth)/register')) return '/(tabs)';
     return null;
+  }
+
+  public getPostAuthenticationRedirect(requestedRoute?: string): string {
+    if (
+      !requestedRoute ||
+      !requestedRoute.startsWith('/') ||
+      requestedRoute.startsWith('//') ||
+      requestedRoute.startsWith('/(auth)/')
+    ) {
+      return '/(tabs)';
+    }
+    return requestedRoute;
   }
 
   public subscribeToSettings(

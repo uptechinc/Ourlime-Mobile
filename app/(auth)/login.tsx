@@ -12,10 +12,11 @@ import {
   Image,
   type TextStyle,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { authService, getAuthErrorCode } from '@/lib/services/AuthService';
+import { pageAccessService } from '@/lib/services/PageAccessService';
 import type { Href } from 'expo-router';
 import Animated, {
   FadeInDown,
@@ -41,6 +42,7 @@ function validateEmail(email: string): string | null {
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function LoginScreen() {
   const router = useRouter();
+  const { next } = useLocalSearchParams<{ next?: string }>();
 
   // Form state
   const [email, setEmail] = useState('');
@@ -146,9 +148,12 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (!success) return undefined;
-    const navigationTimer = setTimeout(() => router.replace('/(tabs)'), 600);
+    const navigationTimer = setTimeout(
+      () => router.replace(pageAccessService.getPostAuthenticationRedirect(next) as Href),
+      600,
+    );
     return () => clearTimeout(navigationTimer);
-  }, [router, success]);
+  }, [next, router, success]);
 
   return (
     <>
@@ -379,6 +384,27 @@ export default function LoginScreen() {
                   )}
                 </TouchableOpacity>
               </Animated.View>
+
+              <TouchableOpacity
+                onPress={() => router.push('/help')}
+                activeOpacity={0.75}
+                style={{
+                  minHeight: 48,
+                  marginTop: 14,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.28)',
+                  backgroundColor: 'rgba(255,255,255,0.10)',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="help-buoy-outline" size={19} color="#fff" />
+                <Text style={{ marginLeft: 8, color: '#fff', fontSize: 15, fontWeight: '800' }}>
+                  Help & Support
+                </Text>
+              </TouchableOpacity>
 
             </Animated.View>
           </View>
