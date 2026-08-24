@@ -13,6 +13,10 @@ const PUBLIC_ROUTES = new Set([
   '/verify-email',
   '/terms-and-conditions',
   '/privacy-policy',
+  '/terms',
+  '/privacy',
+  '/policies',
+  '/child-safety-standards',
   '/help',
 ]);
 
@@ -57,7 +61,15 @@ export class PageAccessService {
 
   public isPublicRoute(route: string): boolean {
     const normalized = this.normalizeRoute(route);
-    return PUBLIC_ROUTES.has(normalized) || normalized.startsWith('/(auth)/');
+    return (
+      PUBLIC_ROUTES.has(normalized) ||
+      normalized.startsWith('/(auth)/') ||
+      normalized.startsWith('/policies') ||
+      normalized.startsWith('/child-safety-standards') ||
+      normalized.startsWith('/terms') ||
+      normalized.startsWith('/privacy') ||
+      normalized.startsWith('/help')
+    );
   }
 
   public getTargetRedirect(user: User | null, currentRoute: string): string | null {

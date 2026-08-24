@@ -385,26 +385,74 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               </Animated.View>
 
-              <TouchableOpacity
-                onPress={() => router.push('/help')}
-                activeOpacity={0.75}
-                style={{
-                  minHeight: 48,
-                  marginTop: 14,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.28)',
-                  backgroundColor: 'rgba(255,255,255,0.10)',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="help-buoy-outline" size={19} color="#fff" />
-                <Text style={{ marginLeft: 8, color: '#fff', fontSize: 15, fontWeight: '800' }}>
-                  Help & Support
-                </Text>
-              </TouchableOpacity>
+              {/* Public Safety, Policies & Help Links */}
+              <View style={{ marginTop: 18, gap: 10 }}>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity
+                    onPress={() => router.push('/policies' as Href)}
+                    activeOpacity={0.75}
+                    style={{
+                      flex: 1,
+                      minHeight: 46,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: 'rgba(255,255,255,0.24)',
+                      backgroundColor: 'rgba(255,255,255,0.09)',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingHorizontal: 10,
+                    }}
+                  >
+                    <Ionicons name="document-text-outline" size={18} color="#fff" />
+                    <Text style={{ marginLeft: 6, color: '#fff', fontSize: 14, fontWeight: '700' }}>
+                      Policies
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => router.push('/child-safety-standards' as Href)}
+                    activeOpacity={0.75}
+                    style={{
+                      flex: 1,
+                      minHeight: 46,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: 'rgba(255,255,255,0.24)',
+                      backgroundColor: 'rgba(255,255,255,0.09)',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingHorizontal: 10,
+                    }}
+                  >
+                    <Ionicons name="shield-checkmark-outline" size={18} color={GREEN} />
+                    <Text style={{ marginLeft: 6, color: '#fff', fontSize: 14, fontWeight: '700' }}>
+                      Child Safety
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => router.push('/help' as Href)}
+                  activeOpacity={0.75}
+                  style={{
+                    minHeight: 46,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.24)',
+                    backgroundColor: 'rgba(255,255,255,0.09)',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons name="help-buoy-outline" size={18} color="#fff" />
+                  <Text style={{ marginLeft: 8, color: '#fff', fontSize: 14, fontWeight: '700' }}>
+                    Help & Support
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
             </Animated.View>
           </View>
