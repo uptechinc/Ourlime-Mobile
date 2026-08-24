@@ -6,6 +6,7 @@ import { pageAccessService } from '../services/PageAccessService';
 import { deepLinkService } from '../services/DeepLinkService';
 
 import { pushNotificationService } from '../services/PushNotificationService';
+import { notificationNavigationService } from '../services/NotificationNavigationService';
 
 export function useAuthGuard() {
   const [user, setUser] = useState<User | null>(null);
@@ -38,8 +39,10 @@ export function useAuthGuard() {
       if (user?.emailVerified === true && targetRedirect === '/(tabs)') {
         if (isResolvingPendingDestinationRef.current) return;
         isResolvingPendingDestinationRef.current = true;
-        void deepLinkService.consumePendingDestination()
-          .then((pendingDestination) => {
+        void notificationNavigationService.hasPending()
+          .then(async (hasPendingNotification) => {
+            if (hasPendingNotification) return;
+            const pendingDestination = await deepLinkService.consumePendingDestination();
             router.replace((pendingDestination?.route ?? targetRedirect) as Href);
           })
           .finally(() => {

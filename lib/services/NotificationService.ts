@@ -11,6 +11,7 @@ type NotificationAction = 'read' | 'unread' | 'read-all' | 'delete';
 const CACHE_NAMESPACE = 'notifications';
 const CACHE_KEY = 'latest';
 const CACHE_RETENTION_MS = 48 * 60 * 60 * 1000;
+const MAX_MUTATION_BATCH_SIZE = 100;
 
 export class NotificationService {
   private static instance: NotificationService;
@@ -66,14 +67,24 @@ export class NotificationService {
   }
 
   public async mutate(action: NotificationAction, notificationIds: string[] = []): Promise<void> {
-    const response = await this.apiService.request<{ success: boolean; error?: string }>('/api/notifications', {
-      method: 'PATCH', authenticated: true, body: { action, notificationIds },
-    });
-    if (!response.success) throw new Error(response.error || 'Notification update failed');
+    const uniqueIds = [...new Set(notificationIds.filter(Boolean))];
+    const batches = action === 'read-all'
+      ? [[]]
+      : Array.from({ length: Math.ceil(uniqueIds.length / MAX_MUTATION_BATCH_SIZE) }, (_, batchIndex) =>
+        uniqueIds.slice(batchIndex * MAX_MUTATION_BATCH_SIZE, (batchIndex + 1) * MAX_MUTATION_BATCH_SIZE));
+    if (batches.length === 0) return;
+    for (const batch of batches) {
+      const response = await this.apiService.request<{ success: boolean; error?: string }>('/api/notifications', {
+        method: 'PATCH', authenticated: true, body: { action, notificationIds: batch },
+      });
+      if (!response.success) throw new Error(response.error || 'Notification update failed');
+    }
   }
 
   public markAsRead(notificationId: string): Promise<void> { return this.mutate('read', [notificationId]); }
   public markAsUnread(notificationId: string): Promise<void> { return this.mutate('unread', [notificationId]); }
+  public markManyAsRead(notificationIds: string[]): Promise<void> { return this.mutate('read', notificationIds); }
+  public markManyAsUnread(notificationIds: string[]): Promise<void> { return this.mutate('unread', notificationIds); }
   public markAllAsRead(): Promise<void> { return this.mutate('read-all'); }
   public delete(notificationIds: string[]): Promise<void> { return this.mutate('delete', notificationIds); }
 

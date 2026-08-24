@@ -1,5 +1,9 @@
 # Naming Conventions
 
+## Scope Control
+
+Apply these conventions only within the user’s explicit task. Do not expand the task into adjacent refactors or unrelated changes; report optional improvements for separate authorization.
+
 ## 1. File & Directory Casing
 - **Components**: `PascalCase.tsx` (e.g. `LoginScreen.tsx`, `AppHeader.tsx`).
 - **Hooks**: `camelCase.ts` with `use` prefix (e.g. `useProfileStore.ts`, `useAuth.ts`).

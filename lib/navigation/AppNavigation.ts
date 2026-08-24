@@ -1,7 +1,7 @@
 import type { Href } from 'expo-router';
 import type { PageAccessStatus } from '@/lib/types/pageAccess';
 
-export type AppNavigationSection = 'account' | 'explore' | 'administration';
+export type AppNavigationSection = 'account' | 'explore' | 'advertising' | 'support' | 'administration';
 
 export type AppNavigationItem = {
   id: string;
@@ -27,12 +27,14 @@ const APP_NAVIGATION_ITEMS: readonly AppNavigationItem[] = [
   { id: 'blogs', label: 'Blogs', ionicon: 'book', featherIcon: 'file-text', route: '/blogs', pageRoute: '/blogs', section: 'explore' },
   { id: 'elearning', label: 'E-Learning', ionicon: 'school', featherIcon: 'book-open', route: '/eLearning', pageRoute: '/eLearning', section: 'explore' },
   { id: 'projects', label: 'E-Projects', ionicon: 'folder-open', featherIcon: 'folder', route: '/projectManagement' as Href, pageRoute: '/projectManagement', section: 'explore' },
-  { id: 'ads', label: 'Ads', ionicon: 'megaphone', featherIcon: 'radio', route: '/ads' as Href, pageRoute: '/ads', section: 'explore' },
+  { id: 'ads', label: 'Ads', ionicon: 'megaphone', featherIcon: 'radio', route: '/ads' as Href, pageRoute: '/ads', section: 'advertising' },
   { id: 'saved', label: 'Saved Items', ionicon: 'bookmark', featherIcon: 'bookmark', route: '/saved' as Href, pageRoute: '/saved', section: 'account' },
   { id: 'wallet', label: 'E-Wallet', ionicon: 'wallet', featherIcon: 'credit-card', route: '/eWallet' as Href, pageRoute: '/eWallet', section: 'account' },
   { id: 'ehub', label: 'E-Hub', ionicon: 'grid', featherIcon: 'grid', route: '/ehub' as Href, pageRoute: '/ehub', section: 'explore' },
-  { id: 'help', label: 'Help & Support', ionicon: 'help-circle', featherIcon: 'help-circle', route: '/help' as Href, pageRoute: '/help', section: 'account' },
-  { id: 'chat', label: 'Chat', ionicon: 'chatbubbles', featherIcon: 'message-circle', route: '/(tabs)/Chat', pageRoute: '/chat', section: 'explore' },
+  { id: 'help', label: 'Help & Support', ionicon: 'help-circle', featherIcon: 'help-circle', route: '/help' as Href, pageRoute: '/help', section: 'support' },
+  { id: 'policies', label: 'Policies & Guidelines', ionicon: 'document-text', featherIcon: 'file-text', route: '/policies' as Href, pageRoute: '/policies', section: 'support' },
+  { id: 'child-safety', label: 'Child Safety Standards', ionicon: 'shield-checkmark', featherIcon: 'shield', route: '/child-safety-standards' as Href, pageRoute: '/child-safety-standards', section: 'support' },
+  { id: 'chat', label: 'Chat', ionicon: 'chatbubbles', featherIcon: 'message-circle', route: '/(tabs)/Chat', pageRoute: '/chat', section: 'account' },
   { id: 'admin', label: 'Admin Portal', ionicon: 'shield-checkmark', featherIcon: 'shield', route: '/admin' as Href, pageRoute: '/admin', section: 'administration', adminOnly: true },
 ] as const;
 

@@ -5,6 +5,10 @@ description: Comprehensive TypeScript type-safety rules, React direct imports, z
 
 # React & TypeScript Type-Safety Discipline
 
+## Scope Control
+
+Enforce type safety within the requested change. Do not use type cleanup as permission for unrelated refactors; report broader cleanup separately.
+
 Use when **writing React components, hooks, service classes, and data structures** across the application.
 
 ## 1. Direct React Imports (CRITICAL)

@@ -1,4 +1,4 @@
 interface:
   display_name: "Native Chat Experience"
   short_description: "Build stable, themed native Ourlime chats"
-  default_prompt: "Use $native-chat-experience to implement a bottom-anchored, cached, realtime Ourlime chat screen."
+  default_prompt: "Use $native-chat-experience for the user’s explicit chat request. Stay within that scope and report adjacent chat improvements instead of implementing them without authorization."

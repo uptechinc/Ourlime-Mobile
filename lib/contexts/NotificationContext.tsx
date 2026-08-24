@@ -12,6 +12,8 @@ type NotificationContextValue = {
   deleteNotifications: (notificationIds: string[]) => Promise<void>;
   markAsRead: (notificationId: string) => Promise<void>;
   markAsUnread: (notificationId: string) => Promise<void>;
+  markManyAsRead: (notificationIds: string[]) => Promise<void>;
+  markManyAsUnread: (notificationIds: string[]) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   refreshNotifications: () => Promise<void>;
 };
@@ -121,6 +123,20 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     await refreshNotifications();
   };
 
+  const markManyAsRead = async (notificationIds: string[]) => {
+    const user = authService.getVerifiedCurrentUser();
+    if (!user || notificationIds.length === 0) return;
+    await notificationService.markManyAsRead(notificationIds);
+    await refreshNotifications();
+  };
+
+  const markManyAsUnread = async (notificationIds: string[]) => {
+    const user = authService.getVerifiedCurrentUser();
+    if (!user || notificationIds.length === 0) return;
+    await notificationService.markManyAsUnread(notificationIds);
+    await refreshNotifications();
+  };
+
   const loadMore = async () => {
     const user = authService.getVerifiedCurrentUser();
     if (!user || !nextCursor || !hasMore) return;
@@ -146,6 +162,8 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
       deleteNotifications,
       markAsRead,
       markAsUnread,
+      markManyAsRead,
+      markManyAsUnread,
       markAllAsRead,
       refreshNotifications,
     }}>

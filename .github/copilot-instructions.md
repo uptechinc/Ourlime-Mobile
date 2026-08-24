@@ -4,3 +4,8 @@
 - TypeScript: Zero `any`. Always `type` instead of `interface`. Direct React imports (`import { useState } from 'react'`). No single-letter callback variables.
 - React Native: `SafeAreaView` from `'react-native-safe-area-context'` with `edges={['top', 'left', 'right']}`. Headers outside `KeyboardAvoidingView`.
 - Skills: See `.agents/skills/`, `CHATGPT.md`, and `AGENTS.md`.
+## Scope Control
+
+- Implement only the user’s explicit request and the minimum dependencies and proportionate validation required to complete it.
+- Consider adjacent improvements, but report them instead of implementing them unless expressly authorized or strictly necessary.
+- Do not perform unrelated refactors, features, builds, deployments, migrations, pushes, documentation work, web changes, or native changes. Treat an approved plan as the complete authorized scope.

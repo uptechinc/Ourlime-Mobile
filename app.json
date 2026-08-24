@@ -152,7 +152,8 @@
           }
         }
       ],
-      "expo-image"
+      "expo-image",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

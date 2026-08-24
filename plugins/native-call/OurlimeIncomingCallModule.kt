@@ -9,9 +9,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
@@ -35,7 +37,7 @@ class OurlimeIncomingCallModule(
 
   companion object {
     private const val MODULE_NAME = "OurlimeIncomingCall"
-    private const val CHANNEL_ID = "ourlime-calls-v2"
+    private const val CHANNEL_ID = "ourlime-calls-v3"
     private const val CHANNEL_NAME = "Ourlime incoming calls"
     private const val EVENT_NAME = "OurlimeIncomingCallInteraction"
     private const val PREFERENCES_NAME = "ourlime_incoming_call"
@@ -141,7 +143,7 @@ class OurlimeIncomingCallModule(
         .setOngoing(true)
         .setAutoCancel(false)
         .setTimeoutAfter(remainingMs)
-        .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
+        .setSound(defaultRingtoneUri())
         .setVibrate(longArrayOf(0L, 700L, 350L, 700L, 350L, 700L))
 
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -182,10 +184,11 @@ class OurlimeIncomingCallModule(
         promise.resolve(null)
         return
       }
-      activeRingtone = RingtoneManager.getRingtone(
-        applicationContext,
-        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
-      )?.apply {
+      activeRingtone = RingtoneManager.getRingtone(applicationContext, defaultRingtoneUri())?.apply {
+        audioAttributes = AudioAttributes.Builder()
+          .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+          .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) isLooping = true
         play()
       }
@@ -202,6 +205,34 @@ class OurlimeIncomingCallModule(
       promise.resolve(null)
     } catch (error: Throwable) {
       promise.reject("INCOMING_CALL_RINGTONE_STOP_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun openNotificationSettings(promise: Promise) {
+    try {
+      val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+        putExtra(Settings.EXTRA_APP_PACKAGE, applicationContext.packageName)
+        putExtra(Settings.EXTRA_CHANNEL_ID, CHANNEL_ID)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      applicationContext.startActivity(intent)
+      promise.resolve(null)
+    } catch (error: Throwable) {
+      promise.reject("NOTIFICATION_SETTINGS_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun canPlayNotificationAudio(promise: Promise) {
+    try {
+      val audioManager = applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      val notificationManager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      val interruptionAllowsAudio = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+        notificationManager.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_ALL
+      promise.resolve(audioManager.ringerMode == AudioManager.RINGER_MODE_NORMAL && interruptionAllowsAudio)
+    } catch (error: Throwable) {
+      promise.reject("NOTIFICATION_AUDIO_POLICY_FAILED", error.message, error)
     }
   }
 
@@ -230,7 +261,7 @@ class OurlimeIncomingCallModule(
   private fun createIncomingCallChannel() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+    val ringtoneUri = defaultRingtoneUri()
     val audioAttributes = AudioAttributes.Builder()
       .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
       .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -245,6 +276,10 @@ class OurlimeIncomingCallModule(
     }
     manager.createNotificationChannel(channel)
   }
+
+  private fun defaultRingtoneUri() =
+    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+      ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
   private fun stopRingtoneInternal() {
     activeRingtone?.takeIf { it.isPlaying }?.stop()

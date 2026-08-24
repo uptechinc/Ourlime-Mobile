@@ -5,6 +5,10 @@ description: Implement and review Ourlime Mobile chat screens with deterministic
 
 # Native Chat Experience
 
+## Scope Control
+
+Use this skill only for the user’s explicit chat request and its minimum dependencies. Report adjacent chat improvements rather than implementing them without authorization, and do not change unrelated screens or builds.
+
 ## Workflow
 
 1. Read `references/chat-acceptance-matrix.md` before changing message rendering.

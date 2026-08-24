@@ -8,13 +8,27 @@ import { PostService, type PostItem } from '@/lib/services/PostService';
 import PostCardSection from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection';
 import PollCardSection from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PollCardSection';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const postService = PostService.getInstance();
 const authService = AuthService.getInstance();
 
 export default function PostScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { colors } = useAppTheme();
+  const {
+    id,
+    openComments,
+    rootCommentId,
+    commentId,
+    replyId,
+  } = useLocalSearchParams<{
+    id: string;
+    openComments?: string;
+    rootCommentId?: string;
+    commentId?: string;
+    replyId?: string;
+  }>();
   const [post, setPost] = useState<PostItem | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -33,14 +47,18 @@ export default function PostScreen() {
 
   useEffect(() => { void loadPost(); }, [loadPost]);
 
+  useEffect(() => {
+    if (openComments === 'true' || openComments === '1') setCommentsOpen(true);
+  }, [openComments]);
+
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#f8fafc' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4 }}><Ionicons name="chevron-back" size={26} color="#0f172a" /></TouchableOpacity>
-        <Text style={{ fontSize: 18, fontWeight: '800', color: '#0f172a', marginLeft: 10 }}>Post</Text>
+    <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14, backgroundColor: colors.navigation, borderBottomWidth: 1, borderBottomColor: colors.navigationBorder }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4 }}><Ionicons name="chevron-back" size={26} color={colors.icon} /></TouchableOpacity>
+        <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginLeft: 10 }}>Post</Text>
       </View>
       {loading ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color="#10b981" /></View> : error || !post ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}><Text style={{ color: '#475569' }}>{error || 'Post not found.'}</Text><TouchableOpacity onPress={() => void loadPost()} style={{ backgroundColor: '#10b981', borderRadius: 999, paddingHorizontal: 20, paddingVertical: 10, marginTop: 14 }}><Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text></TouchableOpacity></View> : <ScrollView contentContainerStyle={{ padding: 16 }}>{post.type === 'poll' ? <PollCardSection post={post} onCommentClick={() => setCommentsOpen(true)} onPostDelete={() => router.back()} onAuthorBlocked={() => router.back()} onPostUpdate={setPost} /> : <PostCardSection post={post} isVisible onCommentClick={() => setCommentsOpen(true)} onPostDelete={() => router.back()} onAuthorBlocked={() => router.back()} onPostUpdate={setPost} />}</ScrollView>}
-      {commentsOpen && post && authService.getCurrentUser()?.uid ? <CommentsModal post={post} userId={authService.getCurrentUser()?.uid ?? ''} onClose={() => setCommentsOpen(false)} onPostUpdate={setPost} /> : null}
+      {commentsOpen && post && authService.getCurrentUser()?.uid ? <CommentsModal post={post} userId={authService.getCurrentUser()?.uid ?? ''} onClose={() => setCommentsOpen(false)} onPostUpdate={setPost} focusRootCommentId={rootCommentId} focusCommentId={commentId} focusReplyId={replyId} /> : null}
     </SafeAreaView>
   );
 }

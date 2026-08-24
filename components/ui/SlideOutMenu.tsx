@@ -50,17 +50,13 @@ export default function SlideOutMenu({
         if (state === 'closing') onClosed();
     }, [onClosed, state]);
 
-    // Separate account items from feature items from logout from the menuItems prop
-    const accountIds = ['profile', 'settings', 'chat'];
     const logoutId = 'logout';
-    const featureIds = ['communities', 'events', 'jobs', 'market', 'blogs', 'elearning'];
-    const adsIds: string[] = [];
-    const supportIds: string[] = [];
 
-    const accountItems = menuItems.filter((menuItem) => accountIds.includes(menuItem.id));
-    const featureItems = menuItems.filter((menuItem) => featureIds.includes(menuItem.id));
-    const adsItems = menuItems.filter((menuItem) => adsIds.includes(menuItem.id));
-    const supportItems = menuItems.filter((menuItem) => supportIds.includes(menuItem.id));
+    const accountItems = menuItems.filter((menuItem) => menuItem.section === 'account');
+    const featureItems = menuItems.filter((menuItem) => menuItem.section === 'explore');
+    const adsItems = menuItems.filter((menuItem) => menuItem.section === 'advertising');
+    const supportItems = menuItems.filter((menuItem) => menuItem.section === 'support');
+    const administrationItems = menuItems.filter((menuItem) => menuItem.section === 'administration');
     const logoutItem = menuItems.find((menuItem) => menuItem.id === logoutId);
 
     const chatMenuItem = menuItems.find((menuItem) => menuItem.id === 'chat');
@@ -97,6 +93,18 @@ export default function SlideOutMenu({
         },
     ];
 
+    const accountListSection: SectionItem[] = accountItems
+        .filter((menuItem) => !['profile', 'settings', 'chat'].includes(menuItem.id))
+        .map((menuItem) => ({
+            id: menuItem.id,
+            title: menuItem.title,
+            icon: menuItem.id === 'saved' ? 'bookmark-outline' : menuItem.id === 'wallet' ? 'wallet-outline' : 'person-outline',
+            iconColor: '#0f766e',
+            iconBgColor: '#ccfbf1',
+            onPress: menuItem.onPress,
+            badge: menuItem.badge,
+        }));
+
     // Feature section
     const featureIconMap = new Map<string, Pick<SectionItem, 'icon' | 'iconColor' | 'iconBgColor'>>([
         ['communities', { icon: 'people-outline', iconColor: '#3b82f6', iconBgColor: '#dbeafe' }],
@@ -105,6 +113,8 @@ export default function SlideOutMenu({
         ['market', { icon: 'storefront-outline', iconColor: '#f97316', iconBgColor: '#ffedd5' }],
         ['blogs', { icon: 'book-outline', iconColor: '#ec4899', iconBgColor: '#fce7f3' }],
         ['elearning', { icon: 'school-outline', iconColor: '#14b8a6', iconBgColor: '#ccfbf1' }],
+        ['projects', { icon: 'folder-open-outline', iconColor: '#0f766e', iconBgColor: '#ccfbf1' }],
+        ['ehub', { icon: 'grid-outline', iconColor: '#7c3aed', iconBgColor: '#ede9fe' }],
         ['chat', { icon: 'chatbubbles-outline', iconColor: '#10b981', iconBgColor: '#d1fae5' }],
     ]);
 
@@ -120,8 +130,7 @@ export default function SlideOutMenu({
 
     // Ads section
     const adsIconMap = new Map<string, Pick<SectionItem, 'icon' | 'iconColor' | 'iconBgColor'>>([
-        ['14', { icon: 'megaphone-outline', iconColor: '#f97316', iconBgColor: '#ffedd5' }],
-        ['15', { icon: 'bar-chart-outline', iconColor: '#6366f1', iconBgColor: '#ede9fe' }],
+        ['ads', { icon: 'megaphone-outline', iconColor: '#f97316', iconBgColor: '#ffedd5' }],
     ]);
     const adsSection: SectionItem[] = adsItems.map((menuItem) => ({
         id: menuItem.id,
@@ -136,10 +145,20 @@ export default function SlideOutMenu({
     const supportSection: SectionItem[] = supportItems.map((menuItem) => ({
         id: menuItem.id,
         title: menuItem.title,
-        icon: 'help-circle-outline',
+        icon: menuItem.id === 'policies' ? 'document-text-outline' : menuItem.id === 'child-safety' ? 'shield-checkmark-outline' : 'help-circle-outline',
         iconColor: '#64748b',
         iconBgColor: '#f1f5f9',
         onPress: menuItem.onPress,
+    }));
+
+    const administrationSection: SectionItem[] = administrationItems.map((menuItem) => ({
+        id: menuItem.id,
+        title: menuItem.title,
+        icon: 'shield-checkmark-outline',
+        iconColor: '#dc2626',
+        iconBgColor: '#fee2e2',
+        onPress: menuItem.onPress,
+        badge: menuItem.badge,
     }));
 
     const displayName = userProfile
@@ -385,9 +404,10 @@ export default function SlideOutMenu({
                         >
                             {/* Account section */}
                             {renderSectionLabel('My Account')}
-                            <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12 }}>
-                                {accountSection.map((item, index) => renderAccountShortcut(item, index))}
-                            </View>
+                             <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12 }}>
+                                 {accountSection.map((item, index) => renderAccountShortcut(item, index))}
+                             </View>
+                            {accountListSection.map((item, index) => renderSectionItem(item, index))}
 
                             {/* Explore section */}
                             {renderSectionLabel('Explore')}
@@ -406,6 +426,13 @@ export default function SlideOutMenu({
                                 <>
                                     {renderSectionLabel('Support')}
                                     {supportSection.map((item, index) => renderSectionItem(item, index))}
+                                </>
+                            )}
+
+                            {administrationSection.length > 0 && (
+                                <>
+                                    {renderSectionLabel('Administration')}
+                                    {administrationSection.map((item, index) => renderSectionItem(item, index))}
                                 </>
                             )}
                         </ScrollView>

@@ -23,6 +23,7 @@ import type {
 	PageAccessSetting,
 	PageAccessStatus,
 } from '@/lib/types/pageAccess';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const STATUSES: readonly PageAccessStatus[] = [
 	'enabled',
@@ -83,6 +84,7 @@ function createEditorState(setting: PageAccessSetting): EditorState {
 }
 
 export default function PageAccessAdminSection() {
+	const { colors } = useAppTheme();
 	const [settings, setSettings] = useState<PageAccessSetting[]>([]);
 	const [auditLogs, setAuditLogs] = useState<AdminPageAccessAuditEntry[]>([]);
 	const [activeTab, setActiveTab] = useState<'pages' | 'audit'>('pages');
@@ -277,7 +279,7 @@ export default function PageAccessAdminSection() {
 		return (
 			<View style={{ paddingVertical: 70, alignItems: 'center' }}>
 				<ActivityIndicator color="#10b981" />
-				<Text style={{ marginTop: 10, color: '#64748b' }}>
+				<Text style={{ marginTop: 10, color: colors.mutedText }}>
 					Loading page access settings…
 				</Text>
 			</View>
@@ -288,16 +290,16 @@ export default function PageAccessAdminSection() {
 			<View
 				style={{
 					padding: 16,
-					backgroundColor: '#fff',
+					backgroundColor: colors.surface,
 					borderRadius: 18,
 					borderWidth: 1,
-					borderColor: '#e2e8f0',
+					borderColor: colors.border,
 				}}
 			>
-				<Text style={{ color: '#0f172a', fontSize: 18, fontWeight: '900' }}>
+				<Text style={{ color: colors.text, fontSize: 18, fontWeight: '900' }}>
 					Page Availability
 				</Text>
-				<Text style={{ marginTop: 5, color: '#64748b' }}>
+				<Text style={{ marginTop: 5, color: colors.mutedText }}>
 					Manage mobile and web navigation, access overlays, page previews, and
 					action routes.
 				</Text>
@@ -311,12 +313,16 @@ export default function PageAccessAdminSection() {
 								borderRadius: 12,
 								paddingHorizontal: 14,
 								paddingVertical: 9,
-								backgroundColor: activeTab === tab ? '#d1fae5' : '#f1f5f9',
+								backgroundColor:
+									activeTab === tab ? colors.successSurface : colors.control,
 							}}
 						>
 							<Text
 								style={{
-									color: activeTab === tab ? '#047857' : '#64748b',
+									color:
+										activeTab === tab
+											? colors.successText
+											: colors.secondaryText,
 									fontWeight: '800',
 								}}
 							>
@@ -333,18 +339,24 @@ export default function PageAccessAdminSection() {
 								flexDirection: 'row',
 								alignItems: 'center',
 								borderRadius: 14,
-								backgroundColor: '#f8fafc',
+								backgroundColor: colors.input,
 								borderWidth: 1,
-								borderColor: '#e2e8f0',
+								borderColor: colors.border,
 								paddingHorizontal: 12,
 							}}
 						>
-							<Icon name="search" size={17} color="#94a3b8" />
+							<Icon name="search" size={17} color={colors.mutedText} />
 							<TextInput
 								value={query}
 								onChangeText={setQuery}
 								placeholder="Search pages or routes"
-								style={{ flex: 1, paddingHorizontal: 9, paddingVertical: 11 }}
+								placeholderTextColor={colors.mutedText}
+								style={{
+									flex: 1,
+									paddingHorizontal: 9,
+									paddingVertical: 11,
+									color: colors.text,
+								}}
 							/>
 						</View>
 						<ScrollView
@@ -362,12 +374,15 @@ export default function PageAccessAdminSection() {
 										paddingHorizontal: 11,
 										paddingVertical: 7,
 										backgroundColor:
-											statusFilter === status ? '#10b981' : '#f1f5f9',
+											statusFilter === status ? colors.accent : colors.control,
 									}}
 								>
 									<Text
 										style={{
-											color: statusFilter === status ? '#fff' : '#475569',
+											color:
+												statusFilter === status
+													? colors.onAccent
+													: colors.secondaryText,
 											fontSize: 11,
 											fontWeight: '800',
 										}}
@@ -399,11 +414,11 @@ export default function PageAccessAdminSection() {
 								marginRight: 8,
 								marginBottom: 8,
 								borderRadius: 11,
-								backgroundColor: '#ecfdf5',
+								backgroundColor: colors.successSurface,
 								padding: 10,
 							}}
 						>
-							<Text style={{ color: '#047857', fontWeight: '800' }}>
+							<Text style={{ color: colors.successText, fontWeight: '800' }}>
 								Initialize Defaults
 							</Text>
 						</TouchableOpacity>
@@ -419,11 +434,13 @@ export default function PageAccessAdminSection() {
 							style={{
 								marginBottom: 8,
 								borderRadius: 11,
-								backgroundColor: '#fff1f2',
+								backgroundColor: colors.destructiveSurface,
 								padding: 10,
 							}}
 						>
-							<Text style={{ color: '#be123c', fontWeight: '800' }}>
+							<Text
+								style={{ color: colors.destructiveText, fontWeight: '800' }}
+							>
 								Reset Defaults
 							</Text>
 						</TouchableOpacity>
@@ -434,10 +451,10 @@ export default function PageAccessAdminSection() {
 								marginBottom: 10,
 								padding: 12,
 								borderRadius: 14,
-								backgroundColor: '#ecfdf5',
+								backgroundColor: colors.successSurface,
 							}}
 						>
-							<Text style={{ color: '#047857', fontWeight: '900' }}>
+							<Text style={{ color: colors.successText, fontWeight: '900' }}>
 								{selectedIds.length} selected
 							</Text>
 							<ScrollView
@@ -452,14 +469,14 @@ export default function PageAccessAdminSection() {
 										style={{
 											marginRight: 7,
 											borderRadius: 999,
-											backgroundColor: '#fff',
+											backgroundColor: colors.surface,
 											paddingHorizontal: 10,
 											paddingVertical: 7,
 										}}
 									>
 										<Text
 											style={{
-												color: '#334155',
+												color: colors.secondaryText,
 												fontSize: 11,
 												fontWeight: '800',
 											}}
@@ -480,11 +497,11 @@ export default function PageAccessAdminSection() {
 								alignItems: 'center',
 								padding: 13,
 								borderRadius: 16,
-								backgroundColor: '#fff',
+								backgroundColor: colors.surface,
 								borderWidth: 1,
 								borderColor: selectedIds.includes(setting.id)
 									? '#10b981'
-									: '#e2e8f0',
+									: colors.border,
 							}}
 						>
 							<TouchableOpacity
@@ -505,16 +522,24 @@ export default function PageAccessAdminSection() {
 								onPress={() => openEditor(setting)}
 								style={{ flex: 1, marginLeft: 8 }}
 							>
-								<Text style={{ color: '#0f172a', fontWeight: '900' }}>
+								<Text style={{ color: colors.text, fontWeight: '900' }}>
 									{setting.pageName}
 								</Text>
-								<Text style={{ marginTop: 2, color: '#64748b', fontSize: 11 }}>
+								<Text
+									style={{
+										marginTop: 2,
+										color: colors.mutedText,
+										fontSize: 11,
+									}}
+								>
 									{setting.route}
 								</Text>
 								<Text
 									style={{
 										marginTop: 4,
-										color: setting.showInNavigation ? '#047857' : '#94a3b8',
+										color: setting.showInNavigation
+											? colors.successText
+											: colors.mutedText,
 										fontSize: 10,
 										fontWeight: '800',
 									}}
@@ -526,7 +551,11 @@ export default function PageAccessAdminSection() {
 							</TouchableOpacity>
 							<TouchableOpacity onPress={() => openEditor(setting)}>
 								<Text
-									style={{ color: '#475569', fontSize: 10, fontWeight: '900' }}
+									style={{
+										color: colors.secondaryText,
+										fontSize: 10,
+										fontWeight: '900',
+									}}
 								>
 									{getStatusLabel(setting.status)}
 								</Text>
@@ -538,7 +567,7 @@ export default function PageAccessAdminSection() {
 							style={{
 								paddingVertical: 45,
 								textAlign: 'center',
-								color: '#64748b',
+								color: colors.mutedText,
 							}}
 						>
 							No matching pages.
@@ -554,18 +583,20 @@ export default function PageAccessAdminSection() {
 								marginBottom: 9,
 								padding: 14,
 								borderRadius: 15,
-								backgroundColor: '#fff',
+								backgroundColor: colors.surface,
 								borderWidth: 1,
-								borderColor: '#e2e8f0',
+								borderColor: colors.border,
 							}}
 						>
-							<Text style={{ color: '#0f172a', fontWeight: '900' }}>
+							<Text style={{ color: colors.text, fontWeight: '900' }}>
 								{entry.pageName}
 							</Text>
-							<Text style={{ marginTop: 4, color: '#475569' }}>
+							<Text style={{ marginTop: 4, color: colors.secondaryText }}>
 								{entry.action}: {entry.previousStatus} → {entry.newStatus}
 							</Text>
-							<Text style={{ marginTop: 5, color: '#94a3b8', fontSize: 11 }}>
+							<Text
+								style={{ marginTop: 5, color: colors.mutedText, fontSize: 11 }}
+							>
 								{entry.administratorName}
 								{entry.createdAtMs
 									? ` · ${new Date(entry.createdAtMs).toLocaleString()}`
@@ -578,7 +609,7 @@ export default function PageAccessAdminSection() {
 							style={{
 								paddingVertical: 45,
 								textAlign: 'center',
-								color: '#64748b',
+								color: colors.mutedText,
 							}}
 						>
 							No page-access activity recorded yet.
@@ -591,7 +622,7 @@ export default function PageAccessAdminSection() {
 				onPress={() => void load()}
 				style={{ alignSelf: 'center', marginVertical: 12, padding: 10 }}
 			>
-				<Text style={{ color: '#047857', fontWeight: '800' }}>
+				<Text style={{ color: colors.accent, fontWeight: '800' }}>
 					Refresh workspace
 				</Text>
 			</TouchableOpacity>
@@ -608,199 +639,237 @@ export default function PageAccessAdminSection() {
 					setEditor(null);
 				}}
 			>
-				<SwipeDismissSurface visible={Boolean(editing && editor)} onDismiss={() => { setEditing(null); setEditor(null); }} handleColor="#cbd5e1" disabled={saving} accessibilityLabel="Swipe down to close page access editor" style={{ flex: 1, backgroundColor: '#f8fafc' }}>
-				<SafeAreaView
-					edges={['top', 'left', 'right']}
-					style={{ flex: 1, backgroundColor: '#f8fafc' }}
+				<SwipeDismissSurface
+					visible={Boolean(editing && editor)}
+					onDismiss={() => {
+						setEditing(null);
+						setEditor(null);
+					}}
+					handleColor={colors.border}
+					disabled={saving}
+					accessibilityLabel="Swipe down to close page access editor"
+					style={{ flex: 1, backgroundColor: colors.canvas }}
 				>
-					<View
-						style={{
-							flexDirection: 'row',
-							alignItems: 'center',
-							padding: 16,
-							backgroundColor: '#fff',
-						}}
+					<SafeAreaView
+						edges={['top', 'left', 'right']}
+						style={{ flex: 1, backgroundColor: colors.canvas }}
 					>
-						<TouchableOpacity
-							onPress={() => {
-								setEditing(null);
-								setEditor(null);
-							}}
-						>
-							<Icon name="x" size={23} color="#334155" />
-						</TouchableOpacity>
-						<Text
+						<View
 							style={{
-								flex: 1,
-								marginLeft: 12,
-								fontSize: 18,
-								fontWeight: '900',
+								flexDirection: 'row',
+								alignItems: 'center',
+								padding: 16,
+								backgroundColor: colors.surface,
 							}}
 						>
-							Edit {editing?.pageName}
-						</Text>
-					</View>
-					{editor ? (
-						<ScrollView
-							contentContainerStyle={{ padding: 18, paddingBottom: 45 }}
-						>
-							<Text style={{ color: '#64748b' }}>{editing?.route}</Text>
-							<Text
-								style={{ marginTop: 18, marginBottom: 9, fontWeight: '900' }}
+							<TouchableOpacity
+								onPress={() => {
+									setEditing(null);
+									setEditor(null);
+								}}
 							>
-								Availability status
+								<Icon name="x" size={23} color={colors.icon} />
+							</TouchableOpacity>
+							<Text
+								style={{
+									flex: 1,
+									marginLeft: 12,
+									fontSize: 18,
+									fontWeight: '900',
+									color: colors.text,
+								}}
+							>
+								Edit {editing?.pageName}
 							</Text>
-							<ScrollView horizontal showsHorizontalScrollIndicator={false}>
-								{STATUSES.map((status) => (
-									<TouchableOpacity
-										key={status}
-										onPress={() =>
-											setEditor((current) =>
-												current
-													? {
-															...current,
-															status,
-															badgeText: getPageAccessBadge(status),
-														}
-													: current
-											)
-										}
-										style={{
-											marginRight: 7,
-											borderRadius: 999,
-											paddingHorizontal: 12,
-											paddingVertical: 8,
-											backgroundColor:
-												editor.status === status ? '#10b981' : '#fff',
-										}}
-									>
+						</View>
+						{editor ? (
+							<ScrollView
+								contentContainerStyle={{ padding: 18, paddingBottom: 45 }}
+							>
+								<Text style={{ color: colors.mutedText }}>
+									{editing?.route}
+								</Text>
+								<Text
+									style={{
+										marginTop: 18,
+										marginBottom: 9,
+										fontWeight: '900',
+										color: colors.text,
+									}}
+								>
+									Availability status
+								</Text>
+								<ScrollView horizontal showsHorizontalScrollIndicator={false}>
+									{STATUSES.map((status) => (
+										<TouchableOpacity
+											key={status}
+											onPress={() =>
+												setEditor((current) =>
+													current
+														? {
+																...current,
+																status,
+																badgeText: getPageAccessBadge(status),
+															}
+														: current
+												)
+											}
+											style={{
+												marginRight: 7,
+												borderRadius: 999,
+												paddingHorizontal: 12,
+												paddingVertical: 8,
+												backgroundColor:
+													editor.status === status
+														? colors.accent
+														: colors.surface,
+											}}
+										>
+											<Text
+												style={{
+													color:
+														editor.status === status
+															? colors.onAccent
+															: colors.secondaryText,
+													fontSize: 11,
+													fontWeight: '800',
+												}}
+											>
+												{getStatusLabel(status)}
+											</Text>
+										</TouchableOpacity>
+									))}
+								</ScrollView>
+								{[
+									[
+										'Show in navigation',
+										'Allow this route to appear in menus.',
+										'showInNavigation',
+									],
+									[
+										'Show page preview',
+										'Keep the destination visible behind its access overlay.',
+										'showPagePreview',
+									],
+								].map(([title, subtitle, key]) => {
+									const switchKey =
+										key === 'showInNavigation'
+											? 'showInNavigation'
+											: 'showPagePreview';
+									return (
+										<View
+											key={key}
+											style={{
+												marginTop: 14,
+												flexDirection: 'row',
+												alignItems: 'center',
+												padding: 13,
+												borderRadius: 14,
+												backgroundColor: colors.surface,
+											}}
+										>
+											<View style={{ flex: 1 }}>
+												<Text style={{ fontWeight: '900', color: colors.text }}>
+													{title}
+												</Text>
+												<Text
+													style={{
+														marginTop: 2,
+														color: colors.mutedText,
+														fontSize: 11,
+													}}
+												>
+													{subtitle}
+												</Text>
+											</View>
+											<Switch
+												value={editor[switchKey]}
+												onValueChange={(value) =>
+													setEditor((current) =>
+														current
+															? { ...current, [switchKey]: value }
+															: current
+													)
+												}
+												trackColor={{ true: '#10b981' }}
+											/>
+										</View>
+									);
+								})}
+								<Text
+									style={{
+										marginTop: 18,
+										fontWeight: '900',
+										color: colors.text,
+									}}
+								>
+									Overlay content
+								</Text>
+								{(
+									[
+										['Overlay title', 'overlayTitle', false],
+										['Overlay description', 'overlayDescription', true],
+										['Badge text', 'badgeText', false],
+										['Primary button label', 'primaryButtonLabel', false],
+										['Primary button route', 'primaryButtonRoute', false],
+										['Secondary button label', 'secondaryButtonLabel', false],
+										['Secondary button route', 'secondaryButtonRoute', false],
+									] as const
+								).map(([label, key, multiline]) => (
+									<View key={key} style={{ marginTop: 11 }}>
 										<Text
 											style={{
-												color: editor.status === status ? '#fff' : '#475569',
+												marginBottom: 5,
+												color: colors.secondaryText,
 												fontSize: 11,
 												fontWeight: '800',
 											}}
 										>
-											{getStatusLabel(status)}
+											{label}
 										</Text>
-									</TouchableOpacity>
-								))}
-							</ScrollView>
-							{[
-								[
-									'Show in navigation',
-									'Allow this route to appear in menus.',
-									'showInNavigation',
-								],
-								[
-									'Show page preview',
-									'Keep the destination visible behind its access overlay.',
-									'showPagePreview',
-								],
-							].map(([title, subtitle, key]) => {
-								const switchKey =
-									key === 'showInNavigation'
-										? 'showInNavigation'
-										: 'showPagePreview';
-								return (
-									<View
-										key={key}
-										style={{
-											marginTop: 14,
-											flexDirection: 'row',
-											alignItems: 'center',
-											padding: 13,
-											borderRadius: 14,
-											backgroundColor: '#fff',
-										}}
-									>
-										<View style={{ flex: 1 }}>
-											<Text style={{ fontWeight: '900' }}>{title}</Text>
-											<Text
-												style={{ marginTop: 2, color: '#64748b', fontSize: 11 }}
-											>
-												{subtitle}
-											</Text>
-										</View>
-										<Switch
-											value={editor[switchKey]}
-											onValueChange={(value) =>
+										<TextInput
+											value={editor[key]}
+											onChangeText={(value) =>
 												setEditor((current) =>
-													current ? { ...current, [switchKey]: value } : current
+													current ? { ...current, [key]: value } : current
 												)
 											}
-											trackColor={{ true: '#10b981' }}
+											multiline={multiline}
+											style={{
+												minHeight: multiline ? 82 : undefined,
+												textAlignVertical: multiline ? 'top' : 'center',
+												borderRadius: 13,
+												borderWidth: 1,
+												borderColor: colors.border,
+												backgroundColor: colors.input,
+												color: colors.text,
+												padding: 11,
+											}}
 										/>
 									</View>
-								);
-							})}
-							<Text style={{ marginTop: 18, fontWeight: '900' }}>
-								Overlay content
-							</Text>
-							{(
-								[
-									['Overlay title', 'overlayTitle', false],
-									['Overlay description', 'overlayDescription', true],
-									['Badge text', 'badgeText', false],
-									['Primary button label', 'primaryButtonLabel', false],
-									['Primary button route', 'primaryButtonRoute', false],
-									['Secondary button label', 'secondaryButtonLabel', false],
-									['Secondary button route', 'secondaryButtonRoute', false],
-								] as const
-							).map(([label, key, multiline]) => (
-								<View key={key} style={{ marginTop: 11 }}>
-									<Text
-										style={{
-											marginBottom: 5,
-											color: '#475569',
-											fontSize: 11,
-											fontWeight: '800',
-										}}
-									>
-										{label}
-									</Text>
-									<TextInput
-										value={editor[key]}
-										onChangeText={(value) =>
-											setEditor((current) =>
-												current ? { ...current, [key]: value } : current
-											)
-										}
-										multiline={multiline}
-										style={{
-											minHeight: multiline ? 82 : undefined,
-											textAlignVertical: multiline ? 'top' : 'center',
-											borderRadius: 13,
-											borderWidth: 1,
-											borderColor: '#e2e8f0',
-											backgroundColor: '#fff',
-											padding: 11,
-										}}
-									/>
-								</View>
-							))}
-							<TouchableOpacity
-								disabled={saving}
-								onPress={() => void handleSave()}
-								style={{
-									marginTop: 18,
-									alignItems: 'center',
-									borderRadius: 15,
-									backgroundColor: '#10b981',
-									padding: 14,
-								}}
-							>
-								{saving ? (
-									<ActivityIndicator color="#fff" />
-								) : (
-									<Text style={{ color: '#fff', fontWeight: '900' }}>
-										Save Changes
-									</Text>
-								)}
-							</TouchableOpacity>
-						</ScrollView>
-					) : null}
-				</SafeAreaView>
+								))}
+								<TouchableOpacity
+									disabled={saving}
+									onPress={() => void handleSave()}
+									style={{
+										marginTop: 18,
+										alignItems: 'center',
+										borderRadius: 15,
+										backgroundColor: '#10b981',
+										padding: 14,
+									}}
+								>
+									{saving ? (
+										<ActivityIndicator color="#fff" />
+									) : (
+										<Text style={{ color: '#fff', fontWeight: '900' }}>
+											Save Changes
+										</Text>
+									)}
+								</TouchableOpacity>
+							</ScrollView>
+						) : null}
+					</SafeAreaView>
 				</SwipeDismissSurface>
 			</Modal>
 			<CustomModal

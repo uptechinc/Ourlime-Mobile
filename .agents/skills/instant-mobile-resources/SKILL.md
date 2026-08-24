@@ -5,6 +5,10 @@ description: Implement and review instant-loading Ourlime Mobile pages using OOP
 
 # Instant Mobile Resources
 
+## Scope Control
+
+Use this skill only for the user’s explicit resource-loading request and its minimum dependencies. Report adjacent caching or preload improvements instead of implementing them without authorization, and do not run unrelated builds or change other platforms.
+
 ## Workflow
 
 1. Read `references/page-preload-matrix.md` before changing page loading or preload behavior.

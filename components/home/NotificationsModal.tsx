@@ -12,7 +12,7 @@ import {
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import UserAvatar from '@/components/ui/UserAvatar';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
 import { useNotifications } from '@/lib/contexts/NotificationContext';
@@ -27,8 +27,10 @@ import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 
 type NotificationsModalProps = {
-  visible: boolean;
+  visible?: boolean;
   onClose: () => void;
+  mode?: 'modal' | 'screen';
+  initialNotificationId?: string;
 };
 
 const relationshipService = RelationshipService.getInstance();
@@ -53,11 +55,11 @@ const getNotificationTime = (createdAt: NotificationData['createdAt']): number =
   return new Date(createdAt).getTime();
 };
 
-export default function NotificationsModal({ visible, onClose }: NotificationsModalProps) {
+export default function NotificationsModal({ visible = true, onClose, mode = 'modal', initialNotificationId }: NotificationsModalProps) {
   const router = useRouter();
   const { isDark, colors } = useAppTheme();
-  const swipeDismiss = useSwipeDismiss({ visible, onDismiss: onClose });
-  const { notifications, unreadCount, isLoading, hasMore, loadMore, markAsRead, markAsUnread, markAllAsRead, deleteNotifications, refreshNotifications } = useNotifications();
+  const swipeDismiss = useSwipeDismiss({ visible: visible && mode === 'modal', onDismiss: onClose });
+  const { notifications, unreadCount, isLoading, hasMore, loadMore, markAsRead, markManyAsRead, markManyAsUnread, markAllAsRead, deleteNotifications, refreshNotifications } = useNotifications();
 
   const [sortMode, setSortMode] = useState<SortMode>('unread_first');
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
@@ -188,10 +190,13 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
       onConfirm: async () => {
         closeDialog();
         if (!currentUserId) return;
-        await deleteNotifications(Array.from(selectedIds));
-        setSelectedIds(new Set());
-        setSelectionMode(false);
-        await refreshNotifications();
+        try {
+          await deleteNotifications(Array.from(selectedIds));
+          setSelectedIds(new Set());
+          setSelectionMode(false);
+        } catch (error: unknown) {
+          setDialogState({ visible: true, type: 'error', title: 'Notifications not deleted', message: error instanceof Error ? error.message : 'The selected notifications could not be deleted.', confirmText: 'OK' });
+        }
       },
     });
   };
@@ -208,33 +213,37 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
       onConfirm: async () => {
         closeDialog();
         if (!currentUserId) return;
-        await deleteNotifications([id]);
+        try {
+          await deleteNotifications([id]);
+        } catch (error: unknown) {
+          setDialogState({ visible: true, type: 'error', title: 'Notification not deleted', message: error instanceof Error ? error.message : 'The notification could not be deleted.', confirmText: 'OK' });
+        }
       },
     });
   };
 
   const handleBulkMarkRead = async () => {
     if (!currentUserId || selectedIds.size === 0) return;
-    for (const id of selectedIds) {
-      const item = sortedNotifications.find((n) => n.id === id);
-      if (item && !isItemRead(item)) {
-        await markAsRead(id);
-      }
+    const unreadIds = Array.from(selectedIds).filter((id) => sortedNotifications.some((notification) => notification.id === id && !isItemRead(notification)));
+    try {
+      await markManyAsRead(unreadIds);
+      setSelectedIds(new Set());
+      setSelectionMode(false);
+    } catch (error: unknown) {
+      setDialogState({ visible: true, type: 'error', title: 'Notifications not updated', message: error instanceof Error ? error.message : 'The selected notifications could not be marked as read.', confirmText: 'OK' });
     }
-    setSelectedIds(new Set());
-    setSelectionMode(false);
   };
 
   const handleBulkMarkUnread = async () => {
     if (!currentUserId || selectedIds.size === 0) return;
-    for (const id of selectedIds) {
-      const item = sortedNotifications.find((n) => n.id === id);
-      if (item && isItemRead(item)) {
-        await markAsUnread(id);
-      }
+    const readIds = Array.from(selectedIds).filter((id) => sortedNotifications.some((notification) => notification.id === id && isItemRead(notification)));
+    try {
+      await markManyAsUnread(readIds);
+      setSelectedIds(new Set());
+      setSelectionMode(false);
+    } catch (error: unknown) {
+      setDialogState({ visible: true, type: 'error', title: 'Notifications not updated', message: error instanceof Error ? error.message : 'The selected notifications could not be marked as unread.', confirmText: 'OK' });
     }
-    setSelectedIds(new Set());
-    setSelectionMode(false);
   };
 
   const handleItemPress = async (item: NotificationData) => {
@@ -249,11 +258,24 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
     const destinationData = {
       ...item.metadata,
       type: item.type,
+      notificationId: item.id,
       userName: username,
       path: item.metadata?.actionUrl,
     };
+    const destination = notificationDestinationRegistry.resolve(notificationDestinationRegistry.normalize(destinationData));
+    const destinationPathname = typeof destination.route === 'string'
+      ? destination.route.split(/[?#]/)[0]
+      : typeof destination.route === 'object' && 'pathname' in destination.route
+        ? destination.route.pathname
+        : '';
+    if (mode === 'screen' && destinationPathname === '/notifications') return;
+    if (mode === 'modal') onClose();
+    router.push(destination.route);
+  };
+
+  const handleViewAll = () => {
     onClose();
-    router.push(notificationDestinationRegistry.resolve(notificationDestinationRegistry.normalize(destinationData)));
+    router.push('/notifications' as Href);
   };
 
   const handleAcceptFriendRequest = async (item: NotificationData) => {
@@ -337,7 +359,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
           marginBottom: 10,
           backgroundColor: itemRead ? colors.surface : colors.successSurface,
           borderWidth: 1,
-          borderColor: itemRead ? colors.border : colors.successText,
+          borderColor: item.id === initialNotificationId ? colors.accent : itemRead ? colors.border : colors.successText,
         }}
       >
         {/* Checkbox (Shows when in Selection Mode or when item is selected) */}
@@ -429,12 +451,11 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
     );
   };
 
-  return (
-    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
-      <Animated.View style={[{ flex: 1 }, swipeDismiss.animatedStyle]}>
+  const workspace = (
+      <Animated.View style={[{ flex: 1 }, mode === 'modal' ? swipeDismiss.animatedStyle : undefined]}>
       <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
-        <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close notifications" />
+        {mode === 'modal' ? <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close notifications" /> : null}
 
         {/* Modern Confirmation Dialog */}
         <CustomModal
@@ -461,7 +482,7 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity onPress={onClose} style={{ padding: 6, marginRight: 8 }}>
-              <Icon name="x" size={24} color={colors.icon} />
+              <Icon name={mode === 'screen' ? 'arrow-left' : 'x'} size={24} color={colors.icon} />
             </TouchableOpacity>
             <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
               <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Notifications</Text>
@@ -473,9 +494,12 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
             </View>
           </View>
 
-          <TouchableOpacity onPress={() => void markAllAsRead()} style={{ padding: 6 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: '#10b981' }}>Mark all read</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {mode === 'modal' ? <TouchableOpacity onPress={handleViewAll} style={{ padding: 6 }}><Text style={{ fontSize: 13, fontWeight: '800', color: colors.accentText }}>View all</Text></TouchableOpacity> : null}
+            <TouchableOpacity onPress={() => void markAllAsRead()} style={{ padding: 6 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#10b981' }}>Mark all read</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Filter Categories Pill Bar */}
@@ -672,6 +696,13 @@ export default function NotificationsModal({ visible, onClose }: NotificationsMo
         </ScrollView>
       </SafeAreaView>
       </Animated.View>
+  );
+
+  if (mode === 'screen') return workspace;
+
+  return (
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
+      {workspace}
     </Modal>
   );
 }

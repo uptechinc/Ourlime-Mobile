@@ -2,16 +2,16 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import type { Href } from 'expo-router';
 import { ApiService } from './ApiService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { platformEnvironmentService } from './PlatformEnvironmentService';
-import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
+import { notificationDestinationRegistry, type NotificationDestinationResult } from '@/lib/navigation/NotificationDestinationRegistry';
 import type { NotificationType } from '@/lib/types/notification';
+import { notificationSoundPreferenceService } from './NotificationSoundPreferenceService';
 
 const DEVICE_TOKEN_KEY = 'ourlime_device_push_token';
-const MESSAGE_CHANNEL_ID = 'ourlime-messages-v2';
-const CALL_CHANNEL_ID = 'ourlime-calls-v2';
+const MESSAGE_CHANNEL_ID = 'ourlime-messages-v3';
+const CALL_CHANNEL_ID = 'ourlime-calls-v3';
 const CALL_NOTIFICATION_CATEGORY_ID = 'ourlime-incoming-call';
 const CALL_ANSWER_ACTION_ID = 'ourlime-call-answer';
 const CALL_DECLINE_ACTION_ID = 'ourlime-call-decline';
@@ -100,6 +100,15 @@ export class PushNotificationService {
             } catch {
               // Ignore and use default
             }
+          }
+          if (data?.type === 'message') {
+            const customSoundPlayed = await notificationSoundPreferenceService.playMessageSound().catch(() => false);
+            return {
+              shouldShowBanner: true,
+              shouldShowList: true,
+              shouldPlaySound: !customSoundPlayed,
+              shouldSetBadge: true,
+            };
           }
           return {
             shouldShowBanner: true,
@@ -323,7 +332,7 @@ export class PushNotificationService {
     });
   }
 
-  public resolveNotificationDestination(data: unknown): Href {
+  public resolveNotificationDestination(data: unknown): NotificationDestinationResult {
     return notificationDestinationRegistry.resolve(notificationDestinationRegistry.normalize(data));
   }
 }

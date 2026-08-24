@@ -49,6 +49,19 @@ export type CommentPage<TItem> = {
   nextCursor: number | null;
 };
 
+export type CommentFocusTarget = {
+  rootCommentId?: string;
+  commentId?: string;
+  replyId?: string;
+};
+
+export type CommentFocusResult = {
+  rootComment: PostComment;
+  replies: PostReply[];
+  targetId: string;
+  truncated: boolean;
+};
+
 type PaginatedApiResponse<TItem> = {
   success: boolean;
   data?: TItem[];
@@ -116,6 +129,31 @@ export class CommentService {
       if (!this.canUseFirestore(error)) throw error;
       return this.fetchRepliesFromFirestore(commentId, cursor);
     }
+  }
+
+  public async fetchCommentFocus(postId: string, target: CommentFocusTarget): Promise<CommentFocusResult> {
+    const parameters = [
+      target.rootCommentId ? `rootCommentId=${encodeURIComponent(target.rootCommentId)}` : '',
+      target.commentId ? `commentId=${encodeURIComponent(target.commentId)}` : '',
+      target.replyId ? `replyId=${encodeURIComponent(target.replyId)}` : '',
+    ].filter(Boolean).join('&');
+    if (!parameters) throw new Error('A comment target is required');
+    const response = await this.apiService.request<ItemApiResponse<CommentFocusResult>>(
+      `/api/posts/${encodeURIComponent(postId)}/comments/focus?${parameters}`,
+      { authenticated: true, timeoutMs: 18_000 }
+    );
+    if (!response.success || !response.data) throw new Error(response.error || 'Focused comment is unavailable');
+    return {
+      ...response.data,
+      rootComment: {
+        ...response.data.rootComment,
+        sticker: this.readCommentMedia(response.data.rootComment.sticker),
+      },
+      replies: response.data.replies.map((reply) => ({
+        ...reply,
+        sticker: this.readCommentMedia(reply.sticker),
+      })),
+    };
   }
 
   public async createComment(postId: string, content: string, sticker?: CommentMediaAsset): Promise<PostComment> {

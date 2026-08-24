@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { inAppNotificationService } from '@/lib/services/InAppNotificationService';
+import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
 
 type BannerData = {
   peerId: string;
@@ -112,7 +113,7 @@ export default function InAppNotificationBanner() {
   const handlePress = () => {
     dismiss();
     if (activeBanner?.peerId) {
-      router.push({ pathname: '/chat/[id]', params: { id: activeBanner.peerId } });
+      router.push(notificationDestinationRegistry.resolve({ type: 'message', senderId: activeBanner.peerId }).route);
     }
   };
 

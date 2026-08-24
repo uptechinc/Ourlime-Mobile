@@ -4,6 +4,14 @@ React Native app built with **Expo Router**, **TypeScript**, **NativeWind (Tailw
 
 ---
 
+## 0. Scope Control
+
+- Implement only what the user explicitly requested, plus the minimum dependencies and proportionate validation required to make that request work.
+- Consider adjacent improvements, but report them instead of implementing them unless the user authorizes them or they are strictly necessary for the requested result.
+- Do not add unrelated refactors, features, builds, deployments, migrations, git pushes, documentation work, web changes, or native changes. An approved implementation plan defines the authorized scope.
+
+---
+
 ## 1. Core Engineering Philosophy & OOP Architecture
 
 ### 1.1 Object-Oriented Service Architecture (OOP)

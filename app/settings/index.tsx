@@ -19,8 +19,9 @@ import DeleteAccountModal from '@/components/settings/DeleteAccountModal';
 import { accountLifecycleService } from '@/lib/services/AccountLifecycleService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { MessagePermission, SettingsTheme } from '@/lib/profile/settings/SettingsService';
+import NotificationSoundSettings from '@/components/settings/NotificationSoundSettings';
 
-type SettingsTab = 'appearance' | 'account' | 'privacy' | 'notifications' | 'blocked' | 'security';
+type SettingsTab = 'appearance' | 'account' | 'privacy' | 'notifications' | 'blocked' | 'security' | 'safety';
 type SettingsModalState = { visible: boolean; type: CustomModalType; title: string; message: string; action?: 'logout' };
 const authService = AuthService.getInstance();
 const settingsService = SettingsService.getInstance();
@@ -182,6 +183,7 @@ export default function SettingsScreen() {
           { key: 'notifications', label: 'Notifications', icon: 'bell' },
           { key: 'blocked', label: 'Blocked', icon: 'user-x' },
           { key: 'security', label: 'Security', icon: 'shield' },
+          { key: 'safety', label: 'Safety', icon: 'life-buoy' },
         ] satisfies { key: SettingsTab; label: string; icon: string }[]).map((tab) => {
           const active = activeTab === tab.key;
           return (
@@ -299,6 +301,7 @@ export default function SettingsScreen() {
             <View style={styles.switchRow}><Text style={styles.switchLabel}>SMS Alerts</Text><Switch value={smsEnabled} onValueChange={setSmsEnabled} trackColor={{ true: '#10b981' }} /></View>
             <View style={styles.switchRow}><Text style={styles.switchLabel}>New Messages</Text><Switch value={newMessageAlerts} onValueChange={setNewMessageAlerts} trackColor={{ true: '#10b981' }} /></View>
             <View style={styles.switchRow}><Text style={styles.switchLabel}>New Comments</Text><Switch value={newCommentAlerts} onValueChange={setNewCommentAlerts} trackColor={{ true: '#10b981' }} /></View>
+            <NotificationSoundSettings />
           </View>
         )}
 
@@ -331,6 +334,16 @@ export default function SettingsScreen() {
               <Text style={styles.signOutText}>Sign Out of Ourlime</Text>
             </TouchableOpacity>
             <View style={styles.dangerZone}><Text style={styles.dangerTitle}>Danger Zone</Text><Text style={styles.switchSubtext}>Permanently delete your account and associated data.</Text><TouchableOpacity onPress={() => { setDeleteError(''); setDeleteModalOpen(true); }} style={styles.deleteAccountBtn}><Icon name="trash-2" size={18} color="#ffffff" /><Text style={styles.deleteAccountText}>Delete Account</Text></TouchableOpacity></View>
+          </View>
+        )}
+
+        {activeTab === 'safety' && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Safety</Text>
+            <Text style={[styles.switchSubtext, isDark && styles.subtextDark]}>Access Ourlime safety standards, reporting guidance, and the restricted child-safety reporting flow.</Text>
+            <TouchableOpacity onPress={() => router.push('/help')} style={styles.policyButton}><Icon name="life-buoy" size={18} color="#047857" /><Text style={styles.policyButtonText}>Help & reporting</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/child-safety-standards')} style={styles.policyButton}><Icon name="shield" size={18} color="#047857" /><Text style={styles.policyButtonText}>Child Safety Standards</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/policies')} style={styles.policyButton}><Icon name="file-text" size={18} color="#047857" /><Text style={styles.policyButtonText}>Policies & Community Guidelines</Text></TouchableOpacity>
           </View>
         )}
       </ScrollView>

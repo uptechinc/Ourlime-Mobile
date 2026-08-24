@@ -108,6 +108,33 @@ export class FeedResourceService {
     await communityFeedResourceService.patchPost(updatedPost);
   }
 
+  public async reconcileProfileRepostRemoval(query: FeedResourceQuery, updatedPost: PostItem): Promise<void> {
+    const state = useResourceStore.getState();
+    const profileFeedPrefix = `${query.userId}:${query.scope}:`;
+    const profileFeedSuffix = `:${query.authorId ?? ''}`;
+    state.upsertPostEntities([updatedPost]);
+    await Promise.all(Object.entries(state.feeds).map(async ([key, resource]) => {
+      if (!resource.data) return;
+      const isMatchingProfileFeed = Boolean(
+        query.authorId
+        && key.startsWith(profileFeedPrefix)
+        && key.endsWith(profileFeedSuffix)
+      );
+      const nextData = {
+        ...resource.data,
+        posts: isMatchingProfileFeed
+          ? resource.data.posts.filter((post) => post.id !== updatedPost.id)
+          : resource.data.posts.map((post) => post.id === updatedPost.id ? updatedPost : post),
+        pendingPosts: isMatchingProfileFeed
+          ? resource.data.pendingPosts.filter((post) => post.id !== updatedPost.id)
+          : resource.data.pendingPosts.map((post) => post.id === updatedPost.id ? updatedPost : post),
+      };
+      state.setFeed(key, { ...resource, data: nextData });
+      await this.cacheService.write(key.split(':')[0], FEED_NAMESPACE, key, nextData, { expiresAt: Date.now() + FEED_RETENTION_MS });
+    }));
+    await communityFeedResourceService.patchPost(updatedPost);
+  }
+
   public async patchAuthor(userId: string, updates: { firstName: string; lastName: string; userName: string; profilePicture: string | null }): Promise<void> {
     const state = useResourceStore.getState();
     await Promise.all(Object.entries(state.feeds).map(async ([key, resource]) => {

@@ -17,6 +17,7 @@ const apiFilters: Record<UiFeedFilter, FeedFilter> = { All: 'all', Photos: 'phot
 export default function TimelineTab({ userId }: TimelineTabProps) {
   const { colors } = useAppTheme();
   const viewerId = authService.getCurrentUser()?.uid ?? userId;
+  const isOwnProfile = viewerId === userId;
   const [activeFilter, setActiveFilter] = useState<UiFeedFilter>('All');
   const [activePostId, setActivePostId] = useState<string | null>(null);
   const query = { userId: viewerId, scope: 'home' as const, filter: apiFilters[activeFilter], authorId: userId };
@@ -42,18 +43,23 @@ export default function TimelineTab({ userId }: TimelineTabProps) {
         <View style={{ paddingVertical: 40, alignItems: 'center' }}><Text style={{ fontSize: 15, color: colors.mutedText, fontWeight: '500' }}>No posts yet</Text></View>
       ) : (
         <>
-          {posts.map((post) => (
-            <View key={post.id} style={{ width: '100%', marginBottom: 12 }}>
+          {posts.map((post) => {
+            const isProfileRepost = post.repostedByUserIds?.includes(userId) === true;
+            return <View key={post.id} style={{ width: '100%', marginBottom: 12 }}>
               <PostCardSection
                 post={post}
                 isVisible={true}
+                isProfileRepost={isProfileRepost}
                 onCommentClick={setActivePostId}
                 onPostDelete={(postId) => void feedResourceService.removePosts((item) => item.id === postId)}
                 onAuthorBlocked={(authorId) => void feedResourceService.removePosts((item) => item.userId === authorId)}
                 onPostUpdate={(updatedPost) => void feedResourceService.patchPost(updatedPost)}
+                onRepostRemoved={isOwnProfile && isProfileRepost
+                  ? (_postId, updatedPost) => void feedResourceService.reconcileProfileRepostRemoval(query, updatedPost)
+                  : undefined}
               />
-            </View>
-          ))}
+            </View>;
+          })}
           {resource.data?.hasMore ? (
             <TouchableOpacity onPress={() => void loadMore()} style={{ alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 9, borderRadius: 18, backgroundColor: colors.successSurface }}><Text style={{ color: colors.successText, fontWeight: '700' }}>Load more posts</Text></TouchableOpacity>
           ) : null}

@@ -1,4 +1,4 @@
 interface:
   display_name: "OOP Service Architecture"
   short_description: "Object-Oriented TypeScript service classes, encapsulation, and singleton patterns"
-  default_prompt: "Use $oop-service-architecture to design and implement Object-Oriented TypeScript service classes with encapsulated domain logic."
+  default_prompt: "Use $oop-service-architecture to design requested Object-Oriented TypeScript service changes with encapsulated domain logic. Stay within the user’s explicit scope and report unrelated refactors separately."

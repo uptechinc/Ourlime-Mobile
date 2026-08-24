@@ -26,6 +26,7 @@ import type { CreateLimeCommentInput, CreateLimeInput, LimeComment, LimeCommentC
 import { AuthService } from './AuthService';
 import { RelationshipService } from './RelationshipService';
 import { moderationService, type ReportReasonCategory } from './ModerationService';
+import type { ChildSafetyIntakeValues } from '@/lib/types/childSafety';
 
 export type LimeFeedCursor = QueryDocumentSnapshot;
 
@@ -400,13 +401,19 @@ export class LimeService {
     reason: string,
     reporterId: string,
     reasonCategory: ReportReasonCategory = 'other',
-  ): Promise<void> {
+    description = '',
+    childSafety?: ChildSafetyIntakeValues,
+  ): Promise<string> {
     if (!reporterId) throw new Error('Sign in to submit a report');
-    await moderationService.reportContent(reportType === 'lime' ? 'lime' : 'user', {
+    return moderationService.reportContent(reportType === 'lime' ? 'lime' : 'user', {
       targetId: reportType === 'lime' ? reelId : reportedUserId,
       reportedUserId,
       reasonCategory,
       reason,
+      description,
+      immediateDanger: childSafety?.immediateDanger,
+      goodFaithAcknowledged: childSafety?.goodFaithAcknowledged,
+      allowContact: childSafety?.allowContact,
       routePath: reportType === 'lime' ? `/limes?limeId=${reelId}` : `/profile/${reportedUserId}`,
     });
   }

@@ -64,7 +64,7 @@ export function AppDrawerProvider({ children }: AppDrawerProviderProps) {
         return { visible: decision.isVisibleInNavigation, status: decision.status, badge: decision.setting?.badgeText };
       },
     }).map((item): MenuItem => {
-      const menuItem: MenuItem = { id: item.id, title: item.label, icon: item.ionicon, route: item.route, badge: item.badge };
+      const menuItem: MenuItem = { id: item.id, title: item.label, icon: item.ionicon, route: item.route, badge: item.badge, section: item.section };
       return { ...menuItem, onPress: () => navigateAfterClose(menuItem) };
     }),
     {

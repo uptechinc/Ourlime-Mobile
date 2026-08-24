@@ -5,6 +5,10 @@ description: Design patterns and best practices for creating Object-Oriented Typ
 
 # OOP Service Architecture Skill
 
+## Scope Control
+
+Apply this architecture within the user’s explicit request. Do not turn a focused change into an unrelated service refactor; report adjacent opportunities rather than implementing them without authorization.
+
 This skill provides guidelines and design rules for implementing Object-Oriented service patterns in Ourlime Mobile.
 
 ---

@@ -4,6 +4,14 @@ React Native app built with **Expo Router**, **TypeScript**, **NativeWind (Tailw
 
 ---
 
+## 0. Scope Control
+
+- Implement only the user’s explicit request and the minimum dependencies and proportionate validation needed to complete it.
+- Consider related improvements, but report them rather than implementing them unless the user authorizes them or they are strictly necessary.
+- Do not perform unrelated refactors, features, builds, deployments, migrations, git pushes, documentation work, web changes, or native changes. An approved plan defines the full authorized scope.
+
+---
+
 ## 1. Quick Reference & Core Directives
 
 When writing code, debugging, or implementing features for Ourlime Mobile, you **MUST ALWAYS** follow these rules:

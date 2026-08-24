@@ -11,6 +11,7 @@ export type MenuItem = {
     onPress?: () => void;
     badge?: string | number;
     isDivider?: boolean;
+    section?: AppNavigationSection;
 };
 
 export type MenuUserProfile = {
@@ -47,3 +48,4 @@ export type PageHeaderProps = {
 export * from './message';
 import type { Href } from 'expo-router';
 import type { ReactNode } from 'react';
+import type { AppNavigationSection } from '@/lib/navigation/AppNavigation';

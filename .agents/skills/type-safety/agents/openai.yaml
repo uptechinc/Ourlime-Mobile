@@ -1,4 +1,4 @@
 interface:
   display_name: "React & TypeScript Type-Safety Discipline"
   short_description: "Direct React imports, zero-any policy, type-over-interface, and loop variable naming"
-  default_prompt: "Use $type-safety to enforce direct React imports, strict zero-any types, type over interface, and discriminated return overloads."
+  default_prompt: "Use $type-safety to enforce direct React imports, strict zero-any types, type over interface, and discriminated return overloads within the requested change. Report broader cleanup separately."

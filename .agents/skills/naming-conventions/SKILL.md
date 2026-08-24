@@ -5,6 +5,10 @@ description: Comprehensive naming conventions, OOP service architecture, folder 
 
 # Ourlime Naming Conventions & Code Discipline
 
+## Scope Control
+
+Apply these conventions only within the user’s explicit task. Do not expand the work into adjacent refactors; report optional improvements for separate authorization.
+
 Use this skill whenever **creating, modifying, or refactoring components, services, hooks, forms, modals, types, or utilities** across Ourlime Mobile and Web.
 
 ---

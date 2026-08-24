@@ -19,6 +19,7 @@ import {
 	type AdminWorkspaceKind,
 	type AdminWorkspaceStatus,
 } from '@/lib/services/AdminWorkspaceService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type AdminCollectionWorkspaceProps = {
 	kind: AdminWorkspaceKind;
@@ -42,6 +43,7 @@ export default function AdminCollectionWorkspace({
 	title,
 	subtitle,
 }: AdminCollectionWorkspaceProps) {
+	const { colors } = useAppTheme();
 	const [items, setItems] = useState<AdminWorkspaceItem[]>([]);
 	const [query, setQuery] = useState('');
 	const [status, setStatus] = useState<AdminWorkspaceStatus | 'all'>('all');
@@ -169,18 +171,19 @@ export default function AdminCollectionWorkspace({
 						flexDirection: 'row',
 						alignItems: 'center',
 						borderRadius: 14,
-						backgroundColor: '#ffffff',
+						backgroundColor: colors.input,
 						borderWidth: 1,
-						borderColor: '#e2e8f0',
+						borderColor: colors.border,
 						paddingHorizontal: 12,
 					}}
 				>
-					<Icon name="search" size={17} color="#64748b" />
+					<Icon name="search" size={17} color={colors.mutedText} />
 					<TextInput
 						value={query}
 						onChangeText={setQuery}
 						placeholder={`Search ${kind}`}
-						style={{ flex: 1, padding: 11, color: '#0f172a' }}
+						placeholderTextColor={colors.mutedText}
+						style={{ flex: 1, padding: 11, color: colors.text }}
 					/>
 				</View>
 				<TouchableOpacity
@@ -198,18 +201,18 @@ export default function AdminCollectionWorkspace({
 						flexDirection: 'row',
 						alignItems: 'center',
 						borderRadius: 14,
-						backgroundColor: '#ffffff',
+						backgroundColor: colors.control,
 						borderWidth: 1,
-						borderColor: '#e2e8f0',
+						borderColor: colors.border,
 						paddingHorizontal: 13,
 					}}
 				>
-					<Icon name="sliders" size={16} color="#475569" />
+					<Icon name="sliders" size={16} color={colors.icon} />
 					<Text
 						style={{
 							marginLeft: 7,
 							textTransform: 'capitalize',
-							color: '#475569',
+							color: colors.secondaryText,
 							fontWeight: '700',
 						}}
 					>
@@ -231,13 +234,17 @@ export default function AdminCollectionWorkspace({
 							borderRadius: 999,
 							paddingHorizontal: 12,
 							paddingVertical: 8,
-							backgroundColor: status === filterStatus ? '#10b981' : '#e2e8f0',
+							backgroundColor:
+								status === filterStatus ? colors.accent : colors.control,
 						}}
 					>
 						<Text
 							style={{
 								textTransform: 'capitalize',
-								color: status === filterStatus ? '#ffffff' : '#475569',
+								color:
+									status === filterStatus
+										? colors.onAccent
+										: colors.secondaryText,
 								fontSize: 12,
 								fontWeight: '800',
 							}}
@@ -247,7 +254,7 @@ export default function AdminCollectionWorkspace({
 					</TouchableOpacity>
 				))}
 			</ScrollView>
-			<Text style={{ marginBottom: 10, color: '#64748b', fontSize: 12 }}>
+			<Text style={{ marginBottom: 10, color: colors.mutedText, fontSize: 12 }}>
 				{visibleItems.length} of {items.length} records
 			</Text>
 			{visibleItems.map((item) => (
@@ -258,9 +265,9 @@ export default function AdminCollectionWorkspace({
 						marginBottom: 10,
 						padding: 13,
 						borderRadius: 17,
-						backgroundColor: '#ffffff',
+						backgroundColor: colors.surface,
 						borderWidth: 1,
-						borderColor: '#e2e8f0',
+						borderColor: colors.border,
 						flexDirection: 'row',
 						alignItems: 'center',
 					}}
@@ -272,7 +279,7 @@ export default function AdminCollectionWorkspace({
 								width: 54,
 								height: 54,
 								borderRadius: 14,
-								backgroundColor: '#f1f5f9',
+								backgroundColor: colors.control,
 							}}
 						/>
 					) : (
@@ -281,7 +288,7 @@ export default function AdminCollectionWorkspace({
 								width: 54,
 								height: 54,
 								borderRadius: 14,
-								backgroundColor: '#d1fae5',
+								backgroundColor: colors.successSurface,
 								alignItems: 'center',
 								justifyContent: 'center',
 							}}
@@ -297,20 +304,20 @@ export default function AdminCollectionWorkspace({
 												: 'smile'
 								}
 								size={22}
-								color="#10b981"
+								color={colors.accent}
 							/>
 						</View>
 					)}
 					<View style={{ flex: 1, marginLeft: 11 }}>
 						<Text
 							numberOfLines={1}
-							style={{ color: '#0f172a', fontWeight: '900' }}
+							style={{ color: colors.text, fontWeight: '900' }}
 						>
 							{item.title}
 						</Text>
 						<Text
 							numberOfLines={1}
-							style={{ marginTop: 3, color: '#64748b', fontSize: 12 }}
+							style={{ marginTop: 3, color: colors.mutedText, fontSize: 12 }}
 						>
 							{item.subtitle}
 							{item.metricLabel ? ` · ${item.metricLabel}` : ''}
@@ -320,10 +327,10 @@ export default function AdminCollectionWorkspace({
 								marginTop: 5,
 								color:
 									item.status === 'active' || item.status === 'approved'
-										? '#047857'
+										? colors.successText
 										: item.status === 'rejected' || item.status === 'disabled'
-											? '#b91c1c'
-											: '#92400e',
+											? colors.destructiveText
+											: colors.warningText,
 								fontSize: 10,
 								fontWeight: '900',
 								textTransform: 'uppercase',
@@ -332,13 +339,13 @@ export default function AdminCollectionWorkspace({
 							{item.status}
 						</Text>
 					</View>
-					<Icon name="chevron-right" size={18} color="#94a3b8" />
+					<Icon name="chevron-right" size={18} color={colors.mutedText} />
 				</TouchableOpacity>
 			))}
 			{!visibleItems.length ? (
 				<View style={{ paddingVertical: 50, alignItems: 'center' }}>
-					<Icon name="inbox" size={36} color="#cbd5e1" />
-					<Text style={{ marginTop: 10, color: '#64748b' }}>
+					<Icon name="inbox" size={36} color={colors.mutedText} />
+					<Text style={{ marginTop: 10, color: colors.mutedText }}>
 						No matching records.
 					</Text>
 				</View>
@@ -353,115 +360,133 @@ export default function AdminCollectionWorkspace({
 				presentationStyle="overFullScreen"
 				onRequestClose={() => setSelected(null)}
 			>
-				<SwipeDismissSurface visible={Boolean(selected)} onDismiss={() => setSelected(null)} handleColor="#cbd5e1" disabled={busy} accessibilityLabel="Swipe down to close admin record" style={{ flex: 1, backgroundColor: '#f8fafc' }}>
-				<SafeAreaView
-					edges={['top', 'left', 'right']}
-					style={{ flex: 1, backgroundColor: '#f8fafc' }}
+				<SwipeDismissSurface
+					visible={Boolean(selected)}
+					onDismiss={() => setSelected(null)}
+					handleColor={colors.border}
+					disabled={busy}
+					accessibilityLabel="Swipe down to close admin record"
+					style={{ flex: 1, backgroundColor: colors.canvas }}
 				>
-					<View
-						style={{
-							flexDirection: 'row',
-							alignItems: 'center',
-							padding: 16,
-							backgroundColor: '#ffffff',
-						}}
+					<SafeAreaView
+						edges={['top', 'left', 'right']}
+						style={{ flex: 1, backgroundColor: colors.canvas }}
 					>
-						<Text
+						<View
 							style={{
-								flex: 1,
-								fontSize: 19,
-								fontWeight: '900',
-								color: '#0f172a',
+								flexDirection: 'row',
+								alignItems: 'center',
+								padding: 16,
+								backgroundColor: colors.navigation,
 							}}
 						>
-							{selected?.title}
-						</Text>
-						<TouchableOpacity onPress={() => setSelected(null)}>
-							<Icon name="x" size={24} color="#475569" />
-						</TouchableOpacity>
-					</View>
-					{selected ? (
-						<ScrollView
-							contentContainerStyle={{ padding: 18, paddingBottom: 50 }}
-						>
-							<Text style={{ color: '#64748b', lineHeight: 20 }}>
-								{selected.description || 'No description supplied.'}
-							</Text>
-							<Text
-								style={{ marginTop: 18, color: '#334155', fontWeight: '800' }}
-							>
-								Record ID
-							</Text>
-							<Text selectable style={{ marginTop: 4, color: '#64748b' }}>
-								{selected.id}
-							</Text>
 							<Text
 								style={{
-									marginTop: 18,
-									marginBottom: 10,
-									color: '#334155',
-									fontWeight: '800',
+									flex: 1,
+									fontSize: 19,
+									fontWeight: '900',
+									color: colors.text,
 								}}
 							>
-								Moderation status
+								{selected?.title}
 							</Text>
-							{(
-								[
-									'active',
-									'approved',
-									'pending',
-									'rejected',
-									'archived',
-									'disabled',
-								] as const
-							).map((nextStatus) => (
-								<TouchableOpacity
-									key={nextStatus}
-									disabled={busy || selected.status === nextStatus}
-									onPress={() => void handleStatus(nextStatus)}
+							<TouchableOpacity onPress={() => setSelected(null)}>
+								<Icon name="x" size={24} color={colors.icon} />
+							</TouchableOpacity>
+						</View>
+						{selected ? (
+							<ScrollView
+								contentContainerStyle={{ padding: 18, paddingBottom: 50 }}
+							>
+								<Text style={{ color: colors.secondaryText, lineHeight: 20 }}>
+									{selected.description || 'No description supplied.'}
+								</Text>
+								<Text
 									style={{
-										marginBottom: 8,
-										flexDirection: 'row',
-										padding: 14,
-										borderRadius: 14,
-										backgroundColor:
-											selected.status === nextStatus ? '#d1fae5' : '#ffffff',
+										marginTop: 18,
+										color: colors.text,
+										fontWeight: '800',
 									}}
 								>
-									<Text
+									Record ID
+								</Text>
+								<Text
+									selectable
+									style={{ marginTop: 4, color: colors.mutedText }}
+								>
+									{selected.id}
+								</Text>
+								<Text
+									style={{
+										marginTop: 18,
+										marginBottom: 10,
+										color: colors.text,
+										fontWeight: '800',
+									}}
+								>
+									Moderation status
+								</Text>
+								{(
+									[
+										'active',
+										'approved',
+										'pending',
+										'rejected',
+										'archived',
+										'disabled',
+									] as const
+								).map((nextStatus) => (
+									<TouchableOpacity
+										key={nextStatus}
+										disabled={busy || selected.status === nextStatus}
+										onPress={() => void handleStatus(nextStatus)}
 										style={{
-											flex: 1,
-											textTransform: 'capitalize',
-											color:
-												selected.status === nextStatus ? '#047857' : '#334155',
-											fontWeight: '800',
+											marginBottom: 8,
+											flexDirection: 'row',
+											padding: 14,
+											borderRadius: 14,
+											backgroundColor:
+												selected.status === nextStatus
+													? colors.successSurface
+													: colors.surface,
 										}}
 									>
-										{nextStatus}
+										<Text
+											style={{
+												flex: 1,
+												textTransform: 'capitalize',
+												color:
+													selected.status === nextStatus
+														? colors.successText
+														: colors.text,
+												fontWeight: '800',
+											}}
+										>
+											{nextStatus}
+										</Text>
+										{selected.status === nextStatus ? (
+											<Icon name="check" size={18} color={colors.successText} />
+										) : null}
+									</TouchableOpacity>
+								))}
+								<TouchableOpacity
+									disabled={busy}
+									onPress={() => void handleDelete()}
+									style={{
+										marginTop: 18,
+										alignItems: 'center',
+										padding: 14,
+										borderRadius: 14,
+										backgroundColor: colors.destructive,
+									}}
+								>
+									<Text style={{ color: colors.onAccent, fontWeight: '900' }}>
+										Delete permanently
 									</Text>
-									{selected.status === nextStatus ? (
-										<Icon name="check" size={18} color="#047857" />
-									) : null}
 								</TouchableOpacity>
-							))}
-							<TouchableOpacity
-								disabled={busy}
-								onPress={() => void handleDelete()}
-								style={{
-									marginTop: 18,
-									alignItems: 'center',
-									padding: 14,
-									borderRadius: 14,
-									backgroundColor: '#c64d53',
-								}}
-							>
-								<Text style={{ color: '#ffffff', fontWeight: '900' }}>
-									Delete permanently
-								</Text>
-							</TouchableOpacity>
-						</ScrollView>
-					) : null}
-				</SafeAreaView>
+							</ScrollView>
+						) : null}
+					</SafeAreaView>
 				</SwipeDismissSurface>
 			</Modal>
 			<CustomModal

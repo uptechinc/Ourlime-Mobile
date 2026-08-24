@@ -1,0 +1,9 @@
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import ChildSafetyReportWizard from '@/components/safety/ChildSafetyReportWizard';
+import type { ChildSafetyTargetType } from '@/lib/types/childSafety';
+const TARGET_TYPES = new Set<ChildSafetyTargetType>(['profile','post','media','comment','reply','message','conversation','lime','community','event','marketplace_listing','course','blog','other']);
+export default function ChildSafetyReportScreen() { const router = useRouter(); const { colors } = useAppTheme(); const parameters = useLocalSearchParams<{ targetType?: string; targetId?: string; ownerUserId?: string; parentId?: string; routePath?: string }>(); const targetType = parameters.targetType && TARGET_TYPES.has(parameters.targetType as ChildSafetyTargetType) ? parameters.targetType as ChildSafetyTargetType : 'other'; return <SafeAreaView edges={['top','bottom','left','right']} style={{ flex: 1, backgroundColor: colors.canvas }}><View style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.navigation }}><TouchableOpacity onPress={() => router.back()}><Ionicons name="chevron-back" size={26} color={colors.icon} /></TouchableOpacity><Text style={{ marginLeft: 9, color: colors.text, fontSize: 18, fontWeight: '900' }}>Child Safety Report</Text></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, paddingBottom: 40 }}><ChildSafetyReportWizard target={{ type: targetType, id: parameters.targetId?.trim() || 'help-hub', ownerUserId: parameters.ownerUserId, parentId: parameters.parentId, routePath: parameters.routePath }} /></ScrollView></SafeAreaView>; }

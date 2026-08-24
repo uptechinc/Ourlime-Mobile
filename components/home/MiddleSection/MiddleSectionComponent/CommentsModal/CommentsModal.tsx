@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
 	ActivityIndicator,
 	Alert,
@@ -10,6 +10,7 @@ import {
 	TextInput,
 	TouchableOpacity,
 	View,
+	type LayoutChangeEvent,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import {
@@ -62,6 +63,9 @@ type CommentsModalProps = {
 	userId: string;
 	onClose: () => void;
 	onPostUpdate: (post: PostItem) => void;
+	focusRootCommentId?: string;
+	focusCommentId?: string;
+	focusReplyId?: string;
 };
 
 const commentService = CommentService.getInstance();
@@ -83,6 +87,9 @@ export default function CommentsModal({
 	userId,
 	onClose,
 	onPostUpdate,
+	focusRootCommentId,
+	focusCommentId,
+	focusReplyId,
 }: CommentsModalProps) {
 	const { colors } = useAppTheme();
 	const insets = useSafeAreaInsets();
@@ -109,6 +116,10 @@ export default function CommentsModal({
 	const [gifPickerOpen, setGifPickerOpen] = useState(false);
 	const [enhancementPickerOpen, setEnhancementPickerOpen] = useState(false);
 	const [selectedMedia, setSelectedMedia] = useState<CommentMediaAsset | null>(null);
+	const [highlightedTargetId, setHighlightedTargetId] = useState<string | null>(null);
+	const [resolvedFocusRootId, setResolvedFocusRootId] = useState<string | null>(null);
+	const commentsScrollRef = useRef<ScrollView | null>(null);
+	const hasScrolledToFocusRef = useRef(false);
 
 	const handleEmojiSelect = (emoji: string) => {
 		if (replyTarget) {
@@ -162,8 +173,63 @@ export default function CommentsModal({
 	);
 
 	useEffect(() => {
-		void loadComments();
-	}, [loadComments]);
+		let active = true;
+		const loadInitialComments = async () => {
+			await loadComments();
+			if (!active || (!focusRootCommentId && !focusCommentId && !focusReplyId)) return;
+			try {
+				const focus = await commentService.fetchCommentFocus(post.id, {
+					rootCommentId: focusRootCommentId,
+					commentId: focusCommentId,
+					replyId: focusReplyId,
+				});
+				if (!active) return;
+				setComments((current) => [
+					focus.rootComment,
+					...current.filter((comment) => comment.id !== focus.rootComment.id),
+				]);
+				setResolvedFocusRootId(focus.rootComment.id);
+				setReplyThreads({
+					[focus.rootComment.id]: {
+						items: focus.replies,
+						expanded: true,
+						loading: false,
+						hasMore: focus.truncated,
+						nextCursor: null,
+					},
+				});
+				setHighlightedTargetId(focus.targetId);
+			} catch (focusError: unknown) {
+				if (active) {
+					setErrorMessage(
+						focusError instanceof Error
+							? `${focusError.message}. Showing the available comments instead.`
+							: 'The linked comment is unavailable. Showing the available comments instead.'
+					);
+				}
+			}
+		};
+		void loadInitialComments();
+		return () => {
+			active = false;
+		};
+	}, [focusCommentId, focusReplyId, focusRootCommentId, loadComments, post.id]);
+
+	useEffect(() => {
+		if (!highlightedTargetId) return;
+		const timeout = setTimeout(() => setHighlightedTargetId(null), 3200);
+		return () => clearTimeout(timeout);
+	}, [highlightedTargetId]);
+
+	const handleFocusedRootLayout = (event: LayoutChangeEvent, commentId: string) => {
+		const targetRootId = resolvedFocusRootId || focusRootCommentId || focusCommentId;
+		if (hasScrolledToFocusRef.current || !highlightedTargetId || commentId !== targetRootId) return;
+		hasScrolledToFocusRef.current = true;
+		commentsScrollRef.current?.scrollTo({
+			y: Math.max(0, event.nativeEvent.layout.y - 12),
+			animated: true,
+		});
+	};
 
 	const handleToggleReplies = async (commentId: string) => {
 		const existing = replyThreads[commentId];
@@ -497,7 +563,17 @@ export default function CommentsModal({
 	);
 
 	const renderReply = (reply: PostReply, rootCommentId: string) => (
-		<Animated.View entering={FadeInDown.duration(200)} key={reply.id} style={{ flexDirection: 'row', marginTop: 12 }}>
+		<Animated.View
+			entering={FadeInDown.duration(200)}
+			key={reply.id}
+			style={{
+				flexDirection: 'row',
+				marginTop: 12,
+				borderRadius: 16,
+				backgroundColor: highlightedTargetId === reply.id ? colors.successSurface : 'transparent',
+				padding: highlightedTargetId === reply.id ? 6 : 0,
+			}}
+		>
 			<UserAvatar
 				profileImage={reply.author.profileImage}
 				firstName={reply.author.firstName || reply.author.userName}
@@ -603,6 +679,7 @@ export default function CommentsModal({
 						behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
 					>
 						<ScrollView
+							ref={commentsScrollRef}
 							style={{ flex: 1 }}
 							contentContainerStyle={{ padding: 14, paddingBottom: 28 }}
 							keyboardShouldPersistTaps="handled"
@@ -716,7 +793,14 @@ export default function CommentsModal({
 									<Animated.View
 										entering={FadeInDown.duration(220)}
 										key={comment.id}
-										style={{ flexDirection: 'row', marginBottom: 20 }}
+										onLayout={(event) => handleFocusedRootLayout(event, comment.id)}
+										style={{
+											flexDirection: 'row',
+											marginBottom: 20,
+											borderRadius: 18,
+											backgroundColor: highlightedTargetId === comment.id ? colors.successSurface : 'transparent',
+											padding: highlightedTargetId === comment.id ? 8 : 0,
+										}}
 									>
 										<UserAvatar
 											profileImage={comment.author.profileImage}

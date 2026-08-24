@@ -43,6 +43,7 @@ type DashboardTab =
 	| 'reports';
 type CommunityDashboardSheetProps = {
 	visible: boolean;
+	initialTab?: DashboardTab;
 	community: CommunityCardModel;
 	members: ResourceState<CommunityPage<CommunityMember>>;
 	requests: ResourceState<CommunityPage<CommunityJoinRequest>>;
@@ -72,6 +73,7 @@ const TABS: { value: DashboardTab; label: string }[] = [
 
 export default function CommunityDashboardSheet({
 	visible,
+	initialTab = 'overview',
 	community,
 	members,
 	requests,
@@ -94,10 +96,11 @@ export default function CommunityDashboardSheet({
 
 	useEffect(() => {
 		if (!visible) return;
+		setTab(initialTab);
 		onLoadDashboard();
 		onLoadMembers();
 		onLoadRequests();
-	}, [onLoadDashboard, onLoadMembers, onLoadRequests, visible]);
+	}, [initialTab, onLoadDashboard, onLoadMembers, onLoadRequests, visible]);
 
 	useEffect(() => {
 		if (!visible) {

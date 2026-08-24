@@ -1,5 +1,9 @@
 # Native Build & Standalone Stability Rules
 
+## Scope Control
+
+Use native build work only when explicitly requested or strictly necessary for the requested native change. Do not run extra builds, modify unrelated native code, or broaden the task; report optional work separately.
+
 ## 1. Firebase Configuration Integrity
 - **Real `google-services.json`**: Always use genuine client config downloaded from Firebase Console for `com.ourlime.app`. Never commit dummy placeholder values or server private keys.
 - **Config Plugin Parity**: Every `@react-native-firebase/*` package in `package.json` that requires native Gradle hooks (like `@react-native-firebase/crashlytics`) MUST be listed in `app.json` plugins.

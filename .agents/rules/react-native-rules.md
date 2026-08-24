@@ -1,5 +1,9 @@
 # React Native & Expo Rules
 
+## Scope Control
+
+Apply these rules only to the requested React Native work and its minimum dependencies. Do not add unrelated screens, UX changes, native work, or builds without explicit authorization.
+
 ## 1. Safe Area & Layout Management
 - **SafeAreaView**: Use `SafeAreaView` from `react-native-safe-area-context` for screens with headers. Specify explicit `edges` (e.g., `edges={['top', 'left', 'right']}`).
 - **KeyboardAvoidingView**: Position top headers **outside** `KeyboardAvoidingView` so software keyboard expansion does not shift or hide fixed top navigation headers.

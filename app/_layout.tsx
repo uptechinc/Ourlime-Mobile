@@ -1,6 +1,5 @@
 import '@/lib/shims/codegenNativeComponent';
-import { Stack, useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { Stack } from 'expo-router';
 import { ActivityIndicator, LogBox, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAuthGuard } from '@/lib/hooks/useAuthGuard';
@@ -8,8 +7,6 @@ import './globals.css';
 import { NotificationProvider } from '@/lib/contexts/NotificationContext';
 import { PageAccessProvider } from '@/lib/contexts/PageAccessContext';
 import PageAccessOverlay from '@/components/pageAccess/PageAccessOverlay';
-import { pushNotificationService } from '@/lib/services/PushNotificationService';
-import { platformEnvironmentService } from '@/lib/services/PlatformEnvironmentService';
 import { AppDataProvider } from '@/lib/contexts/AppDataContext';
 import { AppErrorBoundary } from '@/components/ui/AppErrorBoundary';
 import { errorLogService } from '@/lib/services/ErrorLogService';
@@ -21,7 +18,7 @@ import GlobalCallOverlay from '@/components/calls/GlobalCallOverlay';
 import InAppNotificationBanner from '@/components/ui/InAppNotificationBanner';
 import { crashReportingService } from '@/lib/services/CrashReportingService';
 import { memoryPressureService } from '@/lib/services/MemoryPressureService';
-import { nativeCallService } from '@/lib/services/NativeCallService';
+import NotificationNavigationCoordinator from '@/components/providers/NotificationNavigationCoordinator';
 
 export { RouteErrorBoundary as ErrorBoundary } from '@/components/ui/AppErrorBoundary';
 
@@ -41,7 +38,7 @@ LogBox.ignoreLogs([
 ]);
 
 function AppRouteTree() {
-  const { isInitializing } = useAuthGuard();
+  const { user, isInitializing } = useAuthGuard();
   const { colors } = useAppTheme();
 
   if (isInitializing) {
@@ -71,6 +68,7 @@ function AppRouteTree() {
             <Stack.Screen name="(auth)/login" options={{ animation: 'none' }} />
             <Stack.Screen name="(auth)/register" options={{ animation: 'slide_from_right' }} />
           </Stack>
+          <NotificationNavigationCoordinator userId={user?.uid ?? null} />
           <PageAccessOverlay />
           <GlobalCallOverlay />
           <InAppNotificationBanner />
@@ -83,40 +81,6 @@ function AppRouteTree() {
 }
 
 export default function Layout() {
-  const router = useRouter();
-  const handledResponseIds = useRef(new Set<string>());
-
-  useEffect(() => {
-    pushNotificationService.configureForegroundPresentation();
-    if (!platformEnvironmentService.isNativePushSupported()) return;
-
-    let subscription: { remove: () => void } | null = null;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const Notifications = require('expo-notifications') as typeof import('expo-notifications');
-      const handleResponse = async (response: import('expo-notifications').NotificationResponse) => {
-        const responseId = `${response.notification.request.identifier}:${response.actionIdentifier}`;
-        if (handledResponseIds.current.has(responseId)) return;
-        handledResponseIds.current.add(responseId);
-        const handledAsCall = await nativeCallService.handleNotificationResponse(
-          response.notification.request.content.data,
-          response.actionIdentifier,
-        );
-        if (handledAsCall) return;
-        router.push(pushNotificationService.resolveNotificationDestination(response.notification.request.content.data));
-      };
-      subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-        void handleResponse(response);
-      });
-      void Notifications.getLastNotificationResponseAsync().then((response) => {
-        if (response) void handleResponse(response);
-      });
-    } catch {
-      // Remote push listeners are unavailable in Expo Go.
-    }
-    return () => subscription?.remove();
-  }, [router]);
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AppErrorBoundary>

@@ -23,11 +23,13 @@ import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 type PostCardSectionProps = {
   post: PostItem;
   isVisible?: boolean;
+  isProfileRepost?: boolean;
   canModerateCommunityPost?: boolean;
   onCommentClick: (postId: string) => void;
   onPostDelete: (postId: string) => void;
   onAuthorBlocked: (userId: string) => void;
   onPostUpdate: (post: PostItem) => void;
+  onRepostRemoved?: (postId: string, updatedPost: PostItem) => void;
 };
 
 const postService = PostService.getInstance();
@@ -43,7 +45,7 @@ const formatTimestamp = (createdAt: string): string => {
   return createdDate.toLocaleDateString();
 };
 
-export default function PostCardSection({ post, isVisible = false, canModerateCommunityPost = false, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate }: PostCardSectionProps) {
+export default function PostCardSection({ post, isVisible = false, isProfileRepost = false, canModerateCommunityPost = false, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate, onRepostRemoved }: PostCardSectionProps) {
   const router = useRouter();
   const { colors, isDark } = useAppTheme();
   const { activeUserId: currentUserId } = useAppData();
@@ -53,6 +55,8 @@ export default function PostCardSection({ post, isVisible = false, canModerateCo
   const [shareCount, setShareCount] = useState(post.stats.shares);
   const [hasShared, setHasShared] = useState(false);
   const [isReposted, setIsReposted] = useState(post.repostedByViewer === true);
+  const [removeRepostVisible, setRemoveRepostVisible] = useState(false);
+  const [repostBusy, setRepostBusy] = useState(false);
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [likesVisible, setLikesVisible] = useState(false);
   const [eventAttendance, setEventAttendance] = useState<{ isAttending: boolean; attendeeCount: number }>();
@@ -135,24 +139,61 @@ export default function PostCardSection({ post, isVisible = false, canModerateCo
     }
   };
 
-  const handleRepost = async () => {
+  const handleCreateRepost = async () => {
     if (!currentUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to repost.' });
+    setRepostBusy(true);
     try {
-      if (isReposted) {
-        await postService.removeRepost(post.id);
-        const nextCount = Math.max(0, shareCount - 1);
-        setIsReposted(false);
-        setShareCount(nextCount);
-        onPostUpdate({ ...post, repostedByViewer: false, stats: { ...post.stats, shares: nextCount } });
-      } else {
-        await postService.repost(post.id);
-        const nextCount = shareCount + 1;
-        setIsReposted(true);
-        setShareCount(nextCount);
-        onPostUpdate({ ...post, repostedByViewer: true, stats: { ...post.stats, shares: nextCount } });
-      }
+      await postService.repost(post.id);
+      const nextCount = shareCount + 1;
+      const nextRepostedByUserIds = currentUserId
+        ? Array.from(new Set([...(post.repostedByUserIds ?? []), currentUserId]))
+        : post.repostedByUserIds;
+      setIsReposted(true);
+      setShareCount(nextCount);
+      onPostUpdate({ ...post, repostedByViewer: true, repostedByUserIds: nextRepostedByUserIds, stats: { ...post.stats, shares: nextCount } });
     } catch (error: unknown) {
       setFeedback({ title: 'Repost not updated', message: error instanceof Error ? error.message : 'Please try again' });
+    } finally {
+      setRepostBusy(false);
+    }
+  };
+
+  const handleRepostPress = () => {
+    if (!currentUserId) {
+      setFeedback({ title: 'Sign in required', message: 'Sign in to repost.' });
+      return;
+    }
+    if (isReposted) {
+      setRemoveRepostVisible(true);
+      return;
+    }
+    void handleCreateRepost();
+  };
+
+  const handleConfirmRemoveRepost = async () => {
+    if (repostBusy) return;
+    setRepostBusy(true);
+    try {
+      await postService.removeRepost(post.id);
+      const nextCount = Math.max(0, shareCount - 1);
+      const updatedPost = {
+        ...post,
+        repostedByViewer: false,
+        repostedByUserIds: currentUserId
+          ? post.repostedByUserIds?.filter((reposterUserId) => reposterUserId !== currentUserId)
+          : post.repostedByUserIds,
+        stats: { ...post.stats, shares: nextCount },
+      };
+      setIsReposted(false);
+      setShareCount(nextCount);
+      setRemoveRepostVisible(false);
+      if (onRepostRemoved) onRepostRemoved(post.id, updatedPost);
+      else onPostUpdate(updatedPost);
+    } catch (error: unknown) {
+      setRemoveRepostVisible(false);
+      setFeedback({ title: 'Repost not removed', message: error instanceof Error ? error.message : 'Please try again' });
+    } finally {
+      setRepostBusy(false);
     }
   };
 
@@ -161,6 +202,12 @@ export default function PostCardSection({ post, isVisible = false, canModerateCo
     <View style={[feedCardContainerStyle, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       {/* Header & Caption Section */}
       <View style={{ paddingHorizontal: 16 }}>
+        {isProfileRepost ? (
+          <View accessibilityLabel="Reposted post" style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 10, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: isDark ? '#064e3b' : '#ecfdf5' }}>
+            <Icon name="repeat" size={14} color={isDark ? '#6ee7b7' : '#047857'} />
+            <Text style={{ marginLeft: 6, color: isDark ? '#6ee7b7' : '#047857', fontSize: 12, fontWeight: '800' }}>Reposted</Text>
+          </View>
+        ) : null}
         {/* Community Post Header Badge */}
         {post.communityName ? (
           <TouchableOpacity
@@ -273,13 +320,26 @@ export default function PostCardSection({ post, isVisible = false, canModerateCo
             <Icon name="share-2" size={22} color={colors.icon} />
             <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text>
           </AnimatedActionButton> : null}
-          {!post.communityId ? <AnimatedActionButton onPress={() => void handleRepost()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }} accessibilityLabel={isReposted ? 'Remove repost' : 'Repost'}><Icon name="repeat" size={22} color={isReposted ? '#10b981' : colors.icon} /></AnimatedActionButton> : null}
+          {!post.communityId ? <AnimatedActionButton disabled={repostBusy} onPress={handleRepostPress} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, opacity: repostBusy ? 0.6 : 1 }} accessibilityLabel={isReposted ? 'Remove repost' : 'Repost'}><Icon name="repeat" size={22} color={isReposted ? '#10b981' : colors.icon} /></AnimatedActionButton> : null}
         </View>
       </View>
 
       <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} canModerateCommunityPost={canModerateCommunityPost} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} onPostUpdate={onPostUpdate} />
       <LikesModal visible={likesVisible} postId={post.id} origin={post.origin} onClose={() => setLikesVisible(false)} />
     </View>
+    <CustomModal
+      visible={removeRepostVisible}
+      type="warning"
+      title="Remove this repost?"
+      message="This post will disappear from your profile. The original post will remain available to its author and audience."
+      confirmText="Remove repost"
+      cancelText="Keep it"
+      isLoading={repostBusy}
+      onConfirm={() => void handleConfirmRemoveRepost()}
+      onClose={() => {
+        if (!repostBusy) setRemoveRepostVisible(false);
+      }}
+    />
     <CustomModal visible={feedback !== null} type="danger" title={feedback?.title ?? ''} message={feedback?.message ?? ''} onClose={() => setFeedback(null)} />
     </>
   );

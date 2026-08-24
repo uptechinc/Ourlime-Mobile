@@ -1,0 +1,7 @@
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { supportTicketService } from '@/lib/services/SupportTicketService';
+export default function VerifySupportTicketScreen() { const { token } = useLocalSearchParams<{ token?: string }>(); const router = useRouter(); const { colors } = useAppTheme(); const [error, setError] = useState(''); useEffect(() => { if (!token) { setError('This verification link is incomplete.'); return; } void supportTicketService.verifyGuest(token).then((ticketId) => router.replace(`/help/tickets/${ticketId}` as Href)).catch((verifyError: unknown) => setError(verifyError instanceof Error ? verifyError.message : 'This verification link is invalid or expired.')); }, [router, token]); return <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 25, backgroundColor: colors.canvas }}>{error ? <View><Text style={{ color: colors.text, fontSize: 20, fontWeight: '900', textAlign: 'center' }}>Ticket not verified</Text><Text style={{ marginTop: 8, color: colors.mutedText, textAlign: 'center' }}>{error}</Text></View> : <><ActivityIndicator color={colors.accent} /><Text style={{ marginTop: 13, color: colors.text, fontWeight: '900' }}>Verifying your private ticket…</Text></>}</SafeAreaView>; }

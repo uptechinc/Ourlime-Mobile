@@ -1,5 +1,9 @@
 # Object-Oriented Architecture (OOP) Rules
 
+## Scope Control
+
+Apply this architecture within the user’s explicit request. Do not turn a focused change into an unrelated service refactor; report adjacent opportunities rather than implementing them without authorization.
+
 ## 1. Service Layer Pattern
 - Business logic, data operations, and API communication belong inside OOP Service classes.
 - Service classes use singleton instances (e.g. `ChatService.getInstance()`) or class methods.

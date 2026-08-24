@@ -102,6 +102,7 @@ export type PostItem = {
   location?: PostLocation;
   repostedFrom?: RepostedFrom;
   repostedByViewer?: boolean;
+  repostedByUserIds?: string[];
   relationshipStatus?: PostRelationshipStatus;
   communityId?: string;
   communityName?: string;
@@ -985,6 +986,14 @@ export class PostService {
       likedUserIds
     );
     const repostedFromRecord = isRecord(value.repostedFrom) ? value.repostedFrom : null;
+    const repostedByUserIds = Array.isArray(value.repostedBy)
+      ? value.repostedBy.flatMap((reposter): string[] => {
+          const reposterUserId = typeof reposter === 'string'
+            ? reposter
+            : isRecord(reposter) ? readString(reposter.id) : '';
+          return reposterUserId ? [reposterUserId] : [];
+        })
+      : [];
     const relationshipRecord = isRecord(value.relationshipStatus) ? value.relationshipStatus : null;
     return {
       ...post,
@@ -997,6 +1006,7 @@ export class PostService {
         profileImage: readString(repostedFromRecord.profileImage) || undefined,
       } : undefined,
       repostedByViewer: value.repostedByViewer === true,
+      repostedByUserIds,
       relationshipStatus: relationshipRecord ? {
         isFollowing: relationshipRecord.isFollowing === true,
         friendshipStatus: this.readFriendshipStatus(relationshipRecord.friendshipStatus),

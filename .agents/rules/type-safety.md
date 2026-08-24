@@ -1,5 +1,9 @@
 # Strict TypeScript & Type-Safety Rules (Evolution One CMS Standard)
 
+## Scope Control
+
+Enforce type safety within the requested change. Do not use type cleanup as permission for unrelated refactors; report broader cleanup separately.
+
 ## 1. Zero-`any` & Zero-Lazy-Record Policy
 - **Never** use `any` for variables, function parameters, or component props.
 - **Never** use `Record<string, unknown>` when a concrete type or `Partial<Pick<...>>` can be specified.

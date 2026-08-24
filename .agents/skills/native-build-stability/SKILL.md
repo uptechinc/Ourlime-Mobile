@@ -5,6 +5,10 @@ description: Guidelines and best practices for standalone React Native / Expo AP
 
 # Native Build Stability & Standalone APK/IPA Guidelines
 
+## Scope Control
+
+Use this skill only when native build work is explicitly requested or strictly necessary for the requested native change. Do not run extra builds, modify unrelated native code, or broaden the task; report optional work separately.
+
 This skill documents critical practices to ensure standalone production/preview builds (`.apk`, `.aab`, `.ipa`) run smoothly without native startup crashes or TurboModule reflection failures.
 
 ---

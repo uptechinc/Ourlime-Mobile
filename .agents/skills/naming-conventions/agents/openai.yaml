@@ -1,4 +1,4 @@
 interface:
   display_name: "Naming Conventions & Code Discipline"
   short_description: "Naming conventions, OOP service architecture, prop typing, and handler discipline"
-  default_prompt: "Use $naming-conventions to ensure all components, props, hooks, and services strictly follow Ourlime naming and code discipline."
+  default_prompt: "Use $naming-conventions to ensure requested components, props, hooks, and services follow Ourlime naming and code discipline. Stay within the user’s explicit scope and report adjacent improvements instead of implementing them without authorization."

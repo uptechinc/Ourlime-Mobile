@@ -5,6 +5,10 @@ description: Standard procedure for fixing React Native / Expo safe area header 
 
 # React Native Safe Area Header & Navigation Fix Skill
 
+## Scope Control
+
+Use this skill only for the requested navigation or safe-area issue and its minimum dependencies. Do not change unrelated routes, UX, native code, or builds without explicit authorization.
+
 This skill documents the exact solution implemented for header rendering, Android status bar padding, software keyboard handling, and stack navigation transitions in React Native / Expo Router.
 
 ## Problem Pattern

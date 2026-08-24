@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Vibration } from 'react-native';
 import { onAuthStateChanged } from 'firebase/auth';
+import { useRouter } from 'expo-router';
 import { doc, updateDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
 import { agoraCallService } from '@/lib/services/AgoraCallService';
@@ -29,15 +30,27 @@ type CallProviderProps = { children: ReactNode };
 const CallContext = createContext<CallContextValue | null>(null);
 
 export function CallProvider({ children }: CallProviderProps) {
+  const router = useRouter();
   const logger = useMemo(() => DiagnosticLogService.getInstance(), []);
   const callUnsubscribeRef = useRef<Unsubscribe | null>(null);
   const incomingCallUnsubscribeRef = useRef<Unsubscribe | null>(null);
   const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const operationRef = useRef<Promise<void> | null>(null);
+  const postCallNavigationIdsRef = useRef(new Set<string>());
   const session = useCallStore((state) => state.session);
   const isMuted = useCallStore((state) => state.isMuted);
   const isVideoMuted = useCallStore((state) => state.isVideoMuted);
   const isSpeakerEnabled = useCallStore((state) => state.isSpeakerEnabled);
+
+  const scheduleAnsweredCallChat = useCallback((completedSession: CallSession) => {
+    const wasAnswered = completedSession.state === 'active' || completedSession.answeredAtMs !== null;
+    if (!wasAnswered || postCallNavigationIdsRef.current.has(completedSession.id)) return;
+    const currentUserId = auth.currentUser?.uid;
+    const peerId = completedSession.caller.userId === currentUserId ? completedSession.callee.userId : completedSession.caller.userId;
+    if (!peerId) return;
+    postCallNavigationIdsRef.current.add(completedSession.id);
+    setTimeout(() => router.push({ pathname: '/chat/[id]', params: { id: peerId } }), 400);
+  }, [router]);
 
   const subscribeToCall = useCallback((callId: string) => {
     callUnsubscribeRef.current?.();
@@ -50,6 +63,9 @@ export function CallProvider({ children }: CallProviderProps) {
         void nativeCallService.markConnected(nextSession.id);
       }
       if (nextSession.state === 'ended') {
+        scheduleAnsweredCallChat(currentSession?.id === nextSession.id
+          ? { ...nextSession, answeredAtMs: nextSession.answeredAtMs ?? currentSession.answeredAtMs ?? (currentSession.state === 'active' ? Date.now() : null) }
+          : nextSession);
         void agoraCallService.leave();
         void nativeCallService.endNativeCall(nextSession.id, nextSession.endReason);
         useCallStore.getState().setConnectionStatus('ending');
@@ -63,7 +79,7 @@ export function CallProvider({ children }: CallProviderProps) {
         });
       }
     }, (message) => useCallStore.getState().setError(message));
-  }, []);
+  }, [scheduleAnsweredCallChat]);
 
   const joinRtc = useCallback(async (activeSession: CallSession) => {
     const credentials = await callService.getRtcCredentials(activeSession.id);
@@ -86,7 +102,11 @@ export function CallProvider({ children }: CallProviderProps) {
     if (payload.type === 'call_state') {
       if (payload.state === 'ended') {
         await nativeCallService.endNativeCall(payload.callId, payload.endReason ?? null);
-        if (useCallStore.getState().session?.id === payload.callId) useCallStore.getState().reset();
+        const currentSession = useCallStore.getState().session;
+        if (currentSession?.id === payload.callId) {
+          scheduleAnsweredCallChat(currentSession);
+          useCallStore.getState().reset();
+        }
       }
       return;
     }
@@ -104,7 +124,7 @@ export function CallProvider({ children }: CallProviderProps) {
     } catch (error: unknown) {
       logger.error('CallCoordinator', 'incoming', error, { callId: payload.callId });
     }
-  }, [logger, subscribeToCall]);
+  }, [logger, scheduleAnsweredCallChat, subscribeToCall]);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -237,6 +257,7 @@ export function CallProvider({ children }: CallProviderProps) {
           useCallStore.getState().setConnectionStatus('active');
         }
       } else {
+        scheduleAnsweredCallChat(current);
         void (async () => {
           try {
             await updateDoc(doc(db, 'calls', current.id), {
@@ -258,7 +279,7 @@ export function CallProvider({ children }: CallProviderProps) {
         useCallStore.getState().setError(error instanceof Error ? error.message : 'The call action failed.');
       }
     }
-  }), [joinRtc, runExclusive]);
+  }), [joinRtc, runExclusive, scheduleAnsweredCallChat]);
 
   const answerCall = useCallback(() => performAction('answer'), [performAction]);
   const declineCall = useCallback(() => performAction('decline'), [performAction]);

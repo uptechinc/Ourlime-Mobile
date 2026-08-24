@@ -1,4 +1,4 @@
 interface:
   display_name: "Instant Mobile Resources"
   short_description: "Preload and cache Ourlime screens safely"
-  default_prompt: "Use $instant-mobile-resources to make an Ourlime Mobile page render cached data instantly and refresh safely."
+  default_prompt: "Use $instant-mobile-resources to make an Ourlime Mobile page render cached data instantly and refresh safely. Stay within the user’s explicit scope and report adjacent improvements instead of implementing them without authorization."

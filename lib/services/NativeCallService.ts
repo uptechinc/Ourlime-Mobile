@@ -4,6 +4,7 @@ import { apiService } from './ApiService';
 import { callService } from './CallService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { platformEnvironmentService } from './PlatformEnvironmentService';
+import { notificationSoundPreferenceService } from './NotificationSoundPreferenceService';
 import type { CallEndReason, CallPushPayload, CallSession } from '@/lib/types/call';
 
 type NativeCallCallbacks = {
@@ -23,17 +24,19 @@ type AndroidIncomingCallModule = {
   cancelIncomingCall: (callId: string) => Promise<void>;
   startRingtone: () => Promise<void>;
   stopRingtone: () => Promise<void>;
+  openNotificationSettings: () => Promise<void>;
   consumePendingInteraction: () => Promise<unknown>;
   addListener: (eventName: string) => void;
   removeListeners: (count: number) => void;
 };
 
 const TOKENS_KEY = 'ourlime:native-call-tokens';
-const ANDROID_CALL_CHANNEL_ID = 'ourlime-calls-v2';
+const ANDROID_CALL_CHANNEL_ID = 'ourlime-calls-v3';
 const CALL_NOTIFICATION_CATEGORY_ID = 'ourlime-incoming-call';
 const CALL_ANSWER_ACTION_ID = 'ourlime-call-answer';
 const CALL_DECLINE_ACTION_ID = 'ourlime-call-decline';
 const ANDROID_CALL_INTERACTION_EVENT = 'OurlimeIncomingCallInteraction';
+const INTERACTION_DEDUPE_RETENTION_MS = 2 * 60 * 1000;
 
 function getAndroidIncomingCallModule(): AndroidIncomingCallModule | null {
   if (Platform.OS !== 'android') return null;
@@ -56,6 +59,8 @@ export class NativeCallService {
   private subscriptions: NativeSubscription[] = [];
   private readonly ringingTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly pendingInteractions = new Map<string, PendingCallInteraction>();
+  private readonly handledInteractions = new Map<string, number>();
+  private readonly displayedCallIds = new Set<string>();
   private initialized = false;
   private backgroundHandlerRegistered = false;
   private androidInteractionSubscription: NativeSubscription | null = null;
@@ -118,12 +123,12 @@ export class NativeCallService {
           },
         });
         this.subscriptions.push(
-          RNCallKeep.addEventListener('answerCall', ({ callUUID }) => this.callbacks?.onAnswer(callUUID)),
-          RNCallKeep.addEventListener('endCall', ({ callUUID }) => this.callbacks?.onDecline(callUUID)),
+          RNCallKeep.addEventListener('answerCall', ({ callUUID }) => this.dispatchCallAction(callUUID, 'answer')),
+          RNCallKeep.addEventListener('endCall', ({ callUUID }) => this.dispatchCallAction(callUUID, 'decline')),
           RNCallKeep.addEventListener('didLoadWithEvents', (events) => {
             events.forEach((event) => {
-              if (event.name === 'RNCallKeepPerformAnswerCallAction') this.callbacks?.onAnswer(event.data.callUUID);
-              if (event.name === 'RNCallKeepPerformEndCallAction') this.callbacks?.onDecline(event.data.callUUID);
+              if (event.name === 'RNCallKeepPerformAnswerCallAction') this.dispatchCallAction(event.data.callUUID, 'answer');
+              if (event.name === 'RNCallKeepPerformEndCallAction') this.dispatchCallAction(event.data.callUUID, 'decline');
             });
           }),
         );
@@ -140,20 +145,32 @@ export class NativeCallService {
     if (payload.type === 'incoming_call' && Date.now() >= payload.expiresAtMs) return;
     this.dispatchInteraction(payload, 'open');
     if (payload.type !== 'incoming_call') return;
+    if (this.displayedCallIds.has(payload.callId)) return;
+    this.displayedCallIds.add(payload.callId);
     if (!this.isAvailable()) return;
     if (Platform.OS === 'ios') {
+      const customSoundPlaying = AppState.currentState === 'active'
+        ? await notificationSoundPreferenceService.playIncomingCallSound().catch(() => false)
+        : false;
+      if (customSoundPlaying) {
+        this.logger.info('NativeCallService', 'ios:foreground-custom-ringtone', { callId: payload.callId });
+      } else {
       try {
         const RNCallKeep = (await import('react-native-callkeep')).default;
         RNCallKeep.displayIncomingCall(payload.callId, payload.callerUserName || payload.callerId, payload.callerName, 'generic', payload.callType === 'video', payload);
       } catch (error: unknown) {
         this.logger.warn('NativeCallService', 'callkeep:display-failed', { message: error instanceof Error ? error.message : String(error) });
       }
+      }
     } else if (Platform.OS === 'android' && AppState.currentState === 'active') {
-      await getAndroidIncomingCallModule()?.startRingtone().catch((error: unknown) => {
-        this.logger.warn('NativeCallService', 'android:ringtone-start-failed', {
-          message: error instanceof Error ? error.message : String(error),
+      const customSoundPlaying = await notificationSoundPreferenceService.playIncomingCallSound().catch(() => false);
+      if (!customSoundPlaying) {
+        await getAndroidIncomingCallModule()?.startRingtone().catch((error: unknown) => {
+          this.logger.warn('NativeCallService', 'android:ringtone-start-failed', {
+            message: error instanceof Error ? error.message : String(error),
+          });
         });
-      });
+      }
     } else if (Platform.OS === 'android') {
       try {
         const nativeModule = getAndroidIncomingCallModule();
@@ -199,6 +216,7 @@ export class NativeCallService {
 
   public async markConnected(callId: string): Promise<void> {
     this.clearRingingTimer(callId);
+    notificationSoundPreferenceService.stop('call');
     if (Platform.OS === 'android') {
       try {
         await getAndroidIncomingCallModule()?.stopRingtone().catch(() => {});
@@ -220,6 +238,8 @@ export class NativeCallService {
 
   public async endNativeCall(callId: string, reason: CallEndReason | null): Promise<void> {
     this.clearRingingTimer(callId);
+    this.displayedCallIds.delete(callId);
+    notificationSoundPreferenceService.stop('call');
     this.pendingInteractions.delete(callId);
     if (Platform.OS === 'android') {
       try {
@@ -255,6 +275,7 @@ export class NativeCallService {
   }
 
   public dispose(): void {
+    notificationSoundPreferenceService.stop('call');
     void getAndroidIncomingCallModule()?.stopRingtone().catch(() => {});
     this.subscriptions.forEach((subscription) => subscription.remove());
     this.subscriptions = [];
@@ -263,6 +284,14 @@ export class NativeCallService {
     this.androidInteractionSubscription = null;
     this.ringingTimers.forEach((timer) => clearTimeout(timer));
     this.ringingTimers.clear();
+    this.displayedCallIds.clear();
+  }
+
+  public async openSystemNotificationSettings(): Promise<void> {
+    if (Platform.OS !== 'android') return;
+    const nativeModule = getAndroidIncomingCallModule();
+    if (!nativeModule) throw new Error('System notification settings are unavailable in this build.');
+    await nativeModule.openNotificationSettings();
   }
 
   private async initializePushTransports(): Promise<void> {
@@ -331,6 +360,7 @@ export class NativeCallService {
       this.pendingInteractions.set(payload.callId, { payload, action });
       return;
     }
+    if (!this.claimInteraction(payload.callId, action)) return;
     if (action === 'answer') {
       this.callbacks.onAnswer(payload.callId);
       return;
@@ -340,6 +370,23 @@ export class NativeCallService {
       return;
     }
     this.callbacks.onIncomingCall(payload);
+  }
+
+  private dispatchCallAction(callId: string, action: Exclude<CallNotificationAction, 'open'>): void {
+    if (!this.callbacks || !this.claimInteraction(callId, action)) return;
+    if (action === 'answer') this.callbacks.onAnswer(callId);
+    else this.callbacks.onDecline(callId);
+  }
+
+  private claimInteraction(callId: string, action: CallNotificationAction): boolean {
+    const now = Date.now();
+    for (const [key, handledAtMs] of this.handledInteractions) {
+      if (now - handledAtMs > INTERACTION_DEDUPE_RETENTION_MS) this.handledInteractions.delete(key);
+    }
+    const interactionKey = `${callId}:${action}`;
+    if (this.handledInteractions.has(interactionKey)) return false;
+    this.handledInteractions.set(interactionKey, now);
+    return true;
   }
 
   private drainPendingInteractions(): void {
