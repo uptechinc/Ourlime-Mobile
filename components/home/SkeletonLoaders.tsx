@@ -11,12 +11,12 @@ export function SkeletonPostCard() {
       style={{
         width: '100%',
         backgroundColor: colors.surface,
-        borderRadius: 0,
+        borderRadius: 18,
         paddingVertical: 14,
-        marginBottom: 12,
-        borderTopWidth: 1,
-        borderBottomWidth: 1,
+        marginBottom: 14,
+        borderWidth: 1,
         borderColor: colors.border,
+        overflow: 'hidden',
       }}
     >
       {/* Header Row */}

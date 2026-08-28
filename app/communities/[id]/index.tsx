@@ -1001,7 +1001,7 @@ export default function CommunityDetailScreen() {
 										</View>
 									) : posts.length ? (
 										posts.map((post) => (
-											<View key={post.id} style={{ marginBottom: 13 }}>
+											<View key={post.id} style={{ paddingHorizontal: 12, marginBottom: 14 }}>
 												<PostCardSection
 													post={post}
 													canModerateCommunityPost={

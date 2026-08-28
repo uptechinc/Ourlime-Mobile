@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image, Platform } from "react-native";
@@ -14,7 +14,6 @@ const authService = AuthService.getInstance();
 const conversationResourceService = ConversationResourceService.getInstance();
 
 const TabLayout = () => {
-  const [isDeveloper, setIsDeveloper] = useState(false);
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 20);
@@ -26,16 +25,11 @@ const TabLayout = () => {
   useEffect(() => {
     const unsub = authService.subscribeToVerifiedAuthState((user) => {
       if (!user) {
-        setIsDeveloper(false);
         conversationResourceService.stopRealtime();
         return;
       }
       conversationResourceService.startRealtime(user.uid);
       void conversationResourceService.hydrate(user.uid).then(() => conversationResourceService.refresh(user.uid));
-      void authService.getUserProfile(user.uid).then((profile) => {
-        const role = profile?.accountType?.toLowerCase() ?? '';
-        setIsDeveloper(role === 'developer' || role === 'dev' || profile?.isDeveloper === true);
-      }).catch(() => setIsDeveloper(false));
     });
     return () => unsub();
   }, []);
@@ -111,7 +105,6 @@ const TabLayout = () => {
         name="Limes"
         options={{
           title: "Limes",
-          href: isDeveloper ? undefined : null,
           tabBarStyle: {
             backgroundColor: colors.navigation,
             borderTopWidth: 1,

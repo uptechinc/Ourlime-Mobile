@@ -13,6 +13,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import CachedImage from '@/components/ui/CachedImage';
+import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components/ui/PlayfulFloatingHeart';
 
 type DisplayPostMedia = {
   id?: string;
@@ -28,6 +29,40 @@ type ImageAndVideoPostSectionProps = {
 };
 
 const MEDIA_WIDTH = Dimensions.get('window').width;
+
+function ImagePostItem({
+  url,
+  id,
+  onLike,
+}: {
+  url: string;
+  id?: string;
+  onLike?: () => void;
+}) {
+  const heartRef = useRef<PlayfulFloatingHeartRef>(null);
+  const lastTapRef = useRef<number>(0);
+
+  const handlePress = () => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 320;
+    if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+      heartRef.current?.trigger();
+      onLike?.();
+    }
+    lastTapRef.current = now;
+  };
+
+  return (
+    <Pressable onPress={handlePress} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <CachedImage
+        uri={url}
+        style={{ width: '100%', height: '100%' }}
+        recyclingKey={id ?? url}
+      />
+      <PlayfulFloatingHeart ref={heartRef} size={92} />
+    </Pressable>
+  );
+}
 
 function VideoPostItem({
   url,
@@ -49,10 +84,7 @@ function VideoPostItem({
   const lastTapRef = useRef<number>(0);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Enhanced Heart animation for double tap like
-  const heartScale = useRef(new Animated.Value(0)).current;
-  const heartOpacity = useRef(new Animated.Value(0)).current;
-  const heartTranslateY = useRef(new Animated.Value(0)).current;
+  const heartRef = useRef<PlayfulFloatingHeartRef>(null);
 
   // Track progress position
   const [currentTime, setCurrentTime] = useState(0);
@@ -114,34 +146,6 @@ function VideoPostItem({
     };
   }, []);
 
-  const triggerHeartAnim = () => {
-    heartScale.setValue(0.3);
-    heartOpacity.setValue(1);
-    heartTranslateY.setValue(0);
-
-    Animated.parallel([
-      Animated.spring(heartScale, {
-        toValue: 1.35,
-        friction: 3,
-        tension: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(heartTranslateY, {
-        toValue: -30,
-        duration: 650,
-        useNativeDriver: true,
-      }),
-      Animated.sequence([
-        Animated.delay(350),
-        Animated.timing(heartOpacity, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]),
-    ]).start();
-  };
-
   const triggerPlayIconAnim = (type: 'play' | 'pause') => {
     setShowPlayStateIcon(type);
     playIconOpacity.setValue(1);
@@ -167,7 +171,7 @@ function VideoPostItem({
         clearTimeout(singleTapTimerRef.current);
         singleTapTimerRef.current = null;
       }
-      triggerHeartAnim();
+      heartRef.current?.trigger();
       onLike?.();
     } else {
       // Potential single tap
@@ -282,21 +286,7 @@ function VideoPostItem({
         )}
 
         {/* Floating Heart Overlay on Double Tap */}
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: '32%',
-            left: '37%',
-            opacity: heartOpacity,
-            transform: [
-              { scale: heartScale },
-              { translateY: heartTranslateY },
-            ],
-          }}
-        >
-          <Ionicons name="heart" size={88} color="#ef4444" />
-        </Animated.View>
+        <PlayfulFloatingHeart ref={heartRef} size={96} />
 
         {/* Floating Play/Pause Indicator on Single Tap */}
         {showPlayStateIcon && (
@@ -443,10 +433,10 @@ export default function ImageAndVideoPostSection({
                 onLike={onLike}
               />
             ) : item.type === 'image' ? (
-              <CachedImage
-                uri={item.typeUrl}
-                style={{ width: '100%', height: '100%' }}
-                recyclingKey={item.id ?? item.typeUrl}
+              <ImagePostItem
+                url={item.typeUrl}
+                id={item.id}
+                onLike={onLike}
               />
             ) : (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111827' }}>

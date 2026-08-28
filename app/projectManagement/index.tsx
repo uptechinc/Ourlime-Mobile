@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { Check, FolderOpen, Plus, UserRound, Users, X } from 'lucide-react-native';
+import { ArrowRight, Check, FolderOpen, Plus, UserRound, Users, X } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PageHeader from '@/components/ui/PageHeader';
@@ -98,13 +98,26 @@ export default function ProjectManagementScreen() {
         </View> : null}
         {!loading ? <View style={styles.section}>
           <Text style={styles.sectionTitle}>Your Projects ({acceptedProjects.length})</Text>
-          {acceptedProjects.length === 0 ? <View style={styles.empty}><FolderOpen size={38} color={colors.mutedText} /><Text style={styles.emptyTitle}>No projects yet</Text><Text style={styles.cardText}>Create your first project or accept a team invitation.</Text></View> : acceptedProjects.map((project) => <View key={project.id} style={[styles.card, project.id === projectId && styles.focusedCard]}>
-            <View style={styles.cardHeader}><Text style={styles.cardTitle}>{project.name}</Text><Text style={styles.status}>{project.status}</Text></View>
-            <Text style={styles.cardText}>{project.description || 'No description'}</Text>
-            <View style={styles.meta}><UserRound size={15} color={colors.mutedText} /><Text numberOfLines={1} style={[styles.metaText, styles.flex]}>Owner: {project.ownerName || 'Project owner'}</Text></View>
-            <View style={styles.meta}><Users size={15} color={colors.mutedText} /><Text style={styles.metaText}>{project.teamMembers} members · {project.totalTasks} tasks · {project.progress}%</Text></View>
-            <Text style={styles.role}>Your role: {project.role}</Text>
-          </View>)}
+          {acceptedProjects.length === 0 ? <View style={styles.empty}><FolderOpen size={38} color={colors.mutedText} /><Text style={styles.emptyTitle}>No projects yet</Text><Text style={styles.cardText}>Create your first project or accept a team invitation.</Text></View> : acceptedProjects.map((project) => (
+            <TouchableOpacity
+              key={project.id}
+              activeOpacity={0.75}
+              onPress={() => router.push(`/projectManagement/${project.id}` as never)}
+              style={[styles.card, project.id === projectId && styles.focusedCard]}
+            >
+              <View style={styles.cardHeader}><Text style={styles.cardTitle}>{project.name}</Text><Text style={styles.status}>{project.status}</Text></View>
+              <Text style={styles.cardText}>{project.description || 'No description'}</Text>
+              <View style={styles.meta}><UserRound size={15} color={colors.mutedText} /><Text numberOfLines={1} style={[styles.metaText, styles.flex]}>Owner: {project.ownerName || 'Project owner'}</Text></View>
+              <View style={styles.meta}><Users size={15} color={colors.mutedText} /><Text style={styles.metaText}>{project.teamMembers} members · {project.totalTasks} tasks · {project.progress}%</Text></View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                <Text style={styles.role}>Your role: {project.role}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.accent }}>Open Board</Text>
+                  <ArrowRight size={14} color={colors.accent} />
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
         </View> : null}
       </ScrollView>
       <Modal visible={createOpen} transparent animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}><View style={styles.modalBackdrop}><Animated.View style={[styles.modalCard, swipeDismiss.animatedStyle]}>

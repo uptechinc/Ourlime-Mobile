@@ -161,54 +161,95 @@ export default function PollCardSection({ post, isVisible = false, onCommentClic
   return (
     <>
     <View style={[feedCardContainerStyle, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <TouchableOpacity onPress={handleNavigateProfile} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-          <UserAvatar profileImage={post.user.profileImage} firstName={post.user.firstName || post.user.userName} size={48} />
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>{post.user.firstName} {post.user.lastName}</Text><IdentityBadges user={post.user} /></View>
-            <Text style={{ marginTop: 2, color: colors.mutedText, fontSize: 13 }}>@{post.user.userName} · Poll</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setOptionsVisible(true)} style={{ padding: 8 }}><Icon name="more-horizontal" size={21} color={colors.icon} /></TouchableOpacity>
-      </View>
+      <View style={{ paddingHorizontal: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={handleNavigateProfile} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <UserAvatar profileImage={post.user.profileImage} firstName={post.user.firstName || post.user.userName} size={48} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>{post.user.firstName} {post.user.lastName}</Text><IdentityBadges user={post.user} /></View>
+              <Text style={{ marginTop: 2, color: colors.mutedText, fontSize: 13 }}>@{post.user.userName} · Poll</Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setOptionsVisible(true)} style={{ padding: 8 }}><Icon name="more-horizontal" size={21} color={colors.icon} /></TouchableOpacity>
+        </View>
 
-      {locationPresentation ? <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}><Icon name={locationPresentation.isOnline ? 'link' : 'map-pin'} size={14} color="#10b981" /><Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, marginLeft: 5, color: colors.mutedText }}>{locationPresentation.detail ? `${locationPresentation.title} · ${locationPresentation.detail}` : locationPresentation.title}</Text></View> : null}
-      {post.caption ? <RichTextContent content={post.caption} style={{ marginTop: 15, color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: '700' }} /> : null}
-      {post.description && post.description !== post.caption ? <RichTextContent content={post.description} style={{ marginTop: 7, color: colors.mutedText, lineHeight: 21 }} /> : null}
-      {postUrl ? <PostLinkPreview url={postUrl} /> : null}
+        {locationPresentation ? <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}><Icon name={locationPresentation.isOnline ? 'link' : 'map-pin'} size={14} color="#10b981" /><Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, marginLeft: 5, color: colors.mutedText }}>{locationPresentation.detail ? `${locationPresentation.title} · ${locationPresentation.detail}` : locationPresentation.title}</Text></View> : null}
+        {post.caption ? <RichTextContent content={post.caption} style={{ marginTop: 15, color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: '700' }} /> : null}
+        {post.description && post.description !== post.caption ? <RichTextContent content={post.description} style={{ marginTop: 7, color: colors.mutedText, lineHeight: 21 }} /> : null}
+        {postUrl ? <PostLinkPreview url={postUrl} /> : null}
+      </View>
 
       {post.media && post.media.length > 0 ? (
         <View style={{ marginTop: 12 }}>
-          <ImageAndVideoPostSection media={post.media} isParentVisible={isVisible} />
+          <ImageAndVideoPostSection media={post.media} isParentVisible={isVisible} onLike={() => void handleLike()} />
         </View>
       ) : null}
 
-      <View style={{ marginTop: 16 }}>
-        {(post.pollOptions ?? []).map((option) => {
-          const votes = voteCounts[option.id] ?? 0;
-          const percentage = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
-          const isSelected = selectedOptionId === option.id;
-          return (
-            <TouchableOpacity key={option.id} onPress={() => void handleVote(option.id)} disabled={pollEnded} style={{ marginBottom: 10, padding: 14, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: isSelected ? '#10b981' : colors.border, backgroundColor: colors.elevated }}>
-              <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${percentage}%`, backgroundColor: isDark ? '#065f46' : '#d1fae5' }} />
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ color: colors.text, fontWeight: isSelected ? '700' : '600' }}>{option.text}</Text>
-                <Text style={{ color: colors.mutedText, fontSize: 13 }}>{percentage}% · {votes}</Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 3 }}>
-        <Text style={{ color: colors.mutedText, fontSize: 13 }}>{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}</Text>
-        <Text style={{ color: pollEnded ? '#c64d53' : '#059669', fontSize: 13, fontWeight: '600' }}>{timeRemaining}</Text>
-      </View>
-      {post.hashtags.length > 0 ? <Text style={{ marginTop: 12, color: '#059669', fontWeight: '600' }}>{post.hashtags.map((tag) => `#${tag}`).join(' ')}</Text> : null}
+      <View style={{ paddingHorizontal: 16 }}>
+        <View style={{ marginTop: 16 }}>
+          {(post.pollOptions ?? []).map((option) => {
+            const votes = voteCounts[option.id] ?? 0;
+            const percentage = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+            const isSelected = selectedOptionId === option.id;
+            return (
+              <TouchableOpacity key={option.id} onPress={() => void handleVote(option.id)} disabled={pollEnded} style={{ marginBottom: 10, padding: 14, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: isSelected ? '#10b981' : colors.border, backgroundColor: colors.elevated }}>
+                <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${percentage}%`, backgroundColor: isDark ? '#065f46' : '#d1fae5' }} />
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ color: colors.text, fontWeight: isSelected ? '700' : '600' }}>{option.text}</Text>
+                  <Text style={{ color: colors.mutedText, fontSize: 13 }}>{percentage}% · {votes}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 3 }}>
+          <Text style={{ color: colors.mutedText, fontSize: 13 }}>{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}</Text>
+          <Text style={{ color: pollEnded ? '#c64d53' : '#059669', fontSize: 13, fontWeight: '600' }}>{timeRemaining}</Text>
+        </View>
+        {post.hashtags.length > 0 ? <Text style={{ marginTop: 12, color: '#059669', fontWeight: '600' }}>{post.hashtags.map((tag) => `#${tag}`).join(' ')}</Text> : null}
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 13, borderTopWidth: 1, borderTopColor: colors.border }}>
-        <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike poll' : 'Like poll'} onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} /></AnimatedActionButton><TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 26, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#ef4444' : colors.mutedText, fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
-        <AnimatedActionButton feedback="comment" accessibilityLabel="Open poll comments" onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 26, paddingVertical: 6 }}><Icon name="message-circle" size={22} color={colors.icon} /><Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{post.stats.comments}</Text></AnimatedActionButton>
-        <AnimatedActionButton feedback="share" accessibilityLabel="Share poll" onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="share-2" size={22} color={colors.icon} /><Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text></AnimatedActionButton>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, paddingTop: 13, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike poll' : 'Like poll'} onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} /></AnimatedActionButton><TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 22, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#ef4444' : colors.mutedText, fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
+            <AnimatedActionButton feedback="comment" accessibilityLabel="Open poll comments" onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 22, paddingVertical: 6 }}><Icon name="message-circle" size={22} color={colors.icon} /><Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{post.stats.comments}</Text></AnimatedActionButton>
+            <AnimatedActionButton feedback="share" accessibilityLabel="Share poll" onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="share-2" size={22} color={colors.icon} /><Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text></AnimatedActionButton>
+          </View>
+
+          {likeCount > 0 ? (
+            <TouchableOpacity
+              onPress={() => setLikesVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${likeCount} ${likeCount === 1 ? 'like' : 'likes'}`}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 }}
+            >
+              {post.likedUsers && post.likedUsers.length > 0 ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {post.likedUsers.slice(0, 3).map((likedUser, idx) => (
+                    <View
+                      key={likedUser.id}
+                      style={{
+                        marginLeft: idx > 0 ? -10 : 0,
+                        borderWidth: 2,
+                        borderColor: colors.surface,
+                        borderRadius: 12,
+                        zIndex: 3 - idx,
+                      }}
+                    >
+                      <UserAvatar
+                        profileImage={likedUser.profileImage}
+                        firstName={likedUser.firstName || likedUser.userName}
+                        size={22}
+                      />
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <Text style={{ fontSize: 13, color: colors.mutedText, fontWeight: '600' }}>
+                {likeCount === 1 ? '1 like' : `${likeCount} likes`}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
       <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} onPostUpdate={onPostUpdate} />
       <LikesModal visible={likesVisible} postId={post.id} origin={post.origin} onClose={() => setLikesVisible(false)} />

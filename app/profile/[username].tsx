@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StatusBar,
   Share,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +29,10 @@ import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { profileResourceService } from '@/lib/services/ProfileResourceService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { presenceService, type PresenceState } from '@/lib/services/PresenceService';
+import { adminAccessService } from '@/lib/services/AdminAccessService';
+import { adminContentService } from '@/lib/services/AdminContentService';
+import type { UserDeletedPostRecord } from '@/lib/types/adminContent';
+import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 
 const authService = AuthService.getInstance();
 const relationshipService = RelationshipService.getInstance();
@@ -44,7 +49,7 @@ type ProfileModalState = {
   action?: 'block' | 'unblock' | 'report' | 'cancel_friend_request';
 };
 
-type PublicProfileTab = 'timeline' | 'friends' | 'communities' | 'about' | 'gallery';
+type PublicProfileTab = 'timeline' | 'friends' | 'communities' | 'about' | 'gallery' | 'deleted_posts';
 
 export default function UserProfileScreen() {
   const router = useRouter();
@@ -61,6 +66,9 @@ export default function UserProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<ProfileModalState>({ visible: false, type: 'info', title: '', message: '' });
   const [presence, setPresence] = useState<PresenceState | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [deletedPosts, setDeletedPosts] = useState<UserDeletedPostRecord[]>([]);
+  const [deletedPostsLoading, setDeletedPostsLoading] = useState(false);
 
   const currentUser = authService.getCurrentUser();
   const currentUserId = currentUser?.uid;
@@ -70,6 +78,56 @@ export default function UserProfileScreen() {
   const isLoading = !publicProfileResource.data && (publicProfileResource.status === 'idle' || publicProfileResource.status === 'hydrating');
   const refreshing = publicProfileResource.status === 'refreshing' && Boolean(publicProfileResource.data);
   const profileError = error ?? publicProfileResource.error?.message ?? null;
+
+  useEffect(() => {
+    adminAccessService.requireAdmin()
+      .then(() => setIsAdmin(true))
+      .catch(() => setIsAdmin(false));
+  }, []);
+
+  const loadDeletedPosts = useCallback(async () => {
+    if (!profile?.uid) return;
+    try {
+      setDeletedPostsLoading(true);
+      const posts = await adminContentService.getUserDeletedPosts(profile.uid);
+      setDeletedPosts(posts);
+    } catch {
+      setDeletedPosts([]);
+    } finally {
+      setDeletedPostsLoading(false);
+    }
+  }, [profile?.uid]);
+
+  useEffect(() => {
+    if (activeTab === 'deleted_posts' && isAdmin) {
+      void loadDeletedPosts();
+    }
+  }, [activeTab, isAdmin, loadDeletedPosts]);
+
+  const handleRestorePost = async (postId: string) => {
+    try {
+      setDeletedPostsLoading(true);
+      void interactionFeedbackService.play('post');
+      const res = await adminContentService.restoreContent({
+        contentType: 'post',
+        contentId: postId,
+        restoreReason: 'Restored from user profile by Admin',
+      });
+      if (res.success) {
+        void interactionFeedbackService.play('success');
+        setDeletedPosts((prev) => prev.filter((p) => p.id !== postId));
+        setModal({ visible: true, type: 'success', title: 'Post Restored', message: 'The post has been restored to the public feed.' });
+        void refreshProfile();
+      } else {
+        throw new Error(res.error || 'Failed to restore post');
+      }
+    } catch (err: unknown) {
+      setModal({ visible: true, type: 'danger', title: 'Restore Failed', message: err instanceof Error ? err.message : 'Could not restore post.' });
+      void interactionFeedbackService.play('warning');
+    } finally {
+      setDeletedPostsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!profile?.uid) return;
@@ -354,9 +412,21 @@ export default function UserProfileScreen() {
             style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}
             contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}
           >
-            {(['timeline', 'friends', 'communities', 'about', 'gallery'] as const).map((tab) => {
+            {([
+              'timeline',
+              'friends',
+              'communities',
+              'about',
+              'gallery',
+              ...(isAdmin ? ['deleted_posts' as const] : []),
+            ] as const).map((tab) => {
               const isActive = activeTab === tab;
-              const label = tab === 'timeline' ? 'Posts' : tab.charAt(0).toUpperCase() + tab.slice(1);
+              const label =
+                tab === 'timeline'
+                  ? 'Posts'
+                  : tab === 'deleted_posts'
+                  ? '🛡️ Deleted (Admin)'
+                  : tab.charAt(0).toUpperCase() + tab.slice(1);
               return (
                 <TouchableOpacity
                   key={tab}
@@ -365,11 +435,21 @@ export default function UserProfileScreen() {
                     paddingHorizontal: 16,
                     paddingVertical: 8,
                     borderRadius: 20,
-                    backgroundColor: isActive ? colors.selectedControl : colors.control,
+                    backgroundColor: isActive
+                      ? (tab === 'deleted_posts' ? '#ef4444' : colors.selectedControl)
+                      : colors.control,
                   }}
                   activeOpacity={0.8}
                 >
-                  <Text style={{ color: isActive ? colors.selectedText : colors.secondaryText, fontWeight: isActive ? '800' : '600', fontSize: 13 }}>
+                  <Text
+                    style={{
+                      color: isActive
+                        ? (tab === 'deleted_posts' ? '#ffffff' : colors.selectedText)
+                        : (tab === 'deleted_posts' ? '#ef4444' : colors.secondaryText),
+                      fontWeight: isActive ? '800' : '600',
+                      fontSize: 13,
+                    }}
+                  >
                     {label}
                   </Text>
                 </TouchableOpacity>
@@ -403,6 +483,100 @@ export default function UserProfileScreen() {
 
             {activeTab === 'gallery' && (
               <GalleryTab userId={profile ? profile.uid : username} />
+            )}
+
+            {activeTab === 'deleted_posts' && (
+              <View style={{ paddingHorizontal: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>
+                    Admin Deleted Posts ({deletedPosts.length})
+                  </Text>
+                  <TouchableOpacity onPress={() => void loadDeletedPosts()}>
+                    <Ionicons name="refresh" size={18} color={colors.accent} />
+                  </TouchableOpacity>
+                </View>
+
+                {deletedPostsLoading ? (
+                  <View style={{ padding: 30, alignItems: 'center' }}>
+                    <ActivityIndicator color={colors.accent} />
+                    <Text style={{ color: colors.mutedText, fontSize: 12, marginTop: 8 }}>Loading deleted posts...</Text>
+                  </View>
+                ) : deletedPosts.length === 0 ? (
+                  <View style={{ padding: 36, alignItems: 'center', backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
+                    <Ionicons name="checkmark-circle-outline" size={40} color="#10b981" />
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14, marginTop: 10 }}>
+                      No Deleted Posts
+                    </Text>
+                    <Text style={{ color: colors.mutedText, fontSize: 12, marginTop: 4 }}>
+                      This user has no moderation-deleted posts.
+                    </Text>
+                  </View>
+                ) : (
+                  deletedPosts.map((deletedPost) => (
+                    <View
+                      key={deletedPost.id}
+                      style={{
+                        backgroundColor: colors.surface,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        padding: 14,
+                        marginBottom: 12,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(239, 68, 68, 0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 6 }}>
+                            <Ionicons name="trash" size={12} color="#ef4444" />
+                          </View>
+                          <Text style={{ color: '#ef4444', fontWeight: '800', fontSize: 12 }}>
+                            Deleted Post
+                          </Text>
+                        </View>
+                        <Text style={{ color: colors.mutedText, fontSize: 11 }}>
+                          {deletedPost.deletedAt ? new Date(deletedPost.deletedAt).toLocaleDateString() : 'Removed'}
+                        </Text>
+                      </View>
+
+                      {deletedPost.caption ? (
+                        <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19, marginVertical: 4 }}>
+                          {deletedPost.caption}
+                        </Text>
+                      ) : null}
+
+                      <View style={{ marginTop: 6, padding: 8, borderRadius: 10, backgroundColor: isDark ? '#27272a' : '#fef2f2', borderLeftWidth: 3, borderLeftColor: '#ef4444' }}>
+                        <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '700' }}>
+                          Reason: {deletedPost.deletionReason}
+                        </Text>
+                        {deletedPost.deletedByName ? (
+                          <Text style={{ color: colors.mutedText, fontSize: 10, marginTop: 1 }}>
+                            Removed by: {deletedPost.deletedByName}
+                          </Text>
+                        ) : null}
+                      </View>
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+                        <TouchableOpacity
+                          onPress={() => void handleRestorePost(deletedPost.id)}
+                          style={{
+                            paddingHorizontal: 14,
+                            paddingVertical: 7,
+                            borderRadius: 10,
+                            backgroundColor: '#10b981',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Ionicons name="refresh" size={13} color="#ffffff" style={{ marginRight: 4 }} />
+                          <Text style={{ color: '#ffffff', fontSize: 11, fontWeight: '800' }}>
+                            Restore Post
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
             )}
           </View> : null}
         </ScrollView>

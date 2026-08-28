@@ -235,7 +235,7 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
 
         case 'loading':
           return (
-            <View style={{ width: '100%' }}>
+            <View style={{ paddingHorizontal: 12 }}>
               <SkeletonPostCard />
               <SkeletonPostCard />
             </View>
@@ -317,7 +317,7 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
 
         case 'post':
           return (
-            <View style={{ width: '100%', marginBottom: 12 }}>
+            <View style={{ width: '100%', paddingHorizontal: 12, marginBottom: 14 }}>
               {row.post.type === 'poll' ? (
                 <PollCardSection
                   post={row.post}

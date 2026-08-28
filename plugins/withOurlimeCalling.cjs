@@ -70,6 +70,9 @@ function withCallingMainActivity(config) {
   return withMainActivity(config, (result) => {
     if (result.modResults.language !== 'kt') return result;
     let source = result.modResults.contents;
+    if (!source.includes('import android.os.Build')) {
+      source = source.replace('import android.os.Bundle', 'import android.os.Bundle\nimport android.os.Build');
+    }
     if (!source.includes('import android.content.Intent')) {
       source = source.replace('import android.os.Bundle', 'import android.os.Bundle\nimport android.content.Intent');
     }

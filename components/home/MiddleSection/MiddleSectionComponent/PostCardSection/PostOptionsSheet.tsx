@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { Ionicons } from '@expo/vector-icons';
 import { PostService, type PostItem } from '@/lib/services/PostService';
 import { RelationshipService } from '@/lib/services/RelationshipService';
+import { adminAccessService } from '@/lib/services/AdminAccessService';
 import ReportPostModal from './ReportPostModal';
 import DeletePostModal from './DeletePostModal';
+import AdminDeletionModal from '@/components/moderation/AdminDeletionModal';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
@@ -36,10 +39,18 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
   const [friendshipStatus, setFriendshipStatus] = useState(post.relationshipStatus?.friendshipStatus ?? 'none');
   const [reportVisible, setReportVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [adminDeleteVisible, setAdminDeleteVisible] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [blockConfirmationVisible, setBlockConfirmationVisible] = useState(false);
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
   const isOwner = Boolean(currentUserId && currentUserId === post.userId);
   const canDelete = isOwner || (post.origin === 'community' && canModerateCommunityPost);
+
+  useEffect(() => {
+    adminAccessService.requireAdmin()
+      .then(() => setIsAdmin(true))
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   useEffect(() => {
     setFollowing(post.relationshipStatus?.isFollowing === true);
@@ -199,6 +210,27 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
                 </>
               ) : null}
 
+              {/* 6. Admin Delete Option (Visible to Admins) */}
+              {isAdmin ? (
+                <TouchableOpacity
+                  onPress={() => setAdminDeleteVisible(true)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 12,
+                    paddingHorizontal: 12,
+                    borderRadius: 12,
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    marginTop: 4,
+                  }}
+                >
+                  <Ionicons name="shield-checkmark" size={18} color="#ef4444" />
+                  <Text style={{ marginLeft: 12, fontSize: 14, fontWeight: '800', color: '#ef4444' }}>
+                    Admin Delete Post
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+
               {/* Close Button */}
               <TouchableOpacity
                 onPress={onClose}
@@ -219,6 +251,22 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
           onClose();
         }}
         onConfirmDelete={handleConfirmDelete}
+      />
+      <AdminDeletionModal
+        visible={adminDeleteVisible}
+        contentType="post"
+        contentId={post.id}
+        contentTitle={post.caption || post.description}
+        authorName={[post.user?.firstName, post.user?.lastName].filter(Boolean).join(' ') || post.user?.userName}
+        onClose={() => {
+          setAdminDeleteVisible(false);
+          onClose();
+        }}
+        onDeleted={() => {
+          setAdminDeleteVisible(false);
+          onDelete(post.id);
+          onClose();
+        }}
       />
       <CustomModal
         visible={blockConfirmationVisible}

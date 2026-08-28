@@ -10,11 +10,11 @@ export type BlogListItem = {
     categories: Array<{ name: string }>;
     tags: Array<{ name: string }>;
     readTime: number;
-    createdAt: unknown;
+    createdAt?: { seconds?: number; toDate?: () => Date } | string | Date;
     publishedDate?: string;
     likes: number;
     comments: number;
-    engagement: Array<{ likesCount?: number; commentsCount?: number }>;
+    engagement: { likes?: number; comments?: number; shares?: number };
 };
 
 function readString(value: unknown, fallback = ''): string { return typeof value === 'string' ? value : fallback; }
@@ -184,7 +184,11 @@ export class BlogsAndArticlesService {
                     publishedDate: readString(postData.publishedDate) || undefined,
                     likes: readNumber(postData.likes) || normalizedEngagement[0]?.likesCount || 0,
                     comments: readNumber(postData.comments) || normalizedEngagement[0]?.commentsCount || 0,
-                    engagement: normalizedEngagement,
+                    engagement: {
+                        likes: readNumber(postData.likes) || normalizedEngagement[0]?.likesCount || 0,
+                        comments: readNumber(postData.comments) || normalizedEngagement[0]?.commentsCount || 0,
+                        shares: 0,
+                    },
                 };
             }));
     

@@ -4,6 +4,7 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
@@ -54,15 +55,28 @@ export default function AnimatedActionButton({
   const handlePressIn = () => {
     if (disabled) return;
     if (!reduceMotion) {
-      scale.value = withTiming(pressScale, { duration: 75 });
-      opacity.value = withTiming(0.78, { duration: 75 });
+      const targetScale = feedback === 'like' ? 0.8 : pressScale;
+      scale.value = withTiming(targetScale, { duration: 60 });
+      opacity.value = withTiming(0.85, { duration: 60 });
     }
     void interactionFeedbackService.play(feedback);
   };
 
   const handlePressOut = () => {
     if (reduceMotion) return;
-    scale.value = withSpring(1, { damping: 13, stiffness: 310, mass: 0.55 });
+    if (feedback === 'like') {
+      scale.value = withSequence(
+        withSpring(1.3, { damping: 5, stiffness: 280 }),
+        withSpring(1.0, { damping: 8, stiffness: 220 })
+      );
+    } else if (feedback === 'comment') {
+      scale.value = withSequence(
+        withSpring(1.18, { damping: 6, stiffness: 260 }),
+        withSpring(1.0, { damping: 9, stiffness: 200 })
+      );
+    } else {
+      scale.value = withSpring(1, { damping: 13, stiffness: 310, mass: 0.55 });
+    }
     opacity.value = withTiming(1, { duration: 120 });
   };
 

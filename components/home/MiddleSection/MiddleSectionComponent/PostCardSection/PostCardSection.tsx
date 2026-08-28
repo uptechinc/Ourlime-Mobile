@@ -307,20 +307,58 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
           </View>
         ) : null}
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
-          <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike post' : 'Like post'} onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
-            <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} />
-          </AnimatedActionButton>
-          <TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 26, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#c64d53' : colors.mutedText, fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
-          <AnimatedActionButton feedback="comment" accessibilityLabel="Open post comments" onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 26, paddingVertical: 6 }}>
-            <Icon name="message-circle" size={22} color={colors.icon} />
-            <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{post.stats.comments}</Text>
-          </AnimatedActionButton>
-          {!post.communityId ? <AnimatedActionButton feedback="share" accessibilityLabel="Share post" onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24, paddingVertical: 6 }}>
-            <Icon name="share-2" size={22} color={colors.icon} />
-            <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text>
-          </AnimatedActionButton> : null}
-          {!post.communityId ? <AnimatedActionButton disabled={repostBusy} onPress={handleRepostPress} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, opacity: repostBusy ? 0.6 : 1 }} accessibilityLabel={isReposted ? 'Remove repost' : 'Repost'}><Icon name="repeat" size={22} color={isReposted ? '#10b981' : colors.icon} /></AnimatedActionButton> : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike post' : 'Like post'} onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
+              <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} />
+            </AnimatedActionButton>
+            <TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 22, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#c64d53' : colors.mutedText, fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
+            <AnimatedActionButton feedback="comment" accessibilityLabel="Open post comments" onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 22, paddingVertical: 6 }}>
+              <Icon name="message-circle" size={22} color={colors.icon} />
+              <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{post.stats.comments}</Text>
+            </AnimatedActionButton>
+            {!post.communityId ? <AnimatedActionButton feedback="share" accessibilityLabel="Share post" onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 20, paddingVertical: 6 }}>
+              <Icon name="share-2" size={22} color={colors.icon} />
+              <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text>
+            </AnimatedActionButton> : null}
+            {!post.communityId ? <AnimatedActionButton disabled={repostBusy} onPress={handleRepostPress} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, opacity: repostBusy ? 0.6 : 1 }} accessibilityLabel={isReposted ? 'Remove repost' : 'Repost'}><Icon name="repeat" size={22} color={isReposted ? '#10b981' : colors.icon} /></AnimatedActionButton> : null}
+          </View>
+
+          {/* Liked Users Display on the right */}
+          {likeCount > 0 ? (
+            <TouchableOpacity
+              onPress={() => setLikesVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${likeCount} ${likeCount === 1 ? 'like' : 'likes'}`}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 }}
+            >
+              {post.likedUsers && post.likedUsers.length > 0 ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {post.likedUsers.slice(0, 3).map((likedUser, idx) => (
+                    <View
+                      key={likedUser.id}
+                      style={{
+                        marginLeft: idx > 0 ? -10 : 0,
+                        borderWidth: 2,
+                        borderColor: colors.surface,
+                        borderRadius: 12,
+                        zIndex: 3 - idx,
+                      }}
+                    >
+                      <UserAvatar
+                        profileImage={likedUser.profileImage}
+                        firstName={likedUser.firstName || likedUser.userName}
+                        size={22}
+                      />
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <Text style={{ fontSize: 13, color: colors.mutedText, fontWeight: '600' }}>
+                {likeCount === 1 ? '1 like' : `${likeCount} likes`}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 

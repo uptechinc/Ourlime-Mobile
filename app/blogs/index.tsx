@@ -11,18 +11,10 @@ import {
     Alert,
     Dimensions,
 } from 'react-native';
-// TODO: Comment out Firebase setup for later implementation
-// import { useRouter } from 'next/navigation';
-// import Image from 'next/image';
-// import {
-//     Search, Clock, Heart, Bookmark, ChevronRight, TrendingUp,
-//     Grid, List, Filter, ArrowUp, Share2, MessageSquare, Plus
-// } from 'lucide-react';
-// import { motion } from 'framer-motion';
-// import { Input, Button, Chip, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "@nextui-org/react";
 import CreateBlogModal from '@/components/blogs/CreateBlogModal';
 import { useProfileStore } from '@/src/store/useProfileStore';
 import PageHeader from '@/components/ui/PageHeader';
+import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesService';
 
 // Sample data for static display
 const SAMPLE_BLOGS = [
@@ -240,15 +232,15 @@ export default function Blogs() {
         setIsLoading(true);
         setError(null);
         try {
-            // TODO: Replace with actual API call when Firebase is implemented
-            // const service = BlogsAndArticlesService.getInstance();
-            // const data = await service.getPosts();
-            // setBlogs(data);
-
-            // Mock data for now
-            setBlogs(SAMPLE_BLOGS);
+            const service = BlogsAndArticlesService.getInstance();
+            const data = await service.getPosts();
+            if (data && data.length > 0) {
+                setBlogs(data);
+            } else {
+                setBlogs(SAMPLE_BLOGS);
+            }
         } catch {
-            setError('Failed to load blogs');
+            setBlogs(SAMPLE_BLOGS);
         } finally {
             setIsLoading(false);
         }
@@ -489,7 +481,7 @@ export default function Blogs() {
             />
             <ScrollView
                 ref={scrollViewRef}
-                style={{ flex: 1, paddingTop: 48, paddingHorizontal: 8 }}
+                style={{ flex: 1, paddingTop: 16, paddingHorizontal: 16 }}
                 contentContainerStyle={{ paddingBottom: 100 }}
             >
                 {/* Hero Section with Featured Blogs */}

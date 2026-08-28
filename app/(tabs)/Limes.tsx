@@ -44,6 +44,7 @@ import type { LimeFeedCursor } from '@/lib/services/LimeService';
 import { AuthService } from '@/lib/services/AuthService';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components/ui/PlayfulFloatingHeart';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const authService = AuthService.getInstance();
@@ -588,41 +589,10 @@ function ReelItem({
     if (!isActive) setShowOptionsMenu(false);
   }, [isActive]);
 
-  // Feed-matching Heart animation values
-  const heartScale = useRef(new Animated.Value(0)).current;
-  const heartOpacity = useRef(new Animated.Value(0)).current;
-  const heartTranslateY = useRef(new Animated.Value(0)).current;
+  const heartRef = useRef<PlayfulFloatingHeartRef>(null);
 
   const lastTapRef = useRef<number | null>(null);
   const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const triggerHeartAnim = useCallback(() => {
-    heartScale.setValue(0.3);
-    heartOpacity.setValue(1);
-    heartTranslateY.setValue(0);
-
-    Animated.parallel([
-      Animated.spring(heartScale, {
-        toValue: 1.35,
-        friction: 3,
-        tension: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(heartTranslateY, {
-        toValue: -30,
-        duration: 650,
-        useNativeDriver: true,
-      }),
-      Animated.sequence([
-        Animated.delay(350),
-        Animated.timing(heartOpacity, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]),
-    ]).start();
-  }, [heartScale, heartOpacity, heartTranslateY]);
 
   const triggerLike = useCallback(() => {
     if (!isLiked) {
@@ -633,8 +603,8 @@ function ReelItem({
         limeService.toggleLike(reel.id, currentUserId, true).catch(() => {});
       }
     }
-    triggerHeartAnim();
-  }, [isLiked, reel.id, currentUserId, onLikeUpdate, triggerHeartAnim]);
+    heartRef.current?.trigger();
+  }, [isLiked, reel.id, currentUserId, onLikeUpdate]);
 
   const toggleLikeButton = useCallback(() => {
     const nextLiked = !isLiked;
@@ -644,8 +614,8 @@ function ReelItem({
     if (currentUserId) {
       limeService.toggleLike(reel.id, currentUserId, nextLiked).catch(() => {});
     }
-    if (nextLiked) triggerHeartAnim();
-  }, [isLiked, reel.id, currentUserId, onLikeUpdate, triggerHeartAnim]);
+    if (nextLiked) heartRef.current?.trigger();
+  }, [isLiked, reel.id, currentUserId, onLikeUpdate]);
 
   const toggleRepostButton = useCallback(async () => {
     if (!currentUserId) return;
@@ -738,18 +708,7 @@ function ReelItem({
       ) : null}
 
       {/* 4. Animated Red Popped Heart on Double Tap */}
-      <Animated.View
-        style={[
-          styles.heartPop,
-          {
-            opacity: heartOpacity,
-            transform: [{ scale: heartScale }, { translateY: heartTranslateY }],
-          },
-        ]}
-        pointerEvents="none"
-      >
-        <Heart size={110} color="#ef4444" fill="#ef4444" />
-      </Animated.View>
+      <PlayfulFloatingHeart ref={heartRef} size={110} />
 
       {/* 5. Right Sidebar — highest z-index, fully interactive */}
       <View style={styles.rightSidebar} pointerEvents="box-none">

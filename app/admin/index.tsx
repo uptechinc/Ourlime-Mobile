@@ -17,6 +17,7 @@ import {
 import PageAccessAdminSection from '@/components/admin/PageAccessAdminSection';
 import UserManagementSection from '@/components/admin/UserManagementSection';
 import ModerationSection from '@/components/admin/ModerationSection';
+import AdminSecurityWorkspace from '@/components/admin/AdminSecurityWorkspace';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
@@ -85,7 +86,7 @@ export default function AdminPortalScreen() {
 	const { authorization, loading: accessLoading } = usePageAccess();
 	const { colors } = useAppTheme();
 	const [activeSection, setActiveSection] = useState<
-		'overview' | 'users' | 'moderation' | 'page_access'
+		'overview' | 'users' | 'moderation' | 'page_access' | 'security'
 	>('overview');
 	const [loading, setLoading] = useState(true);
 	const [stats, setStats] = useState<AdminMetrics>({
@@ -102,6 +103,7 @@ export default function AdminPortalScreen() {
 			section === 'users' ||
 			section === 'moderation' ||
 			section === 'page_access' ||
+			section === 'security' ||
 			section === 'overview'
 		)
 			setActiveSection(section);
@@ -190,7 +192,8 @@ export default function AdminPortalScreen() {
 								{ key: 'overview', label: 'Overview', icon: 'grid' },
 								{ key: 'users', label: 'Users', icon: 'users' },
 								{ key: 'moderation', label: 'Reports', icon: 'flag' },
-								{ key: 'page_access', label: 'Access', icon: 'shield' },
+								{ key: 'page_access', label: 'Pages', icon: 'layers' },
+								{ key: 'security', label: 'Security', icon: 'shield' },
 							] as const
 						).map((section) => (
 							<TouchableOpacity
@@ -209,19 +212,20 @@ export default function AdminPortalScreen() {
 							>
 								<Icon
 									name={section.icon}
-									size={16}
+									size={15}
 									color={
 										activeSection === section.key ? '#ffffff' : colors.icon
 									}
 								/>
 								<Text
 									style={{
-										marginLeft: 7,
+										marginLeft: 5,
 										color:
 											activeSection === section.key
 												? '#ffffff'
 												: colors.mutedText,
 										fontWeight: '800',
+										fontSize: 11,
 									}}
 								>
 									{section.label}
@@ -229,7 +233,14 @@ export default function AdminPortalScreen() {
 							</TouchableOpacity>
 						))}
 					</View>
-					{activeSection === 'page_access' ? (
+					{activeSection === 'security' ? (
+						<ScrollView
+							style={{ flex: 1 }}
+							contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
+						>
+							<AdminSecurityWorkspace />
+						</ScrollView>
+					) : activeSection === 'page_access' ? (
 						<ScrollView
 							style={{ flex: 1 }}
 							contentContainerStyle={{ padding: 16, paddingBottom: 50 }}

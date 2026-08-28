@@ -1,5 +1,7 @@
 import {
   addDoc,
+  arrayRemove,
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
@@ -92,6 +94,7 @@ export type PostItem = {
   media: PostMedia[];
   stats: PostStats;
   likedUserIds: string[];
+  likedUsers?: PostUser[];
   mentions: string[];
   friendReferences: string[];
   createdAt: string;
@@ -227,7 +230,7 @@ export class PostService {
     try {
       const response = await this.apiService.request<FeedApiResponse>(
         `/api/home/MiddleSection/Post?${search}`,
-        { authenticated: Boolean(auth.currentUser), signal: options.signal, timeoutMs: 20_000 }
+        { authenticated: Boolean(auth.currentUser), signal: options.signal, timeoutMs: 8_000 }
       );
       if (!response.success) throw new Error(response.error || 'Failed to load posts');
       const posts = (response.data ?? []).flatMap((record): PostItem[] => {
@@ -752,39 +755,89 @@ export class PostService {
   }
 
   public async repost(postId: string): Promise<string> {
-    const response = await this.apiService.request<{ success: boolean; data?: { postId?: string }; error?: string }>(
-        `/api/posts/${encodeURIComponent(postId)}/repost`,
-        { method: 'POST', authenticated: true }
-    );
-    if (!response.success || !response.data?.postId) throw new Error(response.error || 'Failed to repost');
+    try {
+      const response = await this.apiService.request<{ success: boolean; data?: { postId?: string }; error?: string }>(
+          `/api/posts/${encodeURIComponent(postId)}/repost`,
+          { method: 'POST', authenticated: true, timeoutMs: 12_000 }
+      );
+      if (!response.success || !response.data?.postId) throw new Error(response.error || 'Failed to repost');
 
-    if (auth.currentUser) {
-      void this.fetchPost(postId).then((post) => {
-        if (post && auth.currentUser && post.userId !== auth.currentUser.uid) {
-          const u = auth.currentUser;
-          addDoc(collection(db, `users/${post.userId}/notifications`), {
-            type: 'repost',
-            actorUserId: u.uid,
-            actorName: u.displayName || u.email?.split('@')[0] || 'User',
-            actorProfileImage: u.photoURL || null,
-            content: 'reposted your post',
-            postId,
-            createdAt: serverTimestamp(),
-            read: false,
-          }).catch(() => {});
-        }
+      if (auth.currentUser) {
+        void this.fetchPost(postId).then((post) => {
+          if (post && auth.currentUser && post.userId !== auth.currentUser.uid) {
+            const u = auth.currentUser;
+            addDoc(collection(db, `users/${post.userId}/notifications`), {
+              type: 'repost',
+              actorUserId: u.uid,
+              actorName: u.displayName || u.email?.split('@')[0] || 'User',
+              actorProfileImage: u.photoURL || null,
+              content: 'reposted your post',
+              postId,
+              createdAt: serverTimestamp(),
+              read: false,
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+      }
+
+      return response.data.postId;
+    } catch (error: unknown) {
+      if (!this.canUseFirestore(error)) throw error;
+      const currentUserId = auth.currentUser?.uid;
+      if (!currentUserId) throw new Error('You must be signed in to repost');
+      const postRef = doc(db, 'feedPosts', postId);
+      const postSnap = await getDoc(postRef);
+      if (!postSnap.exists()) throw new Error('Post not found');
+      const postData = (postSnap.data() || {}) as UnknownRecord;
+
+      const newPostRef = await addDoc(collection(db, 'feedPosts'), {
+        userId: currentUserId,
+        type: 'repost',
+        caption: postData.caption || '',
+        description: postData.description || '',
+        visibility: 'public',
+        repostedFrom: {
+          postId,
+          userId: postData.userId || '',
+        },
+        createdAt: serverTimestamp(),
+        hashtags: postData.hashtags || [],
+      });
+
+      await updateDoc(postRef, {
+        repostedBy: arrayUnion(currentUserId),
       }).catch(() => {});
-    }
 
-    return response.data.postId;
+      return newPostRef.id;
+    }
   }
 
   public async removeRepost(postId: string): Promise<void> {
-    const response = await this.apiService.request<{ success: boolean; error?: string }>(
-        `/api/posts/${encodeURIComponent(postId)}/repost`,
-        { method: 'DELETE', authenticated: true }
-    );
-    if (!response.success) throw new Error(response.error || 'Failed to remove repost');
+    try {
+      const response = await this.apiService.request<{ success: boolean; error?: string }>(
+          `/api/posts/${encodeURIComponent(postId)}/repost`,
+          { method: 'DELETE', authenticated: true, timeoutMs: 12_000 }
+      );
+      if (!response.success) throw new Error(response.error || 'Failed to remove repost');
+    } catch (error: unknown) {
+      if (!this.canUseFirestore(error)) throw error;
+      const currentUserId = auth.currentUser?.uid;
+      if (!currentUserId) throw new Error('You must be signed in');
+      const postRef = doc(db, 'feedPosts', postId);
+      await updateDoc(postRef, {
+        repostedBy: arrayRemove(currentUserId),
+      }).catch(() => {});
+
+      const q = query(
+        collection(db, 'feedPosts'),
+        where('userId', '==', currentUserId),
+        where('repostedFrom.postId', '==', postId)
+      );
+      const snap = await getDocs(q).catch(() => null);
+      if (snap) {
+        await Promise.all(snap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
+      }
+    }
   }
 
   public async updateVisibility(postId: string, visibility: 'public' | 'private'): Promise<void> {
@@ -971,8 +1024,24 @@ export class PostService {
         })
       : [];
     const stats = isRecord(value.stats) ? value.stats : {};
-    const likedUserIds = Array.isArray(value.likedUsers)
-      ? value.likedUsers.flatMap((likedUser): string[] => isRecord(likedUser) && readString(likedUser.id) ? [readString(likedUser.id)] : [])
+    const rawLikedUsers = Array.isArray(value.likedUsers) ? value.likedUsers : [];
+    const likedUsers: PostUser[] = rawLikedUsers.flatMap((likedUser): PostUser[] => {
+      if (!isRecord(likedUser)) return [];
+      const likedUserId = readString(likedUser.id);
+      if (!likedUserId) return [];
+      return [{
+        id: likedUserId,
+        firstName: readString(likedUser.firstName),
+        lastName: readString(likedUser.lastName),
+        userName: readString(likedUser.userName),
+        profileImage: readString(likedUser.profileImage) || undefined,
+        emailVerified: typeof likedUser.emailVerified === 'boolean' ? likedUser.emailVerified : undefined,
+      }];
+    });
+    const likedUserIds = likedUsers.length > 0
+      ? likedUsers.map((item) => item.id)
+      : Array.isArray(value.likedUserIds)
+      ? value.likedUserIds.flatMap((likedUserId): string[] => typeof likedUserId === 'string' && likedUserId ? [likedUserId] : [])
       : [];
     const post = this.mapPost(
       { id, data: value },
@@ -997,6 +1066,7 @@ export class PostService {
     const relationshipRecord = isRecord(value.relationshipStatus) ? value.relationshipStatus : null;
     return {
       ...post,
+      likedUsers: likedUsers.length > 0 ? likedUsers : undefined,
       repostedFrom: repostedFromRecord ? {
         postId: readString(repostedFromRecord.postId),
         userId: readString(repostedFromRecord.userId),

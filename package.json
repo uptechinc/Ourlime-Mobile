@@ -19,8 +19,12 @@
     "build": "npx eas build --platform android --profile preview --non-interactive",
     "build:local": "node scripts/build-local-apk.cjs",
     "build:local:debug": "node scripts/build-local-apk.cjs --debug",
+    "build:dev": "npx eas build --platform android --profile development --non-interactive",
+    "build:dev:local": "node scripts/build-local-apk.cjs --debug",
+    "build:preview": "npx eas build --platform android --profile preview --non-interactive",
+    "build:preview:local": "node scripts/build-local-apk.cjs",
     "build:prod": "npx eas build --platform android --profile production --non-interactive",
-    "build:dev": "npx eas build --platform android --profile development --non-interactive"
+    "build:prod:local": "node scripts/build-local-apk.cjs"
   },
   "dependencies": {
     "@babel/runtime": "^7.27.0",

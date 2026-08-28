@@ -20,6 +20,7 @@ import { accountLifecycleService } from '@/lib/services/AccountLifecycleService'
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { MessagePermission, SettingsTheme } from '@/lib/profile/settings/SettingsService';
 import NotificationSoundSettings from '@/components/settings/NotificationSoundSettings';
+import ChangePasswordModal from '@/components/settings/ChangePasswordModal';
 
 type SettingsTab = 'appearance' | 'account' | 'privacy' | 'notifications' | 'blocked' | 'security' | 'safety';
 type SettingsModalState = { visible: boolean; type: CustomModalType; title: string; message: string; action?: 'logout' };
@@ -35,6 +36,7 @@ export default function SettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
@@ -325,11 +327,32 @@ export default function SettingsScreen() {
 
         {activeTab === 'security' && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Security</Text>
+            <Text style={styles.sectionTitle}>Password & Authentication</Text>
+            <TouchableOpacity onPress={() => setPasswordModalOpen(true)} style={[styles.policyButton, { borderColor: '#10b981' }]}>
+              <Icon name="lock" size={18} color="#10b981" />
+              <View style={{ flex: 1, marginLeft: 6 }}>
+                <Text style={[styles.policyButtonText, { color: isDark ? '#ffffff' : '#0f172a' }]}>Change Password</Text>
+                <Text style={{ fontSize: 11, color: isDark ? '#94a3b8' : '#64748b' }}>Update your login password securely</Text>
+              </View>
+              <Icon name="chevron-right" size={18} color="#94a3b8" />
+            </TouchableOpacity>
+
+            <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Login & Activity Alerts</Text>
             <View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={styles.switchLabel}>Login Notifications</Text><Text style={styles.switchSubtext}>Alert me about new sign-ins</Text></View><Switch value={loginNotifications} onValueChange={setLoginNotifications} trackColor={{ true: '#10b981' }} /></View>
             <View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={styles.switchLabel}>Suspicious Activity Alerts</Text><Text style={styles.switchSubtext}>Warn me about unusual account activity</Text></View><Switch value={suspiciousActivityAlerts} onValueChange={setSuspiciousActivityAlerts} trackColor={{ true: '#10b981' }} /></View>
             <View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={styles.switchLabel}>Two-factor Authentication</Text><Text style={styles.switchSubtext}>{twoFactorEnabled ? 'Enabled on your account' : 'Setup requires the secure verification workflow and is not exposed until it is available.'}</Text></View><Icon name={twoFactorEnabled ? 'check-circle' : 'lock'} size={20} color={twoFactorEnabled ? '#10b981' : '#94a3b8'} /></View>
-            <TouchableOpacity onPress={() => setModal({ visible: true, type: 'warning', title: 'Sign out?', message: 'You will need to sign in again to use Ourlime.', action: 'logout' })} style={styles.signOutBtn}>
+
+            <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Connected Accounts</Text>
+            <View style={[styles.switchRow, { paddingVertical: 12 }]}>
+              <Icon name="mail" size={20} color="#10b981" />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.switchLabel}>Email & Password</Text>
+                <Text style={styles.switchSubtext}>{authService.getVerifiedCurrentUser()?.email || 'Connected'}</Text>
+              </View>
+              <Icon name="check-circle" size={18} color="#10b981" />
+            </View>
+
+            <TouchableOpacity onPress={() => setModal({ visible: true, type: 'warning', title: 'Sign out?', message: 'You will need to sign in again to use Ourlime.', action: 'logout' })} style={[styles.signOutBtn, { marginTop: 16 }]}>
               <Icon name="log-out" size={18} color="#ef4444" />
               <Text style={styles.signOutText}>Sign Out of Ourlime</Text>
             </TouchableOpacity>
@@ -348,6 +371,14 @@ export default function SettingsScreen() {
         )}
       </ScrollView>
       <CustomModal visible={modal.visible} type={modal.type} title={modal.title} message={modal.message} confirmText={modal.action === 'logout' ? 'Sign Out' : 'OK'} cancelText={modal.action === 'logout' ? 'Cancel' : undefined} onClose={() => setModal((current) => ({ ...current, visible: false }))} onConfirm={modal.action === 'logout' ? () => { void authService.logout().then(() => router.replace('/(auth)/login')); } : undefined} />
+      <ChangePasswordModal
+        visible={passwordModalOpen}
+        onClose={() => setPasswordModalOpen(false)}
+        onSuccess={() => {
+          setPasswordModalOpen(false);
+          setModal({ visible: true, type: 'success', title: 'Password Updated', message: 'Your password has been changed successfully.' });
+        }}
+      />
       <DeleteAccountModal visible={deleteModalOpen} isPasswordRequired={authService.getVerifiedCurrentUser()?.providerData.some((provider) => provider.providerId === 'password') ?? false} deleting={deletingAccount} error={deleteError} onClose={() => setDeleteModalOpen(false)} onDelete={(password) => void handleDeleteAccount(password)} />
     </SafeAreaView>
   );

@@ -82,13 +82,13 @@ export class ApiService {
 			process.env.EXPO_PUBLIC_OURLIME_API_BASE_URL?.trim() ||
 			process.env.EXPO_PUBLIC_WEB_API_URL?.trim();
 		const developmentHost = platformEnvironmentService.getDevelopmentHostName();
-		const developmentUrl = developmentHost
-			? `http://${developmentHost}:3000`
-			: null;
+		const developmentUrl =
+			process.env.EXPO_PUBLIC_USE_LAN_API === 'true' && developmentHost
+				? `http://${developmentHost}:3000`
+				: null;
 		this.baseUrl = (
-			process.env.EXPO_PUBLIC_OURLIME_API_BASE_URL?.trim() ||
-			developmentUrl ||
 			configuredUrl ||
+			developmentUrl ||
 			DEFAULT_API_BASE_URL
 		).replace(/\/$/, '');
 		this.logger.info('ApiService', 'initialize', { baseUrl: this.baseUrl });

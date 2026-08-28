@@ -45,7 +45,7 @@ export default function TimelineTab({ userId }: TimelineTabProps) {
         <>
           {posts.map((post) => {
             const isProfileRepost = post.repostedByUserIds?.includes(userId) === true;
-            return <View key={post.id} style={{ width: '100%', marginBottom: 12 }}>
+            return <View key={post.id} style={{ width: '100%', paddingHorizontal: 12, marginBottom: 14 }}>
               <PostCardSection
                 post={post}
                 isVisible={true}

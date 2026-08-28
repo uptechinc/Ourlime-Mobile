@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { PostService, type PostOrigin, type PostUser } from '@/lib/services/PostService';
@@ -19,6 +20,7 @@ const relationshipService = RelationshipService.getInstance();
 const authService = AuthService.getInstance();
 
 export default function LikesModal({ visible, postId, origin, onClose }: LikesModalProps) {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [users, setUsers] = useState<PostUser[]>([]);
@@ -30,6 +32,18 @@ export default function LikesModal({ visible, postId, origin, onClose }: LikesMo
   const [friendRequestedIds, setFriendRequestedIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(null);
   const swipeDismiss = useSwipeDismiss({ visible, onDismiss: onClose, disabled: loading || Boolean(actingUserId) });
+
+  const handleNavigateProfile = (user: PostUser) => {
+    onClose();
+    const currentUserId = authService.getCurrentUser()?.uid;
+    if (currentUserId && user.id === currentUserId) {
+      router.push('/(tabs)/Profile');
+      return;
+    }
+    if (user.userName) {
+      router.push({ pathname: '/profile/[username]', params: { username: user.userName } });
+    }
+  };
 
   const load = useCallback(async (nextCursor?: string | null) => {
     setLoading(true);
@@ -94,11 +108,13 @@ export default function LikesModal({ visible, postId, origin, onClose }: LikesMo
         <ScrollView contentContainerStyle={styles.content}>
           {users.map((user) => (
             <View key={user.id} style={styles.userRow}>
-              <UserAvatar profileImage={user.profileImage} firstName={user.firstName || user.userName} size={46} />
-              <View style={styles.userCopy}>
-                <View style={styles.nameRow}><Text style={styles.name}>{user.firstName} {user.lastName}</Text>{user.emailVerified ? <Icon name="check-circle" size={14} color={colors.accent} style={styles.verifiedIcon} /> : null}</View>
-                <Text style={styles.username}>@{user.userName}</Text>
-              </View>
+              <TouchableOpacity onPress={() => handleNavigateProfile(user)} style={styles.userTouchable}>
+                <UserAvatar profileImage={user.profileImage} firstName={user.firstName || user.userName} size={46} />
+                <View style={styles.userCopy}>
+                  <View style={styles.nameRow}><Text style={styles.name}>{user.firstName} {user.lastName}</Text>{user.emailVerified ? <Icon name="check-circle" size={14} color={colors.accent} style={styles.verifiedIcon} /> : null}</View>
+                  <Text style={styles.username}>@{user.userName}</Text>
+                </View>
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => void handleFollow(user.id)} disabled={followedIds.has(user.id) || actingUserId === user.id} style={[styles.followButton, followedIds.has(user.id) && styles.followingButton]}>
                 {actingUserId === user.id ? <ActivityIndicator size="small" color={colors.onAccent} /> : <Text style={[styles.followText, followedIds.has(user.id) && styles.followingText]}>{followedIds.has(user.id) ? 'Following' : 'Follow'}</Text>}
               </TouchableOpacity>
@@ -124,6 +140,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   closeButton: { padding: 7 },
   content: { padding: 16, flexGrow: 1 },
   userRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  userTouchable: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   userCopy: { flex: 1, marginLeft: 11 },
   nameRow: { flexDirection: 'row', alignItems: 'center' },
   name: { color: colors.text, fontWeight: '800' },

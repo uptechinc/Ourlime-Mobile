@@ -5,17 +5,63 @@
     "mobileRoot": "C:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile"
   },
   "counts": {
-    "webPages": 113,
-    "webApiRoutes": 181,
-    "webComponents": 437,
+    "webPages": 132,
+    "webApiRoutes": 203,
+    "webComponents": 446,
     "webTypes": 41,
-    "mobileRoutes": 58,
-    "mobileComponents": 143,
-    "mobileServices": 68,
-    "mobileTypes": 22
+    "mobileRoutes": 75,
+    "mobileComponents": 153,
+    "mobileServices": 74,
+    "mobileTypes": 24
   },
   "web": {
     "pages": [
+      {
+        "file": "app/404/page.tsx",
+        "route": "/404",
+        "family": "404",
+        "dependencies": {
+          "components": [
+            "components/common/NotFoundView.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/admin/child-safety/[reportId]/page.tsx",
+        "route": "/admin/child-safety/[reportId]",
+        "family": "admin",
+        "dependencies": {
+          "components": [
+            "components/safety/ChildSafetyConversation.tsx",
+            "components/support/PrivateCaseAttachmentImage.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/admin/child-safety/reports/${encodeURIComponent",
+            "/api/admin/child-safety/reports/${reportId}",
+            "/api/case-attachments/${encodeURIComponent",
+            "/api/child-safety/reports/${reportId}"
+          ]
+        }
+      },
+      {
+        "file": "app/admin/child-safety/page.tsx",
+        "route": "/admin/child-safety",
+        "family": "admin",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/admin/child-safety/reports?${query.toString",
+            "/api/admin/child-safety/reviewers"
+          ]
+        }
+      },
       {
         "file": "app/admin/seed-stickers/page.tsx",
         "route": "/admin/seed-stickers",
@@ -26,6 +72,40 @@
           "services": [],
           "apiReferences": [
             "/api/admin/stickers/seed"
+          ]
+        }
+      },
+      {
+        "file": "app/admin/support/[ticketId]/page.tsx",
+        "route": "/admin/support/[ticketId]",
+        "family": "admin",
+        "dependencies": {
+          "components": [
+            "components/support/PrivateCaseAttachmentImage.tsx",
+            "components/support/SupportConversation.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/case-attachments/${encodeURIComponent",
+            "/api/case-attachments/finalize",
+            "/api/case-attachments/intents",
+            "/api/support/tickets/${encodeURIComponent"
+          ]
+        }
+      },
+      {
+        "file": "app/admin/support/page.tsx",
+        "route": "/admin/support",
+        "family": "admin",
+        "dependencies": {
+          "components": [
+            "components/support/SupportAdminDashboard.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/admin/support/tickets?filter=${filter}"
           ]
         }
       },
@@ -363,6 +443,7 @@
         "family": "ads",
         "dependencies": {
           "components": [
+            "components/common/NotFoundView.tsx",
             "components/ui/skeleton.tsx"
           ],
           "types": [
@@ -425,6 +506,7 @@
         "dependencies": {
           "components": [
             "components/blogs/CreateBlogModal.tsx",
+            "components/common/NotFoundView.tsx",
             "components/moderation/ReportModal.tsx",
             "components/ui/skeleton.tsx"
           ],
@@ -437,6 +519,12 @@
           "services": [],
           "apiReferences": [
             "/api/blogs&articles",
+            "/api/blogs&articles/${blogId}",
+            "/api/blogs&articles/${blogId}/comments",
+            "/api/blogs&articles/${blogId}/comments?commentId=${encodeURIComponent",
+            "/api/blogs&articles/${blogId}/interactions",
+            "/api/blogs&articles/${editBlogId}",
+            "/api/child-safety/reports",
             "/api/moderation/reports",
             "/api/moderation/reports/${encodeURIComponent"
           ]
@@ -472,6 +560,10 @@
             "/api/auth/register/start",
             "/api/auth/session",
             "/api/blogs&articles",
+            "/api/blogs&articles/${blogId}/comments",
+            "/api/blogs&articles/${blogId}/comments?commentId=${encodeURIComponent",
+            "/api/blogs&articles/${blogId}/interactions",
+            "/api/blogs&articles/${editBlogId}",
             "/api/blogs&articles?${params.toString",
             "/api/notify-guardian"
           ]
@@ -500,6 +592,7 @@
             "components/Portal.tsx",
             "components/comm/Portal.tsx",
             "components/comments/CommentEnhancements.tsx",
+            "components/common/NotFoundView.tsx",
             "components/common/VerifiedLimeBadge.tsx",
             "components/communities/CommunityDashboardModal.tsx",
             "components/communities/CommunityPostCommentsModal.tsx",
@@ -580,6 +673,7 @@
           "apiReferences": [
             "/api/admin/community-categories",
             "/api/auth/session",
+            "/api/child-safety/reports",
             "/api/communities/ban-user",
             "/api/communities/check-ban?userId=${currentUserId}&communityId=${effectiveCommunityId}",
             "/api/communities/communitylikes?communityId=${canonicalCommunityId}&userId=${currentUserId}",
@@ -606,6 +700,7 @@
             "/api/moderation/reports",
             "/api/moderation/reports/${encodeURIComponent",
             "/api/notifications",
+            "/api/posts/${encodeURIComponent",
             "/api/posts/${post.id}",
             "/api/posts/${post.id}/comments",
             "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
@@ -619,7 +714,6 @@
             "/api/posts/drafts?mediaIndex=${index}",
             "/api/profile/blocklist",
             "/api/profile/presence",
-            "/api/push-messages",
             "/api/relationships/followers",
             "/api/relationships/friends",
             "/api/relationships/status?userId=${encodeURIComponent",
@@ -658,6 +752,7 @@
           "apiReferences": [
             "/api/admin/community-categories",
             "/api/auth/session",
+            "/api/child-safety/reports",
             "/api/communities/joined-by-friends",
             "/api/communities/membership",
             "/api/moderation/reports",
@@ -687,6 +782,7 @@
             "components/ui/skeleton.tsx"
           ],
           "types": [
+            "lib/types/chat.ts",
             "lib/types/comment.ts",
             "lib/types/course.ts",
             "lib/types/email.ts",
@@ -706,6 +802,7 @@
           ],
           "services": [],
           "apiReferences": [
+            "/api/chat/friends?${parameters.toString",
             "/api/home/RightSection?${searchParams.toString",
             "/api/relationships/friends",
             "/api/relationships/friends?userId=${currentUserId}&action=friends-list",
@@ -946,6 +1043,7 @@
         "family": "eLearning",
         "dependencies": {
           "components": [
+            "components/common/NotFoundView.tsx",
             "components/eLearning/BackButton.tsx",
             "components/eLearning/CourseSidebar.tsx",
             "components/eLearning/PaymentModal.tsx",
@@ -1145,7 +1243,9 @@
         "route": "/eLearning/cxc/past-papers",
         "family": "eLearning",
         "dependencies": {
-          "components": [],
+          "components": [
+            "components/eLearning/BackButton.tsx"
+          ],
           "types": [],
           "services": [],
           "apiReferences": []
@@ -1306,12 +1406,14 @@
         "family": "events",
         "dependencies": {
           "components": [
+            "components/common/NotFoundView.tsx",
             "components/moderation/ReportModal.tsx",
             "components/ui/skeleton.tsx"
           ],
           "types": [],
           "services": [],
           "apiReferences": [
+            "/api/child-safety/reports",
             "/api/moderation/reports",
             "/api/moderation/reports/${encodeURIComponent"
           ]
@@ -1440,6 +1542,198 @@
         }
       },
       {
+        "file": "app/help/child-safety/report/page.tsx",
+        "route": "/help/child-safety/report",
+        "family": "help",
+        "dependencies": {
+          "components": [
+            "components/safety/ChildSafetyReportWizard.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/case-attachments/finalize",
+            "/api/case-attachments/intents",
+            "/api/child-safety/accounts/search?q=${encodeURIComponent",
+            "/api/child-safety/reports",
+            "/api/child-safety/reports/${reportId}/messages"
+          ]
+        }
+      },
+      {
+        "file": "app/help/child-safety/reports/[reportId]/page.tsx",
+        "route": "/help/child-safety/reports/[reportId]",
+        "family": "help",
+        "dependencies": {
+          "components": [
+            "components/safety/ChildSafetyConversation.tsx",
+            "components/support/PrivateCaseAttachmentImage.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/admin/child-safety/reports/${reportId}",
+            "/api/case-attachments/${encodeURIComponent",
+            "/api/child-safety/reports/${reportId}"
+          ]
+        }
+      },
+      {
+        "file": "app/help/child-safety/reports/page.tsx",
+        "route": "/help/child-safety/reports",
+        "family": "help",
+        "dependencies": {
+          "components": [
+            "components/safety/ChildSafetyCaseList.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/child-safety/reports"
+          ]
+        }
+      },
+      {
+        "file": "app/help/child-safety/review/[reportId]/page.tsx",
+        "route": "/help/child-safety/review/[reportId]",
+        "family": "help",
+        "dependencies": {
+          "components": [
+            "components/safety/ChildSafetyConversation.tsx",
+            "components/support/PrivateCaseAttachmentImage.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/admin/child-safety/reports/${encodeURIComponent",
+            "/api/admin/child-safety/reports/${reportId}",
+            "/api/case-attachments/${encodeURIComponent",
+            "/api/child-safety/reports/${reportId}"
+          ]
+        }
+      },
+      {
+        "file": "app/help/child-safety/review/page.tsx",
+        "route": "/help/child-safety/review",
+        "family": "help",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/admin/child-safety/reports?${query.toString",
+            "/api/admin/child-safety/reviewers"
+          ]
+        }
+      },
+      {
+        "file": "app/help/page.tsx",
+        "route": "/help",
+        "family": "help",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/help/tickets/[ticketId]/page.tsx",
+        "route": "/help/tickets/[ticketId]",
+        "family": "help",
+        "dependencies": {
+          "components": [
+            "components/support/PrivateCaseAttachmentImage.tsx",
+            "components/support/SupportConversation.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/case-attachments/${encodeURIComponent",
+            "/api/case-attachments/finalize",
+            "/api/case-attachments/intents",
+            "/api/support/tickets/${encodeURIComponent"
+          ]
+        }
+      },
+      {
+        "file": "app/help/tickets/new/page.tsx",
+        "route": "/help/tickets/new",
+        "family": "help",
+        "dependencies": {
+          "components": [
+            "components/support/SupportTicketForm.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/support/tickets"
+          ]
+        }
+      },
+      {
+        "file": "app/help/tickets/page.tsx",
+        "route": "/help/tickets",
+        "family": "help",
+        "dependencies": {
+          "components": [
+            "components/support/SupportTicketList.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/support/tickets${query}"
+          ]
+        }
+      },
+      {
+        "file": "app/help/tickets/staff/[ticketId]/page.tsx",
+        "route": "/help/tickets/staff/[ticketId]",
+        "family": "help",
+        "dependencies": {
+          "components": [
+            "components/support/PrivateCaseAttachmentImage.tsx",
+            "components/support/SupportConversation.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/case-attachments/${encodeURIComponent",
+            "/api/case-attachments/finalize",
+            "/api/case-attachments/intents",
+            "/api/support/tickets/${encodeURIComponent"
+          ]
+        }
+      },
+      {
+        "file": "app/help/tickets/staff/page.tsx",
+        "route": "/help/tickets/staff",
+        "family": "help",
+        "dependencies": {
+          "components": [
+            "components/support/SupportAdminDashboard.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/admin/support/tickets?filter=${filter}"
+          ]
+        }
+      },
+      {
+        "file": "app/help/tickets/verify/page.tsx",
+        "route": "/help/tickets/verify",
+        "family": "help",
+        "dependencies": {
+          "components": [],
+          "types": [],
+          "services": [],
+          "apiReferences": [
+            "/api/support/guest/verify"
+          ]
+        }
+      },
+      {
         "file": "app/jobs/page.tsx",
         "route": "/jobs",
         "family": "jobs",
@@ -1474,8 +1768,10 @@
           "apiReferences": [
             "/api/auth/register/start",
             "/api/auth/session",
+            "/api/child-safety/reports",
             "/api/jobs",
             "/api/jobs/applications",
+            "/api/jobs/applications?jobId=${job.id}",
             "/api/jobs/applications?jobId=${job.id}&userId=${userId}",
             "/api/jobs/email",
             "/api/jobs?${params.toString",
@@ -1532,6 +1828,7 @@
             "lib/helpers/imageOptimization.ts"
           ],
           "apiReferences": [
+            "/api/child-safety/reports",
             "/api/gifs?q=${encodeURIComponent",
             "/api/limes",
             "/api/limes/${encodeURIComponent",
@@ -1541,13 +1838,13 @@
             "/api/messaging?${parameters.toString",
             "/api/moderation/reports",
             "/api/moderation/reports/${encodeURIComponent",
+            "/api/posts/${encodeURIComponent",
             "/api/posts/${post.id}/comments",
             "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
             "/api/posts/comments/${commentId}/replies?limit=20${cursorQuery}",
             "/api/posts/comments/${editTarget.rootCommentId}/replies",
             "/api/posts/comments/${replyTarget.commentId}/replies",
             "/api/posts/comments/${targetId}/like",
-            "/api/push-messages",
             "/api/relationships/status?userId=${encodeURIComponent",
             "/api/relationships/status?userId=${userId}&type=friends",
             "/api/stickers"
@@ -1601,6 +1898,7 @@
             "lib/helpers/imageOptimization.ts"
           ],
           "apiReferences": [
+            "/api/child-safety/reports",
             "/api/gifs?q=${encodeURIComponent",
             "/api/limes",
             "/api/limes/${encodeURIComponent",
@@ -1610,13 +1908,13 @@
             "/api/messaging?${parameters.toString",
             "/api/moderation/reports",
             "/api/moderation/reports/${encodeURIComponent",
+            "/api/posts/${encodeURIComponent",
             "/api/posts/${post.id}/comments",
             "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
             "/api/posts/comments/${commentId}/replies?limit=20${cursorQuery}",
             "/api/posts/comments/${editTarget.rootCommentId}/replies",
             "/api/posts/comments/${replyTarget.commentId}/replies",
             "/api/posts/comments/${targetId}/like",
-            "/api/push-messages",
             "/api/relationships/status?userId=${encodeURIComponent",
             "/api/relationships/status?userId=${userId}&type=friends",
             "/api/stickers"
@@ -1670,6 +1968,7 @@
             "lib/helpers/imageOptimization.ts"
           ],
           "apiReferences": [
+            "/api/child-safety/reports",
             "/api/gifs?q=${encodeURIComponent",
             "/api/limes",
             "/api/limes/${encodeURIComponent",
@@ -1679,13 +1978,13 @@
             "/api/messaging?${parameters.toString",
             "/api/moderation/reports",
             "/api/moderation/reports/${encodeURIComponent",
+            "/api/posts/${encodeURIComponent",
             "/api/posts/${post.id}/comments",
             "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
             "/api/posts/comments/${commentId}/replies?limit=20${cursorQuery}",
             "/api/posts/comments/${editTarget.rootCommentId}/replies",
             "/api/posts/comments/${replyTarget.commentId}/replies",
             "/api/posts/comments/${targetId}/like",
-            "/api/push-messages",
             "/api/relationships/status?userId=${encodeURIComponent",
             "/api/relationships/status?userId=${userId}&type=friends",
             "/api/stickers"
@@ -1743,7 +2042,9 @@
         "route": "/market/[id]",
         "family": "market",
         "dependencies": {
-          "components": [],
+          "components": [
+            "components/common/NotFoundView.tsx"
+          ],
           "types": [],
           "services": [
             "helpers/Auth.ts",
@@ -1785,6 +2086,19 @@
         }
       },
       {
+        "file": "app/not-found.tsx",
+        "route": "/404",
+        "family": "404",
+        "dependencies": {
+          "components": [
+            "components/common/NotFoundView.tsx"
+          ],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
         "file": "app/notifications/page.tsx",
         "route": "/notifications",
         "family": "notifications",
@@ -1793,6 +2107,7 @@
             "components/ui/skeleton.tsx"
           ],
           "types": [
+            "lib/types/nativePush.ts",
             "lib/types/notification.ts"
           ],
           "services": [
@@ -1882,6 +2197,7 @@
             "components/ui/textarea.tsx"
           ],
           "types": [
+            "lib/types/chat.ts",
             "lib/types/comment.ts",
             "lib/types/course.ts",
             "lib/types/email.ts",
@@ -1890,6 +2206,7 @@
             "lib/types/index.ts",
             "lib/types/mention.ts",
             "lib/types/message.ts",
+            "lib/types/nativePush.ts",
             "lib/types/notification.ts",
             "lib/types/post.ts",
             "lib/types/reel.ts",
@@ -1920,6 +2237,8 @@
           "apiReferences": [
             "/api/auth/register/start",
             "/api/auth/session",
+            "/api/chat/friends?${parameters.toString",
+            "/api/child-safety/reports",
             "/api/gifs?q=${encodeURIComponent",
             "/api/home/LeftSection/activity",
             "/api/home/LeftSection/games",
@@ -1938,6 +2257,7 @@
             "/api/notifications/friend-request",
             "/api/notifications?limit=20${cursorQuery}",
             "/api/notify-guardian",
+            "/api/posts/${encodeURIComponent",
             "/api/posts/${post.id}",
             "/api/posts/${post.id}/comments",
             "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
@@ -1952,7 +2272,6 @@
             "/api/posts/drafts?mediaIndex=${index}",
             "/api/profile/blocklist",
             "/api/profile/presence",
-            "/api/push-messages",
             "/api/reels/${reel.id}/like",
             "/api/reels/${reelId}/comments",
             "/api/reels/${reelId}/comments/replies",
@@ -2062,6 +2381,7 @@
           ],
           "apiReferences": [
             "/api/auth/session",
+            "/api/child-safety/reports",
             "/api/gifs?q=${encodeURIComponent",
             "/api/home/LeftSection/activity",
             "/api/home/LeftSection/games",
@@ -2073,6 +2393,7 @@
             "/api/moderation/reports",
             "/api/moderation/reports/${encodeURIComponent",
             "/api/notifications",
+            "/api/posts/${encodeURIComponent",
             "/api/posts/${post.id}",
             "/api/posts/${post.id}/comments",
             "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
@@ -2086,7 +2407,6 @@
             "/api/posts/shared/${encodeURIComponent",
             "/api/profile/blocklist",
             "/api/profile/presence",
-            "/api/push-messages",
             "/api/relationships/followers",
             "/api/relationships/friends",
             "/api/relationships/status?userId=${currentUserId}&type=discover",
@@ -2466,6 +2786,7 @@
             "lib/helpers/notificationHelpers.ts"
           ],
           "apiReferences": [
+            "/api/child-safety/reports",
             "/api/moderation/reports",
             "/api/moderation/reports/${encodeURIComponent",
             "/api/notifications",
@@ -2717,6 +3038,7 @@
             "lib/helpers/notificationHelpers.ts"
           ],
           "apiReferences": [
+            "/api/child-safety/reports",
             "/api/gifs?q=${encodeURIComponent",
             "/api/home/MiddleSection/Post/Likes",
             "/api/home/MiddleSection/Post/createPost",
@@ -2729,6 +3051,7 @@
             "/api/moderation/reports",
             "/api/moderation/reports/${encodeURIComponent",
             "/api/notifications",
+            "/api/posts/${encodeURIComponent",
             "/api/posts/${post.id}",
             "/api/posts/${post.id}/comments",
             "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
@@ -2770,7 +3093,6 @@
             "/api/profile/header/upload",
             "/api/profile/header?userId=${user.uid}",
             "/api/profile/social-links",
-            "/api/push-messages",
             "/api/reels/${reel.id}/like",
             "/api/reels/${reelId}/comments",
             "/api/reels/${reelId}/comments/replies",
@@ -2927,6 +3249,7 @@
           "components": [
             "components/Portal.tsx",
             "components/comments/CommentEnhancements.tsx",
+            "components/common/NotFoundView.tsx",
             "components/common/VerifiedLimeBadge.tsx",
             "components/commonProfileHeader/ProfileImageViewer.tsx",
             "components/commonProfileHeader/ViewOtherProfileHeader.tsx",
@@ -2996,6 +3319,7 @@
           ],
           "apiReferences": [
             "/api/auth/session",
+            "/api/child-safety/reports",
             "/api/gifs?q=${encodeURIComponent",
             "/api/home/MiddleSection/Post/Likes",
             "/api/home/MiddleSection/Post?authorId=${encodeURIComponent",
@@ -3005,6 +3329,7 @@
             "/api/moderation/reports",
             "/api/moderation/reports/${encodeURIComponent",
             "/api/notifications",
+            "/api/posts/${encodeURIComponent",
             "/api/posts/${post.id}",
             "/api/posts/${post.id}/comments",
             "/api/posts/${post.id}/comments?limit=20${cursorQuery}",
@@ -3019,7 +3344,6 @@
             "/api/profile/presence",
             "/api/profile/presence?userId=${encodeURIComponent",
             "/api/profile/viewOtherProfile?username=${username}",
-            "/api/push-messages",
             "/api/relationships/followers",
             "/api/relationships/friends",
             "/api/relationships/status?userId1=${currentUserId}&userId2=${friendId}&type=all",
@@ -3037,6 +3361,7 @@
         "dependencies": {
           "components": [
             "components/common/ConfirmationDialog.tsx",
+            "components/common/NotFoundView.tsx",
             "components/projectManagement/projectDetails/InviteUserModal.tsx",
             "components/projectManagement/projectDetails/ProjectHeader.tsx",
             "components/projectManagement/projectDetails/ProjectSettingsModal.tsx",
@@ -3143,6 +3468,17 @@
           "components": [
             "components/ui/skeleton.tsx"
           ],
+          "types": [],
+          "services": [],
+          "apiReferences": []
+        }
+      },
+      {
+        "file": "app/saved/page.tsx",
+        "route": "/saved",
+        "family": "saved",
+        "dependencies": {
+          "components": [],
           "types": [],
           "services": [],
           "apiReferences": []
@@ -3304,11 +3640,16 @@
     ],
     "apiRoutes": [
       "app/api/admin/categories/route.ts",
+      "app/api/admin/child-safety/reports/[reportId]/messages/route.ts",
+      "app/api/admin/child-safety/reports/[reportId]/route.ts",
+      "app/api/admin/child-safety/reports/route.ts",
+      "app/api/admin/child-safety/reviewers/route.ts",
       "app/api/admin/communities/route.ts",
       "app/api/admin/community-categories/route.ts",
       "app/api/admin/metrics/route.ts",
       "app/api/admin/products/route.ts",
       "app/api/admin/stickers/seed/route.ts",
+      "app/api/admin/support/tickets/route.ts",
       "app/api/admin/users/[userId]/lifecycle/route.ts",
       "app/api/admin/users/[userId]/role/route.ts",
       "app/api/admin/users/route.ts",
@@ -3334,6 +3675,9 @@
       "app/api/beta/apply/route.ts",
       "app/api/beta/registration-mode/route.ts",
       "app/api/beta/validate-token/route.ts",
+      "app/api/blogs&articles/[id]/comments/route.ts",
+      "app/api/blogs&articles/[id]/interactions/route.ts",
+      "app/api/blogs&articles/[id]/route.ts",
       "app/api/blogs&articles/route.ts",
       "app/api/business-account/metrics/route.ts",
       "app/api/business-account/route.ts",
@@ -3341,9 +3685,17 @@
       "app/api/calls/[callId]/route.ts",
       "app/api/calls/[callId]/rtc-token/route.ts",
       "app/api/calls/route.ts",
+      "app/api/case-attachments/[uploadId]/preview/route.ts",
+      "app/api/case-attachments/finalize/route.ts",
+      "app/api/case-attachments/intents/route.ts",
+      "app/api/case-attachments/upload/route.ts",
       "app/api/chat/attachment-preview/route.ts",
       "app/api/chat/friends/route.ts",
       "app/api/chat/route.ts",
+      "app/api/child-safety/accounts/search/route.ts",
+      "app/api/child-safety/reports/[reportId]/messages/route.ts",
+      "app/api/child-safety/reports/[reportId]/route.ts",
+      "app/api/child-safety/reports/route.ts",
       "app/api/communities/ban-user/route.ts",
       "app/api/communities/check-ban/route.ts",
       "app/api/communities/check-membership/route.ts",
@@ -3417,6 +3769,7 @@
       "app/api/notify-verification/route.ts",
       "app/api/page-access/route.ts",
       "app/api/password-reset/route.ts",
+      "app/api/posts/[id]/comments/focus/route.ts",
       "app/api/posts/[id]/comments/route.ts",
       "app/api/posts/[id]/repost/route.ts",
       "app/api/posts/[id]/route.ts",
@@ -3473,6 +3826,11 @@
       "app/api/sticker-packs/route.ts",
       "app/api/stickers/[id]/route.ts",
       "app/api/stickers/route.ts",
+      "app/api/support/guest/verify/route.ts",
+      "app/api/support/tickets/[ticketId]/events/route.ts",
+      "app/api/support/tickets/[ticketId]/messages/route.ts",
+      "app/api/support/tickets/[ticketId]/route.ts",
+      "app/api/support/tickets/route.ts",
       "app/api/temp-messaging/[receiverId]/route.ts",
       "app/api/temp-messaging/route.ts",
       "app/api/triniGeoGuesser/admin/upload/route.ts",
@@ -3552,6 +3910,7 @@
       "components/comm/TopNav.tsx",
       "components/comments/CommentEnhancements.tsx",
       "components/common/ConfirmationDialog.tsx",
+      "components/common/NotFoundView.tsx",
       "components/common/ProductDeleteModal.tsx",
       "components/common/Stepper.tsx",
       "components/common/UserAvatar.tsx",
@@ -3868,6 +4227,9 @@
       "components/register/VerificationStep.tsx",
       "components/register/WelcomeStep.tsx",
       "components/reminder/GlobalReminderComponent.tsx",
+      "components/safety/ChildSafetyCaseList.tsx",
+      "components/safety/ChildSafetyConversation.tsx",
+      "components/safety/ChildSafetyReportWizard.tsx",
       "components/search/UserSearch.tsx",
       "components/settings/download/data.tsx",
       "components/settings/friend/filterBox.tsx",
@@ -3882,6 +4244,11 @@
       "components/sticker/StickerPicker.tsx",
       "components/sticker/StickerSearch.tsx",
       "components/sticker/StickerSkeleton.tsx",
+      "components/support/PrivateCaseAttachmentImage.tsx",
+      "components/support/SupportAdminDashboard.tsx",
+      "components/support/SupportConversation.tsx",
+      "components/support/SupportTicketForm.tsx",
+      "components/support/SupportTicketList.tsx",
       "components/ui/button.tsx",
       "components/ui/card.tsx",
       "components/ui/chart.tsx",
@@ -4015,6 +4382,14 @@
         "route": "/admin/categories"
       },
       {
+        "file": "app/admin/child-safety/[reportId].tsx",
+        "route": "/admin/child-safety/[reportId]"
+      },
+      {
+        "file": "app/admin/child-safety/index.tsx",
+        "route": "/admin/child-safety"
+      },
+      {
         "file": "app/admin/communities/index.tsx",
         "route": "/admin/communities"
       },
@@ -4055,6 +4430,14 @@
         "route": "/admin/stickers"
       },
       {
+        "file": "app/admin/support/[ticketId].tsx",
+        "route": "/admin/support/[ticketId]"
+      },
+      {
+        "file": "app/admin/support/index.tsx",
+        "route": "/admin/support"
+      },
+      {
         "file": "app/admin/testers/index.tsx",
         "route": "/admin/testers"
       },
@@ -4091,7 +4474,7 @@
         "route": "/chat"
       },
       {
-        "file": "app/child-safety-standards.tsx",
+        "file": "app/child-safety-standards/index.tsx",
         "route": "/child-safety-standards"
       },
       {
@@ -4131,8 +4514,52 @@
         "route": "/games"
       },
       {
+        "file": "app/help/child-safety/report.tsx",
+        "route": "/help/child-safety/report"
+      },
+      {
+        "file": "app/help/child-safety/reports/[reportId].tsx",
+        "route": "/help/child-safety/reports/[reportId]"
+      },
+      {
+        "file": "app/help/child-safety/reports/index.tsx",
+        "route": "/help/child-safety/reports"
+      },
+      {
+        "file": "app/help/child-safety/review/[reportId].tsx",
+        "route": "/help/child-safety/review/[reportId]"
+      },
+      {
+        "file": "app/help/child-safety/review/index.tsx",
+        "route": "/help/child-safety/review"
+      },
+      {
         "file": "app/help/index.tsx",
         "route": "/help"
+      },
+      {
+        "file": "app/help/tickets/[ticketId].tsx",
+        "route": "/help/tickets/[ticketId]"
+      },
+      {
+        "file": "app/help/tickets/index.tsx",
+        "route": "/help/tickets"
+      },
+      {
+        "file": "app/help/tickets/new.tsx",
+        "route": "/help/tickets/new"
+      },
+      {
+        "file": "app/help/tickets/staff/[ticketId].tsx",
+        "route": "/help/tickets/staff/[ticketId]"
+      },
+      {
+        "file": "app/help/tickets/staff/index.tsx",
+        "route": "/help/tickets/staff"
+      },
+      {
+        "file": "app/help/tickets/verify.tsx",
+        "route": "/help/tickets/verify"
       },
       {
         "file": "app/index.tsx",
@@ -4155,7 +4582,11 @@
         "route": "/market"
       },
       {
-        "file": "app/policies.tsx",
+        "file": "app/notifications.tsx",
+        "route": "/notifications"
+      },
+      {
+        "file": "app/policies/index.tsx",
         "route": "/policies"
       },
       {
@@ -4169,6 +4600,10 @@
       {
         "file": "app/profile/[username].tsx",
         "route": "/profile/[username]"
+      },
+      {
+        "file": "app/projectManagement/[id]/index.tsx",
+        "route": "/projectManagement/[id]"
       },
       {
         "file": "app/projectManagement/index.tsx",
@@ -4324,8 +4759,17 @@
       "components/profile/ProfileSkeleton.tsx",
       "components/profile/TimelineTab.tsx",
       "components/providers/AppPreloadCoordinator.tsx",
+      "components/providers/NotificationNavigationCoordinator.tsx",
+      "components/safety/ChildSafetyConversationScreen.tsx",
+      "components/safety/ChildSafetyIntakeFields.tsx",
+      "components/safety/ChildSafetyReportForm.tsx",
+      "components/safety/ChildSafetyReportWizard.tsx",
+      "components/settings/ChangePasswordModal.tsx",
       "components/settings/DeleteAccountModal.tsx",
+      "components/settings/NotificationSoundSettings.tsx",
       "components/sticker/StickerPicker.tsx",
+      "components/support/PrivateCaseAttachmentImage.tsx",
+      "components/support/SupportTicketConversationScreen.tsx",
       "components/ThemedText.tsx",
       "components/ThemedView.tsx",
       "components/ui/AnimatedActionButton.tsx",
@@ -4339,6 +4783,7 @@
       "components/ui/MentionText.tsx",
       "components/ui/ModalMotion.tsx",
       "components/ui/PageHeader.tsx",
+      "components/ui/PlayfulFloatingHeart.tsx",
       "components/ui/RichTextContent.tsx",
       "components/ui/Skeleton.tsx",
       "components/ui/SlideOutMenu.tsx",
@@ -4364,6 +4809,7 @@
       "lib/services/AuthService.ts",
       "lib/services/AvatarService.ts",
       "lib/services/CallService.ts",
+      "lib/services/ChildSafetyReportService.ts",
       "lib/services/CommentService.ts",
       "lib/services/CommunitiesResourceService.ts",
       "lib/services/CommunityDashboardService.ts",
@@ -4396,7 +4842,10 @@
       "lib/services/MessageResourceService.ts",
       "lib/services/ModerationService.ts",
       "lib/services/NativeCallService.ts",
+      "lib/services/NotificationNavigationService.ts",
       "lib/services/NotificationService.ts",
+      "lib/services/NotificationSoundPreferenceService.ts",
+      "lib/services/notificationSoundRules.ts",
       "lib/services/OpenGraphService.ts",
       "lib/services/PageAccessService.ts",
       "lib/services/PlatformEnvironmentService.ts",
@@ -4416,10 +4865,13 @@
       "lib/services/ResourceErrorService.ts",
       "lib/services/SearchService.ts",
       "lib/services/SimpleChatMessageService.ts",
+      "lib/services/SupportTicketResourceService.ts",
+      "lib/services/SupportTicketService.ts",
       "lib/services/WordleService.ts"
     ],
     "types": [
       "lib/types/call.ts",
+      "lib/types/childSafety.ts",
       "lib/types/comment.ts",
       "lib/types/community.ts",
       "lib/types/componentProps.ts",
@@ -4439,6 +4891,7 @@
       "lib/types/resourceState.ts",
       "lib/types/serviceResults.ts",
       "lib/types/sticker.ts",
+      "lib/types/support.ts",
       "lib/types/user.ts",
       "lib/types/video.ts"
     ]
