@@ -13,6 +13,7 @@ import { DocumentPreviewModal } from './DocumentPreviewModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useDeepLinkNavigation } from '@/lib/hooks/useDeepLinkNavigation';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import { sharedContentMessageService } from '@/lib/services/SharedContentMessageService';
 
 type ChatMediaPanelProps = {
   visible: boolean;
@@ -41,7 +42,7 @@ export function ChatMediaPanel({
   const { mediaList, docList, linkList } = useMemo(() => {
     const media: { id: string; url: string; isVideo?: boolean; isSticker?: boolean }[] = [];
     const docs: { id: string; attachment: Attachment }[] = [];
-    const links: { id: string; url: string }[] = [];
+    const links: { id: string; url: string; label: string }[] = [];
 
     messages.forEach((msg) => {
       const msgId = msg.id ?? `${msg.timestamp?.seconds ?? Date.now()}`;
@@ -81,8 +82,13 @@ export function ChatMediaPanel({
       if (msg.message) {
         const matches = msg.message.match(URL_PATTERN);
         if (matches) {
-          matches.forEach((u, i) => {
-            links.push({ id: `${msgId}-link-${i}`, url: u });
+          matches.forEach((url, index) => {
+            const sharedContent = sharedContentMessageService.parse(url);
+            links.push({
+              id: `${msgId}-link-${index}`,
+              url,
+              label: sharedContent?.summary ?? url,
+            });
           });
         }
       }
@@ -231,7 +237,7 @@ export function ChatMediaPanel({
                     <Icon name="link" size={18} color="#3b82f6" />
                   </View>
                   <Text style={{ flex: 1, fontSize: 13, color: '#2563eb', fontWeight: '500' }} numberOfLines={1}>
-                    {link.url}
+                    {link.label}
                   </Text>
                   <Icon name="external-link" size={16} color="#94a3b8" />
                 </TouchableOpacity>

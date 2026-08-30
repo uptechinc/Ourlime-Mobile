@@ -1,3 +1,26 @@
+import { ApiService } from '@/lib/services/ApiService';
+
+export type OurlimeLinkPreviewKind =
+  | 'profile'
+  | 'post'
+  | 'community'
+  | 'lime'
+  | 'event'
+  | 'job'
+  | 'market-product'
+  | 'blog';
+
+export type OurlimeLinkPreviewEntity = {
+  kind: OurlimeLinkPreviewKind;
+  id: string;
+  path: string;
+  thumbnailUrl?: string;
+  videoUrl?: string;
+  creatorDisplayName?: string;
+  creatorUsername?: string;
+  creatorImageUrl?: string;
+};
+
 export type LinkPreviewData = {
   url: string;
   title?: string;
@@ -5,6 +28,21 @@ export type LinkPreviewData = {
   image?: string;
   siteName?: string;
   domain?: string;
+  entity?: OurlimeLinkPreviewEntity;
+};
+
+type LinkPreviewApiData = {
+  url: string;
+  title: string;
+  description: string;
+  imageUrl?: string;
+  siteName: string;
+  entity?: OurlimeLinkPreviewEntity;
+};
+
+type LinkPreviewApiResponse = {
+  success: boolean;
+  data?: LinkPreviewApiData;
 };
 
 const MAX_CACHE_ENTRIES = 100;
@@ -35,6 +73,7 @@ export class OpenGraphService {
   private static instance: OpenGraphService;
   private readonly cache = new Map<string, LinkPreviewData | null>();
   private readonly pending = new Map<string, Promise<LinkPreviewData | null>>();
+  private readonly apiService = ApiService.getInstance();
 
   private constructor() {}
 
@@ -93,6 +132,27 @@ export class OpenGraphService {
 
   private async doFetch(url: string): Promise<LinkPreviewData | null> {
     const domain = extractDomain(url);
+
+    if (this.isOurlimeUrl(url)) {
+      try {
+        const response = await this.apiService.request<LinkPreviewApiResponse>(
+          `/api/link-preview?url=${encodeURIComponent(url)}`,
+          { authenticated: true }
+        );
+        if (response.success && response.data) {
+          return {
+            url: response.data.url,
+            title: response.data.title,
+            description: response.data.description,
+            image: response.data.imageUrl,
+            siteName: response.data.siteName,
+            domain,
+            entity: response.data.entity,
+          };
+        }
+      } catch {}
+      return { url, domain, siteName: 'Ourlime' };
+    }
 
     // 1. YouTube oEmbed
     if (domain.includes('youtube.com') || domain.includes('youtu.be')) {
@@ -176,6 +236,19 @@ export class OpenGraphService {
       };
     } catch {
       return { url, domain };
+    }
+  }
+
+  private isOurlimeUrl(value: string): boolean {
+    try {
+      const parsed = new URL(value);
+      const hostname = parsed.hostname.toLowerCase();
+      return hostname === 'ourlime.com'
+        || hostname === 'www.ourlime.com'
+        || hostname === 'localhost'
+        || hostname === '127.0.0.1';
+    } catch {
+      return false;
     }
   }
 }

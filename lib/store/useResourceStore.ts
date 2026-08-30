@@ -8,6 +8,7 @@ import type { CommunitiesResourceData, DiscoverResourceData } from '@/lib/types/
 import type { RelationshipHubPage, RelationshipHubSection } from '@/lib/types/relationshipHub';
 import type { CommunityCategory, CommunityDashboardData, CommunityDetailResource, CommunityDirectoryPage, CommunityJoinRequest, CommunityMember, CommunityPage, CommunityPoll } from '@/lib/types/community';
 import type { Event } from '@/types/eventTypes';
+import type { LimeFeedResourceData } from '@/lib/services/LimeResourceService';
 
 export type OwnProfileResource = {
   profile: UserProfile;
@@ -53,6 +54,7 @@ type ResourceStore = {
   relationshipHub: Partial<Record<RelationshipHubSection, ResourceState<RelationshipHubPage>>>;
   relationshipRequests: Record<string, ResourceState<RelationshipHubPage>>;
   communityFeeds: Record<string, ResourceState<PostItem[]>>;
+  limeFeeds: Record<string, ResourceState<LimeFeedResourceData>>;
   setConversations: (resource: ResourceState<ConversationEntry[]>) => void;
   setMessages: (chatId: string, resource: ResourceState<MessageResourceData>) => void;
   upsertPostEntities: (posts: PostItem[]) => void;
@@ -72,6 +74,7 @@ type ResourceStore = {
   setRelationshipHub: (section: RelationshipHubSection, resource: ResourceState<RelationshipHubPage>) => void;
   setRelationshipRequests: (key: string, resource: ResourceState<RelationshipHubPage>) => void;
   setCommunityFeed: (key: string, resource: ResourceState<PostItem[]>) => void;
+  setLimeFeed: (key: string, resource: ResourceState<LimeFeedResourceData>) => void;
   clearUserResources: () => void;
 };
 
@@ -100,6 +103,7 @@ export const useResourceStore = create<ResourceStore>((set) => ({
   relationshipHub: {},
   relationshipRequests: {},
   communityFeeds: {},
+  limeFeeds: {},
   setConversations: (conversations) => set({ conversations }),
   setMessages: (chatId, resource) => set((state) => ({ messages: { ...state.messages, [chatId]: resource } })),
   upsertPostEntities: (posts) => set((state) => {
@@ -124,5 +128,6 @@ export const useResourceStore = create<ResourceStore>((set) => ({
   setRelationshipHub: (section, resource) => set((state) => ({ relationshipHub: { ...state.relationshipHub, [section]: resource } })),
   setRelationshipRequests: (key, resource) => set((state) => ({ relationshipRequests: { ...state.relationshipRequests, [key]: resource } })),
   setCommunityFeed: (key, resource) => set((state) => ({ communityFeeds: { ...state.communityFeeds, [key]: resource } })),
-  clearUserResources: () => set({ conversations: emptyConversations, messages: {}, postEntities: {}, feeds: {}, ownProfiles: {}, publicProfiles: {}, discover: emptyDiscover, communities: emptyCommunities, communityDirectories: {}, communityCategories: emptyCommunityCategories, communityDetails: {}, communityMembers: {}, communityRequests: {}, communityEvents: {}, communityPolls: {}, communityDashboards: {}, relationshipHub: {}, relationshipRequests: {}, communityFeeds: {} }),
+  setLimeFeed: (key, resource) => set((state) => ({ limeFeeds: { ...state.limeFeeds, [key]: resource } })),
+  clearUserResources: () => set({ conversations: emptyConversations, messages: {}, postEntities: {}, feeds: {}, ownProfiles: {}, publicProfiles: {}, discover: emptyDiscover, communities: emptyCommunities, communityDirectories: {}, communityCategories: emptyCommunityCategories, communityDetails: {}, communityMembers: {}, communityRequests: {}, communityEvents: {}, communityPolls: {}, communityDashboards: {}, relationshipHub: {}, relationshipRequests: {}, communityFeeds: {}, limeFeeds: {} }),
 }));

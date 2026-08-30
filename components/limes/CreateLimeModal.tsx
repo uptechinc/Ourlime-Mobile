@@ -21,6 +21,10 @@ import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
 const authService = AuthService.getInstance();
 const searchService = SearchService.getInstance();
 const MAX_LIME_VIDEO_DURATION_SECONDS = 30;
@@ -28,12 +32,13 @@ const MAX_LIME_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
 const ALLOWED_LIME_VIDEO_TYPES = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
 
 const CATEGORIES = [
+  { name: 'For You', icon: Sparkles, color: '#10b981' },
+  { name: 'Following', icon: Users, color: '#10b981' },
   { name: 'Comedy', icon: Laugh, color: '#f59e0b' },
-  { name: 'Educational', icon: Lightbulb, color: '#eab308' },
+  { name: 'Academic', icon: Lightbulb, color: '#eab308' },
   { name: 'DIY', icon: VideoIcon, color: '#ef4444' },
   { name: 'Music', icon: Music2, color: '#6366f1' },
   { name: 'Explore', icon: Compass, color: '#06b6d4' },
-  { name: 'Lifestyle', icon: Sparkles, color: '#10b981' },
 ];
 
 const PRIVACY_OPTIONS = [
@@ -56,9 +61,29 @@ type CreateLimeModalProps = {
   onSuccess: () => void;
 };
 
+function SelectedVideoPreview({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (videoPlayer) => {
+    videoPlayer.loop = true;
+    videoPlayer.muted = true;
+    videoPlayer.pause();
+  });
+
+  return (
+    <VideoView
+      player={player}
+      style={styles.selectedVideoPreview}
+      nativeControls
+      contentFit="contain"
+      fullscreenOptions={{ enable: true }}
+    />
+  );
+}
+
 export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLimeModalProps) {
+  const insets = useSafeAreaInsets();
+  const { colors } = useAppTheme();
   const [visibility, setVisibility] = useState<'public' | 'friends' | 'private'>('public');
-  const [category, setCategory] = useState('Lifestyle');
+  const [category, setCategory] = useState('For You');
   const [caption, setCaption] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -188,10 +213,20 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
     try {
       // Extract @mentions from caption
       const mentions = (caption.match(/@([a-zA-Z0-9._]+)/g) || []).map((m) => m.replace('@', ''));
+      let thumbnailUri: string | undefined;
+      try {
+        thumbnailUri = await limeThumbnailService.createThumbnail(selectedAsset.uri, durationSeconds);
+      } catch (thumbnailError: unknown) {
+        console.warn(
+          '[CreateLimeModal] Thumbnail generation failed:',
+          thumbnailError instanceof Error ? thumbnailError.message : 'Unknown error'
+        );
+      }
 
       await limeService.createLime({
         userId: user.uid,
         uri: selectedAsset.uri,
+        thumbnailUri,
         durationSeconds: Math.round(durationSeconds),
         visibility,
         category,
@@ -215,34 +250,34 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
     setShowSuccessModal(false);
     setSelectedAsset(null);
     setCaption('');
-    setCategory('Lifestyle');
+    setCategory('For You');
     onSuccess();
     onClose();
   };
 
   return (
     <Modal visible={isOpen} animationType="none" transparent onRequestClose={swipeDismiss.dismissWithAnimation}>
-      <View style={styles.overlay}>
-        <Animated.View style={[styles.modalCard, swipeDismiss.animatedStyle]}>
+      <View style={[styles.overlay, { backgroundColor: colors.modalScrim }]}>
+        <Animated.View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border, paddingBottom: Math.max(24, insets.bottom) }, swipeDismiss.animatedStyle]}>
           
           {/* Top Drag Handle Bar for Swipe-Down to Dismiss */}
-          <SwipeDismissHandle gesture={swipeDismiss.gesture} color="#cbd5e1" animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close Lime creation" />
+          <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.mutedText} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close Lime creation" />
 
           {/* Header */}
-          <View style={styles.headerRow}>
+          <View style={[styles.headerRow, { borderBottomColor: colors.border }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Film size={22} color="#10b981" />
-              <Text style={styles.modalTitle}>Create a Lime</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Create a Lime</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} disabled={isUploading}>
-              <X size={20} color="#64748b" />
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: colors.control }]} disabled={isUploading}>
+              <X size={20} color={colors.icon} />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
             
             {/* Audience Privacy Selector */}
-            <Text style={styles.sectionLabel}>Who can see your Lime?</Text>
+            <Text style={[styles.sectionLabel, { color: colors.secondaryText }]}>Who can see your Lime?</Text>
             <View style={styles.privacyRow}>
               {PRIVACY_OPTIONS.map((opt) => {
                 const IconComponent = opt.icon;
@@ -251,17 +286,17 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
                   <TouchableOpacity
                     key={opt.key}
                     onPress={() => setVisibility(opt.key)}
-                    style={[styles.privacyPill, active && styles.privacyPillActive]}
+                    style={[styles.privacyPill, { backgroundColor: colors.control, borderColor: colors.border }, active && { backgroundColor: colors.accent, borderColor: colors.accent }]}
                   >
-                    <IconComponent size={15} color={active ? '#ffffff' : '#64748b'} />
-                    <Text style={[styles.privacyText, active && styles.privacyTextActive]}>{opt.label}</Text>
+                    <IconComponent size={15} color={active ? colors.onAccent : colors.icon} />
+                    <Text style={[styles.privacyText, { color: colors.mutedText }, active && { color: colors.onAccent }]}>{opt.label}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
 
             {/* Category Chips with Fixed Readable Contrast */}
-            <Text style={styles.sectionLabel}>Category</Text>
+            <Text style={[styles.sectionLabel, { color: colors.secondaryText }]}>Category</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll} contentContainerStyle={{ gap: 8 }}>
               {CATEGORIES.map((cat) => {
                 const IconComp = cat.icon;
@@ -270,10 +305,10 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
                   <TouchableOpacity
                     key={cat.name}
                     onPress={() => setCategory(cat.name)}
-                    style={[styles.categoryChip, active && styles.categoryChipActive]}
+                    style={[styles.categoryChip, { backgroundColor: colors.control, borderColor: colors.border }, active && { backgroundColor: colors.accent, borderColor: colors.accent }]}
                   >
-                    <IconComp size={16} color={active ? '#ffffff' : cat.color} />
-                    <Text style={[styles.categoryText, active && styles.categoryTextActive]}>{cat.name}</Text>
+                    <IconComp size={16} color={active ? colors.onAccent : cat.color} />
+                    <Text style={[styles.categoryText, { color: colors.secondaryText }, active && { color: colors.onAccent }]}>{cat.name}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -281,8 +316,8 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
 
             {/* Caption Input Area & Mention Autocomplete */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, marginBottom: 6 }}>
-              <Text style={styles.sectionLabel}>Caption</Text>
-              <Text style={styles.charCount}>{caption.length}/150</Text>
+              <Text style={[styles.sectionLabel, { color: colors.secondaryText }]}>Caption</Text>
+              <Text style={[styles.charCount, { color: colors.mutedText }]}>{caption.length}/150</Text>
             </View>
             
             <View style={{ position: 'relative' }}>
@@ -290,22 +325,22 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
                 value={caption}
                 onChangeText={handleCaptionChange}
                 placeholder="Add a caption to your lime… Use @username to mention #Lime"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.mutedText}
                 maxLength={150}
                 multiline
                 numberOfLines={3}
-                style={styles.captionInput}
+                style={[styles.captionInput, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
               />
 
               {/* Mention Suggestions Dropdown */}
               {showMentionDropdown && userSuggestions.length > 0 && (
-                <View style={styles.mentionDropdown}>
-                  <Text style={styles.mentionDropdownHeader}>Mention user</Text>
+                <View style={[styles.mentionDropdown, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
+                  <Text style={[styles.mentionDropdownHeader, { color: colors.mutedText }]}>Mention user</Text>
                   {userSuggestions.map((u) => (
                     <TouchableOpacity
                       key={u.id}
                       onPress={() => handleSelectMentionUser(u.userName)}
-                      style={styles.mentionItem}
+                      style={[styles.mentionItem, { borderBottomColor: colors.border }]}
                     >
                       <Image
                         source={{ uri: u.profileImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100' }}
@@ -313,7 +348,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
                       />
                       <View>
                         <Text style={styles.mentionUsername}>@{u.userName}</Text>
-                        <Text style={styles.mentionName}>{u.firstName} {u.lastName}</Text>
+                        <Text style={[styles.mentionName, { color: colors.mutedText }]}>{u.firstName} {u.lastName}</Text>
                       </View>
                     </TouchableOpacity>
                   ))}
@@ -322,31 +357,32 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
             </View>
 
             {/* Video Picker Drop Zone (Instagram 9:16 Portrait Ratio) */}
-            <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Upload video (9:16 Portrait)</Text>
+            <Text style={[styles.sectionLabel, { marginTop: 16, color: colors.secondaryText }]}>Upload video (9:16 Portrait)</Text>
             {selectedAsset ? (
-              <View style={styles.previewContainer}>
-                <View style={styles.previewBadge}>
+              <View style={[styles.previewContainer, { backgroundColor: colors.successSurface, borderColor: colors.accent }]}>
+                <SelectedVideoPreview uri={selectedAsset.uri} />
+                <View style={[styles.previewBadge, { backgroundColor: colors.successSurface, borderColor: colors.border }]}>
                   <Film size={28} color="#10b981" />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.previewFileName} numberOfLines={1}>
+                    <Text style={[styles.previewFileName, { color: colors.text }]} numberOfLines={1}>
                       {selectedAsset.fileName || 'Selected Video (9:16)'}
                     </Text>
-                    <Text style={styles.previewMeta}>
+                    <Text style={[styles.previewMeta, { color: colors.mutedText }]}>
                       {selectedAsset.duration ? `${Math.round(selectedAsset.duration / 1000)}s` : 'Video Reel'} • Instagram 9:16 ratio
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={handleRemoveVideo} style={styles.removeBtn}>
+                  <TouchableOpacity onPress={handleRemoveVideo} style={[styles.removeBtn, { backgroundColor: colors.destructiveSurface }]}>
                     <X size={16} color="#ef4444" />
                   </TouchableOpacity>
                 </View>
               </View>
             ) : (
-              <TouchableOpacity onPress={handlePickVideo} style={styles.uploadDropZone} activeOpacity={0.8}>
-                <View style={styles.uploadCircle}>
+              <TouchableOpacity onPress={handlePickVideo} style={[styles.uploadDropZone, { backgroundColor: colors.successSurface, borderColor: colors.accent }]} activeOpacity={0.8}>
+                <View style={[styles.uploadCircle, { backgroundColor: colors.elevated }]}>
                   <Upload size={24} color="#10b981" />
                 </View>
-                <Text style={styles.uploadTitle}>Tap to select a video</Text>
-                <Text style={styles.uploadSubtitle}>MP4, MOV, or WebM • Up to {MAX_LIME_VIDEO_DURATION_SECONDS}s • Max 100 MB</Text>
+                <Text style={[styles.uploadTitle, { color: colors.successText }]}>Tap to select a video</Text>
+                <Text style={[styles.uploadSubtitle, { color: colors.mutedText }]}>MP4, MOV, or WebM • Up to {MAX_LIME_VIDEO_DURATION_SECONDS}s • Max 100 MB</Text>
               </TouchableOpacity>
             )}
 
@@ -354,10 +390,10 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
             {isUploading && (
               <View style={styles.progressContainer}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <Text style={styles.progressText}>Posting Lime reel…</Text>
-                  <Text style={styles.progressText}>{uploadProgress}%</Text>
+                  <Text style={[styles.progressText, { color: colors.secondaryText }]}>Posting Lime reel…</Text>
+                  <Text style={[styles.progressText, { color: colors.secondaryText }]}>{uploadProgress}%</Text>
                 </View>
-                <View style={styles.progressBarTrack}>
+                <View style={[styles.progressBarTrack, { backgroundColor: colors.control }]}>
                   <View style={[styles.progressBarFill, { width: `${uploadProgress}%` }]} />
                 </View>
               </View>
@@ -366,16 +402,16 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
           </ScrollView>
 
           {/* Action Buttons */}
-          <View style={styles.footerRow}>
-            <TouchableOpacity onPress={onClose} style={styles.cancelBtn} disabled={isUploading}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+          <View style={[styles.footerRow, { borderTopColor: colors.border }]}>
+            <TouchableOpacity onPress={onClose} style={[styles.cancelBtn, { backgroundColor: colors.control, borderColor: colors.border }]} disabled={isUploading}>
+              <Text style={[styles.cancelBtnText, { color: colors.secondaryText }]}>Cancel</Text>
             </TouchableOpacity>
 
             <AnimatedActionButton
               feedback="post"
               accessibilityLabel="Post Lime"
               onPress={handleSubmit}
-              style={[styles.submitBtn, (!selectedAsset || isUploading) && styles.submitBtnDisabled]}
+              style={[styles.submitBtn, { backgroundColor: colors.accent }, (!selectedAsset || isUploading) && { backgroundColor: colors.disabled }]}
               disabled={!selectedAsset || isUploading}
             >
               {isUploading ? (
@@ -394,13 +430,13 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
 
       {/* Modern Custom Success Overlay Card */}
       {showSuccessModal && (
-        <View style={styles.successOverlay}>
-          <View style={styles.successCard}>
-            <View style={styles.successIconCircle}>
+        <View style={[styles.successOverlay, { backgroundColor: colors.modalScrim }]}>
+          <View style={[styles.successCard, { backgroundColor: colors.elevated }]}>
+            <View style={[styles.successIconCircle, { backgroundColor: colors.successSurface }]}>
               <Sparkles size={36} color="#10b981" />
             </View>
-            <Text style={styles.successTitle}>Lime Reel Live! 🚀 🎉</Text>
-            <Text style={styles.successSubtitle}>Your Lime has been published and is now available in your feed!</Text>
+            <Text style={[styles.successTitle, { color: colors.text }]}>Lime Reel Live! 🚀 🎉</Text>
+            <Text style={[styles.successSubtitle, { color: colors.mutedText }]}>Your Lime has been published and is now available in your feed!</Text>
             <TouchableOpacity onPress={handleFinishSuccess} style={styles.successBtn}>
               <Text style={styles.successBtnText}>View My Lime</Text>
             </TouchableOpacity>
@@ -431,6 +467,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 18,
     elevation: 24,
+  },
+  selectedVideoPreview: {
+    width: '100%',
+    height: 260,
+    borderRadius: 18,
+    backgroundColor: '#000000',
   },
   dragHandleWrapper: {
     width: '100%',

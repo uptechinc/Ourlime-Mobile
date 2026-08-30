@@ -9,10 +9,12 @@ import {
   StyleSheet,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { X, Send, Heart, CornerDownRight, Edit2, Trash2, Smile, ChevronDown } from 'lucide-react-native';
+import { X, Send, Heart, CornerDownRight, Edit2, Trash2, Smile, ChevronDown, Flag } from 'lucide-react-native';
+import { Image } from 'expo-image';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { dispatchMentionNotifications } from '@/lib/services/dispatchMentionNotifications';
 import { AuthService } from '@/lib/services/AuthService';
@@ -23,8 +25,28 @@ import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import CustomModal from '@/components/ui/CustomModal';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { useRouter } from 'expo-router';
+import GifPickerModal from '@/components/comments/GifPickerModal';
+import { EmojiStickerKeyboard } from '@/components/chat/EmojiStickerKeyboard';
+import { getLocalStickerSource } from '@/assets/images/stickers/stickerMap';
+import type { CommentMediaAsset } from '@/lib/services/CommentService';
+import type { Sticker } from '@/lib/types/sticker';
+import CommunityReportModal from '@/components/communities/CommunityReportModal';
+import { ModerationService, type ReportReasonCategory } from '@/lib/services/ModerationService';
+import type { ChildSafetyIntakeValues } from '@/lib/types/childSafety';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const authService = AuthService.getInstance();
+const moderationService = ModerationService.getInstance();
+
+type CommentReportTarget = {
+  id: string;
+  authorId: string;
+  authorName: string;
+  preview: string;
+  contentType: 'comment' | 'reply';
+};
 
 type CommentModalProps = {
   reelId: string;
@@ -57,6 +79,19 @@ function safeParse(raw: unknown): LimeComment | null {
       replyToUserName: typeof value.replyToUserName === 'string' ? value.replyToUserName : null,
       createdAt: typeof value.createdAt === 'number' ? value.createdAt : Date.now(),
       editedAt: typeof value.editedAt === 'number' ? value.editedAt : undefined,
+      sticker: (() => {
+        if (!value.sticker || typeof value.sticker !== 'object') return null;
+        const media = value.sticker as Record<string, unknown>;
+        const type = media.type === 'sticker' || media.type === 'gif' ? media.type : null;
+        const imageUrl = typeof media.imageUrl === 'string' ? media.imageUrl : '';
+        if (!type || !imageUrl) return null;
+        return {
+          id: typeof media.id === 'string' ? media.id : imageUrl,
+          name: typeof media.name === 'string' ? media.name : type === 'gif' ? 'GIF' : 'Sticker',
+          imageUrl,
+          type,
+        };
+      })(),
     };
   } catch {
     return null;
@@ -64,26 +99,39 @@ function safeParse(raw: unknown): LimeComment | null {
 }
 
 function CommentSkeletonRow() {
+  const { colors } = useAppTheme();
   return (
     <View style={styles.skeletonRow}>
-      <View style={styles.skeletonAvatar} />
+      <View style={[styles.skeletonAvatar, { backgroundColor: colors.control }]} />
       <View style={{ flex: 1, gap: 6 }}>
-        <View style={styles.skeletonName} />
-        <View style={styles.skeletonText} />
-        <View style={styles.skeletonMeta} />
+        <View style={[styles.skeletonName, { backgroundColor: colors.control }]} />
+        <View style={[styles.skeletonText, { backgroundColor: colors.input }]} />
+        <View style={[styles.skeletonMeta, { backgroundColor: colors.control }]} />
       </View>
     </View>
   );
 }
 
-function renderContent(content: string): ReactNode {
+function renderContent(
+  content: string,
+  textColor: string,
+  onMentionPress: (userName: string) => void,
+): ReactNode {
   if (!content || typeof content !== 'string') return null;
-  const parts = content.split(/(@[a-zA-Z0-9._]+)/g);
+  const parts = content.split(/(https?:\/\/[^\s]+|www\.[^\s]+|@[a-zA-Z0-9._]+)/g);
   return parts.map((part, i) =>
     part.startsWith('@') ? (
-      <Text key={i} style={styles.mentionText}>{part}</Text>
+      <Text key={i} style={styles.mentionText} onPress={() => onMentionPress(part.slice(1))}>{part}</Text>
+    ) : part.startsWith('http://') || part.startsWith('https://') || part.startsWith('www.') ? (
+      <Text
+        key={i}
+        style={styles.mentionText}
+        onPress={() => void Linking.openURL(part.startsWith('www.') ? `https://${part}` : part)}
+      >
+        {part}
+      </Text>
     ) : (
-      <Text key={i} style={styles.normalText}>{part}</Text>
+      <Text key={i} style={[styles.normalText, { color: textColor }]}>{part}</Text>
     )
   );
 }
@@ -107,6 +155,9 @@ export default function CommentModal({
   onClose,
   onCommentCountUpdate,
 }: CommentModalProps) {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { colors } = useAppTheme();
   const [comments, setComments] = useState<LimeComment[]>([]);
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -118,6 +169,10 @@ export default function CommentModal({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [visibleRepliesLimitMap, setVisibleRepliesLimitMap] = useState<Record<string, number>>({});
+  const [selectedMedia, setSelectedMedia] = useState<CommentMediaAsset | null>(null);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [enhancementPickerOpen, setEnhancementPickerOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState<CommentReportTarget | null>(null);
 
   const currentUser = authService.getCurrentUser();
   const currentUserId = currentUser?.uid ?? '';
@@ -133,6 +188,11 @@ export default function CommentModal({
     disabled: submitting,
     animateOnOpen: true,
   });
+
+  const handleMentionPress = useCallback((userName: string) => {
+    onClose();
+    router.push({ pathname: '/profile/[username]', params: { username: userName } });
+  }, [onClose, router]);
 
   /* ── Load 50 comments from Firestore ── */
   const fetchComments = useCallback(async (replace = true) => {
@@ -151,13 +211,12 @@ export default function CommentModal({
       }
       lastDocRef.current = page.nextCursor;
       setHasMore(page.hasMore);
-      if (onCommentCountUpdate) onCommentCountUpdate(loaded.length);
     } catch (err) {
       console.error('[LimeCommentModal] fetchComments error:', err);
     } finally {
       setLoading(false);
     }
-  }, [reelId, onCommentCountUpdate]);
+  }, [reelId]);
 
   /* ── Paginate next batch ── */
   const fetchMoreComments = useCallback(async () => {
@@ -202,7 +261,7 @@ export default function CommentModal({
   /* ── Submit comment or reply ── */
   const handleSubmit = useCallback(async () => {
     const text = commentText.trim();
-    if (!text || submitting || !currentUserId) return;
+    if ((!text && !selectedMedia) || submitting || !currentUserId) return;
     setSubmitting(true);
     const optimisticId = `temp_${Date.now()}`;
     const newComment: LimeComment = {
@@ -218,9 +277,11 @@ export default function CommentModal({
       parentCommentId: replyTarget?.id ?? null,
       replyToUserName: replyTarget?.userName ?? null,
       createdAt: Date.now(),
+      sticker: selectedMedia,
     };
     setComments((prev) => [newComment, ...prev]);
     setCommentText('');
+    setSelectedMedia(null);
     setReplyTarget(null);
     if (onCommentCountUpdate) onCommentCountUpdate(comments.length + 1);
     try {
@@ -233,20 +294,23 @@ export default function CommentModal({
         content: text,
         parentCommentId: replyTarget?.id ?? null,
         replyToUserName: replyTarget?.userName ?? null,
+        sticker: selectedMedia ?? undefined,
       });
       // Replace temp with real ID
       setComments((prev) =>
         prev.map((c) => (c.id === optimisticId ? { ...c, id: commentId } : c))
       );
-      dispatchMentionNotifications({
-        actorUserId: currentUserId,
-        actorName: currentUserName,
-        actorProfileImage: currentUser?.photoURL ?? undefined,
-        content: text,
-        contentType: 'lime',
-        postId: reelId,
-        commentId,
-      });
+      if (text) {
+        dispatchMentionNotifications({
+          actorUserId: currentUserId,
+          actorName: currentUserName,
+          actorProfileImage: currentUser?.photoURL ?? undefined,
+          content: text,
+          contentType: 'lime',
+          postId: reelId,
+          commentId,
+        });
+      }
       void interactionFeedbackService.play('success');
     } catch (err) {
       console.error('[LimeCommentModal] submit error:', err);
@@ -255,7 +319,33 @@ export default function CommentModal({
     } finally {
       setSubmitting(false);
     }
-  }, [commentText, submitting, currentUserId, currentUserName, currentFirstName, currentUser?.photoURL, reelId, replyTarget, comments.length, onCommentCountUpdate]);
+  }, [commentText, selectedMedia, submitting, currentUserId, currentUserName, currentFirstName, currentUser?.photoURL, reelId, replyTarget, comments.length, onCommentCountUpdate]);
+
+  const handleStickerSelect = useCallback((sticker: Sticker) => {
+    setSelectedMedia({ id: sticker.id, name: sticker.name, imageUrl: sticker.imageUrl, type: 'sticker' });
+    setEnhancementPickerOpen(false);
+  }, []);
+
+  const handleSubmitReport = useCallback(async (
+    category: ReportReasonCategory,
+    reason: string,
+    details: string,
+    childSafety?: ChildSafetyIntakeValues,
+  ): Promise<void> => {
+    if (!reportTarget) return;
+    await moderationService.reportContent(reportTarget.contentType, {
+      targetId: reportTarget.id,
+      reportedUserId: reportTarget.authorId,
+      reasonCategory: category,
+      reason,
+      description: details,
+      routePath: `/limes?limeId=${encodeURIComponent(reelId)}`,
+      immediateDanger: childSafety?.immediateDanger,
+      goodFaithAcknowledged: childSafety?.goodFaithAcknowledged,
+      allowContact: childSafety?.allowContact,
+    });
+    setReportTarget(null);
+  }, [reelId, reportTarget]);
 
   /* ── Toggle like ── */
   const handleToggleLike = useCallback(async (commentId: string) => {
@@ -303,12 +393,13 @@ export default function CommentModal({
     const idToDelete = deleteTargetId;
     setDeleteTargetId(null);
     setComments((prev) => prev.filter((c) => c.id !== idToDelete));
+    onCommentCountUpdate?.(Math.max(0, comments.length - 1));
     try {
       await limeService.deleteComment(reelId, idToDelete);
     } catch (err) {
       console.error('[LimeCommentModal] delete error:', err);
     }
-  }, [deleteTargetId, reelId]);
+  }, [comments.length, deleteTargetId, onCommentCountUpdate, reelId]);
 
   /* ── Split root / replies ── */
   const rootComments = comments.filter(
@@ -342,12 +433,12 @@ export default function CommentModal({
         />
         <View style={styles.commentBody}>
           <View style={styles.commentMetaRow}>
-            <Text style={styles.commentUser}>
+            <Text style={[styles.commentUser, { color: colors.text }]}>
               {comment.userName ? `@${comment.userName}` : 'Unknown'}
             </Text>
-            <Text style={styles.commentTime}>{formatTime(comment.createdAt)}</Text>
+            <Text style={[styles.commentTime, { color: colors.mutedText }]}>{formatTime(comment.createdAt)}</Text>
             {comment.editedAt && (
-              <Text style={styles.editedLabel}>· edited</Text>
+              <Text style={[styles.editedLabel, { color: colors.mutedText }]}>· edited</Text>
             )}
           </View>
 
@@ -356,16 +447,16 @@ export default function CommentModal({
               <TextInput
                 value={editText}
                 onChangeText={setEditText}
-                style={styles.editInput}
+                style={[styles.editInput, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 autoFocus
                 multiline
               />
               <View style={styles.editActions}>
                 <TouchableOpacity
                   onPress={() => { setEditingId(null); setEditText(''); }}
-                  style={styles.editCancelBtn}
+                  style={[styles.editCancelBtn, { backgroundColor: colors.control }]}
                 >
-                  <Text style={styles.editCancelText}>Cancel</Text>
+                  <Text style={[styles.editCancelText, { color: colors.secondaryText }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveEdit}
@@ -377,19 +468,30 @@ export default function CommentModal({
               </View>
             </View>
           ) : (
-            <Text style={styles.commentContent}>
-              {renderContent(comment.content ?? '')}
-            </Text>
+            <>
+              {comment.content ? (
+                <Text style={[styles.commentContent, { color: colors.secondaryText }]}>
+                  {renderContent(comment.content, colors.secondaryText, handleMentionPress)}
+                </Text>
+              ) : null}
+              {comment.sticker ? (
+                <Image
+                  source={comment.sticker.type === 'sticker' ? getLocalStickerSource(comment.sticker.imageUrl) ?? { uri: comment.sticker.imageUrl } : { uri: comment.sticker.imageUrl }}
+                  contentFit={comment.sticker.type === 'gif' ? 'cover' : 'contain'}
+                  style={styles.commentMedia}
+                />
+              ) : null}
+            </>
           )}
 
           <View style={styles.actionsRow}>
             <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike Lime comment' : 'Like Lime comment'} onPress={() => handleToggleLike(comment.id)} style={styles.actionBtn}>
               <Heart
                 size={14}
-                color={isLiked ? '#ef4444' : '#64748b'}
+                color={isLiked ? '#ef4444' : colors.mutedText}
                 fill={isLiked ? '#ef4444' : 'none'}
               />
-              <Text style={[styles.actionText, isLiked && { color: '#ef4444' }]}>
+              <Text style={[styles.actionText, { color: colors.mutedText }, isLiked && { color: '#ef4444' }]}>
                 {safeL.length > 0 ? safeL.length : 'Like'}
               </Text>
             </AnimatedActionButton>
@@ -401,8 +503,8 @@ export default function CommentModal({
               }}
               style={styles.actionBtn}
             >
-              <CornerDownRight size={14} color="#64748b" />
-              <Text style={styles.actionText}>Reply</Text>
+              <CornerDownRight size={14} color={colors.mutedText} />
+              <Text style={[styles.actionText, { color: colors.mutedText }]}>Reply</Text>
             </TouchableOpacity>
 
             {isOwner && (
@@ -411,22 +513,38 @@ export default function CommentModal({
                   onPress={() => { setEditingId(comment.id); setEditText(comment.content ?? ''); }}
                   style={styles.actionBtn}
                 >
-                  <Edit2 size={13} color="#64748b" />
+                  <Edit2 size={13} color={colors.mutedText} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleDelete(comment.id)} style={styles.actionBtn}>
                   <Trash2 size={13} color="#ef4444" />
                 </TouchableOpacity>
               </>
             )}
+            {!isOwner && currentUserId ? (
+              <TouchableOpacity
+                onPress={() => setReportTarget({
+                  id: comment.id,
+                  authorId: comment.userId,
+                  authorName: comment.userName,
+                  preview: comment.content || (comment.sticker ? `[${comment.sticker.name}]` : 'Comment'),
+                  contentType: 'comment',
+                })}
+                style={styles.actionBtn}
+                accessibilityLabel={`Report comment from @${comment.userName}`}
+              >
+                <Flag size={12} color={colors.mutedText} />
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           {/* Sub-replies */}
           {visibleSubReplies.length > 0 && (
-            <View style={styles.subRepliesThread}>
+            <View style={[styles.subRepliesThread, { borderLeftColor: colors.border }]}>
               {visibleSubReplies.map((reply) => {
                 const replyL = Array.isArray(reply.likes) ? reply.likes : [];
                 const replyLiked = currentUserId ? replyL.includes(currentUserId) : false;
                 const replyOwner = currentUserId && reply.userId === currentUserId;
+                const replyEditing = editingId === reply.id;
                 return (
                   <View key={reply.id} style={styles.subReplyItem}>
                     <UserAvatar
@@ -436,36 +554,95 @@ export default function CommentModal({
                     />
                     <View style={{ flex: 1 }}>
                       <View style={styles.commentMetaRow}>
-                        <Text style={styles.commentUser}>
+                        <Text style={[styles.commentUser, { color: colors.text }]}>
                           {reply.userName ? `@${reply.userName}` : 'Unknown'}
                         </Text>
                         {reply.replyToUserName && (
-                          <Text style={styles.replyingTo}>
+                          <Text style={[styles.replyingTo, { color: colors.mutedText }]}>
                             → <Text style={styles.mentionText}>@{reply.replyToUserName}</Text>
                           </Text>
                         )}
-                        <Text style={styles.commentTime}>{formatTime(reply.createdAt)}</Text>
+                        <Text style={[styles.commentTime, { color: colors.mutedText }]}>{formatTime(reply.createdAt)}</Text>
                         {reply.editedAt && (
-                          <Text style={styles.editedLabel}>· edited</Text>
+                          <Text style={[styles.editedLabel, { color: colors.mutedText }]}>· edited</Text>
                         )}
                       </View>
-                      <Text style={styles.commentContent}>{renderContent(reply.content ?? '')}</Text>
+                      {replyEditing ? (
+                        <View style={styles.editRow}>
+                          <TextInput
+                            value={editText}
+                            onChangeText={setEditText}
+                            style={[styles.editInput, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+                            autoFocus
+                            multiline
+                          />
+                          <View style={styles.editActions}>
+                            <TouchableOpacity onPress={() => { setEditingId(null); setEditText(''); }} style={[styles.editCancelBtn, { backgroundColor: colors.control }]}>
+                              <Text style={[styles.editCancelText, { color: colors.secondaryText }]}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={handleSaveEdit} style={styles.saveEditBtn} disabled={!editText.trim()}>
+                              <Text style={styles.saveEditBtnText}>Save</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : (
+                        <>
+                          {reply.content ? <Text style={[styles.commentContent, { color: colors.secondaryText }]}>{renderContent(reply.content, colors.secondaryText, handleMentionPress)}</Text> : null}
+                          {reply.sticker ? (
+                            <Image
+                              source={reply.sticker.type === 'sticker' ? getLocalStickerSource(reply.sticker.imageUrl) ?? { uri: reply.sticker.imageUrl } : { uri: reply.sticker.imageUrl }}
+                              contentFit={reply.sticker.type === 'gif' ? 'cover' : 'contain'}
+                              style={styles.replyMedia}
+                            />
+                          ) : null}
+                        </>
+                      )}
                       <View style={styles.actionsRow}>
                         <AnimatedActionButton feedback="like" accessibilityLabel={replyLiked ? 'Unlike Lime reply' : 'Like Lime reply'} onPress={() => handleToggleLike(reply.id)} style={styles.actionBtn}>
                           <Heart
                             size={13}
-                            color={replyLiked ? '#ef4444' : '#64748b'}
+                            color={replyLiked ? '#ef4444' : colors.mutedText}
                             fill={replyLiked ? '#ef4444' : 'none'}
                           />
-                          <Text style={[styles.actionText, replyLiked && { color: '#ef4444' }]}>
+                          <Text style={[styles.actionText, { color: colors.mutedText }, replyLiked && { color: '#ef4444' }]}>
                             {replyL.length > 0 ? replyL.length : 'Like'}
                           </Text>
                         </AnimatedActionButton>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setReplyTarget({ id: comment.id, userName: reply.userName });
+                            setCommentText(`@${reply.userName} `);
+                          }}
+                          style={styles.actionBtn}
+                        >
+                          <CornerDownRight size={13} color={colors.mutedText} />
+                          <Text style={[styles.actionText, { color: colors.mutedText }]}>Reply</Text>
+                        </TouchableOpacity>
                         {replyOwner && (
-                          <TouchableOpacity onPress={() => handleDelete(reply.id)} style={styles.actionBtn}>
-                            <Trash2 size={12} color="#ef4444" />
-                          </TouchableOpacity>
+                          <>
+                            <TouchableOpacity onPress={() => { setEditingId(reply.id); setEditText(reply.content ?? ''); }} style={styles.actionBtn}>
+                              <Edit2 size={12} color={colors.mutedText} />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDelete(reply.id)} style={styles.actionBtn}>
+                              <Trash2 size={12} color="#ef4444" />
+                            </TouchableOpacity>
+                          </>
                         )}
+                        {!replyOwner && currentUserId ? (
+                          <TouchableOpacity
+                            onPress={() => setReportTarget({
+                              id: reply.id,
+                              authorId: reply.userId,
+                              authorName: reply.userName,
+                              preview: reply.content || (reply.sticker ? `[${reply.sticker.name}]` : 'Reply'),
+                              contentType: 'reply',
+                            })}
+                            style={styles.actionBtn}
+                            accessibilityLabel={`Report reply from @${reply.userName}`}
+                          >
+                            <Flag size={12} color={colors.mutedText} />
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
                     </View>
                   </View>
@@ -499,18 +676,18 @@ export default function CommentModal({
 
   return (
     <Modal visible={isOpen} animationType="none" transparent onRequestClose={swipeDismiss.dismissWithAnimation}>
-      <View style={styles.overlay}>
-        <Animated.View style={[styles.modalCard, swipeDismiss.animatedStyle]}>
+      <View style={[styles.overlay, { backgroundColor: colors.modalScrim }]}>
+        <Animated.View style={[styles.modalCard, { backgroundColor: colors.surface, paddingBottom: Math.max(20, insets.bottom) }, swipeDismiss.animatedStyle]}>
           {/* Top Drag Handle Bar */}
-          <SwipeDismissHandle gesture={swipeDismiss.gesture} color="#cbd5e1" animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close Lime comments" />
+          <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.mutedText} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close Lime comments" />
 
           {/* Header */}
-          <View style={styles.headerRow}>
-            <Text style={styles.headerTitle}>
+          <View style={[styles.headerRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.headerTitle, { color: colors.text }]}>
               Comments {comments.length > 0 ? `(${comments.length})` : ''}
             </Text>
-            <TouchableOpacity onPress={swipeDismiss.dismissWithAnimation} style={styles.closeBtn}>
-              <X size={20} color="#64748b" />
+            <TouchableOpacity onPress={swipeDismiss.dismissWithAnimation} style={[styles.closeBtn, { backgroundColor: colors.control }]}>
+              <X size={20} color={colors.icon} />
             </TouchableOpacity>
           </View>
 
@@ -524,9 +701,9 @@ export default function CommentModal({
             </View>
           ) : rootComments.length === 0 ? (
             <View style={styles.emptyBox}>
-              <Smile size={36} color="#94a3b8" />
-              <Text style={styles.emptyTitle}>No comments yet</Text>
-              <Text style={styles.emptySubtitle}>Be the first to share your thoughts on this Lime!</Text>
+              <Smile size={36} color={colors.mutedText} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No comments yet</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.mutedText }]}>Be the first to share your thoughts on this Lime!</Text>
             </View>
           ) : (
             <FlatList
@@ -551,10 +728,10 @@ export default function CommentModal({
 
           {/* Reply Target Banner */}
           {replyTarget && (
-            <View style={styles.replyBanner}>
-              <Text style={styles.replyBannerText}>Replying to @{replyTarget.userName}</Text>
+            <View style={[styles.replyBanner, { backgroundColor: colors.successSurface }]}>
+              <Text style={[styles.replyBannerText, { color: colors.successText }]}>Replying to @{replyTarget.userName}</Text>
               <TouchableOpacity onPress={() => { setReplyTarget(null); setCommentText(''); }}>
-                <X size={16} color="#047857" />
+                <X size={16} color={colors.successText} />
               </TouchableOpacity>
             </View>
           )}
@@ -565,7 +742,7 @@ export default function CommentModal({
               <TouchableOpacity
                 key={emoji}
                 onPress={() => setCommentText((prev) => prev + emoji)}
-                style={styles.emojiPill}
+                style={[styles.emojiPill, { backgroundColor: colors.control }]}
               >
                 <Text style={{ fontSize: 16 }}>{emoji}</Text>
               </TouchableOpacity>
@@ -574,7 +751,29 @@ export default function CommentModal({
 
           {/* Input Footer */}
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            {selectedMedia ? (
+              <View style={styles.selectedMediaRow}>
+                <Image
+                  source={selectedMedia.type === 'sticker' ? getLocalStickerSource(selectedMedia.imageUrl) ?? { uri: selectedMedia.imageUrl } : { uri: selectedMedia.imageUrl }}
+                  contentFit={selectedMedia.type === 'gif' ? 'cover' : 'contain'}
+                  style={styles.selectedMedia}
+                />
+                <TouchableOpacity onPress={() => setSelectedMedia(null)} accessibilityLabel={`Remove selected ${selectedMedia.type}`} style={styles.removeMediaButton}>
+                  <X size={17} color={colors.destructive} />
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <View style={styles.inputRow}>
+              <TouchableOpacity
+                onPress={() => setEnhancementPickerOpen(true)}
+                accessibilityLabel="Open emojis and stickers"
+                style={styles.enhancementButton}
+              >
+                <Smile size={20} color={colors.accentText} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setGifPickerOpen(true)} accessibilityLabel="Choose a GIF" style={styles.gifButton}>
+                <Text style={{ color: colors.accentText, fontSize: 12, fontWeight: '900' }}>GIF</Text>
+              </TouchableOpacity>
               <TextInput
                 value={commentText}
                 onChangeText={setCommentText}
@@ -583,8 +782,8 @@ export default function CommentModal({
                     ? `Reply to @${replyTarget.userName}…`
                     : 'Add a comment…'
                 }
-                placeholderTextColor="#94a3b8"
-                style={styles.inputField}
+                placeholderTextColor={colors.mutedText}
+                style={[styles.inputField, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 multiline
                 returnKeyType="send"
                 blurOnSubmit={false}
@@ -594,10 +793,10 @@ export default function CommentModal({
                 feedback="comment"
                 accessibilityLabel={replyTarget ? 'Send Lime reply' : 'Send Lime comment'}
                 onPress={handleSubmit}
-                disabled={!commentText.trim() || submitting}
+                disabled={(!commentText.trim() && !selectedMedia) || submitting}
                 style={[
                   styles.sendBtn,
-                  (!commentText.trim() || submitting) && styles.sendBtnDisabled,
+                  ((!commentText.trim() && !selectedMedia) || submitting) && { backgroundColor: colors.disabled },
                 ]}
               >
                 {submitting ? (
@@ -610,6 +809,39 @@ export default function CommentModal({
           </KeyboardAvoidingView>
         </Animated.View>
       </View>
+
+      <GifPickerModal
+        visible={gifPickerOpen}
+        onClose={() => setGifPickerOpen(false)}
+        onSelect={(gif) => {
+          setSelectedMedia(gif);
+          setGifPickerOpen(false);
+        }}
+      />
+      {enhancementPickerOpen ? (
+        <EmojiStickerKeyboard
+          visible
+          onClose={() => setEnhancementPickerOpen(false)}
+          onEmojiSelect={(emoji) => setCommentText((currentText) => currentText + emoji)}
+          onStickerSelect={handleStickerSelect}
+          onBackspace={() => setCommentText((currentText) => Array.from(currentText).slice(0, -1).join(''))}
+        />
+      ) : null}
+
+      <CommunityReportModal
+        visible={Boolean(reportTarget)}
+        title={reportTarget?.contentType === 'reply' ? 'Report reply' : 'Report comment'}
+        subjectLabel={reportTarget ? `@${reportTarget.authorName}: ${reportTarget.preview}` : ''}
+        childSafetyTarget={reportTarget ? {
+          type: reportTarget.contentType,
+          id: reportTarget.id,
+          parentId: reelId,
+          ownerUserId: reportTarget.authorId,
+          routePath: `/limes?limeId=${encodeURIComponent(reelId)}`,
+        } : undefined}
+        onClose={() => setReportTarget(null)}
+        onSubmit={handleSubmitReport}
+      />
 
       <CustomModal
         visible={deleteTargetId !== null}
@@ -764,6 +996,8 @@ const styles = StyleSheet.create({
     color: '#334155',
     lineHeight: 18,
   },
+  commentMedia: { width: 150, height: 112, borderRadius: 12, marginTop: 7 },
+  replyMedia: { width: 120, height: 90, borderRadius: 10, marginTop: 6 },
   mentionText: {
     color: '#10b981',
     fontWeight: '700',
@@ -884,6 +1118,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  selectedMediaRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 7 },
+  selectedMedia: { width: 72, height: 54, borderRadius: 9 },
+  removeMediaButton: { padding: 9 },
+  enhancementButton: { paddingVertical: 10, paddingHorizontal: 3 },
+  gifButton: { paddingVertical: 10, paddingHorizontal: 2 },
   inputField: {
     flex: 1,
     backgroundColor: '#f8fafc',

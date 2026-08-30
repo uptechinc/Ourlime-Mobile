@@ -8,6 +8,7 @@ import { AdminMetricsService } from './AdminMetricsService';
 import { NotificationService } from './NotificationService';
 import { RelationshipResourceService } from './RelationshipResourceService';
 import { ApiService } from './ApiService';
+import { LimeResourceService } from './LimeResourceService';
 
 const SCOPES: readonly FeedScope[] = ['home', 'friends'];
 
@@ -20,6 +21,7 @@ export class AppPreloadService {
   private readonly notificationService = NotificationService.getInstance();
   private readonly relationshipService = RelationshipResourceService.getInstance();
   private readonly apiService = ApiService.getInstance();
+  private readonly limeService = LimeResourceService.getInstance();
   private readonly logger = DiagnosticLogService.getInstance();
   private generation = 0;
   private activeKeys = new Set<string>();
@@ -95,6 +97,17 @@ export class AppPreloadService {
 
   private buildTasks(userId: string): PreloadTask[] {
     const tasks: PreloadTask[] = [
+      {
+        key: 'limes:feeds', route: '/limes', priority: 'navigation', mediaPolicy: 'thumbnail',
+        run: async () => {
+          const forYouQuery = { userId, scope: 'forYou' as const };
+          const followingQuery = { userId, scope: 'following' as const };
+          await this.limeService.hydrate(forYouQuery);
+          await this.limeService.refresh(forYouQuery);
+          await this.limeService.hydrate(followingQuery);
+          await this.limeService.refresh(followingQuery);
+        },
+      },
       {
         key: 'notifications:latest', route: '/notifications', priority: 'navigation', mediaPolicy: 'metadata',
         run: async () => { await this.notificationService.hydrate(userId); await this.notificationService.fetchPage(userId); },

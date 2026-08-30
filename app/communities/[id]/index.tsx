@@ -3,7 +3,6 @@ import {
 	ActivityIndicator,
 	RefreshControl,
 	ScrollView,
-	Share,
 	Text,
 	TouchableOpacity,
 	View,
@@ -64,6 +63,7 @@ import CommunityMemberActionSheet from '@/components/communities/detail/Communit
 import CommunityDetailSkeleton from '@/components/communities/detail/CommunityDetailSkeleton';
 import CommunityReportModal from '@/components/communities/CommunityReportModal';
 import CustomModal from '@/components/ui/CustomModal';
+import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 import type { ReportReasonCategory } from '@/lib/services/ModerationService';
 import { CHILD_SAFETY_REASON_CATEGORY } from '@/lib/services/ModerationService';
 import type { ChildSafetyIntakeValues } from '@/lib/types/childSafety';
@@ -162,6 +162,7 @@ export default function CommunityDetailScreen() {
 	const [confirmation, setConfirmation] =
 		useState<ConfirmationState>(INITIAL_CONFIRMATION);
 	const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+	const [shareVisible, setShareVisible] = useState(false);
 	const [eventCreateRequestKey, setEventCreateRequestKey] = useState(0);
 	const [pollCreateRequestKey, setPollCreateRequestKey] = useState(0);
 	const handledDashboardTargetRef = useRef('');
@@ -309,12 +310,8 @@ export default function CommunityDetailScreen() {
 		}
 	};
 
-	const handleShare = async (): Promise<void> => {
-		if (!community) return;
-		await Share.share({
-			title: community.title,
-			message: `Join ${community.title} on Ourlime: ${deepLinkService.getCommunityShareUrl(community.slug || community.id)}`,
-		});
+	const handleShare = (): void => {
+		if (community) setShareVisible(true);
 	};
 
 	const handleRefresh = async (): Promise<void> => {
@@ -687,7 +684,7 @@ export default function CommunityDetailScreen() {
 				{community ? (
 					<>
 						<TouchableOpacity
-							onPress={() => void handleShare()}
+							onPress={handleShare}
 							accessibilityLabel="Share community"
 							style={{ padding: 8 }}
 						>
@@ -758,7 +755,7 @@ export default function CommunityDetailScreen() {
 							)
 						}
 						onLike={() => void handleLike()}
-						onShare={() => void handleShare()}
+						onShare={handleShare}
 						onReport={() => setReportTarget({ kind: 'community' })}
 						onEdit={() => setEditVisible(true)}
 						onDashboard={handleOpenDashboard}
@@ -933,7 +930,7 @@ export default function CommunityDetailScreen() {
 									) : null}
 									{community.permissions.canInvite ? (
 										<TouchableOpacity
-											onPress={() => void handleShare()}
+											onPress={handleShare}
 											style={{
 												marginHorizontal: 4,
 												paddingHorizontal: 13,
@@ -1287,6 +1284,17 @@ export default function CommunityDetailScreen() {
 				onClose={() => setReportTarget(null)}
 				onSubmit={handleSubmitReport}
 			/>
+			{community ? (
+				<ShareContentSheet
+					visible={shareVisible}
+					currentUserId={viewerId}
+					contentLabel="Community"
+					title={community.title}
+					message={`Join ${community.title} on Ourlime:\n${deepLinkService.getCommunityShareUrl(community.slug || community.id)}`}
+					url={deepLinkService.getCommunityShareUrl(community.slug || community.id)}
+					onClose={() => setShareVisible(false)}
+				/>
+			) : null}
 		</SafeAreaView>
 	);
 }

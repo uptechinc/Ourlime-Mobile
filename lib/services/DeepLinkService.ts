@@ -4,6 +4,7 @@ import type {
   DeepLinkResolution,
   PendingDeepLink,
 } from '@/lib/types/deepLink';
+import { sharedContentMessageService } from '@/lib/services/SharedContentMessageService';
 
 const CANONICAL_WEB_BASE_URL = 'https://ourlime.com';
 const PENDING_DEEP_LINK_KEY = 'ourlime.pending-deep-link';
@@ -128,7 +129,10 @@ export class DeepLinkService {
   }
 
   private isOurlimeUrl(url: URL): boolean {
-    return url.protocol === `${this.nativeScheme}:` || (url.protocol === 'https:' && url.hostname.toLowerCase() === 'ourlime.com');
+    if (url.protocol === `${this.nativeScheme}:`) return true;
+    if (url.protocol !== 'https:') return false;
+    const hostname = url.hostname.toLowerCase();
+    return hostname === 'ourlime.com' || hostname === 'www.ourlime.com';
   }
 
   private parseDestination(url: URL): DeepLinkDestination | null {
@@ -143,7 +147,7 @@ export class DeepLinkService {
     if (first === 'profile' && segments[1]) return { kind: 'profile', username: this.normalizeUsername(segments[1]) };
     if (first === 'communities' && segments[1]) return { kind: 'community', identifier: segments[1] };
     if (first === 'blogs' && segments[1]) return { kind: 'blog', blogId: segments[1] };
-    if (first === 'limes' && segments[1]) return { kind: 'lime', limeId: segments[1] };
+    if ((first === 'limes' || first === 'lime') && segments[1]) return { kind: 'lime', limeId: segments[1] };
     if (first === 'events') return { kind: 'event', eventId: segments[1] ?? url.searchParams.get('targetId') };
     if (first === 'jobs') return { kind: 'job', jobId: segments[1] ?? url.searchParams.get('apply') };
     if (first === 'market') return { kind: 'market-product', productId: segments[1] ?? url.searchParams.get('product') };
@@ -160,14 +164,14 @@ export class DeepLinkService {
 
   private getCanonicalPath(destination: DeepLinkDestination): string {
     switch (destination.kind) {
-      case 'post': return `/post/${encodeURIComponent(destination.postId)}`;
+      case 'post': return sharedContentMessageService.getWebPath('post', destination.postId);
       case 'profile': return `/profile/${encodeURIComponent(this.normalizeUsername(destination.username))}`;
-      case 'community': return `/communities/${encodeURIComponent(destination.identifier)}`;
+      case 'community': return sharedContentMessageService.getWebPath('community', destination.identifier);
       case 'blog': return `/blogs/${encodeURIComponent(destination.blogId)}`;
       case 'lime': return `/limes/${encodeURIComponent(destination.limeId)}`;
       case 'event': return destination.eventId ? `/events/${encodeURIComponent(destination.eventId)}` : '/events';
-      case 'job': return destination.jobId ? `/jobs?apply=${encodeURIComponent(destination.jobId)}` : '/jobs';
-      case 'market-product': return destination.productId ? `/market?product=${encodeURIComponent(destination.productId)}` : '/market';
+      case 'job': return destination.jobId ? `/jobs/${encodeURIComponent(destination.jobId)}` : '/jobs';
+      case 'market-product': return destination.productId ? `/market/${encodeURIComponent(destination.productId)}` : '/market';
       case 'admin-report': return `/admin/reports/${encodeURIComponent(destination.reportId)}`;
     }
     const exhaustiveDestination: never = destination;
@@ -176,11 +180,11 @@ export class DeepLinkService {
 
   private getMobileRoute(destination: DeepLinkDestination): string {
     switch (destination.kind) {
-      case 'post': return `/post/${encodeURIComponent(destination.postId)}`;
+      case 'post': return sharedContentMessageService.getMobileRoute('post', destination.postId);
       case 'profile': return `/profile/${encodeURIComponent(this.normalizeUsername(destination.username))}`;
-      case 'community': return `/communities/${encodeURIComponent(destination.identifier)}`;
+      case 'community': return sharedContentMessageService.getMobileRoute('community', destination.identifier);
       case 'blog': return `/blogs/${encodeURIComponent(destination.blogId)}`;
-      case 'lime': return `/(tabs)/Limes?limeId=${encodeURIComponent(destination.limeId)}`;
+      case 'lime': return sharedContentMessageService.getMobileRoute('lime', destination.limeId);
       case 'event': return destination.eventId ? `/events?targetId=${encodeURIComponent(destination.eventId)}` : '/events';
       case 'job': return destination.jobId ? `/jobs?apply=${encodeURIComponent(destination.jobId)}` : '/jobs';
       case 'market-product': return destination.productId ? `/market?product=${encodeURIComponent(destination.productId)}` : '/market';

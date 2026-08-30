@@ -1,4 +1,5 @@
 import type { DocumentSnapshot } from 'firebase/firestore';
+import type { CommentMediaAsset } from '@/lib/services/CommentService';
 
 export type LimeComment = {
   id: string;
@@ -14,6 +15,7 @@ export type LimeComment = {
   replyToUserName?: string | null;
   createdAt: number;
   editedAt?: number;
+  sticker?: CommentMediaAsset | null;
 };
 
 export type LimeCommentCursor = DocumentSnapshot;
@@ -27,6 +29,7 @@ export type LimeCommentPage = {
 export type CreateLimeInput = {
   userId: string;
   uri: string;
+  thumbnailUri?: string;
   durationSeconds: number;
   visibility: 'public' | 'friends' | 'private';
   category: string;
@@ -43,4 +46,5 @@ export type CreateLimeCommentInput = {
   content: string;
   parentCommentId?: string | null;
   replyToUserName?: string | null;
+  sticker?: CommentMediaAsset;
 };

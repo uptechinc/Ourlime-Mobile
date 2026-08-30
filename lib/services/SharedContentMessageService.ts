@@ -1,0 +1,108 @@
+export type SharedChatContentKind = 'lime' | 'post' | 'community';
+
+export type SharedChatContentPresentation = {
+  kind: SharedChatContentKind;
+  entityId: string;
+  sourceUrl: string;
+  webPath: string;
+  mobileRoute: string;
+  visibleText: string;
+  summary: string;
+};
+
+const URL_PATTERN = /https?:\/\/[^\s<]+/gi;
+const TRAILING_URL_PUNCTUATION = /[),.!?;:\]}]+$/;
+
+export class SharedContentMessageService {
+  private static instance: SharedContentMessageService;
+
+  private constructor() {}
+
+  public static getInstance(): SharedContentMessageService {
+    if (!SharedContentMessageService.instance) {
+      SharedContentMessageService.instance = new SharedContentMessageService();
+    }
+    return SharedContentMessageService.instance;
+  }
+
+  public parse(message: string): SharedChatContentPresentation | null {
+    const matchedUrl = message.match(URL_PATTERN)?.[0];
+    if (!matchedUrl) return null;
+    const sourceUrl = matchedUrl.replace(TRAILING_URL_PUNCTUATION, '');
+    const destination = this.parseUrl(sourceUrl);
+    if (!destination) return null;
+
+    const matchIndex = message.indexOf(matchedUrl);
+    const remainingText = `${message.slice(0, matchIndex)}${message.slice(matchIndex + matchedUrl.length)}`
+      .replace(/\s+/g, ' ')
+      .trim();
+    return {
+      ...destination,
+      sourceUrl,
+      visibleText: this.isGeneratedShareCopy(destination.kind, remainingText) ? '' : remainingText,
+      summary: this.getSummary(destination.kind),
+    };
+  }
+
+  public getWebPath(kind: SharedChatContentKind, entityId: string): string {
+    const encodedId = encodeURIComponent(entityId);
+    if (kind === 'lime') return `/limes/${encodedId}`;
+    if (kind === 'post') return `/post/${encodedId}`;
+    return `/communities/${encodedId}`;
+  }
+
+  public getMobileRoute(kind: SharedChatContentKind, entityId: string): string {
+    const encodedId = encodeURIComponent(entityId);
+    if (kind === 'lime') return `/limes/viewer?limeId=${encodedId}&viewer=1`;
+    if (kind === 'post') return `/post/${encodedId}`;
+    return `/communities/${encodedId}`;
+  }
+
+  private parseUrl(sourceUrl: string): Omit<SharedChatContentPresentation, 'sourceUrl' | 'visibleText' | 'summary'> | null {
+    try {
+      const url = new URL(sourceUrl);
+      const hostname = url.hostname.toLowerCase();
+      const isOurlimeHost = hostname === 'ourlime.com'
+        || hostname === 'www.ourlime.com'
+        || hostname === 'localhost'
+        || hostname === '127.0.0.1';
+      if (!isOurlimeHost) return null;
+      const segments = url.pathname.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment));
+      const root = segments[0]?.toLowerCase();
+      const entityId = segments[1];
+      if (!entityId) return null;
+      let kind: SharedChatContentKind | null = null;
+      if (root === 'limes' || root === 'lime') kind = 'lime';
+      else if (root === 'post') kind = 'post';
+      else if (root === 'communities') kind = 'community';
+      if (!kind) return null;
+      return {
+        kind,
+        entityId,
+        webPath: this.getWebPath(kind, entityId),
+        mobileRoute: this.getMobileRoute(kind, entityId),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private getSummary(kind: SharedChatContentKind): string {
+    if (kind === 'lime') return 'Shared a Lime';
+    if (kind === 'post') return 'Shared a post';
+    return 'Shared a community';
+  }
+
+  private isGeneratedShareCopy(kind: SharedChatContentKind, text: string): boolean {
+    if (!text) return true;
+    if (kind === 'lime') {
+      return /^(?:watch\s+.+?\s+lime\s+on\s+ourlime|check out this lime on ourlime|shared a lime)\s*:?$/i.test(text);
+    }
+    if (kind === 'post') {
+      return /^(?:check out this (?:post|poll) on ourlime|shared a post)\s*:?$/i.test(text);
+    }
+    return /^(?:join me in the ourlime community .+|check out this community on ourlime|shared a community)\s*:?$/i.test(text);
+  }
+}
+
+export const sharedContentMessageService = SharedContentMessageService.getInstance();

@@ -49,6 +49,7 @@ import { simpleChatMessageService } from '@/lib/services/SimpleChatMessageServic
 import { conversationResourceService } from '@/lib/services/ConversationResourceService';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
+import { sharedContentMessageService } from '@/lib/services/SharedContentMessageService';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
 
@@ -254,7 +255,10 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
     const isVoiceNote = msg.type === 'voiceNote' || !!audioUrl;
     const isDeleted = msg.isDeletedForEveryone;
 
-    const detectedUrl = hasText ? findFirstUrl(msg.message) : null;
+    const sharedContent = hasText ? sharedContentMessageService.parse(msg.message) : null;
+    const visibleText = sharedContent?.visibleText ?? msg.message;
+    const hasVisibleText = visibleText.trim().length > 0;
+    const detectedUrl = sharedContent?.sourceUrl ?? (hasText ? findFirstUrl(msg.message) : null);
 
     const reactionSummary: { emoji: string; count: number; iMine: boolean }[] = Object.entries(msg.reactions ?? {}).map(([emoji, users]) => ({
         emoji,
@@ -430,9 +434,9 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                                     />
                                 )}
 
-                                {hasText && (
+                                {hasVisibleText && (
                                     <Text style={{ fontSize: 15, color: isOwn ? '#ffffff' : colors.text, lineHeight: 21 }}>
-                                        {msg.message}
+                                        {visibleText}
                                     </Text>
                                 )}
 

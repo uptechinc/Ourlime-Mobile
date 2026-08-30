@@ -27,12 +27,16 @@ import { AuthService } from './AuthService';
 import { RelationshipService } from './RelationshipService';
 import { moderationService, type ReportReasonCategory } from './ModerationService';
 import type { ChildSafetyIntakeValues } from '@/lib/types/childSafety';
+import { ApiService } from './ApiService';
 
 export type LimeFeedCursor = QueryDocumentSnapshot;
+
+export type LimeFeedScope = 'forYou' | 'following';
 
 export type LimeFeedResult = {
   reels: Reel[];
   followingUserIds: string[];
+  friendUserIds: string[];
   commentsByReel: Record<string, LimeComment[]>;
   lastDoc: LimeFeedCursor | null;
   hasMore: boolean;
@@ -47,6 +51,7 @@ export class LimeService {
   private static instance: LimeService;
   private readonly authService = AuthService.getInstance();
   private readonly relationshipService = RelationshipService.getInstance();
+  private readonly apiService = ApiService.getInstance();
 
   private constructor() {}
 
@@ -59,9 +64,12 @@ export class LimeService {
     currentUserId: string,
     category?: string,
     cursor?: LimeFeedCursor,
-    pageSize = 20,
+    pageSize = 12,
+    commentPreviewLimit = 0,
+    scope: LimeFeedScope = 'forYou',
   ): Promise<LimeFeedResult> {
     const followingUserSet = new Set<string>();
+    const friendUserSet = new Set<string>();
 
     // Only build the social graph on the first page load (no cursor)
     if (currentUserId && !cursor) {
@@ -74,7 +82,7 @@ export class LimeService {
           getDocs(query(collection(db, 'friendships'), where('users', 'array-contains', currentUserId))).catch(() => null),
         ]);
 
-        friends.forEach((friend) => followingUserSet.add(friend.id));
+        friends.forEach((friend) => friendUserSet.add(friend.id));
 
         if (followersSnap) {
           followersSnap.docs.forEach((d) => {
@@ -89,7 +97,7 @@ export class LimeService {
             const st = stringOf(data.friendshipStatus) || stringOf(data.status);
             if (st === 'accepted') {
               const friendId = stringOf(data.userId2);
-              if (friendId) followingUserSet.add(friendId);
+              if (friendId) friendUserSet.add(friendId);
             }
           });
         }
@@ -100,7 +108,7 @@ export class LimeService {
             const st = stringOf(data.friendshipStatus) || stringOf(data.status);
             if (st === 'accepted') {
               const friendId = stringOf(data.userId1);
-              if (friendId) followingUserSet.add(friendId);
+              if (friendId) friendUserSet.add(friendId);
             }
           });
         }
@@ -108,7 +116,7 @@ export class LimeService {
         if (friendshipsSnap) {
           friendshipsSnap.docs.forEach((d) => {
             const users = stringArrayOf(d.data().users);
-            users.forEach((u) => { if (u && u !== currentUserId) followingUserSet.add(u); });
+            users.forEach((u) => { if (u && u !== currentUserId) friendUserSet.add(u); });
           });
         }
       } catch {
@@ -126,23 +134,35 @@ export class LimeService {
     }
     constraints.push(orderBy('createdAt', 'desc'));
     if (cursor) constraints.push(startAfter(cursor));
-    constraints.push(limit(pageSize));
+    const requestedPageSize = scope === 'following' ? 50 : pageSize;
+    constraints.push(limit(requestedPageSize));
 
     const snapshot = await getDocs(query(collection(db, 'reels'), ...constraints));
+    const feedDocuments = scope === 'following'
+      ? snapshot.docs.filter((reelDocument) => followingUserSet.has(stringOf(reelDocument.data().userId)))
+      : snapshot.docs;
     const commentsByReel: Record<string, LimeComment[]> = {};
-    const reels = await Promise.all(snapshot.docs.map(async (reelDocument): Promise<Reel> => {
+    const reels = await Promise.all(feedDocuments.map(async (reelDocument): Promise<Reel> => {
       const data = recordOf(reelDocument.data());
       const creatorId = stringOf(data.userId);
       const profile = creatorId ? await this.authService.getUserProfile(creatorId) : null;
-      const comments = await this.fetchComments(reelDocument.id, 50);
-      commentsByReel[reelDocument.id] = comments.items;
+      const comments = commentPreviewLimit > 0
+        ? await this.fetchComments(reelDocument.id, commentPreviewLimit)
+        : { items: [], nextCursor: null, hasMore: false };
+      if (comments.items.length > 0) {
+        commentsByReel[reelDocument.id] = comments.items;
+      }
       const media = recordOf(data.media);
       const stats = recordOf(data.stats);
       const embeddedUser = recordOf(data.user);
       const isRepost = Boolean(data.isRepost);
-      const repostedBy = isRepost
-        ? (data.repostedBy ? (data.repostedBy as Reel['repostedBy']) : (profile ? { userId: creatorId, userName: profile.userName, firstName: profile.firstName, lastName: profile.lastName, profileImage: profile.profilePicture || undefined } : undefined))
-        : undefined;
+      const repostedBy = this.readEmbeddedReposters(data.repostedBy, isRepost && profile ? {
+        userId: creatorId,
+        userName: profile.userName,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        profileImage: profile.profilePicture || undefined,
+      } : null);
       const user = isRepost && embeddedUser.userName
         ? {
             firstName: stringOf(embeddedUser.firstName, 'Lime'),
@@ -160,11 +180,13 @@ export class LimeService {
       return {
         id: reelDocument.id,
         userId: creatorId,
+        thumbnailUrl: stringOf(data.thumbnailUrl) || stringOf(media.thumbnailUrl) || undefined,
         media: {
           type: media.type === 'image' ? 'image' : 'video',
           typeUrl: stringOf(media.typeUrl),
           fileName: stringOf(media.fileName, 'reel.mp4'),
           duration: numberOf(media.duration),
+          thumbnailUrl: stringOf(media.thumbnailUrl) || stringOf(data.thumbnailUrl) || undefined,
         },
         visibility: stringOf(data.visibility, 'public'),
         category: stringOf(data.category, 'Lifestyle'),
@@ -173,8 +195,8 @@ export class LimeService {
         user,
         stats: {
           likes: numberOf(stats.likes) || stringArrayOf(data.likes).length,
-          comments: numberOf(stats.comments) || comments.items.length,
-          shares: numberOf(stats.shares),
+          comments: numberOf(stats.comments) || numberOf(data.commentCount) || comments.items.length,
+          shares: numberOf(data.shares) || numberOf(stats.shares),
           reposts: numberOf(stats.reposts) || stringArrayOf(data.reposts).length,
         },
         likes: stringArrayOf(data.likes),
@@ -185,28 +207,51 @@ export class LimeService {
       };
     }));
 
-    const lastDoc = snapshot.docs.at(-1) ?? null;
+    const enrichedReels = await this.attachReposters(reels, currentUserId);
+    const lastDoc = scope === 'following' ? null : snapshot.docs.at(-1) ?? null;
     return {
-      reels,
+      reels: enrichedReels,
       followingUserIds: Array.from(followingUserSet),
+      friendUserIds: Array.from(friendUserSet),
       commentsByReel,
       lastDoc,
-      hasMore: snapshot.size >= pageSize,
+      hasMore: scope === 'forYou' && snapshot.size >= pageSize,
     };
   }
 
 
   public async createLime(input: CreateLimeInput, onProgress?: (percentage: number) => void): Promise<string> {
     const blob = await this.uriToBlob(input.uri);
-    const storagePath = `limes/${input.userId}/${Date.now()}_reel.mp4`;
+    const timestamp = Date.now();
+    const storagePath = `limes/${input.userId}/${timestamp}_reel.mp4`;
     const task = uploadBytesResumable(ref(storage, storagePath), blob, { contentType: 'video/mp4' });
     await new Promise<void>((resolve, reject) => task.on('state_changed', (snapshot) => {
       onProgress?.(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
     }, reject, resolve));
     const downloadUrl = await getDownloadURL(task.snapshot.ref);
+    let thumbnailUrl = '';
+    if (input.thumbnailUri) {
+      const thumbnailBlob = await this.uriToBlob(input.thumbnailUri);
+      const thumbnailPath = `limes/${input.userId}/thumbnails/${timestamp}_thumbnail.jpg`;
+      const thumbnailTask = uploadBytesResumable(
+        ref(storage, thumbnailPath),
+        thumbnailBlob,
+        { contentType: 'image/jpeg' }
+      );
+      await new Promise<void>((resolve, reject) => thumbnailTask.on('state_changed', undefined, reject, resolve));
+      thumbnailUrl = await getDownloadURL(thumbnailTask.snapshot.ref);
+    }
     const reel = await addDoc(collection(db, 'reels'), {
       userId: input.userId,
-      media: { type: 'video', typeUrl: downloadUrl, fileName: storagePath, duration: input.durationSeconds, aspectRatio: '9:16' },
+      thumbnailUrl: thumbnailUrl || null,
+      media: {
+        type: 'video',
+        typeUrl: downloadUrl,
+        fileName: storagePath,
+        duration: input.durationSeconds,
+        aspectRatio: '9:16',
+        thumbnailUrl: thumbnailUrl || null,
+      },
       visibility: input.visibility,
       category: input.category,
       caption: input.caption,
@@ -228,32 +273,45 @@ export class LimeService {
       return {
         id: item.id,
         userId,
-        media: { type: media.type === 'image' ? 'image' : 'video', typeUrl: stringOf(media.typeUrl), fileName: stringOf(media.fileName, 'reel.mp4'), duration: numberOf(media.duration) },
+        thumbnailUrl: stringOf(data.thumbnailUrl) || stringOf(media.thumbnailUrl) || undefined,
+        media: {
+          type: media.type === 'image' ? 'image' : 'video',
+          typeUrl: stringOf(media.typeUrl),
+          fileName: stringOf(media.fileName, 'reel.mp4'),
+          duration: numberOf(media.duration),
+          thumbnailUrl: stringOf(media.thumbnailUrl) || stringOf(data.thumbnailUrl) || undefined,
+        },
         visibility: stringOf(data.visibility, 'public'),
         category: stringOf(data.category, 'Lifestyle'),
         caption: stringOf(data.caption),
         createdAt: this.toDate(data.createdAt),
         user: { firstName: profile?.firstName || 'Lime', lastName: profile?.lastName || 'Creator', userName: profile?.userName || 'user', profileImage: profile?.profilePicture || undefined },
-        stats: { likes: numberOf(stats.likes) || stringArrayOf(data.likes).length, comments: numberOf(stats.comments), shares: numberOf(stats.shares) },
+        stats: { likes: numberOf(stats.likes) || stringArrayOf(data.likes).length, comments: numberOf(stats.comments), shares: numberOf(data.shares) || numberOf(stats.shares) },
         likes: stringArrayOf(data.likes),
       };
     });
   }
 
-  public async fetchLimeById(reelId: string): Promise<Reel | null> {
+  public async fetchLimeById(reelId: string, commentPreviewLimit = 0): Promise<Reel | null> {
     const reelSnapshot = await getDoc(doc(db, 'reels', reelId));
     if (!reelSnapshot.exists()) return null;
     const data = recordOf(reelSnapshot.data());
     const creatorId = stringOf(data.userId);
     const profile = creatorId ? await this.authService.getUserProfile(creatorId) : null;
-    const comments = await this.fetchComments(reelId, 50);
+    const comments = commentPreviewLimit > 0
+      ? await this.fetchComments(reelId, commentPreviewLimit)
+      : { items: [], nextCursor: null, hasMore: false };
     const media = recordOf(data.media);
     const stats = recordOf(data.stats);
     const embeddedUser = recordOf(data.user);
     const isRepost = Boolean(data.isRepost);
-    const repostedBy = isRepost
-      ? (data.repostedBy ? (data.repostedBy as Reel['repostedBy']) : (profile ? { userId: creatorId, userName: profile.userName, firstName: profile.firstName, lastName: profile.lastName, profileImage: profile.profilePicture || undefined } : undefined))
-      : undefined;
+    const repostedBy = this.readEmbeddedReposters(data.repostedBy, isRepost && profile ? {
+      userId: creatorId,
+      userName: profile.userName,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      profileImage: profile.profilePicture || undefined,
+    } : null);
     const user = isRepost && embeddedUser.userName
       ? {
           firstName: stringOf(embeddedUser.firstName, 'Lime'),
@@ -268,14 +326,16 @@ export class LimeService {
           profileImage: profile?.profilePicture || stringOf(embeddedUser.profileImage) || undefined,
         };
 
-    return {
+    const reel: Reel = {
       id: reelId,
       userId: creatorId,
+      thumbnailUrl: stringOf(data.thumbnailUrl) || stringOf(media.thumbnailUrl) || undefined,
       media: {
         type: media.type === 'image' ? 'image' : 'video',
         typeUrl: stringOf(media.typeUrl),
         fileName: stringOf(media.fileName, 'reel.mp4'),
         duration: numberOf(media.duration),
+        thumbnailUrl: stringOf(media.thumbnailUrl) || stringOf(data.thumbnailUrl) || undefined,
       },
       visibility: stringOf(data.visibility, 'public'),
       category: stringOf(data.category, 'Lifestyle'),
@@ -284,8 +344,8 @@ export class LimeService {
       user,
       stats: {
         likes: numberOf(stats.likes) || stringArrayOf(data.likes).length,
-        comments: numberOf(stats.comments) || comments.items.length,
-        shares: numberOf(stats.shares),
+        comments: numberOf(stats.comments) || numberOf(data.commentCount) || comments.items.length,
+        shares: numberOf(data.shares) || numberOf(stats.shares),
         reposts: numberOf(stats.reposts) || stringArrayOf(data.reposts).length,
       },
       likes: stringArrayOf(data.likes),
@@ -294,81 +354,26 @@ export class LimeService {
       isRepost,
       reposts: stringArrayOf(data.reposts),
     };
+    return (await this.attachReposters([reel], this.authService.getCurrentUser()?.uid ?? ''))[0] ?? reel;
   }
 
   public async repostLime(reelId: string, userId: string): Promise<string> {
-    const profile = await this.authService.getUserProfile(userId);
-    const originalSnapshot = await getDoc(doc(db, 'reels', reelId));
-    if (!originalSnapshot.exists()) throw new Error('Lime not found');
-    const original = recordOf(originalSnapshot.data());
-    const originalAuthorId = stringOf(original.userId);
-    const originalAuthor = originalAuthorId ? await this.authService.getUserProfile(originalAuthorId) : null;
-    const originalEmbedded = recordOf(original.user);
-
-    const repostRef = await addDoc(collection(db, 'reels'), {
-      ...original,
-      userId,
-      visibility: 'friends', // Friends-only per requirement
-      isRepost: true,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      likes: [],
-      stats: { likes: 0, comments: 0, shares: 0, reposts: 0 },
-      user: {
-        firstName: originalAuthor?.firstName || stringOf(originalEmbedded.firstName, 'Lime'),
-        lastName: originalAuthor?.lastName || stringOf(originalEmbedded.lastName, 'Creator'),
-        userName: originalAuthor?.userName || stringOf(originalEmbedded.userName, 'user'),
-        profileImage: originalAuthor?.profilePicture || stringOf(originalEmbedded.profileImage) || '',
-      },
-      repostedBy: {
-        userId,
-        userName: profile?.userName || 'user',
-        firstName: profile?.firstName || 'Lime',
-        lastName: profile?.lastName || 'User',
-        profileImage: profile?.profilePicture || '',
-      },
-      repostedFrom: {
-        reelId,
-        userId: originalAuthorId,
-        userName: originalAuthor?.userName || stringOf(originalEmbedded.userName, 'user'),
-        firstName: originalAuthor?.firstName || stringOf(originalEmbedded.firstName, 'Lime'),
-        lastName: originalAuthor?.lastName || stringOf(originalEmbedded.lastName, 'User'),
-        profileImage: originalAuthor?.profilePicture || stringOf(originalEmbedded.profileImage) || '',
-      },
+    if (!userId) throw new Error('Sign in to repost this Lime.');
+    const response = await this.apiService.request<{ success: boolean; error?: string }>(`/api/limes/${encodeURIComponent(reelId)}/repost`, {
+      method: 'POST',
+      authenticated: true,
     });
-
-    const markerId = `${userId}_${reelId}`;
-    await setDoc(doc(db, 'reelReposts', markerId), {
-      userId,
-      originalReelId: reelId,
-      repostReelId: repostRef.id,
-      createdAt: serverTimestamp(),
-    });
-
-    await updateDoc(doc(db, 'reels', reelId), {
-      'stats.shares': increment(1),
-      'stats.reposts': increment(1),
-      reposts: arrayUnion(userId),
-    }).catch(() => {});
-
-    return repostRef.id;
+    if (!response.success) throw new Error(response.error || 'Could not repost this Lime.');
+    return reelId;
   }
 
   public async removeLimeRepost(reelId: string, userId: string): Promise<void> {
-    const markerId = `${userId}_${reelId}`;
-    const markerDoc = await getDoc(doc(db, 'reelReposts', markerId));
-    if (!markerDoc.exists()) return;
-    const data = recordOf(markerDoc.data());
-    const repostReelId = stringOf(data.repostReelId);
-    await deleteDoc(doc(db, 'reelReposts', markerId));
-    if (repostReelId) {
-      await deleteDoc(doc(db, 'reels', repostReelId)).catch(() => {});
-    }
-    await updateDoc(doc(db, 'reels', reelId), {
-      'stats.shares': increment(-1),
-      'stats.reposts': increment(-1),
-      reposts: arrayRemove(userId),
-    }).catch(() => {});
+    if (!userId) throw new Error('Sign in to remove this repost.');
+    const response = await this.apiService.request<{ success: boolean; error?: string }>(`/api/limes/${encodeURIComponent(reelId)}/repost`, {
+      method: 'DELETE',
+      authenticated: true,
+    });
+    if (!response.success) throw new Error(response.error || 'Could not remove this repost.');
   }
 
   public async fetchUserRepostedLimeIds(userId: string): Promise<Set<string>> {
@@ -377,7 +382,7 @@ export class LimeService {
       const snapshot = await getDocs(query(collection(db, 'reelReposts'), where('userId', '==', userId)));
       const ids = new Set<string>();
       snapshot.docs.forEach((d) => {
-        const originalId = stringOf(d.data().originalReelId);
+        const originalId = stringOf(d.data().reelId) || stringOf(d.data().originalReelId);
         if (originalId) ids.add(originalId);
       });
       return ids;
@@ -391,7 +396,17 @@ export class LimeService {
   }
 
   public async incrementShareCount(reelId: string): Promise<void> {
-    await updateDoc(doc(db, 'reels', reelId), { 'stats.shares': increment(1) }).catch(() => {});
+    await this.apiService.request<{ success: boolean }>(`/api/limes/${encodeURIComponent(reelId)}/share`, {
+      method: 'POST',
+    }).catch(() => undefined);
+  }
+
+  public async deleteLime(reelId: string): Promise<void> {
+    const response = await this.apiService.request<{ success: boolean; error?: string }>(`/api/limes/${encodeURIComponent(reelId)}`, {
+      method: 'DELETE',
+      authenticated: true,
+    });
+    if (!response.success) throw new Error(response.error || 'Could not delete this Lime.');
   }
 
   public async reportLime(
@@ -454,8 +469,16 @@ export class LimeService {
       replyCount: 0,
       parentCommentId: input.parentCommentId ?? null,
       replyToUserName: input.replyToUserName ?? null,
+      sticker: input.sticker ?? null,
       createdAt: serverTimestamp(),
     });
+    const updates: Promise<void>[] = [
+      updateDoc(doc(db, 'reels', input.reelId), { 'stats.comments': increment(1) }),
+    ];
+    if (input.parentCommentId) {
+      updates.push(updateDoc(doc(db, 'reels', input.reelId, 'comments', input.parentCommentId), { replyCount: increment(1) }));
+    }
+    await Promise.all(updates).catch(() => undefined);
     return result.id;
   }
 
@@ -468,12 +491,24 @@ export class LimeService {
   }
 
   public async deleteComment(reelId: string, commentId: string): Promise<void> {
-    await deleteDoc(doc(db, 'reels', reelId, 'comments', commentId));
+    const commentReference = doc(db, 'reels', reelId, 'comments', commentId);
+    const commentSnapshot = await getDoc(commentReference);
+    const parentCommentId = commentSnapshot.exists() ? stringOf(commentSnapshot.data().parentCommentId) : '';
+    await deleteDoc(commentReference);
+    const updates: Promise<void>[] = [
+      updateDoc(doc(db, 'reels', reelId), { 'stats.comments': increment(-1) }),
+    ];
+    if (parentCommentId) {
+      updates.push(updateDoc(doc(db, 'reels', reelId, 'comments', parentCommentId), { replyCount: increment(-1) }));
+    }
+    await Promise.all(updates).catch(() => undefined);
   }
 
   private normalizeComment(id: string, reelId: string, value: unknown): LimeComment {
     const data = recordOf(value);
     const user = recordOf(data.user);
+    const media = recordOf(data.sticker);
+    const mediaType = stringOf(media.type);
     return {
       id,
       reelId,
@@ -488,7 +523,92 @@ export class LimeService {
       replyToUserName: stringOf(data.replyToUserName) || null,
       createdAt: this.toDate(data.createdAt).getTime(),
       editedAt: data.editedAt ? this.toDate(data.editedAt).getTime() : undefined,
+      sticker: mediaType === 'sticker' || mediaType === 'gif'
+        ? {
+            id: stringOf(media.id),
+            name: stringOf(media.name, mediaType === 'gif' ? 'GIF' : 'Sticker'),
+            imageUrl: stringOf(media.imageUrl),
+            type: mediaType,
+          }
+        : null,
     };
+  }
+
+  private readEmbeddedReposters(value: unknown, fallback: NonNullable<Reel['repostedBy']>[number] | null): Reel['repostedBy'] {
+    const entries = Array.isArray(value) ? value : value ? [value] : [];
+    const reposters = entries.flatMap((entry): NonNullable<Reel['repostedBy']> => {
+      const data = recordOf(entry);
+      const userId = stringOf(data.userId) || stringOf(data.id);
+      if (!userId) return [];
+      return [{
+        userId,
+        userName: stringOf(data.userName, 'user'),
+        firstName: stringOf(data.firstName, 'Lime'),
+        lastName: stringOf(data.lastName, 'User'),
+        profileImage: stringOf(data.profileImage) || undefined,
+      }];
+    });
+    if (fallback && !reposters.some((reposter) => reposter.userId === fallback.userId)) reposters.push(fallback);
+    return reposters.length > 0 ? reposters : undefined;
+  }
+
+  private async attachReposters(reels: Reel[], currentUserId: string): Promise<Reel[]> {
+    const reelIds = reels.map((reel) => reel.id).filter(Boolean);
+    if (reelIds.length === 0) return reels;
+    try {
+      const markerDocuments: QueryDocumentSnapshot[] = [];
+      for (let offset = 0; offset < reelIds.length; offset += 10) {
+        const chunk = reelIds.slice(offset, offset + 10);
+        const [canonicalMarkers, legacyMarkers] = await Promise.all([
+          getDocs(query(collection(db, 'reelReposts'), where('reelId', 'in', chunk))).catch(() => null),
+          getDocs(query(collection(db, 'reelReposts'), where('originalReelId', 'in', chunk))).catch(() => null),
+        ]);
+        canonicalMarkers?.docs.forEach((markerDocument) => markerDocuments.push(markerDocument));
+        legacyMarkers?.docs.forEach((markerDocument) => markerDocuments.push(markerDocument));
+      }
+      const uniqueMarkers = Array.from(new Map(markerDocuments.map((markerDocument) => [markerDocument.id, markerDocument])).values());
+      const userIds = Array.from(new Set(uniqueMarkers.map((markerDocument) => stringOf(markerDocument.data().userId)).filter(Boolean)));
+      const profiles = await Promise.all(userIds.map(async (userId) => [userId, await this.authService.getUserProfile(userId)] as const));
+      const profileById = new Map(profiles);
+      const repostersByReel = new Map<string, NonNullable<Reel['repostedBy']>>();
+      uniqueMarkers.forEach((markerDocument) => {
+        const marker = markerDocument.data();
+        const reelId = stringOf(marker.reelId) || stringOf(marker.originalReelId);
+        const userId = stringOf(marker.userId);
+        const profile = profileById.get(userId);
+        if (!reelId || !userId || !profile) return;
+        const current = repostersByReel.get(reelId) ?? [];
+        if (!current.some((reposter) => reposter.userId === userId)) {
+          current.push({
+            userId,
+            userName: profile.userName || 'user',
+            firstName: profile.firstName || 'Lime',
+            lastName: profile.lastName || 'User',
+            profileImage: profile.profilePicture || undefined,
+          });
+        }
+        repostersByReel.set(reelId, current);
+      });
+      return reels.map((reel) => {
+        const merged = [...(reel.repostedBy ?? [])];
+        for (const reposter of repostersByReel.get(reel.id) ?? []) {
+          if (!merged.some((item) => item.userId === reposter.userId)) merged.push(reposter);
+        }
+        return {
+          ...reel,
+          repostedBy: merged.length > 0 ? merged : undefined,
+          repostedByViewer: Boolean(currentUserId && merged.some((reposter) => reposter.userId === currentUserId)),
+          stats: {
+            likes: reel.stats?.likes ?? 0,
+            comments: reel.stats?.comments ?? 0,
+            shares: reel.stats?.shares ?? 0,
+            reposts: Math.max(reel.stats?.reposts ?? 0, merged.length),
+          },
+        };
+      });
+    } catch {
+      return reels;
+    }
   }
 
   private toDate(value: unknown): Date {

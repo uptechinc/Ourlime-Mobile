@@ -107,7 +107,7 @@ type Post = {
     visibility: string;
     createdAt: Date;
     userId: string;
-    hashtags: Array<string>;
+    hashtags: string[];
     media: {
         type: 'image' | 'video';
         typeUrl: string;
@@ -116,7 +116,7 @@ type Post = {
         id?: string;
     }[];
     type: string;
-    userReferences: Array<string>;
+    userReferences: string[];
     user: {
         firstName: string;
         lastName: string;
@@ -130,12 +130,12 @@ type Post = {
         comments: number;
         shares: number;
     };
-    likedUsers?: Array<{
+    likedUsers?: {
         id: string;
         firstName: string;
         lastName: string;
         profileImage?: string;
-    }>;
+    }[];
     mentions?: string[];
     friendReferences?: string[];
 };
@@ -148,7 +148,7 @@ type BasePost = {
     visibility: string;
     createdAt: Date;
     userId: string;
-    hashtags: Array<string>;
+    hashtags: string[];
     media: string;
     author: {
         id: string;
@@ -174,11 +174,13 @@ type PostData = {
 type Reel = {
     id: string;
     userId: string;
+    thumbnailUrl?: string;
     media: {
         type: 'video' | 'image';
         typeUrl: string;
         fileName: string;
         duration: number;
+        thumbnailUrl?: string;
     };
     visibility: string;
     category?: string;
@@ -214,7 +216,8 @@ type Reel = {
         firstName: string;
         lastName: string;
         profileImage?: string;
-    };
+    }[];
+    repostedByViewer?: boolean;
     reposts?: string[];
 };
 
@@ -246,11 +249,11 @@ type Contact = {
     isVerified: boolean;
     updatedAt: Date;
     userId: string;
-    settings: Array<{
+    settings: {
         id: string;
         contactId: string;
         setAs: string;
-    }>;
+    }[];
 };
 
 type ContactSectionProps = {

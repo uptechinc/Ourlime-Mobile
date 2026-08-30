@@ -3,6 +3,7 @@ import { MOBILE_PAGE_REGISTRY } from '@/lib/pageAccess/PageRegistry';
 
 const REGISTRATIONS: readonly PagePreloadRegistration[] = [
   { route: '/', policy: 'startup', resource: 'feed' },
+  { route: '/limes', policy: 'startup', resource: 'limes' },
   { route: '/discover', policy: 'startup', resource: 'discover' },
   { route: '/communities', policy: 'startup', resource: 'communities' },
   { route: '/chat', policy: 'startup', resource: 'conversations' },
