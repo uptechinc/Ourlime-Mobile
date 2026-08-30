@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Share, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -19,6 +19,7 @@ import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 
 type PostCardSectionProps = {
   post: PostItem;
@@ -59,6 +60,7 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
   const [repostBusy, setRepostBusy] = useState(false);
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [likesVisible, setLikesVisible] = useState(false);
+  const [shareVisible, setShareVisible] = useState(false);
   const [eventAttendance, setEventAttendance] = useState<{ isAttending: boolean; attendeeCount: number }>();
   const [eventAttendanceLoading, setEventAttendanceLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(null);
@@ -125,17 +127,15 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
     }
   };
 
-  const handleShare = async () => {
+  const handleShared = async (): Promise<void> => {
+    if (hasShared) return;
     try {
-      if (!hasShared && !post.communityId) {
-        const result = await postService.recordShare(post.id);
-        setShareCount(result.shareCount);
-        setHasShared(true);
-        onPostUpdate({ ...post, stats: { ...post.stats, shares: result.shareCount } });
-      }
-      await Share.share({ message: `${post.caption || post.description || 'View this post on Ourlime'}\n\n${postService.getPostUrl(post.id)}` });
+      const result = await postService.recordShare(post.id);
+      setShareCount(result.shareCount);
+      setHasShared(true);
+      onPostUpdate({ ...post, stats: { ...post.stats, shares: result.shareCount } });
     } catch (error: unknown) {
-      setFeedback({ title: 'Post not shared', message: error instanceof Error ? error.message : 'Please try again' });
+      setFeedback({ title: 'Share count not updated', message: error instanceof Error ? error.message : 'Your post was shared, but its count could not be refreshed.' });
     }
   };
 
@@ -317,10 +317,10 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
               <Icon name="message-circle" size={22} color={colors.icon} />
               <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{post.stats.comments}</Text>
             </AnimatedActionButton>
-            {!post.communityId ? <AnimatedActionButton feedback="share" accessibilityLabel="Share post" onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 20, paddingVertical: 6 }}>
+            <AnimatedActionButton feedback="share" accessibilityLabel="Share post" onPress={() => setShareVisible(true)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 20, paddingVertical: 6 }}>
               <Icon name="share-2" size={22} color={colors.icon} />
               <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text>
-            </AnimatedActionButton> : null}
+            </AnimatedActionButton>
             {!post.communityId ? <AnimatedActionButton disabled={repostBusy} onPress={handleRepostPress} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, opacity: repostBusy ? 0.6 : 1 }} accessibilityLabel={isReposted ? 'Remove repost' : 'Repost'}><Icon name="repeat" size={22} color={isReposted ? '#10b981' : colors.icon} /></AnimatedActionButton> : null}
           </View>
 
@@ -379,6 +379,16 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
       }}
     />
     <CustomModal visible={feedback !== null} type="danger" title={feedback?.title ?? ''} message={feedback?.message ?? ''} onClose={() => setFeedback(null)} />
+    <ShareContentSheet
+      visible={shareVisible}
+      currentUserId={currentUserId ?? ''}
+      contentLabel="post"
+      title={post.caption || post.description || `Post from @${post.user.userName}`}
+      message={`${post.caption || post.description || `View @${post.user.userName}'s post on Ourlime`}\n\n${postService.getPostUrl(post.id)}`}
+      url={postService.getPostUrl(post.id)}
+      onClose={() => setShareVisible(false)}
+      onShared={() => void handleShared()}
+    />
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Share, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -19,6 +19,7 @@ import { useCountdownTicker } from '@/lib/hooks/useCountdownTicker';
 import RichTextContent from '@/components/ui/RichTextContent';
 import { linkPresentationService } from '@/lib/services/LinkPresentationService';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 
 type PollCardSectionProps = {
   post: PostItem;
@@ -68,6 +69,7 @@ export default function PollCardSection({ post, isVisible = false, onCommentClic
   const [hasShared, setHasShared] = useState(false);
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [likesVisible, setLikesVisible] = useState(false);
+  const [shareVisible, setShareVisible] = useState(false);
   const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(null);
   const [selectedOptionId, setSelectedOptionId] = useState(currentUserId ? post.pollVotes?.[currentUserId] : undefined);
   const [voteCounts, setVoteCounts] = useState<Record<string, number>>(
@@ -144,17 +146,15 @@ export default function PollCardSection({ post, isVisible = false, onCommentClic
     }
   };
 
-  const handleShare = async () => {
+  const handleShared = async (): Promise<void> => {
+    if (hasShared) return;
     try {
-      if (!hasShared) {
-        const result = await postService.recordShare(post.id);
-        setShareCount(result.shareCount);
-        setHasShared(true);
-        onPostUpdate({ ...post, stats: { ...post.stats, shares: result.shareCount } });
-      }
-      await Share.share({ message: `${post.caption || post.description || 'Vote on this poll in Ourlime'}\n\n${postService.getPostUrl(post.id)}` });
+      const result = await postService.recordShare(post.id);
+      setShareCount(result.shareCount);
+      setHasShared(true);
+      onPostUpdate({ ...post, stats: { ...post.stats, shares: result.shareCount } });
     } catch (error: unknown) {
-      setFeedback({ title: 'Poll not shared', message: error instanceof Error ? error.message : 'Please try again' });
+      setFeedback({ title: 'Share count not updated', message: error instanceof Error ? error.message : 'Your poll was shared, but its count could not be refreshed.' });
     }
   };
 
@@ -212,7 +212,7 @@ export default function PollCardSection({ post, isVisible = false, onCommentClic
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike poll' : 'Like poll'} onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} /></AnimatedActionButton><TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 22, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#ef4444' : colors.mutedText, fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
             <AnimatedActionButton feedback="comment" accessibilityLabel="Open poll comments" onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 22, paddingVertical: 6 }}><Icon name="message-circle" size={22} color={colors.icon} /><Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{post.stats.comments}</Text></AnimatedActionButton>
-            <AnimatedActionButton feedback="share" accessibilityLabel="Share poll" onPress={() => void handleShare()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="share-2" size={22} color={colors.icon} /><Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text></AnimatedActionButton>
+            <AnimatedActionButton feedback="share" accessibilityLabel="Share poll" onPress={() => setShareVisible(true)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Icon name="share-2" size={22} color={colors.icon} /><Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text></AnimatedActionButton>
           </View>
 
           {likeCount > 0 ? (
@@ -255,6 +255,16 @@ export default function PollCardSection({ post, isVisible = false, onCommentClic
       <LikesModal visible={likesVisible} postId={post.id} origin={post.origin} onClose={() => setLikesVisible(false)} />
     </View>
     <CustomModal visible={feedback !== null} type="danger" title={feedback?.title ?? ''} message={feedback?.message ?? ''} onClose={() => setFeedback(null)} />
+    <ShareContentSheet
+      visible={shareVisible}
+      currentUserId={currentUserId ?? ''}
+      contentLabel="poll"
+      title={post.caption || post.description || `Poll from @${post.user.userName}`}
+      message={`${post.caption || post.description || `Vote in @${post.user.userName}'s poll on Ourlime`}\n\n${postService.getPostUrl(post.id)}`}
+      url={postService.getPostUrl(post.id)}
+      onClose={() => setShareVisible(false)}
+      onShared={() => void handleShared()}
+    />
     </>
   );
 }

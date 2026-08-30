@@ -13,6 +13,7 @@ import {
   Platform,
   Linking,
   ScrollView,
+  Modal,
   type AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -32,9 +33,8 @@ import {
   Flag,
   Trash2,
   Maximize2,
-  ChevronDown,
-  ChevronUp,
   ChevronLeft,
+  X,
 } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useRouter, useLocalSearchParams, useIsFocused } from 'expo-router';
@@ -53,6 +53,18 @@ import { LimeResourceService } from '@/lib/services/LimeResourceService';
 import { useLimeFeedResource } from '@/lib/hooks/useLimeFeedResource';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components/ui/PlayfulFloatingHeart';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const authService = AuthService.getInstance();
@@ -63,6 +75,109 @@ type ReportTarget = {
   reportedUserId: string;
   reportType: 'lime' | 'user';
 };
+
+type LimeReposter = NonNullable<Reel['repostedBy']>[number];
+
+type FloatingReposterBubbleProps = {
+  reposter: LimeReposter;
+  reposterIndex: number;
+  visibleReposterCount: number;
+  currentUserId: string;
+};
+
+function FloatingReposterBubble({
+  reposter,
+  reposterIndex,
+  visibleReposterCount,
+  currentUserId,
+}: FloatingReposterBubbleProps) {
+  const reduceMotion = useReducedMotion();
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const scale = useSharedValue(1);
+  const baseTranslateY = reposterIndex === 1 ? -6 : reposterIndex === 2 ? 3 : 0;
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    const direction = reposterIndex % 2 === 0 ? 1 : -1;
+    const delayMs = reposterIndex * 180;
+    const horizontalRadius = (4 + reposterIndex) * direction;
+    const verticalRadius = 5 + reposterIndex;
+    const easing = Easing.inOut(Easing.ease);
+
+    translateX.value = withDelay(
+      delayMs,
+      withRepeat(
+        withSequence(
+          withTiming(horizontalRadius, { duration: 1_350 + reposterIndex * 120, easing }),
+          withTiming(-horizontalRadius * 0.7, { duration: 1_550 + reposterIndex * 100, easing }),
+          withTiming(0, { duration: 1_100, easing })
+        ),
+        -1,
+        false
+      )
+    );
+    translateY.value = withDelay(
+      delayMs + 90,
+      withRepeat(
+        withSequence(
+          withTiming(-verticalRadius, { duration: 1_200 + reposterIndex * 140, easing }),
+          withTiming(verticalRadius * 0.65, { duration: 1_450 + reposterIndex * 110, easing }),
+          withTiming(0, { duration: 1_050, easing })
+        ),
+        -1,
+        false
+      )
+    );
+    scale.value = withDelay(
+      delayMs,
+      withRepeat(
+        withSequence(
+          withTiming(1.035, { duration: 1_300, easing }),
+          withTiming(0.985, { duration: 1_500, easing }),
+          withTiming(1, { duration: 1_050, easing })
+        ),
+        -1,
+        false
+      )
+    );
+
+    return () => {
+      cancelAnimation(translateX);
+      cancelAnimation(translateY);
+      cancelAnimation(scale);
+    };
+  }, [reduceMotion, reposterIndex, scale, translateX, translateY]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: baseTranslateY + translateY.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        styles.reposterBubbleShell,
+        {
+          marginLeft: reposterIndex === 0 ? 0 : -12,
+          zIndex: visibleReposterCount - reposterIndex,
+          borderColor: reposter.userId === currentUserId ? '#34d399' : '#ffffff',
+        },
+        animatedStyle,
+      ]}
+    >
+      <Image
+        source={{ uri: reposter.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(reposter.firstName || 'L')}&background=10b981&color=fff` }}
+        style={styles.reposterBubbleAvatar}
+        contentFit="cover"
+        cachePolicy="memory-disk"
+      />
+    </Animated.View>
+  );
+}
 
 export default function LimesScreen() {
   const router = useRouter();
@@ -696,9 +811,20 @@ function ReelItem({
   const viewerReposted = isReposted
     || reel.repostedByViewer === true
     || Boolean(currentUserId && reel.repostedBy?.some((reposter) => reposter.userId === currentUserId));
-  const repostIndicatorText = viewerReposted
-    ? 'You reposted this Lime'
-    : `${repostCount} ${repostCount === 1 ? 'person' : 'people'} reposted this Lime`;
+  const orderedReposters = useMemo(() => {
+    const reposters = [...(reel.repostedBy ?? [])];
+    if (!currentUserId) return reposters;
+    return reposters.sort((firstReposter, secondReposter) => {
+      if (firstReposter.userId === currentUserId) return -1;
+      if (secondReposter.userId === currentUserId) return 1;
+      return 0;
+    });
+  }, [currentUserId, reel.repostedBy]);
+  const visibleReposters = orderedReposters.slice(0, 3);
+  const hiddenReposterCount = Math.max(0, repostCount - visibleReposters.length);
+  const reposterAccessibilityLabel = viewerReposted
+    ? `You reposted this Lime.${repostCount > 1 ? ` ${repostCount - 1} other ${repostCount === 2 ? 'person' : 'people'} reposted it.` : ''}`
+    : `${repostCount} ${repostCount === 1 ? 'person' : 'people'} reposted this Lime.`;
 
   useEffect(() => {
     setIsReposted(isRepostedInitial);
@@ -834,7 +960,7 @@ function ReelItem({
         <ReelVideoPlayer
           ref={videoPlayerRef}
           url={reel.media.typeUrl}
-          isActive={isActive && !paused && !shareSheetVisible}
+          isActive={isActive && !paused && !shareSheetVisible && !showReposters}
           muted={muted}
           onProgressChange={setVideoProgress}
         />
@@ -970,43 +1096,41 @@ function ReelItem({
       {/* 6. Bottom overlay (creator info + caption) */}
       <View style={styles.bottomOverlay} pointerEvents="box-none">
         {repostCount > 0 ? (
-          <View style={styles.reposterWorkspace}>
-            {showReposters && reel.repostedBy && reel.repostedBy.length > 0 ? (
-              <ScrollView style={styles.reposterList} nestedScrollEnabled>
-                {reel.repostedBy.map((reposter) => (
-                  <TouchableOpacity
-                    key={reposter.userId}
-                    onPress={() => onProfilePress(reposter.userName)}
-                    style={styles.reposterRow}
-                  >
-                    <Image
-                      source={{ uri: reposter.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(reposter.firstName || 'L')}&background=10b981&color=fff` }}
-                      style={styles.reposterAvatar}
-                      contentFit="cover"
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.reposterName} numberOfLines={1}>{reposter.firstName} {reposter.lastName}</Text>
-                      <Text style={styles.reposterHandle} numberOfLines={1}>@{reposter.userName}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            ) : null}
-            <TouchableOpacity
-              onPress={() => {
-                if (reel.repostedBy && reel.repostedBy.length > 0) setShowReposters((visible) => !visible);
-              }}
-              style={styles.repostBadge}
-            >
-              <Repeat2 size={13} color="#34d399" />
-              <Text style={styles.repostBadgeText}>{repostIndicatorText}</Text>
-              {reel.repostedBy && reel.repostedBy.length > 0
-                ? showReposters
-                  ? <ChevronDown size={13} color="#34d399" />
-                  : <ChevronUp size={13} color="#34d399" />
-                : null}
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            onPress={() => {
+              if (orderedReposters.length > 0) setShowReposters(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={reposterAccessibilityLabel}
+            activeOpacity={0.82}
+            style={styles.reposterBubbleAnchor}
+          >
+            <View style={styles.reposterBubbleCluster}>
+              {visibleReposters.map((reposter, reposterIndex) => (
+                <FloatingReposterBubble
+                  key={reposter.userId}
+                  reposter={reposter}
+                  reposterIndex={reposterIndex}
+                  visibleReposterCount={visibleReposters.length}
+                  currentUserId={currentUserId}
+                />
+              ))}
+              {visibleReposters.length === 0 ? (
+                <View style={[styles.reposterBubbleShell, styles.reposterCountBubble]}>
+                  <Repeat2 size={17} color="#ffffff" />
+                  <Text style={styles.reposterCountText}>{repostCount}</Text>
+                </View>
+              ) : null}
+              {hiddenReposterCount > 0 ? (
+                <View style={[styles.reposterBubbleShell, styles.reposterCountBubble, { marginLeft: -10, zIndex: 0 }]}>
+                  <Text style={styles.reposterCountText}>+{hiddenReposterCount}</Text>
+                </View>
+              ) : null}
+              <View style={styles.reposterRepeatBadge} pointerEvents="none">
+                <Repeat2 size={11} color="#ffffff" />
+              </View>
+            </View>
+          </TouchableOpacity>
         ) : null}
 
         <View style={styles.creatorRow} pointerEvents="box-none">
@@ -1063,6 +1187,61 @@ function ReelItem({
         onClose={() => setShareSheetVisible(false)}
         onShared={handleShared}
       />
+
+      <Modal
+        visible={showReposters}
+        transparent
+        animationType="fade"
+        presentationStyle="overFullScreen"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setShowReposters(false)}
+      >
+        <Pressable style={styles.reposterSheetBackdrop} onPress={() => setShowReposters(false)} />
+        <SwipeDismissSurface
+          visible={showReposters}
+          onDismiss={() => setShowReposters(false)}
+          handleColor="#64748b"
+          accessibilityLabel="Swipe down to close Lime reposters"
+          style={styles.reposterSheet}
+        >
+          <View style={styles.reposterSheetHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.reposterSheetTitle}>Reposted by</Text>
+              <Text style={styles.reposterSheetSubtitle}>{repostCount} {repostCount === 1 ? 'person' : 'people'} shared this Lime with their audience.</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowReposters(false)} accessibilityLabel="Close Lime reposters" style={styles.reposterSheetClose}>
+              <X size={20} color="#cbd5e1" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.reposterSheetList} contentContainerStyle={{ paddingBottom: 24 }} nestedScrollEnabled>
+            {orderedReposters.map((reposter) => (
+              <TouchableOpacity
+                key={reposter.userId}
+                onPress={() => {
+                  setShowReposters(false);
+                  onProfilePress(reposter.userName);
+                }}
+                style={styles.reposterSheetRow}
+              >
+                <Image
+                  source={{ uri: reposter.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(reposter.firstName || 'L')}&background=10b981&color=fff` }}
+                  style={styles.reposterSheetAvatar}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reposterSheetName} numberOfLines={1}>
+                    {reposter.userId === currentUserId ? 'You' : `${reposter.firstName} ${reposter.lastName}`.trim()}
+                  </Text>
+                  <Text style={styles.reposterSheetHandle} numberOfLines={1}>@{reposter.userName}</Text>
+                </View>
+                <Text style={styles.reposterSheetProfileAction}>View profile</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </SwipeDismissSurface>
+      </Modal>
     </View>
   );
 }
@@ -1364,36 +1543,61 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  repostBadge: {
-    flexDirection: 'row',
+  reposterBubbleAnchor: { position: 'absolute', left: 0, bottom: '100%', marginBottom: 12, zIndex: 40 },
+  reposterBubbleCluster: { minWidth: 48, minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingRight: 5 },
+  reposterBubbleShell: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 2.5,
+    padding: 2,
+    backgroundColor: 'rgba(2,6,23,0.92)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 12,
+  },
+  reposterBubbleAvatar: { width: '100%', height: '100%', borderRadius: 18 },
+  reposterCountBubble: { alignItems: 'center', justifyContent: 'center', borderColor: 'rgba(255,255,255,0.8)', flexDirection: 'row', gap: 2 },
+  reposterCountText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
+  reposterRepeatBadge: {
+    position: 'absolute',
+    left: 30,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#10b981',
+    borderWidth: 2,
+    borderColor: '#020617',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(6, 78, 59, 0.85)',
-    borderColor: 'rgba(52, 211, 153, 0.4)',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  reposterSheetBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.58)' },
+  reposterSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    maxHeight: '72%',
+    backgroundColor: '#0f172a',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    alignSelf: 'flex-start',
-    marginBottom: 8,
+    borderColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 18,
+    paddingTop: 8,
   },
-  reposterWorkspace: { alignSelf: 'flex-start', maxWidth: 280 },
-  reposterList: {
-    maxHeight: 180,
-    marginBottom: 7,
-    padding: 6,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
-    backgroundColor: 'rgba(2,6,23,0.96)',
-  },
-  reposterRow: { minWidth: 230, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 7, paddingVertical: 6 },
-  reposterAvatar: { width: 32, height: 32, borderRadius: 16 },
-  reposterName: { color: '#ffffff', fontSize: 12, fontWeight: '800' },
-  reposterHandle: { color: '#6ee7b7', fontSize: 11, marginTop: 1 },
-  repostBadgeText: {
-    color: '#34d399',
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  reposterSheetHeader: { flexDirection: 'row', alignItems: 'center', paddingTop: 8, paddingBottom: 14 },
+  reposterSheetTitle: { color: '#ffffff', fontSize: 21, fontWeight: '900' },
+  reposterSheetSubtitle: { color: '#94a3b8', fontSize: 12, lineHeight: 17, marginTop: 3 },
+  reposterSheetClose: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#1e293b', alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
+  reposterSheetList: { flexGrow: 0 },
+  reposterSheetRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.1)' },
+  reposterSheetAvatar: { width: 46, height: 46, borderRadius: 23, marginRight: 12 },
+  reposterSheetName: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
+  reposterSheetHandle: { color: '#94a3b8', fontSize: 12, marginTop: 2 },
+  reposterSheetProfileAction: { color: '#34d399', fontSize: 12, fontWeight: '800', marginLeft: 10 },
 });

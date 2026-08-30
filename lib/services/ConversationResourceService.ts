@@ -137,6 +137,11 @@ export class ConversationResourceService {
 
         const lastMessageTime = data.lastMessageTime instanceof Timestamp ? data.lastMessageTime : undefined;
         const lastMessage = typeof data.lastMessage === 'string' ? data.lastMessage : (typeof latestMsg?.message === 'string' ? latestMsg.message : '');
+        const lastMessageSenderId = typeof data.lastMessageSenderId === 'string'
+          ? data.lastMessageSenderId
+          : typeof latestMsg?.senderId === 'string'
+            ? latestMsg.senderId
+            : undefined;
         const unreadCount = typeof data.unreadCount === 'number' ? data.unreadCount : 0;
 
         const existingIndex = currentList.findIndex((item) => item.uid === peerId);
@@ -145,6 +150,7 @@ export class ConversationResourceService {
           currentList[existingIndex] = {
             ...prev,
             lastMessage: lastMessage || prev.lastMessage,
+            lastMessageSenderId: lastMessageSenderId ?? prev.lastMessageSenderId,
             lastMessageTime: lastMessageTime ?? prev.lastMessageTime,
             unreadCount: unreadCount > 0 ? unreadCount : prev.unreadCount,
           };
@@ -163,6 +169,7 @@ export class ConversationResourceService {
                 accountType: typeof u.accountType === 'string' ? u.accountType : 'user',
                 profilePicture: typeof u.profilePicture === 'string' ? u.profilePicture : null,
                 lastMessage,
+                lastMessageSenderId,
                 lastMessageTime,
                 unreadCount,
                 isOnline: u.isOnline === true,
@@ -289,6 +296,7 @@ export class ConversationResourceService {
       accountType: 'user',
       profilePicture: typeof record.peerProfileImage === 'string' ? record.peerProfileImage : null,
       lastMessage: typeof record.lastMessagePreview === 'string' ? record.lastMessagePreview : '',
+      lastMessageSenderId: typeof record.lastMessageSenderId === 'string' ? record.lastMessageSenderId : undefined,
       lastMessageTime: timestamp,
       unreadCount: typeof record.unreadCount === 'number' ? record.unreadCount : 0,
       isOnline: record.isOnline === true,

@@ -9,7 +9,6 @@ import {
   StatusBar,
   Image,
   Dimensions,
-  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -32,6 +31,7 @@ import PostLocationMap from '@/components/home/MiddleSection/MiddleSectionCompon
 import { deepLinkService } from '@/lib/services/DeepLinkService';
 import CustomModal from '@/components/ui/CustomModal';
 import { linkPresentationService } from '@/lib/services/LinkPresentationService';
+import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 
 const authService = AuthService.getInstance();
 const relationshipService = RelationshipService.getInstance();
@@ -51,6 +51,7 @@ export default function DiscoverScreen() {
   const [userSearchResults, setUserSearchResults] = useState<RelationshipSuggestion[]>([]);
   const [isSearchingQuery, setIsSearchingQuery] = useState(false);
   const [friendSentIds, setFriendSentIds] = useState<Set<string>>(new Set());
+  const [eventToShare, setEventToShare] = useState<DiscoverEvent | null>(null);
   const isLoadingPeople = suggestedPeople.length === 0 && (!resource.data || resource.data.sectionStatus.people === 'loading');
   const isLoadingCommunities = communities.length === 0 && (!resource.data || resource.data.sectionStatus.communities === 'loading');
   const isLoadingEvents = events.length === 0 && (!resource.data || resource.data.sectionStatus.events === 'loading');
@@ -159,14 +160,6 @@ export default function DiscoverScreen() {
       console.error('[DiscoverScreen.handleConfirmCancel]', error);
     } finally {
       setCancelLoading(false);
-    }
-  };
-
-  const handleShareEvent = async (event: DiscoverEvent) => {
-    try {
-      await Share.share({ message: `Check out ${event.title} at ${event.location} on Ourlime!\n${deepLinkService.getEventShareUrl(event.id)}` });
-    } catch {
-      // Ignored
     }
   };
 
@@ -372,7 +365,7 @@ export default function DiscoverScreen() {
                         <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, fontSize: 12, color: colors.mutedText, marginLeft: 4 }}>{locationLabel}</Text>
                       </View>
                     </View>
-                    <TouchableOpacity onPress={() => void handleShareEvent(evt)} style={{ padding: 8 }}>
+                    <TouchableOpacity onPress={() => setEventToShare(evt)} style={{ padding: 8 }}>
                       <Icon name="share-2" size={18} color={colors.icon} />
                     </TouchableOpacity>
                   </View>
@@ -453,6 +446,17 @@ export default function DiscoverScreen() {
           isLoading={cancelLoading}
           onConfirm={() => void handleConfirmCancel()}
           onClose={() => setCancelModalUser(null)}
+        />
+      ) : null}
+      {eventToShare ? (
+        <ShareContentSheet
+          visible={Boolean(eventToShare)}
+          currentUserId={activeUserId ?? ''}
+          contentLabel="event"
+          title={eventToShare.title}
+          message={`Check out ${eventToShare.title}${eventToShare.location ? ` at ${eventToShare.location}` : ''} on Ourlime!\n\n${deepLinkService.getEventShareUrl(eventToShare.id)}`}
+          url={deepLinkService.getEventShareUrl(eventToShare.id)}
+          onClose={() => setEventToShare(null)}
         />
       ) : null}
     </SafeAreaView>

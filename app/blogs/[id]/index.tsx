@@ -1,20 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, Share, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BlogsAndArticlesService, type BlogListItem } from '@/lib/blogs&articles/BlogsAndArticlesService';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
+import { useAppData } from '@/lib/contexts/AppDataContext';
+import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 
 const blogService = BlogsAndArticlesService.getInstance();
 
 export default function BlogDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { activeUserId: currentUserId } = useAppData();
   const [blog, setBlog] = useState<BlogListItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [shareVisible, setShareVisible] = useState(false);
 
   const loadBlog = useCallback(async () => {
     if (!id) return;
@@ -34,7 +38,7 @@ export default function BlogDetailScreen() {
       <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
         <TouchableOpacity onPress={() => router.back()} style={{ padding: 4 }}><Ionicons name="chevron-back" size={26} color="#0f172a" /></TouchableOpacity>
         <Text style={{ flex: 1, marginLeft: 10, fontSize: 18, fontWeight: '800', color: '#0f172a' }}>Blog</Text>
-        {blog ? <TouchableOpacity onPress={() => void Share.share({ message: `${blog.title}\n${deepLinkService.getBlogShareUrl(blog.id)}` })} style={{ padding: 4 }}><Ionicons name="share-outline" size={22} color="#475569" /></TouchableOpacity> : null}
+        {blog ? <TouchableOpacity onPress={() => setShareVisible(true)} style={{ padding: 4 }}><Ionicons name="share-outline" size={22} color="#475569" /></TouchableOpacity> : null}
       </View>
       {loading ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color="#10b981" /></View> : error || !blog ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}><Text style={{ color: '#475569' }}>{error || 'Blog not found.'}</Text><TouchableOpacity onPress={() => void loadBlog()} style={{ marginTop: 14, backgroundColor: '#10b981', paddingHorizontal: 22, paddingVertical: 11, borderRadius: 999 }}><Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text></TouchableOpacity></View> : <ScrollView contentContainerStyle={{ paddingBottom: 50 }}>
         {blog.coverImage ? <Image source={{ uri: blog.coverImage }} style={{ width: '100%', height: 230 }} resizeMode="cover" /> : null}
@@ -46,6 +50,17 @@ export default function BlogDetailScreen() {
           {blog.tags.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 22 }}>{blog.tags.map((tag) => <View key={tag.name} style={{ backgroundColor: '#ecfdf5', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6 }}><Text style={{ color: '#047857', fontWeight: '700' }}>#{tag.name}</Text></View>)}</View> : null}
         </View>
       </ScrollView>}
+      {blog ? (
+        <ShareContentSheet
+          visible={shareVisible}
+          currentUserId={currentUserId ?? ''}
+          contentLabel="blog"
+          title={blog.title}
+          message={`${blog.title}\n\n${deepLinkService.getBlogShareUrl(blog.id)}`}
+          url={deepLinkService.getBlogShareUrl(blog.id)}
+          onClose={() => setShareVisible(false)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

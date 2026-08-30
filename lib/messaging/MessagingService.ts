@@ -21,6 +21,7 @@ import { ApiService } from '@/lib/services/ApiService';
 
 export type ConversationEntry = UserProfile & {
     lastMessage?: string;
+    lastMessageSenderId?: string;
     lastMessageTime?: Timestamp;
     unreadCount: number;
     isOnline: boolean;
@@ -140,6 +141,7 @@ export class MessagingService {
                     accountType: 'user',
                     profilePicture: typeof record.profileImage === 'string' ? record.profileImage : null,
                     lastMessage: typeof record.lastMessage === 'string' ? record.lastMessage : undefined,
+                    lastMessageSenderId: typeof record.lastMessageSenderId === 'string' ? record.lastMessageSenderId : undefined,
                     lastMessageTime: seconds > 0 ? new Timestamp(seconds, nanoseconds) : undefined,
                     unreadCount: typeof record.unreadCount === 'number' ? record.unreadCount : 0,
                     isOnline: record.isOnline === true,
@@ -203,7 +205,17 @@ export class MessagingService {
                 ? messages.filter((message) => message.timestamp instanceof Timestamp && message.timestamp.toMillis() > clearedAt.toMillis())
                 : messages;
             const lastMessageRecord = visibleMessages.at(-1);
-            const lastMessageTime = lastMessageRecord?.timestamp instanceof Timestamp ? lastMessageRecord.timestamp : undefined;
+            const lastMessageTime = lastMessageRecord?.timestamp instanceof Timestamp
+                ? lastMessageRecord.timestamp
+                : chat.lastMessageTime instanceof Timestamp
+                    ? chat.lastMessageTime
+                    : undefined;
+            const lastMessage = lastMessageRecord
+                ? readString(lastMessageRecord.message)
+                : readString(chat.lastMessage);
+            const lastMessageSenderId = lastMessageRecord
+                ? readString(lastMessageRecord.senderId)
+                : readString(chat.lastMessageSenderId);
             const unreadCount = visibleMessages.filter((message) =>
                 readString(message.receiverId) === currentUserId && readString(message.status) === 'sent'
             ).length;
@@ -216,7 +228,8 @@ export class MessagingService {
                 email: readString(user.email),
                 accountType: readString(user.accountType, 'user'),
                 profilePicture,
-                lastMessage: lastMessageRecord ? readString(lastMessageRecord.message) : undefined,
+                lastMessage: lastMessage || undefined,
+                lastMessageSenderId: lastMessageSenderId || undefined,
                 lastMessageTime,
                 unreadCount,
                 isOnline: user.isOnline === true,

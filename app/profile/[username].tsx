@@ -6,7 +6,6 @@ import {
   RefreshControl,
   TouchableOpacity,
   StatusBar,
-  Share,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -33,6 +32,7 @@ import { adminAccessService } from '@/lib/services/AdminAccessService';
 import { adminContentService } from '@/lib/services/AdminContentService';
 import type { UserDeletedPostRecord } from '@/lib/types/adminContent';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
+import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 
 const authService = AuthService.getInstance();
 const relationshipService = RelationshipService.getInstance();
@@ -69,11 +69,13 @@ export default function UserProfileScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [deletedPosts, setDeletedPosts] = useState<UserDeletedPostRecord[]>([]);
   const [deletedPostsLoading, setDeletedPostsLoading] = useState(false);
+  const [shareVisible, setShareVisible] = useState(false);
 
   const currentUser = authService.getCurrentUser();
   const currentUserId = currentUser?.uid;
   const { resource: publicProfileResource, refresh: refreshProfile } = useProfileResource({ kind: 'public', viewerId: currentUserId ?? 'anonymous', username: username ?? '' });
   const profile = publicProfileResource.data?.profile ?? null;
+  const profileUserId = profile?.uid;
   const profileDetails = { friends: publicProfileResource.data?.friends ?? [], communities: publicProfileResource.data?.communities ?? [] };
   const isLoading = !publicProfileResource.data && (publicProfileResource.status === 'idle' || publicProfileResource.status === 'hydrating');
   const refreshing = publicProfileResource.status === 'refreshing' && Boolean(publicProfileResource.data);
@@ -86,17 +88,17 @@ export default function UserProfileScreen() {
   }, []);
 
   const loadDeletedPosts = useCallback(async () => {
-    if (!profile?.uid) return;
+    if (!profileUserId) return;
     try {
       setDeletedPostsLoading(true);
-      const posts = await adminContentService.getUserDeletedPosts(profile.uid);
+      const posts = await adminContentService.getUserDeletedPosts(profileUserId);
       setDeletedPosts(posts);
     } catch {
       setDeletedPosts([]);
     } finally {
       setDeletedPostsLoading(false);
     }
-  }, [profile?.uid]);
+  }, [profileUserId]);
 
   useEffect(() => {
     if (activeTab === 'deleted_posts' && isAdmin) {
@@ -220,17 +222,6 @@ export default function UserProfileScreen() {
     }
   };
 
-  const handleShare = async () => {
-    if (!profile) return;
-    try {
-      await Share.share({
-        message: `Check out @${profile.userName}'s profile on Ourlime: ${deepLinkService.getProfileShareUrl(profile.userName)}`,
-      });
-    } catch {
-      // ignore
-    }
-  };
-
   const handleMessage = () => {
     if (!profile) return;
     router.push({ pathname: '/chat/[id]', params: { id: profile.uid } });
@@ -286,7 +277,7 @@ export default function UserProfileScreen() {
         <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: '800', color: colors.text, flex: 1 }}>
           {displayName}
         </Text>
-        <TouchableOpacity onPress={() => void handleShare()} style={{ padding: 6 }}>
+        <TouchableOpacity onPress={() => setShareVisible(true)} style={{ padding: 6 }}>
           <Ionicons name="share-outline" size={22} color={colors.icon} />
         </TouchableOpacity>
         {!isOwnProfile && profile ? (
@@ -593,6 +584,17 @@ export default function UserProfileScreen() {
         onConfirm={modal.action ? () => void handleProfileModeration() : undefined}
         onClose={() => setModal((previous) => ({ ...previous, visible: false, action: undefined }))}
       />
+      {profile ? (
+        <ShareContentSheet
+          visible={shareVisible}
+          currentUserId={currentUserId ?? ''}
+          contentLabel="profile"
+          title={`@${profile.userName} on Ourlime`}
+          message={`Check out @${profile.userName}'s profile on Ourlime:\n\n${deepLinkService.getProfileShareUrl(profile.userName)}`}
+          url={deepLinkService.getProfileShareUrl(profile.userName)}
+          onClose={() => setShareVisible(false)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

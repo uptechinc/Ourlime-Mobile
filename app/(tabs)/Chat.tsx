@@ -25,6 +25,7 @@ import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import { useConversations } from '@/lib/hooks/useConversations';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import CustomModal from '@/components/ui/CustomModal';
+import { sharedContentMessageService } from '@/lib/services/SharedContentMessageService';
 
 const authService = AuthService.getInstance();
 
@@ -44,11 +45,13 @@ function formatLastMessageTime(ts?: Timestamp): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function formatLastMessagePreview(msg?: string, userName?: string): string {
+function formatLastMessagePreview(msg?: string, userName?: string, sentByViewer = false): string {
   if (!msg) return `@${userName ?? ''}`;
   if (msg === '[SYS:CALL_ENDED]') return '📞 Call ended';
   if (msg === '[SYS:VOICE_CALL_INVITE]') return '📞 Voice call';
   if (msg === '[SYS:VIDEO_CALL_INVITE]') return '📹 Video call';
+  const sharedPreview = sharedContentMessageService.getConversationListPreview(msg, sentByViewer);
+  if (sharedPreview) return sharedPreview;
   return msg;
 }
 
@@ -664,7 +667,7 @@ export default function ChatTabScreen() {
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                       <Text style={{ fontSize: 13, color: hasUnread ? colors.text : colors.mutedText, fontWeight: hasUnread ? '600' : '400', flex: 1 }} numberOfLines={1}>
-                        {formatLastMessagePreview(user.lastMessage, user.userName)}
+                        {formatLastMessagePreview(user.lastMessage, user.userName, user.lastMessageSenderId === currentUserId)}
                       </Text>
                       {hasUnread && (
                         <View style={{ backgroundColor: '#10b981', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2, marginLeft: 8 }}>

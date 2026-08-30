@@ -1,4 +1,5 @@
-import { View, Text, TouchableOpacity, Share } from 'react-native';
+import { useState } from 'react';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, type Href } from 'expo-router';
@@ -7,6 +8,8 @@ import CachedImage from '@/components/ui/CachedImage';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { DeepLinkService } from '@/lib/services/DeepLinkService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { useAppData } from '@/lib/contexts/AppDataContext';
+import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 
 const deepLinkService = DeepLinkService.getInstance();
 
@@ -31,23 +34,16 @@ export default function ProfileHeader({
 }: ProfileHeaderProps) {
   const router = useRouter();
   const { colors } = useAppTheme();
+  const { activeUserId: currentUserId } = useAppData();
+  const [shareVisible, setShareVisible] = useState(false);
   const displayName = `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() || profile.userName || 'Ourlime User';
   const handle = `@${profile.userName || 'user'}`;
   const isAdmin = profile.accountType === 'admin' || profile.isAdmin === true;
   const isVerified = profile.emailVerified === true || profile.verificationStatus === 'verified';
   const coverImage = profile.coverPhoto || profile.coverImage || profile.coverPicture;
 
-  const handleShare = async () => {
-    try {
-      await Share.share({
-        message: `Check out ${displayName}'s profile on Ourlime: ${deepLinkService.getProfileShareUrl(profile.userName)}`,
-      });
-    } catch {
-      // ignore
-    }
-  };
-
   return (
+    <>
     <View style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
       {/* ── Cover Photo Banner ── */}
       <View style={{ height: 140, width: '100%', position: 'relative' }}>
@@ -123,7 +119,7 @@ export default function ProfileHeader({
             </TouchableOpacity> : null}
 
             <TouchableOpacity
-              onPress={() => void handleShare()}
+              onPress={() => setShareVisible(true)}
               style={{
                 width: 36,
                 height: 36,
@@ -202,5 +198,15 @@ export default function ProfileHeader({
         </View>
       </View>
     </View>
+    <ShareContentSheet
+      visible={shareVisible}
+      currentUserId={currentUserId ?? ''}
+      contentLabel="profile"
+      title={`${displayName} on Ourlime`}
+      message={`Check out ${displayName}'s profile on Ourlime:\n\n${deepLinkService.getProfileShareUrl(profile.userName)}`}
+      url={deepLinkService.getProfileShareUrl(profile.userName)}
+      onClose={() => setShareVisible(false)}
+    />
+    </>
   );
 }
