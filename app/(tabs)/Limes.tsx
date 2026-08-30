@@ -30,8 +30,6 @@ import {
   Plus,
   Compass,
   MoreVertical,
-  Flag,
-  Trash2,
   Maximize2,
   ChevronLeft,
   X,
@@ -39,12 +37,14 @@ import {
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useRouter, useLocalSearchParams, useIsFocused } from 'expo-router';
 import CreateLimeModal from '@/components/limes/CreateLimeModal';
-import CommentModal from '@/components/limes/CommentModal';
+import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
 import ReportLimeModal from '@/components/limes/ReportLimeModal';
 import LimeCategorySheet from '@/components/limes/LimeCategorySheet';
+import LimeOptionsSheet from '@/components/limes/LimeOptionsSheet';
 import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 import CustomModal from '@/components/ui/CustomModal';
 import type { Reel } from '@/types/userTypes';
+import type { PostItem } from '@/lib/services/PostService';
 import { limeService } from '@/lib/services/LimeService';
 import { AuthService } from '@/lib/services/AuthService';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
@@ -77,6 +77,49 @@ type ReportTarget = {
 };
 
 type LimeReposter = NonNullable<Reel['repostedBy']>[number];
+
+function reelToPostItem(reel: Reel): PostItem {
+  const createdAtMs = reel.createdAt instanceof Date
+    ? reel.createdAt.getTime()
+    : typeof reel.createdAt === 'number'
+    ? reel.createdAt
+    : Date.now();
+
+  return {
+    id: reel.id,
+    origin: 'home',
+    userId: reel.userId,
+    user: {
+      id: reel.userId,
+      firstName: reel.user?.firstName || 'Lime',
+      lastName: reel.user?.lastName || 'Creator',
+      userName: reel.user?.userName || 'user',
+      profileImage: reel.user?.profileImage,
+    },
+    type: 'regular',
+    caption: reel.caption || '',
+    description: '',
+    visibility: reel.visibility === 'private' || reel.visibility === 'friends' ? reel.visibility : 'public',
+    hashtags: [],
+    media: [
+      {
+        id: reel.id,
+        type: 'video',
+        typeUrl: reel.media.typeUrl,
+        fileName: reel.media.fileName,
+      },
+    ],
+    stats: {
+      likes: reel.stats?.likes ?? (Array.isArray(reel.likes) ? reel.likes.length : 0),
+      comments: reel.stats?.comments ?? 0,
+      shares: reel.stats?.shares ?? 0,
+    },
+    likedUserIds: Array.isArray(reel.likes) ? reel.likes : [],
+    mentions: (reel.caption?.match(/@[\w.-]+/g)?.map((m) => m.slice(1)) ?? []),
+    friendReferences: [],
+    createdAt: new Date(createdAtMs).toISOString(),
+  };
+}
 
 type FloatingReposterBubbleProps = {
   reposter: LimeReposter;
@@ -220,7 +263,6 @@ export default function LimesScreen() {
     () => new Set(resourceData?.userRepostedReelIds ?? []),
     [resourceData?.userRepostedReelIds],
   );
-  const preloadedCommentsMap = resourceData?.commentsByReel ?? {};
   const loading = Boolean(currentUserId) && !resourceData && resource?.status !== 'error';
   const isLoadingMore = resourceData?.isLoadingMore ?? false;
   const playbackAllowed = isScreenFocused
@@ -596,25 +638,28 @@ export default function LimesScreen() {
       ) : null}
 
       {/* Comments Modal */}
-      {commentReelId ? (
-        <CommentModal
-          isOpen={Boolean(commentReelId)}
-          reelId={commentReelId}
-          initialComments={preloadedCommentsMap[commentReelId] || []}
-          onClose={() => setCommentReelId(null)}
-          onCommentCountUpdate={(count) => {
-            void limeResourceService.patchReel(query, commentReelId, (reel) => ({
-              ...reel,
-              stats: {
-                likes: reel.stats?.likes ?? 0,
-                comments: count,
-                shares: reel.stats?.shares ?? 0,
-                reposts: reel.stats?.reposts ?? 0,
-              },
-            }));
-          }}
-        />
-      ) : null}
+      {commentReelId ? (() => {
+        const targetReel = displayedLimes.find((r) => r.id === commentReelId) || limesList.find((r) => r.id === commentReelId);
+        if (!targetReel) return null;
+        return (
+          <CommentsModal
+            post={reelToPostItem(targetReel)}
+            userId={currentUserId}
+            onClose={() => setCommentReelId(null)}
+            onPostUpdate={(updatedPost) => {
+              void limeResourceService.patchReel(query, commentReelId, (reel) => ({
+                ...reel,
+                stats: {
+                  likes: reel.stats?.likes ?? 0,
+                  comments: updatedPost.stats?.comments ?? reel.stats?.comments ?? 0,
+                  shares: reel.stats?.shares ?? 0,
+                  reposts: reel.stats?.reposts ?? 0,
+                },
+              }));
+            }}
+          />
+        );
+      })() : null}
 
       {/* Report Modal */}
       {reportTarget ? (
@@ -1040,58 +1085,17 @@ function ReelItem({
         </TouchableOpacity>
       </View>
 
-      {/* Options menu (report) — appears next to sidebar */}
-      {showOptionsMenu ? (
-        <View style={styles.optionsMenu}>
-          {isOwnReel ? (
-            <TouchableOpacity
-              style={styles.optionsMenuItem}
-              onPress={() => {
-                setShowOptionsMenu(false);
-                onDeleteRequest(reel);
-              }}
-              activeOpacity={0.7}
-            >
-              <Trash2 size={14} color="#ef4444" />
-              <Text style={styles.optionsMenuText}>Delete Lime</Text>
-            </TouchableOpacity>
-          ) : (
-            <>
-              <TouchableOpacity
-                style={styles.optionsMenuItem}
-                onPress={() => {
-                  setShowOptionsMenu(false);
-                  onReport(reel.id, reel.userId, 'lime');
-                }}
-                activeOpacity={0.7}
-              >
-                <Flag size={14} color="#ef4444" />
-                <Text style={styles.optionsMenuText}>Report Lime</Text>
-              </TouchableOpacity>
-              <View style={styles.optionsDivider} />
-              <TouchableOpacity
-                style={styles.optionsMenuItem}
-                onPress={() => {
-                  setShowOptionsMenu(false);
-                  onReport(reel.id, reel.userId, 'user');
-                }}
-                activeOpacity={0.7}
-              >
-                <Flag size={14} color="#ef4444" />
-                <Text style={styles.optionsMenuText}>Report User</Text>
-              </TouchableOpacity>
-            </>
-          )}
-          <View style={styles.optionsDivider} />
-          <TouchableOpacity
-            style={styles.optionsMenuItem}
-            onPress={() => setShowOptionsMenu(false)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.optionsMenuText, { color: '#64748b' }]}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
+      {/* Options Slide-Up Sheet */}
+      <LimeOptionsSheet
+        visible={showOptionsMenu}
+        reel={reel}
+        currentUserId={currentUserId}
+        isFollowing={isFollowing}
+        onClose={() => setShowOptionsMenu(false)}
+        onDeleteRequest={onDeleteRequest}
+        onFollowToggle={onFollowToggle}
+        onReport={onReport}
+      />
 
       {/* 6. Bottom overlay (creator info + caption) */}
       <View style={styles.bottomOverlay} pointerEvents="box-none">
@@ -1429,38 +1433,6 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.95)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
-  },
-  optionsMenu: {
-    position: 'absolute',
-    right: 60,
-    bottom: 40,
-    zIndex: 200,
-    backgroundColor: 'rgba(15, 23, 42, 0.97)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    minWidth: 160,
-    shadowColor: '#000',
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-    elevation: 20,
-  },
-  optionsMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-  },
-  optionsDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    marginHorizontal: 12,
-  },
-  optionsMenuText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
   },
   bottomOverlay: {
     position: 'absolute',

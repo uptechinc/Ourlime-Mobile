@@ -45,8 +45,9 @@ export type PostMediaDraft = {
   height?: number;
   fileSize?: number;
   durationSeconds?: number;
+  thumbnailUri?: string;
 };
-export type PostMedia = { id: string; type: PostMediaType; typeUrl: string; fileName: string };
+export type PostMedia = { id: string; type: PostMediaType; typeUrl: string; fileName: string; thumbnailUrl?: string };
 export type PostUser = {
   id: string;
   firstName: string;
@@ -58,6 +59,7 @@ export type PostUser = {
   accountType?: string;
 };
 export type PollOption = { id: string; text: string; votes: number };
+export type PollVoteResult = { userVoteOptionId: string | null; pollOptions: PollOption[]; totalVotes: number };
 export type PostLocation = {
   name: string;
   address?: string;
@@ -92,6 +94,7 @@ export type PostItem = {
   visibility: PostVisibility;
   hashtags: string[];
   media: PostMedia[];
+  thumbnailUrl?: string;
   stats: PostStats;
   likedUserIds: string[];
   likedUsers?: PostUser[];

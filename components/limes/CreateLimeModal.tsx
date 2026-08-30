@@ -25,6 +25,7 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
+import VideoThumbnailPicker from '@/components/media/VideoThumbnailPicker';
 const authService = AuthService.getInstance();
 const searchService = SearchService.getInstance();
 const MAX_LIME_VIDEO_DURATION_SECONDS = 30;
@@ -86,6 +87,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
   const [category, setCategory] = useState('For You');
   const [caption, setCaption] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [selectedThumbnailUri, setSelectedThumbnailUri] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -187,6 +189,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
 
   const handleRemoveVideo = () => {
     setSelectedAsset(null);
+    setSelectedThumbnailUri('');
   };
 
   const handleSubmit = async () => {
@@ -213,14 +216,16 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
     try {
       // Extract @mentions from caption
       const mentions = (caption.match(/@([a-zA-Z0-9._]+)/g) || []).map((m) => m.replace('@', ''));
-      let thumbnailUri: string | undefined;
-      try {
-        thumbnailUri = await limeThumbnailService.createThumbnail(selectedAsset.uri, durationSeconds);
-      } catch (thumbnailError: unknown) {
-        console.warn(
-          '[CreateLimeModal] Thumbnail generation failed:',
-          thumbnailError instanceof Error ? thumbnailError.message : 'Unknown error'
-        );
+      let thumbnailUri: string | undefined = selectedThumbnailUri;
+      if (!thumbnailUri) {
+        try {
+          thumbnailUri = await limeThumbnailService.createThumbnail(selectedAsset.uri, durationSeconds);
+        } catch (thumbnailError: unknown) {
+          console.warn(
+            '[CreateLimeModal] Thumbnail generation failed:',
+            thumbnailError instanceof Error ? thumbnailError.message : 'Unknown error'
+          );
+        }
       }
 
       await limeService.createLime({
@@ -249,6 +254,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
   const handleFinishSuccess = () => {
     setShowSuccessModal(false);
     setSelectedAsset(null);
+    setSelectedThumbnailUri('');
     setCaption('');
     setCategory('For You');
     onSuccess();
@@ -359,23 +365,34 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
             {/* Video Picker Drop Zone (Instagram 9:16 Portrait Ratio) */}
             <Text style={[styles.sectionLabel, { marginTop: 16, color: colors.secondaryText }]}>Upload video (9:16 Portrait)</Text>
             {selectedAsset ? (
-              <View style={[styles.previewContainer, { backgroundColor: colors.successSurface, borderColor: colors.accent }]}>
-                <SelectedVideoPreview uri={selectedAsset.uri} />
-                <View style={[styles.previewBadge, { backgroundColor: colors.successSurface, borderColor: colors.border }]}>
-                  <Film size={28} color="#10b981" />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.previewFileName, { color: colors.text }]} numberOfLines={1}>
-                      {selectedAsset.fileName || 'Selected Video (9:16)'}
-                    </Text>
-                    <Text style={[styles.previewMeta, { color: colors.mutedText }]}>
-                      {selectedAsset.duration ? `${Math.round(selectedAsset.duration / 1000)}s` : 'Video Reel'} • Instagram 9:16 ratio
-                    </Text>
+              <>
+                <View style={[styles.previewContainer, { backgroundColor: colors.successSurface, borderColor: colors.accent }]}>
+                  <SelectedVideoPreview uri={selectedAsset.uri} />
+                  <View style={[styles.previewBadge, { backgroundColor: colors.successSurface, borderColor: colors.border }]}>
+                    <Film size={28} color="#10b981" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.previewFileName, { color: colors.text }]} numberOfLines={1}>
+                        {selectedAsset.fileName || 'Selected Video (9:16)'}
+                      </Text>
+                      <Text style={[styles.previewMeta, { color: colors.mutedText }]}>
+                        {selectedAsset.duration ? `${Math.round(selectedAsset.duration / 1000)}s` : 'Video Reel'} • Instagram 9:16 ratio
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={handleRemoveVideo} style={[styles.removeBtn, { backgroundColor: colors.destructiveSurface }]}>
+                      <X size={16} color="#ef4444" />
+                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity onPress={handleRemoveVideo} style={[styles.removeBtn, { backgroundColor: colors.destructiveSurface }]}>
-                    <X size={16} color="#ef4444" />
-                  </TouchableOpacity>
                 </View>
-              </View>
+
+                {/* Video Thumbnail Frame Selector & Custom Cover Upload */}
+                <VideoThumbnailPicker
+                  videoUri={selectedAsset.uri}
+                  durationSeconds={typeof selectedAsset.duration === 'number' ? selectedAsset.duration / 1000 : 0}
+                  selectedThumbnailUri={selectedThumbnailUri}
+                  onThumbnailChange={setSelectedThumbnailUri}
+                  aspectRatio="9:16"
+                />
+              </>
             ) : (
               <TouchableOpacity onPress={handlePickVideo} style={[styles.uploadDropZone, { backgroundColor: colors.successSurface, borderColor: colors.accent }]} activeOpacity={0.8}>
                 <View style={[styles.uploadCircle, { backgroundColor: colors.elevated }]}>

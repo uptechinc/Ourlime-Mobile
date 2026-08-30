@@ -40,6 +40,7 @@ import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
+import VideoThumbnailPicker from '@/components/media/VideoThumbnailPicker';
 
 type DraftPollOption = { id: string; text: string };
 type TextSelection = { start: number; end: number };
@@ -572,6 +573,27 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
                     ))}
                   </ScrollView>
                 ) : null}
+
+                {/* Video Cover / Thumbnail Selector for Feed Video Posts */}
+                {(() => {
+                  const firstVideo = media.find((item) => item.type === 'video');
+                  if (!firstVideo) return null;
+                  return (
+                    <VideoThumbnailPicker
+                      videoUri={firstVideo.uri}
+                      durationSeconds={firstVideo.durationSeconds ?? 10}
+                      selectedThumbnailUri={firstVideo.thumbnailUri}
+                      onThumbnailChange={(thumbUri) => {
+                        setMedia((current) =>
+                          current.map((m) =>
+                            m.uri === firstVideo.uri ? { ...m, thumbnailUri: thumbUri } : m
+                          )
+                        );
+                      }}
+                      aspectRatio="16:9"
+                    />
+                  );
+                })()}
               </View>
             )}
 

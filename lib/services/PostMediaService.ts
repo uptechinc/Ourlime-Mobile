@@ -3,6 +3,7 @@ import type { ImagePickerAsset } from 'expo-image-picker';
 import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { storage } from '../firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { limeThumbnailService } from './LimeThumbnailService';
 import type { PostMedia, PostMediaDraft } from './PostService';
 
 export const MAX_POST_MEDIA = 5;
@@ -230,9 +231,48 @@ export class PostMediaService {
         task.on('state_changed', (snapshot) => options.onItemProgress(snapshot.bytesTransferred), reject, resolve);
       });
       const typeUrl = await getDownloadURL(mediaReference);
+
+      let thumbnailUrl: string | undefined = undefined;
+      if (options.item.type === 'video') {
+        try {
+          let thumbUri = options.item.thumbnailUri;
+          if (!thumbUri) {
+            thumbUri = await limeThumbnailService.createThumbnail(
+              options.item.uri,
+              options.item.durationSeconds || 5
+            );
+          }
+          if (thumbUri) {
+            const thumbBlob = await this.uriToBlob(thumbUri);
+            const thumbRef = ref(
+              storage,
+              `posts/${options.userId}/thumbnails/${options.postId}-${options.index}-thumb.jpg`
+            );
+            const thumbTask = uploadBytesResumable(thumbRef, thumbBlob, {
+              contentType: 'image/jpeg',
+            });
+            await new Promise<void>((resolve, reject) => {
+              thumbTask.on('state_changed', undefined, reject, resolve);
+            });
+            thumbnailUrl = await getDownloadURL(thumbRef);
+          }
+        } catch (thumbError) {
+          this.logger.warn('PostMediaService', 'thumbnail-upload-failed', {
+            postId: options.postId,
+            error: thumbError instanceof Error ? thumbError.message : String(thumbError),
+          });
+        }
+      }
+
       this.logger.success('PostMediaService', 'media-upload', { postId: options.postId, index: options.index, storagePath: mediaReference.fullPath });
       return {
-        media: { id: `${options.postId}-${options.index}`, type: options.item.type, typeUrl, fileName: options.item.fileName },
+        media: {
+          id: `${options.postId}-${options.index}`,
+          type: options.item.type,
+          typeUrl,
+          fileName: options.item.fileName,
+          thumbnailUrl,
+        },
         storagePath: mediaReference.fullPath,
       };
     } finally {
