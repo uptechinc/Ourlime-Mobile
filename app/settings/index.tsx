@@ -21,6 +21,7 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { MessagePermission, SettingsTheme } from '@/lib/profile/settings/SettingsService';
 import NotificationSoundSettings from '@/components/settings/NotificationSoundSettings';
 import ChangePasswordModal from '@/components/settings/ChangePasswordModal';
+import ActiveSessionsSection from '@/components/settings/ActiveSessionsSection';
 
 type SettingsTab = 'appearance' | 'account' | 'privacy' | 'notifications' | 'blocked' | 'security' | 'safety';
 type SettingsModalState = { visible: boolean; type: CustomModalType; title: string; message: string; action?: 'logout' };
@@ -351,6 +352,8 @@ export default function SettingsScreen() {
               </View>
               <Icon name="check-circle" size={18} color="#10b981" />
             </View>
+
+            <ActiveSessionsSection />
 
             <TouchableOpacity onPress={() => setModal({ visible: true, type: 'warning', title: 'Sign out?', message: 'You will need to sign in again to use Ourlime.', action: 'logout' })} style={[styles.signOutBtn, { marginTop: 16 }]}>
               <Icon name="log-out" size={18} color="#ef4444" />

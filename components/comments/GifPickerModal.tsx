@@ -21,8 +21,10 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 const GIF_CATEGORIES = [
   { label: 'Trending', query: '' },
   { label: 'Reactions', query: 'reactions' },
-  { label: 'Funny', query: 'funny' },
+  { label: 'Memes', query: 'memes' },
   { label: 'Love', query: 'love' },
+  { label: 'Anime', query: 'anime' },
+  { label: 'Caribbean', query: 'caribbean' },
   { label: 'Celebration', query: 'celebration' },
   { label: 'Sports', query: 'sports' },
 ] as const;

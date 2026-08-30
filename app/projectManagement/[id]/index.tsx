@@ -15,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
 import PageHeader from '@/components/ui/PageHeader';
-import UserAvatar from '@/components/ui/UserAvatar';
 import CustomModal from '@/components/ui/CustomModal';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
@@ -52,7 +51,6 @@ export default function ProjectBoardScreen() {
   const [feedback, setFeedback] = useState<{ title: string; message: string; type?: 'info' | 'success' | 'warning' | 'danger' } | null>(null);
 
   // Filters & Views
-  const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterPriority, setFilterPriority] = useState<Priority | 'all'>('all');
   const [activeTabStatus, setActiveTabStatus] = useState<Status>('todo');
@@ -68,8 +66,6 @@ export default function ProjectBoardScreen() {
   const [taskDesc, setTaskDesc] = useState('');
   const [taskPriority, setTaskPriority] = useState<Priority>('medium');
   const [taskStatus, setTaskStatus] = useState<Status>('todo');
-  const [taskAssignee, setTaskAssignee] = useState(currentUserId);
-  const [taskDueDate, setTaskDueDate] = useState('');
   const [submittingTask, setSubmittingTask] = useState(false);
 
   // Detail Modal Subtask / Comment State
@@ -121,15 +117,15 @@ export default function ProjectBoardScreen() {
       projectId,
       (updatedTasks) => {
         setTasks(updatedTasks);
-        if (activeTask) {
-          const fresh = updatedTasks.find((t) => t.id === activeTask.id);
-          if (fresh) setActiveTask(fresh);
-        }
+        setActiveTask((prev) => {
+          if (!prev) return null;
+          return updatedTasks.find((t) => t.id === prev.id) || prev;
+        });
       },
       (err) => console.error('[Tasks subscribe error]', err)
     );
     return () => unsubscribe();
-  }, [projectId, activeTask?.id]);
+  }, [projectId]);
 
   // Handlers
   const handleCreateTask = async () => {
@@ -144,8 +140,7 @@ export default function ProjectBoardScreen() {
         description: taskDesc,
         status: taskStatus,
         priority: taskPriority,
-        assignee: taskAssignee || currentUserId,
-        dueDate: taskDueDate || undefined,
+        assignee: currentUserId,
       };
       await projectService.createTask(projectId, input);
       setTaskTitle('');

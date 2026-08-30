@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { authService, getAuthErrorCode } from '@/lib/services/AuthService';
 import { pageAccessService } from '@/lib/services/PageAccessService';
+import MobileQRLoginModal from '@/components/auth/MobileQRLoginModal';
 import type { Href } from 'expo-router';
 import Animated, {
   FadeInDown,
@@ -52,6 +53,7 @@ export default function LoginScreen() {
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [canResendVerification, setCanResendVerification] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
 
   // Error state
   const [errorMsg, setErrorMsg] = useState('');
@@ -383,7 +385,34 @@ export default function LoginScreen() {
                     <Text style={{ color: '#fff', fontSize: 17, fontWeight: '700' }}>Login</Text>
                   )}
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setQrModalOpen(true)}
+                  activeOpacity={0.8}
+                  style={{
+                    marginTop: 12,
+                    paddingVertical: 14,
+                    borderRadius: 14,
+                    backgroundColor: 'rgba(255,255,255,0.12)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.25)',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <Ionicons name="qr-code-outline" size={20} color="#ffffff" />
+                  <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '700' }}>
+                    Log In with QR Code
+                  </Text>
+                </TouchableOpacity>
               </Animated.View>
+
+              <MobileQRLoginModal
+                visible={qrModalOpen}
+                onClose={() => setQrModalOpen(false)}
+              />
 
               {/* Public Safety, Policies & Help Links */}
               <View style={{ marginTop: 18, gap: 10 }}>

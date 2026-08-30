@@ -29,6 +29,8 @@ const presetAvatarImages: Record<PresetAvatarName, number> = {
   realisticAvatarBlackWoman,
 };
 
+const INVALID_NAMES = new Set(['null', 'undefined']);
+
 export default function UserAvatar({
   profileImage,
   firstName = 'User',
@@ -37,7 +39,8 @@ export default function UserAvatar({
 }: UserAvatarProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const resolution = imageFailed ? { kind: 'initial' as const } : avatarService.resolve(profileImage);
-  const initial = (firstName.trim() || 'U').charAt(0).toUpperCase();
+  const normalizedName = firstName && !INVALID_NAMES.has(firstName.trim().toLowerCase()) ? firstName.trim() : 'User';
+  const initial = (normalizedName || 'U').charAt(0).toUpperCase();
 
   useEffect(() => setImageFailed(false), [profileImage]);
 
