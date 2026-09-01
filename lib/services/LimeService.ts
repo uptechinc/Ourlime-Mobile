@@ -28,6 +28,7 @@ import { RelationshipService } from './RelationshipService';
 import { moderationService, type ReportReasonCategory } from './ModerationService';
 import type { ChildSafetyIntakeValues } from '@/lib/types/childSafety';
 import { ApiService } from './ApiService';
+import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
 
 export type LimeFeedCursor = QueryDocumentSnapshot;
 
@@ -46,6 +47,12 @@ const recordOf = (value: unknown): Record<string, unknown> => value && typeof va
 const stringOf = (value: unknown, fallback = ''): string => typeof value === 'string' ? value : fallback;
 const numberOf = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) ? value : 0;
 const stringArrayOf = (value: unknown): string[] => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+const isDeletedReelRecord = (value: Record<string, unknown>): boolean => (
+  value.isDeleted === true
+  || stringOf(value.status).trim().toLowerCase() === 'deleted'
+  || stringOf(value.deletionSource).trim().toLowerCase() === 'admin_moderation'
+  || accountLifecycleVisibilityService.isHidden(value)
+);
 
 export class LimeService {
   private static instance: LimeService;
@@ -138,9 +145,10 @@ export class LimeService {
     constraints.push(limit(requestedPageSize));
 
     const snapshot = await getDocs(query(collection(db, 'reels'), ...constraints));
+    const visibleDocuments = snapshot.docs.filter((reelDocument) => !isDeletedReelRecord(recordOf(reelDocument.data())));
     const feedDocuments = scope === 'following'
-      ? snapshot.docs.filter((reelDocument) => followingUserSet.has(stringOf(reelDocument.data().userId)))
-      : snapshot.docs;
+      ? visibleDocuments.filter((reelDocument) => followingUserSet.has(stringOf(reelDocument.data().userId)))
+      : visibleDocuments;
     const commentsByReel: Record<string, LimeComment[]> = {};
     const reels = await Promise.all(feedDocuments.map(async (reelDocument): Promise<Reel> => {
       const data = recordOf(reelDocument.data());
@@ -204,6 +212,8 @@ export class LimeService {
         repostedBy,
         isRepost,
         reposts: stringArrayOf(data.reposts),
+        status: stringOf(data.status),
+        isDeleted: data.isDeleted === true,
       };
     }));
 
@@ -266,7 +276,9 @@ export class LimeService {
   public async fetchUserReels(userId: string, maxResults = 20): Promise<Reel[]> {
     const snapshot = await getDocs(query(collection(db, 'reels'), where('userId', '==', userId), limit(maxResults)));
     const profile = await this.authService.getUserProfile(userId);
-    return snapshot.docs.map((item): Reel => {
+    return snapshot.docs
+      .filter((item) => !isDeletedReelRecord(recordOf(item.data())))
+      .map((item): Reel => {
       const data = recordOf(item.data());
       const media = recordOf(data.media);
       const stats = recordOf(data.stats);
@@ -288,6 +300,8 @@ export class LimeService {
         user: { firstName: profile?.firstName || 'Lime', lastName: profile?.lastName || 'Creator', userName: profile?.userName || 'user', profileImage: profile?.profilePicture || undefined },
         stats: { likes: numberOf(stats.likes) || stringArrayOf(data.likes).length, comments: numberOf(stats.comments), shares: numberOf(data.shares) || numberOf(stats.shares) },
         likes: stringArrayOf(data.likes),
+        status: stringOf(data.status),
+        isDeleted: data.isDeleted === true,
       };
     });
   }
@@ -296,6 +310,7 @@ export class LimeService {
     const reelSnapshot = await getDoc(doc(db, 'reels', reelId));
     if (!reelSnapshot.exists()) return null;
     const data = recordOf(reelSnapshot.data());
+    if (isDeletedReelRecord(data)) return null;
     const creatorId = stringOf(data.userId);
     const profile = creatorId ? await this.authService.getUserProfile(creatorId) : null;
     const comments = commentPreviewLimit > 0
@@ -353,6 +368,8 @@ export class LimeService {
       repostedBy,
       isRepost,
       reposts: stringArrayOf(data.reposts),
+      status: stringOf(data.status),
+      isDeleted: data.isDeleted === true,
     };
     return (await this.attachReposters([reel], this.authService.getCurrentUser()?.uid ?? ''))[0] ?? reel;
   }

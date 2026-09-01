@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   Modal,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -12,10 +11,14 @@ import Icon from 'react-native-vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RelationshipService } from '@/lib/services/RelationshipService';
+import { relationshipResourceService } from '@/lib/services/RelationshipResourceService';
+import { relationshipRequestResourceService } from '@/lib/services/RelationshipRequestResourceService';
+import { conversationResourceService } from '@/lib/services/ConversationResourceService';
 import { messagingService } from '@/lib/messaging/MessagingService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
+import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
 
 const relationshipService = RelationshipService.getInstance();
 
@@ -29,6 +32,16 @@ const MUTE_MS: Record<MuteDuration, number> = {
   '24 hours': 24 * 60 * 60 * 1000,
   '1 week': 7 * 24 * 60 * 60 * 1000,
   'Always': Number.MAX_SAFE_INTEGER,
+};
+
+type ChatModalState = {
+  visible: boolean;
+  type: CustomModalType;
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  onConfirm?: () => void;
 };
 
 type ChatSettingsMenuProps = {
@@ -63,6 +76,12 @@ export function ChatSettingsMenu({
   const [isArchived, setIsArchived] = useState(false);
   const [isBlockedByMe, setIsBlockedByMe] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [modalState, setModalState] = useState<ChatModalState>({
+    visible: false,
+    type: 'info',
+    title: '',
+    message: '',
+  });
 
   // Load mute & block state from Firestore
   useEffect(() => {
@@ -101,10 +120,25 @@ export function ChatSettingsMenu({
       const set = new Set(list);
       set.add(friendId);
       await AsyncStorage.setItem(mutedKey, JSON.stringify(Array.from(set)));
+      onClose();
+      setModalState({
+        visible: true,
+        type: 'success',
+        title: 'Notifications Muted',
+        message: `Notifications for @${userName} have been muted for ${duration}.`,
+        confirmText: 'OK',
+      });
     } catch (e) {
       console.error('[ChatSettingsMenu.handleMute]', e);
+      onClose();
+      setModalState({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to mute notifications.',
+        confirmText: 'OK',
+      });
     }
-    onClose();
   };
 
   const handleUnmute = async () => {
@@ -117,10 +151,25 @@ export function ChatSettingsMenu({
       const set = new Set(list);
       set.delete(friendId);
       await AsyncStorage.setItem(mutedKey, JSON.stringify(Array.from(set)));
+      onClose();
+      setModalState({
+        visible: true,
+        type: 'success',
+        title: 'Notifications Unmuted',
+        message: `You will now receive notifications for messages from @${userName}.`,
+        confirmText: 'OK',
+      });
     } catch (e) {
       console.error('[ChatSettingsMenu.handleUnmute]', e);
+      onClose();
+      setModalState({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to unmute notifications.',
+        confirmText: 'OK',
+      });
     }
-    onClose();
   };
 
   const handleToggleArchive = async () => {
@@ -138,61 +187,129 @@ export function ChatSettingsMenu({
         set.delete(friendId);
       }
       await AsyncStorage.setItem(archivedKey, JSON.stringify(Array.from(set)));
-      Alert.alert(
-        nextArchived ? 'Chat Archived' : 'Chat Unarchived',
-        nextArchived
+      onClose();
+      setModalState({
+        visible: true,
+        type: 'success',
+        title: nextArchived ? 'Chat Archived' : 'Chat Unarchived',
+        message: nextArchived
           ? 'This conversation has been moved to Archived.'
-          : 'This conversation has been unarchived.'
-      );
+          : 'This conversation has been unarchived.',
+        confirmText: 'OK',
+      });
     } catch (e) {
       console.error('[ChatSettingsMenu.handleToggleArchive]', e);
       setIsArchived(!nextArchived);
-      Alert.alert('Error', 'Failed to update archive status.');
+      onClose();
+      setModalState({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to update archive status.',
+        confirmText: 'OK',
+      });
     }
-    onClose();
   };
 
   const handleToggleBlock = () => {
     onClose();
     if (isBlockedByMe) {
-      Alert.alert('Unblock User', `Are you sure you want to unblock @${userName}?`, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Unblock',
-          onPress: async () => {
+      setModalState({
+        visible: true,
+        type: 'info',
+        title: 'Unblock User',
+        message: `Are you sure you want to unblock @${userName}?`,
+        confirmText: 'Unblock',
+        cancelText: 'Cancel',
+        onConfirm: async () => {
+          try {
             await relationshipService.unblockUserFirestore(currentUserId, friendId);
-            Alert.alert('User Unblocked', `@${userName} has been unblocked.`);
-          },
+            setModalState({
+              visible: true,
+              type: 'success',
+              title: 'User Unblocked',
+              message: `@${userName} has been unblocked.`,
+              confirmText: 'OK',
+            });
+          } catch {
+            setModalState({
+              visible: true,
+              type: 'error',
+              title: 'Error',
+              message: 'Failed to unblock user.',
+              confirmText: 'OK',
+            });
+          }
         },
-      ]);
+      });
     } else {
-      Alert.alert('Block User', `Are you sure you want to block @${userName}? They will no longer be able to message or call you.`, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Block',
-          style: 'destructive',
-          onPress: async () => {
+      setModalState({
+        visible: true,
+        type: 'danger',
+        title: 'Block User',
+        message: `Are you sure you want to block @${userName}? They will no longer be able to message or call you.`,
+        confirmText: 'Block',
+        cancelText: 'Cancel',
+        onConfirm: async () => {
+          try {
             await relationshipService.blockUserFirestore(currentUserId, friendId);
-            Alert.alert('User Blocked', `@${userName} has been blocked.`);
-          },
+            relationshipResourceService.removeUserFromCachedRelationships(currentUserId, friendId);
+            relationshipRequestResourceService.removeUserFromCachedRequests(friendId);
+            void conversationResourceService.removeConversation(currentUserId, friendId);
+            setModalState({
+              visible: true,
+              type: 'success',
+              title: 'User Blocked',
+              message: `@${userName} has been blocked.`,
+              confirmText: 'OK',
+            });
+          } catch {
+            setModalState({
+              visible: true,
+              type: 'error',
+              title: 'Error',
+              message: 'Failed to block user.',
+              confirmText: 'OK',
+            });
+          }
         },
-      ]);
+      });
     }
   };
 
   const handleRemoveFriend = () => {
     onClose();
-    Alert.alert('Remove Friend', `Are you sure you want to remove @${userName} from your friends list?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
+    setModalState({
+      visible: true,
+      type: 'danger',
+      title: 'Remove Friend',
+      message: `Are you sure you want to remove @${userName} from your friends list?`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
           await relationshipService.removeFriendFirestore(currentUserId, friendId);
-          Alert.alert('Friend Removed', `@${userName} was removed from your friends list.`);
-        },
+          relationshipResourceService.removeUserFromCachedRelationships(currentUserId, friendId);
+          relationshipRequestResourceService.removeUserFromCachedRequests(friendId);
+          void conversationResourceService.removeConversation(currentUserId, friendId);
+          setModalState({
+            visible: true,
+            type: 'success',
+            title: 'Friend Removed',
+            message: `@${userName} was removed from your friends list.`,
+            confirmText: 'OK',
+          });
+        } catch {
+          setModalState({
+            visible: true,
+            type: 'error',
+            title: 'Error',
+            message: 'Failed to remove friend.',
+            confirmText: 'OK',
+          });
+        }
       },
-    ]);
+    });
   };
 
   const handlePickWallpaper = async () => {
@@ -205,154 +322,176 @@ export function ChatSettingsMenu({
 
   const handleDeleteChat = () => {
     onClose();
-    Alert.alert('Delete Chat', 'This will clear all messages in this conversation. Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: onDeleteChat },
-    ]);
+    setModalState({
+      visible: true,
+      type: 'danger',
+      title: 'Delete Chat',
+      message: 'This will clear all messages in this conversation. Are you sure?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        setModalState((prev) => ({ ...prev, visible: false }));
+        void conversationResourceService.removeConversation(currentUserId, friendId);
+        onDeleteChat();
+      },
+    });
   };
 
   const isMuted = mutedUntil !== null && mutedUntil > Date.now();
 
   return (
-    <Modal visible={visible} transparent animationType="none" statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" onRequestClose={onClose}>
-      <ModalBackdrop style={{ flex: 1, backgroundColor: colors.modalScrim }} onPress={onClose} />
+    <>
+      <Modal visible={visible} transparent animationType="none" statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" onRequestClose={onClose}>
+        <ModalBackdrop style={{ flex: 1, backgroundColor: colors.modalScrim }} onPress={onClose} />
 
-      {/* Dropdown panel */}
-      <ModalMotionSurface
-        variant="dialog"
-        style={{
-          position: 'absolute',
-          top: 90,
-          right: 12,
-          width: 240,
-          backgroundColor: colors.elevated,
-          borderRadius: 16,
-          paddingVertical: 6,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.14,
-          shadowRadius: 20,
-          elevation: 14,
-          borderWidth: 1,
-          borderColor: colors.border,
-          zIndex: 999,
-        }}
-      >
-        {showMuteOptions ? (
-          <>
-            <TouchableOpacity onPress={() => setShowMuteOptions(false)} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
-              <Icon name="chevron-left" size={16} color={colors.icon} />
-              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginLeft: 8 }}>
-                Mute Notifications
-              </Text>
-            </TouchableOpacity>
-            <View style={{ height: 1, backgroundColor: colors.border, marginHorizontal: 12 }} />
-            {MUTE_DURATIONS.map((duration) => (
-              <TouchableOpacity key={duration} onPress={() => void handleMute(duration)} style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-                <Text style={{ fontSize: 14, color: colors.text }}>{duration}</Text>
+        {/* Dropdown panel */}
+        <ModalMotionSurface
+          variant="dialog"
+          style={{
+            position: 'absolute',
+            top: 90,
+            right: 12,
+            width: 240,
+            backgroundColor: colors.elevated,
+            borderRadius: 16,
+            paddingVertical: 6,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.14,
+            shadowRadius: 20,
+            elevation: 14,
+            borderWidth: 1,
+            borderColor: colors.border,
+            zIndex: 999,
+          }}
+        >
+          {showMuteOptions ? (
+            <>
+              <TouchableOpacity onPress={() => setShowMuteOptions(false)} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
+                <Icon name="chevron-left" size={16} color={colors.icon} />
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginLeft: 8 }}>
+                  Mute Notifications
+                </Text>
               </TouchableOpacity>
-            ))}
-          </>
-        ) : (
-          <>
-            {/* View Profile */}
-            <MenuItem
-              icon="user"
-              label="View Profile"
-              onPress={() => {
-                onClose();
-                router.push({ pathname: '/profile/[username]', params: { username: userName } });
-              }}
-            />
-
-            {/* Chat media */}
-            {onOpenChatMedia && (
+              <View style={{ height: 1, backgroundColor: colors.border, marginHorizontal: 12 }} />
+              {MUTE_DURATIONS.map((duration) => (
+                <TouchableOpacity key={duration} onPress={() => void handleMute(duration)} style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                  <Text style={{ fontSize: 14, color: colors.text }}>{duration}</Text>
+                </TouchableOpacity>
+              ))}
+            </>
+          ) : (
+            <>
+              {/* View Profile */}
               <MenuItem
-                icon="image"
-                label="Chat media"
+                icon="user"
+                label="View Profile"
                 onPress={() => {
                   onClose();
-                  onOpenChatMedia();
+                  router.push({ pathname: '/profile/[username]', params: { username: userName } });
                 }}
               />
-            )}
 
-            {/* Change Wallpaper */}
-            <MenuItem
-              icon="layout"
-              label="Change Wallpaper"
-              onPress={() => void handlePickWallpaper()}
-            />
+              {/* Chat media */}
+              {onOpenChatMedia && (
+                <MenuItem
+                  icon="image"
+                  label="Chat media"
+                  onPress={() => {
+                    onClose();
+                    onOpenChatMedia();
+                  }}
+                />
+              )}
 
-            {/* Reset Wallpaper */}
-            {hasCustomWallpaper && onResetWallpaper && (
+              {/* Change Wallpaper */}
               <MenuItem
-                icon="rotate-ccw"
-                label="Reset Wallpaper"
-                onPress={() => {
-                  onClose();
-                  onResetWallpaper();
-                }}
+                icon="layout"
+                label="Change Wallpaper"
+                onPress={() => void handlePickWallpaper()}
               />
-            )}
 
-            {/* Archive / Unarchive Chat */}
-            <MenuItem
-              icon={isArchived ? 'inbox' : 'archive'}
-              label={isArchived ? 'Unarchive Chat' : 'Archive Chat'}
-              onPress={() => void handleToggleArchive()}
-            />
+              {/* Reset Wallpaper */}
+              {hasCustomWallpaper && onResetWallpaper && (
+                <MenuItem
+                  icon="rotate-ccw"
+                  label="Reset Wallpaper"
+                  onPress={() => {
+                    onClose();
+                    onResetWallpaper();
+                  }}
+                />
+              )}
 
-            {/* Mute / Unmute */}
-            {isLoading ? (
-              <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-                <ActivityIndicator size="small" color="#10b981" />
-              </View>
-            ) : isMuted ? (
+              {/* Archive / Unarchive Chat */}
               <MenuItem
-                icon="bell"
-                label="Unmute Notifications"
-                onPress={() => void handleUnmute()}
+                icon={isArchived ? 'inbox' : 'archive'}
+                label={isArchived ? 'Unarchive Chat' : 'Archive Chat'}
+                onPress={() => void handleToggleArchive()}
               />
-            ) : (
+
+              {/* Mute / Unmute */}
+              {isLoading ? (
+                <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                  <ActivityIndicator size="small" color="#10b981" />
+                </View>
+              ) : isMuted ? (
+                <MenuItem
+                  icon="bell"
+                  label="Unmute Notifications"
+                  onPress={() => void handleUnmute()}
+                />
+              ) : (
+                <MenuItem
+                  icon="bell-off"
+                  label="Mute Notifications"
+                  onPress={() => setShowMuteOptions(true)}
+                  chevron
+                />
+              )}
+
+              {/* Block / Unblock User */}
               <MenuItem
-                icon="bell-off"
-                label="Mute Notifications"
-                onPress={() => setShowMuteOptions(true)}
-                chevron
+                icon="user-x"
+                label={isBlockedByMe ? 'Unblock User' : 'Block User'}
+                danger={!isBlockedByMe}
+                onPress={handleToggleBlock}
               />
-            )}
 
-            {/* Block / Unblock User */}
-            <MenuItem
-              icon="user-x"
-              label={isBlockedByMe ? 'Unblock User' : 'Block User'}
-              danger={!isBlockedByMe}
-              onPress={handleToggleBlock}
-            />
+              {/* Remove Friend */}
+              <MenuItem
+                icon="user-minus"
+                label="Remove Friend"
+                danger
+                onPress={handleRemoveFriend}
+              />
 
-            {/* Remove Friend */}
-            <MenuItem
-              icon="user-minus"
-              label="Remove Friend"
-              danger
-              onPress={handleRemoveFriend}
-            />
+              {/* Divider */}
+              <View style={{ height: 1, backgroundColor: colors.border, marginHorizontal: 12, marginVertical: 4 }} />
 
-            {/* Divider */}
-            <View style={{ height: 1, backgroundColor: colors.border, marginHorizontal: 12, marginVertical: 4 }} />
+              {/* Delete Chat */}
+              <MenuItem
+                icon="trash-2"
+                label="Delete Chat"
+                onPress={handleDeleteChat}
+                danger
+              />
+            </>
+          )}
+        </ModalMotionSurface>
+      </Modal>
 
-            {/* Delete Chat */}
-            <MenuItem
-              icon="trash-2"
-              label="Delete Chat"
-              onPress={handleDeleteChat}
-              danger
-            />
-          </>
-        )}
-      </ModalMotionSurface>
-    </Modal>
+      <CustomModal
+        visible={modalState.visible}
+        type={modalState.type}
+        title={modalState.title}
+        message={modalState.message}
+        confirmText={modalState.confirmText}
+        cancelText={modalState.cancelText}
+        onConfirm={modalState.onConfirm}
+        onClose={() => setModalState((prev) => ({ ...prev, visible: false }))}
+      />
+    </>
   );
 }
 

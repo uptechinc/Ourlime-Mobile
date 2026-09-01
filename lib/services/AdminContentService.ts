@@ -2,6 +2,7 @@ import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, serv
 import { auth, db } from '@/lib/firebaseConfig';
 import { ApiService } from '@/lib/services/ApiService';
 import { adminAccessService } from '@/lib/services/AdminAccessService';
+import { DiagnosticLogService } from '@/lib/services/DiagnosticLogService';
 import type {
   AdminDeleteContentRequest,
   AdminRestoreContentRequest,
@@ -9,11 +10,61 @@ import type {
   ContentAppealRecord,
   UserDeletedPostRecord,
   PredefinedDeletionCategory,
+  AdminUserContentFilter,
+  AdminUserContentPage,
+  AdminUserContentRecord,
 } from '@/lib/types/adminContent';
+import type { ModerationDeliveryResult } from '@/lib/types/moderationDelivery';
+
+export type AdminContentMutationResult = {
+  success: boolean;
+  error?: string;
+  correlationId?: string;
+  delivery?: ModerationDeliveryResult;
+};
+
+type UnknownRecord = { [key: string]: unknown };
+type UserContentSource = 'feedPosts' | 'reels';
+type UserContentDocument = {
+  source: UserContentSource;
+  id: string;
+  data: UnknownRecord;
+};
+
+const USER_CONTENT_SOURCES: UserContentSource[] = ['feedPosts', 'reels'];
+const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null && !Array.isArray(value);
+const readString = (value: unknown): string => typeof value === 'string' ? value : '';
+const readTimestampMs = (value: unknown): number => {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (!isRecord(value)) return 0;
+  if (typeof value.toDate === 'function') {
+    const converted = value.toDate();
+    return converted instanceof Date ? converted.getTime() : 0;
+  }
+  const seconds = typeof value.seconds === 'number'
+    ? value.seconds
+    : typeof value._seconds === 'number'
+      ? value._seconds
+      : 0;
+  return seconds * 1_000;
+};
+const readTimestampIso = (value: unknown): string | null => {
+  const milliseconds = readTimestampMs(value);
+  return milliseconds > 0 ? new Date(milliseconds).toISOString() : null;
+};
+const isAdminDeletedContent = (value: UnknownRecord): boolean => (
+  (value.isDeleted === true || value.status === 'deleted')
+  && (value.deletedByAdmin === true || value.deletionSource === 'admin_moderation')
+);
 
 export class AdminContentService {
   private static instance: AdminContentService;
   private readonly apiService = ApiService.getInstance();
+  private readonly logger = DiagnosticLogService.getInstance();
 
   private constructor() {}
 
@@ -24,189 +75,55 @@ export class AdminContentService {
     return AdminContentService.instance;
   }
 
-  private resolvePrimaryReason(category: PredefinedDeletionCategory, customReason?: string): string {
-    const categoryLabels: Record<PredefinedDeletionCategory, string> = {
-      inappropriate: 'Inappropriate Content / Nudity / Explicit Material',
-      harassment: 'Hate Speech / Harassment / Bullying',
-      spam: 'Spam / Scam / Commercial Solicitation / Fraud',
-      misinformation: 'Misinformation / Harmful Falsehoods',
-      copyright: 'Copyright / Intellectual Property Infringement',
-      safety: 'Child Safety / Exploitation / Physical Danger',
-      tos_violation: 'Community Guidelines / Terms of Service Violation',
-      custom: customReason?.trim() || 'Moderation Policy Violation',
-    };
-
-    if (category === 'custom' && customReason?.trim()) {
-      return customReason.trim();
-    }
-    return categoryLabels[category] || customReason?.trim() || 'Content Violation';
+  public async deleteContent(params: AdminDeleteContentRequest): Promise<AdminContentMutationResult> {
+    await adminAccessService.requireAdmin();
+    const correlationId = this.createCorrelationId();
+    this.logger.info('AdminContentService', 'delete:start', { correlationId, contentId: params.contentId, contentType: params.contentType });
+    const response = await this.apiService.request<AdminContentMutationResult>(
+      '/api/admin/content/delete',
+      { method: 'POST', authenticated: true, body: params, headers: { 'X-Ourlime-Correlation-Id': correlationId }, timeoutMs: 45_000 },
+    );
+    this.logDelivery('delete', response.delivery, correlationId);
+    return response.success
+      ? { ...response, success: true, correlationId }
+      : { success: false, error: response.error || 'Failed to delete content.' };
   }
 
-  public async deleteContent(params: AdminDeleteContentRequest): Promise<{ success: boolean; error?: string }> {
-    const identity = await adminAccessService.requireAdmin();
-
-    try {
-      const response = await this.apiService.request<{ success: boolean; error?: string }>(
-        '/api/admin/content/delete',
-        {
-          method: 'POST',
-          authenticated: true,
-          body: params,
-        }
-      );
-      if (response?.success) return { success: true };
-    } catch {
-      // Fallback to direct Firestore operations
-    }
-
-    const reason = this.resolvePrimaryReason(params.category, params.customReason);
-    const updatePayload = {
-      isDeleted: true,
-      deletedAt: serverTimestamp(),
-      deletedBy: identity.userId,
-      deletionReason: reason,
-      deletionCategory: params.category,
-      deletionNotes: params.additionalNotes || '',
-      deletionSource: 'admin_moderation',
-      status: 'deleted',
-    };
-
-    let targetAuthorId = '';
-    let contentTitle = '';
-
-    if (params.contentType === 'post' || params.contentType === 'lime') {
-      const collections = ['feedPosts', 'posts', 'reels', 'limes', 'communityVariantDetails'];
-      for (const coll of collections) {
-        const docRef = doc(db, coll, params.contentId);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          if (!targetAuthorId) {
-            targetAuthorId = data?.userId || data?.user?.id || '';
-            contentTitle = String(data?.caption || data?.title || 'Post').slice(0, 100);
-          }
-          await updateDoc(docRef, updatePayload);
-        }
-      }
-    } else if (params.contentType === 'product') {
-      const docRef = doc(db, 'products', params.contentId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        targetAuthorId = data?.sellerId || data?.userId || '';
-        contentTitle = data?.title || data?.name || 'Product';
-        await updateDoc(docRef, updatePayload);
-      }
-    } else if (params.contentType === 'blog') {
-      const docRef = doc(db, 'blogsAndArticles', params.contentId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        targetAuthorId = data?.authorId || data?.userId || '';
-        contentTitle = data?.title || 'Blog';
-        await updateDoc(docRef, updatePayload);
-      }
-    } else if (params.contentType === 'project') {
-      const docRef = doc(db, 'projects', params.contentId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        targetAuthorId = data?.creatorId || data?.ownerId || '';
-        contentTitle = data?.title || 'Project';
-        await updateDoc(docRef, updatePayload);
-      }
-    } else if (params.contentType === 'community') {
-      const docRef = doc(db, 'communities', params.contentId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        targetAuthorId = data?.ownerId || '';
-        contentTitle = data?.name || 'Community';
-        await updateDoc(docRef, updatePayload);
-      }
-    }
-
-    const auditRef = doc(collection(db, 'moderationAuditLog'));
-    await setDoc(auditRef, {
-      id: auditRef.id,
-      action: 'delete',
-      contentType: params.contentType,
-      contentId: params.contentId,
-      contentAuthorId: targetAuthorId,
-      contentTitle,
-      adminId: identity.userId,
-      reason,
-      category: params.category,
-      timestamp: serverTimestamp(),
-    });
-
-    return { success: true };
+  public async restoreContent(params: AdminRestoreContentRequest): Promise<AdminContentMutationResult> {
+    await adminAccessService.requireAdmin();
+    const correlationId = this.createCorrelationId();
+    this.logger.info('AdminContentService', 'restore:start', { correlationId, contentId: params.contentId, contentType: params.contentType });
+    const response = await this.apiService.request<AdminContentMutationResult>(
+      '/api/admin/content/restore',
+      { method: 'POST', authenticated: true, body: params, headers: { 'X-Ourlime-Correlation-Id': correlationId }, timeoutMs: 45_000 },
+    );
+    this.logDelivery('restore', response.delivery, correlationId);
+    return response.success
+      ? { ...response, success: true, correlationId }
+      : { success: false, error: response.error || 'Failed to restore content.' };
   }
 
-  public async restoreContent(params: AdminRestoreContentRequest): Promise<{ success: boolean; error?: string }> {
-    const identity = await adminAccessService.requireAdmin();
+  public async retryDelivery(eventId: string): Promise<ModerationDeliveryResult> {
+    const response = await this.apiService.request<{ success: boolean; delivery: ModerationDeliveryResult; error?: string }>(
+      `/api/admin/moderation-delivery/${encodeURIComponent(eventId)}/retry`,
+      { method: 'POST', authenticated: true, timeoutMs: 18_000 },
+    );
+    if (!response.success) throw new Error(response.error || 'Unable to retry email delivery.');
+    return response.delivery;
+  }
 
-    try {
-      const response = await this.apiService.request<{ success: boolean; error?: string }>(
-        '/api/admin/content/restore',
-        {
-          method: 'POST',
-          authenticated: true,
-          body: params,
-        }
-      );
-      if (response?.success) return { success: true };
-    } catch {
-      // Fallback to direct Firestore operations
-    }
+  private createCorrelationId(): string {
+    return `mobile-content-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
 
-    const restorePayload = {
-      isDeleted: false,
-      restoredAt: serverTimestamp(),
-      restoredBy: identity.userId,
-      restoreReason: params.restoreReason || 'Restored by Admin',
-      status: 'active',
-    };
-
-    if (params.contentType === 'post' || params.contentType === 'lime') {
-      const collections = ['feedPosts', 'posts', 'reels', 'limes', 'communityVariantDetails'];
-      for (const coll of collections) {
-        const docRef = doc(db, coll, params.contentId);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          await updateDoc(docRef, restorePayload);
-        }
-      }
-    } else if (params.contentType === 'product') {
-      const docRef = doc(db, 'products', params.contentId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) await updateDoc(docRef, restorePayload);
-    } else if (params.contentType === 'blog') {
-      const docRef = doc(db, 'blogsAndArticles', params.contentId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) await updateDoc(docRef, restorePayload);
-    } else if (params.contentType === 'project') {
-      const docRef = doc(db, 'projects', params.contentId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) await updateDoc(docRef, restorePayload);
-    } else if (params.contentType === 'community') {
-      const docRef = doc(db, 'communities', params.contentId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) await updateDoc(docRef, restorePayload);
-    }
-
-    const auditRef = doc(collection(db, 'moderationAuditLog'));
-    await setDoc(auditRef, {
-      id: auditRef.id,
-      action: 'restore',
-      contentType: params.contentType,
-      contentId: params.contentId,
-      adminId: identity.userId,
-      reason: params.restoreReason || 'Admin restoration',
-      timestamp: serverTimestamp(),
+  private logDelivery(action: 'delete' | 'restore', delivery: ModerationDeliveryResult | undefined, correlationId: string): void {
+    this.logger.info('AdminContentService', `${action}:delivery`, {
+      correlationId,
+      notificationStatus: delivery?.notificationStatus ?? 'not_reported',
+      emailStatus: delivery?.emailStatus ?? 'not_reported',
+      emailAttemptCount: delivery?.emailAttemptCount ?? 0,
+      errorCode: delivery?.errorCode ?? null,
     });
-
-    return { success: true };
   }
 
   public async submitAppeal(submission: SubmitAppealRequest): Promise<{ success: boolean; appealId?: string; error?: string }> {
@@ -241,6 +158,156 @@ export class AdminContentService {
     });
 
     return { success: true, appealId: appealRef.id };
+  }
+
+  public async getUserContent(
+    userId: string,
+    filter: AdminUserContentFilter = 'all',
+    cursor?: string | null,
+    requestedPageSize = 20,
+  ): Promise<AdminUserContentPage> {
+    await adminAccessService.requireAdmin();
+    const pageSize = Math.min(Math.max(Math.trunc(requestedPageSize) || 20, 1), 50);
+    if (!cursor?.startsWith('fallback:')) {
+      try {
+        const search = new URLSearchParams({ filter, limit: String(pageSize) });
+        if (cursor) search.set('cursor', cursor);
+        const response = await this.apiService.request<{
+          success: boolean;
+          data?: AdminUserContentPage;
+          error?: string;
+        }>(`/api/admin/users/${encodeURIComponent(userId)}/posts?${search.toString()}`, {
+          method: 'GET',
+          authenticated: true,
+          timeoutMs: 18_000,
+        });
+        if (response.success && response.data) return response.data;
+        throw new Error(response.error || 'Unable to load user content.');
+      } catch (error: unknown) {
+        this.logger.warn('AdminContentService', 'user-content:api-fallback', {
+          userId,
+          message: error instanceof Error ? error.message : 'Unknown API error',
+        });
+      }
+    }
+    return this.getUserContentFromFirestore(userId, filter, cursor, pageSize);
+  }
+
+  private async getUserContentFromFirestore(
+    userId: string,
+    filter: AdminUserContentFilter,
+    cursor: string | null | undefined,
+    pageSize: number,
+  ): Promise<AdminUserContentPage> {
+    const snapshots = await Promise.all(USER_CONTENT_SOURCES.map(async (source) => ({
+      source,
+      snapshot: await getDocs(query(
+        collection(db, source),
+        where('userId', '==', userId),
+        limit(200),
+      )),
+    })));
+    const documents: UserContentDocument[] = snapshots
+      .flatMap(({ source, snapshot }) => snapshot.docs.map((contentDocument): UserContentDocument => ({
+        source,
+        id: contentDocument.id,
+        data: isRecord(contentDocument.data()) ? contentDocument.data() : {},
+      })))
+      .sort((left, right) => readTimestampMs(right.data.createdAt) - readTimestampMs(left.data.createdAt)
+        || right.id.localeCompare(left.id));
+    const feedPostIds = documents
+      .filter((contentDocument) => contentDocument.source === 'feedPosts')
+      .map((contentDocument) => contentDocument.id);
+    const feedMediaByPostId = new Map<string, AdminUserContentRecord['mediaPreviews']>();
+    for (let offset = 0; offset < feedPostIds.length; offset += 30) {
+      const idChunk = feedPostIds.slice(offset, offset + 30);
+      if (idChunk.length === 0) continue;
+      const mediaSnapshot = await getDocs(query(
+        collection(db, 'feedsPostSummary'),
+        where('feedsPostId', 'in', idChunk),
+      ));
+      mediaSnapshot.docs.forEach((mediaDocument) => {
+        const mediaData: unknown = mediaDocument.data();
+        if (!isRecord(mediaData)) return;
+        const postId = readString(mediaData.feedsPostId);
+        const mediaUrl = readString(mediaData.typeUrl);
+        if (!postId || !mediaUrl) return;
+        const rawType = readString(mediaData.type).toLowerCase();
+        const mediaType = rawType.includes('image')
+          ? 'image'
+          : rawType.includes('video')
+            ? 'video'
+            : 'media';
+        const existingMedia = feedMediaByPostId.get(postId) ?? [];
+        if (existingMedia.some((entry) => entry.url === mediaUrl)) return;
+        feedMediaByPostId.set(postId, [...existingMedia, {
+          id: mediaDocument.id,
+          url: mediaUrl,
+          type: mediaType,
+          thumbnailUrl: readString(mediaData.thumbnailUrl) || readString(mediaData.previewUrl) || null,
+        }]);
+      });
+    }
+
+    const records = documents.map((contentDocument): AdminUserContentRecord => {
+      const value = contentDocument.data;
+      const nestedMedia = isRecord(value.media) ? value.media : {};
+      const feedMedia = feedMediaByPostId.get(contentDocument.id) ?? [];
+      const limeThumbnail = readString(value.thumbnailUrl) || readString(nestedMedia.thumbnailUrl);
+      const limeVideo = readString(nestedMedia.typeUrl);
+      const mediaPreviews: AdminUserContentRecord['mediaPreviews'] = contentDocument.source === 'reels'
+        ? limeVideo
+          ? [{ id: `${contentDocument.id}:video`, url: limeVideo, type: 'video', thumbnailUrl: limeThumbnail || null }]
+          : limeThumbnail
+            ? [{ id: `${contentDocument.id}:thumbnail`, url: limeThumbnail, type: 'image', thumbnailUrl: null }]
+            : []
+        : feedMedia;
+      const primaryMedia = mediaPreviews[0] ?? null;
+      return {
+        id: contentDocument.id,
+        authorId: readString(value.userId) || userId,
+        contentType: contentDocument.source === 'reels' ? 'lime' : 'post',
+        caption: readString(value.caption) || readString(value.title),
+        description: readString(value.description) || readString(value.content),
+        visibility: readString(value.visibility) || 'public',
+        createdAt: readTimestampIso(value.createdAt),
+        mediaPreviewUrl: primaryMedia?.thumbnailUrl ?? primaryMedia?.url ?? null,
+        mediaPreviewType: primaryMedia?.thumbnailUrl ? 'image' : primaryMedia?.type ?? null,
+        mediaPreviews,
+        isDeleted: value.isDeleted === true || value.status === 'deleted',
+        deletedByAdmin: isAdminDeletedContent(value),
+        deletedAt: readTimestampIso(value.deletedAt),
+        adminId: readString(value.adminId) || readString(value.deletedBy) || null,
+        adminName: readString(value.adminName) || readString(value.deletedByName) || null,
+        deletionReason: readString(value.deletionReason) || null,
+        deletionCategory: readString(value.deletionCategory) || null,
+        deletionNotes: readString(value.deletionNotes) || null,
+        deletionAuditId: readString(value.deletionAuditId) || null,
+      };
+    }).filter((contentRecord) => {
+      if (filter === 'deleted_by_admin') return contentRecord.deletedByAdmin;
+      if (filter === 'active') return !contentRecord.isDeleted;
+      return true;
+    });
+    const requestedOffset = cursor?.startsWith('fallback:')
+      ? Number(cursor.slice('fallback:'.length))
+      : 0;
+    const offset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? Math.trunc(requestedOffset) : 0;
+    const items = records.slice(offset, offset + pageSize);
+    const nextOffset = offset + items.length;
+    const hasMore = nextOffset < records.length;
+    this.logger.success('AdminContentService', 'user-content:firestore', {
+      userId,
+      filter,
+      resultCount: items.length,
+      hasMore,
+    });
+    return {
+      items,
+      pageSize,
+      hasMore,
+      nextCursor: hasMore ? `fallback:${nextOffset}` : null,
+    };
   }
 
   public async getUserDeletedPosts(userId: string): Promise<UserDeletedPostRecord[]> {

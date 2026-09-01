@@ -73,6 +73,7 @@
     "expo-symbols": "~57.0.2",
     "expo-system-ui": "~57.0.2",
     "expo-video": "^57.0.2",
+    "expo-video-thumbnails": "~57.0.1",
     "expo-web-browser": "~57.0.2",
     "lucide-react-native": "^0.483.0",
     "nativewind": "^4.1.23",

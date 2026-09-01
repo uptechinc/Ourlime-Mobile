@@ -300,10 +300,7 @@ export default function ChatTabScreen() {
       try {
         const chatRoomId = messagingService.getChatRoomId(currentUserId, uid);
         await messagingService.clearChatHistory(chatRoomId);
-        void conversationResourceService.patchConversation(currentUserId, uid, {
-          lastMessage: '',
-          unreadCount: 0,
-        });
+        await conversationResourceService.removeConversation(currentUserId, uid);
       } catch {
         // Continue deleting rest
       }

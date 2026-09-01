@@ -1,5 +1,7 @@
 import '@/lib/shims/codegenNativeComponent';
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { ActivityIndicator, LogBox, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAuthGuard } from '@/lib/hooks/useAuthGuard';
@@ -25,6 +27,7 @@ export { RouteErrorBoundary as ErrorBoundary } from '@/components/ui/AppErrorBou
 errorLogService.install();
 memoryPressureService.install();
 void crashReportingService.initialize();
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 LogBox.ignoreLogs([
   'SafeAreaView has been deprecated',
@@ -40,6 +43,10 @@ LogBox.ignoreLogs([
 function AppRouteTree() {
   const { user, isInitializing } = useAuthGuard();
   const { colors } = useAppTheme();
+
+  useEffect(() => {
+    if (!isInitializing) void SplashScreen.hideAsync().catch(() => undefined);
+  }, [isInitializing]);
 
   if (isInitializing) {
     return (
@@ -65,6 +72,8 @@ function AppRouteTree() {
               contentStyle: { backgroundColor: colors.canvas },
             }}
           >
+            <Stack.Screen name="index" options={{ animation: 'none' }} />
+            <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
             <Stack.Screen name="(auth)/login" options={{ animation: 'none' }} />
             <Stack.Screen name="(auth)/register" options={{ animation: 'slide_from_right' }} />
           </Stack>

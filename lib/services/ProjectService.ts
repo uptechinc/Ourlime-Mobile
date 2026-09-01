@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
 import { apiService } from '@/lib/services/ApiService';
+import { accountLifecycleVisibilityService } from '@/lib/services/AccountLifecycleVisibilityService';
 import type {
   Comment,
   CreateProjectInput,
@@ -65,7 +66,9 @@ export class ProjectService {
     const userId = this.requireUserId();
     const projectQuery = query(collection(db, 'projects'), where('memberUids', 'array-contains', userId));
     const snapshot = await getDocs(projectQuery);
-    const projects = snapshot.docs.map((projectSnapshot) => this.mapProject(projectSnapshot, userId));
+    const projects = snapshot.docs
+      .filter((projectSnapshot) => !accountLifecycleVisibilityService.isHidden(projectSnapshot.data()))
+      .map((projectSnapshot) => this.mapProject(projectSnapshot, userId));
     const ownerIds = [...new Set(projects.map((project) => project.ownerId).filter(Boolean))];
     const ownerEntries = await Promise.all(ownerIds.map(async (ownerId) => [ownerId, await this.resolveUserName(ownerId)] as const));
     const ownerNames = new Map(ownerEntries);
@@ -77,7 +80,7 @@ export class ProjectService {
   public async getProject(projectId: string): Promise<{ project: ProjectRecord; teamMembers: TeamMember[] }> {
     const userId = this.requireUserId();
     const projectDocument = await getDoc(doc(db, 'projects', projectId));
-    if (!projectDocument.exists()) throw new Error('Project not found');
+    if (!projectDocument.exists() || accountLifecycleVisibilityService.isHidden(projectDocument.data())) throw new Error('Project not found');
     const project = this.mapProject(projectDocument as QueryDocumentSnapshot<DocumentData>, userId);
     project.ownerName = await this.resolveUserName(project.ownerId);
     const data = projectDocument.data() as ProjectDocument;
@@ -503,4 +506,3 @@ export class ProjectService {
 }
 
 export const projectService = ProjectService.getInstance();
-

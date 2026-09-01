@@ -26,6 +26,9 @@ import ProfileSkeleton from '@/components/profile/ProfileSkeleton';
 import CachedImage from '@/components/ui/CachedImage';
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { profileResourceService } from '@/lib/services/ProfileResourceService';
+import { relationshipResourceService } from '@/lib/services/RelationshipResourceService';
+import { relationshipRequestResourceService } from '@/lib/services/RelationshipRequestResourceService';
+import { conversationResourceService } from '@/lib/services/ConversationResourceService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { presenceService, type PresenceState } from '@/lib/services/PresenceService';
 import { adminAccessService } from '@/lib/services/AdminAccessService';
@@ -232,6 +235,11 @@ export default function UserProfileScreen() {
     setActionLoading(true);
     try {
       if (modal.action === 'cancel_friend_request') {
+        if (currentUserId) {
+          relationshipResourceService.removeUserFromCachedRelationships(currentUserId, profile.uid);
+          relationshipRequestResourceService.removeUserFromCachedRequests(profile.uid);
+          void conversationResourceService.removeConversation(currentUserId, profile.uid);
+        }
         await relationshipService.cancelOrRemoveFriend(currentUserId ?? '', profile.uid, friendshipStatus === 'none' ? 'pending' : friendshipStatus);
         const wasAccepted = friendshipStatus === 'accepted';
         setFriendshipStatus('none');
@@ -241,6 +249,11 @@ export default function UserProfileScreen() {
         return;
       }
       if (modal.action === 'block') {
+        if (currentUserId) {
+          relationshipResourceService.removeUserFromCachedRelationships(currentUserId, profile.uid);
+          relationshipRequestResourceService.removeUserFromCachedRequests(profile.uid);
+          void conversationResourceService.removeConversation(currentUserId, profile.uid);
+        }
         await relationshipService.blockUser(profile.uid);
         setIsBlockedByMe(true);
         setIsFollowing(false);

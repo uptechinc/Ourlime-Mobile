@@ -23,12 +23,15 @@ export type ApiRequestOptions = {
 	headers?: ApiRequestHeaders;
 	timeoutMs?: number;
 	priority?: ApiRequestPriority;
+	availabilityImpact?: 'global' | 'request-only';
+	baseUrlOverride?: string;
 };
 
 export type ApiRequestHeaders = {
 	Accept?: string;
 	Authorization?: string;
 	'Content-Type'?: string;
+	'X-Ourlime-Correlation-Id'?: string;
 };
 
 type ApiAvailabilityLogMetadata = {
@@ -60,8 +63,7 @@ export class ApiServiceError extends Error {
 	}
 }
 
-const DEFAULT_API_BASE_URL =
-	process.env.EXPO_PUBLIC_WEB_API_URL || 'https://ourlime.com';
+const PRODUCTION_API_BASE_URL = 'https://ourlime.com';
 const API_UNAVAILABLE_BACKOFF_MS = 15_000;
 const API_HEALTH_TIMEOUT_MS = 12_000;
 
@@ -78,18 +80,20 @@ export class ApiService {
 	private unavailableUntil = 0;
 
 	private constructor() {
-		const configuredUrl =
-			process.env.EXPO_PUBLIC_OURLIME_API_BASE_URL?.trim() ||
-			process.env.EXPO_PUBLIC_WEB_API_URL?.trim();
-		const developmentHost = platformEnvironmentService.getDevelopmentHostName();
-		const developmentUrl =
-			process.env.EXPO_PUBLIC_USE_LAN_API === 'true' && developmentHost
-				? `http://${developmentHost}:3000`
-				: null;
+		const explicitUrl = process.env.EXPO_PUBLIC_OURLIME_API_BASE_URL?.trim();
+		const legacyConfiguredUrl = process.env.EXPO_PUBLIC_WEB_API_URL?.trim();
+		const developmentUrl = platformEnvironmentService.getDevelopmentApiBaseUrl();
+		const developmentConfiguredUrl = __DEV__
+			&& legacyConfiguredUrl
+			&& legacyConfiguredUrl.replace(/\/$/, '') !== PRODUCTION_API_BASE_URL
+			? legacyConfiguredUrl
+			: null;
 		this.baseUrl = (
-			configuredUrl ||
+			explicitUrl ||
+			developmentConfiguredUrl ||
 			developmentUrl ||
-			DEFAULT_API_BASE_URL
+			legacyConfiguredUrl ||
+			PRODUCTION_API_BASE_URL
 		).replace(/\/$/, '');
 		this.logger.info('ApiService', 'initialize', { baseUrl: this.baseUrl });
 	}
@@ -112,7 +116,12 @@ export class ApiService {
 		didRetryAuthentication: boolean
 	): Promise<TResponse> {
 		const method = options.method ?? 'GET';
-		await this.ensureAvailability(path, options.priority ?? 'foreground');
+		const requestBaseUrl = (options.baseUrlOverride?.trim() || this.baseUrl).replace(/\/$/, '');
+		const affectsGlobalAvailability =
+			options.availabilityImpact !== 'request-only' && !options.baseUrlOverride;
+		if (!options.baseUrlOverride) {
+			await this.ensureAvailability(path, options.priority ?? 'foreground');
+		}
 		const requestId = this.createRequestId();
 		const startedAt = Date.now();
 		const headers = new Headers();
@@ -121,6 +130,8 @@ export class ApiService {
 			headers.set('Authorization', options.headers.Authorization);
 		if (options.headers?.['Content-Type'])
 			headers.set('Content-Type', options.headers['Content-Type']);
+		if (options.headers?.['X-Ourlime-Correlation-Id'])
+			headers.set('X-Ourlime-Correlation-Id', options.headers['X-Ourlime-Correlation-Id']);
 
 		if (options.body !== undefined)
 			headers.set('Content-Type', 'application/json');
@@ -138,11 +149,12 @@ export class ApiService {
 			);
 		}
 
-		const url = `${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+		const url = `${requestBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
 		this.logger.info('ApiService', 'request:start', {
 			requestId,
 			method,
 			path,
+			baseUrl: requestBaseUrl,
 		});
 		const requestController = new AbortController();
 		this.activeRequestControllers.set(
@@ -167,7 +179,7 @@ export class ApiService {
 					options.body === undefined ? undefined : JSON.stringify(options.body),
 				signal: requestController.signal,
 			});
-			this.markAvailable();
+			if (affectsGlobalAvailability) this.markAvailable();
 			const payload: unknown = await response.json().catch(() => null);
 			if (
 				response.status === 401 &&
@@ -214,17 +226,22 @@ export class ApiService {
 		} catch (error: unknown) {
 			if (didTimeout) {
 				const timeoutError = new ApiServiceError(
-					'The Ourlime API did not respond at ' + this.baseUrl + '.',
+					'The Ourlime API did not respond at ' + requestBaseUrl + '.',
 					408,
 					'REQUEST_TIMEOUT'
 				);
-				this.markUnavailable(requestController, 'request:timeout', {
+				const timeoutMetadata = {
 					requestId,
 					method,
 					path,
-					baseUrl: this.baseUrl,
+					baseUrl: requestBaseUrl,
 					elapsedMs: Date.now() - startedAt,
-				});
+				};
+				if (!affectsGlobalAvailability) {
+					this.logger.info('ApiService', 'request:timeout:request-only', timeoutMetadata);
+				} else {
+					this.markUnavailable(requestController, 'request:timeout', timeoutMetadata);
+				}
 				throw timeoutError;
 			}
 			if (options.signal?.aborted) throw error;
@@ -244,14 +261,19 @@ export class ApiService {
 				errorMessage.includes('cleartext communication') ||
 				errorMessage.includes('network request failed');
 			if (isNetworkError) {
-				this.markUnavailable(requestController, 'request:network', {
+				const networkMetadata = {
 					requestId,
-					baseUrl: this.baseUrl,
+					baseUrl: requestBaseUrl,
 					method,
 					path,
 					error: error instanceof Error ? error.message : String(error),
 					elapsedMs: Date.now() - startedAt,
-				});
+				};
+				if (affectsGlobalAvailability) {
+					this.markUnavailable(requestController, 'request:network', networkMetadata);
+				} else {
+					this.logger.warn('ApiService', 'request:network:request-only', networkMetadata);
+				}
 				throw new ApiServiceError(
 					'Ourlime could not connect to its API. Check the server address and device network access.',
 					0,

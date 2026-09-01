@@ -3,6 +3,7 @@ import { db } from '../firebaseConfig';
 import { ApiService } from './ApiService';
 import { AuthService } from './AuthService';
 import type { Event, MediaItem } from '@/types/eventTypes';
+import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
 
 export type EventAttendanceStatus = { isAttending: boolean; attendeeCount: number };
 type CommunityEventApiResult<TData> = { success?: boolean; data?: TData; error?: string };
@@ -42,7 +43,9 @@ export class EventService {
       const response = await this.apiService.request<{ status: 'success'; data: Event[] }>('/api/events/fetch', {
         timeoutMs: 18_000,
       });
-      return Array.isArray(response.data) ? response.data : [];
+      return Array.isArray(response.data)
+        ? response.data.filter((event) => !accountLifecycleVisibilityService.isHidden(event))
+        : [];
     } catch {
       return this.fetchEventsFromFirestore();
     }
@@ -51,6 +54,7 @@ export class EventService {
   private async fetchEventsFromFirestore(): Promise<Event[]> {
     const snapshot = await getDocs(collection(db, 'events'));
     return snapshot.docs
+      .filter((document) => !accountLifecycleVisibilityService.isHidden(document.data()))
       .map((document): Event => {
         const event = document.data();
         const startDate = event.startDate instanceof Timestamp
@@ -101,7 +105,7 @@ export class EventService {
   public async fetchCommunityEvents(communityId: string): Promise<Event[]> {
     const response = await this.apiService.request<CommunityEventApiResult<Event[]>>(`/api/communities/events?communityId=${encodeURIComponent(communityId)}`, { authenticated: true });
     if (!response.success || !Array.isArray(response.data)) throw new Error(response.error || 'Community events could not be loaded.');
-    return response.data;
+    return response.data.filter((event) => !accountLifecycleVisibilityService.isHidden(event));
   }
 
   public async createCommunityEvent(input: CreateEventInput): Promise<string> {

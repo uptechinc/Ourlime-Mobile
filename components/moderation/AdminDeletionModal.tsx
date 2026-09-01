@@ -132,7 +132,7 @@ export default function AdminDeletionModal({
                   Author: {authorName}
                 </Text>
                 <Text style={{ color: colors.mutedText }} className="text-[11px] mt-0.5">
-                  The user will receive an in-app notification with this removal reason and an appeal button.
+                  The user will receive an Ourlime notification, push alert, and email with this removal reason and an appeal option.
                 </Text>
               </View>
             )}
@@ -248,7 +248,7 @@ export default function AdminDeletionModal({
                 ) : (
                   <>
                     <Ionicons name="trash-outline" size={14} color="#ffffff" />
-                    <Text className="text-white text-xs font-bold">Delete as Admin</Text>
+                    <Text className="text-white text-xs font-bold">Submit</Text>
                   </>
                 )}
               </TouchableOpacity>

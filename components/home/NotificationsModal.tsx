@@ -68,6 +68,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
   const [showReadNotifs, setShowReadNotifs] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [markingAllRead, setMarkingAllRead] = useState(false);
 
   // Track resolved friend request notifications (Web Parity)
   const [resolvedRequestIds, setResolvedRequestIds] = useState<Set<string>>(new Set());
@@ -278,6 +279,24 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
     router.push('/notifications' as Href);
   };
 
+  const handleMarkAllRead = async (): Promise<void> => {
+    if (unreadCount === 0 || markingAllRead) return;
+    setMarkingAllRead(true);
+    try {
+      await markAllAsRead();
+    } catch (error: unknown) {
+      setDialogState({
+        visible: true,
+        type: 'error',
+        title: 'Notifications not updated',
+        message: error instanceof Error ? error.message : 'Notifications could not be marked as read.',
+        confirmText: 'OK',
+      });
+    } finally {
+      setMarkingAllRead(false);
+    }
+  };
+
   const handleAcceptFriendRequest = async (item: NotificationData) => {
     const senderId = item.metadata?.sourceUserId || item.metadata?.sourceId || item.metadata?.senderId;
     const senderName = item.userDetails?.firstName || item.userDetails?.userName || 'Friend';
@@ -480,24 +499,35 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
           borderBottomColor: colors.border,
           backgroundColor: colors.surface,
         }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TouchableOpacity onPress={onClose} style={{ padding: 6, marginRight: 8 }}>
+          <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={mode === 'screen' ? 'Go back' : 'Close notifications'} onPress={onClose} hitSlop={8} style={{ minWidth: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center', marginRight: 4 }}>
               <Icon name={mode === 'screen' ? 'arrow-left' : 'x'} size={24} color={colors.icon} />
             </TouchableOpacity>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Notifications</Text>
-              {unreadCount > 0 && (
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#10b981', marginLeft: 8 }}>
-                  {unreadCount} unread
-                </Text>
-              )}
-            </View>
+            <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: 20, fontWeight: '800', color: colors.text }}>Notifications</Text>
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {mode === 'modal' ? <TouchableOpacity onPress={handleViewAll} style={{ padding: 6 }}><Text style={{ fontSize: 13, fontWeight: '800', color: colors.accentText }}>View all</Text></TouchableOpacity> : null}
-            <TouchableOpacity onPress={() => void markAllAsRead()} style={{ padding: 6 }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#10b981' }}>Mark all read</Text>
+          <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            {mode === 'modal' ? (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="View all notifications"
+                onPress={handleViewAll}
+                hitSlop={6}
+                style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.accentText }}>View all</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Mark all notifications as read"
+              accessibilityState={{ disabled: unreadCount === 0 || markingAllRead, busy: markingAllRead }}
+              disabled={unreadCount === 0 || markingAllRead}
+              onPress={() => void handleMarkAllRead()}
+              hitSlop={6}
+              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, opacity: unreadCount === 0 ? 0.45 : 1 }}
+            >
+              {markingAllRead ? <ActivityIndicator size="small" color="#10b981" /> : <Icon name="check-circle" size={21} color="#10b981" />}
             </TouchableOpacity>
           </View>
         </View>

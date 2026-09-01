@@ -219,6 +219,8 @@ type Reel = {
     }[];
     repostedByViewer?: boolean;
     reposts?: string[];
+    status?: string;
+    isDeleted?: boolean;
 };
 
 type Comment = {

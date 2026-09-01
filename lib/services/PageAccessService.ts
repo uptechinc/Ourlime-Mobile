@@ -22,6 +22,8 @@ const PUBLIC_ROUTES = new Set([
 
 const EXPO_ROUTE_ALIASES: Readonly<Record<string, string>> = {
   '/': '/',
+  '/index': '/',
+  'index': '/',
   '/(tabs)': '/',
   '/(tabs)/index': '/',
   '/(tabs)/Discover': '/discover',

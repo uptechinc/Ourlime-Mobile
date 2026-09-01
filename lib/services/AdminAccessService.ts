@@ -35,12 +35,11 @@ export class AdminAccessService {
     const snapshot = await getDoc(doc(db, 'users', currentUser.uid));
     if (!snapshot.exists()) throw new Error('User profile was not found');
     const profile = snapshot.data();
-    const role = typeof profile.role === 'string'
-      ? profile.role.toLowerCase()
-      : typeof profile.accountType === 'string' ? profile.accountType.toLowerCase() : 'user';
+    const role = (typeof profile.role === 'string' ? profile.role : typeof profile.accountType === 'string' ? profile.accountType : typeof profile.userType === 'string' ? profile.userType : 'user').toLowerCase().replace('-', '_');
+    const isAdmin = profile.isAdmin === true || profile.isSuperAdmin === true || profile.isDeveloper === true || role === 'admin' || role === 'super_admin' || role === 'developer' || role === 'dev';
     return {
       userId: currentUser.uid,
-      isAdmin: profile.isAdmin === true || role === 'admin',
+      isAdmin,
       isModerator: role === 'moderator',
     };
   }

@@ -272,6 +272,7 @@ export class PostMediaService {
           typeUrl,
           fileName: options.item.fileName,
           thumbnailUrl,
+          displayOrder: options.index,
         },
         storagePath: mediaReference.fullPath,
       };

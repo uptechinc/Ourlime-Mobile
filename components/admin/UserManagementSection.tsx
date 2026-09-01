@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'expo-router';
 import {
 	ActivityIndicator,
 	Modal,
@@ -11,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
+import AdminUserContentWorkspace from '@/components/admin/AdminUserContentWorkspace';
 import UserAvatar from '@/components/ui/UserAvatar';
 import CustomModal from '@/components/ui/CustomModal';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
@@ -19,7 +21,11 @@ import {
 	type AdminAccountStatus,
 	type AdminUserRecord,
 	type AdminUserRole,
+	type UserLifecycleOperation,
 } from '@/lib/services/AdminUserService';
+import { relationshipResourceService } from '@/lib/services/RelationshipResourceService';
+import { relationshipRequestResourceService } from '@/lib/services/RelationshipRequestResourceService';
+import { conversationResourceService } from '@/lib/services/ConversationResourceService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const adminUserService = AdminUserService.getInstance();
@@ -41,10 +47,18 @@ const STATUSES = [
 const PAGE_SIZE = 20;
 type UserStatusFilter = (typeof STATUSES)[number];
 type UserDetailTab =
-	'overview' | 'role' | 'status' | 'verification' | 'lifecycle';
+	'overview' | 'content' | 'role' | 'status' | 'verification' | 'lifecycle';
+
+function formatDeliveryStatus(operation: UserLifecycleOperation): string {
+	if (!operation.delivery) return 'The notification delivery is still being recorded.';
+	if (operation.delivery.emailStatus === 'sent') return 'Email sent.';
+	if (operation.delivery.emailStatus === 'queued') return 'Email queued for automatic retry.';
+	return `Email delivery failed${operation.delivery.errorCode ? ` (${operation.delivery.errorCode})` : ''}.`;
+}
 
 export default function UserManagementSection() {
 	const { colors } = useAppTheme();
+	const router = useRouter();
 	const [users, setUsers] = useState<AdminUserRecord[]>([]);
 	const [search, setSearch] = useState('');
 	const [statusFilter, setStatusFilter] = useState<UserStatusFilter>('all');
@@ -61,9 +75,11 @@ export default function UserManagementSection() {
 	const [statusReason, setStatusReason] = useState('');
 	const [suspensionDays, setSuspensionDays] = useState('7');
 	const [deleteConfirmation, setDeleteConfirmation] = useState('');
+	const [lifecycleReason, setLifecycleReason] = useState('');
 	const [loading, setLoading] = useState(true);
 	const [busy, setBusy] = useState(false);
 	const [message, setMessage] = useState<string | null>(null);
+	const [lifecycleOperation, setLifecycleOperation] = useState<UserLifecycleOperation | null>(null);
 
 	const loadUsers = useCallback(async () => {
 		setLoading(true);
@@ -118,13 +134,13 @@ export default function UserManagementSection() {
 	};
 	const runMutation = async (
 		mutation: () => Promise<void>,
-		successMessage: string
+		successMessage: string | (() => string)
 	) => {
 		if (busy) return;
 		setBusy(true);
 		try {
 			await mutation();
-			setMessage(successMessage);
+			setMessage(typeof successMessage === 'function' ? successMessage() : successMessage);
 		} catch (mutationError: unknown) {
 			setMessage(
 				mutationError instanceof Error
@@ -160,20 +176,23 @@ export default function UserManagementSection() {
 			newStatus === 'suspended' && Number.isFinite(duration)
 				? new Date(Date.now() + Math.max(1, duration) * 86_400_000)
 				: null;
+		let completionMessage = `Account status changed to ${newStatus}.`;
 		await runMutation(async () => {
-			await adminUserService.updateAccountStatus(
+			const operation = await adminUserService.updateAccountStatus(
 				selectedUser.id,
 				newStatus,
 				statusReason,
-				suspendedUntil
+				suspendedUntil,
+				setLifecycleOperation,
 			);
+			completionMessage = `${completionMessage} ${formatDeliveryStatus(operation)}`;
 			patchSelected({
 				accountStatus: newStatus,
 				statusReason,
 				banned: newStatus === 'banned',
 				archived: false,
 			});
-		}, `Account status changed to ${newStatus}.`);
+		}, () => completionMessage);
 	};
 	const handleLifecycle = async (
 		action: 'archive' | 'unarchive' | 'delete_permanently'
@@ -187,22 +206,56 @@ export default function UserManagementSection() {
 			setMessage('Type DELETE to confirm permanent account deletion.');
 			return;
 		}
+		const normalizedReason = lifecycleReason.trim();
+		if (!normalizedReason) {
+			setMessage('Enter a lifecycle reason before continuing.');
+			return;
+		}
+		let completionMessage = action === 'archive'
+			? 'Account archived.'
+			: action === 'unarchive'
+				? 'Account restored and activated.'
+				: 'Account permanently deleted.';
 		await runMutation(
 			async () => {
-				await adminUserService.updateLifecycle(selectedUser.id, action);
+				const operation = await adminUserService.updateLifecycle(
+					selectedUser.id,
+					action,
+					normalizedReason,
+					setLifecycleOperation,
+				);
+				completionMessage = `${completionMessage} ${formatDeliveryStatus(operation)}`;
 				if (action === 'delete_permanently') {
 					setUsers((current) =>
 						current.filter((user) => user.id !== selectedUser.id)
 					);
+					const currentAdminId = adminUserService.getCurrentUserId();
+					if (currentAdminId) {
+						relationshipResourceService.removeUserFromCachedRelationships(currentAdminId, selectedUser.id);
+						relationshipRequestResourceService.removeUserFromCachedRequests(selectedUser.id);
+						void conversationResourceService.removeConversation(currentAdminId, selectedUser.id);
+					}
 					setSelectedUser(null);
 				} else patchSelected({ archived: action === 'archive' });
+				setLifecycleReason('');
+				setDeleteConfirmation('');
 			},
-			action === 'archive'
-				? 'Account archived.'
-				: action === 'unarchive'
-					? 'Account restored.'
-					: 'Account permanently deleted.'
+			() => completionMessage,
 		);
+	};
+	const handleLifecycleRetry = async () => {
+		if (!selectedUser || !lifecycleOperation || lifecycleOperation.phase !== 'failed') return;
+		await runMutation(async () => {
+			const operation = await adminUserService.retryLifecycleOperation(selectedUser.id, lifecycleOperation.id);
+			setLifecycleOperation(operation);
+		}, 'Lifecycle job completed after retry.');
+	};
+	const handleDeliveryRetry = async () => {
+		if (!lifecycleOperation?.delivery) return;
+		await runMutation(async () => {
+			const delivery = await adminUserService.retryModerationDelivery(lifecycleOperation.delivery!.eventId);
+			setLifecycleOperation((current) => current ? { ...current, delivery } : current);
+		}, 'Email delivery retry completed.');
 	};
 	const handleEmailVerification = async () => {
 		if (!selectedUser) return;
@@ -432,6 +485,7 @@ export default function UserManagementSection() {
 						);
 						setStatusReason(user.statusReason);
 						setDeleteConfirmation('');
+						setLifecycleReason('');
 					}}
 					style={{
 						flexDirection: 'row',
@@ -574,6 +628,7 @@ export default function UserManagementSection() {
 							{(
 								[
 									'overview',
+									'content',
 									'role',
 									'status',
 									'verification',
@@ -694,6 +749,30 @@ export default function UserManagementSection() {
 											</View>
 										))}
 									</>
+								) : null}
+								{detailTab === 'content' ? (
+									<AdminUserContentWorkspace
+										userId={selectedUser.id}
+										userDisplayName={
+											`${selectedUser.firstName} ${selectedUser.lastName}`.trim()
+											|| selectedUser.userName
+											|| selectedUser.email
+										}
+										onOpenContent={(content) => {
+											setSelectedUser(null);
+											if (content.contentType === 'lime') {
+												router.push({
+													pathname: '/limes/viewer',
+													params: { limeId: content.id, viewer: '1' },
+												});
+												return;
+											}
+											router.push({
+												pathname: '/post/[id]',
+												params: { id: content.id },
+											});
+										}}
+									/>
 								) : null}
 								{detailTab === 'role' ? (
 									<>
@@ -997,16 +1076,69 @@ export default function UserManagementSection() {
 												color: colors.mutedText,
 												lineHeight: 19,
 											}}
-										>
-											Archive is reversible. Permanent deletion removes the user
-											through the secure server lifecycle workflow and cannot be
-											undone.
+						>
+							Archive is reversible. Permanent deletion removes the user
+							through the secure server lifecycle workflow and cannot be
+							undone.
 										</Text>
-										<TouchableOpacity
-											disabled={
-												busy ||
-												selectedUser.id === adminUserService.getCurrentUserId()
-											}
+										{lifecycleOperation ? (
+											<View style={{ marginTop: 12, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 12 }}>
+												<Text style={{ color: colors.text, fontWeight: '800' }}>
+													Lifecycle job: {lifecycleOperation.phase}
+												</Text>
+												<Text style={{ marginTop: 4, color: colors.mutedText }}>
+													{lifecycleOperation.processedDocuments}/{lifecycleOperation.totalDocuments || '?'} records · Email {lifecycleOperation.delivery?.emailStatus ?? 'pending'}
+												</Text>
+												{lifecycleOperation.phase === 'failed' ? (
+													<TouchableOpacity onPress={() => void handleLifecycleRetry()} style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 10, backgroundColor: colors.accent, paddingHorizontal: 14, paddingVertical: 9 }}>
+														<Text style={{ color: '#fff', fontWeight: '800' }}>Retry safely</Text>
+													</TouchableOpacity>
+												) : null}
+												{lifecycleOperation.delivery?.emailStatus === 'failed' ? (
+													<TouchableOpacity onPress={() => void handleDeliveryRetry()} style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 10, backgroundColor: colors.accent, paddingHorizontal: 14, paddingVertical: 9 }}>
+														<Text style={{ color: '#fff', fontWeight: '800' }}>Retry email</Text>
+													</TouchableOpacity>
+												) : null}
+											</View>
+										) : null}
+						<Text style={{ marginTop: 16, color: colors.text, fontWeight: '900' }}>
+							Reason <Text style={{ color: colors.destructiveText }}>*</Text>
+						</Text>
+						<Text style={{ marginTop: 4, color: colors.mutedText, fontSize: 12, lineHeight: 17 }}>
+							This reason is recorded in the audit history and included in the email sent to the user.
+						</Text>
+						<TextInput
+							value={lifecycleReason}
+							onChangeText={setLifecycleReason}
+							multiline
+							maxLength={500}
+							textAlignVertical="top"
+							placeholder={selectedUser.archived
+								? 'Explain why this account is being restored'
+								: 'Explain why this account is being archived or deleted'}
+							placeholderTextColor={colors.mutedText}
+							style={{
+								marginTop: 9,
+								minHeight: 96,
+								borderRadius: 13,
+								borderWidth: 1,
+								borderColor: lifecycleReason.trim()
+									? colors.border
+									: colors.destructiveText,
+								padding: 12,
+								backgroundColor: colors.input,
+								color: colors.text,
+							}}
+						/>
+						<Text style={{ marginTop: 4, color: colors.mutedText, fontSize: 10, textAlign: 'right' }}>
+							{lifecycleReason.length}/500
+						</Text>
+						<TouchableOpacity
+							disabled={
+								busy ||
+								!lifecycleReason.trim() ||
+								selectedUser.id === adminUserService.getCurrentUserId()
+							}
 											onPress={() =>
 												void handleLifecycle(
 													selectedUser.archived ? 'unarchive' : 'archive'
@@ -1016,9 +1148,10 @@ export default function UserManagementSection() {
 												marginTop: 16,
 												alignItems: 'center',
 												borderRadius: 14,
-												backgroundColor: selectedUser.archived
-													? '#10b981'
-													: '#f59e0b',
+								backgroundColor: selectedUser.archived
+									? '#10b981'
+									: '#f59e0b',
+								opacity: lifecycleReason.trim() ? 1 : 0.55,
 												padding: 13,
 											}}
 										>
@@ -1046,8 +1179,9 @@ export default function UserManagementSection() {
 										/>
 										<TouchableOpacity
 											disabled={
-												busy ||
-												deleteConfirmation !== 'DELETE' ||
+								busy ||
+								!lifecycleReason.trim() ||
+								deleteConfirmation !== 'DELETE' ||
 												selectedUser.id === adminUserService.getCurrentUserId()
 											}
 											onPress={() => void handleLifecycle('delete_permanently')}
@@ -1056,7 +1190,7 @@ export default function UserManagementSection() {
 												alignItems: 'center',
 												borderRadius: 14,
 												backgroundColor:
-													deleteConfirmation === 'DELETE'
+								deleteConfirmation === 'DELETE' && lifecycleReason.trim()
 														? colors.destructive
 														: colors.disabled,
 												padding: 13,

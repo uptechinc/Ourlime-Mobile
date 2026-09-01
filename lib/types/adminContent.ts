@@ -35,6 +35,7 @@ export type AdminRestoreContentRequest = {
   contentType: DeletableContentType;
   contentId: string;
   restoreReason?: string;
+  message?: string;
 };
 
 export type SubmitAppealRequest = {
@@ -72,4 +73,42 @@ export type UserDeletedPostRecord = {
   images?: string[];
   mediaUrls?: string[];
   type?: string;
+};
+
+export type AdminUserContentFilter = 'all' | 'active' | 'deleted_by_admin';
+
+export type AdminContentMediaPreview = {
+  id: string;
+  url: string;
+  type: 'image' | 'video' | 'media';
+  thumbnailUrl: string | null;
+};
+
+export type AdminUserContentRecord = {
+  id: string;
+  authorId: string;
+  contentType: 'post' | 'lime';
+  caption: string;
+  description: string;
+  visibility: string;
+  createdAt: string | null;
+  mediaPreviewUrl: string | null;
+  mediaPreviewType: string | null;
+  mediaPreviews: AdminContentMediaPreview[];
+  isDeleted: boolean;
+  deletedByAdmin: boolean;
+  deletedAt: string | null;
+  adminId: string | null;
+  adminName: string | null;
+  deletionReason: string | null;
+  deletionCategory: string | null;
+  deletionNotes: string | null;
+  deletionAuditId: string | null;
+};
+
+export type AdminUserContentPage = {
+  items: AdminUserContentRecord[];
+  pageSize: number;
+  hasMore: boolean;
+  nextCursor: string | null;
 };

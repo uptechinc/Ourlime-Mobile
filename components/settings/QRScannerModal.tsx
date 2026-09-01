@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { qrLoginService } from '@/lib/services/QRLoginService';
@@ -37,20 +38,7 @@ export default function QRScannerModal({ visible, onClose, onSuccess }: QRScanne
     setError(null);
 
     try {
-      let sessionId: string | undefined;
-      let shortCode: string | undefined;
-
-      try {
-        const parsed = JSON.parse(data);
-        sessionId = parsed.sessionId;
-        shortCode = parsed.shortCode;
-      } catch {
-        // If plain string
-        if (data.startsWith('OL-')) shortCode = data;
-        else sessionId = data;
-      }
-
-      const res = await qrLoginService.scanQR({ sessionId, shortCode });
+      const res = await qrLoginService.scanPayload(data);
       if (res.success && res.session) {
         setConfirmSession(res.session);
       } else {
@@ -71,7 +59,7 @@ export default function QRScannerModal({ visible, onClose, onSuccess }: QRScanne
     setError(null);
 
     try {
-      const res = await qrLoginService.scanQR({ shortCode: manualCode.trim().toUpperCase() });
+      const res = await qrLoginService.scanShortCode(manualCode);
       if (res.success && res.session) {
         setConfirmSession(res.session);
       } else {
@@ -86,7 +74,7 @@ export default function QRScannerModal({ visible, onClose, onSuccess }: QRScanne
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: colors.canvas }]}>
+      <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={[styles.container, { backgroundColor: colors.canvas }]}>
         {/* Header */}
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -199,7 +187,7 @@ export default function QRScannerModal({ visible, onClose, onSuccess }: QRScanne
             onClose();
           }}
         />
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }

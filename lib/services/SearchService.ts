@@ -3,6 +3,7 @@ import { DiagnosticLogService } from './DiagnosticLogService';
 import { AuthService, type UserProfile } from './AuthService';
 import { auth, db } from '@/lib/firebaseConfig';
 import { collection, doc, getDoc, getDocs, limit, query } from 'firebase/firestore';
+import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
 
 type UnknownRecord = Record<string, unknown>;
 const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -44,6 +45,7 @@ export class SearchService {
   private normalizeProfiles(values: unknown[]): UserProfile[] {
     return values.flatMap((value): UserProfile[] => {
       if (!isRecord(value)) return [];
+      if (accountLifecycleVisibilityService.isHidden(value)) return [];
       const uid = readString(value.id) || readString(value.uid);
       if (!uid) return [];
       return [{
@@ -67,7 +69,7 @@ export class SearchService {
       .filter((document) => document.id !== currentUserId)
       .filter((document) => {
         const user = document.data();
-        if (user.deletedAt != null || user.disabled === true || user.isPrivate === true) return false;
+        if (user.deletedAt != null || user.disabled === true || user.isPrivate === true || accountLifecycleVisibilityService.isHidden(user)) return false;
         if (readString(user.accountPrivacy) === 'private' || readString(user.visibility) === 'private') return false;
         const searchable = [
           readString(user.firstName),

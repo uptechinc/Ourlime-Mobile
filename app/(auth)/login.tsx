@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
 import { Ionicons } from '@expo/vector-icons';
 import { authService, getAuthErrorCode } from '@/lib/services/AuthService';
 import { pageAccessService } from '@/lib/services/PageAccessService';
@@ -63,6 +64,10 @@ export default function LoginScreen() {
   // Button press animation
   const btnScale = useSharedValue(1);
   const btnAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
+
+  useEffect(() => {
+    void SplashScreen.hideAsync().catch(() => undefined);
+  }, []);
 
   const handlePressIn = () => {
     btnScale.value = withSpring(0.97, { damping: 15 });

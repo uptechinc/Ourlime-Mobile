@@ -6,22 +6,21 @@ import {
     onSnapshot,
 } from 'firebase/firestore';
 import type { Sticker, StickerPack, StickerSearchParams } from '@/lib/types/sticker';
+import { ApiService } from '@/lib/services/ApiService';
 
 const PACKS_COLLECTION = 'stickerPacks';
 const STICKERS_COLLECTION = 'stickers';
-
-// Web domain host for relative sticker image paths (/images/stickers/...)
-export const WEB_BASE_URL = 'https://ourlime.com';
 
 export function normalizeStickerUrl(url: string | undefined): string {
     if (!url) return '';
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
         return url;
     }
+    const webBaseUrl = ApiService.getInstance().getBaseUrl();
     if (url.startsWith('/')) {
-        return `${WEB_BASE_URL}${url}`;
+        return `${webBaseUrl}${url}`;
     }
-    return `${WEB_BASE_URL}/${url}`;
+    return `${webBaseUrl}/${url}`;
 }
 
 // Exact fallback sticker packs matching web

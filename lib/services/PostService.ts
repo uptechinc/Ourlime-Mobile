@@ -27,6 +27,7 @@ import { DeepLinkService } from './DeepLinkService';
 import { PostMediaService, type MediaUploadProgress } from './PostMediaService';
 import type { PageResult } from '@/lib/types/serviceResults';
 import { buildFeedQuery } from '@/lib/posts/FeedQuery';
+import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
 
 export type PostMediaType = 'image' | 'video';
 export type PostType = 'regular' | 'poll' | 'event';
@@ -47,7 +48,7 @@ export type PostMediaDraft = {
   durationSeconds?: number;
   thumbnailUri?: string;
 };
-export type PostMedia = { id: string; type: PostMediaType; typeUrl: string; fileName: string; thumbnailUrl?: string };
+export type PostMedia = { id: string; type: PostMediaType; typeUrl: string; fileName: string; thumbnailUrl?: string; displayOrder?: number };
 export type PostUser = {
   id: string;
   firstName: string;
@@ -386,6 +387,7 @@ export class PostService {
           type: document.data.type === 'video' ? 'video' : 'image',
           typeUrl,
           fileName: readString(document.data.fileName),
+          thumbnailUrl: readString(document.data.thumbnailUrl) || undefined,
         });
         mediaByPost.set(postId, items);
       });
@@ -478,6 +480,7 @@ export class PostService {
         type: document.data.type === 'video' ? 'video' : 'image',
         typeUrl,
         fileName: readString(document.data.fileName),
+        thumbnailUrl: readString(document.data.thumbnailUrl) || undefined,
       });
       mediaByPost.set(postId, mediaItems);
     });
@@ -566,11 +569,13 @@ export class PostService {
           hashtags: input.hashtags,
           mentions: input.mentions,
         });
-        const mediaRecords = await Promise.all(media.map(async (mediaItem) => {
+        const mediaRecords = await Promise.all(media.map(async (mediaItem, mediaIndex) => {
           const summary = await addDoc(collection(db, 'communityVariantDetailsSummary'), {
             type: mediaItem.type,
             typeUrl: mediaItem.typeUrl,
             fileName: mediaItem.fileName,
+            displayOrder: mediaItem.displayOrder ?? mediaIndex,
+            ...(mediaItem.thumbnailUrl ? { thumbnailUrl: mediaItem.thumbnailUrl } : {}),
             communityVariantDetailsId: communityPost.id,
           });
           return { ...mediaItem, id: summary.id };
@@ -981,6 +986,7 @@ export class PostService {
   }
 
   private canViewPost(post: UnknownRecord, viewerId: string | null, relationships: RelationshipSets): boolean {
+    if (post.isDeleted === true || post.status === 'deleted' || post.deletionSource === 'admin_moderation' || accountLifecycleVisibilityService.isHidden(post)) return false;
     const userId = readString(post.userId);
     const hiddenUntil = timestampMillis(post.hiddenUntil);
     const hidden = (post.isHidden === true || post.moderationVisibility === 'hidden') && (!hiddenUntil || hiddenUntil > Date.now());
@@ -1023,6 +1029,7 @@ export class PostService {
             type: item.type === 'video' ? 'video' : 'image',
             typeUrl,
             fileName: readString(item.fileName),
+            thumbnailUrl: readString(item.thumbnailUrl) || undefined,
           }];
         })
       : [];
@@ -1121,6 +1128,7 @@ export class PostService {
         type: document.data.type === 'video' ? 'video' : 'image',
         typeUrl,
         fileName: readString(document.data.fileName),
+        thumbnailUrl: readString(document.data.thumbnailUrl) || undefined,
       }]);
     });
     const likedUsersByPost = new Map<string, string[]>();

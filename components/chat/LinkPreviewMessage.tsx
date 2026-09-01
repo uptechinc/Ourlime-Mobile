@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,25 +12,42 @@ import { useDeepLinkNavigation } from '@/lib/hooks/useDeepLinkNavigation';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
 import { sharedContentMessageService } from '@/lib/services/SharedContentMessageService';
+import { SharedPostCard } from '@/components/chat/SharedPostCard';
+import { sharedPostPresentationService } from '@/lib/services/SharedPostPresentationService';
 
 type LinkPreviewMessageProps = {
   url: string;
   isOwn?: boolean;
+  messageId?: string;
+  instanceId?: string;
 };
 
-const limeThumbnailCache = new Map<string, string>();
+const videoThumbnailCache = new Map<string, string>();
 
 /**
  * LinkPreviewMessage — Card shown inside chat bubbles for messages containing links.
  */
-export function LinkPreviewMessage({ url, isOwn = false }: LinkPreviewMessageProps) {
+export function LinkPreviewMessage({
+  url,
+  isOwn = false,
+  messageId,
+  instanceId,
+}: LinkPreviewMessageProps) {
   const { openLink } = useDeepLinkNavigation();
   const { colors } = useAppTheme();
   const [preview, setPreview] = useState<LinkPreviewData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [resolvedLimeThumbnail, setResolvedLimeThumbnail] = useState<string | null>(null);
-  const [limeThumbnailFailed, setLimeThumbnailFailed] = useState(false);
+  const [resolvedVideoThumbnail, setResolvedVideoThumbnail] = useState<string | null>(null);
+  const [videoThumbnailFailed, setVideoThumbnailFailed] = useState(false);
+  const [thumbnailFailureVersion, setThumbnailFailureVersion] = useState(0);
+  const failedThumbnailUrlRef = useRef<string | null>(null);
   const sharedContent = useMemo(() => sharedContentMessageService.parse(url), [url]);
+  const effectiveInstanceId = instanceId || messageId || (sharedContent ? `${sharedContent.mobileRoute}:${url}` : url);
+
+  const handleOpenLink = (destination: string): void => {
+    sharedPostPresentationService.deactivateAllPlayers();
+    void openLink(destination);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -38,6 +55,8 @@ export function LinkPreviewMessage({ url, isOwn = false }: LinkPreviewMessagePro
 
     openGraphService.fetchPreview(url).then((data) => {
       if (isMounted) {
+        failedThumbnailUrlRef.current = null;
+        setThumbnailFailureVersion(0);
         setPreview(data);
         setIsLoading(false);
       }
@@ -50,79 +69,145 @@ export function LinkPreviewMessage({ url, isOwn = false }: LinkPreviewMessagePro
 
   useEffect(() => {
     const entity = preview?.entity;
-    setLimeThumbnailFailed(false);
+    setVideoThumbnailFailed(false);
     if (entity?.kind !== 'lime') {
-      setResolvedLimeThumbnail(null);
+      setResolvedVideoThumbnail(null);
       return;
     }
-    if (entity.thumbnailUrl) {
-      setResolvedLimeThumbnail(entity.thumbnailUrl);
+    if (entity.thumbnailUrl && failedThumbnailUrlRef.current !== entity.thumbnailUrl) {
+      setResolvedVideoThumbnail(entity.thumbnailUrl);
       return;
     }
     if (!entity.videoUrl) {
-      setResolvedLimeThumbnail(null);
-      setLimeThumbnailFailed(true);
+      setResolvedVideoThumbnail(null);
       return;
     }
-    const cachedThumbnail = limeThumbnailCache.get(entity.videoUrl);
+    const cachedThumbnail = videoThumbnailCache.get(entity.videoUrl);
     if (cachedThumbnail) {
-      setResolvedLimeThumbnail(cachedThumbnail);
+      setResolvedVideoThumbnail(cachedThumbnail);
       return;
     }
 
     let cancelled = false;
-    setResolvedLimeThumbnail(null);
-    void limeThumbnailService.createThumbnail(entity.videoUrl, 1)
+    setResolvedVideoThumbnail(null);
+    void limeThumbnailService.createThumbnailAtTime(entity.videoUrl, 0.1)
       .then((thumbnailUri) => {
         if (cancelled) return;
-        limeThumbnailCache.set(entity.videoUrl ?? '', thumbnailUri);
-        setResolvedLimeThumbnail(thumbnailUri);
+        videoThumbnailCache.set(entity.videoUrl ?? '', thumbnailUri);
+        setResolvedVideoThumbnail(thumbnailUri);
       })
       .catch(() => {
-        if (!cancelled) setLimeThumbnailFailed(true);
+        if (!cancelled) setVideoThumbnailFailed(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [preview]);
+  }, [preview, thumbnailFailureVersion]);
+
+  const handleMediaImageError = (): void => {
+    const failedUrl = resolvedVideoThumbnail;
+    if (!failedUrl) return;
+    if (failedUrl.startsWith('file:') || failedUrl.startsWith('content:')) {
+      setResolvedVideoThumbnail(null);
+      setVideoThumbnailFailed(true);
+      return;
+    }
+    failedThumbnailUrlRef.current = failedUrl;
+    setResolvedVideoThumbnail(null);
+    setThumbnailFailureVersion((currentVersion) => currentVersion + 1);
+  };
 
   const domain = preview?.domain ?? extractDomain(url);
   const entityKind = preview?.entity?.kind ?? sharedContent?.kind;
   const isLime = entityKind === 'lime';
-  const limeImage = resolvedLimeThumbnail || (limeThumbnailFailed ? preview?.image : undefined);
-  const canResolveLimeThumbnail = preview?.entity?.kind === 'lime'
+  const isSharedPost = entityKind === 'post';
+  const isMediaCard = isLime;
+  const mediaImage = resolvedVideoThumbnail || preview?.image;
+  const canResolveVideoThumbnail = preview?.entity?.kind === 'lime'
     && Boolean(preview.entity.thumbnailUrl || preview.entity.videoUrl);
-  const isResolvingLimeThumbnail = isLime
-    && canResolveLimeThumbnail
-    && !limeImage
-    && !limeThumbnailFailed;
+  const isResolvingVideoThumbnail = isMediaCard
+    && canResolveVideoThumbnail
+    && !mediaImage
+    && !videoThumbnailFailed;
   const fallbackTitle = sharedContent?.summary ?? url;
   const cardBackground = isOwn ? 'rgba(255,255,255,0.14)' : colors.elevated;
   const cardBorder = isOwn ? 'rgba(255,255,255,0.25)' : colors.border;
   const primaryText = isOwn ? '#ffffff' : colors.text;
   const secondaryText = isOwn ? 'rgba(255,255,255,0.76)' : colors.mutedText;
 
+  if (preview?.entity?.unavailable) {
+    const isLimeCard = isLime || preview.entity.kind === 'lime';
+    const notice = preview.entity.unavailableReason === 'admin_taken_down'
+      ? `This ${isLimeCard ? 'Lime' : 'post'} was taken down due to violation of terms and service`
+      : `This ${isLimeCard ? 'Lime' : 'post'} was deleted`;
+    return (
+      <View
+        accessibilityLabel={`Shared ${isLimeCard ? 'Lime' : 'post'} unavailable`}
+        style={{ width: 280, maxWidth: '100%', borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 16, alignItems: 'center', justifyContent: 'center' }}
+      >
+        <Text style={{ fontStyle: 'italic', color: colors.mutedText, fontSize: 13, textAlign: 'center' }}>{notice}</Text>
+      </View>
+    );
+  }
+
+  if (isSharedPost) {
+    if (isLoading) {
+      return <View accessibilityLabel="Loading shared post" style={{ width: 280, height: 300, maxWidth: '100%', borderRadius: 20, backgroundColor: colors.control }} />;
+    }
+    if (preview?.entity?.post) return <SharedPostCard preview={preview} path={sharedContent?.mobileRoute ?? preview.entity.path ?? url} instanceId={effectiveInstanceId} />;
+    if (preview) {
+      const fallbackImage = preview.image && preview.image !== preview.entity?.creatorImageUrl
+        ? preview.image
+        : undefined;
+      return (
+        <TouchableOpacity
+          onPress={() => handleOpenLink(sharedContent?.mobileRoute ?? preview.entity?.path ?? url)}
+          accessibilityRole="link"
+          accessibilityLabel="Open shared post"
+          style={{ width: 280, maxWidth: '100%', overflow: 'hidden', borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}
+        >
+          {fallbackImage ? <Image source={{ uri: fallbackImage }} resizeMode="cover" style={{ width: '100%', aspectRatio: 4 / 3, backgroundColor: colors.control }} /> : null}
+          <View style={{ padding: 14 }}>
+            <Text numberOfLines={2} style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>{preview.title || 'Shared Ourlime post'}</Text>
+            {preview.description ? <Text numberOfLines={3} style={{ marginTop: 5, color: colors.mutedText, fontSize: 12, lineHeight: 17 }}>{preview.description}</Text> : null}
+            {!fallbackImage && !preview.description ? <Text style={{ marginTop: 5, color: colors.mutedText, fontSize: 12 }}>Open post to view its content</Text> : null}
+          </View>
+        </TouchableOpacity>
+      );
+    }
+    return (
+      <TouchableOpacity onPress={() => handleOpenLink(sharedContent?.mobileRoute ?? url)} accessibilityRole="link" accessibilityLabel="Open shared post" style={{ width: 280, maxWidth: '100%', minHeight: 96, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <Text style={{ color: colors.secondaryText, fontWeight: '700' }}>Shared post unavailable</Text>
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <TouchableOpacity
-      onPress={() => void openLink(url)}
+      onPress={() => handleOpenLink(url)}
       activeOpacity={0.8}
       accessibilityRole="button"
       accessibilityLabel={sharedContent ? `Open shared ${sharedContent.kind}` : `Open ${domain}`}
       style={{
         marginTop: 6,
-        borderRadius: 18,
+        borderRadius: isMediaCard ? 22 : 18,
         overflow: 'hidden',
-        backgroundColor: cardBackground,
-        borderWidth: 1,
-        borderColor: cardBorder,
+        backgroundColor: isMediaCard ? 'transparent' : cardBackground,
+        borderWidth: isMediaCard ? 0 : 1,
+        borderColor: isMediaCard ? 'transparent' : cardBorder,
         minWidth: 220,
       }}
     >
-      {isLime ? (
-        <View style={{ width: 240, height: 310, backgroundColor: '#050505', alignItems: 'center', justifyContent: 'center' }}>
-          {limeImage ? (
-            <Image source={{ uri: limeImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-          ) : isLoading || isResolvingLimeThumbnail ? (
+      {isMediaCard ? (
+        <View style={{ width: 230, height: isLime ? 355 : 300, borderRadius: 22, overflow: 'hidden', backgroundColor: '#15171a', alignItems: 'center', justifyContent: 'center' }}>
+          {mediaImage ? (
+            <Image
+              source={{ uri: mediaImage }}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="cover"
+              onError={handleMediaImageError}
+            />
+          ) : isLoading || isResolvingVideoThumbnail ? (
             <ActivityIndicator size="large" color="#10b981" />
           ) : (
             <Icon name="video" size={42} color="#10b981" />
@@ -131,15 +216,20 @@ export function LinkPreviewMessage({ url, isOwn = false }: LinkPreviewMessagePro
           <View style={{ position: 'absolute', width: 58, height: 58, borderRadius: 29, backgroundColor: 'rgba(0,0,0,0.58)', alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="play" size={28} color="#ffffff" style={{ marginLeft: 3 }} />
           </View>
-          <View style={{ position: 'absolute', left: 12, right: 12, bottom: 12 }}>
-            <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '800' }} numberOfLines={1}>
-              {preview?.entity?.creatorDisplayName ?? preview?.title ?? 'Ourlime Lime'}
-            </Text>
-            {preview?.entity?.creatorUsername ? (
-              <Text style={{ color: 'rgba(255,255,255,0.82)', fontSize: 12, marginTop: 2 }} numberOfLines={1}>
-                @{preview.entity.creatorUsername}
-              </Text>
+          <View style={{ position: 'absolute', left: 12, right: 12, top: 12, flexDirection: 'row', alignItems: 'center' }}>
+            {preview?.entity?.creatorImageUrl ? (
+              <Image source={{ uri: preview.entity.creatorImageUrl }} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#27272a' }} />
             ) : null}
+            <View style={{ flex: 1, marginLeft: preview?.entity?.creatorImageUrl ? 8 : 0 }}>
+              <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '800' }} numberOfLines={1}>
+                {preview?.entity?.creatorDisplayName ?? preview?.title ?? 'Ourlime Lime'}
+              </Text>
+              {preview?.entity?.creatorUsername ? (
+                <Text style={{ color: 'rgba(255,255,255,0.82)', fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                  @{preview.entity.creatorUsername}
+                </Text>
+              ) : null}
+            </View>
           </View>
         </View>
       ) : preview?.image ? (
@@ -150,7 +240,7 @@ export function LinkPreviewMessage({ url, isOwn = false }: LinkPreviewMessagePro
         />
       ) : null}
 
-      <View style={{ padding: 10 }}>
+      {!isMediaCard ? <View style={{ padding: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3 }}>
           <Icon name="globe" size={11} color={isOwn ? 'rgba(255,255,255,0.8)' : '#10b981'} />
           <Text style={{ fontSize: 11, fontWeight: '700', color: isOwn ? 'rgba(255,255,255,0.85)' : '#10b981', marginLeft: 4, textTransform: 'lowercase' }}>
@@ -187,7 +277,7 @@ export function LinkPreviewMessage({ url, isOwn = false }: LinkPreviewMessagePro
             {preview.description}
           </Text>
         )}
-      </View>
+      </View> : null}
     </TouchableOpacity>
   );
 }

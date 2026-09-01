@@ -7,6 +7,8 @@ import { deepLinkService } from '../services/DeepLinkService';
 
 import { pushNotificationService } from '../services/PushNotificationService';
 import { notificationNavigationService } from '../services/NotificationNavigationService';
+import { authService } from '../services/AuthService';
+import { qrLoginService } from '../services/QRLoginService';
 
 export function useAuthGuard() {
   const [user, setUser] = useState<User | null>(null);
@@ -29,6 +31,17 @@ export function useAuthGuard() {
 
     return () => unsubscribe();
   }, []);
+
+  // Listen for remote active session revocation
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsubscribe = qrLoginService.subscribeToCurrentSession(user.uid, () => {
+      void authService.logout();
+      router.replace('/(auth)/login' as Href);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, router]);
 
   useEffect(() => {
     if (isInitializing) return;
@@ -56,6 +69,22 @@ export function useAuthGuard() {
           });
         return;
       }
+
+      if (!user && targetRedirect === '/(auth)/login') {
+        const normalizedCurrent = pageAccessService.normalizeRoute(currentSegment);
+        if (
+          normalizedCurrent !== '/' &&
+          normalizedCurrent !== '/index' &&
+          normalizedCurrent !== '/(tabs)' &&
+          normalizedCurrent !== '/(tabs)/index' &&
+          !pageAccessService.isPublicRoute(normalizedCurrent)
+        ) {
+          const destinationWithNext = `/(auth)/login?next=${encodeURIComponent(normalizedCurrent)}`;
+          router.replace(destinationWithNext as Href);
+          return;
+        }
+      }
+
       router.replace(targetRedirect as Href);
     }
   }, [user, isInitializing, next, segments, router]);

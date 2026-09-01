@@ -121,29 +121,42 @@ export default function QRLoginConfirmModal({
             borderRadius: 16,
             padding: 14,
             marginBottom: 20,
-            gap: 8,
+            gap: 10,
           }}
         >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: colors.mutedText, fontSize: 11 }}>Platform:</Text>
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12 }}>
-              {session.deviceInfo?.platform === 'web' ? '💻 Web Browser' : '📱 Mobile App'}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <Text style={{ color: colors.mutedText, fontSize: 11, flexShrink: 0 }}>Device:</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12, flex: 1, textAlign: 'right' }} numberOfLines={1}>
+              {session.deviceInfo?.deviceName || session.deviceInfo?.browser || 'Browser'}
             </Text>
           </View>
 
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: colors.mutedText, fontSize: 11 }}>Browser / Client:</Text>
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12 }}>
-              {session.deviceInfo?.browser || 'Browser'}
-            </Text>
-          </View>
+          {session.deviceInfo?.os && session.deviceInfo.os !== 'Unknown OS' && (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <Text style={{ color: colors.mutedText, fontSize: 11, flexShrink: 0 }}>Operating System:</Text>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12, flex: 1, textAlign: 'right' }} numberOfLines={1}>
+                {session.deviceInfo.os}
+              </Text>
+            </View>
+          )}
 
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: colors.mutedText, fontSize: 11 }}>Location / IP:</Text>
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12 }}>
-              {session.deviceInfo?.location || session.deviceInfo?.ip || 'Local Network'}
-            </Text>
-          </View>
+          {session.deviceInfo?.location && session.deviceInfo.location !== 'Unknown' && (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <Text style={{ color: colors.mutedText, fontSize: 11, flexShrink: 0 }}>Approx. Location:</Text>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12, flex: 1, textAlign: 'right' }} numberOfLines={1}>
+                {session.deviceInfo.location}
+              </Text>
+            </View>
+          )}
+
+          {session.deviceInfo?.ip && session.deviceInfo.ip !== 'Unknown' && (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <Text style={{ color: colors.mutedText, fontSize: 11, flexShrink: 0 }}>IP Address:</Text>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12, flex: 1, textAlign: 'right' }} numberOfLines={1}>
+                {session.deviceInfo.ip}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Action Buttons */}

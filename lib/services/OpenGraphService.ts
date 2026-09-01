@@ -10,6 +10,29 @@ export type OurlimeLinkPreviewKind =
   | 'market-product'
   | 'blog';
 
+export type SharedPostPrimaryMedia = {
+  kind: 'image' | 'video';
+  url: string;
+  thumbnailUrl?: string;
+  displayOrder: number;
+};
+
+export type SharedPostYouTube = { videoId: string; url: string; thumbnailUrl: string };
+export type SharedPostLocation = { name: string; address?: string; latitude?: number; longitude?: number; url?: string };
+export type SharedPostPollSummary = { options: string[]; totalVotes: number; ended: boolean };
+export type SharedPostEventSummary = { startDate?: string; endDate?: string; category?: string };
+export type SharedPostPresentation = {
+  subtype: 'regular' | 'poll' | 'event';
+  excerpt: string;
+  primaryMedia?: SharedPostPrimaryMedia;
+  imageCount: number;
+  videoCount: number;
+  youtube?: SharedPostYouTube;
+  location?: SharedPostLocation;
+  poll?: SharedPostPollSummary;
+  event?: SharedPostEventSummary;
+};
+
 export type OurlimeLinkPreviewEntity = {
   kind: OurlimeLinkPreviewKind;
   id: string;
@@ -19,6 +42,9 @@ export type OurlimeLinkPreviewEntity = {
   creatorDisplayName?: string;
   creatorUsername?: string;
   creatorImageUrl?: string;
+  post?: SharedPostPresentation;
+  unavailable?: boolean;
+  unavailableReason?: 'deleted' | 'admin_taken_down' | 'unavailable';
 };
 
 export type LinkPreviewData = {
@@ -92,17 +118,22 @@ export class OpenGraphService {
 
     if (this.cache.has(cleanUrl)) {
       const cached = this.cache.get(cleanUrl) ?? null;
+      if (!this.isIncompleteMediaPreview(cached, cleanUrl)) {
+        this.cache.delete(cleanUrl);
+        this.cache.set(cleanUrl, cached);
+        return cached;
+      }
       this.cache.delete(cleanUrl);
-      this.cache.set(cleanUrl, cached);
-      return cached;
     }
     const pendingPreview = this.pending.get(cleanUrl);
     if (pendingPreview) return pendingPreview;
 
     const promise = this.doFetch(cleanUrl)
       .then((data) => {
-        this.cache.set(cleanUrl, data);
-        this.trimCache();
+        if (!this.isIncompleteMediaPreview(data, cleanUrl)) {
+          this.cache.set(cleanUrl, data);
+          this.trimCache();
+        }
         return data;
       })
       .catch((e) => {
@@ -130,6 +161,20 @@ export class OpenGraphService {
     }
   }
 
+  private isIncompleteMediaPreview(preview: LinkPreviewData | null, sourceUrl: string): boolean {
+    if (!preview) return true;
+    const kind = preview.entity?.kind;
+    if (kind === 'post') return !preview.entity?.post;
+    try {
+      const parsed = new URL(sourceUrl);
+      const root = parsed.pathname.split('/').filter(Boolean)[0]?.toLowerCase();
+      if (this.isOurlimeUrl(sourceUrl) && (root === 'post' || root === 'posts')) return !preview.entity?.post;
+    } catch {
+      return false;
+    }
+    return kind === 'lime' && !preview.entity?.thumbnailUrl && !preview.image;
+  }
+
   private async doFetch(url: string): Promise<LinkPreviewData | null> {
     const domain = extractDomain(url);
 
@@ -140,6 +185,11 @@ export class OpenGraphService {
           { authenticated: true }
         );
         if (response.success && response.data) {
+          console.log('[OpenGraphService] Fetched Ourlime preview for', url, {
+            kind: response.data.entity?.kind,
+            hasPost: Boolean(response.data.entity?.post),
+            postSubtype: response.data.entity?.post?.subtype,
+          });
           return {
             url: response.data.url,
             title: response.data.title,
@@ -150,7 +200,9 @@ export class OpenGraphService {
             entity: response.data.entity,
           };
         }
-      } catch {}
+      } catch (e) {
+        console.log('[OpenGraphService] Error fetching Ourlime preview for', url, e);
+      }
       return { url, domain, siteName: 'Ourlime' };
     }
 
@@ -243,10 +295,19 @@ export class OpenGraphService {
     try {
       const parsed = new URL(value);
       const hostname = parsed.hostname.toLowerCase();
+      const apiOrigin = new URL(this.apiService.getBaseUrl()).origin;
+      const isPrivateDevelopmentHost = (typeof __DEV__ !== 'undefined' && __DEV__)
+        && (
+          hostname === 'localhost'
+          || hostname === '127.0.0.1'
+          || /^10\./.test(hostname)
+          || /^192\.168\./.test(hostname)
+          || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+        );
       return hostname === 'ourlime.com'
         || hostname === 'www.ourlime.com'
-        || hostname === 'localhost'
-        || hostname === '127.0.0.1';
+        || parsed.origin === apiOrigin
+        || isPrivateDevelopmentHost;
     } catch {
       return false;
     }

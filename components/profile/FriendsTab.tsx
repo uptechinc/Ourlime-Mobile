@@ -10,6 +10,7 @@ import { useRelationshipRequests } from '@/lib/hooks/useRelationshipRequests';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { RelationshipHubSection, RelationshipHubUser, RelationshipRequestDirection } from '@/lib/types/relationshipHub';
 import { relationshipRequestResourceService } from '@/lib/services/RelationshipRequestResourceService';
+import { conversationResourceService } from '@/lib/services/ConversationResourceService';
 import { profileResourceService } from '@/lib/services/ProfileResourceService';
 import { feedResourceService } from '@/lib/services/FeedResourceService';
 import { auth } from '@/lib/firebaseConfig';
@@ -59,16 +60,22 @@ export default function FriendsTab({ userId }: FriendsTabProps) {
 
   const handleAction = async (item: RelationshipHubUser, action: 'accept' | 'decline' | 'cancel' | 'remove' | 'follow' | 'unfollow') => {
     setActingId(item.id);
+    if (action === 'remove' || action === 'cancel' || action === 'decline') {
+      relationshipResourceService.removeUserFromCachedRelationships(userId, item.id);
+      relationshipRequestResourceService.removeUserFromCachedRequests(item.id);
+      void conversationResourceService.removeConversation(userId, item.id);
+    }
     try {
       if (action === 'accept' || action === 'decline') await relationshipService.respondToFriendRequest(item.id, userId, action);
       else if (action === 'cancel' || action === 'remove') await relationshipService.cancelOrRemoveFriend(userId, item.id, action === 'cancel' ? 'pending' : 'accepted');
       else await relationshipService.setFollowing(userId, item.id, action === 'follow');
       relationshipRequestResourceService.removeUserFromCachedRequests(item.id);
+      relationshipResourceService.removeUserFromCachedRelationships(userId, item.id);
+      void conversationResourceService.removeConversation(userId, item.id);
       relationshipResourceService.invalidateAll();
       relationshipRequestResourceService.invalidate();
       void profileResourceService.refresh({ kind: 'own', userId }, true);
       void feedResourceService.reconcileCachedFeeds(userId);
-      await refresh();
     } finally {
       setActingId(null);
     }

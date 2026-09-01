@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as SplashScreen from 'expo-splash-screen';
 import MiddleSection from "@/components/home/MiddleSection";
 import AppHeader from "@/components/ui/AppHeader";
 import CreatePostModal from "@/components/home/MiddleSection/MiddleSectionComponent/CreatePostModal";
@@ -24,6 +25,10 @@ export default function FeedsScreen() {
   const userProfile = profileResource.data?.profile ?? null;
   const profileError = profileResource.error?.message ?? null;
   const [createdPost, setCreatedPost] = useState<PostItem | null>(null);
+
+  useEffect(() => {
+    void SplashScreen.hideAsync().catch(() => undefined);
+  }, []);
 
   const handleCreatePost = () => {
     setIsCreatePostModalOpen(true);

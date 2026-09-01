@@ -125,14 +125,14 @@ type FloatingReposterBubbleProps = {
   reposter: LimeReposter;
   reposterIndex: number;
   visibleReposterCount: number;
-  currentUserId: string;
+  showBadge?: boolean;
 };
 
 function FloatingReposterBubble({
   reposter,
   reposterIndex,
   visibleReposterCount,
-  currentUserId,
+  showBadge = false,
 }: FloatingReposterBubbleProps) {
   const reduceMotion = useReducedMotion();
   const translateX = useSharedValue(0);
@@ -207,7 +207,6 @@ function FloatingReposterBubble({
         {
           marginLeft: reposterIndex === 0 ? 0 : -12,
           zIndex: visibleReposterCount - reposterIndex,
-          borderColor: reposter.userId === currentUserId ? '#34d399' : '#ffffff',
         },
         animatedStyle,
       ]}
@@ -218,6 +217,11 @@ function FloatingReposterBubble({
         contentFit="cover"
         cachePolicy="memory-disk"
       />
+      {showBadge ? (
+        <View style={styles.reposterRepeatBadge} pointerEvents="none">
+          <Repeat2 size={10} color="#ffffff" />
+        </View>
+      ) : null}
     </Animated.View>
   );
 }
@@ -346,6 +350,7 @@ export default function LimesScreen() {
   }, [deleteTarget, deleting, query, resetPager]);
 
   const displayedLimes = limesList.filter((reel) => {
+    if (reel.isDeleted === true || reel.status === 'deleted') return false;
     const reposterIds = (reel.repostedBy ?? []).map((reposter) => reposter.userId);
     const isOwner = Boolean(currentUserId && (currentUserId === reel.userId || reposterIds.includes(currentUserId)));
     if (reel.visibility === 'private' || reel.visibility === 'only_me') {
@@ -621,6 +626,10 @@ export default function LimesScreen() {
               setDeleteError(null);
               setDeleteTarget(reel);
             }}
+            onDeleted={(deletedReelId) => {
+              void limeResourceService.removeReel(query, deletedReelId);
+              resetPager();
+            }}
           />
         )}
       />
@@ -818,6 +827,7 @@ type ReelItemProps = {
   onProfilePress: (userName: string) => void;
   onReport: (reelId: string, reportedUserId: string, reportType: 'lime' | 'user') => void;
   onDeleteRequest: (reel: Reel) => void;
+  onDeleted?: (reelId: string) => void;
 };
 
 function ReelItem({
@@ -837,6 +847,7 @@ function ReelItem({
   onProfilePress,
   onReport,
   onDeleteRequest,
+  onDeleted,
 }: ReelItemProps) {
   const [paused, setPaused] = useState(false);
   const likedByMe = Array.isArray(reel.likes) && currentUserId ? reel.likes.includes(currentUserId) : false;
@@ -1093,6 +1104,12 @@ function ReelItem({
         isFollowing={isFollowing}
         onClose={() => setShowOptionsMenu(false)}
         onDeleteRequest={onDeleteRequest}
+        onDeleted={(deletedReelId) => {
+          setShowOptionsMenu(false);
+          if (onDeleted) {
+            onDeleted(deletedReelId);
+          }
+        }}
         onFollowToggle={onFollowToggle}
         onReport={onReport}
       />
@@ -1116,7 +1133,7 @@ function ReelItem({
                   reposter={reposter}
                   reposterIndex={reposterIndex}
                   visibleReposterCount={visibleReposters.length}
-                  currentUserId={currentUserId}
+                  showBadge={reposterIndex === 0}
                 />
               ))}
               {visibleReposters.length === 0 ? (
@@ -1130,9 +1147,6 @@ function ReelItem({
                   <Text style={styles.reposterCountText}>+{hiddenReposterCount}</Text>
                 </View>
               ) : null}
-              <View style={styles.reposterRepeatBadge} pointerEvents="none">
-                <Repeat2 size={11} color="#ffffff" />
-              </View>
             </View>
           </TouchableOpacity>
         ) : null}
@@ -1521,31 +1535,31 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    borderWidth: 2.5,
-    padding: 2,
-    backgroundColor: 'rgba(2,6,23,0.92)',
+    borderWidth: 0,
+    padding: 0,
+    backgroundColor: 'rgba(2,6,23,0.72)',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5,
     shadowRadius: 8,
     elevation: 12,
   },
-  reposterBubbleAvatar: { width: '100%', height: '100%', borderRadius: 18 },
+  reposterBubbleAvatar: { width: '100%', height: '100%', borderRadius: 21 },
   reposterCountBubble: { alignItems: 'center', justifyContent: 'center', borderColor: 'rgba(255,255,255,0.8)', flexDirection: 'row', gap: 2 },
   reposterCountText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
   reposterRepeatBadge: {
     position: 'absolute',
-    left: 30,
+    right: -2,
     bottom: -2,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: '#10b981',
     borderWidth: 2,
     borderColor: '#020617',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 20,
+    zIndex: 30,
   },
   reposterSheetBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.58)' },
   reposterSheet: {

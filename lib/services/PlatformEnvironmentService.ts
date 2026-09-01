@@ -37,7 +37,8 @@ export class PlatformEnvironmentService {
 	 * machine-specific address in source control.
 	 */
 	public getDevelopmentHostName(): string | null {
-		if (!__DEV__) return null;
+		const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
+		if (!isDev) return null;
 
 		const candidates = [Constants.expoConfig?.hostUri, Constants.linkingUri];
 		for (const candidate of candidates) {
@@ -50,6 +51,28 @@ export class PlatformEnvironmentService {
 			if (hostName) return hostName;
 		}
 		return null;
+	}
+
+	/**
+	 * Resolves the sibling Next.js origin for a development bundle. Expo
+	 * normally advertises the computer's LAN address in hostUri, which is also
+	 * the address a physical device can use. Android emulators must translate a
+	 * loopback Metro host to the host-machine bridge.
+	 */
+	public getDevelopmentApiBaseUrl(port = 3000): string | null {
+		const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
+		if (!isDev) return null;
+
+		const developmentHost = this.getDevelopmentHostName();
+		if (!developmentHost) {
+			return Platform.OS === 'web' ? `http://localhost:${port}` : null;
+		}
+
+		const apiHost = Platform.OS === 'android'
+			&& (developmentHost === 'localhost' || developmentHost === '127.0.0.1')
+			? '10.0.2.2'
+			: developmentHost;
+		return `http://${apiHost}:${port}`;
 	}
 
 	/**

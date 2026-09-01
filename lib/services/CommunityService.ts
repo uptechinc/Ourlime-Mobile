@@ -1,6 +1,7 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
 import { ApiService } from './ApiService';
 import type { ApiRequestPriority } from './ApiService';
 import type {
@@ -171,8 +172,10 @@ export class CommunityService {
       });
       if (response.success && response.data) {
         const page: CommunityDirectoryPage = {
-          items: response.data.items.map((community) => this.normalizeCommunity(community)),
-          communityOfTheWeek: response.data.communityOfTheWeek ? this.normalizeCommunity(response.data.communityOfTheWeek) : null,
+          items: response.data.items.filter((community) => !accountLifecycleVisibilityService.isHidden(community)).map((community) => this.normalizeCommunity(community)),
+          communityOfTheWeek: response.data.communityOfTheWeek && !accountLifecycleVisibilityService.isHidden(response.data.communityOfTheWeek)
+            ? this.normalizeCommunity(response.data.communityOfTheWeek)
+            : null,
           nextCursor: typeof response.data.nextCursor === 'string' ? response.data.nextCursor : null,
           hasMore: response.data.hasMore === true,
           totalCount: readNumber(response.data.totalCount),
@@ -243,6 +246,7 @@ export class CommunityService {
 
       for (const docSnap of snap.docs) {
         const data = docSnap.data();
+        if (accountLifecycleVisibilityService.isHidden(data)) continue;
         const id = docSnap.id;
         const slug = readString(data.uniqueName) || id;
         const title = readString(data.title) || readString(data.name) || slug;

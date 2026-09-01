@@ -88,6 +88,7 @@ export default function MobileQRLoginModal({ visible, onClose }: MobileQRLoginMo
             clearInterval(interval);
             void interactionFeedbackService.play('success');
             await signInWithCustomToken(auth, res.customToken);
+            void qrLoginService.registerCurrentNativeSession('qr_code');
             onClose();
             router.replace('/(tabs)');
           }

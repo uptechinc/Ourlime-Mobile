@@ -56,6 +56,22 @@ export class RelationshipResourceService {
     });
   }
 
+  public removeUserFromCachedRelationships(userId: string, targetUserId: string): void {
+    const store = useResourceStore.getState();
+    (Object.keys(store.relationshipHub) as RelationshipHubSection[]).forEach((section) => {
+      const current = store.relationshipHub[section];
+      if (current?.data) {
+        const filteredItems = current.data.items.filter((item) => item.id !== targetUserId);
+        const updatedData: RelationshipHubPage = {
+          ...current.data,
+          items: filteredItems,
+        };
+        store.setRelationshipHub(section, { ...current, data: updatedData, source: 'memory', updatedAt: Date.now() });
+        void this.cache.write(userId, NAMESPACE, section, updatedData, { expiresAt: Date.now() + RETENTION_MS });
+      }
+    });
+  }
+
   public async loadMore(userId: string, section: RelationshipHubSection): Promise<void> {
     const current = useResourceStore.getState().relationshipHub[section];
     if (!current?.data?.hasMore || !current.data.nextCursor) return;

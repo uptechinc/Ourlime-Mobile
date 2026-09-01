@@ -10,7 +10,7 @@ import { RequestTimeoutService } from './RequestTimeoutService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 
 const LIME_NAMESPACE = 'limes';
-const LIME_CACHE_VERSION = 'v2';
+const LIME_CACHE_VERSION = 'v3';
 const LIME_STALE_MS = 90_000;
 const LIME_RETENTION_MS = 24 * 60 * 60 * 1000;
 const INITIAL_PAGE_SIZE = 12;
@@ -255,13 +255,21 @@ export class LimeResourceService {
   }
 
   public async removeReel(query: LimeFeedResourceQuery, reelId: string): Promise<void> {
-    const key = this.getKey(query);
-    const current = useResourceStore.getState().limeFeeds[key];
-    if (!current?.data) return;
-    await this.commit(query, {
-      ...current.data,
-      reels: current.data.reels.filter((reel) => reel.id !== reelId),
-    }, current.source);
+    const userKeyPrefix = `${query.userId}:${LIME_CACHE_VERSION}:`;
+    const matchingResources = Object.entries(useResourceStore.getState().limeFeeds)
+      .filter(([resourceKey, resource]) => resourceKey.startsWith(userKeyPrefix) && resource.data);
+
+    await Promise.all(matchingResources.map(async ([resourceKey, resource]) => {
+      if (!resource.data) return;
+      const commentsByReel = { ...resource.data.commentsByReel };
+      delete commentsByReel[reelId];
+      await this.commitKey(query.userId, resourceKey, {
+        ...resource.data,
+        reels: resource.data.reels.filter((reel) => reel.id !== reelId),
+        userRepostedReelIds: resource.data.userRepostedReelIds.filter((id) => id !== reelId),
+        commentsByReel,
+      }, resource.source);
+    }));
   }
 
   public async patchRepostMarker(query: LimeFeedResourceQuery, reelId: string, reposted: boolean): Promise<void> {
@@ -328,6 +336,15 @@ export class LimeResourceService {
     source: ResourceState<LimeFeedResourceData>['source'],
   ): Promise<void> {
     const key = this.getKey(query);
+    await this.commitKey(query.userId, key, data, source);
+  }
+
+  private async commitKey(
+    userId: string,
+    key: string,
+    data: LimeFeedResourceData,
+    source: ResourceState<LimeFeedResourceData>['source'],
+  ): Promise<void> {
     const updatedAt = Date.now();
     useResourceStore.getState().setLimeFeed(key, {
       data,
@@ -338,14 +355,14 @@ export class LimeResourceService {
       error: null,
     });
     await this.cacheService.write(
-      query.userId,
+      userId,
       LIME_NAMESPACE,
       key,
       this.serialize(data),
       { expiresAt: updatedAt + LIME_RETENTION_MS },
     );
     await this.cacheService.prune({
-      userId: query.userId,
+      userId,
       namespace: LIME_NAMESPACE,
       maximumRecords: 8,
       maximumExpiredAgeMs: LIME_RETENTION_MS,

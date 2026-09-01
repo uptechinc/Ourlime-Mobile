@@ -8,7 +8,6 @@ import {
     Platform,
     StatusBar,
     Image,
-    Alert,
     ActivityIndicator,
     Modal,
     Pressable,
@@ -37,6 +36,8 @@ import { DocumentPreviewModal } from '@/components/chat/DocumentPreviewModal';
 import { LinkPreviewMessage, LinkInputBanner } from '@/components/chat/LinkPreviewMessage';
 import { findFirstUrl } from '@/lib/services/OpenGraphService';
 import UserAvatar from '@/components/ui/UserAvatar';
+import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
+import { DeleteMessageModal } from '@/components/chat/DeleteMessageModal';
 import type { ReplyReference } from '@/lib/types/message';
 import type { Sticker } from '@/lib/types/sticker';
 import type { Timestamp } from 'firebase/firestore';
@@ -50,6 +51,7 @@ import { conversationResourceService } from '@/lib/services/ConversationResource
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import { sharedContentMessageService } from '@/lib/services/SharedContentMessageService';
+import { sharedPostPresentationService } from '@/lib/services/SharedPostPresentationService';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
 
@@ -241,6 +243,7 @@ type MessageBubbleProps = {
 function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact, onForward, onImagePress, onPreviewDoc }: MessageBubbleProps) {
     const { colors, isDark } = useAppTheme();
     const [showActions, setShowActions] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
     if (!friend) return null;
     const isOwn = msg.senderId === currentUserId;
 
@@ -256,6 +259,7 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
     const isDeleted = msg.isDeletedForEveryone;
 
     const sharedContent = hasText ? sharedContentMessageService.parse(msg.message) : null;
+    const isSharedMediaCard = sharedContent?.kind === 'lime' || sharedContent?.kind === 'post';
     const visibleText = sharedContent?.visibleText ?? msg.message;
     const hasVisibleText = visibleText.trim().length > 0;
     const detectedUrl = sharedContent?.sourceUrl ?? (hasText ? findFirstUrl(msg.message) : null);
@@ -320,19 +324,19 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                     </TouchableOpacity>
                 ) : (
                     <View style={{
-                        backgroundColor: isOwn ? '#10b981' : colors.elevated,
+                        backgroundColor: isSharedMediaCard ? 'transparent' : isOwn ? '#10b981' : colors.elevated,
                         borderRadius: 18,
                         borderBottomRightRadius: isOwn ? 4 : 18,
                         borderBottomLeftRadius: isOwn ? 18 : 4,
-                        paddingHorizontal: isDeleted || isImage || isVideo || isVoiceNote ? 10 : 14,
-                        paddingVertical: 9,
-                        borderWidth: isOwn ? 0 : 1,
-                        borderColor: colors.border,
+                        paddingHorizontal: isSharedMediaCard ? 0 : isDeleted || isImage || isVideo || isVoiceNote ? 10 : 14,
+                        paddingVertical: isSharedMediaCard ? 0 : 9,
+                        borderWidth: isSharedMediaCard || isOwn ? 0 : 1,
+                        borderColor: isSharedMediaCard ? 'transparent' : colors.border,
                         shadowColor: '#000',
                         shadowOffset: { width: 0, height: 1 },
-                        shadowOpacity: 0.06,
+                        shadowOpacity: isSharedMediaCard ? 0 : 0.06,
                         shadowRadius: 4,
-                        elevation: 1,
+                        elevation: isSharedMediaCard ? 0 : 1,
                     }}>
                         {isDeleted ? (
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -435,27 +439,38 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                                 )}
 
                                 {hasVisibleText && (
-                                    <Text style={{ fontSize: 15, color: isOwn ? '#ffffff' : colors.text, lineHeight: 21 }}>
-                                        {visibleText}
-                                    </Text>
+                                    <View style={isSharedMediaCard ? {
+                                        alignSelf: isOwn ? 'flex-end' : 'flex-start',
+                                        backgroundColor: isOwn ? '#10b981' : colors.elevated,
+                                        borderRadius: 16,
+                                        borderWidth: isOwn ? 0 : 1,
+                                        borderColor: colors.border,
+                                        paddingHorizontal: 13,
+                                        paddingVertical: 9,
+                                        marginBottom: 6,
+                                    } : undefined}>
+                                        <Text style={{ fontSize: 15, color: isOwn ? '#ffffff' : colors.text, lineHeight: 21 }}>
+                                            {visibleText}
+                                        </Text>
+                                    </View>
                                 )}
 
                                 {/* OpenGraph Link Card */}
                                 {detectedUrl && (
-                                    <LinkPreviewMessage url={detectedUrl} isOwn={isOwn} />
+                                    <LinkPreviewMessage url={detectedUrl} isOwn={isOwn} instanceId={getMsgId(msg)} />
                                 )}
                             </>
                         )}
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, gap: 4 }}>
-                            <Text style={{ fontSize: 10, color: isOwn ? 'rgba(255,255,255,0.65)' : colors.mutedText }}>
+                            <Text style={{ fontSize: 10, color: isSharedMediaCard ? colors.mutedText : isOwn ? 'rgba(255,255,255,0.65)' : colors.mutedText }}>
                                 {formatMessageTime(msg.timestamp)}
                             </Text>
                             {isOwn && (
                                 <Icon
                                     name={msg.status === 'read' ? 'check-circle' : 'check'}
                                     size={12}
-                                    color={msg.status === 'read' ? '#93c5fd' : 'rgba(255,255,255,0.6)'}
+                                    color={msg.status === 'read' ? '#60a5fa' : isSharedMediaCard ? colors.mutedText : 'rgba(255,255,255,0.6)'}
                                 />
                             )}
                         </View>
@@ -511,26 +526,34 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                             </AnimatedActionButton>
                         ))}
 
-                        {isOwn && !isDeleted && (
-                            <TouchableOpacity
+                        {!isDeleted && (
+                            <AnimatedActionButton
                                 onPress={() => {
                                     setShowActions(false);
-                                    Alert.alert('Delete Message', 'Choose how to delete:', [
-                                        { text: 'Cancel', style: 'cancel' },
-                                        { text: 'Delete for me', onPress: () => onDelete(msg, false) },
-                                        { text: 'Delete for everyone', style: 'destructive', onPress: () => onDelete(msg, true) },
-                                    ]);
+                                    setShowDeleteModal(true);
                                 }}
+                                accessibilityLabel="Delete"
+                                pressScale={0.97}
+                                playful={false}
+                                feedback="warning"
                                 style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 }}
                             >
                                 <Icon name="trash-2" size={17} color="#ef4444" />
                                 <Text style={{ marginLeft: 14, fontSize: 15, color: '#ef4444', fontWeight: '500' }}>Delete</Text>
-                            </TouchableOpacity>
+                            </AnimatedActionButton>
                         )}
                     </Pressable>
                     </ModalMotionSurface>
                 </ModalBackdrop>
             </Modal>
+
+            <DeleteMessageModal
+                visible={showDeleteModal}
+                isOwnMessage={isOwn}
+                onDeleteForMe={() => onDelete(msg, false)}
+                onDeleteForEveryone={isOwn ? () => onDelete(msg, true) : undefined}
+                onClose={() => setShowDeleteModal(false)}
+            />
         </Pressable>
         </Animated.View>
     );
@@ -602,6 +625,20 @@ export default function ChatPage() {
     const [forwardMessage, setForwardMessage] = useState<FullMessage | null>(null);
     const [previewDocAttachment, setPreviewDocAttachment] = useState<Attachment | null>(null);
     const [dismissedInputUrl, setDismissedInputUrl] = useState<string | null>(null);
+    const [chatModal, setChatModal] = useState<{
+        visible: boolean;
+        type: CustomModalType;
+        title: string;
+        message: string;
+        confirmText?: string;
+        cancelText?: string;
+        onConfirm?: () => void;
+    }>({
+        visible: false,
+        type: 'info',
+        title: '',
+        message: '',
+    });
 
     const handledCallMessageRef = useRef<string | null>(null);
     const messageListContentStyle = useMemo(() => ({ paddingVertical: 12 }), []);
@@ -611,6 +648,12 @@ export default function ChatPage() {
     // Live URL detection in input
     const inputUrl = findFirstUrl(messageText);
     const showInputLinkBanner = Boolean(inputUrl && inputUrl !== dismissedInputUrl);
+
+    useEffect(() => {
+        return () => {
+            sharedPostPresentationService.deactivateAllPlayers();
+        };
+    }, []);
 
     useEffect(() => {
         if (!friendId) return;
@@ -660,13 +703,25 @@ export default function ChatPage() {
     const handleUploadWallpaper = async (uri: string) => {
         setWallpaperUri(uri);
         await AsyncStorage.setItem(wallpaperKey, uri).catch(() => {});
-        Alert.alert('Wallpaper Updated', 'Chat background updated successfully.');
+        setChatModal({
+            visible: true,
+            type: 'success',
+            title: 'Wallpaper Updated',
+            message: 'Chat background updated successfully.',
+            confirmText: 'OK',
+        });
     };
 
     const handleResetWallpaper = async () => {
         setWallpaperUri(null);
         await AsyncStorage.removeItem(wallpaperKey).catch(() => {});
-        Alert.alert('Wallpaper Reset', 'Chat background reset to default.');
+        setChatModal({
+            visible: true,
+            type: 'success',
+            title: 'Wallpaper Reset',
+            message: 'Chat background reset to default.',
+            confirmText: 'OK',
+        });
     };
 
     // Check block status
@@ -687,10 +742,14 @@ export default function ChatPage() {
     // Load friend profile
     useEffect(() => {
         if (!friendId) return;
-        if (cachedFriend) setFriend(cachedFriend);
-        authService.getUserProfile(friendId).then((p) => { if (p) setFriend(p); });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [friendId]);
+        if (cachedFriend) {
+            setFriend(cachedFriend);
+            return;
+        }
+        authService.getUserProfileIfAvailable(friendId).then((profile) => {
+            if (profile) setFriend(profile);
+        });
+    }, [cachedFriend, friendId]);
 
     // Send message
     const handleSend = useCallback(async () => {
@@ -718,7 +777,13 @@ export default function ChatPage() {
             try {
                 attachment = await messagingService.uploadFile(pendingAttachment.uri, pendingAttachment.fileName, pendingAttachment.mimeType, currentUserId);
             } catch (err) {
-                Alert.alert('Error', `Failed to upload attachment: ${err instanceof Error ? err.message : String(err)}`);
+                setChatModal({
+                    visible: true,
+                    type: 'error',
+                    title: 'Upload Failed',
+                    message: `Failed to upload attachment: ${err instanceof Error ? err.message : String(err)}`,
+                    confirmText: 'OK',
+                });
                 setIsSending(false);
                 return;
             }
@@ -730,7 +795,13 @@ export default function ChatPage() {
             addMessage(serverMessage);
             void interactionFeedbackService.play('success');
         } catch (err) {
-            Alert.alert('Error', `Failed to send message: ${err instanceof Error ? err.message : String(err)}`);
+            setChatModal({
+                visible: true,
+                type: 'error',
+                title: 'Send Failed',
+                message: `Failed to send message: ${err instanceof Error ? err.message : String(err)}`,
+                confirmText: 'OK',
+            });
             setMessageText(text);
         } finally {
             setIsSending(false);
@@ -775,7 +846,15 @@ export default function ChatPage() {
         try {
             addMessage(await messagingService.sendMessage(friendId, '', currentUserId, undefined, undefined, stickerData));
             void interactionFeedbackService.play('success');
-        } catch { Alert.alert('Error', 'Failed to send sticker.'); }
+        } catch {
+            setChatModal({
+                visible: true,
+                type: 'error',
+                title: 'Sticker Failed',
+                message: 'Failed to send sticker. Please try again.',
+                confirmText: 'OK',
+            });
+        }
     }, [addMessage, friendId, currentUserId, isBlocked]);
 
     const handleDelete = useCallback(async (msg: FullMessage, deleteForEveryone: boolean) => {
@@ -847,13 +926,19 @@ export default function ChatPage() {
                 borderBottomColor: colors.border,
                 backgroundColor: colors.surface,
             }}>
-                <TouchableOpacity onPress={() => router.back()} style={{ padding: 8 }}>
-                    <Text style={{ fontSize: 26, fontWeight: '700', color: colors.text, lineHeight: 30 }}>‹</Text>
+                <TouchableOpacity
+                    onPress={() => router.back()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Back to friends"
+                    hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+                    style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center', marginRight: 6 }}
+                >
+                    <Icon name="chevron-left" size={30} color={colors.text} />
                 </TouchableOpacity>
 
                 {friend ? (
                     <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginHorizontal: 4 }}
+                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 4 }}
                         onPress={() => router.push({ pathname: '/profile/[username]', params: { username: friend.userName } })}
                     >
                         <UserAvatar profileImage={friend.profilePicture} firstName={friend.firstName ?? 'U'} size={38} />
@@ -1240,7 +1325,13 @@ export default function ChatPage() {
                 messageToForward={forwardMessage}
                 currentUserId={currentUserId}
                 onForwardSuccess={(name) => {
-                    Alert.alert('Forwarded', `Message forwarded to ${name}.`);
+                    setChatModal({
+                        visible: true,
+                        type: 'success',
+                        title: 'Message Forwarded',
+                        message: `Message forwarded to ${name}.`,
+                        confirmText: 'OK',
+                    });
                 }}
             />
 
@@ -1255,6 +1346,18 @@ export default function ChatPage() {
                     </Pressable>
                 </Modal>
             )}
+
+            {/* ── Action / Feedback Dialog ──────────────────────────────── */}
+            <CustomModal
+                visible={chatModal.visible}
+                type={chatModal.type}
+                title={chatModal.title}
+                message={chatModal.message}
+                confirmText={chatModal.confirmText}
+                cancelText={chatModal.cancelText}
+                onConfirm={chatModal.onConfirm}
+                onClose={() => setChatModal((prev) => ({ ...prev, visible: false }))}
+            />
         </SafeAreaView>
     );
 }

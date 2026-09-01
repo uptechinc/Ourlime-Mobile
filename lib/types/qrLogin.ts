@@ -1,6 +1,9 @@
 export type DeviceInfo = {
   platform: 'web' | 'ios' | 'android' | 'desktop';
+  deviceType?: 'mobile' | 'tablet' | 'desktop' | 'browser';
+  deviceName?: string;
   browser?: string;
+  os?: string;
   ip?: string;
   location?: string;
   userAgent?: string;
@@ -29,9 +32,16 @@ export type ActiveDeviceSession = {
   id: string;
   userId: string;
   platform: 'web' | 'ios' | 'android' | 'desktop';
+  deviceType?: 'mobile' | 'tablet' | 'desktop' | 'browser';
+  deviceName?: string;
   browser?: string;
+  os?: string;
   ip?: string;
   location?: string;
+  userAgent?: string;
+  loginMethod?: 'password' | 'qr_code' | 'registration' | 'custom_token';
   createdAt: string;
   lastActiveAt: string;
+  isCurrentSession?: boolean;
+  isActive?: boolean;
 };

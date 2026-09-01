@@ -1,8 +1,9 @@
-import { createVideoPlayer } from 'expo-video';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { doc, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { db, storage } from '@/lib/firebaseConfig';
+import { limeCoverTimelineService } from '@/lib/services/LimeCoverTimelineService';
 
 type EnsureLimeThumbnailInput = {
   reelId: string;
@@ -12,6 +13,23 @@ type EnsureLimeThumbnailInput = {
   durationSeconds: number;
   existingThumbnailUrl?: string;
 };
+
+export type LimeCoverSource = 'video-frame' | 'custom-image';
+
+export type LimeCoverFrame = {
+  id: string;
+  timestampSeconds: number;
+  previewUri: string;
+};
+
+export type LimeCoverSelection = {
+  source: LimeCoverSource;
+  timestampSeconds: number | null;
+  previewUri: string;
+  finalUri: string;
+};
+
+const THUMBNAIL_TIMEOUT_MS = 12_000;
 
 export class LimeThumbnailService {
   private static instance: LimeThumbnailService;
@@ -26,26 +44,53 @@ export class LimeThumbnailService {
   }
 
   public async createThumbnail(videoUri: string, durationSeconds: number): Promise<string> {
-    const videoPlayer = createVideoPlayer(videoUri);
-    try {
-      const targetTime = Math.min(Math.max(durationSeconds * 0.2, 0.1), 1);
-      const thumbnails = await videoPlayer.generateThumbnailsAsync(targetTime, {
-        maxWidth: 1080,
-        maxHeight: 1920,
-      });
-      const thumbnail = thumbnails[0];
-      if (!thumbnail) throw new Error('The Lime video did not produce a thumbnail.');
+    const targetTime = Math.min(Math.max(durationSeconds * 0.2, 0.1), Math.max(durationSeconds - 0.05, 0.1));
+    return this.createThumbnailAtTime(videoUri, targetTime);
+  }
 
-      const imageContext = ImageManipulator.manipulate(thumbnail);
+  public async createThumbnailAtTime(videoUri: string, timestampSeconds: number): Promise<string> {
+    const thumbnail = await this.withTimeout(
+      VideoThumbnails.getThumbnailAsync(videoUri, {
+        time: Math.round(Math.max(timestampSeconds, 0.05) * 1000),
+        quality: 0.9,
+      }),
+      'Preparing the video cover took too long.'
+    );
+    const imageContext = ImageManipulator.manipulate(thumbnail.uri);
+    const image = await imageContext.renderAsync();
+    const savedImage = await image.saveAsync({
+      compress: 0.86,
+      format: SaveFormat.JPEG,
+    });
+    return savedImage.uri;
+  }
+
+  public async createTimelineFrames(
+    videoUri: string,
+    durationSeconds: number,
+    frameCount = 10
+  ): Promise<LimeCoverFrame[]> {
+    const timestamps = limeCoverTimelineService.createTimestamps(durationSeconds, frameCount);
+    const frames: LimeCoverFrame[] = [];
+    for (const [frameIndex, timestampSeconds] of timestamps.entries()) {
+      const thumbnail = await this.withTimeout(
+        VideoThumbnails.getThumbnailAsync(videoUri, {
+          time: Math.round(timestampSeconds * 1000),
+          quality: 0.55,
+        }),
+        'Preparing the cover timeline took too long.'
+      );
+      const imageContext = ImageManipulator.manipulate(thumbnail.uri);
       const image = await imageContext.renderAsync();
-      const savedImage = await image.saveAsync({
-        compress: 0.86,
-        format: SaveFormat.JPEG,
+      const savedImage = await image.saveAsync({ compress: 0.68, format: SaveFormat.JPEG });
+      frames.push({
+        id: `cover-frame-${frameIndex}`,
+        timestampSeconds,
+        previewUri: savedImage.uri,
       });
-      return savedImage.uri;
-    } finally {
-      videoPlayer.release();
     }
+    if (frames.length === 0) throw new Error('The video did not produce cover frames.');
+    return frames;
   }
 
   public async ensureOwnedLimeThumbnail(input: EnsureLimeThumbnailInput): Promise<string | null> {
@@ -80,6 +125,18 @@ export class LimeThumbnailService {
       request.open('GET', uri, true);
       request.send(null);
     });
+  }
+
+  private async withTimeout<T>(operation: Promise<T>, message: string): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(message)), THUMBNAIL_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([operation, timeout]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
   }
 }
 

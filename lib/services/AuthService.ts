@@ -32,9 +32,11 @@ import { localCacheService } from './LocalCacheService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import { PostMediaService } from './PostMediaService';
 import { AuthServiceError } from '@/lib/auth/AuthErrors';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { presenceService } from './PresenceService';
 import { nativeCallService } from './NativeCallService';
 import { ApiService } from './ApiService';
+import { qrLoginService, QRLoginService } from './QRLoginService';
 export { AuthServiceError, getAuthErrorCode } from '@/lib/auth/AuthErrors';
 export type { AuthServiceErrorCode } from '@/lib/auth/AuthErrors';
 
@@ -146,6 +148,7 @@ export class AuthService {
         uid: credential.user.uid,
         emailVerified: credential.user.emailVerified,
       });
+      void qrLoginService.registerCurrentNativeSession();
       return credential.user;
     } catch (error: unknown) {
       this.logger.error('AuthService', 'login', error, { emailDomain: normalizedEmail.split('@')[1] ?? 'unknown' });
@@ -324,6 +327,18 @@ export class AuthService {
    * Fetch user profile from Firestore with in-flight deduplication and memory caching
    */
   public async getUserProfile(uid: string, force = false): Promise<UserProfile | null> {
+    return this.getUserProfileWithMissingWarning(uid, force, true);
+  }
+
+  /**
+   * Resolve an optional profile reference without treating a legacy or removed
+   * document as an operational warning.
+   */
+  public async getUserProfileIfAvailable(uid: string): Promise<UserProfile | null> {
+    return this.getUserProfileWithMissingWarning(uid, false, false);
+  }
+
+  private async getUserProfileWithMissingWarning(uid: string, force: boolean, warnIfMissing: boolean): Promise<UserProfile | null> {
     if (!uid) return null;
     if (!force) {
       const cached = this.profileMemoryCache.get(uid);
@@ -339,20 +354,22 @@ export class AuthService {
       }
     }
 
-    const promise = this.fetchUserProfileInternal(uid).finally(() => {
+    const promise = this.fetchUserProfileInternal(uid, warnIfMissing).finally(() => {
       this.profilePromises.delete(uid);
     });
     this.profilePromises.set(uid, promise);
     return promise;
   }
 
-  private async fetchUserProfileInternal(uid: string): Promise<UserProfile | null> {
+  private async fetchUserProfileInternal(uid: string, warnIfMissing = true): Promise<UserProfile | null> {
     this.logger.info('AuthService', 'profile:user-document:start', { uid, collection: 'users' });
     try {
       const snap = await getDoc(doc(db, 'users', uid));
       this.logger.success('AuthService', 'profile:user-document', { uid, exists: snap.exists() });
       if (!snap.exists()) {
-        this.logger.warn('AuthService', 'profile:not-found', { uid, path: `users/${uid}` });
+        if (warnIfMissing) {
+          this.logger.warn('AuthService', 'profile:not-found', { uid, path: `users/${uid}` });
+        }
         return null;
       }
 
@@ -492,6 +509,7 @@ export class AuthService {
       this.invalidateUserProfile(userId);
       await localCacheService.clearUser(userId).catch(() => undefined);
     }
+    await AsyncStorage.removeItem(QRLoginService.NATIVE_SESSION_KEY).catch(() => undefined);
     this.profileMemoryCache.clear();
     this.profilePromises.clear();
     useResourceStore.getState().clearUserResources();

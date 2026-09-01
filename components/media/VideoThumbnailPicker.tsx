@@ -1,21 +1,26 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
+  PanResponder,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  type GestureResponderEvent,
   type LayoutChangeEvent,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import Icon from 'react-native-vector-icons/Feather';
-import { createVideoPlayer } from 'expo-video';
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
+import {
+  limeThumbnailService,
+  type LimeCoverFrame,
+  type LimeCoverSelection,
+} from '@/lib/services/LimeThumbnailService';
+import { limeCoverTimelineService } from '@/lib/services/LimeCoverTimelineService';
 
 type VideoThumbnailPickerProps = {
   videoUri: string;
@@ -25,461 +30,227 @@ type VideoThumbnailPickerProps = {
   aspectRatio?: '9:16' | '16:9' | '1:1' | '4:5';
 };
 
-const formatSeconds = (totalSeconds: number): string => {
-  const mins = Math.floor(totalSeconds / 60);
-  const secs = Math.floor(totalSeconds % 60);
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-};
+type ExtractionState =
+  | { status: 'loading'; message: string }
+  | { status: 'ready' }
+  | { status: 'error'; message: string };
+
+const FRAME_COUNT = 10;
+
+function formatSeconds(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
 
 export default function VideoThumbnailPicker({
   videoUri,
   durationSeconds,
   selectedThumbnailUri,
   onThumbnailChange,
-  aspectRatio = '9:16',
 }: VideoThumbnailPickerProps) {
   const { colors } = useAppTheme();
-  const [currentThumbnail, setCurrentThumbnail] = useState<string>(selectedThumbnailUri || '');
-  const [scrubTime, setScrubTime] = useState<number>(
-    Math.min(Math.max(durationSeconds * 0.2, 0.1), Math.max(durationSeconds - 0.1, 0.1))
-  );
-  const [isExtractingFrame, setIsExtractingFrame] = useState(false);
-  const [isCustomUpload, setIsCustomUpload] = useState(false);
-  const [showScrubber, setShowScrubber] = useState(false);
-  const [trackWidth, setTrackWidth] = useState<number>(0);
-  const extractDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [frames, setFrames] = useState<LimeCoverFrame[]>([]);
+  const [selection, setSelection] = useState<LimeCoverSelection | null>(null);
+  const [extractionState, setExtractionState] = useState<ExtractionState>({ status: 'loading', message: 'Preparing cover…' });
+  const [editorVisible, setEditorVisible] = useState(false);
+  const [trackWidth, setTrackWidth] = useState(0);
+  const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
+  const generationIdRef = useRef(0);
+  const dragStartXRef = useRef(0);
 
-  // Generate initial default thumbnail if not present
+  const selectedFrame = frames[selectedFrameIndex] ?? null;
+  const selectorWidth = frames.length > 0 && trackWidth > 0 ? trackWidth / frames.length : 0;
+  const selectorLeft = selectorWidth * selectedFrameIndex;
+
+  const handleGenerateFrames = useCallback(async () => {
+    if (!videoUri || durationSeconds <= 0) return;
+    const generationId = generationIdRef.current + 1;
+    generationIdRef.current = generationId;
+    setExtractionState({ status: 'loading', message: 'Preparing cover…' });
+    setFrames([]);
+    try {
+      const generatedFrames = await limeThumbnailService.createTimelineFrames(videoUri, durationSeconds, FRAME_COUNT);
+      if (generationIdRef.current !== generationId) return;
+      const defaultIndex = Math.min(2, generatedFrames.length - 1);
+      const defaultFrame = generatedFrames[defaultIndex];
+      setFrames(generatedFrames);
+      setSelectedFrameIndex(defaultIndex);
+      setSelection({ source: 'video-frame', timestampSeconds: defaultFrame.timestampSeconds, previewUri: defaultFrame.previewUri, finalUri: defaultFrame.previewUri });
+      onThumbnailChange(defaultFrame.previewUri);
+      setExtractionState({ status: 'ready' });
+    } catch (error: unknown) {
+      if (generationIdRef.current !== generationId) return;
+      setExtractionState({ status: 'error', message: error instanceof Error ? error.message : 'The cover could not be prepared.' });
+    }
+  }, [durationSeconds, onThumbnailChange, videoUri]);
+
   useEffect(() => {
-    if (selectedThumbnailUri) {
-      setCurrentThumbnail(selectedThumbnailUri);
+    if (selectedThumbnailUri && selectedThumbnailUri !== selection?.finalUri) {
+      setSelection({ source: 'custom-image', timestampSeconds: null, previewUri: selectedThumbnailUri, finalUri: selectedThumbnailUri });
+      setExtractionState({ status: 'ready' });
       return;
     }
-    if (!videoUri || durationSeconds <= 0) return;
-
-    let isMounted = true;
-    setIsExtractingFrame(true);
-    limeThumbnailService
-      .createThumbnail(videoUri, durationSeconds)
-      .then((uri: string) => {
-        if (isMounted && uri) {
-          setCurrentThumbnail(uri);
-          onThumbnailChange(uri);
-        }
-      })
-      .catch((err: unknown) => {
-        console.warn('[VideoThumbnailPicker] Default thumbnail failed:', err);
-      })
-      .finally(() => {
-        if (isMounted) setIsExtractingFrame(false);
-      });
-
+    if (!selection) void handleGenerateFrames();
     return () => {
-      isMounted = false;
+      generationIdRef.current += 1;
     };
-  }, [videoUri, durationSeconds, selectedThumbnailUri, onThumbnailChange]);
+  }, [handleGenerateFrames, selectedThumbnailUri, selection]);
 
-  // Extract a specific frame at timestamp
-  const extractFrameAtTime = useCallback(
-    async (timestamp: number) => {
-      if (!videoUri) return;
-      setIsExtractingFrame(true);
-      try {
-        const videoPlayer = createVideoPlayer(videoUri);
-        try {
-          const boundedTime = Math.min(Math.max(timestamp, 0.05), Math.max(durationSeconds - 0.05, 0.05));
-          const thumbnails = await videoPlayer.generateThumbnailsAsync(boundedTime, {
-            maxWidth: aspectRatio === '9:16' ? 720 : 1280,
-            maxHeight: aspectRatio === '9:16' ? 1280 : 720,
-          });
-          const thumbnail = thumbnails[0];
-          if (thumbnail) {
-            const imageContext = ImageManipulator.manipulate(thumbnail);
-            const image = await imageContext.renderAsync();
-            const savedImage = await image.saveAsync({
-              compress: 0.85,
-              format: SaveFormat.JPEG,
-            });
-            setCurrentThumbnail(savedImage.uri);
-            setIsCustomUpload(false);
-            onThumbnailChange(savedImage.uri);
-          }
-        } finally {
-          videoPlayer.release();
-        }
-      } catch (error) {
-        console.warn('[VideoThumbnailPicker] Frame extraction failed:', error);
-      } finally {
-        setIsExtractingFrame(false);
-      }
+  const handleSelectFrame = useCallback((frameIndex: number) => {
+    if (frames.length === 0) return;
+    setSelectedFrameIndex(Math.min(Math.max(frameIndex, 0), frames.length - 1));
+  }, [frames.length]);
+
+  const handleSelectFromTrackX = useCallback((trackX: number) => {
+    if (selectorWidth <= 0 || frames.length === 0) return;
+    handleSelectFrame(limeCoverTimelineService.getFrameIndex(trackX, trackWidth, frames.length));
+  }, [frames.length, handleSelectFrame, selectorWidth, trackWidth]);
+
+  const framePanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (event) => {
+      dragStartXRef.current = event.nativeEvent.locationX;
+      handleSelectFromTrackX(event.nativeEvent.locationX);
     },
-    [videoUri, durationSeconds, aspectRatio, onThumbnailChange]
-  );
+    onPanResponderMove: (_event, gestureState) => {
+      handleSelectFromTrackX(dragStartXRef.current + gestureState.dx);
+    },
+  }), [handleSelectFromTrackX]);
 
-  const scheduleFrameExtraction = (time: number) => {
-    const bounded = Math.min(Math.max(time, 0.1), Math.max(durationSeconds, 0.1));
-    setScrubTime(bounded);
-    if (extractDebounceRef.current) clearTimeout(extractDebounceRef.current);
-    extractDebounceRef.current = setTimeout(() => {
-      void extractFrameAtTime(bounded);
-    }, 200);
-  };
+  const handleTrackLayout = (event: LayoutChangeEvent) => setTrackWidth(event.nativeEvent.layout.width);
 
-  const handleTrackTouch = (event: GestureResponderEvent) => {
-    if (trackWidth <= 0 || durationSeconds <= 0) return;
-    const locationX = event.nativeEvent.locationX;
-    const fraction = Math.max(0, Math.min(locationX / trackWidth, 1));
-    const targetSeconds = fraction * durationSeconds;
-    scheduleFrameExtraction(targetSeconds);
-  };
-
-  const handleTrackLayout = (event: LayoutChangeEvent) => {
-    setTrackWidth(event.nativeEvent.layout.width);
+  const handleSaveFrame = async () => {
+    if (!selectedFrame) return;
+    setExtractionState({ status: 'loading', message: 'Saving cover…' });
+    try {
+      const finalUri = await limeThumbnailService.createThumbnailAtTime(videoUri, selectedFrame.timestampSeconds);
+      setSelection({ source: 'video-frame', timestampSeconds: selectedFrame.timestampSeconds, previewUri: selectedFrame.previewUri, finalUri });
+      onThumbnailChange(finalUri);
+      setExtractionState({ status: 'ready' });
+      setEditorVisible(false);
+    } catch (error: unknown) {
+      setExtractionState({ status: 'error', message: error instanceof Error ? error.message : 'The selected cover could not be saved.' });
+    }
   };
 
   const handlePickCustomImage = async () => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permission required', 'Please grant media access to pick a thumbnail image.');
+        Alert.alert('Permission required', 'Please grant media access to choose a cover image.');
         return;
       }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: aspectRatio === '9:16' ? [9, 16] : aspectRatio === '16:9' ? [16, 9] : [1, 1],
-        quality: 0.85,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const customUri = result.assets[0].uri;
-        setCurrentThumbnail(customUri);
-        setIsCustomUpload(true);
-        setShowScrubber(false);
-        onThumbnailChange(customUri);
-      }
-    } catch (error) {
-      console.error('[VideoThumbnailPicker] Pick image error:', error);
-      Alert.alert('Error', 'Could not select custom thumbnail image.');
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [9, 16], quality: 0.86 });
+      const customUri = result.canceled ? null : result.assets[0]?.uri;
+      if (!customUri) return;
+      setSelection({ source: 'custom-image', timestampSeconds: null, previewUri: customUri, finalUri: customUri });
+      onThumbnailChange(customUri);
+      setExtractionState({ status: 'ready' });
+      setEditorVisible(false);
+    } catch (error: unknown) {
+      Alert.alert('Cover not selected', error instanceof Error ? error.message : 'Please try another image.');
     }
   };
 
-  const scrubberPercentage = durationSeconds > 0 ? (scrubTime / durationSeconds) * 100 : 20;
-
-  // Preset time jump points
-  const timePresets = [
-    { label: 'Start', fraction: 0.05 },
-    { label: '25%', fraction: 0.25 },
-    { label: '50%', fraction: 0.5 },
-    { label: '75%', fraction: 0.75 },
-    { label: 'End', fraction: 0.95 },
-  ];
-
   return (
-    <View style={[styles.container, { backgroundColor: colors.control, borderColor: colors.border }]}>
-      <View style={styles.headerRow}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Icon name="image" size={16} color="#10b981" />
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Video Thumbnail (Cover)</Text>
-        </View>
-        <Text style={[styles.durationBadge, { color: colors.mutedText }]}>
-          {isCustomUpload ? 'Custom Image' : `Frame @ ${formatSeconds(scrubTime)}`}
-        </Text>
-      </View>
-
-      <View style={styles.contentRow}>
-        {/* Thumbnail Preview Card */}
-        <View style={styles.previewContainer}>
-          {currentThumbnail ? (
-            <Image
-              source={{ uri: currentThumbnail }}
-              style={[
-                styles.previewImage,
-                aspectRatio === '9:16' ? styles.aspect916 : styles.aspect169,
-              ]}
-              resizeMode="cover"
-            />
-          ) : (
-            <View
-              style={[
-                styles.previewPlaceholder,
-                aspectRatio === '9:16' ? styles.aspect916 : styles.aspect169,
-                { backgroundColor: colors.surface },
-              ]}
-            >
-              <ActivityIndicator size="small" color="#10b981" />
+    <>
+      <View style={[styles.coverCard, { borderColor: colors.border, backgroundColor: colors.control }]}>
+        <View style={styles.coverPreview}>
+          {selection?.previewUri ? <Image source={{ uri: selection.previewUri }} style={styles.coverImage} resizeMode="cover" /> : (
+            <View style={[styles.coverPlaceholder, { backgroundColor: colors.elevated }]}>
+              {extractionState.status === 'loading' ? <ActivityIndicator color={colors.accent} /> : <Icon name="image" size={30} color={colors.mutedText} />}
             </View>
           )}
-
-          {isExtractingFrame ? (
-            <View style={styles.extractingOverlay}>
-              <ActivityIndicator size="small" color="#ffffff" />
-            </View>
+          {selection?.previewUri ? (
+            <TouchableOpacity onPress={() => setEditorVisible(true)} style={styles.editCoverButton} accessibilityRole="button" accessibilityLabel="Edit Lime cover">
+              <Text style={styles.editCoverText}>Edit cover</Text>
+            </TouchableOpacity>
           ) : null}
-
-          <View style={styles.coverBadge}>
-            <Text style={styles.coverBadgeText}>Cover</Text>
-          </View>
         </View>
-
-        {/* Control Actions */}
-        <View style={styles.controlsColumn}>
-          <Text style={[styles.helperText, { color: colors.secondaryText }]}>
-            Select the frame or upload a custom image for OpenGraph link previews and feed cards.
-          </Text>
-
-          <View style={styles.buttonsRow}>
-            <TouchableOpacity
-              onPress={() => setShowScrubber((prev) => !prev)}
-              style={[
-                styles.actionButton,
-                {
-                  backgroundColor: showScrubber ? 'rgba(16, 185, 129, 0.15)' : colors.surface,
-                  borderColor: showScrubber ? '#10b981' : colors.border,
-                },
-              ]}
-              activeOpacity={0.7}
-            >
-              <Icon name="sliders" size={14} color={showScrubber ? '#10b981' : colors.text} />
-              <Text style={[styles.actionButtonText, { color: showScrubber ? '#10b981' : colors.text }]}>
-                {showScrubber ? 'Hide Scrubber' : 'Scrub Frame'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handlePickCustomImage}
-              style={[styles.actionButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              activeOpacity={0.7}
-            >
-              <Icon name="upload" size={14} color={colors.text} />
-              <Text style={[styles.actionButtonText, { color: colors.text }]}>Upload Cover</Text>
+        {extractionState.status === 'error' ? (
+          <View style={styles.errorRow}>
+            <Text style={[styles.errorText, { color: colors.destructiveText }]} numberOfLines={2}>{extractionState.message}</Text>
+            <TouchableOpacity onPress={() => void handleGenerateFrames()} style={[styles.retryButton, { borderColor: colors.border }]}>
+              <Text style={{ color: colors.accentText, fontWeight: '800' }}>Retry</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        ) : null}
       </View>
 
-      {/* Frame Scrubber Interactive Timeline */}
-      {showScrubber ? (
-        <View style={[styles.scrubberContainer, { borderTopColor: colors.border }]}>
-          <View style={styles.scrubberHeader}>
-            <Text style={[styles.scrubberLabel, { color: colors.text }]}>
-              Tap or drag timeline to select cover frame:
-            </Text>
-            <Text style={styles.scrubberTime}>
-              {formatSeconds(scrubTime)} / {formatSeconds(durationSeconds)}
-            </Text>
+      <Modal visible={editorVisible} animationType="slide" onRequestClose={() => setEditorVisible(false)}>
+        <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={[styles.editor, { backgroundColor: colors.canvas }]}>
+          <View style={[styles.editorHeader, { borderBottomColor: colors.border }]}>
+            <TouchableOpacity onPress={() => setEditorVisible(false)} accessibilityRole="button" accessibilityLabel="Close cover editor" style={styles.headerAction}>
+              <Icon name="chevron-left" size={26} color={colors.icon} />
+            </TouchableOpacity>
+            <Text style={[styles.editorTitle, { color: colors.text }]}>Edit cover</Text>
+            <TouchableOpacity onPress={() => void handleSaveFrame()} disabled={!selectedFrame || extractionState.status === 'loading'} style={styles.headerAction}>
+              <Text style={[styles.doneText, { color: colors.accentText }, extractionState.status === 'loading' && { opacity: 0.5 }]}>Done</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Interactive Scrub Track */}
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={handleTrackTouch}
-            onLayout={handleTrackLayout}
-            style={[styles.trackContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            <View
-              style={[
-                styles.trackFill,
-                {
-                  width: `${Math.max(0, Math.min(100, scrubberPercentage))}%`,
-                  backgroundColor: '#10b981',
-                },
-              ]}
-            />
-            <View
-              style={[
-                styles.trackThumb,
-                {
-                  left: `${Math.max(0, Math.min(96, scrubberPercentage))}%`,
-                },
-              ]}
-            />
-          </TouchableOpacity>
+          <View style={styles.editorBody}>
+            <Text style={[styles.editorHelp, { color: colors.secondaryText }]}>Choose a frame from your video or add a cover from your camera roll.</Text>
+            <View style={[styles.largePreviewShell, { backgroundColor: colors.control }]}>
+              {selectedFrame?.previewUri || selection?.previewUri ? <Image source={{ uri: selectedFrame?.previewUri ?? selection?.previewUri }} style={styles.largePreview} resizeMode="cover" /> : <ActivityIndicator color={colors.accent} />}
+            </View>
+            <Text style={[styles.timestamp, { color: colors.mutedText }]}>Frame {formatSeconds(selectedFrame?.timestampSeconds ?? 0)}</Text>
 
-          {/* Quick preset frame jump buttons */}
-          <View style={styles.presetButtonsRow}>
-            {timePresets.map((preset) => (
-              <TouchableOpacity
-                key={preset.label}
-                onPress={() => scheduleFrameExtraction(preset.fraction * durationSeconds)}
-                style={[
-                  styles.presetChip,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                ]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.presetChipText, { color: colors.secondaryText }]}>
-                  {preset.label}
-                </Text>
+            {frames.length > 0 ? (
+              <View onLayout={handleTrackLayout} style={styles.frameTrack} {...framePanResponder.panHandlers}>
+                {frames.map((frame) => <Image key={frame.id} source={{ uri: frame.previewUri }} style={styles.frameImage} resizeMode="cover" />)}
+                {selectorWidth > 0 ? <View pointerEvents="none" style={[styles.frameSelector, { width: selectorWidth, left: selectorLeft }]} /> : null}
+              </View>
+            ) : extractionState.status === 'loading' ? (
+              <View style={styles.timelineLoading}><ActivityIndicator color={colors.accent} /><Text style={{ color: colors.mutedText }}>{extractionState.message}</Text></View>
+            ) : (
+              <TouchableOpacity onPress={() => void handleGenerateFrames()} style={[styles.retryWide, { backgroundColor: colors.control }]}>
+                <Text style={{ color: colors.accentText, fontWeight: '900' }}>Retry frame extraction</Text>
               </TouchableOpacity>
-            ))}
+            )}
+
+            <TouchableOpacity onPress={() => void handlePickCustomImage()} style={[styles.cameraRollButton, { backgroundColor: colors.accent }]}>
+              <Icon name="image" size={20} color={colors.onAccent} />
+              <Text style={[styles.cameraRollText, { color: colors.onAccent }]}>Add from camera roll</Text>
+            </TouchableOpacity>
           </View>
-        </View>
-      ) : null}
-    </View>
+
+          {extractionState.status === 'loading' ? <View style={styles.busyOverlay} pointerEvents="none"><ActivityIndicator size="large" color="#ffffff" /><Text style={styles.busyText}>{extractionState.message}</Text></View> : null}
+        </SafeAreaView>
+      </Modal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    marginTop: 12,
-    marginBottom: 14,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  headerTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  durationBadge: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  contentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  previewContainer: {
-    position: 'relative',
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  previewImage: {
-    borderRadius: 10,
-  },
-  previewPlaceholder: {
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  aspect916: {
-    width: 60,
-    height: 106,
-  },
-  aspect169: {
-    width: 106,
-    height: 60,
-  },
-  extractingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  coverBadge: {
-    position: 'absolute',
-    bottom: 4,
-    left: 4,
-    backgroundColor: '#10b981',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  coverBadgeText: {
-    color: '#ffffff',
-    fontSize: 9,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  controlsColumn: {
-    flex: 1,
-  },
-  helperText: {
-    fontSize: 12,
-    lineHeight: 16,
-    marginBottom: 10,
-  },
-  buttonsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  actionButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  scrubberContainer: {
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  scrubberHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  scrubberLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  scrubberTime: {
-    color: '#10b981',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  trackContainer: {
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    position: 'relative',
-    overflow: 'hidden',
-    justifyContent: 'center',
-    marginVertical: 4,
-  },
-  trackFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    opacity: 0.3,
-  },
-  trackThumb: {
-    position: 'absolute',
-    width: 14,
-    height: 20,
-    borderRadius: 7,
-    backgroundColor: '#10b981',
-    borderWidth: 2,
-    borderColor: '#ffffff',
-  },
-  presetButtonsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-    gap: 6,
-  },
-  presetChip: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  presetChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
+  coverCard: { borderWidth: 1, borderRadius: 18, marginTop: 12, marginBottom: 14, overflow: 'hidden' },
+  coverPreview: { height: 260, backgroundColor: '#050505', alignItems: 'center', justifyContent: 'center' },
+  coverImage: { width: 146, height: 260, borderRadius: 22 },
+  coverPlaceholder: { width: 146, height: 260, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  editCoverButton: { position: 'absolute', left: '50%', bottom: 12, marginLeft: -58, minWidth: 116, alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.68)' },
+  editCoverText: { color: '#ffffff', fontSize: 13, fontWeight: '800' },
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 },
+  errorText: { flex: 1, fontSize: 12, lineHeight: 17 },
+  retryButton: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  editor: { flex: 1 },
+  editorHeader: { minHeight: 58, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10 },
+  headerAction: { minWidth: 54, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
+  editorTitle: { flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '900' },
+  doneText: { fontSize: 15, fontWeight: '900' },
+  editorBody: { flex: 1, padding: 20, alignItems: 'center' },
+  editorHelp: { maxWidth: 330, textAlign: 'center', lineHeight: 20, marginTop: 12, marginBottom: 20 },
+  largePreviewShell: { width: 230, height: 408, borderRadius: 26, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  largePreview: { width: '100%', height: '100%' },
+  timestamp: { marginTop: 10, marginBottom: 18, fontSize: 12, fontWeight: '700' },
+  frameTrack: { width: '100%', height: 82, flexDirection: 'row', overflow: 'hidden', borderRadius: 10, backgroundColor: '#111827' },
+  frameImage: { flex: 1, height: 82 },
+  frameSelector: { position: 'absolute', top: 0, bottom: 0, borderWidth: 4, borderColor: '#ffffff', borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.05)' },
+  timelineLoading: { height: 82, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center' },
+  retryWide: { width: '100%', minHeight: 52, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  cameraRollButton: { width: '100%', minHeight: 54, flexDirection: 'row', gap: 9, alignItems: 'center', justifyContent: 'center', borderRadius: 17, marginTop: 22 },
+  cameraRollText: { fontSize: 16, fontWeight: '900' },
+  busyOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: 'rgba(2,6,23,0.72)' },
+  busyText: { color: '#ffffff', fontWeight: '800' },
 });

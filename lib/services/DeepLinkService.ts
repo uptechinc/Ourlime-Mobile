@@ -5,6 +5,7 @@ import type {
   PendingDeepLink,
 } from '@/lib/types/deepLink';
 import { sharedContentMessageService } from '@/lib/services/SharedContentMessageService';
+import { platformEnvironmentService } from '@/lib/services/PlatformEnvironmentService';
 
 const CANONICAL_WEB_BASE_URL = 'https://ourlime.com';
 const PENDING_DEEP_LINK_KEY = 'ourlime.pending-deep-link';
@@ -12,7 +13,11 @@ const PENDING_DEEP_LINK_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 export class DeepLinkService {
   private static instance: DeepLinkService;
-  private readonly webBaseUrl = (process.env.EXPO_PUBLIC_SHARE_BASE_URL || CANONICAL_WEB_BASE_URL).replace(/\/$/, '');
+  private readonly webBaseUrl = (
+    process.env.EXPO_PUBLIC_SHARE_BASE_URL
+    || platformEnvironmentService.getDevelopmentApiBaseUrl()
+    || CANONICAL_WEB_BASE_URL
+  ).replace(/\/$/, '');
   private readonly nativeScheme = 'ourlime';
 
   private constructor() {}
@@ -130,6 +135,7 @@ export class DeepLinkService {
 
   private isOurlimeUrl(url: URL): boolean {
     if (url.protocol === `${this.nativeScheme}:`) return true;
+    if (url.origin === this.webBaseUrl) return true;
     if (url.protocol !== 'https:') return false;
     const hostname = url.hostname.toLowerCase();
     return hostname === 'ourlime.com' || hostname === 'www.ourlime.com';

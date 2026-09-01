@@ -1,3 +1,5 @@
+import { ApiService } from './ApiService';
+
 export type PresetAvatarName =
   | 'cartoonAvatarBlackBoy'
   | 'cartoonAvatarWhiteBoy'
@@ -23,6 +25,7 @@ const presetAvatarNames: PresetAvatarName[] = [
 
 export class AvatarService {
   private static instance: AvatarService;
+  private readonly apiService = ApiService.getInstance();
 
   private constructor() {}
 
@@ -38,7 +41,7 @@ export class AvatarService {
     const presetName = presetAvatarNames.find((name) => decodedValue.includes(name.toLowerCase()));
     if (presetName) return { kind: 'preset', name: presetName };
     const resolvedUri = normalizedValue.startsWith('/')
-      ? `${(process.env.EXPO_PUBLIC_OURLIME_API_BASE_URL || process.env.EXPO_PUBLIC_WEB_API_URL || 'https://ourlime.com').replace(/\/$/, '')}${normalizedValue}`
+      ? `${this.apiService.getBaseUrl()}${normalizedValue}`
       : normalizedValue;
     if (decodedValue.includes('.svg')) return { kind: 'remote-svg', uri: resolvedUri };
     if (/^(https?:|file:|content:|data:image)/i.test(normalizedValue)) {

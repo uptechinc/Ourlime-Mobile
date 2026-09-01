@@ -248,6 +248,34 @@ export class ConversationResourceService {
     await this.commit(userId, conversations);
   }
 
+  public async removeConversation(userId: string, peerId: string): Promise<void> {
+    const current = useResourceStore.getState().conversations;
+    const currentList = current.data ?? [];
+    const filtered = currentList.filter((item) => item.uid !== peerId);
+    useResourceStore.getState().setConversations({
+      ...current,
+      data: filtered,
+      updatedAt: Date.now(),
+      status: 'ready',
+      error: null,
+    });
+    await this.commit(userId, filtered);
+  }
+
+  public removeUserFromCachedConversations(userId: string, peerId: string): void {
+    const current = useResourceStore.getState().conversations;
+    const currentList = current.data ?? [];
+    const filtered = currentList.filter((item) => item.uid !== peerId);
+    useResourceStore.getState().setConversations({
+      ...current,
+      data: filtered,
+      updatedAt: Date.now(),
+      status: 'ready',
+      error: null,
+    });
+    void this.cacheService.write(userId, CONVERSATION_NAMESPACE, CONVERSATION_CACHE_KEY, filtered, { expiresAt: Date.now() + CONVERSATION_STALE_MS });
+  }
+
   public async loadMore(userId: string): Promise<void> {
     if (!this.nextCursor || this.inFlight) return;
     this.inFlight = this.timeoutService.run(this.messagingService.fetchConversationPage(userId, this.nextCursor), 'Conversation pagination request').then(async (page) => {

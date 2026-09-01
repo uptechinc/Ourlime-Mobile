@@ -1,9 +1,35 @@
 import { ApiService, ApiServiceError } from './ApiService';
-import { addDoc, collection, documentId, doc, getDocs, limit, orderBy, query, serverTimestamp, startAfter, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, documentId, doc, getDocs, limit, orderBy, query, serverTimestamp, startAfter, updateDoc, where } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import type { PageResult } from '@/lib/types/serviceResults';
 import { adminAccessService } from './AdminAccessService';
 import { auth } from '@/lib/firebaseConfig';
+import { DiagnosticLogService } from './DiagnosticLogService';
+import type { ModerationDeliveryResult } from '@/lib/types/moderationDelivery';
+import { localCacheService } from './LocalCacheService';
+import { useResourceStore } from '@/lib/store/useResourceStore';
+
+const USER_LIFECYCLE_START_TIMEOUT_MS = 18_000;
+const USER_LIFECYCLE_POLL_INTERVAL_MS = 1_000;
+const USER_LIFECYCLE_POLL_TIMEOUT_MS = 180_000;
+
+export type UserLifecycleOperation = {
+  id: string;
+  targetUserId: string;
+  administratorId: string;
+  action: 'archive' | 'unarchive' | 'delete_permanently' | 'hide_for_status' | 'activate';
+  phase: 'queued' | 'discovering' | 'processing' | 'notifying' | 'completed' | 'failed';
+  processedDocuments: number;
+  totalDocuments: number;
+  affectedCollections: string[];
+  storageObjectsDeleted: number;
+  authDeleted: boolean;
+  delivery?: ModerationDeliveryResult;
+  errorCode?: string;
+};
+
+type LifecycleStartResponse = { success: boolean; operation: UserLifecycleOperation; correlationId: string; error?: string };
+type LifecycleStatusResponse = { success: boolean; operation: UserLifecycleOperation; error?: string };
 
 export type AdminUserRole = 'user' | 'premium' | 'moderator' | 'admin' | 'developer';
 export type AdminUserRecord = {
@@ -30,12 +56,32 @@ export type AdminAccountStatus = 'active' | 'pending' | 'suspended' | 'banned';
 
 type AdminUserSource = {
   id?: unknown; firstName?: unknown; lastName?: unknown; userName?: unknown; email?: unknown;
-  profilePicture?: unknown; profileImage?: unknown; role?: unknown; isAdmin?: unknown; emailVerified?: unknown;
+  profilePicture?: unknown; profileImage?: unknown; profileImages?: unknown; avatar?: unknown; photoURL?: unknown;
+  role?: unknown; isAdmin?: unknown; emailVerified?: unknown;
   accountStatus?: unknown; deletedAt?: unknown; banned?: unknown; isBanned?: unknown; accountType?: unknown;
   onlineStatus?: unknown; statusReason?: unknown; verificationStatus?: unknown; isAuthenticated?: unknown; createdAt?: unknown;
 };
+type UnknownRecord = { [key: string]: unknown };
+type ProfileImageSelection = {
+  userId: string;
+  profileImageId: string;
+  setAs: string;
+};
 const isUserSource = (value: unknown): value is AdminUserSource => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null && !Array.isArray(value);
 const readString = (value: unknown): string => typeof value === 'string' ? value : '';
+const readImageUrl = (value: unknown): string => {
+  if (typeof value === 'string') return value.trim();
+  if (!isRecord(value)) return '';
+  return readString(value.imageURL)
+    || readString(value.imageUrl)
+    || readString(value.downloadURL)
+    || readString(value.url);
+};
+const readEmbeddedProfileImage = (value: unknown): string => {
+  if (!isRecord(value)) return '';
+  return readImageUrl(value.profile) || readImageUrl(value.avatar);
+};
 const readRole = (value: unknown): AdminUserRole => value === 'premium' || value === 'moderator' || value === 'admin' || value === 'developer' ? value : 'user';
 const readVerificationStatus = (value: unknown): AdminUserRecord['verificationStatus'] => value === 'pending' || value === 'verified' || value === 'rejected' ? value : 'unsubmitted';
 const readDateMs = (value: unknown): number => {
@@ -48,6 +94,7 @@ const readDateMs = (value: unknown): number => {
 export class AdminUserService {
   private static instance: AdminUserService;
   private readonly apiService = ApiService.getInstance();
+  private readonly logger = DiagnosticLogService.getInstance();
 
   private constructor() {}
 
@@ -64,12 +111,18 @@ export class AdminUserService {
     const search = new URLSearchParams({ limit: '50' });
     if (cursor) search.set('cursor', cursor);
     try {
-      return await this.fetchUsersFromFirestore(cursor);
+      return await this.resolveProfilePictures(await this.fetchUsersFromFirestore(cursor));
     } catch (firestoreError: unknown) {
-      console.warn('[AdminUserService] Firestore users unavailable; trying the secure API.', firestoreError);
+      this.logger.warn('AdminUserService', 'users:firestore-fallback', {
+        message: firestoreError instanceof Error ? firestoreError.message : 'Unknown Firestore error',
+      });
       const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string; pagination?: { hasMore?: boolean; nextCursor?: string | null } }>(`/api/admin/users?${search.toString()}`, { authenticated: true, timeoutMs: 18_000 });
       if (!response.success) throw new Error(response.error || 'Unable to load users');
-      return this.createPage(response.data ?? [], response.pagination?.hasMore === true, response.pagination?.nextCursor ?? null);
+      return this.resolveProfilePictures(this.createPage(
+        response.data ?? [],
+        response.pagination?.hasMore === true,
+        response.pagination?.nextCursor ?? null,
+      ));
     }
   }
 
@@ -84,32 +137,80 @@ export class AdminUserService {
     }
   }
 
-  public async updateLifecycle(userId: string, action: 'archive' | 'unarchive' | 'delete_permanently'): Promise<void> {
+  public async updateLifecycle(
+    userId: string,
+    action: 'archive' | 'unarchive' | 'delete_permanently',
+    reason: string,
+    onProgress?: (operation: UserLifecycleOperation) => void,
+  ): Promise<UserLifecycleOperation> {
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) throw new Error('A lifecycle reason is required.');
     try {
-      await this.apiService.request(`/api/admin/users/${encodeURIComponent(userId)}/lifecycle`, { method: 'POST', authenticated: true, body: { action }, timeoutMs: 18_000 });
+      const correlationId = this.createCorrelationId();
+      this.logger.info('AdminUserService', 'lifecycle:start', { correlationId, userId, action });
+      const response = await this.apiService.request<LifecycleStartResponse>(`/api/admin/users/${encodeURIComponent(userId)}/lifecycle`, {
+        method: 'POST',
+        authenticated: true,
+        body: { action, reason: normalizedReason },
+        headers: { 'X-Ourlime-Correlation-Id': correlationId },
+        timeoutMs: USER_LIFECYCLE_START_TIMEOUT_MS,
+        availabilityImpact: 'request-only',
+      });
+      onProgress?.(response.operation);
+      return await this.waitForLifecycleOperation(userId, response.operation.id, onProgress);
     } catch (error: unknown) {
       if (error instanceof ApiServiceError && error.code === 'REQUEST_TIMEOUT') {
-        throw new Error('Account lifecycle actions require the secure Ourlime server, which is currently unavailable.');
+        throw new Error('The lifecycle job was queued but progress could not be loaded. Refresh the user to resume tracking it.');
       }
       throw error;
     }
   }
 
-  public async updateAccountStatus(userId: string, status: AdminAccountStatus, reason: string, suspendedUntil: Date | null): Promise<void> {
-    const administrator = await adminAccessService.requireAdmin();
-    await updateDoc(doc(db, 'users', userId), {
-      accountStatus: status,
-      statusReason: reason.trim(),
-      statusUpdatedAt: serverTimestamp(),
-      statusUpdatedBy: administrator.userId,
-      suspendedUntil,
-      suspendedAt: status === 'suspended' ? serverTimestamp() : null,
-      bannedAt: status === 'banned' ? serverTimestamp() : null,
-      isBanned: status === 'banned',
-      banned: status === 'banned',
-      isSuspended: status === 'suspended',
+  public async updateAccountStatus(userId: string, status: AdminAccountStatus, reason: string, suspendedUntil: Date | null, onProgress?: (operation: UserLifecycleOperation) => void): Promise<UserLifecycleOperation> {
+    await adminAccessService.requireAdmin();
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) throw new Error('A status reason is required.');
+    const correlationId = this.createCorrelationId();
+    const response = await this.apiService.request<LifecycleStartResponse>(
+      `/api/admin/users/${encodeURIComponent(userId)}/status`,
+      {
+        method: 'PATCH',
+        authenticated: true,
+        body: {
+          status,
+          reason: normalizedReason,
+          suspendedUntil: suspendedUntil?.toISOString() ?? null,
+        },
+        headers: { 'X-Ourlime-Correlation-Id': correlationId },
+        timeoutMs: USER_LIFECYCLE_START_TIMEOUT_MS,
+      },
+    );
+    if (!response.success) throw new Error(response.error || 'Unable to update account status.');
+    onProgress?.(response.operation);
+    return this.waitForLifecycleOperation(userId, response.operation.id, onProgress);
+  }
+
+  public async retryLifecycleOperation(userId: string, operationId: string): Promise<UserLifecycleOperation> {
+    const response = await this.apiService.request<LifecycleStatusResponse>(
+      `/api/admin/users/${encodeURIComponent(userId)}/lifecycle/${encodeURIComponent(operationId)}/retry`,
+      { method: 'POST', authenticated: true, timeoutMs: USER_LIFECYCLE_START_TIMEOUT_MS },
+    );
+    if (!response.success) throw new Error(response.error || 'Unable to retry lifecycle operation.');
+    return this.waitForLifecycleOperation(userId, operationId);
+  }
+
+  public async retryModerationDelivery(eventId: string): Promise<ModerationDeliveryResult> {
+    const response = await this.apiService.request<{ success: boolean; delivery: ModerationDeliveryResult; error?: string }>(
+      `/api/admin/moderation-delivery/${encodeURIComponent(eventId)}/retry`,
+      { method: 'POST', authenticated: true, timeoutMs: USER_LIFECYCLE_START_TIMEOUT_MS },
+    );
+    if (!response.success) throw new Error(response.error || 'Unable to retry email delivery.');
+    this.logger.info('AdminUserService', 'delivery:retry', {
+      eventId,
+      emailStatus: response.delivery.emailStatus,
+      attemptCount: response.delivery.emailAttemptCount,
     });
-    await addDoc(collection(db, 'adminLogs'), { action: 'change_account_status', adminId: administrator.userId, targetUserId: userId, newStatus: status, reason: reason.trim(), createdAt: serverTimestamp(), timestamp: serverTimestamp() });
+    return response.delivery;
   }
 
   public async verifyEmail(userId: string): Promise<void> {
@@ -165,7 +266,12 @@ export class AdminUserService {
           lastName: readString(value.lastName),
           userName: readString(value.userName),
           email: readString(value.email),
-          profilePicture: readString(value.profilePicture) || readString(value.profileImage) || null,
+          profilePicture: readImageUrl(value.profilePicture)
+            || readImageUrl(value.profileImage)
+            || readEmbeddedProfileImage(value.profileImages)
+            || readImageUrl(value.avatar)
+            || readImageUrl(value.photoURL)
+            || null,
           role,
           isAdmin: value.isAdmin === true || role === 'admin',
           emailVerified: value.emailVerified === true,
@@ -183,6 +289,115 @@ export class AdminUserService {
       hasMore,
       nextCursor,
     };
+  }
+
+  private async resolveProfilePictures(page: PageResult<AdminUserRecord>): Promise<PageResult<AdminUserRecord>> {
+    if (page.items.length === 0) return page;
+    try {
+      const userIds = [...new Set(page.items.map((user) => user.id).filter(Boolean))];
+      const selectionSnapshots = await Promise.all(
+        Array.from({ length: Math.ceil(userIds.length / 30) }, (_, index) => userIds.slice(index * 30, index * 30 + 30))
+          .filter((userIdChunk) => userIdChunk.length > 0)
+          .map((userIdChunk) => getDocs(query(
+            collection(db, 'profileImageSetAs'),
+            where('userId', 'in', userIdChunk),
+          )))
+      );
+      const selectionByUserId = new Map<string, ProfileImageSelection>();
+      selectionSnapshots.flatMap((snapshot) => snapshot.docs).forEach((selectionDocument) => {
+        const value: unknown = selectionDocument.data();
+        if (!isRecord(value)) return;
+        const selection: ProfileImageSelection = {
+          userId: readString(value.userId),
+          profileImageId: readString(value.profileImageId),
+          setAs: readString(value.setAs),
+        };
+        if (
+          !selection.userId
+          || !selection.profileImageId
+          || (selection.setAs !== 'postProfile' && selection.setAs !== 'profile')
+        ) return;
+        const existing = selectionByUserId.get(selection.userId);
+        const existingPriority = existing?.setAs === 'postProfile' ? 2 : existing?.setAs === 'profile' ? 1 : 0;
+        const nextPriority = selection.setAs === 'postProfile' ? 2 : selection.setAs === 'profile' ? 1 : 0;
+        if (!existing || nextPriority > existingPriority) selectionByUserId.set(selection.userId, selection);
+      });
+
+      const imageIds = [...new Set(
+        [...selectionByUserId.values()].map((selection) => selection.profileImageId).filter(Boolean)
+      )];
+      const imageSnapshots = await Promise.all(
+        Array.from({ length: Math.ceil(imageIds.length / 30) }, (_, index) => imageIds.slice(index * 30, index * 30 + 30))
+          .filter((imageIdChunk) => imageIdChunk.length > 0)
+          .map((imageIdChunk) => getDocs(query(
+            collection(db, 'profileImages'),
+            where(documentId(), 'in', imageIdChunk),
+          )))
+      );
+      const imageUrlById = new Map<string, string>();
+      imageSnapshots.flatMap((snapshot) => snapshot.docs).forEach((imageDocument) => {
+        const imageUrl = readImageUrl(imageDocument.data());
+        if (imageUrl) imageUrlById.set(imageDocument.id, imageUrl);
+      });
+
+      const resolvedItems = page.items.map((user): AdminUserRecord => {
+        const selectedImageId = selectionByUserId.get(user.id)?.profileImageId;
+        return {
+          ...user,
+          profilePicture: selectedImageId
+            ? imageUrlById.get(selectedImageId) || user.profilePicture
+            : user.profilePicture,
+        };
+      });
+      this.logger.success('AdminUserService', 'avatars:resolved', {
+        userCount: resolvedItems.length,
+        selectionCount: selectionByUserId.size,
+        resolvedAvatarCount: resolvedItems.filter((user) => Boolean(user.profilePicture)).length,
+      });
+      return { ...page, items: resolvedItems };
+    } catch (error: unknown) {
+      this.logger.warn('AdminUserService', 'avatars:resolve', {
+        message: error instanceof Error ? error.message : 'Unknown avatar resolution error',
+      });
+      return page;
+    }
+  }
+
+  private createCorrelationId(): string {
+    return `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  private async waitForLifecycleOperation(
+    userId: string,
+    operationId: string,
+    onProgress?: (operation: UserLifecycleOperation) => void,
+  ): Promise<UserLifecycleOperation> {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < USER_LIFECYCLE_POLL_TIMEOUT_MS) {
+      const response = await this.apiService.request<LifecycleStatusResponse>(
+        `/api/admin/users/${encodeURIComponent(userId)}/lifecycle/${encodeURIComponent(operationId)}`,
+        { authenticated: true, timeoutMs: USER_LIFECYCLE_START_TIMEOUT_MS, availabilityImpact: 'request-only' },
+      );
+      const operation = response.operation;
+      onProgress?.(operation);
+      this.logger.info('AdminUserService', 'lifecycle:progress', {
+        operationId,
+        userId,
+        phase: operation.phase,
+        processedDocuments: operation.processedDocuments,
+        totalDocuments: operation.totalDocuments,
+        emailStatus: operation.delivery?.emailStatus ?? 'not_requested',
+      });
+      if (operation.phase === 'completed') {
+        const administratorId = auth.currentUser?.uid;
+        if (administratorId) await localCacheService.clearUser(administratorId).catch(() => undefined);
+        useResourceStore.getState().clearUserResources();
+        return operation;
+      }
+      if (operation.phase === 'failed') throw new Error(`Lifecycle job failed (${operation.errorCode || 'unknown error'}). You can retry it safely.`);
+      await new Promise<void>((resolve) => setTimeout(resolve, USER_LIFECYCLE_POLL_INTERVAL_MS));
+    }
+    throw new Error('The lifecycle job is still running. Refresh the user to continue tracking progress.');
   }
 }
 

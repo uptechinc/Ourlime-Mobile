@@ -102,25 +102,39 @@ export class SharedContentMessageService {
     try {
       const url = new URL(sourceUrl);
       const hostname = url.hostname.toLowerCase();
+      const isDevelopmentBundle = typeof __DEV__ !== 'undefined' && __DEV__;
+      const isPrivateDevelopmentHost = isDevelopmentBundle
+        && (
+          hostname === 'localhost'
+          || hostname === '127.0.0.1'
+          || /^10\./.test(hostname)
+          || /^192\.168\./.test(hostname)
+          || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+        );
       const isOurlimeHost = hostname === 'ourlime.com'
         || hostname === 'www.ourlime.com'
-        || hostname === 'localhost'
-        || hostname === '127.0.0.1';
+        || isPrivateDevelopmentHost;
       if (!isOurlimeHost) return null;
       const segments = url.pathname.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment));
       const root = segments[0]?.toLowerCase();
-      const entityId = segments[1];
-      if (!entityId) return null;
       let kind: SharedChatContentKind | null = null;
-      if (root === 'limes' || root === 'lime') kind = 'lime';
-      else if (root === 'post') kind = 'post';
-      else if (root === 'communities') kind = 'community';
-      else if (root === 'profile') kind = 'profile';
-      else if (root === 'events') kind = 'event';
-      else if (root === 'blogs') kind = 'blog';
-      else if (root === 'jobs') kind = 'job';
-      else if (root === 'market') kind = 'market-product';
-      if (!kind) return null;
+      let entityId: string | null = null;
+      if (root === 'limes' || root === 'lime') {
+        kind = 'lime';
+        entityId = segments[1] || url.searchParams.get('id') || url.searchParams.get('limeId');
+      } else if (root === 'post' || root === 'posts') {
+        kind = 'post';
+        entityId = segments[1] || url.searchParams.get('id') || url.searchParams.get('postId') || url.searchParams.get('post');
+      } else {
+        entityId = segments[1] || null;
+        if (root === 'communities') kind = 'community';
+        else if (root === 'profile') kind = 'profile';
+        else if (root === 'events') kind = 'event';
+        else if (root === 'blogs') kind = 'blog';
+        else if (root === 'jobs') kind = 'job';
+        else if (root === 'market') kind = 'market-product';
+      }
+      if (!kind || !entityId) return null;
       return {
         kind,
         entityId,

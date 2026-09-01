@@ -386,6 +386,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
 
                 {/* Video Thumbnail Frame Selector & Custom Cover Upload */}
                 <VideoThumbnailPicker
+                  key={selectedAsset.uri}
                   videoUri={selectedAsset.uri}
                   durationSeconds={typeof selectedAsset.duration === 'number' ? selectedAsset.duration / 1000 : 0}
                   selectedThumbnailUri={selectedThumbnailUri}
