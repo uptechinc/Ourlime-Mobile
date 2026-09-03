@@ -6,6 +6,8 @@ import { NotificationService } from '@/lib/services/NotificationService';
 type NotificationContextValue = {
   notifications: NotificationData[];
   unreadCount: number;
+  readCount: number;
+  totalCount: number;
   isLoading: boolean;
   hasMore: boolean;
   loadMore: () => Promise<void>;
@@ -28,6 +30,8 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [readCount, setReadCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [userId, setUserId] = useState<string | null>(authService.getVerifiedCurrentUser()?.uid ?? null);
@@ -41,6 +45,9 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
       const user = authService.getVerifiedCurrentUser();
       if (!user) {
         setNotifications([]);
+        setUnreadCount(0);
+        setReadCount(0);
+        setTotalCount(0);
         setIsLoading(false);
         return;
       }
@@ -50,6 +57,8 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
         setNotifications(page.notifications);
         hasDataRef.current = true;
         setUnreadCount(page.unreadCount);
+        setReadCount(page.readCount ?? 0);
+        setTotalCount(page.totalCount ?? (page.unreadCount + (page.readCount ?? 0)));
         setNextCursor(page.nextCursor);
         setHasMore(page.hasMore);
       } catch {
@@ -69,6 +78,8 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     if (!user) {
       setNotifications([]);
       setUnreadCount(0);
+      setReadCount(0);
+      setTotalCount(0);
       setNextCursor(null);
       setHasMore(false);
       hasDataRef.current = false;
@@ -80,6 +91,8 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
         setNotifications(cached.notifications);
         hasDataRef.current = true;
         setUnreadCount(cached.unreadCount);
+        setReadCount(cached.readCount ?? 0);
+        setTotalCount(cached.totalCount ?? (cached.unreadCount + (cached.readCount ?? 0)));
         setNextCursor(cached.nextCursor);
         setHasMore(cached.hasMore);
         setIsLoading(false);
@@ -144,6 +157,8 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     const page = await notificationService.fetchPage(user.uid, nextCursor);
     setNotifications((current) => notificationService.mergePages(current, page.notifications));
     setUnreadCount(page.unreadCount);
+    setReadCount(page.readCount ?? 0);
+    setTotalCount(page.totalCount ?? (page.unreadCount + (page.readCount ?? 0)));
     setNextCursor(page.nextCursor);
     setHasMore(page.hasMore);
   };
@@ -157,6 +172,8 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     <NotificationContext.Provider value={{
       notifications,
       unreadCount,
+      readCount,
+      totalCount,
       isLoading,
       hasMore,
       loadMore,

@@ -59,7 +59,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
   const router = useRouter();
   const { isDark, colors } = useAppTheme();
   const swipeDismiss = useSwipeDismiss({ visible: visible && mode === 'modal', onDismiss: onClose });
-  const { notifications, unreadCount, isLoading, hasMore, loadMore, markAsRead, markManyAsRead, markManyAsUnread, markAllAsRead, deleteNotifications, refreshNotifications } = useNotifications();
+  const { notifications, unreadCount, readCount, totalCount, isLoading, hasMore, loadMore, markAsRead, markManyAsRead, markManyAsUnread, markAllAsRead, deleteNotifications, refreshNotifications } = useNotifications();
 
   const [sortMode, setSortMode] = useState<SortMode>('unread_first');
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
@@ -69,6 +69,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [markingAllRead, setMarkingAllRead] = useState(false);
+  const [bulkLoadingAction, setBulkLoadingAction] = useState<'read' | 'unread' | 'delete' | null>(null);
 
   // Track resolved friend request notifications (Web Parity)
   const [resolvedRequestIds, setResolvedRequestIds] = useState<Set<string>>(new Set());
@@ -135,6 +136,20 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
   const unreadItems = useMemo(() => sortedNotifications.filter((n) => !isItemRead(n)), [sortedNotifications]);
   const readItems = useMemo(() => sortedNotifications.filter((n) => isItemRead(n)), [sortedNotifications]);
 
+  const displayReadCount = useMemo(() => {
+    if (activeFilter === 'all' || activeFilter === 'unread') {
+      return readCount;
+    }
+    return readItems.length;
+  }, [activeFilter, readCount, readItems.length]);
+
+  const displayUnreadCount = useMemo(() => {
+    if (activeFilter === 'all' || activeFilter === 'unread') {
+      return unreadCount;
+    }
+    return unreadItems.length;
+  }, [activeFilter, unreadCount, unreadItems.length]);
+
   // Count unread vs read items among current selection
   const selectedUnreadCount = useMemo(() => {
     return Array.from(selectedIds).filter((id) => {
@@ -180,7 +195,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
   };
 
   const handlePromptBulkDelete = () => {
-    if (selectedIds.size === 0) return;
+    if (selectedIds.size === 0 || bulkLoadingAction !== null) return;
     setDialogState({
       visible: true,
       type: 'danger',
@@ -189,14 +204,18 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
       confirmText: 'Delete',
       cancelText: 'Cancel',
       onConfirm: async () => {
-        closeDialog();
         if (!currentUserId) return;
+        setBulkLoadingAction('delete');
         try {
           await deleteNotifications(Array.from(selectedIds));
           setSelectedIds(new Set());
           setSelectionMode(false);
+          closeDialog();
         } catch (error: unknown) {
+          closeDialog();
           setDialogState({ visible: true, type: 'error', title: 'Notifications not deleted', message: error instanceof Error ? error.message : 'The selected notifications could not be deleted.', confirmText: 'OK' });
+        } finally {
+          setBulkLoadingAction(null);
         }
       },
     });
@@ -224,26 +243,34 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
   };
 
   const handleBulkMarkRead = async () => {
-    if (!currentUserId || selectedIds.size === 0) return;
+    if (!currentUserId || selectedIds.size === 0 || bulkLoadingAction !== null) return;
     const unreadIds = Array.from(selectedIds).filter((id) => sortedNotifications.some((notification) => notification.id === id && !isItemRead(notification)));
+    if (unreadIds.length === 0) return;
+    setBulkLoadingAction('read');
     try {
       await markManyAsRead(unreadIds);
       setSelectedIds(new Set());
       setSelectionMode(false);
     } catch (error: unknown) {
       setDialogState({ visible: true, type: 'error', title: 'Notifications not updated', message: error instanceof Error ? error.message : 'The selected notifications could not be marked as read.', confirmText: 'OK' });
+    } finally {
+      setBulkLoadingAction(null);
     }
   };
 
   const handleBulkMarkUnread = async () => {
-    if (!currentUserId || selectedIds.size === 0) return;
+    if (!currentUserId || selectedIds.size === 0 || bulkLoadingAction !== null) return;
     const readIds = Array.from(selectedIds).filter((id) => sortedNotifications.some((notification) => notification.id === id && isItemRead(notification)));
+    if (readIds.length === 0) return;
+    setBulkLoadingAction('unread');
     try {
       await markManyAsUnread(readIds);
       setSelectedIds(new Set());
       setSelectionMode(false);
     } catch (error: unknown) {
       setDialogState({ visible: true, type: 'error', title: 'Notifications not updated', message: error instanceof Error ? error.message : 'The selected notifications could not be marked as unread.', confirmText: 'OK' });
+    } finally {
+      setBulkLoadingAction(null);
     }
   };
 
@@ -593,9 +620,22 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 {selectedUnreadCount > 0 && (
                   <TouchableOpacity
+                    disabled={bulkLoadingAction !== null}
                     onPress={() => void handleBulkMarkRead()}
-                    style={{ backgroundColor: '#10b981', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
+                    style={{
+                      backgroundColor: '#10b981',
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 10,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      opacity: bulkLoadingAction !== null ? 0.6 : 1,
+                    }}
                   >
+                    {bulkLoadingAction === 'read' ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : null}
                     <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>
                       Mark Read ({selectedUnreadCount})
                     </Text>
@@ -604,9 +644,22 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
 
                 {selectedReadCount > 0 && (
                   <TouchableOpacity
+                    disabled={bulkLoadingAction !== null}
                     onPress={() => void handleBulkMarkUnread()}
-                    style={{ backgroundColor: '#3b82f6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
+                    style={{
+                      backgroundColor: '#3b82f6',
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 10,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      opacity: bulkLoadingAction !== null ? 0.6 : 1,
+                    }}
                   >
+                    {bulkLoadingAction === 'unread' ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : null}
                     <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>
                       Mark Unread ({selectedReadCount})
                     </Text>
@@ -614,9 +667,22 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
                 )}
 
                 <TouchableOpacity
+                  disabled={bulkLoadingAction !== null}
                   onPress={handlePromptBulkDelete}
-                  style={{ backgroundColor: '#ef4444', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
+                  style={{
+                    backgroundColor: '#ef4444',
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 10,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    opacity: bulkLoadingAction !== null ? 0.6 : 1,
+                  }}
                 >
+                  {bulkLoadingAction === 'delete' ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : null}
                   <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>
                     Delete ({selectedIds.size})
                   </Text>
@@ -668,7 +734,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
                   <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#10b981', marginRight: 6 }} />
                   <Text style={{ fontSize: 12, fontWeight: '800', color: '#10b981', letterSpacing: 0.5 }}>
-                    UNREAD · {unreadItems.length}
+                    UNREAD · {displayUnreadCount}
                   </Text>
                 </View>
               )}
@@ -677,7 +743,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
               {unreadItems.map(renderNotificationCard)}
 
               {/* ── Web Parity "Show read notifications" / "Hide read notifications" Toggle Button ── */}
-              {readItems.length > 0 && (
+              {displayReadCount > 0 && (
                 <View style={{ marginTop: 16, marginBottom: 16 }}>
                   <TouchableOpacity
                     onPress={() => setShowReadNotifs((v) => !v)}
@@ -706,7 +772,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
                       paddingVertical: 2,
                     }}>
                       <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569' }}>
-                        {readItems.length}
+                        {displayReadCount}
                       </Text>
                     </View>
                     <Icon name={showReadNotifs ? 'chevron-up' : 'chevron-down'} size={16} color="#64748b" style={{ marginLeft: 6 }} />

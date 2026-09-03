@@ -127,6 +127,8 @@ export type NotificationData = {
 export type NotificationPage = {
   notifications: NotificationData[];
   unreadCount: number;
+  readCount?: number;
+  totalCount?: number;
   nextCursor: string | null;
   hasMore: boolean;
 };

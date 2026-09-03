@@ -15,21 +15,19 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ArrowUpDown,
   Check,
   ChevronLeft,
-  ChevronRight,
   Clock,
   Heart,
   MessageCircle,
-  Plus,
+  PenSquare,
   Search,
-  Sparkles,
+  SlidersHorizontal,
+  TrendingUp,
   X,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useProfileStore } from '@/src/store/useProfileStore';
-import PageHeader from '@/components/ui/PageHeader';
 import CreateBlogModal from '@/components/blogs/CreateBlogModal';
 import {
   BlogsAndArticlesService,
@@ -50,24 +48,11 @@ const CATEGORIES = [
   'Travel',
 ];
 
-const POPULAR_TAGS = [
-  'Technology',
-  'Wellness',
-  'Sustainability',
-  'Marketing',
-  'Finance',
-  'Productivity',
-  'Innovation',
-  'Mental Health',
-  'Remote Work',
-  'Artificial Intelligence',
-];
-
 const SORT_OPTIONS: { value: 'newest' | 'oldest' | 'popular' | 'comments'; label: string }[] = [
   { value: 'newest', label: 'Newest First' },
-  { value: 'oldest', label: 'Oldest First' },
   { value: 'popular', label: 'Most Popular' },
-  { value: 'comments', label: 'Most Comments' },
+  { value: 'comments', label: 'Most Discussed' },
+  { value: 'oldest', label: 'Oldest First' },
 ];
 
 const SAMPLE_BLOGS: BlogListItem[] = [
@@ -137,6 +122,28 @@ const SAMPLE_BLOGS: BlogListItem[] = [
     comments: 38,
     engagement: { likes: 215, comments: 38 },
   },
+  {
+    id: '4',
+    title: 'Decoding Financial Independence: A Practical Guide',
+    excerpt:
+      'A structured approach to managing your wealth, budgeting wisely, and setting up sustainable long-term investments.',
+    coverImage:
+      'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1470&q=80',
+    author: {
+      id: 'author4',
+      name: 'Priya Patel',
+      avatar:
+        'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=1488&q=80',
+    },
+    category: 'Finance',
+    categories: [{ name: 'Finance' }],
+    tags: [{ name: 'Finance' }, { name: 'Investing' }],
+    readTime: 10,
+    publishedDate: '2023-10-08T16:20:00Z',
+    likes: 198,
+    comments: 45,
+    engagement: { likes: 198, comments: 45 },
+  },
 ];
 
 const blogService = BlogsAndArticlesService.getInstance();
@@ -152,11 +159,9 @@ export default function BlogsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [contentType, setContentType] = useState<'all' | 'blog' | 'article'>('all');
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'popular' | 'comments'>('newest');
-  const [isSortModalOpen, setIsSortModalOpen] = useState(false);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [currentFeaturedIndex, setCurrentFeaturedIndex] = useState(0);
 
   const fetchBlogs = useCallback(async () => {
     try {
@@ -167,7 +172,7 @@ export default function BlogsScreen() {
         setBlogs(SAMPLE_BLOGS);
       }
     } catch (err) {
-      console.warn('[BlogsScreen] Error loading posts, falling back to sample:', err);
+      console.warn('[BlogsScreen] Error loading posts, using sample:', err);
       setBlogs(SAMPLE_BLOGS);
     } finally {
       setIsLoading(false);
@@ -186,7 +191,11 @@ export default function BlogsScreen() {
 
   const getTime = (val: unknown): number => {
     if (!val) return 0;
-    if (typeof val === 'object' && 'toDate' in (val as object) && typeof (val as { toDate: () => Date }).toDate === 'function') {
+    if (
+      typeof val === 'object' &&
+      'toDate' in (val as object) &&
+      typeof (val as { toDate: () => Date }).toDate === 'function'
+    ) {
       return (val as { toDate: () => Date }).toDate().getTime();
     }
     if (typeof val === 'string' || typeof val === 'number' || val instanceof Date) {
@@ -200,7 +209,6 @@ export default function BlogsScreen() {
     const parsed = getTime(date);
     if (!parsed) return '';
     return new Date(parsed).toLocaleDateString('en-US', {
-      year: 'numeric',
       month: 'short',
       day: 'numeric',
     });
@@ -220,13 +228,9 @@ export default function BlogsScreen() {
         blog.category === selectedCategory ||
         blog.categories?.some((c) => c.name === selectedCategory);
 
-      const matchesTag =
-        !selectedTag ||
-        blog.tags?.some((t) => t.name?.toLowerCase() === selectedTag.toLowerCase());
-
-      return matchesSearch && matchesCategory && matchesTag;
+      return matchesSearch && matchesCategory;
     });
-  }, [blogs, searchQuery, selectedCategory, selectedTag]);
+  }, [blogs, searchQuery, selectedCategory]);
 
   // Sort blogs
   const sortedBlogs = useMemo(() => {
@@ -247,12 +251,24 @@ export default function BlogsScreen() {
     });
   }, [filteredBlogs, sortBy]);
 
-  // Featured blogs (top 3)
-  const featuredBlogs = useMemo(() => {
-    return blogs.slice(0, 3);
-  }, [blogs]);
+  // Hero Spotlight Story (top story)
+  const heroStory = useMemo(() => {
+    return !searchQuery.trim() && selectedCategory === 'All' ? sortedBlogs[0] ?? null : null;
+  }, [sortedBlogs, searchQuery, selectedCategory]);
 
-  const activeFeatured = featuredBlogs[currentFeaturedIndex] ?? featuredBlogs[0] ?? null;
+  // Trending Stories (next 3)
+  const trendingStories = useMemo(() => {
+    if (searchQuery.trim() || selectedCategory !== 'All') return [];
+    return sortedBlogs.slice(1, 4);
+  }, [sortedBlogs, searchQuery, selectedCategory]);
+
+  // Main Articles Feed (all remaining stories)
+  const feedStories = useMemo(() => {
+    if (!heroStory) return sortedBlogs;
+    return sortedBlogs.slice(1);
+  }, [sortedBlogs, heroStory]);
+
+  const hasActiveFilters = Boolean(searchQuery.trim() || selectedCategory !== 'All' || contentType !== 'all' || sortBy !== 'newest');
 
   const navigateToBlog = (blogId: string) => {
     router.push({ pathname: '/blogs/[id]', params: { id: blogId } });
@@ -260,8 +276,124 @@ export default function BlogsScreen() {
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.safeArea, { backgroundColor: colors.canvas }]}>
-      <PageHeader title="Blogs" onBackPress={() => router.back()} />
+      {/* ── Top Header Bar ── */}
+      <View style={[styles.headerBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <TouchableOpacity
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          onPress={() => router.back()}
+          style={styles.headerIconButton}
+          accessibilityLabel="Go back"
+        >
+          <ChevronLeft size={24} color={colors.text} />
+        </TouchableOpacity>
 
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Blogs & Articles</Text>
+
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => setIsCreateModalOpen(true)}
+          style={styles.writeButton}
+          accessibilityLabel="Create Blog"
+        >
+          <PenSquare size={16} color="#ffffff" />
+          <Text style={styles.writeButtonText}>Write</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Compact Search & Filter Row ── */}
+      <View style={[styles.searchFilterRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <View
+          style={[
+            styles.searchBar,
+            {
+              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#f1f5f9',
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Search size={16} color={colors.secondaryText} style={styles.searchIcon} />
+          <TextInput
+            placeholder="Search blogs, topics, authors…"
+            placeholderTextColor={colors.secondaryText}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={[styles.searchInput, { color: colors.text }]}
+          />
+          {searchQuery ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <X size={16} color={colors.secondaryText} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={() => setIsFilterModalOpen(true)}
+          style={[
+            styles.filterIconButton,
+            {
+              backgroundColor: hasActiveFilters
+                ? isDark
+                  ? 'rgba(16, 185, 129, 0.2)'
+                  : '#ecfdf5'
+                : isDark
+                ? 'rgba(255, 255, 255, 0.06)'
+                : '#f1f5f9',
+              borderColor: hasActiveFilters ? '#10b981' : colors.border,
+            },
+          ]}
+          accessibilityLabel="Filter & Sort"
+        >
+          <SlidersHorizontal
+            size={18}
+            color={hasActiveFilters ? '#10b981' : colors.secondaryText}
+          />
+          {hasActiveFilters && <View style={styles.filterActiveDot} />}
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Horizontal Category Navigation Bar ── */}
+      <View style={[styles.categoryBarContainer, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryBarContent}
+        >
+          {CATEGORIES.map((category) => {
+            const isSelected = selectedCategory === category;
+            return (
+              <TouchableOpacity
+                key={category}
+                activeOpacity={0.8}
+                onPress={() => setSelectedCategory(category)}
+                style={[
+                  styles.categoryTabPill,
+                  isSelected
+                    ? styles.categoryTabPillActive
+                    : {
+                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#f8fafc',
+                        borderColor: colors.border,
+                      },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.categoryTabText,
+                    {
+                      color: isSelected ? '#ffffff' : colors.secondaryText,
+                      fontWeight: isSelected ? '700' : '500',
+                    },
+                  ]}
+                >
+                  {category}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* ── Main Editorial Scroll Feed ── */}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
@@ -275,492 +407,368 @@ export default function BlogsScreen() {
           />
         }
       >
-        {/* ── Hero Header ── */}
-        <View style={styles.heroSection}>
-          <Text style={[styles.heroTitle, { color: colors.text }]}>
-            Explore Our Popular Blogs
-          </Text>
-          <Text style={[styles.heroSubtitle, { color: colors.secondaryText }]}>
-            Discover trending insights, stories, and knowledge based on community engagement
-          </Text>
-
-          {/* Action Row: Create Blog + Search Input */}
-          <View style={styles.heroActionRow}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => setIsCreateModalOpen(true)}
-              style={styles.createBlogButton}
-            >
-              <Plus size={18} color="#ffffff" />
-              <Text style={styles.createBlogButtonText}>Create Blog</Text>
-            </TouchableOpacity>
-
-            <View
-              style={[
-                styles.searchContainer,
-                {
-                  backgroundColor: colors.surface,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Search size={18} color={colors.secondaryText} style={styles.searchIcon} />
-              <TextInput
-                placeholder="Search blogs, tags, or authors…"
-                placeholderTextColor={colors.secondaryText}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                style={[styles.searchInput, { color: colors.text }]}
-              />
-              {searchQuery ? (
-                <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <X size={16} color={colors.secondaryText} />
-                </TouchableOpacity>
-              ) : null}
-            </View>
+        {/* Loading State */}
+        {isLoading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color="#10b981" />
+            <Text style={[styles.loadingText, { color: colors.secondaryText }]}>
+              Loading editorial stories…
+            </Text>
           </View>
+        ) : sortedBlogs.length === 0 ? (
+          /* Empty State */
+          <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Search size={40} color={colors.secondaryText} style={{ opacity: 0.5 }} />
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No matching stories</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.secondaryText }]}>
+              Try adjusting your search terms or clearing your category filters.
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                setSearchQuery('');
+                setSelectedCategory('All');
+                setContentType('all');
+                setSortBy('newest');
+              }}
+              style={styles.resetFiltersButton}
+            >
+              <Text style={styles.resetFiltersButtonText}>Reset All Filters</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {/* ── Hero Spotlight Article ── */}
+            {heroStory ? (
+              <View style={styles.spotlightSection}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Featured Story</Text>
+                </View>
 
-          {/* Content Type Tabs & Sort Button */}
-          <View style={styles.typeAndSortRow}>
-            <View style={[styles.typeSwitcher, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <TouchableOpacity
+                  activeOpacity={0.92}
+                  onPress={() => navigateToBlog(heroStory.id)}
+                  style={[styles.heroCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                >
+                  <Image
+                    source={{ uri: heroStory.coverImage }}
+                    style={styles.heroCoverImage}
+                    resizeMode="cover"
+                  />
+                  <LinearGradient
+                    colors={['transparent', 'rgba(0,0,0,0.65)', 'rgba(0,0,0,0.92)']}
+                    locations={[0.15, 0.6, 1]}
+                    style={styles.heroGradient}
+                  >
+                    <View style={styles.heroBadgeRow}>
+                      <View style={styles.heroCategoryPill}>
+                        <Text style={styles.heroCategoryPillText}>
+                          {heroStory.categories?.[0]?.name || heroStory.category || 'Featured'}
+                        </Text>
+                      </View>
+                      <View style={styles.heroReadTimePill}>
+                        <Clock size={11} color="#ffffff" style={{ marginRight: 4 }} />
+                        <Text style={styles.heroReadTimeText}>{heroStory.readTime || 5} min read</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.heroCardTitle} numberOfLines={2}>
+                      {heroStory.title}
+                    </Text>
+
+                    <View style={styles.heroAuthorRow}>
+                      <UserAvatar
+                        profileImage={heroStory.author?.avatar}
+                        firstName={heroStory.author?.name || 'Author'}
+                        size={28}
+                      />
+                      <Text style={styles.heroAuthorName}>
+                        {heroStory.author?.name || 'Ourlime Writer'}
+                      </Text>
+                      <Text style={styles.heroDot}>•</Text>
+                      <Text style={styles.heroDate}>
+                        {formatDate(heroStory.createdAt || heroStory.publishedDate)}
+                      </Text>
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {/* ── Trending Strip ── */}
+            {trendingStories.length > 0 ? (
+              <View style={styles.trendingSection}>
+                <View style={styles.sectionHeaderRow}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <TrendingUp size={16} color="#10b981" />
+                    <Text style={[styles.sectionTitle, { color: colors.text }]}>Trending Now</Text>
+                  </View>
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.trendingScrollContent}
+                >
+                  {trendingStories.map((story) => (
+                    <TouchableOpacity
+                      key={story.id}
+                      activeOpacity={0.88}
+                      onPress={() => navigateToBlog(story.id)}
+                      style={[
+                        styles.trendingCard,
+                        {
+                          backgroundColor: colors.surface,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <Image
+                        source={{ uri: story.coverImage }}
+                        style={styles.trendingCardImage}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.trendingCardBody}>
+                        <Text
+                          style={[styles.trendingCategory, { color: '#10b981' }]}
+                          numberOfLines={1}
+                        >
+                          {story.categories?.[0]?.name || story.category || 'Topic'}
+                        </Text>
+                        <Text
+                          style={[styles.trendingCardTitle, { color: colors.text }]}
+                          numberOfLines={2}
+                        >
+                          {story.title}
+                        </Text>
+                        <View style={styles.trendingMetaRow}>
+                          <Clock size={11} color={colors.secondaryText} style={{ marginRight: 3 }} />
+                          <Text style={[styles.trendingMetaText, { color: colors.secondaryText }]}>
+                            {story.readTime || 4} min
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            {/* ── Latest Articles Feed ── */}
+            <View style={styles.feedSection}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                  {selectedCategory === 'All' ? 'Latest Stories' : `${selectedCategory} Stories`}
+                </Text>
+                <Text style={[styles.feedCountText, { color: colors.secondaryText }]}>
+                  {feedStories.length} {feedStories.length === 1 ? 'article' : 'articles'}
+                </Text>
+              </View>
+
+              <View style={styles.feedList}>
+                {feedStories.map((story) => {
+                  const likesCount = story.engagement?.likes ?? story.likes ?? 0;
+                  const commentsCount = story.engagement?.comments ?? story.comments ?? 0;
+                  const categoryName = story.categories?.[0]?.name || story.category || 'General';
+
+                  return (
+                    <TouchableOpacity
+                      key={story.id}
+                      activeOpacity={0.88}
+                      onPress={() => navigateToBlog(story.id)}
+                      style={[
+                        styles.articleCard,
+                        {
+                          backgroundColor: colors.surface,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      {/* Image with category badge */}
+                      {story.coverImage ? (
+                        <View style={styles.articleCoverContainer}>
+                          <Image
+                            source={{ uri: story.coverImage }}
+                            style={styles.articleCover}
+                            resizeMode="cover"
+                          />
+                          <View style={styles.articleCategoryBadge}>
+                            <Text style={styles.articleCategoryBadgeText}>{categoryName}</Text>
+                          </View>
+                        </View>
+                      ) : null}
+
+                      {/* Content Body */}
+                      <View style={styles.articleBody}>
+                        {/* Title */}
+                        <Text
+                          style={[styles.articleTitle, { color: colors.text }]}
+                          numberOfLines={2}
+                        >
+                          {story.title}
+                        </Text>
+
+                        {/* Excerpt */}
+                        {story.excerpt ? (
+                          <Text
+                            style={[styles.articleExcerpt, { color: colors.secondaryText }]}
+                            numberOfLines={2}
+                          >
+                            {story.excerpt}
+                          </Text>
+                        ) : null}
+
+                        {/* Author & Interactions Footer */}
+                        <View style={[styles.articleFooter, { borderTopColor: colors.border }]}>
+                          <View style={styles.articleAuthor}>
+                            <UserAvatar
+                              profileImage={story.author?.avatar}
+                              firstName={story.author?.name || 'User'}
+                              size={22}
+                            />
+                            <Text
+                              style={[styles.articleAuthorName, { color: colors.text }]}
+                              numberOfLines={1}
+                            >
+                              {story.author?.name || 'Ourlime Writer'}
+                            </Text>
+                            <Text style={[styles.articleDot, { color: colors.secondaryText }]}>•</Text>
+                            <Text style={[styles.articleDate, { color: colors.secondaryText }]}>
+                              {formatDate(story.createdAt || story.publishedDate)}
+                            </Text>
+                          </View>
+
+                          <View style={styles.articleEngagement}>
+                            <View style={styles.statChip}>
+                              <Heart size={13} color="#ef4444" fill="rgba(239, 68, 68, 0.18)" />
+                              <Text style={[styles.statCount, { color: colors.secondaryText }]}>
+                                {likesCount}
+                              </Text>
+                            </View>
+                            <View style={styles.statChip}>
+                              <MessageCircle size={13} color={colors.secondaryText} />
+                              <Text style={[styles.statCount, { color: colors.secondaryText }]}>
+                                {commentsCount}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </>
+        )}
+      </ScrollView>
+
+      {/* ── Refine & Filter Modal ── */}
+      <Modal
+        visible={isFilterModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsFilterModalOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsFilterModalOpen(false)}
+        >
+          <View
+            style={[
+              styles.filterSheet,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.filterSheetHeader}>
+              <Text style={[styles.filterSheetTitle, { color: colors.text }]}>Refine Articles</Text>
+              <TouchableOpacity onPress={() => setIsFilterModalOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X size={20} color={colors.secondaryText} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Content Type Filter */}
+            <Text style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+              Content Format
+            </Text>
+            <View style={styles.formatRow}>
               {(['all', 'blog', 'article'] as const).map((type) => {
-                const isActive = contentType === type;
+                const isSelected = contentType === type;
                 return (
                   <TouchableOpacity
                     key={type}
                     activeOpacity={0.8}
                     onPress={() => setContentType(type)}
                     style={[
-                      styles.typeTab,
-                      isActive && { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#ecfdf5' },
+                      styles.formatPill,
+                      isSelected
+                        ? styles.formatPillActive
+                        : {
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
+                            borderColor: colors.border,
+                          },
                     ]}
                   >
                     <Text
                       style={[
-                        styles.typeTabText,
+                        styles.formatPillText,
                         {
-                          color: isActive ? '#10b981' : colors.secondaryText,
-                          fontWeight: isActive ? '700' : '500',
+                          color: isSelected ? '#ffffff' : colors.text,
+                          fontWeight: isSelected ? '700' : '500',
                         },
                       ]}
                     >
-                      {type === 'all' ? 'All' : type === 'blog' ? 'Blogs' : 'Articles'}
+                      {type === 'all' ? 'All Formats' : type === 'blog' ? 'Blogs' : 'Articles'}
                     </Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
 
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setIsSortModalOpen(true)}
-              style={[
-                styles.sortButton,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-              ]}
-            >
-              <ArrowUpDown size={15} color={colors.secondaryText} />
-              <Text style={[styles.sortButtonText, { color: colors.text }]}>
-                {SORT_OPTIONS.find((s) => s.value === sortBy)?.label ?? 'Sort'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* ── Featured Blog Hero Card ── */}
-        {activeFeatured ? (
-          <View style={styles.featuredContainer}>
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={() => navigateToBlog(activeFeatured.id)}
-              style={[
-                styles.featuredCard,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-              ]}
-            >
-              <Image
-                source={{ uri: activeFeatured.coverImage }}
-                style={styles.featuredCover}
-                resizeMode="cover"
-              />
-              <LinearGradient
-                colors={['transparent', 'rgba(0, 0, 0, 0.75)', 'rgba(0, 0, 0, 0.95)']}
-                locations={[0.1, 0.6, 1]}
-                style={styles.featuredScrim}
-              >
-                {/* Badges */}
-                <View style={styles.featuredBadgesRow}>
-                  <View style={styles.featuredCategoryBadge}>
-                    <Text style={styles.featuredCategoryText}>
-                      {activeFeatured.categories?.[0]?.name || activeFeatured.category || 'General'}
-                    </Text>
-                  </View>
-                  <View style={styles.featuredReadTimeBadge}>
-                    <Clock size={12} color="#ffffff" style={{ marginRight: 4 }} />
-                    <Text style={styles.featuredReadTimeText}>
-                      {activeFeatured.readTime || 5} min read
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Title */}
-                <Text style={styles.featuredTitle} numberOfLines={2}>
-                  {activeFeatured.title}
-                </Text>
-
-                {/* Author & Action Row */}
-                <View style={styles.featuredFooter}>
-                  <View style={styles.featuredAuthor}>
-                    <UserAvatar
-                      profileImage={activeFeatured.author?.avatar}
-                      firstName={activeFeatured.author?.name || 'User'}
-                      size={32}
-                    />
-                    <View style={{ marginLeft: 8 }}>
-                      <Text style={styles.featuredAuthorName}>
-                        {activeFeatured.author?.name || 'Ourlime user'}
-                      </Text>
-                      <Text style={styles.featuredDate}>
-                        {formatDate(activeFeatured.createdAt || activeFeatured.publishedDate)}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.readArticleBtn}>
-                    <Text style={styles.readArticleBtnText}>Read Article</Text>
-                  </View>
-                </View>
-              </LinearGradient>
-
-              {/* Carousel Indicators & Arrows */}
-              {featuredBlogs.length > 1 && (
-                <View style={styles.carouselIndicators}>
-                  {featuredBlogs.map((_, idx) => (
-                    <View
-                      key={idx}
+            {/* Sort Options */}
+            <Text style={[styles.filterSectionLabel, { color: colors.secondaryText, marginTop: 18 }]}>
+              Sort By
+            </Text>
+            <View style={styles.sortList}>
+              {SORT_OPTIONS.map((option) => {
+                const isSelected = sortBy === option.value;
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    activeOpacity={0.7}
+                    onPress={() => setSortBy(option.value)}
+                    style={[
+                      styles.sortRow,
+                      isSelected && {
+                        backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5',
+                      },
+                    ]}
+                  >
+                    <Text
                       style={[
-                        styles.carouselDot,
-                        idx === currentFeaturedIndex && styles.carouselDotActive,
+                        styles.sortRowText,
+                        {
+                          color: isSelected ? '#10b981' : colors.text,
+                          fontWeight: isSelected ? '700' : '500',
+                        },
                       ]}
-                    />
-                  ))}
-                </View>
-              )}
-            </TouchableOpacity>
-
-            {/* Carousel prev/next buttons */}
-            {featuredBlogs.length > 1 && (
-              <View style={styles.carouselControls}>
-                <TouchableOpacity
-                  onPress={() =>
-                    setCurrentFeaturedIndex((prev) =>
-                      prev === 0 ? featuredBlogs.length - 1 : prev - 1
-                    )
-                  }
-                  style={styles.carouselArrowBtn}
-                >
-                  <ChevronLeft size={16} color="#ffffff" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() =>
-                    setCurrentFeaturedIndex((prev) =>
-                      prev === featuredBlogs.length - 1 ? 0 : prev + 1
-                    )
-                  }
-                  style={styles.carouselArrowBtn}
-                >
-                  <ChevronRight size={16} color="#ffffff" />
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        ) : null}
-
-        {/* ── Category Filter Pills ── */}
-        <View style={styles.categoriesSection}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesList}
-          >
-            {CATEGORIES.map((cat) => {
-              const isSelected = selectedCategory === cat;
-              return (
-                <TouchableOpacity
-                  key={cat}
-                  activeOpacity={0.8}
-                  onPress={() => setSelectedCategory(cat)}
-                  style={[
-                    styles.categoryPill,
-                    {
-                      backgroundColor: isSelected ? '#10b981' : colors.surface,
-                      borderColor: isSelected ? '#10b981' : colors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.categoryPillText,
-                      {
-                        color: isSelected ? '#ffffff' : colors.text,
-                        fontWeight: isSelected ? '700' : '500',
-                      },
-                    ]}
-                  >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* ── Popular Tags ── */}
-        <View style={styles.tagsSection}>
-          <View style={styles.tagsHeader}>
-            <Sparkles size={14} color="#10b981" />
-            <Text style={[styles.tagsHeaderTitle, { color: colors.secondaryText }]}>
-              Popular Tags
-            </Text>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tagsList}
-          >
-            {POPULAR_TAGS.map((tag) => {
-              const isSelected = selectedTag === tag;
-              return (
-                <TouchableOpacity
-                  key={tag}
-                  activeOpacity={0.8}
-                  onPress={() => setSelectedTag(isSelected ? null : tag)}
-                  style={[
-                    styles.tagChip,
-                    {
-                      backgroundColor: isSelected
-                        ? isDark ? 'rgba(16, 185, 129, 0.25)' : '#ecfdf5'
-                        : colors.surface,
-                      borderColor: isSelected ? '#10b981' : colors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.tagChipText,
-                      {
-                        color: isSelected ? '#10b981' : colors.secondaryText,
-                        fontWeight: isSelected ? '700' : '500',
-                      },
-                    ]}
-                  >
-                    #{tag}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* ── Results Count Bar ── */}
-        <View style={[styles.resultsBar, { borderColor: colors.border }]}>
-          <Text style={[styles.resultsText, { color: colors.secondaryText }]}>
-            {sortedBlogs.length} {sortedBlogs.length === 1 ? 'blog' : 'blogs'} found
-          </Text>
-          {(selectedCategory !== 'All' || selectedTag || searchQuery) && (
-            <TouchableOpacity
-              onPress={() => {
-                setSelectedCategory('All');
-                setSelectedTag(null);
-                setSearchQuery('');
-              }}
-            >
-              <Text style={styles.clearFiltersText}>Reset filters</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* ── Blog Cards Feed ── */}
-        {isLoading ? (
-          <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-            <ActivityIndicator size="large" color="#10b981" />
-          </View>
-        ) : sortedBlogs.length === 0 ? (
-          <View
-            style={[
-              styles.emptyContainer,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
-          >
-            <Search size={44} color={colors.secondaryText} style={{ opacity: 0.6 }} />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>No blogs found</Text>
-            <Text style={[styles.emptySubtitle, { color: colors.secondaryText }]}>
-              We couldn't find any blogs matching your criteria.
-            </Text>
-            <TouchableOpacity
-              onPress={() => {
-                setSelectedCategory('All');
-                setSelectedTag(null);
-                setSearchQuery('');
-              }}
-              style={styles.clearButton}
-            >
-              <Text style={styles.clearButtonText}>Clear Filters</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.blogsFeed}>
-            {sortedBlogs.map((blog) => {
-              const likesCount = blog.engagement?.likes ?? blog.likes ?? 0;
-              const commentsCount = blog.engagement?.comments ?? blog.comments ?? 0;
-              const categoryName = blog.categories?.[0]?.name || blog.category || 'General';
-
-              return (
-                <TouchableOpacity
-                  key={blog.id}
-                  activeOpacity={0.88}
-                  onPress={() => navigateToBlog(blog.id)}
-                  style={[
-                    styles.blogCard,
-                    {
-                      backgroundColor: colors.surface,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                >
-                  {/* Cover Image */}
-                  {blog.coverImage ? (
-                    <View style={styles.cardImageContainer}>
-                      <Image
-                        source={{ uri: blog.coverImage }}
-                        style={styles.cardImage}
-                        resizeMode="cover"
-                      />
-                      <View style={styles.cardCategoryBadge}>
-                        <Text style={styles.cardCategoryBadgeText}>{categoryName}</Text>
-                      </View>
-                    </View>
-                  ) : null}
-
-                  {/* Card Content */}
-                  <View style={styles.cardBody}>
-                    <View style={styles.cardMetaRow}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Clock size={12} color={colors.secondaryText} style={{ marginRight: 4 }} />
-                        <Text style={[styles.cardMetaText, { color: colors.secondaryText }]}>
-                          {blog.readTime || 5} min read
-                        </Text>
-                      </View>
-                      <Text style={[styles.cardMetaText, { color: colors.secondaryText }]}>
-                        {formatDate(blog.createdAt || blog.publishedDate)}
-                      </Text>
-                    </View>
-
-                    {/* Title */}
-                    <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
-                      {blog.title}
+                    >
+                      {option.label}
                     </Text>
+                    {isSelected && <Check size={18} color="#10b981" />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-                    {/* Excerpt */}
-                    {blog.excerpt ? (
-                      <Text
-                        style={[styles.cardExcerpt, { color: colors.secondaryText }]}
-                        numberOfLines={2}
-                      >
-                        {blog.excerpt}
-                      </Text>
-                    ) : null}
-
-                    {/* Card Footer: Author & Engagement */}
-                    <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
-                      <View style={styles.cardAuthor}>
-                        <UserAvatar
-                          profileImage={blog.author?.avatar}
-                          firstName={blog.author?.name || 'User'}
-                          size={24}
-                        />
-                        <Text
-                          style={[styles.cardAuthorName, { color: colors.text }]}
-                          numberOfLines={1}
-                        >
-                          {blog.author?.name || 'Ourlime User'}
-                        </Text>
-                      </View>
-
-                      <View style={styles.cardEngagement}>
-                        <View style={styles.statItem}>
-                          <Heart size={14} color="#ef4444" fill="rgba(239, 68, 68, 0.2)" />
-                          <Text style={[styles.statText, { color: colors.secondaryText }]}>
-                            {likesCount}
-                          </Text>
-                        </View>
-                        <View style={styles.statItem}>
-                          <MessageCircle size={14} color={colors.secondaryText} />
-                          <Text style={[styles.statText, { color: colors.secondaryText }]}>
-                            {commentsCount}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-      </ScrollView>
-
-      {/* ── Sort Options Modal ── */}
-      <Modal
-        visible={isSortModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsSortModalOpen(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setIsSortModalOpen(false)}
-        >
-          <View
-            style={[
-              styles.sortModalBox,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
-          >
-            <Text style={[styles.sortModalTitle, { color: colors.text }]}>Sort Blogs By</Text>
-            {SORT_OPTIONS.map((option) => {
-              const isSelected = sortBy === option.value;
-              return (
-                <TouchableOpacity
-                  key={option.value}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setSortBy(option.value);
-                    setIsSortModalOpen(false);
-                  }}
-                  style={[
-                    styles.sortModalRow,
-                    isSelected && {
-                      backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5',
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.sortModalRowText,
-                      {
-                        color: isSelected ? '#10b981' : colors.text,
-                        fontWeight: isSelected ? '700' : '500',
-                      },
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
-                  {isSelected && <Check size={18} color="#10b981" />}
-                </TouchableOpacity>
-              );
-            })}
+            {/* Apply Button */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => setIsFilterModalOpen(false)}
+              style={styles.applyFiltersButton}
+            >
+              <Text style={styles.applyFiltersButtonText}>Show Stories</Text>
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -783,50 +791,50 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  scrollContent: {
-    paddingBottom: 110,
-  },
-  heroSection: {
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  heroTitle: {
-    fontSize: 26,
+  headerIconButton: {
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 18,
     fontWeight: '800',
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
-  heroSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 6,
-  },
-  heroActionRow: {
+  writeButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 16,
-  },
-  createBlogButton: {
     backgroundColor: '#10b981',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 12,
-    gap: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: 20,
+    gap: 5,
   },
-  createBlogButtonText: {
+  writeButtonText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
-  searchContainer: {
+  searchFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  searchBar: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    height: 42,
+    height: 40,
     borderRadius: 12,
     borderWidth: 1,
   },
@@ -838,247 +846,240 @@ const styles = StyleSheet.create({
     fontSize: 14,
     paddingVertical: 0,
   },
-  typeAndSortRow: {
+  filterIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    position: 'relative',
+  },
+  filterActiveDot: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#10b981',
+  },
+  categoryBarContainer: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  categoryBarContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    gap: 8,
+  },
+  categoryTabPill: {
+    paddingHorizontal: 15,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  categoryTabPillActive: {
+    backgroundColor: '#10b981',
+    borderColor: '#10b981',
+  },
+  categoryTabText: {
+    fontSize: 13,
+  },
+  scrollContent: {
+    paddingBottom: 100,
+  },
+  loadingBox: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  emptyCard: {
+    margin: 20,
+    padding: 36,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  resetFiltersButton: {
+    backgroundColor: '#10b981',
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 12,
+  },
+  resetFiltersButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  spotlightSection: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    marginBottom: 16,
+  },
+  sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 12,
-    gap: 8,
+    marginBottom: 10,
   },
-  typeSwitcher: {
-    flexDirection: 'row',
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 3,
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
-  typeTab: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 9,
-  },
-  typeTabText: {
-    fontSize: 13,
-  },
-  sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  sortButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  featuredContainer: {
-    paddingHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 16,
-    position: 'relative',
-  },
-  featuredCard: {
-    height: 240,
+  heroCard: {
+    height: 220,
     borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1,
     position: 'relative',
   },
-  featuredCover: {
+  heroCoverImage: {
     width: '100%',
     height: '100%',
   },
-  featuredScrim: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    top: 0,
+  heroGradient: {
+    ...StyleSheet.absoluteFill,
     justifyContent: 'flex-end',
     padding: 16,
   },
-  featuredBadgesRow: {
+  heroBadgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 8,
   },
-  featuredCategoryBadge: {
+  heroCategoryPill: {
     backgroundColor: '#10b981',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
-  featuredCategoryText: {
+  heroCategoryPillText: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
-  featuredReadTimeBadge: {
+  heroReadTimePill: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
-  featuredReadTimeText: {
+  heroReadTimeText: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500',
   },
-  featuredTitle: {
+  heroCardTitle: {
     color: '#ffffff',
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: '800',
-    lineHeight: 25,
+    lineHeight: 24,
     marginBottom: 10,
   },
-  featuredFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  featuredAuthor: {
+  heroAuthorRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  featuredAuthorName: {
+  heroAuthorName: {
     color: '#ffffff',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
+    marginLeft: 6,
   },
-  featuredDate: {
-    color: 'rgba(255, 255, 255, 0.7)',
+  heroDot: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    marginHorizontal: 6,
+    fontSize: 12,
+  },
+  heroDate: {
+    color: 'rgba(255, 255, 255, 0.8)',
     fontSize: 11,
-    marginTop: 1,
   },
-  readArticleBtn: {
-    backgroundColor: '#10b981',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
+  trendingSection: {
+    paddingTop: 6,
+    marginBottom: 18,
   },
-  readArticleBtnText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
+  trendingScrollContent: {
+    paddingHorizontal: 16,
+    gap: 12,
   },
-  carouselIndicators: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    flexDirection: 'row',
-    gap: 6,
-  },
-  carouselDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.4)',
-  },
-  carouselDotActive: {
-    backgroundColor: '#10b981',
-    width: 14,
-  },
-  carouselControls: {
-    position: 'absolute',
-    top: 14,
-    left: 28,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  carouselArrowBtn: {
-    width: 28,
-    height: 28,
+  trendingCard: {
+    width: 220,
     borderRadius: 14,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  categoriesSection: {
-    marginBottom: 12,
-  },
-  categoriesList: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  categoryPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  categoryPillText: {
-    fontSize: 13,
-  },
-  tagsSection: {
-    marginBottom: 14,
-  },
-  tagsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    marginBottom: 8,
-  },
-  tagsHeaderTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  tagsList: {
-    paddingHorizontal: 16,
-    gap: 6,
-  },
-  tagChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  tagChipText: {
-    fontSize: 12,
-  },
-  resultsBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    marginBottom: 12,
-  },
-  resultsText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  clearFiltersText: {
-    fontSize: 12,
-    color: '#10b981',
-    fontWeight: '700',
-  },
-  blogsFeed: {
-    paddingHorizontal: 16,
-    gap: 14,
-  },
-  blogCard: {
-    borderRadius: 16,
     borderWidth: 1,
     overflow: 'hidden',
   },
-  cardImageContainer: {
+  trendingCardImage: {
+    width: '100%',
+    height: 110,
+  },
+  trendingCardBody: {
+    padding: 10,
+    gap: 4,
+  },
+  trendingCategory: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  trendingCardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  trendingMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  trendingMetaText: {
+    fontSize: 11,
+  },
+  feedSection: {
+    paddingHorizontal: 16,
+  },
+  feedCountText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  feedList: {
+    gap: 14,
+  },
+  articleCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  articleCoverContainer: {
     width: '100%',
     height: 160,
     position: 'relative',
   },
-  cardImage: {
+  articleCover: {
     width: '100%',
     height: '100%',
   },
-  cardCategoryBadge: {
+  articleCategoryBadge: {
     position: 'absolute',
     top: 10,
     left: 10,
@@ -1087,116 +1088,117 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 6,
   },
-  cardCategoryBadgeText: {
+  articleCategoryBadgeText: {
     color: '#ffffff',
     fontSize: 11,
     fontWeight: '700',
   },
-  cardBody: {
+  articleBody: {
     padding: 14,
   },
-  cardMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  cardMetaText: {
-    fontSize: 12,
-  },
-  cardTitle: {
+  articleTitle: {
     fontSize: 16,
     fontWeight: '700',
     lineHeight: 22,
     marginBottom: 6,
   },
-  cardExcerpt: {
+  articleExcerpt: {
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 12,
   },
-  cardFooter: {
+  articleFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingTop: 10,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  cardAuthor: {
+  articleAuthor: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    marginRight: 12,
+    marginRight: 10,
   },
-  cardAuthorName: {
+  articleAuthorName: {
     fontSize: 12,
     fontWeight: '600',
     marginLeft: 6,
   },
-  cardEngagement: {
+  articleDot: {
+    marginHorizontal: 5,
+    fontSize: 11,
+  },
+  articleDate: {
+    fontSize: 11,
+  },
+  articleEngagement: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  statItem: {
+  statChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  statText: {
+  statCount: {
     fontSize: 12,
     fontWeight: '500',
   },
-  emptyContainer: {
-    marginHorizontal: 16,
-    padding: 36,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    marginTop: 12,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 16,
-  },
-  clearButton: {
-    backgroundColor: '#10b981',
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 10,
-  },
-  clearButtonText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'flex-end',
   },
-  sortModalBox: {
-    width: '100%',
-    maxWidth: 300,
-    borderRadius: 16,
+  filterSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderWidth: 1,
-    padding: 16,
+    borderBottomWidth: 0,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 36,
   },
-  sortModalTitle: {
-    fontSize: 16,
+  filterSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  filterSheetTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  filterSectionLabel: {
+    fontSize: 12,
     fontWeight: '700',
-    marginBottom: 12,
-    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
   },
-  sortModalRow: {
+  formatRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  formatPill: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  formatPillActive: {
+    backgroundColor: '#10b981',
+    borderColor: '#10b981',
+  },
+  formatPillText: {
+    fontSize: 13,
+  },
+  sortList: {
+    gap: 6,
+  },
+  sortRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1204,7 +1206,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 10,
   },
-  sortModalRowText: {
+  sortRowText: {
     fontSize: 14,
+  },
+  applyFiltersButton: {
+    backgroundColor: '#10b981',
+    paddingVertical: 13,
+    borderRadius: 14,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  applyFiltersButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
