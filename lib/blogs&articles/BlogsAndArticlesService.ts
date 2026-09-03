@@ -191,6 +191,14 @@ export class BlogsAndArticlesService {
           const userData = userSnap.data();
           authorNameByUserId.set(userSnap.id, readString(userData.userName) || readString(userData.displayName) || 'Ourlime user');
           authorVerifiedByUserId.set(userSnap.id, userData.identityVerificationStatus === 'verified');
+
+          const directAvatar = readString(userData.profileImage)
+            || readString((userData.profileImage as Record<string, unknown>)?.imageURL)
+            || readString(userData.avatar)
+            || readString(userData.photoURL);
+          if (directAvatar) {
+            avatarByUserId.set(userSnap.id, directAvatar);
+          }
         }
 
         const selectedImageIdByUserId = new Map<string, string>();
@@ -371,11 +379,33 @@ export class BlogsAndArticlesService {
             authorCompany = readString(userData.company);
             authorFollowers = readNumber(userData.followersCount);
             authorVerified = userData.identityVerificationStatus === 'verified';
+            const directAvatar = readString(userData.profileImage)
+              || readString((userData.profileImage as Record<string, unknown>)?.imageURL)
+              || readString(userData.avatar)
+              || readString(userData.photoURL);
+            if (directAvatar) {
+              authorAvatar = directAvatar;
+            }
           }
-          // Check profile images
-          const imageSnap = await getDocs(query(collection(this.db, 'profileImages'), where('userId', '==', userId)));
-          if (!imageSnap.empty) {
-            authorAvatar = readString(imageSnap.docs[0].data()?.imageURL);
+          // Check profileImageSetAs first, fallback to profileImages
+          try {
+            const setAsSnap = await getDocs(query(collection(this.db, 'profileImageSetAs'), where('userId', '==', userId), where('setAs', '==', 'profile')));
+            if (!setAsSnap.empty) {
+              const profileImageId = setAsSnap.docs[0].data()?.profileImageId;
+              if (profileImageId) {
+                const imgDoc = await getDoc(doc(this.db, 'profileImages', profileImageId));
+                if (imgDoc.exists() && imgDoc.data()?.imageURL) {
+                  authorAvatar = readString(imgDoc.data()?.imageURL);
+                }
+              }
+            }
+          } catch {}
+
+          if (!authorAvatar) {
+            const imageSnap = await getDocs(query(collection(this.db, 'profileImages'), where('userId', '==', userId)));
+            if (!imageSnap.empty) {
+              authorAvatar = readString(imageSnap.docs[0].data()?.imageURL);
+            }
           }
         } catch (authorErr) {
           console.warn('[getPostDetail] Error fetching author profile:', authorErr);

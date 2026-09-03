@@ -24,7 +24,8 @@
     "build:preview": "npx eas build --platform android --profile preview --non-interactive",
     "build:preview:local": "node scripts/build-local-apk.cjs",
     "build:prod": "npx eas build --platform android --profile production --non-interactive",
-    "build:prod:local": "node scripts/build-local-apk.cjs"
+    "build:prod:local": "node scripts/build-local-apk.cjs",
+    "kill": "bunx kill-port-bun"
   },
   "dependencies": {
     "@babel/runtime": "^7.27.0",
