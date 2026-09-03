@@ -330,6 +330,32 @@ export class AdminWorkspaceService {
     };
   }
 
+  public async fetchActivityLogs(search?: string, action?: string, resource?: string): Promise<Record<string, unknown>[]> {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (action && action !== 'all') params.append('action', action);
+    if (resource && resource !== 'all') params.append('resource', resource);
+    params.append('limit', '50');
+    const response = await apiService.request<{ success: boolean; data?: { logs?: Record<string, unknown>[] }; error?: string }>(
+      `/api/admin/activity-logs?${params.toString()}`,
+      { method: 'GET', authenticated: true, priority: 'foreground' }
+    );
+    if (!response.success || !response.data?.logs) {
+      throw new Error(response.error || 'Failed to load activity logs');
+    }
+    return response.data.logs;
+  }
+
+  public async restoreActivityLog(logId: string): Promise<void> {
+    const response = await apiService.request<{ success: boolean; message?: string; error?: string }>(
+      `/api/activity-logs/${encodeURIComponent(logId)}/restore`,
+      { method: 'POST', authenticated: true, priority: 'foreground' }
+    );
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to restore item');
+    }
+  }
+
   private async writeAudit(adminId: string, action: string, targetId: string, details: string): Promise<void> {
     await addDoc(collection(db, 'adminLogs'), { adminId, action, targetId, details, timestamp: serverTimestamp(), createdAt: serverTimestamp() });
   }

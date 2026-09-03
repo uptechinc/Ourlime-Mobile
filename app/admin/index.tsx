@@ -25,6 +25,12 @@ const adminMetricsService = AdminMetricsService.getInstance();
 
 const REMAINING_ADMIN_WORKSPACES = [
 	{
+		id: 'activity-logs',
+		title: 'Activity Logs & Audit',
+		icon: 'clock' as const,
+		route: '/admin/activity-logs' as Href,
+	},
+	{
 		id: 'support',
 		title: 'Support Tickets',
 		icon: 'help-circle' as const,
