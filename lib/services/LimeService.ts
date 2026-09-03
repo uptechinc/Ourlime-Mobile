@@ -408,6 +408,42 @@ export class LimeService {
     }
   }
 
+  public async fetchUserAndRepostedReels(userId: string): Promise<Reel[]> {
+    if (!userId) return [];
+    try {
+      const [ownReels, repostedIds] = await Promise.all([
+        this.fetchUserReels(userId),
+        this.fetchUserRepostedLimeIds(userId),
+      ]);
+      const ownIds = new Set(ownReels.map((r) => r.id));
+      const repostPromises = Array.from(repostedIds)
+        .filter((id) => !ownIds.has(id))
+        .map((id) => this.fetchLimeById(id));
+      const repostedReels = (await Promise.all(repostPromises))
+        .filter((r): r is Reel => r !== null)
+        .map((r) => ({ ...r, isRepost: true }));
+      return [...ownReels, ...repostedReels];
+    } catch (err) {
+      console.error('[LimeService.fetchUserAndRepostedReels] Error:', err);
+      return this.fetchUserReels(userId).catch(() => []);
+    }
+  }
+
+  public async fetchUserRepostedLimes(userId: string): Promise<Reel[]> {
+    if (!userId) return [];
+    try {
+      const repostedIds = await this.fetchUserRepostedLimeIds(userId);
+      const repostPromises = Array.from(repostedIds).map((id) => this.fetchLimeById(id));
+      const repostedReels = (await Promise.all(repostPromises))
+        .filter((r): r is Reel => r !== null)
+        .map((r) => ({ ...r, isRepost: true }));
+      return repostedReels;
+    } catch (err) {
+      console.error('[LimeService.fetchUserRepostedLimes] Error:', err);
+      return [];
+    }
+  }
+
   public async toggleLike(reelId: string, userId: string, liked: boolean): Promise<void> {
     await updateDoc(doc(db, 'reels', reelId), { likes: liked ? arrayUnion(userId) : arrayRemove(userId) });
   }

@@ -20,6 +20,8 @@ import { ModerationService } from '@/lib/services/ModerationService';
 import { DeepLinkService } from '@/lib/services/DeepLinkService';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
 import TimelineTab from '@/components/profile/TimelineTab';
+import LimesTab from '@/components/profile/LimesTab';
+import ProfileRepostsTab from '@/components/profile/ProfileRepostsTab';
 import AboutTab from '@/components/profile/AboutTab';
 import GalleryTab from '@/components/profile/GalleryTab';
 import ProfileSkeleton from '@/components/profile/ProfileSkeleton';
@@ -52,7 +54,7 @@ type ProfileModalState = {
   action?: 'block' | 'unblock' | 'report' | 'cancel_friend_request';
 };
 
-type PublicProfileTab = 'timeline' | 'friends' | 'communities' | 'about' | 'gallery' | 'deleted_posts';
+type PublicProfileTab = 'timeline' | 'limes' | 'reposts' | 'friends' | 'communities' | 'about' | 'gallery' | 'deleted_posts';
 
 export default function UserProfileScreen() {
   const router = useRouter();
@@ -418,6 +420,8 @@ export default function UserProfileScreen() {
           >
             {([
               'timeline',
+              'limes',
+              'reposts',
               'friends',
               'communities',
               'about',
@@ -428,6 +432,10 @@ export default function UserProfileScreen() {
               const label =
                 tab === 'timeline'
                   ? 'Posts'
+                  : tab === 'limes'
+                  ? 'Limes'
+                  : tab === 'reposts'
+                  ? 'Reposts'
                   : tab === 'deleted_posts'
                   ? '🛡️ Deleted (Admin)'
                   : tab.charAt(0).toUpperCase() + tab.slice(1);
@@ -465,6 +473,14 @@ export default function UserProfileScreen() {
           {canViewPrivateContent ? <View style={{ marginTop: 12 }}>
             {activeTab === 'timeline' && (
               <TimelineTab userId={profile ? profile.uid : username} />
+            )}
+
+            {activeTab === 'limes' && (
+              <LimesTab userId={profile ? profile.uid : username} />
+            )}
+
+            {activeTab === 'reposts' && (
+              <ProfileRepostsTab userId={profile ? profile.uid : username} />
             )}
 
             {activeTab === 'friends' && (
