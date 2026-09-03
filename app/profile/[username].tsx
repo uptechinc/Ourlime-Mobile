@@ -167,7 +167,10 @@ export default function UserProfileScreen() {
     void loadRelationshipState();
   }, [loadRelationshipState]);
 
+  const [tabRefreshKey, setTabRefreshKey] = useState(0);
+
   const onRefresh = useCallback(() => {
+    setTabRefreshKey((prev) => prev + 1);
     void refreshProfile();
   }, [refreshProfile]);
 
@@ -476,11 +479,11 @@ export default function UserProfileScreen() {
             )}
 
             {activeTab === 'limes' && (
-              <LimesTab userId={profile ? profile.uid : username} />
+              <LimesTab userId={profile ? profile.uid : username} refreshKey={tabRefreshKey} />
             )}
 
             {activeTab === 'reposts' && (
-              <ProfileRepostsTab userId={profile ? profile.uid : username} />
+              <ProfileRepostsTab userId={profile ? profile.uid : username} refreshKey={tabRefreshKey} />
             )}
 
             {activeTab === 'friends' && (

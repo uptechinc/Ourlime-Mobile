@@ -16,8 +16,11 @@ import CreateLimeModal from '@/components/limes/CreateLimeModal';
 
 import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
 
+import { LimeGridSkeleton } from '@/components/limes/LimeCardSkeleton';
+
 type LimesTabProps = {
   userId: string;
+  refreshKey?: number;
 };
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -29,37 +32,7 @@ const CARD_HEIGHT = CARD_WIDTH * (16 / 9);
 
 const authService = AuthService.getInstance();
 
-function LimesGridSkeleton({ surface, border }: { surface: string; border: string }) {
-  return (
-    <View style={{ paddingHorizontal: HORIZONTAL_PADDING, paddingVertical: 12 }}>
-      <View
-        style={{
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          gap: COLUMN_GAP,
-        }}
-      >
-        {[0, 1, 2, 3, 4, 5].map((index) => (
-          <View
-            key={index}
-            style={{
-              width: CARD_WIDTH,
-              height: CARD_HEIGHT,
-              borderRadius: 14,
-              backgroundColor: surface,
-              borderWidth: 1,
-              borderColor: border,
-              marginBottom: COLUMN_GAP,
-              opacity: 0.5,
-            }}
-          />
-        ))}
-      </View>
-    </View>
-  );
-}
-
-export default function LimesTab({ userId }: LimesTabProps) {
+export default function LimesTab({ userId, refreshKey }: LimesTabProps) {
   const { colors } = useAppTheme();
   const router = useRouter();
   const currentUserId = authService.getCurrentUser()?.uid ?? authService.getVerifiedCurrentUser()?.uid ?? userId;
@@ -108,7 +81,7 @@ export default function LimesTab({ userId }: LimesTabProps) {
 
   useEffect(() => {
     void loadLimes();
-  }, [loadLimes]);
+  }, [loadLimes, refreshKey]);
 
   const handleLimePress = (reel: Reel) => {
     router.push({
@@ -118,7 +91,7 @@ export default function LimesTab({ userId }: LimesTabProps) {
   };
 
   if (isLoading) {
-    return <LimesGridSkeleton surface={colors.surface} border={colors.border} />;
+    return <LimeGridSkeleton count={4} />;
   }
 
   return (

@@ -55,7 +55,10 @@ export default function ProfileScreen() {
   const stats = resource.data?.stats ?? { posts: 0, friends: 0, followers: 0, following: 0 };
   const error = resource.error?.message ?? null;
 
+  const [tabRefreshKey, setTabRefreshKey] = useState(0);
+
   const onRefresh = useCallback(() => {
+    setTabRefreshKey((prev) => prev + 1);
     void refresh();
   }, [refresh]);
 
@@ -172,8 +175,8 @@ export default function ProfileScreen() {
 
           {/* ── Active Tab Content ── */}
           {activeTab === 'timeline' && <TimelineTab userId={profile.uid} />}
-          {activeTab === 'limes' && <LimesTab userId={profile.uid} />}
-          {activeTab === 'reposts' && <ProfileRepostsTab userId={profile.uid} />}
+          {activeTab === 'limes' && <LimesTab userId={profile.uid} refreshKey={tabRefreshKey} />}
+          {activeTab === 'reposts' && <ProfileRepostsTab userId={profile.uid} refreshKey={tabRefreshKey} />}
           {activeTab === 'friends' && <FriendsTab userId={profile.uid} />}
           {activeTab === 'about' && <AboutTab profile={profile} />}
           {activeTab === 'gallery' && <GalleryTab userId={profile.uid} />}

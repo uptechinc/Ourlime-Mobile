@@ -9,6 +9,7 @@ import {
   Dimensions,
   Platform,
   ActivityIndicator,
+  RefreshControl,
   StyleSheet,
   type AppStateStatus,
 } from 'react-native';
@@ -49,9 +50,23 @@ export default function ProfileLimesScreen() {
   const [deleteTarget, setDeleteTarget] = useState<Reel | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const limesListRef = useRef<FlatList<Reel>>(null);
   const hasInitializedIndex = useRef(false);
+
+  const handleRefresh = useCallback(async () => {
+    if (!targetUserId) return;
+    setRefreshing(true);
+    try {
+      const data = await limeService.fetchUserAndRepostedReels(targetUserId);
+      setLimes(data);
+    } catch (err) {
+      console.error('[ProfileLimesScreen] Refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [targetUserId]);
 
   const playbackAllowed = isScreenFocused
     && appState === 'active'
@@ -234,6 +249,14 @@ export default function ProfileLimesScreen() {
         })}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewConfigRef}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void handleRefresh()}
+            tintColor="#10b981"
+            colors={['#10b981']}
+          />
+        }
         onScrollToIndexFailed={({ index }) => {
           setTimeout(() => {
             limesListRef.current?.scrollToIndex({ index, animated: false });

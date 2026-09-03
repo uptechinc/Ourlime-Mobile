@@ -14,6 +14,7 @@ import {
   Linking,
   ScrollView,
   Modal,
+  RefreshControl,
   type AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -243,6 +244,7 @@ export default function LimesScreen() {
   const [deleteTarget, setDeleteTarget] = useState<Reel | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const [preloadAdjacentVideos, setPreloadAdjacentVideos] = useState(true);
   const limesListRef = useRef<FlatList<Reel>>(null);
@@ -253,6 +255,17 @@ export default function LimesScreen() {
     category: activeCategory ?? undefined,
     scope: feedTab,
   });
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh(true);
+    } catch {
+      // ignore
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
   const resourceData = resource?.data;
   const limesList = resourceData?.reels ?? [];
   const followingUserIds = useMemo(
@@ -553,6 +566,14 @@ export default function LimesScreen() {
         })}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewConfigRef}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void handleRefresh()}
+            tintColor="#10b981"
+            colors={['#10b981']}
+          />
+        }
         onEndReached={() => void loadMore()}
         onEndReachedThreshold={0.3}
         ListEmptyComponent={emptyFeed}

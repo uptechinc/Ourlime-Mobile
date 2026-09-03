@@ -19,8 +19,11 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
 
+import { LimeGridSkeleton } from '@/components/limes/LimeCardSkeleton';
+
 type ProfileRepostsTabProps = {
   userId: string;
+  refreshKey?: number;
 };
 
 type RepostFilter = 'all' | 'posts' | 'limes';
@@ -34,37 +37,7 @@ const CARD_HEIGHT = CARD_WIDTH * (16 / 9);
 
 const authService = AuthService.getInstance();
 
-function RepostsSkeleton({ surface, border }: { surface: string; border: string }) {
-  return (
-    <View style={{ paddingHorizontal: HORIZONTAL_PADDING, paddingVertical: 12 }}>
-      <View
-        style={{
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          gap: COLUMN_GAP,
-        }}
-      >
-        {[0, 1, 2, 3].map((index) => (
-          <View
-            key={index}
-            style={{
-              width: CARD_WIDTH,
-              height: CARD_HEIGHT,
-              borderRadius: 14,
-              backgroundColor: surface,
-              borderWidth: 1,
-              borderColor: border,
-              marginBottom: COLUMN_GAP,
-              opacity: 0.5,
-            }}
-          />
-        ))}
-      </View>
-    </View>
-  );
-}
-
-export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
+export default function ProfileRepostsTab({ userId, refreshKey }: ProfileRepostsTabProps) {
   const { colors } = useAppTheme();
   const router = useRouter();
   const viewerId = authService.getCurrentUser()?.uid ?? authService.getVerifiedCurrentUser()?.uid ?? userId;
@@ -123,7 +96,7 @@ export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
 
   useEffect(() => {
     void loadRepostedLimes();
-  }, [loadRepostedLimes]);
+  }, [loadRepostedLimes, refreshKey]);
 
   const activePost = activePostId ? allPosts.find((post) => post.id === activePostId) ?? null : null;
   const isPostsLoading = !resource.data && (resource.status === 'idle' || resource.status === 'hydrating');
@@ -132,7 +105,7 @@ export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
   const totalCount = repostedPosts.length + repostedLimes.length;
 
   if (isLoading) {
-    return <RepostsSkeleton surface={colors.surface} border={colors.border} />;
+    return <LimeGridSkeleton count={4} />;
   }
 
   return (
