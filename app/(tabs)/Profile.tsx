@@ -14,6 +14,8 @@ import { useRouter, type Href } from 'expo-router';
 import { authService } from '@/lib/services/AuthService';
 import ProfileHeader from '@/components/profile/ProfileHeader';
 import TimelineTab from '@/components/profile/TimelineTab';
+import LimesTab from '@/components/profile/LimesTab';
+import ProfileRepostsTab from '@/components/profile/ProfileRepostsTab';
 import AboutTab from '@/components/profile/AboutTab';
 import GalleryTab from '@/components/profile/GalleryTab';
 import FriendsTab from '@/components/profile/FriendsTab';
@@ -24,7 +26,7 @@ import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppDrawer } from '@/lib/contexts/AppDrawerContext';
 
-type ProfileTab = 'timeline' | 'friends' | 'about' | 'gallery' | 'admin';
+type ProfileTab = 'timeline' | 'limes' | 'reposts' | 'friends' | 'about' | 'gallery' | 'admin';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -60,7 +62,9 @@ export default function ProfileScreen() {
   const isAdmin = profile?.accountType === 'admin' || profile?.role === 'admin' || profile?.isAdmin === true;
 
   const tabs: { key: ProfileTab; label: string; icon: ComponentProps<typeof Ionicons>['name'] }[] = [
-    { key: 'timeline', label: 'Timeline', icon: 'list-outline' },
+    { key: 'timeline', label: 'Posts', icon: 'newspaper-outline' },
+    { key: 'limes', label: 'Limes', icon: 'videocam-outline' },
+    { key: 'reposts', label: 'Reposts', icon: 'repeat-outline' },
     { key: 'friends', label: 'Friends', icon: 'people-outline' },
     { key: 'about', label: 'About', icon: 'information-circle-outline' },
     { key: 'gallery', label: 'Gallery', icon: 'images-outline' },
@@ -168,6 +172,8 @@ export default function ProfileScreen() {
 
           {/* ── Active Tab Content ── */}
           {activeTab === 'timeline' && <TimelineTab userId={profile.uid} />}
+          {activeTab === 'limes' && <LimesTab userId={profile.uid} />}
+          {activeTab === 'reposts' && <ProfileRepostsTab userId={profile.uid} />}
           {activeTab === 'friends' && <FriendsTab userId={profile.uid} />}
           {activeTab === 'about' && <AboutTab profile={profile} />}
           {activeTab === 'gallery' && <GalleryTab userId={profile.uid} />}
