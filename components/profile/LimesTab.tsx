@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  ActivityIndicator,
   Dimensions,
   Image,
   Text,
@@ -30,6 +29,36 @@ const CARD_HEIGHT = CARD_WIDTH * (16 / 9);
 
 const authService = AuthService.getInstance();
 
+function LimesGridSkeleton({ surface, border }: { surface: string; border: string }) {
+  return (
+    <View style={{ paddingHorizontal: HORIZONTAL_PADDING, paddingVertical: 12 }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: COLUMN_GAP,
+        }}
+      >
+        {[0, 1, 2, 3, 4, 5].map((index) => (
+          <View
+            key={index}
+            style={{
+              width: CARD_WIDTH,
+              height: CARD_HEIGHT,
+              borderRadius: 14,
+              backgroundColor: surface,
+              borderWidth: 1,
+              borderColor: border,
+              marginBottom: COLUMN_GAP,
+              opacity: 0.5,
+            }}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export default function LimesTab({ userId }: LimesTabProps) {
   const { colors } = useAppTheme();
   const router = useRouter();
@@ -38,7 +67,6 @@ export default function LimesTab({ userId }: LimesTabProps) {
 
   const [limes, setLimes] = useState<Reel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [createModalVisible, setCreateModalVisible] = useState(false);
 
   const loadLimes = useCallback(async () => {
@@ -47,7 +75,6 @@ export default function LimesTab({ userId }: LimesTabProps) {
       const missing = data.filter((r) => !r.thumbnailUrl && !r.media?.thumbnailUrl);
 
       if (missing.length > 0) {
-        setLoadingMessage('some of your limes are missing thumbnaills, lime a bit while we set them for you...');
         data = await Promise.all(
           data.map(async (reel) => {
             if (reel.thumbnailUrl || reel.media?.thumbnailUrl) return reel;
@@ -76,7 +103,6 @@ export default function LimesTab({ userId }: LimesTabProps) {
       console.error('[LimesTab] Error loading limes:', err);
     } finally {
       setIsLoading(false);
-      setLoadingMessage(null);
     }
   }, [currentUserId, userId]);
 
@@ -86,31 +112,13 @@ export default function LimesTab({ userId }: LimesTabProps) {
 
   const handleLimePress = (reel: Reel) => {
     router.push({
-      pathname: '/(tabs)/Limes',
-      params: { limeId: reel.id },
+      pathname: '/profile/limes',
+      params: { userId, limeId: reel.id },
     });
   };
 
   if (isLoading) {
-    return (
-      <View style={{ paddingVertical: 48, alignItems: 'center', paddingHorizontal: 24 }}>
-        <ActivityIndicator size="small" color="#10b981" />
-        {loadingMessage ? (
-          <Text
-            style={{
-              marginTop: 14,
-              fontSize: 13,
-              fontWeight: '600',
-              color: colors.secondaryText,
-              textAlign: 'center',
-              lineHeight: 18,
-            }}
-          >
-            {loadingMessage}
-          </Text>
-        ) : null}
-      </View>
-    );
+    return <LimesGridSkeleton surface={colors.surface} border={colors.border} />;
   }
 
   return (

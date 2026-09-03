@@ -78,7 +78,7 @@ type ReportTarget = {
 
 type LimeReposter = NonNullable<Reel['repostedBy']>[number];
 
-function reelToPostItem(reel: Reel): PostItem {
+export function reelToPostItem(reel: Reel): PostItem {
   const createdAtMs = reel.createdAt instanceof Date
     ? reel.createdAt.getTime()
     : typeof reel.createdAt === 'number'
@@ -810,7 +810,7 @@ function LimeCaption({ caption, onProfilePress }: LimeCaptionProps) {
 /* ─────────────────────────────────────────────────────────────────── */
 /* ReelItem — core reel card with full feature set                     */
 /* ─────────────────────────────────────────────────────────────────── */
-type ReelItemProps = {
+export type ReelItemProps = {
   reel: Reel;
   isActive: boolean;
   shouldLoadVideo: boolean;
@@ -830,7 +830,7 @@ type ReelItemProps = {
   onDeleted?: (reelId: string) => void;
 };
 
-function ReelItem({
+export function ReelItem({
   reel,
   isActive,
   shouldLoadVideo,
@@ -1264,7 +1264,7 @@ function ReelItem({
   );
 }
 
-const styles = StyleSheet.create({
+export const styles = StyleSheet.create({
   loadingScreen: {
     flex: 1,
     backgroundColor: '#000000',

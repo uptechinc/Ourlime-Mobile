@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  ActivityIndicator,
   Dimensions,
   Image,
   Text,
@@ -35,6 +34,36 @@ const CARD_HEIGHT = CARD_WIDTH * (16 / 9);
 
 const authService = AuthService.getInstance();
 
+function RepostsSkeleton({ surface, border }: { surface: string; border: string }) {
+  return (
+    <View style={{ paddingHorizontal: HORIZONTAL_PADDING, paddingVertical: 12 }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: COLUMN_GAP,
+        }}
+      >
+        {[0, 1, 2, 3].map((index) => (
+          <View
+            key={index}
+            style={{
+              width: CARD_WIDTH,
+              height: CARD_HEIGHT,
+              borderRadius: 14,
+              backgroundColor: surface,
+              borderWidth: 1,
+              borderColor: border,
+              marginBottom: COLUMN_GAP,
+              opacity: 0.5,
+            }}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
   const { colors } = useAppTheme();
   const router = useRouter();
@@ -44,7 +73,6 @@ export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
   const [activeFilter, setActiveFilter] = useState<RepostFilter>('all');
   const [repostedLimes, setRepostedLimes] = useState<Reel[]>([]);
   const [isLimesLoading, setIsLimesLoading] = useState(true);
-  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [activePostId, setActivePostId] = useState<string | null>(null);
 
   // Feed posts query for this profile
@@ -62,7 +90,6 @@ export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
       const missing = limes.filter((r) => !r.thumbnailUrl && !r.media?.thumbnailUrl);
 
       if (missing.length > 0) {
-        setLoadingMessage('some of your limes are missing thumbnaills, lime a bit while we set them for you...');
         limes = await Promise.all(
           limes.map(async (reel) => {
             if (reel.thumbnailUrl || reel.media?.thumbnailUrl) return reel;
@@ -91,7 +118,6 @@ export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
       console.error('[ProfileRepostsTab] Error fetching reposted limes:', err);
     } finally {
       setIsLimesLoading(false);
-      setLoadingMessage(null);
     }
   }, [userId, viewerId]);
 
@@ -106,25 +132,7 @@ export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
   const totalCount = repostedPosts.length + repostedLimes.length;
 
   if (isLoading) {
-    return (
-      <View style={{ paddingVertical: 48, alignItems: 'center', paddingHorizontal: 24 }}>
-        <ActivityIndicator size="small" color="#10b981" />
-        {loadingMessage ? (
-          <Text
-            style={{
-              marginTop: 14,
-              fontSize: 13,
-              fontWeight: '600',
-              color: colors.secondaryText,
-              textAlign: 'center',
-              lineHeight: 18,
-            }}
-          >
-            {loadingMessage}
-          </Text>
-        ) : null}
-      </View>
-    );
+    return <RepostsSkeleton surface={colors.surface} border={colors.border} />;
   }
 
   return (
@@ -215,8 +223,8 @@ export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
                       key={item.id}
                       onPress={() =>
                         router.push({
-                          pathname: '/(tabs)/Limes',
-                          params: { limeId: item.id },
+                          pathname: '/profile/limes',
+                          params: { userId, limeId: item.id },
                         })
                       }
                       activeOpacity={0.85}
