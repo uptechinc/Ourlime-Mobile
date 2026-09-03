@@ -125,17 +125,18 @@ export class ApiService {
 		}
 		const requestId = this.createRequestId();
 		const startedAt = Date.now();
-		const headers = new Headers();
-		headers.set('Accept', options.headers?.Accept ?? 'application/json');
+		const headers: Record<string, string> = {
+			Accept: options.headers?.Accept ?? 'application/json',
+		};
 		if (options.headers?.Authorization)
-			headers.set('Authorization', options.headers.Authorization);
+			headers.Authorization = options.headers.Authorization;
 		if (options.headers?.['Content-Type'])
-			headers.set('Content-Type', options.headers['Content-Type']);
+			headers['Content-Type'] = options.headers['Content-Type'];
 		if (options.headers?.['X-Ourlime-Correlation-Id'])
-			headers.set('X-Ourlime-Correlation-Id', options.headers['X-Ourlime-Correlation-Id']);
+			headers['X-Ourlime-Correlation-Id'] = options.headers['X-Ourlime-Correlation-Id'];
 
 		if (options.body !== undefined)
-			headers.set('Content-Type', 'application/json');
+			headers['Content-Type'] = 'application/json';
 		if (options.authenticated) {
 			const currentUser = auth.currentUser;
 			if (!currentUser)
@@ -144,10 +145,7 @@ export class ApiService {
 					401,
 					'AUTH_REQUIRED'
 				);
-			headers.set(
-				'Authorization',
-				`Bearer ${await currentUser.getIdToken(didRetryAuthentication)}`
-			);
+			headers.Authorization = `Bearer ${await currentUser.getIdToken(didRetryAuthentication)}`;
 		}
 
 		const url = `${requestBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
@@ -164,9 +162,11 @@ export class ApiService {
 		);
 		let didTimeout = false;
 		const handleExternalAbort = () => requestController.abort();
-		options.signal?.addEventListener('abort', handleExternalAbort, {
-			once: true,
-		});
+		if (options.signal && typeof options.signal.addEventListener === 'function') {
+			options.signal.addEventListener('abort', handleExternalAbort, {
+				once: true,
+			});
+		}
 		const timeoutId = setTimeout(() => {
 			didTimeout = true;
 			requestController.abort();
@@ -306,7 +306,9 @@ export class ApiService {
 		} finally {
 			clearTimeout(timeoutId);
 			this.activeRequestControllers.delete(requestController);
-			options.signal?.removeEventListener('abort', handleExternalAbort);
+			if (options.signal && typeof options.signal.removeEventListener === 'function') {
+				options.signal.removeEventListener('abort', handleExternalAbort);
+			}
 		}
 	}
 

@@ -163,9 +163,67 @@ export class BlogsAndArticlesService {
       const postsRef = collection(this.db, 'blogsAndArticles');
       const postsSnapshot = await getDocs(postsRef);
 
+      // Collect all unique author userIds so we can batch-resolve avatars
+      const authorUserIds = Array.from(new Set(
+        postsSnapshot.docs
+          .map((docSnap) => {
+            const v = docSnap.data().userId;
+            return typeof v === 'string' && v ? v : null;
+          })
+          .filter((id): id is string => id !== null),
+      ));
+
+      // Batch-resolve avatars: profileImageSetAs → profileImages (chunks of 10)
+      const avatarByUserId = new Map<string, string>();
+      const authorNameByUserId = new Map<string, string>();
+      const authorVerifiedByUserId = new Map<string, boolean>();
+
+      for (let chunkStart = 0; chunkStart < authorUserIds.length; chunkStart += 10) {
+        const chunk = authorUserIds.slice(chunkStart, chunkStart + 10);
+        if (chunk.length === 0) continue;
+
+        const [userSnaps, setAsSnaps] = await Promise.all([
+          getDocs(query(collection(this.db, 'users'), where('__name__', 'in', chunk))),
+          getDocs(query(collection(this.db, 'profileImageSetAs'), where('userId', 'in', chunk), where('setAs', '==', 'profile'))),
+        ]);
+
+        for (const userSnap of userSnaps.docs) {
+          const userData = userSnap.data();
+          authorNameByUserId.set(userSnap.id, readString(userData.userName) || readString(userData.displayName) || 'Ourlime user');
+          authorVerifiedByUserId.set(userSnap.id, userData.identityVerificationStatus === 'verified');
+        }
+
+        const selectedImageIdByUserId = new Map<string, string>();
+        for (const setAsDoc of setAsSnaps.docs) {
+          const data = setAsDoc.data();
+          if (typeof data.userId === 'string' && typeof data.profileImageId === 'string') {
+            selectedImageIdByUserId.set(data.userId, data.profileImageId);
+          }
+        }
+
+        const uniqueImageIds = Array.from(new Set(selectedImageIdByUserId.values()));
+        if (uniqueImageIds.length > 0) {
+          const imageSnaps = await getDocs(
+            query(collection(this.db, 'profileImages'), where('__name__', 'in', uniqueImageIds)),
+          );
+          const imageUrlById = new Map<string, string>();
+          for (const imageSnap of imageSnaps.docs) {
+            const imageUrl = imageSnap.data()?.imageURL;
+            if (typeof imageUrl === 'string' && imageUrl.length > 0) {
+              imageUrlById.set(imageSnap.id, imageUrl);
+            }
+          }
+          for (const [userId, imageId] of selectedImageIdByUserId) {
+            const url = imageUrlById.get(imageId);
+            if (url) avatarByUserId.set(userId, url);
+          }
+        }
+      }
+
       const posts = await Promise.all(
         postsSnapshot.docs.map(async (docSnap) => {
           const postData = docSnap.data();
+          const authorUserId = readString(postData.userId);
 
           const engagementRef = collection(this.db, `blogsAndArticles/${docSnap.id}/engagement`);
           const engagementSnapshot = await getDocs(engagementRef);
@@ -179,7 +237,6 @@ export class BlogsAndArticlesService {
           const tagsSnapshot = await getDocs(tagsRef);
           const tags = tagsSnapshot.docs.map((tag) => tag.data());
 
-          const author = readRecord(postData.author);
           const normalizedEngagement = engagement.map((item) => ({
             likesCount: readNumber(item.likesCount),
             commentsCount: readNumber(item.commentsCount),
@@ -191,10 +248,10 @@ export class BlogsAndArticlesService {
             excerpt: readString(postData.excerpt) || readString(postData.description),
             coverImage: readString(postData.coverImage) || readString(postData.imageUrl),
             author: {
-              id: readString(author.id) || readString(postData.userId),
-              name: readString(author.name) || readString(postData.authorName, 'Ourlime user'),
-              avatar: readString(author.avatar),
-              isVerified: Boolean(author.isVerified),
+              id: authorUserId,
+              name: authorNameByUserId.get(authorUserId) || readString(postData.authorName, 'Ourlime user'),
+              avatar: avatarByUserId.get(authorUserId) ?? '',
+              isVerified: authorVerifiedByUserId.get(authorUserId) ?? false,
             },
             category: readString(postData.category) || readString(categories[0]?.name),
             categories: categories.map((item) => ({ name: readString(item.name) })).filter((item) => item.name),

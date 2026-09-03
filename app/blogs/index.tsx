@@ -34,6 +34,7 @@ import {
   type BlogListItem,
 } from '@/lib/blogs&articles/BlogsAndArticlesService';
 import UserAvatar from '@/components/ui/UserAvatar';
+import { stripHtml } from '@/lib/utils/htmlUtils';
 
 const CATEGORIES = [
   'All',
@@ -217,11 +218,15 @@ export default function BlogsScreen() {
   // Filter blogs
   const filteredBlogs = useMemo(() => {
     return blogs.filter((blog) => {
+      const cleanTitle = stripHtml(blog.title).toLowerCase();
+      const cleanExcerpt = stripHtml(blog.excerpt).toLowerCase();
+      const query = searchQuery.trim().toLowerCase();
+
       const matchesSearch =
-        !searchQuery.trim() ||
-        blog.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        blog.excerpt?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        blog.tags?.some((t) => t.name?.toLowerCase().includes(searchQuery.toLowerCase()));
+        !query ||
+        cleanTitle.includes(query) ||
+        cleanExcerpt.includes(query) ||
+        blog.tags?.some((t) => t.name?.toLowerCase().includes(query));
 
       const matchesCategory =
         selectedCategory === 'All' ||
@@ -472,7 +477,7 @@ export default function BlogsScreen() {
                     </View>
 
                     <Text style={styles.heroCardTitle} numberOfLines={2}>
-                      {heroStory.title}
+                      {stripHtml(heroStory.title)}
                     </Text>
 
                     <View style={styles.heroAuthorRow}>
@@ -538,7 +543,7 @@ export default function BlogsScreen() {
                           style={[styles.trendingCardTitle, { color: colors.text }]}
                           numberOfLines={2}
                         >
-                          {story.title}
+                          {stripHtml(story.title)}
                         </Text>
                         <View style={styles.trendingMetaRow}>
                           <Clock size={11} color={colors.secondaryText} style={{ marginRight: 3 }} />
@@ -604,7 +609,7 @@ export default function BlogsScreen() {
                           style={[styles.articleTitle, { color: colors.text }]}
                           numberOfLines={2}
                         >
-                          {story.title}
+                          {stripHtml(story.title)}
                         </Text>
 
                         {/* Excerpt */}
@@ -613,7 +618,7 @@ export default function BlogsScreen() {
                             style={[styles.articleExcerpt, { color: colors.secondaryText }]}
                             numberOfLines={2}
                           >
-                            {story.excerpt}
+                            {stripHtml(story.excerpt)}
                           </Text>
                         ) : null}
 

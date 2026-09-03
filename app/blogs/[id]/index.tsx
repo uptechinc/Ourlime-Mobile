@@ -29,6 +29,7 @@ import RichBlogContent from '@/components/blog/RichBlogContent';
 import BlogAuthorCard from '@/components/blog/BlogAuthorCard';
 import BlogEngagementBar from '@/components/blog/BlogEngagementBar';
 import BlogCommentsSection from '@/components/blog/BlogCommentsSection';
+import { stripHtml } from '@/lib/utils/htmlUtils';
 import type { BlogPostDetail, BlogComment } from '@/lib/types/blog';
 
 const blogService = BlogsAndArticlesService.getInstance();
@@ -238,7 +239,7 @@ export default function BlogDetailScreen() {
             </View>
 
             {/* Title */}
-            <Text style={[styles.articleTitle, { color: colors.text }]}>{blog.title}</Text>
+            <Text style={[styles.articleTitle, { color: colors.text }]}>{stripHtml(blog.title)}</Text>
 
             {/* Author Row */}
             <TouchableOpacity
@@ -282,7 +283,7 @@ export default function BlogDetailScreen() {
             {/* Excerpt Lead */}
             {blog.excerpt ? (
               <Text style={[styles.leadExcerpt, { color: isDark ? '#94a3b8' : '#475569' }]}>
-                {blog.excerpt}
+                {stripHtml(blog.excerpt)}
               </Text>
             ) : null}
 

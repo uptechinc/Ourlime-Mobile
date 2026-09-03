@@ -8,10 +8,11 @@ import {
 	ScrollView,
 	Alert,
 	ActivityIndicator,
+	Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
-// TODO: Comment out Firebase setup for later implementation
-// import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesService';
+import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesService';
 
 type CreateBlogModalProps = {
 	isOpen: boolean;
@@ -60,33 +61,22 @@ export default function CreateBlogModal({
 		setIsLoading(true);
 
 		try {
-			// TODO: Replace with actual API call when Firebase is implemented
-			// const response = await fetch('/api/blogs&articles', {
-			//     method: 'POST',
-			//     headers: {
-			//         'Content-Type': 'application/json',
-			//     },
-			//     body: JSON.stringify({
-			//         userId,
-			//         ...formData
-			//     }),
-			// });
+			const blogService = BlogsAndArticlesService.getInstance();
+			const wordCount = formData.content.trim().split(/\s+/).length;
+			const computedReadTime = Math.max(1, Math.ceil(wordCount / 200));
 
-			// if (!response.ok) {
-			//     throw new Error('Failed to create blog');
-			// }
-
-			// const result = await response.json();
-
-			// if (result.status === 'success') {
-			//     onSuccess?.();
-			//     onClose();
-			// } else {
-			//     throw new Error(result.message || 'Failed to create blog');
-			// }
-
-			// Simulate API call delay
-			await new Promise((resolve) => setTimeout(resolve, 2000));
+			await blogService.createPost({
+				userId,
+				title: formData.title.trim(),
+				type: formData.type,
+				excerpt: formData.excerpt.trim(),
+				content: formData.content.trim(),
+				coverImage: formData.coverImage.trim(),
+				categoryId: formData.categoryId || 'technology',
+				readTime: formData.readTime || computedReadTime,
+				tags: formData.tags,
+				sources: formData.sources,
+			});
 
 			Alert.alert('Success!', 'Blog created successfully!', [
 				{
@@ -110,6 +100,28 @@ export default function CreateBlogModal({
 			...prev,
 			[field]: value,
 		}));
+	};
+
+	const handlePickCoverImage = async () => {
+		try {
+			const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+			if (!permission.granted) {
+				Alert.alert('Permission needed', 'Allow photo access to attach a cover image.');
+				return;
+			}
+			const result = await ImagePicker.launchImageLibraryAsync({
+				mediaTypes: ['images'],
+				allowsEditing: true,
+				aspect: [16, 9],
+				quality: 0.85,
+			});
+			if (!result.canceled && result.assets && result.assets.length > 0) {
+				handleInputChange('coverImage', result.assets[0].uri);
+			}
+		} catch (pickerError) {
+			console.error('[CreateBlogModal.handlePickCoverImage] Error:', pickerError);
+			Alert.alert('Error', 'Failed to pick image.');
+		}
 	};
 
 	const showTypeSelection = () => {
@@ -370,23 +382,41 @@ export default function CreateBlogModal({
 									style={{
 										paddingHorizontal: 16,
 										paddingVertical: 12,
-										backgroundColor: '#3b82f6',
+										backgroundColor: '#10b981',
 										borderRadius: 8,
 										justifyContent: 'center',
 										alignItems: 'center',
 									}}
-									onPress={() =>
-										Alert.alert(
-											'Upload',
-											'Image upload functionality coming soon!'
-										)
-									}
+									onPress={handlePickCoverImage}
 								>
 									<Text style={{ color: '#ffffff', fontWeight: '500' }}>
-										Upload
+										Pick Image
 									</Text>
 								</TouchableOpacity>
 							</View>
+							{Boolean(formData.coverImage) && (
+								<View style={{ marginTop: 8, position: 'relative', borderRadius: 8, overflow: 'hidden', height: 120, backgroundColor: '#f3f4f6' }}>
+									<Image
+										source={{ uri: formData.coverImage }}
+										style={{ width: '100%', height: '100%' }}
+										resizeMode="cover"
+									/>
+									<TouchableOpacity
+										style={{
+											position: 'absolute',
+											top: 6,
+											right: 6,
+											backgroundColor: 'rgba(0, 0, 0, 0.6)',
+											borderRadius: 12,
+											paddingHorizontal: 8,
+											paddingVertical: 4,
+										}}
+										onPress={() => handleInputChange('coverImage', '')}
+									>
+										<Text style={{ color: '#ffffff', fontSize: 11, fontWeight: '600' }}>Remove</Text>
+									</TouchableOpacity>
+								</View>
+							)}
 						</View>
 
 						{/* Category */}

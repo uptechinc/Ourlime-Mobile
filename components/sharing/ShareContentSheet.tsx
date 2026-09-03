@@ -95,9 +95,16 @@ export default function ShareContentSheet({
         setFeedback('The share could not be sent. Try again.');
         return;
       }
-      onShared?.('chat');
+      try {
+        if (typeof onShared === 'function') {
+          onShared('chat');
+        }
+      } catch (callbackErr) {
+        console.warn('[ShareContentSheet.onShared]', callbackErr);
+      }
       onClose();
     } catch (error: unknown) {
+      console.error('[ShareContentSheet.handleSendToChats]', error);
       setFeedback(error instanceof Error ? error.message : 'The share could not be sent.');
     } finally {
       setSending(false);
@@ -111,11 +118,18 @@ export default function ShareContentSheet({
     try {
       const didShare = await contentShareService.shareExternally({ title, message, url });
       if (didShare) {
-        onShared?.('external');
+        try {
+          if (typeof onShared === 'function') {
+            onShared('external');
+          }
+        } catch (callbackErr) {
+          console.warn('[ShareContentSheet.onShared]', callbackErr);
+        }
         onClose();
       }
-    } catch {
-      setFeedback('Could not open your phone’s share menu.');
+    } catch (error: unknown) {
+      console.error('[ShareContentSheet.handleExternalShare]', error);
+      setFeedback(error instanceof Error ? error.message : 'External sharing failed.');
     } finally {
       setSharingExternally(false);
     }

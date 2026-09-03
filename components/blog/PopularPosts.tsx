@@ -1,4 +1,5 @@
 import { View, Text, Image, ScrollView } from 'react-native';
+import { stripHtml } from '@/lib/utils/htmlUtils';
 
 type PopularPostsProps = {
 	posts: {
@@ -86,7 +87,7 @@ export default function PopularPosts({ posts }: PopularPostsProps) {
 									marginBottom: 4,
 									lineHeight: 20
 								}}>
-									{post.title || 'Particle Size Analysis Market worth $596 million by 2028'}
+									{stripHtml(post.title || 'Particle Size Analysis Market worth $596 million by 2028')}
 								</Text>
 								<View style={{
 									flexDirection: 'row',
