@@ -115,18 +115,26 @@ export class ProfileResourceService {
         await this.commit(identifier, { profile, stats: initialStats }, 'network');
 
         try {
-          const [networkStats, posts] = await Promise.all([
+          const [networkStatsResult, postsResult] = await Promise.allSettled([
             this.timeoutService.run(
               this.relationshipService.getNetworkStats(identifier.userId),
               'Profile network statistics',
-              5_000,
+              15_000,
             ),
             this.timeoutService.run(
               this.postService.getAuthorPostCount(identifier.userId),
               'Profile post statistics',
-              5_000,
-            ).catch(() => initialStats.posts),
+              15_000,
+            ),
           ]);
+
+          const networkStats = networkStatsResult.status === 'fulfilled'
+            ? networkStatsResult.value
+            : { friends: initialStats.friends, followers: initialStats.followers, following: initialStats.following };
+          const posts = postsResult.status === 'fulfilled'
+            ? postsResult.value
+            : initialStats.posts;
+
           await this.commit(identifier, { profile, stats: { posts, ...networkStats } }, 'network');
         } catch {
           // The profile is already ready; network counts are optional enrichment.

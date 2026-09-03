@@ -366,18 +366,22 @@ export class RelationshipService {
 
   public async getNetworkStats(userId: string): Promise<RelationshipNetworkStats> {
     try {
-      const response = await this.apiService.request<{ success: boolean; data?: Partial<RelationshipNetworkStats>; error?: string }>(
-        `/api/relationships/status?userId1=${encodeURIComponent(userId)}&userId2=${encodeURIComponent(userId)}&type=network-stats`,
-        { authenticated: true }
-      );
-      if (!response.success || !response.data) throw new Error(response.error || 'Failed to load network stats');
-      return {
-        friends: typeof response.data.friends === 'number' ? response.data.friends : 0,
-        followers: typeof response.data.followers === 'number' ? response.data.followers : 0,
-        following: typeof response.data.following === 'number' ? response.data.following : 0,
-      };
+      return await this.getNetworkStatsFromFirestore(userId);
     } catch {
-      return this.getNetworkStatsFromFirestore(userId);
+      try {
+        const response = await this.apiService.request<{ success: boolean; data?: Partial<RelationshipNetworkStats>; error?: string }>(
+          `/api/relationships/status?userId1=${encodeURIComponent(userId)}&userId2=${encodeURIComponent(userId)}&type=network-stats`,
+          { authenticated: true, timeoutMs: 8_000 }
+        );
+        if (!response.success || !response.data) throw new Error(response.error || 'Failed to load network stats');
+        return {
+          friends: typeof response.data.friends === 'number' ? response.data.friends : 0,
+          followers: typeof response.data.followers === 'number' ? response.data.followers : 0,
+          following: typeof response.data.following === 'number' ? response.data.following : 0,
+        };
+      } catch {
+        return { friends: 0, followers: 0, following: 0 };
+      }
     }
   }
 

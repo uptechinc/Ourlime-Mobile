@@ -200,10 +200,21 @@ export class PostService {
 
   public async getAuthorPostCount(userId: string): Promise<number> {
     if (!userId) return 0;
-    const snapshot = await getCountFromServer(
-      query(collection(db, 'feedPosts'), where('userId', '==', userId)),
-    );
-    return snapshot.data().count;
+    try {
+      const snapshot = await getCountFromServer(
+        query(collection(db, 'feedPosts'), where('userId', '==', userId)),
+      );
+      return snapshot.data().count;
+    } catch {
+      try {
+        const snap = await getDocs(
+          query(collection(db, 'feedPosts'), where('userId', '==', userId)),
+        );
+        return snap.size;
+      } catch {
+        return 0;
+      }
+    }
   }
 
   public async fetchCommunityPosts(communityId: string): Promise<PostItem[]> {
