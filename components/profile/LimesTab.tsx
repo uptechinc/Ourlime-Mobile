@@ -15,6 +15,8 @@ import { AuthService } from '@/lib/services/AuthService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import CreateLimeModal from '@/components/limes/CreateLimeModal';
 
+import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
+
 type LimesTabProps = {
   userId: string;
 };
@@ -36,18 +38,47 @@ export default function LimesTab({ userId }: LimesTabProps) {
 
   const [limes, setLimes] = useState<Reel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [createModalVisible, setCreateModalVisible] = useState(false);
 
   const loadLimes = useCallback(async () => {
     try {
-      const data = await limeService.fetchUserAndRepostedReels(userId);
+      let data = await limeService.fetchUserAndRepostedReels(userId);
+      const missing = data.filter((r) => !r.thumbnailUrl && !r.media?.thumbnailUrl);
+
+      if (missing.length > 0) {
+        setLoadingMessage('some of your limes are missing thumbnaills, lime a bit while we set them for you...');
+        data = await Promise.all(
+          data.map(async (reel) => {
+            if (reel.thumbnailUrl || reel.media?.thumbnailUrl) return reel;
+            try {
+              const generated = await limeThumbnailService.ensureReelThumbnail(reel, currentUserId);
+              if (generated) {
+                return {
+                  ...reel,
+                  thumbnailUrl: generated,
+                  media: {
+                    ...reel.media,
+                    thumbnailUrl: generated,
+                  },
+                };
+              }
+            } catch (err) {
+              console.warn('[LimesTab] Auto-thumbnail error:', err);
+            }
+            return reel;
+          })
+        );
+      }
+
       setLimes(data);
     } catch (err) {
       console.error('[LimesTab] Error loading limes:', err);
     } finally {
       setIsLoading(false);
+      setLoadingMessage(null);
     }
-  }, [userId]);
+  }, [currentUserId, userId]);
 
   useEffect(() => {
     void loadLimes();
@@ -62,8 +93,22 @@ export default function LimesTab({ userId }: LimesTabProps) {
 
   if (isLoading) {
     return (
-      <View style={{ paddingVertical: 48, alignItems: 'center' }}>
+      <View style={{ paddingVertical: 48, alignItems: 'center', paddingHorizontal: 24 }}>
         <ActivityIndicator size="small" color="#10b981" />
+        {loadingMessage ? (
+          <Text
+            style={{
+              marginTop: 14,
+              fontSize: 13,
+              fontWeight: '600',
+              color: colors.secondaryText,
+              textAlign: 'center',
+              lineHeight: 18,
+            }}
+          >
+            {loadingMessage}
+          </Text>
+        ) : null}
       </View>
     );
   }

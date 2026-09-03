@@ -18,6 +18,8 @@ import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponen
 import { AuthService } from '@/lib/services/AuthService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
+import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
+
 type ProfileRepostsTabProps = {
   userId: string;
 };
@@ -42,6 +44,7 @@ export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
   const [activeFilter, setActiveFilter] = useState<RepostFilter>('all');
   const [repostedLimes, setRepostedLimes] = useState<Reel[]>([]);
   const [isLimesLoading, setIsLimesLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [activePostId, setActivePostId] = useState<string | null>(null);
 
   // Feed posts query for this profile
@@ -55,14 +58,42 @@ export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
 
   const loadRepostedLimes = useCallback(async () => {
     try {
-      const limes = await limeService.fetchUserRepostedLimes(userId);
+      let limes = await limeService.fetchUserRepostedLimes(userId);
+      const missing = limes.filter((r) => !r.thumbnailUrl && !r.media?.thumbnailUrl);
+
+      if (missing.length > 0) {
+        setLoadingMessage('some of your limes are missing thumbnaills, lime a bit while we set them for you...');
+        limes = await Promise.all(
+          limes.map(async (reel) => {
+            if (reel.thumbnailUrl || reel.media?.thumbnailUrl) return reel;
+            try {
+              const generated = await limeThumbnailService.ensureReelThumbnail(reel, viewerId);
+              if (generated) {
+                return {
+                  ...reel,
+                  thumbnailUrl: generated,
+                  media: {
+                    ...reel.media,
+                    thumbnailUrl: generated,
+                  },
+                };
+              }
+            } catch (err) {
+              console.warn('[ProfileRepostsTab] Auto-thumbnail error:', err);
+            }
+            return reel;
+          })
+        );
+      }
+
       setRepostedLimes(limes);
     } catch (err) {
       console.error('[ProfileRepostsTab] Error fetching reposted limes:', err);
     } finally {
       setIsLimesLoading(false);
+      setLoadingMessage(null);
     }
-  }, [userId]);
+  }, [userId, viewerId]);
 
   useEffect(() => {
     void loadRepostedLimes();
@@ -76,8 +107,22 @@ export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
 
   if (isLoading) {
     return (
-      <View style={{ paddingVertical: 48, alignItems: 'center' }}>
+      <View style={{ paddingVertical: 48, alignItems: 'center', paddingHorizontal: 24 }}>
         <ActivityIndicator size="small" color="#10b981" />
+        {loadingMessage ? (
+          <Text
+            style={{
+              marginTop: 14,
+              fontSize: 13,
+              fontWeight: '600',
+              color: colors.secondaryText,
+              textAlign: 'center',
+              lineHeight: 18,
+            }}
+          >
+            {loadingMessage}
+          </Text>
+        ) : null}
       </View>
     );
   }

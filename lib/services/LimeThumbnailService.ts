@@ -116,6 +116,46 @@ export class LimeThumbnailService {
     return thumbnailUrl;
   }
 
+  public async ensureReelThumbnail(
+    reel: { id: string; userId: string; thumbnailUrl?: string; media?: { typeUrl?: string; duration?: number; thumbnailUrl?: string } },
+    viewerUserId: string
+  ): Promise<string | null> {
+    const existing = reel.thumbnailUrl || reel.media?.thumbnailUrl;
+    if (existing) return existing;
+
+    const videoUri = reel.media?.typeUrl;
+    if (!videoUri) return null;
+
+    try {
+      const durationSeconds = reel.media?.duration || 5;
+      const thumbnailUri = await this.createThumbnail(videoUri, durationSeconds);
+
+      if (viewerUserId && viewerUserId === reel.userId) {
+        const thumbnailBlob = await this.uriToBlob(thumbnailUri);
+        const thumbnailPath = `limes/${reel.userId}/thumbnails/${reel.id}_thumbnail.jpg`;
+        const thumbnailTask = uploadBytesResumable(
+          ref(storage, thumbnailPath),
+          thumbnailBlob,
+          { contentType: 'image/jpeg' }
+        );
+        await new Promise<void>((resolve, reject) => {
+          thumbnailTask.on('state_changed', undefined, reject, resolve);
+        });
+        const thumbnailUrl = await getDownloadURL(thumbnailTask.snapshot.ref);
+        await updateDoc(doc(db, 'reels', reel.id), {
+          thumbnailUrl,
+          'media.thumbnailUrl': thumbnailUrl,
+        });
+        return thumbnailUrl;
+      }
+
+      return thumbnailUri;
+    } catch (error) {
+      console.warn('[LimeThumbnailService] Failed to auto-generate thumbnail for reel:', reel.id, error);
+      return null;
+    }
+  }
+
   private uriToBlob(uri: string): Promise<Blob> {
     return new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
