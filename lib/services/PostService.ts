@@ -699,6 +699,7 @@ export class PostService {
       const response = await this.apiService.request<{ status?: string; data?: CommunityReactionResult; error?: string }>('/api/communities/like', {
         method: 'POST',
         authenticated: true,
+        priority: 'foreground',
         body: { postId: post.id, desiredLiked },
       });
       if (response.status !== 'success' || !response.data) throw new Error(response.error || 'Failed to update community like');
@@ -708,7 +709,12 @@ export class PostService {
       success: boolean;
       data?: { liked?: boolean; likeCount?: number };
       error?: string;
-    }>('/api/home/MiddleSection/Post/Likes', { method: 'POST', authenticated: true, body: { postId: post.id, desiredLiked } });
+    }>('/api/home/MiddleSection/Post/Likes', {
+      method: 'POST',
+      authenticated: true,
+      priority: 'foreground',
+      body: { postId: post.id, desiredLiked },
+    });
     if (!response.success || typeof response.data?.liked !== 'boolean') throw new Error(response.error || 'Failed to update like');
     this.logger.success('PostService', 'like-api', { postId: post.id, userId, desiredLiked, liked: response.data.liked });
     return { liked: response.data.liked, likeCount: response.data.likeCount ?? 0 };

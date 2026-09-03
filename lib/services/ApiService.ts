@@ -107,13 +107,14 @@ export class ApiService {
 		path: string,
 		options: ApiRequestOptions = {}
 	): Promise<TResponse> {
-		return this.performRequest<TResponse>(path, options, false);
+		return this.performRequest<TResponse>(path, options, false, 0);
 	}
 
 	private async performRequest<TResponse>(
 		path: string,
 		options: ApiRequestOptions,
-		didRetryAuthentication: boolean
+		didRetryAuthentication: boolean,
+		retryCount = 0
 	): Promise<TResponse> {
 		const method = options.method ?? 'GET';
 		const requestBaseUrl = (options.baseUrlOverride?.trim() || this.baseUrl).replace(/\/$/, '');
@@ -260,6 +261,20 @@ export class ApiService {
 				errorMessage.includes('network security policy') ||
 				errorMessage.includes('cleartext communication') ||
 				errorMessage.includes('network request failed');
+
+			// Automatic single transient retry for interactive foreground requests (e.g. cold server boot or Wi-Fi handshake)
+			const isForeground = (options.priority ?? 'foreground') === 'foreground';
+			if ((didTimeout || isNetworkError) && isForeground && retryCount < 1) {
+				this.logger.warn('ApiService', 'request:retry-transient', {
+					requestId,
+					method,
+					path,
+					retryCount: retryCount + 1,
+					error: error instanceof Error ? error.message : String(error),
+				});
+				await new Promise((resolve) => setTimeout(resolve, 400));
+				return this.performRequest<TResponse>(path, options, didRetryAuthentication, retryCount + 1);
+			}
 			if (isNetworkError) {
 				const networkMetadata = {
 					requestId,
@@ -333,13 +348,25 @@ export class ApiService {
 		const now = Date.now();
 		if (
 			this.availabilityState === 'unavailable' &&
-			now < this.unavailableUntil &&
-			priority === 'background'
+			now < this.unavailableUntil
 		) {
-			throw this.createUnavailableError();
+			// For background jobs (e.g. preloading queues), back off so we don't flood an offline host
+			if (priority === 'background') {
+				throw this.createUnavailableError();
+			}
+			// For foreground user interactions, do not block behind backoff; allow direct attempt
+			return;
 		}
 
-		const available = await this.probeAvailability(priority === 'foreground');
+		if (priority === 'foreground') {
+			// Do not block active user interaction behind health probes; trigger background probe if unknown
+			if (this.availabilityState === 'unknown') {
+				void this.probeAvailability(false);
+			}
+			return;
+		}
+
+		const available = await this.probeAvailability(false);
 		if (!available) throw this.createUnavailableError();
 	}
 

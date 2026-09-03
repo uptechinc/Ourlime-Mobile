@@ -124,7 +124,7 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
     } catch (error: unknown) {
       setIsLiked(previousLiked);
       setLikeCount((count) => Math.max(0, count + (previousLiked ? 1 : -1)));
-      console.error('[PostCardSection.handleLike]', error);
+      console.warn('[PostCardSection.handleLike]', error instanceof Error ? error.message : error);
     }
   };
 
