@@ -18,7 +18,6 @@ import {
   Clock,
   ExternalLink,
   ShieldAlert,
-  Calendar,
 } from 'lucide-react-native';
 import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesService';
 import { useAppData } from '@/lib/contexts/AppDataContext';

@@ -2,11 +2,11 @@ import { useEffect, useRef } from 'react';
 import {
   Animated,
   Dimensions,
+  Image,
   StyleSheet,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -77,12 +77,12 @@ export function LimeCardSkeleton({
         },
       ]}
     >
-      {/* Center Subtle Glyph */}
+      {/* Center Subtle Ourlime Logo Glyph */}
       <View style={styles.centerIconContainer}>
-        <Ionicons
-          name="videocam-outline"
-          size={36}
-          color={isDark ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.5)'}
+        <Image
+          source={require('@/assets/images/logo.png')}
+          style={styles.centerLogo}
+          resizeMode="contain"
         />
       </View>
 
@@ -166,7 +166,11 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    opacity: 0.7,
+  },
+  centerLogo: {
+    width: 44,
+    height: 44,
+    opacity: 0.18,
   },
   topBadgeRow: {
     padding: 10,
