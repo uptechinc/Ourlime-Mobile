@@ -73,12 +73,25 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const resolvedTheme: ResolvedSettingsTheme = theme === 'system' ? systemTheme : theme;
 
   useEffect(() => {
-    void AsyncStorage.getItem(THEME_STORAGE_KEY).then((storedTheme) => {
-      const savedTheme: SettingsTheme = storedTheme === 'light' || storedTheme === 'dark' || storedTheme === 'system' ? storedTheme : 'system';
-      const currentSystemTheme = getSystemTheme();
-      setSystemTheme(currentSystemTheme);
-      setThemeState(savedTheme);
-    }).finally(() => setHydrated(true));
+    let active = true;
+    const hydrateTheme = async () => {
+      try {
+        const storedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+        if (!active) return;
+        const savedTheme: SettingsTheme = storedTheme === 'light' || storedTheme === 'dark' || storedTheme === 'system' ? storedTheme : 'system';
+        const currentSystemTheme = getSystemTheme();
+        setSystemTheme(currentSystemTheme);
+        setThemeState(savedTheme);
+      } catch (err) {
+        console.error('[ThemeContext] Failed to load saved theme:', err);
+      } finally {
+        if (active) setHydrated(true);
+      }
+    };
+    void hydrateTheme();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
