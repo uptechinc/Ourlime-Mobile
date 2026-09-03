@@ -55,10 +55,16 @@ export default function ShareContentSheet({
     setSearch('');
     setFeedback(null);
     setLoading(true);
-    void contentShareService.loadRecipients(currentUserId)
-      .then(setRecipients)
-      .catch(() => setFeedback('Could not load your chats. Try again.'))
-      .finally(() => setLoading(false));
+    void (async () => {
+      try {
+        const data = await contentShareService.loadRecipients(currentUserId);
+        setRecipients(data);
+      } catch {
+        setFeedback('Could not load your chats. Try again.');
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [currentUserId, visible]);
 
   const filteredRecipients = useMemo(() => {

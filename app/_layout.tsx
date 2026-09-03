@@ -1,3 +1,4 @@
+import '@/lib/shims/promiseFinally';
 import '@/lib/shims/codegenNativeComponent';
 import { useEffect } from 'react';
 import { Stack } from 'expo-router';

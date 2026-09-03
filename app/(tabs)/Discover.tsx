@@ -71,8 +71,9 @@ export default function DiscoverScreen() {
     let isCurrent = true;
     setIsSearchingQuery(true);
     const timer = setTimeout(() => {
-      void searchService.searchUsers(query, 20)
-        .then((profiles) => {
+      void (async () => {
+        try {
+          const profiles = await searchService.searchUsers(query, 20);
           if (!isCurrent) return;
           setUserSearchResults(profiles.map((profile) => ({
             id: profile.uid,
@@ -82,13 +83,12 @@ export default function DiscoverScreen() {
             profileImage: profile.profilePicture ?? undefined,
             reason: 'Search result',
           })));
-        })
-        .catch(() => {
+        } catch {
           if (isCurrent) setUserSearchResults([]);
-        })
-        .finally(() => {
+        } finally {
           if (isCurrent) setIsSearchingQuery(false);
-        });
+        }
+      })();
     }, 300);
     return () => {
       isCurrent = false;

@@ -87,10 +87,21 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
 
   useEffect(() => {
     if (!post.eventId) return;
+    let active = true;
     setEventAttendanceLoading(true);
-    void eventService.getAttendance(post.eventId).then(setEventAttendance).catch((error: unknown) => {
-      console.warn('[PostCardSection.eventAttendance]', error instanceof Error ? error.message : 'Attendance unavailable');
-    }).finally(() => setEventAttendanceLoading(false));
+    void (async () => {
+      try {
+        const attendance = await eventService.getAttendance(post.eventId!);
+        if (active) setEventAttendance(attendance);
+      } catch (error: unknown) {
+        console.warn('[PostCardSection.eventAttendance]', error instanceof Error ? error.message : 'Attendance unavailable');
+      } finally {
+        if (active) setEventAttendanceLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, [currentUserId, post.eventId]);
 
   const handleToggleAttendance = async () => {
