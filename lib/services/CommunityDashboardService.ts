@@ -47,15 +47,20 @@ export class CommunityDashboardService {
     const current = useResourceStore.getState().communityDashboards[communityId];
     if (!force && current?.data && current.updatedAt && Date.now() - current.updatedAt < STALE_MS) return;
     useResourceStore.getState().setCommunityDashboard(communityId, this.state(current, current?.data ? 'refreshing' : 'hydrating'));
-    const request = this.apiService.request<DashboardResult>(`/api/communities/dashboard?communityId=${encodeURIComponent(communityId)}`, { authenticated: true }).then(async (response) => {
-      if (!response.success || !response.data) throw new Error(response.error || 'Community dashboard could not be loaded.');
-      const updatedAt = Date.now();
-      useResourceStore.getState().setCommunityDashboard(communityId, { data: response.data, status: 'ready', source: 'network', updatedAt, isStale: false, error: null });
-      await this.cacheService.write(userId, NAMESPACE, communityId, response.data, { expiresAt: updatedAt + RETENTION_MS });
-    }).catch((error: unknown) => {
-      const latest = useResourceStore.getState().communityDashboards[communityId];
-      useResourceStore.getState().setCommunityDashboard(communityId, { ...this.state(latest, latest?.data ? 'ready' : 'error'), isStale: true, error: this.errorService.normalize(error, 'Community dashboard could not be loaded.') });
-    }).finally(() => this.inFlight.delete(communityId));
+    const request = (async () => {
+      try {
+        const response = await this.apiService.request<DashboardResult>(`/api/communities/dashboard?communityId=${encodeURIComponent(communityId)}`, { authenticated: true });
+        if (!response.success || !response.data) throw new Error(response.error || 'Community dashboard could not be loaded.');
+        const updatedAt = Date.now();
+        useResourceStore.getState().setCommunityDashboard(communityId, { data: response.data, status: 'ready', source: 'network', updatedAt, isStale: false, error: null });
+        await this.cacheService.write(userId, NAMESPACE, communityId, response.data, { expiresAt: updatedAt + RETENTION_MS });
+      } catch (error: unknown) {
+        const latest = useResourceStore.getState().communityDashboards[communityId];
+        useResourceStore.getState().setCommunityDashboard(communityId, { ...this.state(latest, latest?.data ? 'ready' : 'error'), isStale: true, error: this.errorService.normalize(error, 'Community dashboard could not be loaded.') });
+      } finally {
+        this.inFlight.delete(communityId);
+      }
+    })();
     this.inFlight.set(communityId, request);
     return request;
   }

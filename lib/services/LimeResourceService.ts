@@ -128,7 +128,13 @@ export class LimeResourceService {
     const existingRequest = this.inFlight.get(key);
     if (existingRequest) return existingRequest;
 
-    const operation = this.performRefresh(query, force).finally(() => this.inFlight.delete(key));
+    const operation = (async () => {
+      try {
+        await this.performRefresh(query, force);
+      } finally {
+        this.inFlight.delete(key);
+      }
+    })();
     this.inFlight.set(key, operation);
     return operation;
   }
@@ -146,39 +152,44 @@ export class LimeResourceService {
       data: { ...current.data, isLoadingMore: true },
     });
 
-    const operation = this.timeoutService.run(
-      this.limeService.fetchFeed(
-        query.userId,
-        query.category,
-        current.data.nextCursor,
-        INITIAL_PAGE_SIZE,
-        0,
-        query.scope ?? 'forYou',
-      ),
-      'Limes pagination request',
-    ).then(async (page) => {
-      const latest = useResourceStore.getState().limeFeeds[key];
-      if (!latest?.data) return;
-      const reels = this.dedupe([...latest.data.reels, ...page.reels]).slice(0, MAXIMUM_MEMORY_REELS);
-      await this.commit(query, {
-        ...latest.data,
-        reels,
-        commentsByReel: { ...latest.data.commentsByReel, ...page.commentsByReel },
-        nextCursor: page.lastDoc,
-        hasMore: page.hasMore,
-        isLoadingMore: false,
-      }, 'network');
-    }).catch((error: unknown) => {
-      const latest = useResourceStore.getState().limeFeeds[key];
-      if (!latest?.data) return;
-      useResourceStore.getState().setLimeFeed(key, {
-        ...latest,
-        status: 'ready',
-        isStale: true,
-        error: this.errorService.normalize(error, 'Could not load more Limes.'),
-        data: { ...latest.data, isLoadingMore: false },
-      });
-    }).finally(() => this.inFlight.delete(requestKey));
+    const operation = (async () => {
+      try {
+        const page = await this.timeoutService.run(
+          this.limeService.fetchFeed(
+            query.userId,
+            query.category,
+            current.data!.nextCursor ?? undefined,
+            INITIAL_PAGE_SIZE,
+            0,
+            query.scope ?? 'forYou',
+          ),
+          'Limes pagination request',
+        );
+        const latest = useResourceStore.getState().limeFeeds[key];
+        if (!latest?.data) return;
+        const reels = this.dedupe([...latest.data.reels, ...page.reels]).slice(0, MAXIMUM_MEMORY_REELS);
+        await this.commit(query, {
+          ...latest.data,
+          reels,
+          commentsByReel: { ...latest.data.commentsByReel, ...page.commentsByReel },
+          nextCursor: page.lastDoc,
+          hasMore: page.hasMore,
+          isLoadingMore: false,
+        }, 'network');
+      } catch (error: unknown) {
+        const latest = useResourceStore.getState().limeFeeds[key];
+        if (!latest?.data) return;
+        useResourceStore.getState().setLimeFeed(key, {
+          ...latest,
+          status: 'ready',
+          isStale: true,
+          error: this.errorService.normalize(error, 'Could not load more Limes.'),
+          data: { ...latest.data, isLoadingMore: false },
+        });
+      } finally {
+        this.inFlight.delete(requestKey);
+      }
+    })();
 
     this.inFlight.set(requestKey, operation);
     return operation;

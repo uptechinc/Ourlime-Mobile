@@ -403,10 +403,9 @@ export class ApiService {
 				return false;
 			} finally {
 				clearTimeout(timeoutId);
+				this.healthProbe = null;
 			}
-		})().finally(() => {
-			this.healthProbe = null;
-		});
+		})();
 		return this.healthProbe;
 	}
 

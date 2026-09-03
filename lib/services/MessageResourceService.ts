@@ -86,7 +86,13 @@ export class MessageResourceService {
     if (this.inFlight.has(chatId)) return this.inFlight.get(chatId);
     const current = useResourceStore.getState().messages[chatId];
     if (!force && current?.status === 'refreshing') return;
-    const operation = this.fetchPage(userId, peerId, chatId, null, false).finally(() => this.inFlight.delete(chatId));
+    const operation = (async () => {
+      try {
+        await this.fetchPage(userId, peerId, chatId, null, false);
+      } finally {
+        this.inFlight.delete(chatId);
+      }
+    })();
     this.inFlight.set(chatId, operation);
     return operation;
   }
@@ -99,7 +105,13 @@ export class MessageResourceService {
       ...current,
       data: { ...current.data, pagination: { status: 'loading', errorMessage: null } },
     });
-    const operation = this.fetchPage(userId, peerId, chatId, current.data.nextCursor, true).finally(() => this.inFlight.delete(requestKey));
+    const operation = (async () => {
+      try {
+        await this.fetchPage(userId, peerId, chatId, current.data!.nextCursor, true);
+      } finally {
+        this.inFlight.delete(requestKey);
+      }
+    })();
     this.inFlight.set(requestKey, operation);
     return operation;
   }

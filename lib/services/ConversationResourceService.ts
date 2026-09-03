@@ -58,7 +58,13 @@ export class ConversationResourceService {
     if (this.inFlight) return this.inFlight;
     const current = useResourceStore.getState().conversations;
     if (!force && current.data && current.updatedAt && Date.now() - current.updatedAt < CONVERSATION_STALE_MS) return;
-    this.inFlight = this.performRefresh(userId).finally(() => { this.inFlight = null; });
+    this.inFlight = (async () => {
+      try {
+        await this.performRefresh(userId);
+      } finally {
+        this.inFlight = null;
+      }
+    })();
     return this.inFlight;
   }
 
@@ -278,10 +284,15 @@ export class ConversationResourceService {
 
   public async loadMore(userId: string): Promise<void> {
     if (!this.nextCursor || this.inFlight) return;
-    this.inFlight = this.timeoutService.run(this.messagingService.fetchConversationPage(userId, this.nextCursor), 'Conversation pagination request').then(async (page) => {
-      this.nextCursor = page.nextCursor;
-      await this.commit(userId, [...(useResourceStore.getState().conversations.data ?? []), ...page.items]);
-    }).finally(() => { this.inFlight = null; });
+    this.inFlight = (async () => {
+      try {
+        const page = await this.timeoutService.run(this.messagingService.fetchConversationPage(userId, this.nextCursor), 'Conversation pagination request');
+        this.nextCursor = page.nextCursor;
+        await this.commit(userId, [...(useResourceStore.getState().conversations.data ?? []), ...page.items]);
+      } finally {
+        this.inFlight = null;
+      }
+    })();
     return this.inFlight;
   }
 

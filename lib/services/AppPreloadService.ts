@@ -50,9 +50,13 @@ export class AppPreloadService {
     }
 
     const generation = ++this.generation;
-    const promise = this.performPreload(userId, canAccess, generation).finally(() => {
-      if (this.activeRun?.generation === generation) this.activeRun = null;
-    });
+    const promise = (async () => {
+      try {
+        await this.performPreload(userId, canAccess, generation);
+      } finally {
+        if (this.activeRun?.generation === generation) this.activeRun = null;
+      }
+    })();
     this.activeRun = { generation, userId, promise };
     return promise;
   }

@@ -59,25 +59,30 @@ export class CommunityDetailResourceService {
     const current = useResourceStore.getState().communityDetails[identifier];
     if (!force && current?.data && current.updatedAt && Date.now() - current.updatedAt < STALE_MS) return;
     useResourceStore.getState().setCommunityDetail(identifier, this.withState(current, { status: current?.data ? 'refreshing' : 'hydrating', error: null }));
-    const request = this.communityService.fetchCommunityDetail(identifier).then(async (data) => {
-      const updatedAt = Date.now();
-      const state = { data, status: 'ready' as const, source: 'network' as const, updatedAt, isStale: false, error: null };
-      useResourceStore.getState().setCommunityDetail(identifier, state);
-      if (data.community.id && data.community.id !== identifier) {
-        useResourceStore.getState().setCommunityDetail(data.community.id, state);
+    const request = (async () => {
+      try {
+        const data = await this.communityService.fetchCommunityDetail(identifier);
+        const updatedAt = Date.now();
+        const state = { data, status: 'ready' as const, source: 'network' as const, updatedAt, isStale: false, error: null };
+        useResourceStore.getState().setCommunityDetail(identifier, state);
+        if (data.community.id && data.community.id !== identifier) {
+          useResourceStore.getState().setCommunityDetail(data.community.id, state);
+        }
+        if (data.community.slug && data.community.slug !== identifier) {
+          useResourceStore.getState().setCommunityDetail(data.community.slug, state);
+        }
+        await Promise.all([
+          this.cacheService.write(userId, DETAIL_NAMESPACE, identifier, data, { expiresAt: updatedAt + RETENTION_MS }),
+          data.community.id && data.community.id !== identifier ? this.cacheService.write(userId, DETAIL_NAMESPACE, data.community.id, data, { expiresAt: updatedAt + RETENTION_MS }) : Promise.resolve(),
+          this.directoriesService.patchCommunity(userId, data.community),
+        ]);
+      } catch (error: unknown) {
+        const latest = useResourceStore.getState().communityDetails[identifier];
+        useResourceStore.getState().setCommunityDetail(identifier, { ...this.withState(latest, { status: latest?.data ? 'ready' : 'error' }), isStale: true, error: this.errorService.normalize(error, 'Community could not be loaded.') });
+      } finally {
+        this.inFlight.delete(requestKey);
       }
-      if (data.community.slug && data.community.slug !== identifier) {
-        useResourceStore.getState().setCommunityDetail(data.community.slug, state);
-      }
-      await Promise.all([
-        this.cacheService.write(userId, DETAIL_NAMESPACE, identifier, data, { expiresAt: updatedAt + RETENTION_MS }),
-        data.community.id && data.community.id !== identifier ? this.cacheService.write(userId, DETAIL_NAMESPACE, data.community.id, data, { expiresAt: updatedAt + RETENTION_MS }) : Promise.resolve(),
-        this.directoriesService.patchCommunity(userId, data.community),
-      ]);
-    }).catch((error: unknown) => {
-      const latest = useResourceStore.getState().communityDetails[identifier];
-      useResourceStore.getState().setCommunityDetail(identifier, { ...this.withState(latest, { status: latest?.data ? 'ready' : 'error' }), isStale: true, error: this.errorService.normalize(error, 'Community could not be loaded.') });
-    }).finally(() => this.inFlight.delete(requestKey));
+    })();
     this.inFlight.set(requestKey, request);
     return request;
   }
@@ -91,14 +96,19 @@ export class CommunityDetailResourceService {
     if (!current?.data) await this.hydrateWorkspace(userId, communityId, workspace);
     const hydrated = this.getWorkspaceResource(communityId, workspace);
     this.setWorkspaceResource(communityId, workspace, { ...this.baseWorkspaceState(hydrated), status: hydrated?.data ? 'refreshing' : 'hydrating', error: null });
-    const request = this.fetchWorkspace(communityId, workspace).then(async (data) => {
-      const updatedAt = Date.now();
-      this.setWorkspaceResource(communityId, workspace, { data, status: 'ready', source: 'network', updatedAt, isStale: false, error: null });
-      await this.cacheService.write(userId, this.namespaceFor(workspace), communityId, data, { expiresAt: updatedAt + RETENTION_MS });
-    }).catch((error: unknown) => {
-      const latest = this.getWorkspaceResource(communityId, workspace);
-      this.setWorkspaceResource(communityId, workspace, { ...this.baseWorkspaceState(latest), status: latest?.data ? 'ready' : 'error', isStale: true, error: this.errorService.normalize(error, `Community ${workspace} could not be loaded.`) });
-    }).finally(() => this.inFlight.delete(requestKey));
+    const request = (async () => {
+      try {
+        const data = await this.fetchWorkspace(communityId, workspace);
+        const updatedAt = Date.now();
+        this.setWorkspaceResource(communityId, workspace, { data, status: 'ready', source: 'network', updatedAt, isStale: false, error: null });
+        await this.cacheService.write(userId, this.namespaceFor(workspace), communityId, data, { expiresAt: updatedAt + RETENTION_MS });
+      } catch (error: unknown) {
+        const latest = this.getWorkspaceResource(communityId, workspace);
+        this.setWorkspaceResource(communityId, workspace, { ...this.baseWorkspaceState(latest), status: latest?.data ? 'ready' : 'error', isStale: true, error: this.errorService.normalize(error, `Community ${workspace} could not be loaded.`) });
+      } finally {
+        this.inFlight.delete(requestKey);
+      }
+    })();
     this.inFlight.set(requestKey, request);
     return request;
   }

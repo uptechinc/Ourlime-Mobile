@@ -69,7 +69,13 @@ export class FeedResourceService {
     const key = this.getKey(query);
     const existingRequest = this.inFlight.get(key);
     if (existingRequest) return existingRequest;
-    const operation = this.performRefresh(query, options).finally(() => this.inFlight.delete(key));
+    const operation = (async () => {
+      try {
+        await this.performRefresh(query, options);
+      } finally {
+        this.inFlight.delete(key);
+      }
+    })();
     this.inFlight.set(key, operation);
     return operation;
   }
@@ -78,12 +84,20 @@ export class FeedResourceService {
     const key = this.getKey(query);
     const current = useResourceStore.getState().feeds[key];
     if (!current?.data?.hasMore || !current.data.nextCursor || this.inFlight.has(`${key}:more`)) return;
-    const operation = this.timeoutService.run(this.postService.fetchFeedPage({ limit: 20, cursor: current.data.nextCursor, filter: query.filter, scope: query.scope, authorId: query.authorId }), 'Feed pagination request').then(async (page) => {
-      const posts = this.dedupe([...current.data!.posts, ...page.posts]).slice(0, 60);
-      await this.commit(query, { ...current.data!, posts, nextCursor: page.nextCursor, hasMore: page.hasMore }, 'network');
-    }).catch((error: unknown) => {
-      useResourceStore.getState().setFeed(key, { ...current, status: 'ready', isStale: true, error: this.errorService.normalize(error, 'Could not load more posts.') });
-    }).finally(() => this.inFlight.delete(`${key}:more`));
+    const operation = (async () => {
+      try {
+        const page = await this.timeoutService.run(
+          this.postService.fetchFeedPage({ limit: 20, cursor: current.data!.nextCursor, filter: query.filter, scope: query.scope, authorId: query.authorId }),
+          'Feed pagination request',
+        );
+        const posts = this.dedupe([...current.data!.posts, ...page.posts]).slice(0, 60);
+        await this.commit(query, { ...current.data!, posts, nextCursor: page.nextCursor, hasMore: page.hasMore }, 'network');
+      } catch (error: unknown) {
+        useResourceStore.getState().setFeed(key, { ...current, status: 'ready', isStale: true, error: this.errorService.normalize(error, 'Could not load more posts.') });
+      } finally {
+        this.inFlight.delete(`${key}:more`);
+      }
+    })();
     this.inFlight.set(`${key}:more`, operation);
     return operation;
   }

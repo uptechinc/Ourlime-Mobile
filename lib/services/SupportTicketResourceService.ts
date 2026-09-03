@@ -34,9 +34,13 @@ export class SupportTicketResourceService {
 	}
 	public async refreshList(): Promise<void> {
 		if (this.inFlight.has('list')) return this.inFlight.get('list');
-		const operation = this.fetchList().finally(() =>
-			this.inFlight.delete('list')
-		);
+		const operation = (async () => {
+			try {
+				await this.fetchList();
+			} finally {
+				this.inFlight.delete('list');
+			}
+		})();
 		this.inFlight.set('list', operation);
 		return operation;
 	}
@@ -78,9 +82,13 @@ export class SupportTicketResourceService {
 	public async refreshConversation(ticketId: string): Promise<void> {
 		const key = `conversation:${ticketId}`;
 		if (this.inFlight.has(key)) return this.inFlight.get(key);
-		const operation = this.fetchConversation(ticketId).finally(() =>
-			this.inFlight.delete(key)
-		);
+		const operation = (async () => {
+			try {
+				await this.fetchConversation(ticketId);
+			} finally {
+				this.inFlight.delete(key);
+			}
+		})();
 		this.inFlight.set(key, operation);
 		return operation;
 	}

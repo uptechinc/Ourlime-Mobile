@@ -67,7 +67,13 @@ export class ProfileResourceService {
     const current = this.getResource(identifier);
     const staleMs = identifier.kind === 'own' ? OWN_STALE_MS : PUBLIC_STALE_MS;
     if (!force && current?.data && current.updatedAt && Date.now() - current.updatedAt < staleMs) return;
-    const operation = this.performRefresh(identifier).finally(() => this.inFlight.delete(key));
+    const operation = (async () => {
+      try {
+        await this.performRefresh(identifier);
+      } finally {
+        this.inFlight.delete(key);
+      }
+    })();
     this.inFlight.set(key, operation);
     return operation;
   }

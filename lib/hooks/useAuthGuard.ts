@@ -58,15 +58,16 @@ export function useAuthGuard() {
         }
         if (isResolvingPendingDestinationRef.current) return;
         isResolvingPendingDestinationRef.current = true;
-        void notificationNavigationService.hasPending()
-          .then(async (hasPendingNotification) => {
+        void (async () => {
+          try {
+            const hasPendingNotification = await notificationNavigationService.hasPending();
             if (hasPendingNotification) return;
             const pendingDestination = await deepLinkService.consumePendingDestination();
             router.replace((pendingDestination?.route ?? targetRedirect) as Href);
-          })
-          .finally(() => {
+          } finally {
             isResolvingPendingDestinationRef.current = false;
-          });
+          }
+        })();
         return;
       }
 

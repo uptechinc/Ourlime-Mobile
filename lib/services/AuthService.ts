@@ -354,9 +354,13 @@ export class AuthService {
       }
     }
 
-    const promise = this.fetchUserProfileInternal(uid, warnIfMissing).finally(() => {
-      this.profilePromises.delete(uid);
-    });
+    const promise = (async () => {
+      try {
+        return await this.fetchUserProfileInternal(uid, warnIfMissing);
+      } finally {
+        this.profilePromises.delete(uid);
+      }
+    })();
     this.profilePromises.set(uid, promise);
     return promise;
   }

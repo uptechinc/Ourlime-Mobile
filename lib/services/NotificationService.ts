@@ -38,22 +38,26 @@ export class NotificationService {
     const existing = this.inFlight.get(key);
     if (existing) return existing;
     const operation = (async () => {
-      const search = new URLSearchParams({ limit: String(pageLimit) });
-      if (cursor) search.set('cursor', cursor);
-      const response = await this.apiService.request<NotificationApiResponse>(`/api/notifications?${search.toString()}`, { authenticated: true });
-      if (!response.success || !response.data) throw new Error(response.error || 'Notifications unavailable');
-      const page = response.data;
-      if (!cursor) await this.cacheService.write(userId, CACHE_NAMESPACE, CACHE_KEY, page, { expiresAt: Date.now() + CACHE_RETENTION_MS });
-      this.logger.success('NotificationService', 'fetch-page', { count: page.notifications.length, unreadCount: page.unreadCount, hasMore: page.hasMore });
-      return page;
-    })().catch((error: unknown) => {
-      const isAvailabilityFailure = error instanceof ApiServiceError
-        && ['API_UNAVAILABLE', 'REQUEST_TIMEOUT', 'NETWORK_ERROR'].includes(error.code ?? '');
-      if (!isAvailabilityFailure) {
-        this.logger.error('NotificationService', 'fetch-page', error, { userId, hasCursor: Boolean(cursor) });
+      try {
+        const search = new URLSearchParams({ limit: String(pageLimit) });
+        if (cursor) search.set('cursor', cursor);
+        const response = await this.apiService.request<NotificationApiResponse>(`/api/notifications?${search.toString()}`, { authenticated: true });
+        if (!response.success || !response.data) throw new Error(response.error || 'Notifications unavailable');
+        const page = response.data;
+        if (!cursor) await this.cacheService.write(userId, CACHE_NAMESPACE, CACHE_KEY, page, { expiresAt: Date.now() + CACHE_RETENTION_MS });
+        this.logger.success('NotificationService', 'fetch-page', { count: page.notifications.length, unreadCount: page.unreadCount, hasMore: page.hasMore });
+        return page;
+      } catch (error: unknown) {
+        const isAvailabilityFailure = error instanceof ApiServiceError
+          && ['API_UNAVAILABLE', 'REQUEST_TIMEOUT', 'NETWORK_ERROR'].includes(error.code ?? '');
+        if (!isAvailabilityFailure) {
+          this.logger.error('NotificationService', 'fetch-page', error, { userId, hasCursor: Boolean(cursor) });
+        }
+        throw error;
+      } finally {
+        this.inFlight.delete(key);
       }
-      throw error;
-    }).finally(() => this.inFlight.delete(key));
+    })();
     this.inFlight.set(key, operation);
     return operation;
   }

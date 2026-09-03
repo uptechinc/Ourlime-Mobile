@@ -1,5 +1,5 @@
-// Universal Promise.prototype.finally polyfill for Hermes / React Native
-if (typeof Promise !== 'undefined' && typeof Promise.prototype.finally !== 'function') {
+// Unconditionally install working Promise.prototype.finally polyfill for Hermes / React Native
+if (typeof Promise !== 'undefined') {
   // eslint-disable-next-line no-extend-native
   Promise.prototype.finally = function (callback) {
     if (typeof callback !== 'function') {

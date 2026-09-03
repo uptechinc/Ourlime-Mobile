@@ -65,7 +65,13 @@ export class DiscoverResourceService {
     if (this.inFlight) return this.inFlight;
     const current = useResourceStore.getState().discover;
     if (!force && current.data && current.updatedAt && Date.now() - current.updatedAt < DISCOVER_STALE_MS) return;
-    this.inFlight = this.performRefresh(userId).finally(() => { this.inFlight = null; });
+    this.inFlight = (async () => {
+      try {
+        await this.performRefresh(userId);
+      } finally {
+        this.inFlight = null;
+      }
+    })();
     return this.inFlight;
   }
 

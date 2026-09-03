@@ -50,8 +50,10 @@ export class CommunityFeedResourceService {
       } catch (error: unknown) {
         const latest = useResourceStore.getState().communityFeeds[key] ?? createIdleResource<PostItem[]>();
         useResourceStore.getState().setCommunityFeed(key, { ...latest, status: latest.data ? 'ready' : 'error', isStale: true, error: this.errors.normalize(error, 'Community posts are unavailable.') });
+      } finally {
+        this.inFlight.delete(key);
       }
-    })().finally(() => this.inFlight.delete(key));
+    })();
     this.inFlight.set(key, operation);
     return operation;
   }

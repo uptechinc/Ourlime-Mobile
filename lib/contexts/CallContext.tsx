@@ -214,14 +214,27 @@ export function CallProvider({ children }: CallProviderProps) {
     const remainingMs = Math.max(0, session.expiresAtMs - Date.now());
     expiryTimerRef.current = setTimeout(() => {
       if (useCallStore.getState().session?.id !== session.id) return;
-      void callService.updateCall(session.id, 'expire').then((expired) => nativeCallService.endNativeCall(expired.id, expired.endReason)).finally(() => useCallStore.getState().reset());
+      void (async () => {
+        try {
+          const expired = await callService.updateCall(session.id, 'expire');
+          nativeCallService.endNativeCall(expired.id, expired.endReason);
+        } finally {
+          useCallStore.getState().reset();
+        }
+      })();
     }, remainingMs);
     return () => { if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current); };
   }, [session]);
 
   const runExclusive = useCallback(async (operation: () => Promise<void>) => {
     if (operationRef.current) return operationRef.current;
-    const pending = operation().finally(() => { operationRef.current = null; });
+    const pending = (async () => {
+      try {
+        await operation();
+      } finally {
+        operationRef.current = null;
+      }
+    })();
     operationRef.current = pending;
     return pending;
   }, []);

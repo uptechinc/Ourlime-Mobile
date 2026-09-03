@@ -41,7 +41,13 @@ export class RelationshipRequestResourceService {
     if (existing) return existing;
     const current = useResourceStore.getState().relationshipRequests[key];
     if (!force && current?.updatedAt && Date.now() - current.updatedAt < 60_000) return;
-    const request = this.fetch(userId, direction, search, null, false).finally(() => this.inFlight.delete(requestKey));
+    const request = (async () => {
+      try {
+        return await this.fetch(userId, direction, search, null, false);
+      } finally {
+        this.inFlight.delete(requestKey);
+      }
+    })();
     this.inFlight.set(requestKey, request);
     return request;
   }
@@ -53,7 +59,13 @@ export class RelationshipRequestResourceService {
     const requestKey = `${key}:more`;
     const existing = this.inFlight.get(requestKey);
     if (existing) return existing;
-    const request = this.fetch(userId, direction, search, current.data.nextCursor, true).finally(() => this.inFlight.delete(requestKey));
+    const request = (async () => {
+      try {
+        return await this.fetch(userId, direction, search, current.data!.nextCursor, true);
+      } finally {
+        this.inFlight.delete(requestKey);
+      }
+    })();
     this.inFlight.set(requestKey, request);
     return request;
   }

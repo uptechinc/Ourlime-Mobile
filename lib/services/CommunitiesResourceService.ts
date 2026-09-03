@@ -103,7 +103,13 @@ export class CommunitiesResourceService {
     if (existing) return existing;
     const current = useResourceStore.getState().communityDirectories[queryKey];
     if (!force && current?.data && current.updatedAt && Date.now() - current.updatedAt < DIRECTORY_STALE_MS) return;
-    const request = this.performRefresh(userId, query, queryKey, priority).finally(() => this.inFlight.delete(requestKey));
+    const request = (async () => {
+      try {
+        await this.performRefresh(userId, query, queryKey, priority);
+      } finally {
+        this.inFlight.delete(requestKey);
+      }
+    })();
     this.inFlight.set(requestKey, request);
     return request;
   }
@@ -113,14 +119,19 @@ export class CommunitiesResourceService {
     if (!force && current.data && current.updatedAt && Date.now() - current.updatedAt < DIRECTORY_STALE_MS) return;
     if (this.categoriesInFlight) return this.categoriesInFlight;
     useResourceStore.getState().setCommunityCategories(this.withCategoryState(current, { status: current.data ? 'refreshing' : 'hydrating', error: null }));
-    this.categoriesInFlight = this.communityService.fetchCategories().then(async (categories) => {
-      const updatedAt = Date.now();
-      useResourceStore.getState().setCommunityCategories({ data: categories, status: 'ready', source: 'network', updatedAt, isStale: false, error: null });
-      await this.cacheService.write(userId, CATEGORY_NAMESPACE, CATEGORY_KEY, categories, { expiresAt: updatedAt + DIRECTORY_RETENTION_MS });
-    }).catch((error: unknown) => {
-      const latest = useResourceStore.getState().communityCategories;
-      useResourceStore.getState().setCommunityCategories({ ...this.withCategoryState(latest, { status: latest.data ? 'ready' : 'error' }), isStale: true, error: this.errorService.normalize(error, 'Community categories could not be loaded.') });
-    }).finally(() => { this.categoriesInFlight = null; });
+    this.categoriesInFlight = (async () => {
+      try {
+        const categories = await this.communityService.fetchCategories();
+        const updatedAt = Date.now();
+        useResourceStore.getState().setCommunityCategories({ data: categories, status: 'ready', source: 'network', updatedAt, isStale: false, error: null });
+        await this.cacheService.write(userId, CATEGORY_NAMESPACE, CATEGORY_KEY, categories, { expiresAt: updatedAt + DIRECTORY_RETENTION_MS });
+      } catch (error: unknown) {
+        const latest = useResourceStore.getState().communityCategories;
+        useResourceStore.getState().setCommunityCategories({ ...this.withCategoryState(latest, { status: latest.data ? 'ready' : 'error' }), isStale: true, error: this.errorService.normalize(error, 'Community categories could not be loaded.') });
+      } finally {
+        this.categoriesInFlight = null;
+      }
+    })();
     return this.categoriesInFlight;
   }
 
@@ -132,16 +143,21 @@ export class CommunitiesResourceService {
     const existing = this.inFlight.get(requestKey);
     if (existing) return existing;
     useResourceStore.getState().setCommunityDirectory(queryKey, { ...current, status: 'refreshing', error: null });
-    const request = this.communityService.fetchDirectory({ ...query, cursor: current.data.nextCursor }).then(async (page) => {
-      const latest = useResourceStore.getState().communityDirectories[queryKey];
-      const existingItems = latest?.data?.items ?? [];
-      const knownIds = new Set(existingItems.map((community) => community.id));
-      const mergedItems = [...existingItems, ...page.items.filter((community) => !knownIds.has(community.id))].slice(0, MAX_PERSISTED_ITEMS);
-      await this.commit(userId, queryKey, { ...page, items: mergedItems, communityOfTheWeek: page.communityOfTheWeek ?? latest?.data?.communityOfTheWeek ?? null }, 'network');
-    }).catch((error: unknown) => {
-      const latest = useResourceStore.getState().communityDirectories[queryKey];
-      useResourceStore.getState().setCommunityDirectory(queryKey, { ...this.withState(latest, { status: latest?.data ? 'ready' : 'error' }), isStale: true, error: this.errorService.normalize(error, 'More communities could not be loaded.') });
-    }).finally(() => this.inFlight.delete(requestKey));
+    const request = (async () => {
+      try {
+        const page = await this.communityService.fetchDirectory({ ...query, cursor: current.data!.nextCursor });
+        const latest = useResourceStore.getState().communityDirectories[queryKey];
+        const existingItems = latest?.data?.items ?? [];
+        const knownIds = new Set(existingItems.map((community) => community.id));
+        const mergedItems = [...existingItems, ...page.items.filter((community) => !knownIds.has(community.id))].slice(0, MAX_PERSISTED_ITEMS);
+        await this.commit(userId, queryKey, { ...page, items: mergedItems, communityOfTheWeek: page.communityOfTheWeek ?? latest?.data?.communityOfTheWeek ?? null }, 'network');
+      } catch (error: unknown) {
+        const latest = useResourceStore.getState().communityDirectories[queryKey];
+        useResourceStore.getState().setCommunityDirectory(queryKey, { ...this.withState(latest, { status: latest?.data ? 'ready' : 'error' }), isStale: true, error: this.errorService.normalize(error, 'More communities could not be loaded.') });
+      } finally {
+        this.inFlight.delete(requestKey);
+      }
+    })();
     this.inFlight.set(requestKey, request);
     return request;
   }
