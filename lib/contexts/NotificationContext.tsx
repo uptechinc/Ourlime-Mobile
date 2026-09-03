@@ -52,12 +52,13 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
         setUnreadCount(page.unreadCount);
         setNextCursor(page.nextCursor);
         setHasMore(page.hasMore);
+      } catch {
+        // Handled silently
       } finally {
         setIsLoading(false);
+        refreshPromiseRef.current = null;
       }
-    })().catch(() => undefined).finally(() => {
-      refreshPromiseRef.current = null;
-    });
+    })();
     refreshPromiseRef.current = operation;
     return operation;
   }, []);

@@ -36,10 +36,16 @@ export function PageAccessProvider({ children }: PageAccessProviderProps) {
         return;
       }
       setProfileLoading(true);
-      void authService.getUserProfile(user.uid)
-        .then((nextProfile) => setProfile(nextProfile))
-        .catch(() => setProfile(null))
-        .finally(() => setProfileLoading(false));
+      void (async () => {
+        try {
+          const nextProfile = await authService.getUserProfile(user.uid);
+          setProfile(nextProfile);
+        } catch {
+          setProfile(null);
+        } finally {
+          setProfileLoading(false);
+        }
+      })();
     });
     const unsubscribeSettings = pageAccessService.subscribeToSettings((nextSettings) => {
       setSettings(nextSettings);

@@ -128,22 +128,23 @@ export class OpenGraphService {
     const pendingPreview = this.pending.get(cleanUrl);
     if (pendingPreview) return pendingPreview;
 
-    const promise = this.doFetch(cleanUrl)
-      .then((data) => {
+    const fetchOperation = async (): Promise<LinkPreviewData | null> => {
+      try {
+        const data = await this.doFetch(cleanUrl);
         if (!this.isIncompleteMediaPreview(data, cleanUrl)) {
           this.cache.set(cleanUrl, data);
           this.trimCache();
         }
         return data;
-      })
-      .catch((e) => {
+      } catch (e) {
         console.warn('[OpenGraphService] Error fetching preview:', e);
         return null;
-      })
-      .finally(() => {
+      } finally {
         this.pending.delete(cleanUrl);
-      });
+      }
+    };
 
+    const promise = fetchOperation();
     this.pending.set(cleanUrl, promise);
     return promise;
   }
