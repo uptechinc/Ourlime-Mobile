@@ -40,6 +40,23 @@ type ActivityLogItem = {
   newData?: Record<string, unknown>;
 };
 
+function formatLocationAndIp(location?: string, ipAddress?: string): string {
+  const isLocal =
+    !ipAddress ||
+    ipAddress === '::1' ||
+    ipAddress === '127.0.0.1' ||
+    ipAddress === '::ffff:127.0.0.1' ||
+    ipAddress === 'localhost';
+
+  if (isLocal) {
+    return 'Localhost (127.0.0.1)';
+  }
+  if (location && ipAddress) {
+    return `${location} • ${ipAddress}`;
+  }
+  return location || ipAddress || 'Unknown';
+}
+
 export default function AdminActivityLogsWorkspace() {
   const { colors } = useAppTheme();
   const [logs, setLogs] = useState<ActivityLogItem[]>([]);
@@ -268,11 +285,9 @@ export default function AdminActivityLogsWorkspace() {
                   <Text style={{ fontSize: 11, color: colors.mutedText }}>
                     Resource: <Text style={{ fontWeight: '600', color: colors.text }}>{log.resource}</Text>
                   </Text>
-                  {Boolean(log.location || log.ipAddress) && (
-                    <Text style={{ fontSize: 11, color: colors.mutedText }}>
-                      • {log.location || log.ipAddress}
-                    </Text>
-                  )}
+                  <Text style={{ fontSize: 11, color: colors.mutedText }}>
+                    • {formatLocationAndIp(log.location, log.ipAddress)}
+                  </Text>
                   {Boolean(log.platform) && (
                     <Text style={{ fontSize: 11, color: colors.mutedText, textTransform: 'uppercase' }}>
                       • {log.platform}
