@@ -38,7 +38,7 @@ const authService = AuthService.getInstance();
 export default function ProfileRepostsTab({ userId }: ProfileRepostsTabProps) {
   const { colors } = useAppTheme();
   const router = useRouter();
-  const viewerId = authService.getCurrentUser()?.uid ?? userId;
+  const viewerId = authService.getCurrentUser()?.uid ?? authService.getVerifiedCurrentUser()?.uid ?? userId;
   const isOwnProfile = viewerId === userId;
 
   const [activeFilter, setActiveFilter] = useState<RepostFilter>('all');

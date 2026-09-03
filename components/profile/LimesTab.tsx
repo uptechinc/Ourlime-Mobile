@@ -33,7 +33,7 @@ const authService = AuthService.getInstance();
 export default function LimesTab({ userId }: LimesTabProps) {
   const { colors } = useAppTheme();
   const router = useRouter();
-  const currentUserId = authService.getCurrentUser()?.uid ?? '';
+  const currentUserId = authService.getCurrentUser()?.uid ?? authService.getVerifiedCurrentUser()?.uid ?? userId;
   const isOwnProfile = currentUserId === userId;
 
   const [limes, setLimes] = useState<Reel[]>([]);

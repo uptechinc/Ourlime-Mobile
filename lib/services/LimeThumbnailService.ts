@@ -1,9 +1,10 @@
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { doc, updateDoc } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
+import { getDownloadURL, ref, uploadBytes, uploadBytesResumable } from 'firebase/storage';
 import { db, storage } from '@/lib/firebaseConfig';
 import { limeCoverTimelineService } from '@/lib/services/LimeCoverTimelineService';
+import { apiService } from '@/lib/services/ApiService';
 
 type EnsureLimeThumbnailInput = {
   reelId: string;
@@ -132,20 +133,24 @@ export class LimeThumbnailService {
 
       if (viewerUserId && viewerUserId === reel.userId) {
         const thumbnailBlob = await this.uriToBlob(thumbnailUri);
-        const thumbnailPath = `limes/${reel.userId}/thumbnails/${reel.id}_thumbnail.jpg`;
-        const thumbnailTask = uploadBytesResumable(
-          ref(storage, thumbnailPath),
-          thumbnailBlob,
-          { contentType: 'image/jpeg' }
-        );
-        await new Promise<void>((resolve, reject) => {
-          thumbnailTask.on('state_changed', undefined, reject, resolve);
+        const thumbnailPath = `reels/${reel.userId}/thumbnails/${reel.id}_thumbnail.jpg`;
+        const snapshot = await uploadBytes(ref(storage, thumbnailPath), thumbnailBlob, {
+          contentType: 'image/jpeg',
+          customMetadata: { type: 'reel-thumbnail', reelId: reel.id },
         });
-        const thumbnailUrl = await getDownloadURL(thumbnailTask.snapshot.ref);
-        await updateDoc(doc(db, 'reels', reel.id), {
-          thumbnailUrl,
-          'media.thumbnailUrl': thumbnailUrl,
-        });
+        const thumbnailUrl = await getDownloadURL(snapshot.ref);
+        try {
+          await updateDoc(doc(db, 'reels', reel.id), {
+            thumbnailUrl,
+            'media.thumbnailUrl': thumbnailUrl,
+          });
+        } catch {
+          await apiService.request(`/api/limes/${encodeURIComponent(reel.id)}`, {
+            method: 'PATCH',
+            authenticated: true,
+            body: { thumbnailUrl },
+          }).catch(() => undefined);
+        }
         return thumbnailUrl;
       }
 
