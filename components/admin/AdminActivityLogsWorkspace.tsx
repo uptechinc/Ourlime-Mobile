@@ -10,8 +10,43 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import AdminWorkspaceShell from './AdminWorkspaceShell';
+import MobileAdminDateFilter, { type MobileDateRangeValue } from './MobileAdminDateFilter';
+import MobileAdminExportModal from './MobileAdminExportModal';
+import type { MobileExportColumn } from '@/lib/services/MobileExportService';
 import { adminWorkspaceService } from '@/lib/services/AdminWorkspaceService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+
+const MOBILE_LOG_COLUMNS: MobileExportColumn[] = [
+  {
+    header: 'Timestamp',
+    key: 'timestamp',
+    format: (v) => (v ? new Date(v as string).toLocaleString() : ''),
+  },
+  { header: 'Actor', key: 'username' },
+  { header: 'Action', key: 'action' },
+  { header: 'Resource', key: 'resource' },
+  { header: 'Resource Name', key: 'resourceName' },
+  {
+    header: 'Location',
+    key: 'location',
+    format: (v, row) => {
+      const ip = row.ipAddress as string;
+      const isLocal = !ip || ip === '::1' || ip === '127.0.0.1' || ip === 'localhost';
+      if (isLocal) return 'Localhost';
+      return (v as string) || 'Unknown';
+    },
+  },
+  {
+    header: 'IP Address',
+    key: 'ipAddress',
+    format: (v) => {
+      const ip = v as string;
+      if (!ip || ip === '::1' || ip === '127.0.0.1' || ip === 'localhost') return '127.0.0.1';
+      return ip;
+    },
+  },
+  { header: 'Details', key: 'details' },
+];
 
 const ACTION_FILTERS = [
   'all',
@@ -67,6 +102,13 @@ export default function AdminActivityLogsWorkspace() {
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [selectedLog, setSelectedLog] = useState<ActivityLogItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<MobileDateRangeValue>({
+    preset: 'all',
+    startDate: null,
+    endDate: null,
+    label: 'All Time',
+  });
+  const [exportModalVisible, setExportModalVisible] = useState(false);
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -139,6 +181,14 @@ export default function AdminActivityLogsWorkspace() {
     }
   };
 
+  const filteredLogs = logs.filter((log: ActivityLogItem) => {
+    if (!dateRange.startDate && !dateRange.endDate) return true;
+    const logMs = new Date(log.timestamp).getTime();
+    const startMs = dateRange.startDate ? dateRange.startDate.getTime() : 0;
+    const endMs = dateRange.endDate ? dateRange.endDate.getTime() : Infinity;
+    return logMs >= startMs && logMs <= endMs;
+  });
+
   return (
     <AdminWorkspaceShell
       title="Activity Logs & Audit"
@@ -149,28 +199,53 @@ export default function AdminActivityLogsWorkspace() {
       onRefresh={() => void load(true)}
     >
       <View style={{ gap: 12, paddingBottom: 24 }}>
-        {/* Search Input */}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: colors.surface,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: colors.border,
-            paddingHorizontal: 12,
-            minHeight: 44,
-          }}
-        >
-          <Icon name="search" size={16} color={colors.mutedText} style={{ marginRight: 8 }} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search by actor or keyword..."
-            placeholderTextColor={colors.mutedText}
-            style={{ flex: 1, color: colors.text, fontSize: 13 }}
-          />
+        {/* Search Input & Export Button */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: colors.surface,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingHorizontal: 12,
+              minHeight: 44,
+            }}
+          >
+            <Icon name="search" size={16} color={colors.mutedText} style={{ marginRight: 8 }} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search by actor or keyword..."
+              placeholderTextColor={colors.mutedText}
+              style={{ flex: 1, color: colors.text, fontSize: 13, padding: 0 }}
+            />
+          </View>
+          <TouchableOpacity
+            onPress={() => setExportModalVisible(true)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              paddingHorizontal: 14,
+              minHeight: 44,
+              borderRadius: 12,
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Icon name="download" size={15} color={colors.accent} />
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>
+              Export
+            </Text>
+          </TouchableOpacity>
         </View>
+
+        {/* Date Filter */}
+        <MobileAdminDateFilter value={dateRange} onChange={setDateRange} />
 
         {/* Action Filter Chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
@@ -205,7 +280,7 @@ export default function AdminActivityLogsWorkspace() {
         </ScrollView>
 
         {/* Log Entries List */}
-        {logs.length === 0 && !loading ? (
+        {filteredLogs.length === 0 && !loading ? (
           <View
             style={{
               padding: 32,
@@ -220,7 +295,7 @@ export default function AdminActivityLogsWorkspace() {
             <Text style={{ color: colors.mutedText, fontSize: 13 }}>No activity logs recorded yet.</Text>
           </View>
         ) : (
-          logs.map((log) => {
+          filteredLogs.map((log) => {
             const isDelete = log.action === 'delete';
             const actionColor = getActionColor(log.action);
             const isRestoringThis = restoringId === log.id;
@@ -400,6 +475,18 @@ export default function AdminActivityLogsWorkspace() {
           </View>
         </Modal>
       )}
+
+      {/* Export Modal */}
+      <MobileAdminExportModal
+        visible={exportModalVisible}
+        onClose={() => setExportModalVisible(false)}
+        filename="activity-logs"
+        title="Activity Logs Audit Report"
+        columns={MOBILE_LOG_COLUMNS}
+        data={filteredLogs as unknown as Record<string, unknown>[]}
+        periodLabel={dateRange.label}
+        sheetName="Activity Logs"
+      />
     </AdminWorkspaceShell>
   );
 }
