@@ -4,7 +4,17 @@ import Icon from 'react-native-vector-icons/Feather';
 import * as Haptics from 'expo-haptics';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
-export type FeedFilter = 'All' | 'Photos' | 'Videos' | 'Sound' | 'Polls' | 'Events';
+export type FeedFilter =
+  | 'All'
+  | 'Photos'
+  | 'Videos'
+  | 'Sound'
+  | 'Documents'
+  | 'Links'
+  | 'Events'
+  | 'Polls'
+  | 'Trending'
+  | 'Saved';
 export type FeedSource = 'home' | 'friends' | 'communities';
 
 type FeedsFilterSectionProps = {
@@ -16,7 +26,7 @@ type FeedsFilterSectionProps = {
 
 type FilterOption = {
   name: FeedFilter;
-  icon: 'grid' | 'image' | 'video' | 'music' | 'bar-chart-2' | 'calendar';
+  icon: 'grid' | 'image' | 'video' | 'music' | 'file-text' | 'link' | 'calendar' | 'bar-chart-2' | 'trending-up' | 'bookmark';
   comingSoon?: boolean;
 };
 
@@ -31,8 +41,12 @@ const filterOptions: FilterOption[] = [
   { name: 'Photos', icon: 'image' },
   { name: 'Videos', icon: 'video' },
   { name: 'Sound', icon: 'music', comingSoon: true },
-  { name: 'Polls', icon: 'bar-chart-2' },
+  { name: 'Documents', icon: 'file-text' },
+  { name: 'Links', icon: 'link' },
   { name: 'Events', icon: 'calendar' },
+  { name: 'Polls', icon: 'bar-chart-2' },
+  { name: 'Trending', icon: 'trending-up' },
+  { name: 'Saved', icon: 'bookmark' },
 ];
 
 const feedSourceOptions: FeedSourceOption[] = [

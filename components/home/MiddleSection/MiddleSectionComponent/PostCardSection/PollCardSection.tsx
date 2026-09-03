@@ -9,6 +9,7 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import PostOptionsSheet from './PostOptionsSheet';
 import { feedCardContainerStyle } from './feedCardStyles';
 import PostLinkPreview from './PostLinkPreview';
+import { YouTubePostPreview } from './YouTubePostPreview';
 import { findFirstUrl } from '@/lib/services/OpenGraphService';
 import CustomModal from '@/components/ui/CustomModal';
 import LikesModal from './LikesModal';
@@ -177,6 +178,7 @@ export default function PollCardSection({ post, isVisible = false, onCommentClic
         {post.caption ? <RichTextContent content={post.caption} style={{ marginTop: 15, color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: '700' }} /> : null}
         {post.description && post.description !== post.caption ? <RichTextContent content={post.description} style={{ marginTop: 7, color: colors.mutedText, lineHeight: 21 }} /> : null}
         {postUrl ? <PostLinkPreview url={postUrl} /> : null}
+        <YouTubePostPreview text={`${post.caption} ${post.description}`} postId={post.id} />
       </View>
 
       {post.media && post.media.length > 0 ? (

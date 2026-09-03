@@ -38,8 +38,12 @@ const apiFilterByUiFilter: Record<FeedFilter, ApiFeedFilter> = {
   Photos: 'photo',
   Videos: 'video',
   Sound: 'audio',
-  Polls: 'poll',
+  Documents: 'document',
+  Links: 'link',
   Events: 'event',
+  Polls: 'poll',
+  Trending: 'trending',
+  Saved: 'saved',
 };
 
 // Viewability config: a post is "visible" when at least 40% of it is in the viewport

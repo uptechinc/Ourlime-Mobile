@@ -250,6 +250,10 @@ export class FeedResourceService {
     if (filter === 'poll' || filter === 'event') return post.type === filter;
     if (filter === 'photo') return post.media.some((media) => media.type === 'image');
     if (filter === 'video') return post.media.some((media) => media.type === 'video');
+    if (filter === 'link') return /https?:\/\/[^\s]+/i.test(`${post.caption} ${post.description}`);
+    if (filter === 'document') return post.media.some((media) => media.fileName?.endsWith('.pdf') || media.fileName?.endsWith('.doc'));
+    if (filter === 'trending') return (post.stats.likes + post.stats.comments + post.stats.shares) > 0;
+    if (filter === 'saved') return post.isSaved === true;
     return false;
   }
 }

@@ -9,6 +9,7 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import PostOptionsSheet from './PostOptionsSheet';
 import { feedCardContainerStyle } from './feedCardStyles';
 import PostLinkPreview from './PostLinkPreview';
+import { YouTubePostPreview } from './YouTubePostPreview';
 import { findFirstUrl } from '@/lib/services/OpenGraphService';
 import LikesModal from './LikesModal';
 import IdentityBadges from './IdentityBadges';
@@ -272,6 +273,8 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
         ) : null}
 
         {postUrl ? <PostLinkPreview url={postUrl} /> : null}
+
+        <YouTubePostPreview text={`${post.caption} ${post.description}`} postId={post.id} />
 
         {/* 2. Hashtags */}
         {post.hashtags.length > 0 ? (

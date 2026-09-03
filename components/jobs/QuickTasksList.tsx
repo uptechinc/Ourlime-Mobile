@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AlertCircle, ClipboardCheck, DollarSign, MapPin, Star, Timer, type LucideIcon } from 'lucide-react-native';
 import JobApplicationModal from './applyJobs/JobApplicationModal';
+import JobDetailsModal from './JobDetailsModal';
 import UserAvatar from '@/components/ui/UserAvatar';
 import type { JobRecord } from '@/lib/job/JobsService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -14,6 +15,7 @@ type QuickTasksListProps = {
 type QuickTaskCardProps = {
   task: JobRecord;
   onApply: (task: JobRecord) => void;
+  onCardPress: (task: JobRecord) => void;
 };
 
 type TaskBadgeProps = {
@@ -29,7 +31,7 @@ function TaskBadge({ icon: Icon, label }: TaskBadgeProps) {
   return <View style={styles.badge}><Icon size={14} color={colors.icon} /><Text style={styles.badgeText}>{label}</Text></View>;
 }
 
-function QuickTaskCard({ task, onApply }: QuickTaskCardProps) {
+function QuickTaskCard({ task, onApply, onCardPress }: QuickTaskCardProps) {
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isCreator = authService.getCurrentUser()?.uid === task.basic_info.userId;
@@ -41,7 +43,7 @@ function QuickTaskCard({ task, onApply }: QuickTaskCardProps) {
     : [task.basic_info.location.city, task.basic_info.location.country].filter(Boolean).join(', ') || 'Location flexible';
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity activeOpacity={0.9} onPress={() => onCardPress(task)} style={styles.card}>
       <View style={styles.taskHeader}>
         <View style={styles.headerBadges}>
           <View style={styles.quickTaskBadge}><Text style={styles.quickTaskText}>Quick Task</Text></View>
@@ -65,11 +67,20 @@ function QuickTaskCard({ task, onApply }: QuickTaskCardProps) {
         </View>
         <View style={styles.footer}>
           <Text style={styles.postedText}>Posted {task.basic_info.createdAt?.seconds ? new Date(task.basic_info.createdAt.seconds * 1000).toLocaleDateString() : 'Recently'}</Text>
-          {!isCreator ? <TouchableOpacity onPress={() => onApply(task)} style={styles.applyButton}><Text style={styles.applyText}>Apply Now</Text></TouchableOpacity> : null}
+          {!isCreator ? (
+            <TouchableOpacity
+              onPress={(e) => {
+                onApply(task);
+              }}
+              style={styles.applyButton}
+            >
+              <Text style={styles.applyText}>Apply Now</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
       {isDark ? <View pointerEvents="none" style={styles.darkEdge} /> : null}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -78,6 +89,7 @@ export function QuickTasksList({ jobs }: QuickTasksListProps) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const quickTasks = jobs.filter((job) => job.basic_info.type === 'quickTask');
   const [selectedTask, setSelectedTask] = useState<JobRecord | null>(null);
+  const [detailTask, setDetailTask] = useState<JobRecord | null>(null);
 
   const handleApply = (task: JobRecord) => {
     setSelectedTask(task);
@@ -93,8 +105,18 @@ export function QuickTasksList({ jobs }: QuickTasksListProps) {
 
   return (
     <>
-      <View style={styles.list}>{quickTasks.map((task) => <QuickTaskCard key={task.id} task={task} onApply={handleApply} />)}</View>
+      <View style={styles.list}>
+        {quickTasks.map((task) => (
+          <QuickTaskCard
+            key={task.id}
+            task={task}
+            onApply={handleApply}
+            onCardPress={(selected) => setDetailTask(selected)}
+          />
+        ))}
+      </View>
       {selectedTask ? <JobApplicationModal isOpen onClose={handleCloseApplication} job={selectedTask} jobType="quickTask" /> : null}
+      {detailTask ? <JobDetailsModal isOpen onClose={() => setDetailTask(null)} job={detailTask} jobType="quickTask" /> : null}
     </>
   );
 }

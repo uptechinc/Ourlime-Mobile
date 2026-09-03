@@ -26,6 +26,7 @@ export type JobRecord = {
         priceRange: { from: number; to: number };
         createdAt?: { seconds: number };
         category?: string;
+        jobType?: string;
         status?: 'draft' | 'published' | 'closed' | 'archived' | 'active';
     };
     category?: string;
@@ -45,9 +46,10 @@ export type JobRecord = {
         paymentPeriod?: string;
         contactPreference?: string;
         applicationDeadline?: string;
+        deliverables?: Array<{ description: string; quantity: string | number; unit: string }>;
     };
     questions?: { id: string; question?: string; type?: string; options?: string[] }[];
-    creator?: { name: string; username: string; profileImage: string; email?: string };
+    creator?: { name: string; username: string; profileImage: string; email?: string; verificationStatus?: string };
 };
 
 export type JobQuestionInput = {

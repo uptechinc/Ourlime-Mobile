@@ -32,7 +32,7 @@ import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityS
 export type PostMediaType = 'image' | 'video';
 export type PostType = 'regular' | 'poll' | 'event';
 export type PostVisibility = 'public' | 'friends' | 'friends_followers' | 'private';
-export type FeedFilter = 'all' | 'photo' | 'video' | 'audio' | 'poll' | 'event';
+export type FeedFilter = 'all' | 'photo' | 'video' | 'audio' | 'poll' | 'event' | 'document' | 'link' | 'trending' | 'saved';
 export type FeedScope = 'home' | 'friends' | 'communities';
 export type PostOrigin = 'home' | 'community';
 export type CommunityReactionResult = { liked: boolean; likeCount: number };
@@ -120,6 +120,7 @@ export type PostItem = {
   endDate?: string;
   recurrence?: string;
   category?: string;
+  isSaved?: boolean;
 };
 
 export type FeedPage = Omit<PageResult<PostItem>, 'items'> & { posts: PostItem[] };
@@ -406,6 +407,12 @@ export class PostService {
         const media = mediaByPost.get(document.id) ?? [];
         if (filter === 'photo') return media.some((item) => item.type === 'image');
         if (filter === 'video') return media.some((item) => item.type === 'video');
+        if (filter === 'link') {
+          const text = `${readString(document.data.caption)} ${readString(document.data.description)}`;
+          return /https?:\/\/[^\s]+/i.test(text);
+        }
+        if (filter === 'document') return media.some((item) => item.fileName?.endsWith('.pdf') || item.fileName?.endsWith('.doc'));
+        if (filter === 'trending' || filter === 'saved') return true;
         return false;
       });
 
@@ -501,6 +508,12 @@ export class PostService {
       const media = mediaByPost.get(document.id) ?? [];
       if (filter === 'photo') return media.some((item) => item.type === 'image');
       if (filter === 'video') return media.some((item) => item.type === 'video');
+      if (filter === 'link') {
+        const text = `${readString(document.data.caption)} ${readString(document.data.description)}`;
+        return /https?:\/\/[^\s]+/i.test(text);
+      }
+      if (filter === 'document') return media.some((item) => item.fileName?.endsWith('.pdf') || item.fileName?.endsWith('.doc'));
+      if (filter === 'trending' || filter === 'saved') return true;
       return false;
     });
     const pageDocuments = filteredDocuments.slice(0, fetchLimit);

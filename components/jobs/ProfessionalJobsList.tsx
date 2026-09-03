@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Bookmark, BriefcaseBusiness, Building2, Clock, DollarSign, MapPin, Users } from 'lucide-react-native';
 import JobApplicationModal from './applyJobs/JobApplicationModal';
+import JobDetailsModal from './JobDetailsModal';
 import UserAvatar from '@/components/ui/UserAvatar';
 import type { JobRecord } from '@/lib/job/JobsService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -14,11 +15,12 @@ type ProfessionalJobsListProps = {
 type ProfessionalJobCardProps = {
   job: JobRecord;
   onApply: (job: JobRecord) => void;
+  onCardPress: (job: JobRecord) => void;
 };
 
 const authService = AuthService.getInstance();
 
-function ProfessionalJobCard({ job, onApply }: ProfessionalJobCardProps) {
+function ProfessionalJobCard({ job, onApply, onCardPress }: ProfessionalJobCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isCreator = authService.getCurrentUser()?.uid === job.basic_info.userId;
@@ -30,7 +32,7 @@ function ProfessionalJobCard({ job, onApply }: ProfessionalJobCardProps) {
     : [job.basic_info.location.city, job.basic_info.location.country].filter(Boolean).join(', ') || 'Location flexible';
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity activeOpacity={0.9} onPress={() => onCardPress(job)} style={styles.card}>
       <View style={styles.companyPanel}>
         <UserAvatar profileImage={job.creator?.profileImage} firstName={companyName} size={76} />
         <Text numberOfLines={1} style={styles.companyName}>{companyName}</Text>
@@ -52,7 +54,16 @@ function ProfessionalJobCard({ job, onApply }: ProfessionalJobCardProps) {
           </View>
           <View style={styles.cardActions}>
             <TouchableOpacity style={styles.bookmarkButton} accessibilityLabel="Save job"><Bookmark size={20} color={colors.icon} /></TouchableOpacity>
-            {!isCreator ? <TouchableOpacity onPress={() => onApply(job)} style={styles.applyButton}><Text style={styles.applyText}>Apply</Text></TouchableOpacity> : null}
+            {!isCreator ? (
+              <TouchableOpacity
+                onPress={(e) => {
+                  onApply(job);
+                }}
+                style={styles.applyButton}
+              >
+                <Text style={styles.applyText}>Apply</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 
@@ -70,7 +81,7 @@ function ProfessionalJobCard({ job, onApply }: ProfessionalJobCardProps) {
           <View style={styles.inlineMeta}><Users size={16} color={colors.icon} /><Text style={styles.metaText}>0 applicants</Text></View>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -79,6 +90,7 @@ export function ProfessionalJobsList({ jobs }: ProfessionalJobsListProps) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const professionalJobs = jobs.filter((job) => job.basic_info.type === 'professional');
   const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
+  const [detailJob, setDetailJob] = useState<JobRecord | null>(null);
 
   const handleApply = (job: JobRecord) => {
     setSelectedJob(job);
@@ -94,8 +106,18 @@ export function ProfessionalJobsList({ jobs }: ProfessionalJobsListProps) {
 
   return (
     <>
-      <View style={styles.list}>{professionalJobs.map((job) => <ProfessionalJobCard key={job.id} job={job} onApply={handleApply} />)}</View>
+      <View style={styles.list}>
+        {professionalJobs.map((job) => (
+          <ProfessionalJobCard
+            key={job.id}
+            job={job}
+            onApply={handleApply}
+            onCardPress={(selected) => setDetailJob(selected)}
+          />
+        ))}
+      </View>
       {selectedJob ? <JobApplicationModal isOpen onClose={handleCloseApplication} job={selectedJob} jobType="professional" /> : null}
+      {detailJob ? <JobDetailsModal isOpen onClose={() => setDetailJob(null)} job={detailJob} jobType="professional" /> : null}
     </>
   );
 }

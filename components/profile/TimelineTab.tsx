@@ -11,8 +11,20 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type TimelineTabProps = { userId: string };
 
+const apiFilters: Record<UiFeedFilter, FeedFilter> = {
+  All: 'all',
+  Photos: 'photo',
+  Videos: 'video',
+  Sound: 'audio',
+  Documents: 'document',
+  Links: 'link',
+  Events: 'event',
+  Polls: 'poll',
+  Trending: 'trending',
+  Saved: 'saved',
+};
+
 const authService = AuthService.getInstance();
-const apiFilters: Record<UiFeedFilter, FeedFilter> = { All: 'all', Photos: 'photo', Videos: 'video', Sound: 'audio', Polls: 'poll', Events: 'event' };
 
 export default function TimelineTab({ userId }: TimelineTabProps) {
   const { colors } = useAppTheme();

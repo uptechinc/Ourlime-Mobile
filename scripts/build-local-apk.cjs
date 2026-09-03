@@ -5,8 +5,23 @@ const fs = require('fs');
 const rootDir = path.resolve(__dirname, '..');
 const androidDir = path.join(rootDir, 'android');
 
-// Automatically set up Java (Android Studio JBR) and Android SDK paths for Windows
-const javaHome = process.env.JAVA_HOME || 'C:\\Program Files\\Android\\Android Studio\\jbr';
+// Automatically set up Java (JDK 17 LTS preferred for React Native 0.76+ / AGP)
+function resolveJavaHome() {
+  const knownJdk17Paths = [
+    'C:\\Users\\aaron\\.gradle\\jdks\\eclipse_adoptium-17-amd64-windows.2',
+    'C:\\Program Files\\Eclipse Adoptium\\jdk-17',
+    'C:\\Program Files\\Java\\jdk-17',
+  ];
+  for (const jdkPath of knownJdk17Paths) {
+    if (fs.existsSync(jdkPath)) return jdkPath;
+  }
+  if (process.env.JAVA_HOME && fs.existsSync(process.env.JAVA_HOME)) {
+    return process.env.JAVA_HOME;
+  }
+  return 'C:\\Program Files\\Android\\Android Studio\\jbr';
+}
+
+const javaHome = resolveJavaHome();
 const androidHome = process.env.ANDROID_HOME || 'C:\\Users\\aaron\\AppData\\Local\\Android\\Sdk';
 
 const customEnv = {
@@ -14,6 +29,7 @@ const customEnv = {
   JAVA_HOME: javaHome,
   ANDROID_HOME: androidHome,
   ANDROID_SDK_ROOT: androidHome,
+  PATH: `${path.join(javaHome, 'bin')}${path.delimiter}${process.env.PATH}`,
   _JAVA_OPTIONS: '-Xmx8192m -XX:MaxMetaspaceSize=2048m',
   GRADLE_OPTS: '-Xmx8192m -XX:MaxMetaspaceSize=2048m',
 };
@@ -62,9 +78,31 @@ execSync('npx expo prebuild --platform android', {
   env: customEnv,
 });
 
+// Configure Gradle to use JDK 17 explicitly
+const gradlePropertiesPath = path.join(androidDir, 'gradle.properties');
+if (fs.existsSync(gradlePropertiesPath)) {
+  const javaHomeEscaped = javaHome.replace(/\\/g, '/');
+  let content = fs.readFileSync(gradlePropertiesPath, 'utf8');
+  if (!content.includes('org.gradle.java.home=')) {
+    content += `\norg.gradle.java.home=${javaHomeEscaped}\n`;
+    fs.writeFileSync(gradlePropertiesPath, content, 'utf8');
+  }
+}
+
 // Step 2: Run Gradle assembleRelease
 const isWindows = process.platform === 'win32';
 const gradlewCmd = isWindows ? 'gradlew.bat' : './gradlew';
+
+// Stop any stale daemon using old JDK
+try {
+  execSync(`${gradlewCmd} --stop`, {
+    cwd: androidDir,
+    stdio: 'ignore',
+    env: customEnv,
+  });
+} catch {
+  // Non-blocking
+}
 
 const buildType = process.argv.includes('--debug') ? 'assembleDebug' : 'assembleRelease';
 
