@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import {
 	Activity,
+	AlertCircle,
 	BarChart3,
 	CheckCircle2,
 	ExternalLink,
@@ -43,6 +44,10 @@ type DashboardTab =
 	| 'requests'
 	| 'activity'
 	| 'reports';
+type SheetFeedback = {
+	type: 'success' | 'error';
+	message: string;
+};
 type CommunityDashboardSheetProps = {
 	visible: boolean;
 	initialTab?: DashboardTab;
@@ -50,6 +55,8 @@ type CommunityDashboardSheetProps = {
 	members: ResourceState<CommunityPage<CommunityMember>>;
 	requests: ResourceState<CommunityPage<CommunityJoinRequest>>;
 	dashboard: ResourceState<CommunityDashboardData>;
+	feedbackMessage?: string | null;
+	onClearFeedback?: () => void;
 	onClose: () => void;
 	onLoadMembers: (force?: boolean) => void;
 	onLoadRequests: (force?: boolean) => void;
@@ -80,6 +87,8 @@ export default function CommunityDashboardSheet({
 	members,
 	requests,
 	dashboard,
+	feedbackMessage,
+	onClearFeedback,
 	onClose,
 	onLoadMembers,
 	onLoadRequests,
@@ -96,6 +105,22 @@ export default function CommunityDashboardSheet({
 		'all' | CommunityReportItem['status']
 	>('all');
 	const [busyId, setBusyId] = useState<string | null>(null);
+	const [sheetFeedback, setSheetFeedback] = useState<SheetFeedback | null>(null);
+
+	useEffect(() => {
+		if (feedbackMessage) {
+			setSheetFeedback({ type: 'success', message: feedbackMessage });
+			onClearFeedback?.();
+		}
+	}, [feedbackMessage, onClearFeedback]);
+
+	useEffect(() => {
+		if (!sheetFeedback) return;
+		const timer = setTimeout(() => {
+			setSheetFeedback(null);
+		}, 4000);
+		return () => clearTimeout(timer);
+	}, [sheetFeedback]);
 
 	useEffect(() => {
 		if (!visible) return;
@@ -111,6 +136,7 @@ export default function CommunityDashboardSheet({
 			setSearch('');
 			setStatusFilter('all');
 			setBusyId(null);
+			setSheetFeedback(null);
 		}
 	}, [visible]);
 
@@ -150,9 +176,24 @@ export default function CommunityDashboardSheet({
 		request: CommunityJoinRequest,
 		action: 'approve' | 'decline'
 	): Promise<void> => {
-		setBusyId(request.requestId);
+		setBusyId(`${request.requestId}:${action}`);
+		const targetName =
+			`${request.firstName} ${request.lastName}`.trim() || request.userName;
 		try {
 			await onReviewRequest(request, action);
+			setSheetFeedback({
+				type: 'success',
+				message:
+					action === 'approve'
+						? `Approved join request for ${targetName}.`
+						: `Declined join request for ${targetName}.`,
+			});
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: `Failed to ${action} request.`;
+			setSheetFeedback({ type: 'error', message });
 		} finally {
 			setBusyId(null);
 		}
@@ -161,9 +202,24 @@ export default function CommunityDashboardSheet({
 		report: CommunityReportItem,
 		action: CommunityReportAction
 	): Promise<void> => {
-		setBusyId(report.id);
+		setBusyId(`${report.id}:${action}`);
 		try {
 			await onModerateReport(report, action);
+			const actionLabel =
+				action === 'hide'
+					? 'Content hidden and report resolved.'
+					: action === 'resolve'
+						? 'Report resolved.'
+						: action === 'dismiss'
+							? 'Report dismissed.'
+							: 'Report assigned to you.';
+			setSheetFeedback({ type: 'success', message: actionLabel });
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: 'Failed to moderate report.';
+			setSheetFeedback({ type: 'error', message });
 		} finally {
 			setBusyId(null);
 		}
@@ -369,6 +425,61 @@ export default function CommunityDashboardSheet({
 							<X size={23} color={colors.icon} />
 						</TouchableOpacity>
 					</View>
+					{sheetFeedback ? (
+						<View
+							style={{
+								flexDirection: 'row',
+								alignItems: 'center',
+								paddingHorizontal: 16,
+								paddingVertical: 10,
+								backgroundColor:
+									sheetFeedback.type === 'success'
+										? colors.successSurface
+										: colors.destructiveSurface,
+								borderBottomWidth: 1,
+								borderBottomColor:
+									sheetFeedback.type === 'success'
+										? colors.accent
+										: colors.destructive,
+							}}
+						>
+							{sheetFeedback.type === 'success' ? (
+								<CheckCircle2 size={16} color={colors.successText} />
+							) : (
+								<AlertCircle size={16} color={colors.destructiveText} />
+							)}
+							<Text
+								style={{
+									flex: 1,
+									marginLeft: 8,
+									fontSize: 13,
+									fontWeight: '700',
+									color:
+										sheetFeedback.type === 'success'
+											? colors.successText
+											: colors.destructiveText,
+								}}
+							>
+								{sheetFeedback.message}
+							</Text>
+							<TouchableOpacity
+								onPress={() => setSheetFeedback(null)}
+								hitSlop={8}
+								accessibilityLabel="Dismiss message"
+								accessibilityRole="button"
+								style={{ marginLeft: 8, padding: 2 }}
+							>
+								<X
+									size={16}
+									color={
+										sheetFeedback.type === 'success'
+											? colors.successText
+											: colors.destructiveText
+									}
+								/>
+							</TouchableOpacity>
+						</View>
+					) : null}
 					<ScrollView
 						horizontal
 						showsHorizontalScrollIndicator={false}
@@ -614,53 +725,83 @@ export default function CommunityDashboardSheet({
 											<View
 												style={{ flexDirection: 'row', gap: 8, marginTop: 11 }}
 											>
-												<TouchableOpacity
-													disabled={busyId === request.requestId}
-													onPress={() => void runRequest(request, 'decline')}
-													style={{
-														flex: 1,
-														minHeight: 39,
-														alignItems: 'center',
-														justifyContent: 'center',
-														borderRadius: 11,
-														borderWidth: 1,
-														borderColor: colors.destructive,
-													}}
-												>
-													<Text
-														style={{
-															color: colors.destructiveText,
-															fontWeight: '900',
-														}}
-													>
-														Decline
-													</Text>
-												</TouchableOpacity>
-												<TouchableOpacity
-													disabled={busyId === request.requestId}
-													onPress={() => void runRequest(request, 'approve')}
-													style={{
-														flex: 1,
-														minHeight: 39,
-														alignItems: 'center',
-														justifyContent: 'center',
-														borderRadius: 11,
-														backgroundColor: colors.accent,
-													}}
-												>
-													{busyId === request.requestId ? (
-														<ActivityIndicator color={colors.onAccent} />
-													) : (
-														<Text
-															style={{
-																color: colors.onAccent,
-																fontWeight: '900',
-															}}
-														>
-															Approve
-														</Text>
-													)}
-												</TouchableOpacity>
+												{(() => {
+													const isRequestBusy =
+														busyId?.startsWith(request.requestId) ?? false;
+													const isDeclineBusy =
+														busyId === `${request.requestId}:decline`;
+													const isApproveBusy =
+														busyId === `${request.requestId}:approve`;
+													return (
+														<>
+															<TouchableOpacity
+																disabled={isRequestBusy}
+																onPress={() =>
+																	void runRequest(request, 'decline')
+																}
+																style={{
+																	flex: 1,
+																	minHeight: 39,
+																	alignItems: 'center',
+																	justifyContent: 'center',
+																	borderRadius: 11,
+																	borderWidth: 1,
+																	borderColor: colors.destructive,
+																	opacity:
+																		isRequestBusy && !isDeclineBusy ? 0.6 : 1,
+																}}
+															>
+																{isDeclineBusy ? (
+																	<ActivityIndicator
+																		size="small"
+																		color={colors.destructive}
+																	/>
+																) : (
+																	<Text
+																		style={{
+																			color: colors.destructiveText,
+																			fontWeight: '900',
+																		}}
+																	>
+																		Decline
+																	</Text>
+																)}
+															</TouchableOpacity>
+															<TouchableOpacity
+																disabled={isRequestBusy}
+																onPress={() =>
+																	void runRequest(request, 'approve')
+																}
+																style={{
+																	flex: 1,
+																	minHeight: 39,
+																	alignItems: 'center',
+																	justifyContent: 'center',
+																	borderRadius: 11,
+																	backgroundColor: colors.accent,
+																	opacity:
+																		isRequestBusy && !isApproveBusy ? 0.6 : 1,
+																}}
+															>
+																{isApproveBusy ? (
+																	<ActivityIndicator
+																		size="small"
+																		color={colors.onAccent}
+																	/>
+																) : (
+																	<Text
+																		style={{
+																			color: colors.onAccent,
+																			fontWeight: '900',
+																		}}
+																	>
+																		Approve
+																	</Text>
+																)}
+															</TouchableOpacity>
+														</>
+													);
+												})()}
 											</View>
 										</View>
 									))
@@ -849,96 +990,162 @@ export default function CommunityDashboardSheet({
 														View {report.targetType === 'event' ? 'Event' : 'Post'}
 													</Text>
 												</TouchableOpacity>
-												{report.status === 'pending' ? (
-													<TouchableOpacity
-														disabled={busyId === report.id}
-														onPress={() => void runReport(report, 'assign')}
-														style={{
-															paddingHorizontal: 10,
-															paddingVertical: 8,
-															borderRadius: 10,
-															backgroundColor: colors.control,
-														}}
-													>
-														<Text
-															style={{
-																color: colors.secondaryText,
-																fontWeight: '800',
-																fontSize: 11,
-															}}
-														>
-															Assign to me
-														</Text>
-													</TouchableOpacity>
-												) : null}
-												<TouchableOpacity
-													disabled={busyId === report.id}
-													onPress={() => void runReport(report, 'dismiss')}
-													style={{
-														paddingHorizontal: 10,
-														paddingVertical: 8,
-														borderRadius: 10,
-														backgroundColor: colors.control,
-													}}
-												>
-													<Text
-														style={{
-															color: colors.secondaryText,
-															fontWeight: '800',
-															fontSize: 11,
-														}}
-													>
-														Dismiss
-													</Text>
-												</TouchableOpacity>
-												<TouchableOpacity
-													disabled={busyId === report.id}
-													onPress={() => void runReport(report, 'resolve')}
-													style={{
-														flexDirection: 'row',
-														alignItems: 'center',
-														paddingHorizontal: 10,
-														paddingVertical: 8,
-														borderRadius: 10,
-														backgroundColor: colors.successSurface,
-													}}
-												>
-													<CheckCircle2 size={13} color={colors.successText} />
-													<Text
-														style={{
-															marginLeft: 4,
-															color: colors.successText,
-															fontWeight: '800',
-															fontSize: 11,
-														}}
-													>
-														Resolve
-													</Text>
-												</TouchableOpacity>
-												<TouchableOpacity
-													disabled={busyId === report.id}
-													onPress={() => void runReport(report, 'hide')}
-													style={{
-														flexDirection: 'row',
-														alignItems: 'center',
-														paddingHorizontal: 10,
-														paddingVertical: 8,
-														borderRadius: 10,
-														backgroundColor: colors.destructiveSurface,
-													}}
-												>
-													<EyeOff size={13} color={colors.destructive} />
-													<Text
-														style={{
-															marginLeft: 4,
-															color: colors.destructiveText,
-															fontWeight: '800',
-															fontSize: 11,
-														}}
-													>
-														Hide content
-													</Text>
-												</TouchableOpacity>
+												{(() => {
+													const isReportBusy =
+														busyId?.startsWith(report.id) ?? false;
+													const isAssignBusy =
+														busyId === `${report.id}:assign`;
+													const isDismissBusy =
+														busyId === `${report.id}:dismiss`;
+													const isResolveBusy =
+														busyId === `${report.id}:resolve`;
+													const isHideBusy =
+														busyId === `${report.id}:hide`;
+													return (
+														<>
+															{report.status === 'pending' ? (
+																<TouchableOpacity
+																	disabled={isReportBusy}
+																	onPress={() => void runReport(report, 'assign')}
+																	style={{
+																		paddingHorizontal: 10,
+																		paddingVertical: 8,
+																		borderRadius: 10,
+																		backgroundColor: colors.control,
+																		opacity:
+																			isReportBusy && !isAssignBusy ? 0.6 : 1,
+																		minWidth: 80,
+																		alignItems: 'center',
+																		justifyContent: 'center',
+																	}}
+																>
+																	{isAssignBusy ? (
+																		<ActivityIndicator
+																			size="small"
+																			color={colors.secondaryText}
+																		/>
+																	) : (
+																		<Text
+																			style={{
+																				color: colors.secondaryText,
+																				fontWeight: '800',
+																				fontSize: 11,
+																			}}
+																		>
+																			Assign to me
+																		</Text>
+																	)}
+																</TouchableOpacity>
+															) : null}
+															<TouchableOpacity
+																disabled={isReportBusy}
+																onPress={() => void runReport(report, 'dismiss')}
+																style={{
+																	paddingHorizontal: 10,
+																	paddingVertical: 8,
+																	borderRadius: 10,
+																	backgroundColor: colors.control,
+																	opacity:
+																		isReportBusy && !isDismissBusy ? 0.6 : 1,
+																	minWidth: 65,
+																	alignItems: 'center',
+																	justifyContent: 'center',
+																}}
+															>
+																{isDismissBusy ? (
+																	<ActivityIndicator
+																		size="small"
+																		color={colors.secondaryText}
+																	/>
+																) : (
+																	<Text
+																		style={{
+																			color: colors.secondaryText,
+																			fontWeight: '800',
+																			fontSize: 11,
+																		}}
+																	>
+																		Dismiss
+																	</Text>
+																)}
+															</TouchableOpacity>
+															<TouchableOpacity
+																disabled={isReportBusy}
+																onPress={() => void runReport(report, 'resolve')}
+																style={{
+																	flexDirection: 'row',
+																	alignItems: 'center',
+																	justifyContent: 'center',
+																	paddingHorizontal: 10,
+																	paddingVertical: 8,
+																	borderRadius: 10,
+																	backgroundColor: colors.successSurface,
+																	opacity:
+																		isReportBusy && !isResolveBusy ? 0.6 : 1,
+																	minWidth: 70,
+																}}
+															>
+																{isResolveBusy ? (
+																	<ActivityIndicator
+																		size="small"
+																		color={colors.successText}
+																	/>
+																) : (
+																	<>
+																		<CheckCircle2 size={13} color={colors.successText} />
+																		<Text
+																			style={{
+																				marginLeft: 4,
+																				color: colors.successText,
+																				fontWeight: '800',
+																				fontSize: 11,
+																			}}
+																		>
+																			Resolve
+																		</Text>
+																	</>
+																)}
+															</TouchableOpacity>
+															<TouchableOpacity
+																disabled={isReportBusy}
+																onPress={() => void runReport(report, 'hide')}
+																style={{
+																	flexDirection: 'row',
+																	alignItems: 'center',
+																	justifyContent: 'center',
+																	paddingHorizontal: 10,
+																	paddingVertical: 8,
+																	borderRadius: 10,
+																	backgroundColor: colors.destructiveSurface,
+																	opacity:
+																		isReportBusy && !isHideBusy ? 0.6 : 1,
+																	minWidth: 90,
+																}}
+															>
+																{isHideBusy ? (
+																	<ActivityIndicator
+																		size="small"
+																		color={colors.destructiveText}
+																	/>
+																) : (
+																	<>
+																		<EyeOff size={13} color={colors.destructive} />
+																		<Text
+																			style={{
+																				marginLeft: 4,
+																				color: colors.destructiveText,
+																				fontWeight: '800',
+																				fontSize: 11,
+																			}}
+																		>
+																			Hide content
+																		</Text>
+																	</>
+																)}
+															</TouchableOpacity>
+														</>
+													);
+												})()}
 											</View>
 										</View>
 									))

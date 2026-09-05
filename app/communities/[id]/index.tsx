@@ -401,32 +401,74 @@ export default function CommunityDetailScreen() {
 		role: 'member' | 'moderator' | 'admin'
 	): Promise<void> => {
 		if (!community) return;
-		await communityService.updateMemberRole(community.id, member.userId, role);
-		await refreshMemberResources();
+		try {
+			await communityService.updateMemberRole(community.id, member.userId, role);
+			await refreshMemberResources();
+			const memberName =
+				`${member.firstName} ${member.lastName}`.trim() || member.userName;
+			setFeedback(`Role updated to ${role} for ${memberName}.`);
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: 'Failed to update member role.';
+			setFeedback(message);
+		}
 	};
 
 	const handleRemoveMember = async (member: CommunityMember): Promise<void> => {
 		if (!community) return;
-		await communityService.removeMember(community.id, member.userId);
-		await refreshMemberResources();
+		try {
+			await communityService.removeMember(community.id, member.userId);
+			await refreshMemberResources();
+			const memberName =
+				`${member.firstName} ${member.lastName}`.trim() || member.userName;
+			setFeedback(`${memberName} was removed from the community.`);
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: 'Failed to remove member.';
+			setFeedback(message);
+		}
 	};
 
 	const handleBanMember = async (member: CommunityMember): Promise<void> => {
 		if (!community) return;
-		await communityService.banMember(community.id, member.userId);
-		await refreshMemberResources();
+		try {
+			await communityService.banMember(community.id, member.userId);
+			await refreshMemberResources();
+			const memberName =
+				`${member.firstName} ${member.lastName}`.trim() || member.userName;
+			setFeedback(`${memberName} was banned from the community.`);
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: 'Failed to ban member.';
+			setFeedback(message);
+		}
 	};
 
 	const handleUpdateCommunity = async (
 		updates: UpdateCommunityInput
 	): Promise<void> => {
 		if (!community) return;
-		const updated = await communityService.updateCommunity(
-			community.id,
-			updates
-		);
-		await directoryService.patchCommunity(viewerId, updated);
-		await reconcileCommunity();
+		try {
+			const updated = await communityService.updateCommunity(
+				community.id,
+				updates
+			);
+			await directoryService.patchCommunity(viewerId, updated);
+			await reconcileCommunity();
+			setFeedback('Community settings updated successfully.');
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: 'Failed to update community settings.';
+			setFeedback(message);
+		}
 	};
 
 	const handleLoadDashboard = useCallback(
@@ -1181,6 +1223,8 @@ export default function CommunityDetailScreen() {
 					members={members}
 					requests={requests}
 					dashboard={dashboard}
+					feedbackMessage={feedback}
+					onClearFeedback={() => setFeedback(null)}
 					onClose={handleCloseDashboard}
 					onLoadMembers={handleLoadDashboardMembers}
 					onLoadRequests={handleLoadDashboardRequests}
