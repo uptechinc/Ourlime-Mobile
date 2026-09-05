@@ -15,6 +15,7 @@ type IdentityVerificationModalProps = {
   isOpen: boolean;
   onClose: () => void;
   verificationStatus?: string | null;
+  message?: string;
 };
 
 const STATUS_CONFIG: Record<
@@ -87,6 +88,7 @@ export default function IdentityVerificationModal({
   isOpen,
   onClose,
   verificationStatus,
+  message,
 }: IdentityVerificationModalProps) {
   const router = useRouter();
   const { colors, isDark } = useAppTheme();
@@ -124,7 +126,7 @@ export default function IdentityVerificationModal({
           {/* Texts */}
           <Text style={[styles.title, { color: colors.text }]}>{config.title}</Text>
           <Text style={[styles.description, { color: colors.mutedText }]}>
-            {config.description}
+            {message ?? config.description}
           </Text>
 
           {/* Actions */}

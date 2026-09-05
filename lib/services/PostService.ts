@@ -27,6 +27,7 @@ import { DeepLinkService } from './DeepLinkService';
 import { PostMediaService, isCancellationError, type MediaUploadProgress, type PostUploadStage } from './PostMediaService';
 import type { PageResult } from '@/lib/types/serviceResults';
 import { buildFeedQuery } from '@/lib/posts/FeedQuery';
+import { postAuthorizationService } from '@/lib/services/PostAuthorizationService';
 import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
 
 export type PostMediaType = 'image' | 'video';
@@ -70,6 +71,8 @@ export type PostUser = {
   emailVerified?: boolean;
   isAdmin?: boolean;
   accountType?: string;
+  identityVerificationStatus?: string;
+  verificationStatus?: string;
 };
 export type PollOption = { id: string; text: string; votes: number };
 export type PollVoteResult = { userVoteOptionId: string | null; pollOptions: PollOption[]; totalVotes: number };
@@ -550,6 +553,7 @@ export class PostService {
   }
 
   public async createPost(input: CreatePostInput): Promise<PostItem> {
+    await postAuthorizationService.requireVerifiedUser(input.userId);
     const draftId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const startedAt = Date.now();
     let stage: 'media-upload' | 'post-persistence' = 'media-upload';
@@ -904,6 +908,8 @@ export class PostService {
         userName: readString(value.userName),
         profileImage: readString(value.profileImage) || undefined,
         emailVerified: typeof value.emailVerified === 'boolean' ? value.emailVerified : undefined,
+        identityVerificationStatus: readString(value.identityVerificationStatus) || undefined,
+        verificationStatus: readString(value.verificationStatus) || undefined,
         isAdmin: typeof value.isAdmin === 'boolean' ? value.isAdmin : undefined,
         accountType: readString(value.accountType) || undefined,
       }];
@@ -1103,6 +1109,8 @@ export class PostService {
         userName: readString(userData.userName),
         profileImage: imageUrls.get(imageId) || this.readDirectProfileImage(userData),
         emailVerified: typeof userData.emailVerified === 'boolean' ? userData.emailVerified : undefined,
+        identityVerificationStatus: readString(userData.identityVerificationStatus) || undefined,
+        verificationStatus: readString(userData.verificationStatus) || undefined,
         isAdmin: typeof userData.isAdmin === 'boolean' ? userData.isAdmin : undefined,
       });
     });
@@ -1197,6 +1205,8 @@ export class PostService {
       userName: readString(userRecord.userName),
       profileImage: readString(userRecord.profileImage) || undefined,
       emailVerified: typeof userRecord.emailVerified === 'boolean' ? userRecord.emailVerified : undefined,
+      identityVerificationStatus: readString(userRecord.identityVerificationStatus) || undefined,
+      verificationStatus: readString(userRecord.verificationStatus) || undefined,
       isAdmin: typeof userRecord.isAdmin === 'boolean' ? userRecord.isAdmin : undefined,
       accountType: readString(userRecord.accountType) || undefined,
     };
@@ -1228,6 +1238,8 @@ export class PostService {
         userName: readString(likedUser.userName),
         profileImage: readString(likedUser.profileImage) || undefined,
         emailVerified: typeof likedUser.emailVerified === 'boolean' ? likedUser.emailVerified : undefined,
+        identityVerificationStatus: readString(likedUser.identityVerificationStatus) || undefined,
+        verificationStatus: readString(likedUser.verificationStatus) || undefined,
       }];
     });
     const likedUserIds = likedUsers.length > 0

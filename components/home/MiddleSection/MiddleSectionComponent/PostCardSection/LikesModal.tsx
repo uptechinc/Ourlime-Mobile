@@ -4,6 +4,7 @@ import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
+import { postAuthorizationService } from '@/lib/services/PostAuthorizationService';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { PostService, type PostOrigin, type PostUser } from '@/lib/services/PostService';
 import { RelationshipService } from '@/lib/services/RelationshipService';
@@ -111,7 +112,7 @@ export default function LikesModal({ visible, postId, origin, onClose }: LikesMo
               <TouchableOpacity onPress={() => handleNavigateProfile(user)} style={styles.userTouchable}>
                 <UserAvatar profileImage={user.profileImage} firstName={user.firstName || user.userName} size={46} />
                 <View style={styles.userCopy}>
-                  <View style={styles.nameRow}><Text style={styles.name}>{user.firstName} {user.lastName}</Text>{user.emailVerified ? <Icon name="check-circle" size={14} color={colors.accent} style={styles.verifiedIcon} /> : null}</View>
+                  <View style={styles.nameRow}><Text style={styles.name}>{user.firstName} {user.lastName}</Text>{postAuthorizationService.isIdentityVerified(user) ? <Icon name="check-circle" size={14} color={colors.accent} style={styles.verifiedIcon} /> : null}</View>
                   <Text style={styles.username}>@{user.userName}</Text>
                 </View>
               </TouchableOpacity>

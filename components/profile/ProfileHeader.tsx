@@ -39,7 +39,7 @@ export default function ProfileHeader({
   const displayName = `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() || profile.userName || 'Ourlime User';
   const handle = `@${profile.userName || 'user'}`;
   const isAdmin = profile.accountType === 'admin' || profile.isAdmin === true;
-  const isVerified = profile.emailVerified === true || profile.verificationStatus === 'verified';
+  const isVerified = profile.identityVerificationStatus === 'verified' || profile.verificationStatus === 'verified';
   const coverImage = profile.coverPhoto || profile.coverImage || profile.coverPicture;
 
   return (

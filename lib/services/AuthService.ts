@@ -58,6 +58,7 @@ export type UserProfile = {
   coverPicture?: string;
   emailVerified?: boolean;
   verificationStatus?: string;
+  identityVerificationStatus?: string;
   visibility?: 'public' | 'friends' | 'private';
   followersCount?: number;
   friendsCount?: number;
@@ -474,6 +475,7 @@ export class AuthService {
         coverPicture: this.readString(profileRecord.coverPicture) || undefined,
         emailVerified: profileRecord.emailVerified === true || auth.currentUser?.emailVerified === true,
         verificationStatus: this.readString(profileRecord.verificationStatus) || undefined,
+        identityVerificationStatus: this.readString(profileRecord.identityVerificationStatus) || undefined,
         visibility: profileRecord.visibility === 'private' || profileRecord.visibility === 'friends' ? profileRecord.visibility : 'public',
         followersCount: this.readNumber(profileRecord.followersCount),
         friendsCount: this.readNumber(profileRecord.friendsCount),

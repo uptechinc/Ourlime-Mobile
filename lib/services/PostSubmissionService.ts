@@ -1,4 +1,5 @@
 import { AuthService } from './AuthService';
+import { postAuthorizationService } from './PostAuthorizationService';
 import { PostService, type PostItem } from './PostService';
 import { isCancellationError } from './PostMediaService';
 import { EventService } from './EventService';
@@ -37,6 +38,9 @@ export class PostSubmissionService {
 
   public start(draft: PostSubmissionDraft): void {
     if (this.authService.getCurrentUser()?.uid !== draft.post.userId) throw new Error('Please sign in again before posting.');
+    if (!postAuthorizationService.canCreatePost(draft.post.user)) {
+      throw new Error('You must verify your account before you can create a post.');
+    }
     if (usePostSubmissionStore.getState().submission?.status === 'running') throw new Error('A post is already uploading. You can check its progress on Feeds.');
     if (!this.listening) {
       this.listening = true;

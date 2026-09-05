@@ -39,6 +39,10 @@ import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { postSubmissionService } from '@/lib/services/PostSubmissionService';
 import VideoThumbnailPicker from '@/components/media/VideoThumbnailPicker';
 import { diagnosticLogService } from '@/lib/services/DiagnosticLogService';
+import {
+  POST_VERIFICATION_REQUIRED_MESSAGE,
+  postAuthorizationService,
+} from '@/lib/services/PostAuthorizationService';
 
 type DraftPollOption = { id: string; text: string };
 type TextSelection = { start: number; end: number };
@@ -288,6 +292,10 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
 
   const handleSubmit = () => {
     if (isPostDisabled) return;
+    if (!postAuthorizationService.canCreatePost(userProfile)) {
+      setComposerFeedback({ title: 'Verification required', message: POST_VERIFICATION_REQUIRED_MESSAGE });
+      return;
+    }
     setIsSubmitting(true);
     try {
       postSubmissionService.start({
@@ -319,6 +327,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
           lastName: userProfile.lastName,
           userName: userProfile.userName,
           profileImage: userProfile.profilePicture ?? undefined,
+          verificationStatus: userProfile.verificationStatus,
         },
         type: postType,
         caption: postType === 'event' && eventTitle.trim() ? `📅 Event: ${eventTitle.trim()}\n\n${caption.trim()}` : caption.trim(),

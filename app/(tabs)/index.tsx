@@ -11,6 +11,11 @@ import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import PostUploadProgressBanner from '@/components/home/PostUploadProgressBanner';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppDrawer } from '@/lib/contexts/AppDrawerContext';
+import IdentityVerificationModal from '@/components/jobs/IdentityVerificationModal';
+import {
+  POST_VERIFICATION_REQUIRED_MESSAGE,
+  postAuthorizationService,
+} from '@/lib/services/PostAuthorizationService';
 
 const authService = AuthService.getInstance();
 
@@ -19,6 +24,7 @@ export default function FeedsScreen() {
   const { colors } = useAppTheme();
   const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const currentUser = authService.getCurrentUser();
   const { resource: profileResource } = useProfileResource({ kind: 'own', userId: currentUser?.uid ?? '' });
   const userProfile = profileResource.data?.profile ?? null;
@@ -29,6 +35,10 @@ export default function FeedsScreen() {
   }, []);
 
   const handleCreatePost = () => {
+    if (!postAuthorizationService.canCreatePost(userProfile)) {
+      setIsVerificationModalOpen(true);
+      return;
+    }
     setIsCreatePostModalOpen(true);
   };
 
@@ -79,6 +89,12 @@ export default function FeedsScreen() {
       <NotificationsModal
         visible={isNotificationsModalOpen}
         onClose={() => setIsNotificationsModalOpen(false)}
+      />
+      <IdentityVerificationModal
+        isOpen={isVerificationModalOpen}
+        onClose={() => setIsVerificationModalOpen(false)}
+        verificationStatus={userProfile.verificationStatus}
+        message={POST_VERIFICATION_REQUIRED_MESSAGE}
       />
 
     </View>
