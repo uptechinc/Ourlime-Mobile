@@ -22,6 +22,9 @@ export type ReportContentType = 'post' | 'user' | 'community' | 'lime' | 'event'
 export type SubmitReportInput = {
   targetId: string;
   reportedUserId?: string;
+  parentContentId?: string;
+  communityId?: string;
+  chatId?: string;
   reasonCategory: ReportReasonCategory;
   reason: string;
   description?: string;
@@ -99,6 +102,9 @@ export class ModerationService {
             contentType,
             targetId: input.targetId,
             reportedUserId: input.reportedUserId ?? null,
+            parentContentId: input.parentContentId ?? null,
+            communityId: input.communityId ?? null,
+            chatId: input.chatId ?? null,
             reasonCategory: input.reasonCategory,
             reason: input.reason,
             description: input.description?.trim() ?? '',

@@ -27,12 +27,13 @@ type PostOptionsSheetProps = {
   onDelete: (postId: string) => void;
   onBlock: (userId: string) => void;
   onPostUpdate: (post: PostItem) => void;
+  onEditRequest?: () => void;
 };
 
 const postService = PostService.getInstance();
 const relationshipService = RelationshipService.getInstance();
 
-export default function PostOptionsSheet({ visible, post, currentUserId, canModerateCommunityPost = false, onClose, onDelete, onBlock, onPostUpdate }: PostOptionsSheetProps) {
+export default function PostOptionsSheet({ visible, post, currentUserId, canModerateCommunityPost = false, onClose, onDelete, onBlock, onPostUpdate, onEditRequest }: PostOptionsSheetProps) {
   const { colors } = useAppTheme();
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [following, setFollowing] = useState(post.relationshipStatus?.isFollowing === true);
@@ -188,9 +189,14 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
                 </>
               ) : null}
 
-              {/* 5. Delete Post / Remove Repost */}
+              {/* 5. Edit / Delete Post / Remove Repost */}
               {canDelete ? (
                 <>
+                  {isOwner ? renderRow(
+                    'edit-2',
+                    'Edit Post',
+                    () => { onClose(); onEditRequest?.(); },
+                  ) : null}
                   {isOwner && !post.communityId ? renderRow(
                     post.visibility === 'private' ? 'globe' : 'lock',
                     post.visibility === 'private' ? 'Make Public' : 'Make Private (Friends only)',

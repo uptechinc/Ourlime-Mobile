@@ -7,6 +7,7 @@ import { PostService, type PostItem } from '@/lib/services/PostService';
 import ImageAndVideoPostSection from './ImageAndVideoPostSection/ImageAndVideoPostSection';
 import UserAvatar from '@/components/ui/UserAvatar';
 import PostOptionsSheet from './PostOptionsSheet';
+import EditPostModal from './EditPostModal';
 import { feedCardContainerStyle } from './feedCardStyles';
 import PostLinkPreview from './PostLinkPreview';
 import { findFirstUrl } from '@/lib/services/OpenGraphService';
@@ -59,6 +60,7 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
   const [removeRepostVisible, setRemoveRepostVisible] = useState(false);
   const [repostBusy, setRepostBusy] = useState(false);
   const [optionsVisible, setOptionsVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
   const [likesVisible, setLikesVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
   const [eventAttendance, setEventAttendance] = useState<{ isAttending: boolean; attendeeCount: number }>();
@@ -373,7 +375,8 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
         </View>
       </View>
 
-      <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} canModerateCommunityPost={canModerateCommunityPost} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} onPostUpdate={onPostUpdate} />
+      <PostOptionsSheet visible={optionsVisible} post={post} currentUserId={currentUserId ?? null} canModerateCommunityPost={canModerateCommunityPost} onClose={() => setOptionsVisible(false)} onDelete={onPostDelete} onBlock={onAuthorBlocked} onPostUpdate={onPostUpdate} onEditRequest={() => setEditModalVisible(true)} />
+      <EditPostModal visible={editModalVisible} post={post} currentUserId={currentUserId ?? ''} onClose={() => setEditModalVisible(false)} onSaved={(updatedPost) => { onPostUpdate(updatedPost); setEditModalVisible(false); }} />
       <LikesModal visible={likesVisible} postId={post.id} origin={post.origin} onClose={() => setLikesVisible(false)} />
     </View>
     <CustomModal

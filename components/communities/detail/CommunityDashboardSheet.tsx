@@ -12,6 +12,7 @@ import {
 	Activity,
 	BarChart3,
 	CheckCircle2,
+	ExternalLink,
 	EyeOff,
 	Flag,
 	RefreshCw,
@@ -21,6 +22,7 @@ import {
 	X,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { type Href, useRouter } from 'expo-router';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type {
 	CommunityCardModel,
@@ -86,6 +88,7 @@ export default function CommunityDashboardSheet({
 	onManageMember,
 	onModerateReport,
 }: CommunityDashboardSheetProps) {
+	const router = useRouter();
 	const { colors } = useAppTheme();
 	const [tab, setTab] = useState<DashboardTab>('overview');
 	const [search, setSearch] = useState('');
@@ -816,6 +819,36 @@ export default function CommunityDashboardSheet({
 													marginTop: 11,
 												}}
 											>
+												<TouchableOpacity
+													onPress={() => {
+														onClose();
+														if (report.targetType === 'event') {
+															router.push({ pathname: '/events', params: { targetId: report.targetId } } as Href);
+														} else {
+															router.push(`/post/${report.targetId}` as Href);
+														}
+													}}
+													style={{
+														flexDirection: 'row',
+														alignItems: 'center',
+														paddingHorizontal: 10,
+														paddingVertical: 8,
+														borderRadius: 10,
+														backgroundColor: colors.accent,
+													}}
+												>
+													<ExternalLink size={13} color={colors.onAccent} />
+													<Text
+														style={{
+															marginLeft: 4,
+															color: colors.onAccent,
+															fontWeight: '800',
+															fontSize: 11,
+														}}
+													>
+														View {report.targetType === 'event' ? 'Event' : 'Post'}
+													</Text>
+												</TouchableOpacity>
 												{report.status === 'pending' ? (
 													<TouchableOpacity
 														disabled={busyId === report.id}

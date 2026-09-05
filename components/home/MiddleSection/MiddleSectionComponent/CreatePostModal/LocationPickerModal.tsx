@@ -10,6 +10,7 @@ import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 
 type LocationPickerModalProps = {
+  visible?: boolean;
   initialLocation?: PostLocation;
   onClose: () => void;
   onSelect: (location: PostLocation) => void;
@@ -19,7 +20,7 @@ const DEFAULT_LAT = 10.6599;
 const DEFAULT_LNG = -61.5199;
 const locationService = LocationService.getInstance();
 
-export default function LocationPickerModal({ initialLocation, onClose, onSelect }: LocationPickerModalProps) {
+export default function LocationPickerModal({ visible = true, initialLocation, onClose, onSelect }: LocationPickerModalProps) {
   const [selected, setSelected] = useState<PostLocation | undefined>(initialLocation);
   const [currentCoords, setCurrentCoords] = useState({
     lat: initialLocation?.lat ?? DEFAULT_LAT,
@@ -29,7 +30,7 @@ export default function LocationPickerModal({ initialLocation, onClose, onSelect
   const [results, setResults] = useState<LocationSearchResult[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const swipeDismiss = useSwipeDismiss({ visible: true, onDismiss: onClose, disabled: busy });
+  const swipeDismiss = useSwipeDismiss({ visible, onDismiss: onClose, disabled: busy });
 
   // 400ms debounced automatic search
   useEffect(() => {
@@ -128,7 +129,7 @@ export default function LocationPickerModal({ initialLocation, onClose, onSelect
   `;
 
   return (
-    <Modal visible transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
       <Animated.View style={[{ flex: 1 }, swipeDismiss.animatedStyle]}>
       <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
         <SwipeDismissHandle gesture={swipeDismiss.gesture} color="#d1d5db" animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close location picker" />

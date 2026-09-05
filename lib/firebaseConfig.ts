@@ -8,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, LogBox } from 'react-native';
 import { DiagnosticLogService } from './services/DiagnosticLogService';
 
-if (Platform.OS !== 'web') {
+if (Platform.OS !== 'web' && LogBox?.ignoreLogs) {
   LogBox.ignoreLogs([
     '@firebase/firestore',
     'WebChannelConnection',
@@ -38,10 +38,14 @@ const firebaseConfig = {
 // Initialize Firebase App
 const isNewApp = getApps().length === 0;
 const app = isNewApp ? initializeApp(firebaseConfig) : getApp();
-// Configure Firestore with long polling to stabilize WebChannel stream transport on React Native
-const db = isNewApp
-  ? initializeFirestore(app, { experimentalForceLongPolling: true })
-  : getFirestore(app);
+let db: ReturnType<typeof getFirestore>;
+try {
+  db = isNewApp
+    ? initializeFirestore(app, { experimentalForceLongPolling: true })
+    : getFirestore(app);
+} catch {
+  db = getFirestore(app);
+}
 let auth: FirebaseAuth.Auth;
 try {
   auth = Platform.OS === 'web'

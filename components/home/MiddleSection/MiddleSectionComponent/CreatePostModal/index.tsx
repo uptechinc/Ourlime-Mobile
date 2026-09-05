@@ -293,7 +293,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
       postSubmissionService.start({
         event: postType === 'event' ? {
           title: eventTitle.trim() || caption.trim(),
-          description: caption.trim() || description.trim(),
+          description: description.trim(),
           summary: caption.trim(),
           startDate: eventStartDate,
           startTime: eventStartTime,

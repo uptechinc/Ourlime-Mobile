@@ -29,6 +29,7 @@ type LimeOptionsSheetProps = {
   onFollowToggle: (userId: string, currentlyFollowing: boolean) => void;
   onReport: (reelId: string, reportedUserId: string, reportType: 'lime' | 'user') => void;
   onBlock?: (userId: string) => void;
+  onEditRequest?: () => void;
 };
 
 const relationshipService = RelationshipService.getInstance();
@@ -44,6 +45,7 @@ export default function LimeOptionsSheet({
   onFollowToggle,
   onReport,
   onBlock,
+  onEditRequest,
 }: LimeOptionsSheetProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useAppTheme();
@@ -305,25 +307,44 @@ export default function LimeOptionsSheet({
 
             {/* Owner Delete Lime */}
             {isOwner ? (
-              <TouchableOpacity
-                disabled={Boolean(busyAction)}
-                onPress={() => {
-                  onClose();
-                  onDeleteRequest(reel);
-                }}
-                style={[styles.optionItem, { backgroundColor: 'rgba(239, 68, 68, 0.08)' }]}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.iconBox, { backgroundColor: '#ef4444' }]}>
-                  <Icon name="trash-2" size={18} color="#ffffff" />
-                </View>
-                <View style={styles.optionCopy}>
-                  <Text style={[styles.optionTitle, { color: '#ef4444' }]}>Delete Lime</Text>
-                  <Text style={[styles.optionSubtitle, { color: colors.mutedText }]}>
-                    Permanently delete this Lime and all comments
-                  </Text>
-                </View>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  onPress={() => {
+                    onClose();
+                    onEditRequest?.();
+                  }}
+                  style={[styles.optionItem, { backgroundColor: colors.control }]}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.iconBox, { backgroundColor: colors.elevated }]}>
+                    <Icon name="edit-2" size={18} color={colors.accentText} />
+                  </View>
+                  <View style={styles.optionCopy}>
+                    <Text style={[styles.optionTitle, { color: colors.text }]}>Edit Lime</Text>
+                    <Text style={[styles.optionSubtitle, { color: colors.mutedText }]}>Change caption, category, or visibility</Text>
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  disabled={Boolean(busyAction)}
+                  onPress={() => {
+                    onClose();
+                    onDeleteRequest(reel);
+                  }}
+                  style={[styles.optionItem, { backgroundColor: 'rgba(239, 68, 68, 0.08)' }]}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.iconBox, { backgroundColor: '#ef4444' }]}>
+                    <Icon name="trash-2" size={18} color="#ffffff" />
+                  </View>
+                  <View style={styles.optionCopy}>
+                    <Text style={[styles.optionTitle, { color: '#ef4444' }]}>Delete Lime</Text>
+                    <Text style={[styles.optionSubtitle, { color: colors.mutedText }]}>
+                      Permanently delete this Lime and all comments
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </>
             ) : null}
 
             {/* Admin Delete Lime (Only visible to verified platform admins) */}

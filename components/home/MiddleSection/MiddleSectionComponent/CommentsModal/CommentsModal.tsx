@@ -37,6 +37,22 @@ import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import RichTextContent from '@/components/ui/RichTextContent';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
+import CommunityReportModal from '@/components/communities/CommunityReportModal';
+import {
+	ModerationService,
+	type ReportReasonCategory,
+} from '@/lib/services/ModerationService';
+import type { ChildSafetyIntakeValues } from '@/lib/types/childSafety';
+
+const moderationService = ModerationService.getInstance();
+
+type CommentReportTarget = {
+	id: string;
+	contentType: 'comment' | 'reply';
+	authorId: string;
+	authorName: string;
+	preview: string;
+};
 
 type ReplyThread = {
 	items: PostReply[];
@@ -118,8 +134,31 @@ export default function CommentsModal({
 	const [selectedMedia, setSelectedMedia] = useState<CommentMediaAsset | null>(null);
 	const [highlightedTargetId, setHighlightedTargetId] = useState<string | null>(null);
 	const [resolvedFocusRootId, setResolvedFocusRootId] = useState<string | null>(null);
+	const [reportTarget, setReportTarget] = useState<CommentReportTarget | null>(null);
 	const commentsScrollRef = useRef<ScrollView | null>(null);
 	const hasScrolledToFocusRef = useRef(false);
+
+	const handleSubmitReport = useCallback(
+		async (
+			category: ReportReasonCategory,
+			reason: string,
+			details: string,
+			childSafety?: ChildSafetyIntakeValues
+		) => {
+			if (!reportTarget) return;
+			await moderationService.reportContent(reportTarget.contentType, {
+				targetId: reportTarget.id,
+				reportedUserId: reportTarget.authorId,
+				reasonCategory: category,
+				reason,
+				description: details,
+				parentContentId: post.id,
+				...childSafety,
+			});
+			setReportTarget(null);
+		},
+		[post.id, reportTarget]
+	);
 
 	const handleEmojiSelect = (emoji: string) => {
 		if (replyTarget) {
@@ -554,7 +593,34 @@ export default function CommentsModal({
 						Edit
 					</Text>
 				</TouchableOpacity>
-			) : null}
+			) : (
+				<TouchableOpacity
+					onPress={() => {
+						setReportTarget({
+							id: item.id,
+							contentType: type,
+							authorId: item.author.id,
+							authorName:
+								item.author.userName ||
+								`${item.author.firstName} ${item.author.lastName}`.trim(),
+							preview:
+								item.content ||
+								(item.sticker ? '[Sticker]' : 'Comment'),
+						});
+					}}
+				>
+					<Text
+						style={{
+							marginRight: 16,
+							color: colors.mutedText,
+							fontSize: 12,
+							fontWeight: '600',
+						}}
+					>
+						Report
+					</Text>
+				</TouchableOpacity>
+			)}
 			<Text style={{ color: colors.disabledText, fontSize: 11 }}>
 				{formatTimestamp(item.createdAtMs)}
 				{item.editedAtMs ? ' · Edited' : ''}
@@ -1250,6 +1316,30 @@ export default function CommentsModal({
 						}}
 					/>
 				) : null}
+				<CommunityReportModal
+					visible={Boolean(reportTarget)}
+					title={
+						reportTarget?.contentType === 'reply'
+							? 'Report reply'
+							: 'Report comment'
+					}
+					subjectLabel={
+						reportTarget
+							? `@${reportTarget.authorName}: ${reportTarget.preview}`
+							: ''
+					}
+					childSafetyTarget={
+						reportTarget
+							? {
+									type: reportTarget.contentType,
+									id: reportTarget.id,
+									ownerUserId: reportTarget.authorId,
+								}
+							: undefined
+					}
+					onClose={() => setReportTarget(null)}
+					onSubmit={handleSubmitReport}
+				/>
 			</Animated.View>
 		</Modal>
 	);

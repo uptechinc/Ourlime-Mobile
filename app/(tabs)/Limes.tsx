@@ -42,6 +42,7 @@ import { PlaybackSeekBar } from '@/components/media/PlaybackSeekBar';
 import { PlaybackSpeedMenu } from '@/components/media/PlaybackSpeedMenu';
 import type { PlaybackSpeed } from '@/lib/services/PlaybackInteractionService';
 import CreateLimeModal from '@/components/limes/CreateLimeModal';
+import EditLimeModal from '@/components/limes/EditLimeModal';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
 import ReportLimeModal from '@/components/limes/ReportLimeModal';
 import LimeCategorySheet from '@/components/limes/LimeCategorySheet';
@@ -249,6 +250,8 @@ export default function LimesScreen() {
   const [muted, setMuted] = useState(false);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Reel | null>(null);
+  const [editLimeVisible, setEditLimeVisible] = useState(false);
+  const [editingReel, setEditingReel] = useState<Reel | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -655,6 +658,10 @@ export default function LimesScreen() {
             onReport={(reelId, reportedUserId, reportType) =>
               setReportTarget({ reelId, reportedUserId, reportType })
             }
+            onEditRequest={(reelToEdit) => {
+              setEditingReel(reelToEdit);
+              setEditLimeVisible(true);
+            }}
             onDeleteRequest={(reel) => {
               setDeleteError(null);
               setDeleteTarget(reel);
@@ -675,6 +682,23 @@ export default function LimesScreen() {
           onSuccess={() => {
             setIsCreateModalOpen(false);
             void refresh(true);
+          }}
+        />
+      ) : null}
+
+      {/* Edit Lime Modal */}
+      {editingReel ? (
+        <EditLimeModal
+          visible={editLimeVisible}
+          reel={editingReel}
+          onClose={() => {
+            setEditLimeVisible(false);
+            setEditingReel(null);
+          }}
+          onSaved={(updatedReel) => {
+            void limeResourceService.patchReel(query, updatedReel.id, () => updatedReel);
+            setEditLimeVisible(false);
+            setEditingReel(null);
           }}
         />
       ) : null}
@@ -868,6 +892,7 @@ export type ReelItemProps = {
   onFollowToggle: (userId: string, currentlyFollowing: boolean) => void;
   onProfilePress: (userName: string) => void;
   onReport: (reelId: string, reportedUserId: string, reportType: 'lime' | 'user') => void;
+  onEditRequest?: (reel: Reel) => void;
   onDeleteRequest: (reel: Reel) => void;
   onDeleted?: (reelId: string) => void;
 };
@@ -892,6 +917,7 @@ export function ReelItem({
   onFollowToggle,
   onProfilePress,
   onReport,
+  onEditRequest,
   onDeleteRequest,
   onDeleted,
 }: ReelItemProps) {
@@ -1175,6 +1201,10 @@ export function ReelItem({
         currentUserId={currentUserId}
         isFollowing={isFollowing}
         onClose={() => setShowOptionsMenu(false)}
+        onEditRequest={() => {
+          setShowOptionsMenu(false);
+          onEditRequest?.(reel);
+        }}
         onDeleteRequest={onDeleteRequest}
         onDeleted={(deletedReelId) => {
           setShowOptionsMenu(false);

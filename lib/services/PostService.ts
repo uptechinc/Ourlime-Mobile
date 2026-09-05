@@ -138,6 +138,16 @@ export type PostItem = {
 export type FeedPage = Omit<PageResult<PostItem>, 'items'> & { posts: PostItem[] };
 export type PostLikesPage = { users: PostUser[]; nextCursor: string | null; hasMore: boolean };
 
+export type PostEditPayload = {
+  caption?: string;
+  description?: string;
+  hashtags?: string[];
+  mentions?: string[];
+  friendReferences?: string[];
+  location?: PostLocation | null;
+  visibility?: PostVisibility;
+};
+
 export type CreatePostInput = {
   userId: string;
   user: PostUser;
@@ -575,7 +585,7 @@ export class PostService {
           title: input.caption.trim(),
           caption: input.caption.trim(),
           content: input.caption.trim(),
-          description: input.description.trim() || input.caption.trim(),
+          description: input.description.trim(),
           visibility: 'community',
           createdAt: serverTimestamp(),
           userId: input.userId,
@@ -604,7 +614,7 @@ export class PostService {
           user: input.user,
           type: 'regular',
           caption: input.caption.trim(),
-          description: input.description.trim() || input.caption.trim(),
+          description: input.description.trim(),
           visibility: 'public',
           hashtags: input.hashtags,
           media: mediaRecords,
@@ -765,6 +775,39 @@ export class PostService {
     const post = this.mapApiPost(response.data);
     if (!response.success || !post) throw new Error(response.error || 'Post not found');
     return post;
+  }
+
+  public async updatePost(postId: string, origin: PostOrigin, updates: PostEditPayload): Promise<void> {
+    const currentUserId = auth.currentUser?.uid;
+    if (!currentUserId) throw new Error('Must be logged in to edit a post.');
+
+    const isCommunity = origin === 'community';
+    const collectionName = isCommunity ? 'communityVariantDetails' : 'feedPosts';
+    const postRef = doc(db, collectionName, postId);
+    const snap = await getDoc(postRef);
+
+    if (!snap.exists()) throw new Error('Post not found.');
+    if (snap.data().userId !== currentUserId) throw new Error('You do not have permission to edit this post.');
+
+    const updateData: Record<string, unknown> = {
+      updatedAt: serverTimestamp(),
+    };
+
+    if (updates.caption !== undefined) {
+      updateData.caption = updates.caption.trim();
+      if (isCommunity) {
+        updateData.title = updates.caption.trim();
+        updateData.content = updates.caption.trim();
+      }
+    }
+    if (updates.description !== undefined) updateData.description = updates.description.trim();
+    if (updates.visibility !== undefined) updateData.visibility = updates.visibility;
+    if (updates.hashtags !== undefined) updateData.hashtags = updates.hashtags;
+    if (updates.mentions !== undefined) updateData.mentions = updates.mentions;
+    if (updates.friendReferences !== undefined) updateData.friendReferences = updates.friendReferences;
+    if (updates.location !== undefined) updateData.location = updates.location;
+
+    await updateDoc(postRef, updateData);
   }
 
   public async toggleLike(post: Pick<PostItem, 'id' | 'origin'>, userId: string, desiredLiked: boolean): Promise<CommunityReactionResult> {
@@ -1280,7 +1323,11 @@ export class PostService {
       user,
       type: record.type === 'poll' || record.type === 'event' ? record.type : 'regular',
       caption: readString(record.caption, readString(record.content, readString(record.title))),
-      description: readString(record.description, readString(record.content)),
+      description: (() => {
+        const rawDesc = readString(record.description).trim();
+        const cap = readString(record.caption, readString(record.content, readString(record.title))).trim();
+        return rawDesc && rawDesc !== cap ? rawDesc : '';
+      })(),
       visibility,
       hashtags: readStringArray(record.hashtags).map((tag) => tag.replace(/^#/, '')),
       media,

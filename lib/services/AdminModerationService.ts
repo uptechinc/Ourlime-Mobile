@@ -24,12 +24,22 @@ export type AdminModerationReport = {
   createdAtMs: number;
   routePath: string | null;
   moderatorNotes: string;
+  evidence: string[];
+  contentUrl: string | null;
+  parentContentId: string | null;
+  communityId: string | null;
+  chatId: string | null;
+  targetSnapshot: Record<string, unknown> | null;
+  conversationContext: unknown[];
+  conversationParticipantIds: string[];
 };
 
 type AdminModerationSource = {
   id?: unknown; contentType?: unknown; targetId?: unknown; reportedUserId?: unknown; reporterId?: unknown;
   reporterName?: unknown; reason?: unknown; description?: unknown; severity?: unknown; status?: unknown;
   createdAtMs?: unknown; createdAt?: unknown; routePath?: unknown; moderatorNotes?: unknown;
+  evidence?: unknown; contentUrl?: unknown; parentContentId?: unknown; communityId?: unknown; chatId?: unknown;
+  targetSnapshot?: unknown; conversationContext?: unknown; conversationParticipantIds?: unknown;
 };
 const isModerationSource = (value: unknown): value is AdminModerationSource => typeof value === 'object' && value !== null && !Array.isArray(value);
 const readString = (value: unknown): string => typeof value === 'string' ? value : '';
@@ -99,7 +109,39 @@ export class AdminModerationService {
       const createdAtMs = typeof value.createdAtMs === 'number'
         ? value.createdAtMs
         : value.createdAt instanceof Timestamp ? value.createdAt.toMillis() : 0;
-      return [{ id, contentType: readString(value.contentType), targetId: readString(value.targetId), reportedUserId: readString(value.reportedUserId) || null, reporterId: readString(value.reporterId), reporterName: readString(value.reporterName) || 'Ourlime user', reason: readString(value.reason) || 'Unspecified', description: readString(value.description), severity, status, createdAtMs, routePath: readString(value.routePath) || null, moderatorNotes: readString(value.moderatorNotes) }];
+      const evidence = Array.isArray(value.evidence)
+        ? value.evidence.filter((item): item is string => typeof item === 'string')
+        : [];
+      const targetSnapshot = typeof value.targetSnapshot === 'object' && value.targetSnapshot !== null && !Array.isArray(value.targetSnapshot)
+        ? (value.targetSnapshot as Record<string, unknown>)
+        : null;
+      const conversationContext = Array.isArray(value.conversationContext) ? value.conversationContext : [];
+      const conversationParticipantIds = Array.isArray(value.conversationParticipantIds)
+        ? value.conversationParticipantIds.filter((item): item is string => typeof item === 'string')
+        : [];
+      return [{
+        id,
+        contentType: readString(value.contentType),
+        targetId: readString(value.targetId),
+        reportedUserId: readString(value.reportedUserId) || null,
+        reporterId: readString(value.reporterId),
+        reporterName: readString(value.reporterName) || 'Ourlime user',
+        reason: readString(value.reason) || 'Unspecified',
+        description: readString(value.description),
+        severity,
+        status,
+        createdAtMs,
+        routePath: readString(value.routePath) || null,
+        moderatorNotes: readString(value.moderatorNotes),
+        evidence,
+        contentUrl: readString(value.contentUrl) || null,
+        parentContentId: readString(value.parentContentId) || null,
+        communityId: readString(value.communityId) || null,
+        chatId: readString(value.chatId) || null,
+        targetSnapshot,
+        conversationContext,
+        conversationParticipantIds,
+      }];
     });
   }
 }

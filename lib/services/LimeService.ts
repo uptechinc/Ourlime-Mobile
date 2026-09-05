@@ -34,6 +34,13 @@ export type LimeFeedCursor = QueryDocumentSnapshot;
 
 export type LimeFeedScope = 'forYou' | 'following';
 
+export type LimeEditPayload = {
+  caption?: string;
+  category?: string;
+  visibility?: string;
+  mentions?: string[];
+};
+
 export type LimeFeedResult = {
   reels: Reel[];
   followingUserIds: string[];
@@ -461,6 +468,29 @@ export class LimeService {
     });
     if (!response.success) throw new Error(response.error || 'Could not delete this Lime.');
   }
+
+  public async updateLime(limeId: string, updates: LimeEditPayload): Promise<void> {
+    const currentUserId = this.authService.getCurrentUser()?.uid;
+    if (!currentUserId) throw new Error('Must be logged in to edit a Lime.');
+
+    const reelRef = doc(db, 'reels', limeId);
+    const snap = await getDoc(reelRef);
+
+    if (!snap.exists()) throw new Error('Lime not found.');
+    if (snap.data().userId !== currentUserId) throw new Error('You do not have permission to edit this Lime.');
+
+    const updateData: Record<string, unknown> = {
+      updatedAt: serverTimestamp(),
+    };
+
+    if (updates.caption !== undefined) updateData.caption = updates.caption.trim();
+    if (updates.category !== undefined) updateData.category = updates.category;
+    if (updates.visibility !== undefined) updateData.visibility = updates.visibility;
+    if (updates.mentions !== undefined) updateData.mentions = updates.mentions;
+
+    await updateDoc(reelRef, updateData);
+  }
+
 
   public async reportLime(
     reelId: string,
