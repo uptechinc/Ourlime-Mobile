@@ -38,11 +38,15 @@ export default function PostScreen() {
     if (!id) return;
     setLoading(true);
     setError(null);
-    try { setPost(await postService.fetchPost(id)); }
-    catch (loadError: unknown) {
+    try {
+      setPost(await postService.fetchPost(id));
+    } catch (loadError: unknown) {
       console.error('[PostScreen.loadPost]', loadError);
-      setError('This post could not be loaded.');
-    } finally { setLoading(false); }
+      const message = loadError instanceof Error ? loadError.message : 'This post could not be loaded.';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
   useEffect(() => { void loadPost(); }, [loadPost]);
@@ -51,13 +55,38 @@ export default function PostScreen() {
     if (openComments === 'true' || openComments === '1') setCommentsOpen(true);
   }, [openComments]);
 
+  const isTerminalError = error === 'This post was deleted.' || error === 'This post was removed by an admin.';
+
   return (
     <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14, backgroundColor: colors.navigation, borderBottomWidth: 1, borderBottomColor: colors.navigationBorder }}>
         <TouchableOpacity onPress={() => router.back()} style={{ padding: 4 }}><Ionicons name="chevron-back" size={26} color={colors.icon} /></TouchableOpacity>
         <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginLeft: 10 }}>Post</Text>
       </View>
-      {loading ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color="#10b981" /></View> : error || !post ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}><Text style={{ color: '#475569' }}>{error || 'Post not found.'}</Text><TouchableOpacity onPress={() => void loadPost()} style={{ backgroundColor: '#10b981', borderRadius: 999, paddingHorizontal: 20, paddingVertical: 10, marginTop: 14 }}><Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text></TouchableOpacity></View> : <ScrollView contentContainerStyle={{ padding: 16 }}>{post.type === 'poll' ? <PollCardSection post={post} onCommentClick={() => setCommentsOpen(true)} onPostDelete={() => router.back()} onAuthorBlocked={() => router.back()} onPostUpdate={setPost} /> : <PostCardSection post={post} isVisible onCommentClick={() => setCommentsOpen(true)} onPostDelete={() => router.back()} onAuthorBlocked={() => router.back()} onPostUpdate={setPost} />}</ScrollView>}
+      {loading ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color="#10b981" />
+        </View>
+      ) : error || !post ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
+          <Text style={{ color: colors.mutedText, fontStyle: isTerminalError ? 'italic' : 'normal', textAlign: 'center', fontSize: 15 }}>
+            {error || 'This post was deleted.'}
+          </Text>
+          {!isTerminalError ? (
+            <TouchableOpacity onPress={() => void loadPost()} style={{ backgroundColor: '#10b981', borderRadius: 999, paddingHorizontal: 20, paddingVertical: 10, marginTop: 14 }}>
+              <Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={{ padding: 16 }}>
+          {post.type === 'poll' ? (
+            <PollCardSection post={post} onCommentClick={() => setCommentsOpen(true)} onPostDelete={() => router.back()} onAuthorBlocked={() => router.back()} onPostUpdate={setPost} />
+          ) : (
+            <PostCardSection post={post} isVisible onCommentClick={() => setCommentsOpen(true)} onPostDelete={() => router.back()} onAuthorBlocked={() => router.back()} onPostUpdate={setPost} />
+          )}
+        </ScrollView>
+      )}
       {commentsOpen && post && authService.getCurrentUser()?.uid ? <CommentsModal post={post} userId={authService.getCurrentUser()?.uid ?? ''} onClose={() => setCommentsOpen(false)} onPostUpdate={setPost} focusRootCommentId={rootCommentId} focusCommentId={commentId} focusReplyId={replyId} /> : null}
     </SafeAreaView>
   );

@@ -138,8 +138,8 @@ export function LinkPreviewMessage({
   if (preview?.entity?.unavailable) {
     const isLimeCard = isLime || preview.entity.kind === 'lime';
     const notice = preview.entity.unavailableReason === 'admin_taken_down'
-      ? `This ${isLimeCard ? 'Lime' : 'post'} was taken down due to violation of terms and service`
-      : `This ${isLimeCard ? 'Lime' : 'post'} was deleted`;
+      ? `This ${isLimeCard ? 'Lime' : 'post'} was removed by an admin.`
+      : `This ${isLimeCard ? 'Lime' : 'post'} was deleted.`;
     return (
       <View
         accessibilityLabel={`Shared ${isLimeCard ? 'Lime' : 'post'} unavailable`}
@@ -155,30 +155,13 @@ export function LinkPreviewMessage({
       return <View accessibilityLabel="Loading shared post" style={{ width: 280, height: 300, maxWidth: '100%', borderRadius: 20, backgroundColor: colors.control }} />;
     }
     if (preview?.entity?.post) return <SharedPostCard preview={preview} path={sharedContent?.mobileRoute ?? preview.entity.path ?? url} instanceId={effectiveInstanceId} />;
-    if (preview) {
-      const fallbackImage = preview.image && preview.image !== preview.entity?.creatorImageUrl
-        ? preview.image
-        : undefined;
-      return (
-        <TouchableOpacity
-          onPress={() => handleOpenLink(sharedContent?.mobileRoute ?? preview.entity?.path ?? url)}
-          accessibilityRole="link"
-          accessibilityLabel="Open shared post"
-          style={{ width: 280, maxWidth: '100%', overflow: 'hidden', borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}
-        >
-          {fallbackImage ? <Image source={{ uri: fallbackImage }} resizeMode="cover" style={{ width: '100%', aspectRatio: 4 / 3, backgroundColor: colors.control }} /> : null}
-          <View style={{ padding: 14 }}>
-            <Text numberOfLines={2} style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>{preview.title || 'Shared Ourlime post'}</Text>
-            {preview.description ? <Text numberOfLines={3} style={{ marginTop: 5, color: colors.mutedText, fontSize: 12, lineHeight: 17 }}>{preview.description}</Text> : null}
-            {!fallbackImage && !preview.description ? <Text style={{ marginTop: 5, color: colors.mutedText, fontSize: 12 }}>Open post to view its content</Text> : null}
-          </View>
-        </TouchableOpacity>
-      );
-    }
     return (
-      <TouchableOpacity onPress={() => handleOpenLink(sharedContent?.mobileRoute ?? url)} accessibilityRole="link" accessibilityLabel="Open shared post" style={{ width: 280, maxWidth: '100%', minHeight: 96, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-        <Text style={{ color: colors.secondaryText, fontWeight: '700' }}>Shared post unavailable</Text>
-      </TouchableOpacity>
+      <View
+        accessibilityLabel="Shared post unavailable"
+        style={{ width: 280, maxWidth: '100%', borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 16, alignItems: 'center', justifyContent: 'center' }}
+      >
+        <Text style={{ fontStyle: 'italic', color: colors.mutedText, fontSize: 13, textAlign: 'center' }}>This post was deleted.</Text>
+      </View>
     );
   }
 

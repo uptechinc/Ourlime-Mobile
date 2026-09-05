@@ -190,13 +190,17 @@ const readNumber = (value: unknown, fallback = 0): number =>
 const readStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 const readDate = (value: unknown): string => {
-  if (value instanceof Timestamp) return value.toDate().toISOString();
+  if (value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate?: unknown }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate().toISOString();
+  }
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'string') return value;
   return new Date(0).toISOString();
 };
 const timestampMillis = (value: unknown): number => {
-  if (value instanceof Timestamp) return value.toMillis();
+  if (value && typeof value === 'object' && 'toMillis' in value && typeof (value as { toMillis?: unknown }).toMillis === 'function') {
+    return (value as { toMillis: () => number }).toMillis();
+  }
   if (value instanceof Date) return value.getTime();
   if (typeof value === 'string') return new Date(value).getTime();
   return 0;
@@ -738,17 +742,43 @@ export class PostService {
 
   public async fetchPost(postId: string): Promise<PostItem> {
     try {
-      const snap = await getDoc(doc(db, 'feedPosts', postId));
+      let snap = await getDoc(doc(db, 'feedPosts', postId));
+      let isCommunity = false;
+      if (!snap.exists()) {
+        snap = await getDoc(doc(db, 'communityVariantDetails', postId));
+        if (snap.exists()) isCommunity = true;
+      }
+      if (!snap.exists()) {
+        snap = await getDoc(doc(db, 'posts', postId));
+      }
       if (snap.exists()) {
         const rawData = snap.data();
         const data = isRecord(rawData) ? rawData : {};
+        if (
+          data.deletionSource === 'admin_moderation' ||
+          data.status === 'admin_deleted' ||
+          data.deletedByAdmin === true ||
+          data.moderated === true ||
+          data.banned === true
+        ) {
+          throw new Error('This post was removed by an admin.');
+        }
+        if (data.isDeleted === true || data.status === 'deleted') {
+          throw new Error('This post was deleted.');
+        }
         const postDoc = { id: snap.id, data };
         const userId = readString(data.userId);
         const [userCards, mediaDocs, countDocs, likeDocs] = await Promise.all([
           this.loadUserCards([userId]),
-          this.getDocumentsByField('feedsPostSummary', 'feedsPostId', [postId]),
-          this.getDocumentsByField('likesCount', 'feedsPostId', [postId]),
-          this.getDocumentsByField('feedsPostLikeCount', 'feedsPostId', [postId]),
+          isCommunity
+            ? this.getDocumentsByField('communityVariantDetailsSummary', 'communityVariantDetailsId', [postId])
+            : this.getDocumentsByField('feedsPostSummary', 'feedsPostId', [postId]),
+          isCommunity
+            ? this.getDocumentsByField('communityVariantDetailsCounter', '__name__', [postId])
+            : this.getDocumentsByField('likesCount', 'feedsPostId', [postId]),
+          isCommunity
+            ? this.getDocumentsByField('communityVariantDetailsLikes', 'postId', [postId])
+            : this.getDocumentsByField('feedsPostLikeCount', 'feedsPostId', [postId]),
         ]);
         const userCard = userCards.get(userId) ?? this.emptyUser(userId);
         const mediaItems = mediaDocs.map((d) => ({
@@ -765,16 +795,33 @@ export class PostService {
         const likedUserIds = likeDocs.filter((d) => d.data.likes === true).map((d) => readString(d.data.userId)).filter(Boolean);
         return this.mapPost(postDoc, userCard, mediaItems, counter, likedUserIds);
       }
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof Error && (err.message === 'This post was removed by an admin.' || err.message === 'This post was deleted.')) {
+        throw err;
+      }
       // Fallback
     }
-    const response = await this.apiService.request<{ success: boolean; data?: unknown; error?: string }>(
-      `/api/posts/${encodeURIComponent(postId)}`,
-      { authenticated: Boolean(auth.currentUser) }
-    );
-    const post = this.mapApiPost(response.data);
-    if (!response.success || !post) throw new Error(response.error || 'Post not found');
-    return post;
+    try {
+      const response = await this.apiService.request<{ success: boolean; data?: unknown; error?: string; message?: string }>(
+        `/api/posts/${encodeURIComponent(postId)}`,
+        { authenticated: Boolean(auth.currentUser) }
+      );
+      const post = this.mapApiPost(response.data);
+      if (response.success && post) return post;
+      const message = response.message || response.error;
+      if (message) throw new Error(message);
+    } catch (apiError: unknown) {
+      if (apiError instanceof Error) {
+        if (apiError.message.includes('removed by an admin') || apiError.message.includes('POST_REMOVED_BY_ADMIN')) {
+          throw new Error('This post was removed by an admin.');
+        }
+        if (apiError.message.includes('deleted') || apiError.message.includes('POST_DELETED') || apiError.message.includes('not found')) {
+          throw new Error('This post was deleted.');
+        }
+        throw apiError;
+      }
+    }
+    throw new Error('This post was deleted.');
   }
 
   public async updatePost(postId: string, origin: PostOrigin, updates: PostEditPayload): Promise<void> {

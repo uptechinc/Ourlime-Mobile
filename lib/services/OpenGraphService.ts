@@ -1,4 +1,7 @@
 import { ApiService } from '@/lib/services/ApiService';
+import { db } from '@/lib/firebaseConfig';
+import { doc, getDoc } from 'firebase/firestore';
+import { sharedContentMessageService } from '@/lib/services/SharedContentMessageService';
 
 export type OurlimeLinkPreviewKind =
   | 'profile'
@@ -185,7 +188,7 @@ export class OpenGraphService {
           `/api/link-preview?url=${encodeURIComponent(url)}`,
           { authenticated: true }
         );
-        if (response.success && response.data) {
+        if (response.success && response.data?.entity) {
           console.log('[OpenGraphService] Fetched Ourlime preview for', url, {
             kind: response.data.entity?.kind,
             hasPost: Boolean(response.data.entity?.post),
@@ -204,7 +207,7 @@ export class OpenGraphService {
       } catch (e) {
         console.log('[OpenGraphService] Error fetching Ourlime preview for', url, e);
       }
-      return { url, domain, siteName: 'Ourlime' };
+      return this.resolveOurlimeFallback(url, domain);
     }
 
     // 1. YouTube oEmbed
@@ -312,6 +315,148 @@ export class OpenGraphService {
     } catch {
       return false;
     }
+  }
+
+  private async resolveOurlimeFallback(url: string, domain: string): Promise<LinkPreviewData> {
+    const shared = sharedContentMessageService.parse(url);
+    if (shared?.kind === 'post') {
+      try {
+        let snap = await getDoc(doc(db, 'feedPosts', shared.entityId));
+        if (!snap.exists()) {
+          snap = await getDoc(doc(db, 'communityVariantDetails', shared.entityId));
+        }
+        if (!snap.exists()) {
+          snap = await getDoc(doc(db, 'posts', shared.entityId));
+        }
+        if (!snap.exists()) {
+          return {
+            url,
+            title: 'Post Deleted',
+            description: 'This post was deleted.',
+            domain,
+            siteName: 'Ourlime Posts',
+            entity: {
+              kind: 'post',
+              id: shared.entityId,
+              path: shared.mobileRoute,
+              unavailable: true,
+              unavailableReason: 'deleted',
+            },
+          };
+        }
+        const data = snap.data() || {};
+        const isAdminDeleted =
+          data.deletionSource === 'admin_moderation' ||
+          data.status === 'admin_deleted' ||
+          data.deletedByAdmin === true ||
+          data.moderated === true ||
+          data.banned === true;
+        if (isAdminDeleted) {
+          return {
+            url,
+            title: 'Post Removed',
+            description: 'This post was removed by an admin.',
+            domain,
+            siteName: 'Ourlime Posts',
+            entity: {
+              kind: 'post',
+              id: shared.entityId,
+              path: shared.mobileRoute,
+              unavailable: true,
+              unavailableReason: 'admin_taken_down',
+            },
+          };
+        }
+        const isUserDeleted = data.isDeleted === true || data.status === 'deleted';
+        if (isUserDeleted) {
+          return {
+            url,
+            title: 'Post Deleted',
+            description: 'This post was deleted.',
+            domain,
+            siteName: 'Ourlime Posts',
+            entity: {
+              kind: 'post',
+              id: shared.entityId,
+              path: shared.mobileRoute,
+              unavailable: true,
+              unavailableReason: 'deleted',
+            },
+          };
+        }
+      } catch (err) {
+        console.warn('[OpenGraphService] Firestore fallback error for post:', err);
+      }
+    } else if (shared?.kind === 'lime') {
+      try {
+        let snap = await getDoc(doc(db, 'reels', shared.entityId));
+        if (!snap.exists()) {
+          snap = await getDoc(doc(db, 'feedPosts', shared.entityId));
+        }
+        if (!snap.exists()) {
+          snap = await getDoc(doc(db, 'limes', shared.entityId));
+        }
+        if (!snap.exists()) {
+          return {
+            url,
+            title: 'Lime Deleted',
+            description: 'This Lime was deleted.',
+            domain,
+            siteName: 'Ourlime Limes',
+            entity: {
+              kind: 'lime',
+              id: shared.entityId,
+              path: shared.mobileRoute,
+              unavailable: true,
+              unavailableReason: 'deleted',
+            },
+          };
+        }
+        const data = snap.data() || {};
+        const isAdminDeleted =
+          data.deletionSource === 'admin_moderation' ||
+          data.status === 'admin_deleted' ||
+          data.deletedByAdmin === true ||
+          data.moderated === true ||
+          data.banned === true;
+        if (isAdminDeleted) {
+          return {
+            url,
+            title: 'Lime Removed',
+            description: 'This Lime was removed by an admin.',
+            domain,
+            siteName: 'Ourlime Limes',
+            entity: {
+              kind: 'lime',
+              id: shared.entityId,
+              path: shared.mobileRoute,
+              unavailable: true,
+              unavailableReason: 'admin_taken_down',
+            },
+          };
+        }
+        const isUserDeleted = data.isDeleted === true || data.status === 'deleted';
+        if (isUserDeleted) {
+          return {
+            url,
+            title: 'Lime Deleted',
+            description: 'This Lime was deleted.',
+            domain,
+            siteName: 'Ourlime Limes',
+            entity: {
+              kind: 'lime',
+              id: shared.entityId,
+              path: shared.mobileRoute,
+              unavailable: true,
+              unavailableReason: 'deleted',
+            },
+          };
+        }
+      } catch (err) {
+        console.warn('[OpenGraphService] Firestore fallback error for lime:', err);
+      }
+    }
+    return { url, domain, siteName: 'Ourlime' };
   }
 }
 
