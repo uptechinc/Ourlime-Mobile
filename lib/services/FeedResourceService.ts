@@ -179,6 +179,19 @@ export class FeedResourceService {
     await this.commit(query, data, 'memory');
   }
 
+  public async publishCreated(userId: string, post: PostItem): Promise<void> {
+    const scopes: FeedScope[] = post.communityId ? ['home', 'communities'] : ['home'];
+    const queries: FeedResourceQuery[] = scopes.map((scope) => ({ userId, scope, filter: 'all' }));
+    const filters: Exclude<FeedFilter, 'all'>[] = ['photo', 'video', 'audio', 'poll', 'event', 'link', 'document', 'trending', 'saved'];
+    for (const scope of scopes) {
+      for (const filter of filters) {
+        const query = { userId, scope, filter };
+        if (useResourceStore.getState().feeds[this.getKey(query)]?.data && this.matchesFilter(post, filter)) queries.push(query);
+      }
+    }
+    await Promise.all(queries.map((query) => this.prependCreated(query, post)));
+  }
+
   public async seedDerivedFilters(userId: string, scope: FeedScope): Promise<void> {
     const allQuery: FeedResourceQuery = { userId, scope, filter: 'all' };
     const allResource = useResourceStore.getState().feeds[this.getKey(allQuery)];

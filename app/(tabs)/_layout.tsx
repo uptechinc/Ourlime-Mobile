@@ -36,6 +36,7 @@ const TabLayout = () => {
 
   return (
     <Tabs
+      backBehavior="initialRoute"
       screenListeners={{
         tabPress: () => {
           void interactionFeedbackService.play('selection');

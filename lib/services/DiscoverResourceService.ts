@@ -4,6 +4,7 @@ import { JobsService } from '@/lib/job/JobsService';
 import { RelationshipService } from './RelationshipService';
 import { LocalCacheService } from './LocalCacheService';
 import { ResourceErrorService } from './ResourceErrorService';
+import { DiagnosticLogService } from './DiagnosticLogService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import type { DiscoverResourceData, DiscoverSectionStatus } from '@/lib/types/discoverResources';
 import type { ResourceState } from '@/lib/types/resourceState';
@@ -28,6 +29,7 @@ export class DiscoverResourceService {
   private readonly relationshipService = RelationshipService.getInstance();
   private readonly cacheService = LocalCacheService.getInstance();
   private readonly errorService = ResourceErrorService.getInstance();
+  private readonly logger = DiagnosticLogService.getInstance();
   private inFlight: Promise<void> | null = null;
 
   private constructor() {}
@@ -116,25 +118,25 @@ export class DiscoverResourceService {
       data: { ...base, sectionStatus: { people: 'loading', communities: 'loading', events: 'loading', jobs: 'loading' } },
     }));
 
-    const peoplePromise = this.relationshipService.getSuggestions(12).then((suggestedPeople) => ({ suggestedPeople }));
-    const communitiesPromise = this.communityService.fetchCommunities(40).then((records) => ({ communities: records.map((community) => ({ id: community.id, title: community.title, membershipCount: community.memberCount, imageUrl: community.imageUrl })) }));
-    const eventsPromise = this.eventService.fetchEvents().then((records) => ({ events: records.map((event, index) => ({
+    const peoplePromise = this.settleSection('people', () => this.relationshipService.getSuggestions(12).then((suggestedPeople) => ({ suggestedPeople })));
+    const communitiesPromise = this.settleSection('communities', () => this.communityService.fetchCommunities(40).then((records) => ({ communities: records.map((community) => ({ id: community.id, title: community.title, membershipCount: community.memberCount, imageUrl: community.imageUrl })) })));
+    const eventsPromise = this.settleSection('events', () => this.eventService.fetchEvents().then((records) => ({ events: records.map((event, index) => ({
       id: event.id || `event-${index}`,
       title: event.title,
       date: new Date(event.startDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
       location: event.location,
       image: event.image || event.media?.find((media) => media.type === 'image')?.url || null,
-    })) }));
-    const jobsPromise = this.jobsService.fetchJobs(12).then((records) => ({ jobs: records.map((job) => ({
+    })) })));
+    const jobsPromise = this.settleSection('jobs', () => this.jobsService.fetchJobs(12).then((records) => ({ jobs: records.map((job) => ({
       id: job.id,
       role: job.basic_info.title,
       company: job.creator?.name || 'Ourlime member',
       type: job.basic_info.type,
       salary: `$${job.basic_info.priceRange.from.toLocaleString()} - $${job.basic_info.priceRange.to.toLocaleString()}`,
       image: job.creator?.profileImage || null,
-    })) }));
+    })) })));
 
-    const [people, communities, events, jobs] = await Promise.allSettled([peoplePromise, communitiesPromise, eventsPromise, jobsPromise]);
+    const [people, communities, events, jobs] = await Promise.all([peoplePromise, communitiesPromise, eventsPromise, jobsPromise]);
     const next: DiscoverResourceData = {
       suggestedPeople: people.status === 'fulfilled' ? people.value.suggestedPeople : base.suggestedPeople,
       communities: communities.status === 'fulfilled' ? communities.value.communities : base.communities,
@@ -158,6 +160,17 @@ export class DiscoverResourceService {
 
   private sectionStatus(result: PromiseSettledResult<unknown>['status'], cachedCount: number): DiscoverSectionStatus {
     return result === 'fulfilled' || cachedCount > 0 ? 'ready' : 'error';
+  }
+
+  private async settleSection<T>(section: keyof DiscoverResourceData['sectionStatus'], load: () => Promise<T>): Promise<PromiseSettledResult<T>> {
+    try {
+      return { status: 'fulfilled', value: await load() };
+    } catch (reason: unknown) {
+      // Catch synchronous native/method failures too; never leave every section
+      // loading because one source failed before returning its promise.
+      this.logger.error('DiscoverResourceService', 'section', reason, { section });
+      return { status: 'rejected', reason };
+    }
   }
 
   private async commit(userId: string, data: DiscoverResourceData, source: ResourceState<DiscoverResourceData>['source']): Promise<void> {

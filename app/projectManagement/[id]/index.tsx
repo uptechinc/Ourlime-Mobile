@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -21,12 +23,14 @@ import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { projectService } from '@/lib/services/ProjectService';
 import { AuthService } from '@/lib/services/AuthService';
+import ProjectFriendPickerModal from '@/components/projectManagement/ProjectFriendPickerModal';
 import type {
   CreateTaskInput,
   Priority,
   ProjectRecord,
   ProjectRole,
   ProjectStatus,
+  ProjectTeamMember,
   Status,
   Task,
   TeamMember,
@@ -77,6 +81,7 @@ export default function ProjectBoardScreen() {
   const [inviteRecipient, setInviteRecipient] = useState('');
   const [inviteRole, setInviteRole] = useState<ProjectRole>('member');
   const [inviting, setInviting] = useState(false);
+  const [friendPickerOpen, setFriendPickerOpen] = useState(false);
 
   // Settings Form State
   const [editName, setEditName] = useState('');
@@ -227,6 +232,40 @@ export default function ProjectBoardScreen() {
       setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not send invitation', type: 'danger' });
     } finally {
       setInviting(false);
+    }
+  };
+
+  const pendingInvites = useMemo(() => {
+    return teamMembers.filter((m) => m.membershipStatus === 'pending');
+  }, [teamMembers]);
+
+  const existingMembersRecord = useMemo<Record<string, ProjectTeamMember>>(() => {
+    const map: Record<string, ProjectTeamMember> = {};
+    for (const m of teamMembers) {
+      map[m.id] = {
+        role: m.role,
+        membershipStatus: m.membershipStatus,
+      };
+    }
+    return map;
+  }, [teamMembers]);
+
+  const handleCancelInvite = async (targetUid: string) => {
+    try {
+      await projectService.cancelInvite(projectId, targetUid);
+      void loadProject();
+      setFeedback({ title: 'Invite Cancelled', message: 'The invitation has been cancelled.', type: 'info' });
+    } catch {
+      setFeedback({ title: 'Error', message: 'Could not cancel invitation', type: 'danger' });
+    }
+  };
+
+  const handleResendInvite = async (targetUid: string) => {
+    try {
+      await projectService.resendInvite(projectId, targetUid);
+      setFeedback({ title: 'Invite Resent', message: 'The invitation reminder has been sent.', type: 'success' });
+    } catch {
+      setFeedback({ title: 'Error', message: 'Could not resend invitation', type: 'danger' });
     }
   };
 
@@ -504,277 +543,379 @@ export default function ProjectBoardScreen() {
       {/* 1. Create Task Modal */}
       <Modal visible={createTaskOpen} transparent animationType="none" onRequestClose={createSwipeDismiss.dismissWithAnimation}>
         <View style={styles.modalBackdrop}>
-          <Animated.View style={[styles.modalSheet, createSwipeDismiss.animatedStyle]}>
-            <SwipeDismissHandle gesture={createSwipeDismiss.gesture} color={colors.border} animatedStyle={createSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close task creation" />
-            <Text style={styles.modalHeading}>Create New Task</Text>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+            <Animated.View style={[styles.modalSheet, createSwipeDismiss.animatedStyle]}>
+              <SwipeDismissHandle gesture={createSwipeDismiss.gesture} color={colors.border} animatedStyle={createSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close task creation" />
+              <Text style={styles.modalHeading}>Create New Task</Text>
 
-            <TextInput
-              value={taskTitle}
-              onChangeText={setTaskTitle}
-              placeholder="Task title *"
-              placeholderTextColor={colors.mutedText}
-              style={styles.modalInput}
-            />
+              <TextInput
+                value={taskTitle}
+                onChangeText={setTaskTitle}
+                placeholder="Task title *"
+                placeholderTextColor={colors.mutedText}
+                style={styles.modalInput}
+              />
 
-            <TextInput
-              value={taskDesc}
-              onChangeText={setTaskDesc}
-              placeholder="Description (optional)"
-              placeholderTextColor={colors.mutedText}
-              multiline
-              style={[styles.modalInput, { minHeight: 80, textAlignVertical: 'top' }]}
-            />
+              <TextInput
+                value={taskDesc}
+                onChangeText={setTaskDesc}
+                placeholder="Description (optional)"
+                placeholderTextColor={colors.mutedText}
+                multiline
+                style={[styles.modalInput, { minHeight: 80, textAlignVertical: 'top' }]}
+              />
 
-            <Text style={styles.inputLabel}>Priority</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-              {(['low', 'medium', 'high', 'urgent'] as const).map((pri) => (
-                <TouchableOpacity
-                  key={pri}
-                  onPress={() => setTaskPriority(pri)}
-                  style={[styles.pillSelect, taskPriority === pri && styles.pillSelectActive]}
-                >
-                  <Text style={[styles.pillSelectText, taskPriority === pri && styles.pillSelectTextActive]}>
-                    {pri.toUpperCase()}
-                  </Text>
+              <Text style={styles.inputLabel}>Priority</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                {(['low', 'medium', 'high', 'urgent'] as const).map((pri) => (
+                  <TouchableOpacity
+                    key={pri}
+                    onPress={() => setTaskPriority(pri)}
+                    style={[styles.pillSelect, taskPriority === pri && styles.pillSelectActive]}
+                  >
+                    <Text style={[styles.pillSelectText, taskPriority === pri && styles.pillSelectTextActive]}>
+                      {pri.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.inputLabel}>Initial Status</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                {(['todo', 'in-progress', 'done'] as const).map((st) => (
+                  <TouchableOpacity
+                    key={st}
+                    onPress={() => setTaskStatus(st)}
+                    style={[styles.pillSelect, taskStatus === st && styles.pillSelectActive]}
+                  >
+                    <Text style={[styles.pillSelectText, taskStatus === st && styles.pillSelectTextActive]}>
+                      {st === 'todo' ? 'To Do' : st === 'in-progress' ? 'In Progress' : 'Done'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity onPress={() => setCreateTaskOpen(false)} style={styles.cancelButton}>
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.inputLabel}>Initial Status</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-              {(['todo', 'in-progress', 'done'] as const).map((st) => (
-                <TouchableOpacity
-                  key={st}
-                  onPress={() => setTaskStatus(st)}
-                  style={[styles.pillSelect, taskStatus === st && styles.pillSelectActive]}
-                >
-                  <Text style={[styles.pillSelectText, taskStatus === st && styles.pillSelectTextActive]}>
-                    {st === 'todo' ? 'To Do' : st === 'in-progress' ? 'In Progress' : 'Done'}
-                  </Text>
+                <TouchableOpacity onPress={() => void handleCreateTask()} disabled={submittingTask} style={styles.primaryButton}>
+                  {submittingTask ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.primaryButtonText}>Create Task</Text>}
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setCreateTaskOpen(false)} style={styles.cancelButton}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => void handleCreateTask()} disabled={submittingTask} style={styles.primaryButton}>
-                {submittingTask ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.primaryButtonText}>Create Task</Text>}
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
+              </View>
+            </Animated.View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
       {/* 2. Task Detail Modal */}
       <Modal visible={activeTask !== null} transparent animationType="none" onRequestClose={detailSwipeDismiss.dismissWithAnimation}>
         <View style={styles.modalBackdrop}>
-          <Animated.View style={[styles.modalSheet, detailSwipeDismiss.animatedStyle]}>
-            <SwipeDismissHandle gesture={detailSwipeDismiss.gesture} color={colors.border} animatedStyle={detailSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close task details" />
-            {activeTask ? (
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <Text style={[styles.modalHeading, { flex: 1 }]}>{activeTask.title}</Text>
-                  <TouchableOpacity onPress={() => setActiveTask(null)} style={{ padding: 4 }}>
-                    <Icon name="x" size={20} color={colors.text} />
-                  </TouchableOpacity>
-                </View>
-
-                {activeTask.description ? (
-                  <Text style={styles.detailDesc}>{activeTask.description}</Text>
-                ) : null}
-
-                {/* Status Switcher Row */}
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {(['todo', 'in-progress', 'done'] as const).map((st) => (
-                    <TouchableOpacity
-                      key={st}
-                      onPress={() => void handleUpdateStatus(activeTask, st)}
-                      style={[styles.pillSelect, activeTask.status === st && styles.pillSelectActive]}
-                    >
-                      <Text style={[styles.pillSelectText, activeTask.status === st && styles.pillSelectTextActive]}>
-                        {st === 'todo' ? 'To Do' : st === 'in-progress' ? 'In Progress' : 'Done'}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* Subtasks Section */}
-                <View style={styles.detailSection}>
-                  <Text style={styles.sectionHeading}>Subtasks ({activeTask.subTasks.length})</Text>
-                  {activeTask.subTasks.map((sub) => (
-                    <TouchableOpacity
-                      key={sub.id}
-                      onPress={() => void handleToggleSubtask(sub.id)}
-                      style={styles.subtaskItem}
-                    >
-                      <Icon name={sub.completed ? 'check-square' : 'square'} size={18} color={sub.completed ? '#10b981' : colors.mutedText} />
-                      <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskCompleted]}>{sub.title}</Text>
-                    </TouchableOpacity>
-                  ))}
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                    <TextInput
-                      value={newSubtaskTitle}
-                      onChangeText={setNewSubtaskTitle}
-                      placeholder="Add subtask..."
-                      placeholderTextColor={colors.mutedText}
-                      style={[styles.modalInput, { flex: 1 }]}
-                    />
-                    <TouchableOpacity onPress={() => void handleAddSubtask()} style={styles.primaryButtonSmall}>
-                      <Icon name="plus" size={16} color="#ffffff" />
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', maxHeight: '90%' }}>
+            <Animated.View style={[styles.modalSheet, detailSwipeDismiss.animatedStyle, { maxHeight: '100%' }]}>
+              <SwipeDismissHandle gesture={detailSwipeDismiss.gesture} color={colors.border} animatedStyle={detailSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close task details" />
+              {activeTask ? (
+                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 14 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Text style={[styles.modalHeading, { flex: 1 }]}>{activeTask.title}</Text>
+                    <TouchableOpacity onPress={() => setActiveTask(null)} style={{ padding: 4 }}>
+                      <Icon name="x" size={20} color={colors.text} />
                     </TouchableOpacity>
                   </View>
-                </View>
 
-                {/* Comments Section */}
-                <View style={styles.detailSection}>
-                  <Text style={styles.sectionHeading}>Comments ({activeTask.comments.length})</Text>
-                  {activeTask.comments.map((comm) => (
-                    <View key={comm.id} style={styles.commentBubble}>
-                      <Text style={styles.commentAuthor}>{comm.author}</Text>
-                      <Text style={styles.commentText}>{comm.content}</Text>
-                    </View>
-                  ))}
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                    <TextInput
-                      value={newCommentText}
-                      onChangeText={setNewCommentText}
-                      placeholder="Write a comment..."
-                      placeholderTextColor={colors.mutedText}
-                      style={[styles.modalInput, { flex: 1 }]}
-                    />
-                    <TouchableOpacity onPress={() => void handleAddComment()} style={styles.primaryButtonSmall}>
-                      <Icon name="send" size={15} color="#ffffff" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
+                  {activeTask.description ? (
+                    <Text style={styles.detailDesc}>{activeTask.description}</Text>
+                  ) : null}
 
-                {/* Time Tracking Section */}
-                <View style={styles.detailSection}>
-                  <Text style={styles.sectionHeading}>Log Time (Minutes)</Text>
+                  {/* Status Switcher Row */}
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TextInput
-                      value={timeSpentMinutes}
-                      onChangeText={setTimeSpentMinutes}
-                      placeholder="e.g. 30"
-                      keyboardType="numeric"
-                      placeholderTextColor={colors.mutedText}
-                      style={[styles.modalInput, { flex: 1 }]}
-                    />
-                    <TouchableOpacity onPress={() => void handleAddTimeEntry()} style={styles.primaryButtonSmall}>
-                      <Text style={styles.primaryButtonText}>Log</Text>
-                    </TouchableOpacity>
+                    {(['todo', 'in-progress', 'done'] as const).map((st) => (
+                      <TouchableOpacity
+                        key={st}
+                        onPress={() => void handleUpdateStatus(activeTask, st)}
+                        style={[styles.pillSelect, activeTask.status === st && styles.pillSelectActive]}
+                      >
+                        <Text style={[styles.pillSelectText, activeTask.status === st && styles.pillSelectTextActive]}>
+                          {st === 'todo' ? 'To Do' : st === 'in-progress' ? 'In Progress' : 'Done'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
-                </View>
 
-                {/* Delete Button */}
-                <TouchableOpacity onPress={() => void handleDeleteTask(activeTask.id)} style={styles.dangerButton}>
-                  <Icon name="trash-2" size={16} color="#ef4444" />
-                  <Text style={styles.dangerButtonText}>Delete Task</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            ) : null}
-          </Animated.View>
+                  {/* Subtasks Section */}
+                  <View style={styles.detailSection}>
+                    <Text style={styles.sectionHeading}>Subtasks ({activeTask.subTasks.length})</Text>
+                    {activeTask.subTasks.map((sub) => (
+                      <TouchableOpacity
+                        key={sub.id}
+                        onPress={() => void handleToggleSubtask(sub.id)}
+                        style={styles.subtaskItem}
+                      >
+                        <Icon name={sub.completed ? 'check-square' : 'square'} size={18} color={sub.completed ? '#10b981' : colors.mutedText} />
+                        <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskCompleted]}>{sub.title}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                      <TextInput
+                        value={newSubtaskTitle}
+                        onChangeText={setNewSubtaskTitle}
+                        placeholder="Add subtask..."
+                        placeholderTextColor={colors.mutedText}
+                        style={[styles.modalInput, { flex: 1 }]}
+                      />
+                      <TouchableOpacity onPress={() => void handleAddSubtask()} style={styles.primaryButtonSmall}>
+                        <Icon name="plus" size={16} color="#ffffff" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Comments Section */}
+                  <View style={styles.detailSection}>
+                    <Text style={styles.sectionHeading}>Comments ({activeTask.comments.length})</Text>
+                    {activeTask.comments.map((comm) => (
+                      <View key={comm.id} style={styles.commentBubble}>
+                        <Text style={styles.commentAuthor}>{comm.author}</Text>
+                        <Text style={styles.commentText}>{comm.content}</Text>
+                      </View>
+                    ))}
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                      <TextInput
+                        value={newCommentText}
+                        onChangeText={setNewCommentText}
+                        placeholder="Write a comment..."
+                        placeholderTextColor={colors.mutedText}
+                        style={[styles.modalInput, { flex: 1 }]}
+                      />
+                      <TouchableOpacity onPress={() => void handleAddComment()} style={styles.primaryButtonSmall}>
+                        <Icon name="send" size={15} color="#ffffff" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Time Tracking Section */}
+                  <View style={styles.detailSection}>
+                    <Text style={styles.sectionHeading}>Log Time (Minutes)</Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TextInput
+                        value={timeSpentMinutes}
+                        onChangeText={setTimeSpentMinutes}
+                        placeholder="e.g. 30"
+                        keyboardType="numeric"
+                        placeholderTextColor={colors.mutedText}
+                        style={[styles.modalInput, { flex: 1 }]}
+                      />
+                      <TouchableOpacity onPress={() => void handleAddTimeEntry()} style={styles.primaryButtonSmall}>
+                        <Text style={styles.primaryButtonText}>Log</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Delete Button */}
+                  <TouchableOpacity onPress={() => void handleDeleteTask(activeTask.id)} style={styles.dangerButton}>
+                    <Icon name="trash-2" size={16} color="#ef4444" />
+                    <Text style={styles.dangerButtonText}>Delete Task</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              ) : null}
+            </Animated.View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
       {/* 3. Invite User Modal */}
       <Modal visible={inviteOpen} transparent animationType="none" onRequestClose={inviteSwipeDismiss.dismissWithAnimation}>
         <View style={styles.modalBackdrop}>
-          <Animated.View style={[styles.modalSheet, inviteSwipeDismiss.animatedStyle]}>
-            <SwipeDismissHandle gesture={inviteSwipeDismiss.gesture} color={colors.border} animatedStyle={inviteSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close invite modal" />
-            <Text style={styles.modalHeading}>Invite Team Member</Text>
-            <Text style={styles.inputLabel}>Email Address or Username</Text>
-            <TextInput
-              value={inviteRecipient}
-              onChangeText={setInviteRecipient}
-              placeholder="user@example.com"
-              autoCapitalize="none"
-              placeholderTextColor={colors.mutedText}
-              style={styles.modalInput}
-            />
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', maxHeight: '90%' }}>
+            <Animated.View style={[styles.modalSheet, inviteSwipeDismiss.animatedStyle, { maxHeight: '100%' }]}>
+              <SwipeDismissHandle gesture={inviteSwipeDismiss.gesture} color={colors.border} animatedStyle={inviteSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close invite modal" />
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={styles.modalHeading}>Invite Team Member</Text>
 
-            <Text style={styles.inputLabel}>Role</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-              {(['member', 'admin', 'viewer'] as const).map((r) => (
+                {/* Friend Picker Trigger */}
                 <TouchableOpacity
-                  key={r}
-                  onPress={() => setInviteRole(r)}
-                  style={[styles.pillSelect, inviteRole === r && styles.pillSelectActive]}
+                  onPress={() => {
+                    setInviteOpen(false);
+                    setFriendPickerOpen(true);
+                  }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    borderRadius: 12,
+                    backgroundColor: isDark ? '#1e293b' : '#ecfdf5',
+                    borderWidth: 1,
+                    borderColor: '#10b981',
+                    marginTop: 12,
+                    marginBottom: 12,
+                  }}
                 >
-                  <Text style={[styles.pillSelectText, inviteRole === r && styles.pillSelectTextActive]}>
-                    {r.toUpperCase()}
+                  <Icon name="users" size={18} color="#10b981" />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#10b981' }}>
+                    Choose from Friends List
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setInviteOpen(false)} style={styles.cancelButton}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => void handleSendInvite()} disabled={inviting || !inviteRecipient.trim()} style={styles.primaryButton}>
-                {inviting ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.primaryButtonText}>Send Invite</Text>}
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 8 }}>
+                  <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+                  <Text style={{ marginHorizontal: 10, fontSize: 12, color: colors.mutedText, fontWeight: '600' }}>OR INVITE BY EMAIL</Text>
+                  <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+                </View>
+
+                <Text style={styles.inputLabel}>Email Address or Username</Text>
+                <TextInput
+                  value={inviteRecipient}
+                  onChangeText={setInviteRecipient}
+                  placeholder="user@example.com"
+                  autoCapitalize="none"
+                  placeholderTextColor={colors.mutedText}
+                  style={styles.modalInput}
+                />
+
+                <Text style={styles.inputLabel}>Role</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  {(['member', 'admin', 'viewer'] as const).map((r) => (
+                    <TouchableOpacity
+                      key={r}
+                      onPress={() => setInviteRole(r)}
+                      style={[styles.pillSelect, inviteRole === r && styles.pillSelectActive]}
+                    >
+                      <Text style={[styles.pillSelectText, inviteRole === r && styles.pillSelectTextActive]}>
+                        {r.toUpperCase()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity onPress={() => setInviteOpen(false)} style={styles.cancelButton}>
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => void handleSendInvite()} disabled={inviting || !inviteRecipient.trim()} style={styles.primaryButton}>
+                    {inviting ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.primaryButtonText}>Send Invite</Text>}
+                  </TouchableOpacity>
+                </View>
+
+                {/* Pending Invitations Section */}
+                {pendingInvites.length > 0 ? (
+                  <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
+                    <Text style={[styles.inputLabel, { marginBottom: 8 }]}>Pending Invitations ({pendingInvites.length})</Text>
+                    {pendingInvites.map((member) => (
+                      <View
+                        key={member.id}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingVertical: 8,
+                          borderBottomWidth: 1,
+                          borderBottomColor: colors.border,
+                        }}
+                      >
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }} numberOfLines={1}>
+                            {member.email || member.name || member.id}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: colors.mutedText }}>Role: {member.role}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                          <TouchableOpacity
+                            onPress={() => void handleResendInvite(member.id)}
+                            style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#10b98118' }}
+                          >
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#10b981' }}>Resend</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => void handleCancelInvite(member.id)}
+                            style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#ef444418' }}
+                          >
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#ef4444' }}>Cancel</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </ScrollView>
+            </Animated.View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
       {/* 4. Project Settings Modal */}
       <Modal visible={settingsOpen} transparent animationType="none" onRequestClose={settingsSwipeDismiss.dismissWithAnimation}>
         <View style={styles.modalBackdrop}>
-          <Animated.View style={[styles.modalSheet, settingsSwipeDismiss.animatedStyle]}>
-            <SwipeDismissHandle gesture={settingsSwipeDismiss.gesture} color={colors.border} animatedStyle={settingsSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close settings modal" />
-            <Text style={styles.modalHeading}>Project Settings</Text>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+            <Animated.View style={[styles.modalSheet, settingsSwipeDismiss.animatedStyle]}>
+              <SwipeDismissHandle gesture={settingsSwipeDismiss.gesture} color={colors.border} animatedStyle={settingsSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close settings modal" />
+              <Text style={styles.modalHeading}>Project Settings</Text>
 
-            <Text style={styles.inputLabel}>Project Name</Text>
-            <TextInput
-              value={editName}
-              onChangeText={setEditName}
-              style={styles.modalInput}
-            />
+              <Text style={styles.inputLabel}>Project Name</Text>
+              <TextInput
+                value={editName}
+                onChangeText={setEditName}
+                style={styles.modalInput}
+              />
 
-            <Text style={styles.inputLabel}>Description</Text>
-            <TextInput
-              value={editDesc}
-              onChangeText={setEditDesc}
-              multiline
-              style={[styles.modalInput, { minHeight: 70, textAlignVertical: 'top' }]}
-            />
+              <Text style={styles.inputLabel}>Description</Text>
+              <TextInput
+                value={editDesc}
+                onChangeText={setEditDesc}
+                multiline
+                style={[styles.modalInput, { minHeight: 70, textAlignVertical: 'top' }]}
+              />
 
-            <Text style={styles.inputLabel}>Status</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-              {(['active', 'completed', 'on-hold', 'archived'] as const).map((st) => (
-                <TouchableOpacity
-                  key={st}
-                  onPress={() => setEditStatus(st)}
-                  style={[styles.pillSelect, editStatus === st && styles.pillSelectActive]}
-                >
-                  <Text style={[styles.pillSelectText, editStatus === st && styles.pillSelectTextActive]}>
-                    {st.toUpperCase()}
-                  </Text>
+              <Text style={styles.inputLabel}>Status</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                {(['active', 'completed', 'on-hold', 'archived'] as const).map((st) => (
+                  <TouchableOpacity
+                    key={st}
+                    onPress={() => setEditStatus(st)}
+                    style={[styles.pillSelect, editStatus === st && styles.pillSelectActive]}
+                  >
+                    <Text style={[styles.pillSelectText, editStatus === st && styles.pillSelectTextActive]}>
+                      {st.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity onPress={() => setSettingsOpen(false)} style={styles.cancelButton}>
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+                <TouchableOpacity onPress={() => void handleSaveSettings()} disabled={savingSettings} style={styles.primaryButton}>
+                  {savingSettings ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.primaryButtonText}>Save Changes</Text>}
+                </TouchableOpacity>
+              </View>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setSettingsOpen(false)} style={styles.cancelButton}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+              <TouchableOpacity onPress={() => void handleDeleteProject()} style={[styles.dangerButton, { marginTop: 12 }]}>
+                <Icon name="trash-2" size={16} color="#ef4444" />
+                <Text style={styles.dangerButtonText}>Delete Entire Project</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => void handleSaveSettings()} disabled={savingSettings} style={styles.primaryButton}>
-                {savingSettings ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.primaryButtonText}>Save Changes</Text>}
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity onPress={() => void handleDeleteProject()} style={[styles.dangerButton, { marginTop: 12 }]}>
-              <Icon name="trash-2" size={16} color="#ef4444" />
-              <Text style={styles.dangerButtonText}>Delete Entire Project</Text>
-            </TouchableOpacity>
-          </Animated.View>
+            </Animated.View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* 5. Friends List Picker Modal */}
+      <ProjectFriendPickerModal
+        visible={friendPickerOpen}
+        onClose={() => setFriendPickerOpen(false)}
+        projectId={projectId}
+        projectName={project?.name ?? 'Project'}
+        existingMembers={existingMembersRecord}
+        onMemberInvited={() => {
+          void loadProject();
+          setFeedback({
+            type: 'success',
+            title: 'Invitation Sent',
+            message: 'Friend has been invited to the project.',
+          });
+        }}
+      />
 
       <CustomModal
         visible={feedback !== null}

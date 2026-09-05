@@ -24,7 +24,11 @@ Ourlime Mobile enforces a **Service-Oriented Object-Oriented Programming (OOP)**
   - Custom React Hooks manage React lifecycle and delegate to service instances.
   - Service classes own API calls, caching, validation, and data formatting.
 
-### 1.2 Folder & Layer Structure
+### 1.2 Direct Firebase Architecture Rule (Zero Local Next.js Dependency)
+- **Direct Firebase SDK First**: All mobile operations (post creation, limes, chat, media storage uploads, feed reading, relationships, and profile updates) must interact directly with Firebase (Cloud Firestore, Firebase Storage, and Firebase Auth) via the React Native Firebase SDK.
+- **Zero Local Next.js Server Dependency**: The mobile application must never depend on, call, or wait for a local Next.js development server (e.g. `localhost:3000` or LAN `192.168.x.x:3000`). All client reads and writes must execute standalone against Firebase so the mobile app functions completely independently on any device.
+
+### 1.3 Folder & Layer Structure
 
 ```
 Ourlime-Mobile/

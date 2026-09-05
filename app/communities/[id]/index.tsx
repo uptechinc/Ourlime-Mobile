@@ -25,7 +25,6 @@ import {
 	type CommunityReportAction,
 } from '@/lib/services/CommunityDashboardService';
 import { CommunitiesResourceService } from '@/lib/services/CommunitiesResourceService';
-import { CommunityFeedResourceService } from '@/lib/services/CommunityFeedResourceService';
 import { EventService } from '@/lib/services/EventService';
 import { ModerationService } from '@/lib/services/ModerationService';
 import { FeedResourceService } from '@/lib/services/FeedResourceService';
@@ -52,6 +51,7 @@ import type { Event } from '@/types/eventTypes';
 import PostCardSection from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
 import CreatePostModal from '@/components/home/MiddleSection/MiddleSectionComponent/CreatePostModal';
+import PostUploadProgressBanner from '@/components/home/PostUploadProgressBanner';
 import CommunityDetailHeader from '@/components/communities/detail/CommunityDetailHeader';
 import CommunityAboutWorkspace from '@/components/communities/detail/CommunityAboutWorkspace';
 import CommunityMembersWorkspace from '@/components/communities/detail/CommunityMembersWorkspace';
@@ -86,7 +86,6 @@ const communityService = CommunityService.getInstance();
 const detailService = CommunityDetailResourceService.getInstance();
 const dashboardService = CommunityDashboardService.getInstance();
 const directoryService = CommunitiesResourceService.getInstance();
-const communityFeedService = CommunityFeedResourceService.getInstance();
 const eventService = EventService.getInstance();
 const moderationService = ModerationService.getInstance();
 const feedService = FeedResourceService.getInstance();
@@ -663,7 +662,13 @@ export default function CommunityDetailScreen() {
 				}}
 			>
 				<TouchableOpacity
-					onPress={() => router.back()}
+					onPress={() => {
+						if (router.canGoBack()) {
+							router.back();
+						} else {
+							router.navigate('/communities');
+						}
+					}}
 					accessibilityLabel="Back"
 					style={{ padding: 8 }}
 				>
@@ -703,6 +708,7 @@ export default function CommunityDetailScreen() {
 				) : null}
 			</View>
 
+			<PostUploadProgressBanner userId={viewerId} />
 			{initialLoading ? (
 				<CommunityDetailSkeleton activeTab={activeTab} />
 			) : !detailData || !community ? (
@@ -1157,20 +1163,6 @@ export default function CommunityDetailScreen() {
 					userProfile={profile}
 					communityId={community.id}
 					communityName={community.title}
-					onCreatePost={(post) => {
-						void Promise.all([
-							communityFeedService.prepend(viewerId, community.id, post),
-							feedService.prependCreated(
-								{ userId: viewerId, scope: 'communities', filter: 'all' },
-								post
-							),
-							feedService.prependCreated(
-								{ userId: viewerId, scope: 'home', filter: 'all' },
-								post
-							),
-						]);
-						useResourceStore.getState().upsertPostEntities([post]);
-					}}
 				/>
 			) : null}
 			{activePost && profile ? (

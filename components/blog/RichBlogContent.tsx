@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import { View, Text, Image, StyleSheet, Linking, TouchableOpacity } from 'react-native';
+import { View, Text, Image, StyleSheet, Linking } from 'react-native';
 import type { ContentBlock } from '@/lib/types/blog';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { Info, AlertTriangle, CheckCircle2, Quote, ExternalLink } from 'lucide-react-native';
+import { Info, AlertTriangle, CheckCircle2, Quote } from 'lucide-react-native';
 import {
   parseHtmlToBlocks,
   type InlineToken,

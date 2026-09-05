@@ -1,5 +1,4 @@
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import {
   ShieldAlert,
@@ -7,7 +6,6 @@ import {
   Clock,
   X,
   ArrowRight,
-  ShieldCheck,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 

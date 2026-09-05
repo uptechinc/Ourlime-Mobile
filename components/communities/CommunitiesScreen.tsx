@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import {
+	ChevronLeft,
 	Grid2X2,
 	List,
 	Plus,
@@ -641,6 +642,24 @@ export default function CommunitiesScreen() {
 				}}
 			>
 				<View style={{ flexDirection: 'row', alignItems: 'center' }}>
+					<TouchableOpacity
+						accessibilityLabel="Go back"
+						hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+						onPress={() => {
+							if (router.canGoBack()) {
+								router.back();
+							} else {
+								router.navigate('/(tabs)');
+							}
+						}}
+						style={{
+							marginRight: 10,
+							padding: 4,
+							borderRadius: 10,
+						}}
+					>
+						<ChevronLeft size={26} color={colors.text} />
+					</TouchableOpacity>
 					<Text
 						style={{
 							flex: 1,

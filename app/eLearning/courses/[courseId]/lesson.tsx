@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,7 +18,7 @@ import {
   FileText,
   HelpCircle,
   List,
-  Sparkles,
+  X,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
@@ -210,6 +211,56 @@ export default function LessonScreen() {
           <ChevronRight size={18} color="#ffffff" />
         </TouchableOpacity>
       </View>
+
+      {/* Lesson List Drawer / Modal */}
+      <Modal visible={showDrawer} animationType="slide" transparent onRequestClose={() => setShowDrawer(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '70%', padding: 18 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>Course Lessons ({allLessons.length})</Text>
+              <TouchableOpacity onPress={() => setShowDrawer(false)} style={{ padding: 4 }}>
+                <X size={20} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {allLessons.map((lesson, idx) => {
+                const isActive = idx === currentLessonIndex;
+                const isCompleted = enrollment?.completedLessons?.includes(lesson.id);
+                return (
+                  <TouchableOpacity
+                    key={lesson.id || idx}
+                    onPress={() => {
+                      setCurrentLessonIndex(idx);
+                      setShowDrawer(false);
+                    }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingVertical: 12,
+                      paddingHorizontal: 14,
+                      borderRadius: 12,
+                      backgroundColor: isActive ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#d1fae5') : 'transparent',
+                      marginBottom: 6,
+                    }}
+                  >
+                    {isCompleted ? (
+                      <CheckCircle2 size={18} color="#10b981" style={{ marginRight: 10 }} />
+                    ) : (
+                      <PlayCircle size={18} color={isActive ? '#10b981' : colors.mutedText} style={{ marginRight: 10 }} />
+                    )}
+                    <Text style={{ flex: 1, fontSize: 14, fontWeight: isActive ? '800' : '600', color: isActive ? '#10b981' : colors.text }} numberOfLines={1}>
+                      {idx + 1}. {lesson.title}
+                    </Text>
+                    {lesson.duration ? (
+                      <Text style={{ fontSize: 12, color: colors.mutedText, marginLeft: 8 }}>{lesson.duration}m</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

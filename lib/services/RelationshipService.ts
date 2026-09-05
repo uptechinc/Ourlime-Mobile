@@ -107,16 +107,7 @@ export class RelationshipService {
   }
 
   public async getSuggestions(maxResults = 6): Promise<RelationshipSuggestion[]> {
-    try {
-      const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>(
-        `/api/relationships/suggestions?limit=${encodeURIComponent(String(maxResults))}`,
-        { authenticated: true, timeoutMs: 18_000 }
-      );
-      if (!response.success) throw new Error(response.error || 'Failed to load suggested users');
-      return this.normalizeSuggestions(response.data ?? []);
-    } catch {
-      return this.getSuggestionsFromFirestore(maxResults);
-    }
+    return this.getSuggestionsFromFirestore(maxResults);
   }
 
   private normalizeSuggestions(values: unknown[]): RelationshipSuggestion[] {

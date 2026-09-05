@@ -87,7 +87,7 @@ export class AppPreloadService {
           await task.run();
           this.logger.success('AppPreloadService', 'task:complete', { key: task.key, elapsedMs: Date.now() - startedAt });
         } catch (error: unknown) {
-          this.logger.warn('AppPreloadService', 'task:error', { key: task.key, elapsedMs: Date.now() - startedAt, reason: error instanceof Error ? error.message : String(error) });
+          this.logger.error('AppPreloadService', 'task', error, { key: task.key, elapsedMs: Date.now() - startedAt });
         } finally {
           this.activeKeys.delete(task.key);
         }

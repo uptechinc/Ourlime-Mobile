@@ -6,12 +6,14 @@ import {
   View,
   Pressable,
   Animated,
-  PanResponder,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import { usePlaybackInteraction } from '@/lib/hooks/usePlaybackInteraction';
+import { PlaybackSeekBar } from '@/components/media/PlaybackSeekBar';
 import CachedImage from '@/components/ui/CachedImage';
 import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components/ui/PlayfulFloatingHeart';
 
@@ -19,6 +21,10 @@ type DisplayPostMedia = {
   id?: string;
   type: 'image' | 'video';
   typeUrl: string;
+  thumbnailUrl?: string;
+  trimStartSeconds?: number;
+  trimEndSeconds?: number;
+  durationSeconds?: number;
 };
 
 type ImageAndVideoPostSectionProps = {
@@ -66,19 +72,30 @@ function ImagePostItem({
 
 function VideoPostItem({
   url,
+  thumbnailUrl,
   isActiveSlide,
   isParentVisible,
   onLike,
+  onSeekingChange,
+  trimStartSeconds,
+  trimEndSeconds,
 }: {
   url: string;
+  thumbnailUrl?: string;
+  onSeekingChange: (seeking: boolean) => void;
   isActiveSlide: boolean;
   isParentVisible: boolean;
   onLike?: () => void;
+  trimStartSeconds?: number;
+  trimEndSeconds?: number;
 }) {
-  const [isFastForwarding, setIsFastForwarding] = useState(false);
+  const heldRef = useRef(false);
+  const touchStartRef = useRef({ x: 0, y: 0 });
   const [isMuted, setIsMuted] = useState(true);
   const [showPlayStateIcon, setShowPlayStateIcon] = useState<'play' | 'pause' | null>(null);
   const playIconOpacity = useRef(new Animated.Value(0)).current;
+  const posterOpacity = useRef(new Animated.Value(1)).current;
+  const [isReady, setIsReady] = useState(false);
 
   // Double tap state tracking
   const lastTapRef = useRef<number>(0);
@@ -86,17 +103,47 @@ function VideoPostItem({
 
   const heartRef = useRef<PlayfulFloatingHeartRef>(null);
 
-  // Track progress position
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(1);
-  const [isSeeking, setIsSeeking] = useState(false);
-  const [seekPercent, setSeekPercent] = useState(0);
-
+  const shouldAutoplay = isActiveSlide && isParentVisible;
   const player = useVideoPlayer(url, (p) => {
-    p.loop = true;
+    p.loop = typeof trimEndSeconds !== 'number';
     p.muted = true;
-    p.pause();
+    if (typeof trimStartSeconds === 'number' && trimStartSeconds > 0) {
+      p.currentTime = trimStartSeconds;
+    }
+    if (shouldAutoplay) {
+      p.play();
+    } else {
+      p.pause();
+    }
   });
+
+  useEffect(() => {
+    if (typeof trimStartSeconds === 'number' && trimStartSeconds > 0) {
+      try {
+        player.currentTime = trimStartSeconds;
+      } catch {
+        // ignore
+      }
+    }
+  }, [player, trimStartSeconds]);
+
+  useEffect(() => {
+    if (typeof trimEndSeconds !== 'number' || trimEndSeconds <= 0) return;
+    const sub = player.addListener('timeUpdate', (event) => {
+      const start = trimStartSeconds ?? 0;
+      if (event.currentTime >= trimEndSeconds) {
+        try {
+          player.currentTime = start;
+          player.play();
+        } catch {
+          // ignore
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [player, trimStartSeconds, trimEndSeconds]);
+
+  const { session, snapshot, refresh, isPlaybackActive } = usePlaybackInteraction(player, shouldAutoplay);
 
   const toggleMute = () => {
     try {
@@ -107,27 +154,9 @@ function VideoPostItem({
     }
   };
 
-  // Track progress position smoothly while playing
-  useEffect(() => {
-    if (!isActiveSlide || !isParentVisible || isSeeking) return;
-    const interval = setInterval(() => {
-      try {
-        if (player && !isSeeking) {
-          setCurrentTime(player.currentTime || 0);
-          if (player.duration > 0) setDuration(player.duration);
-        }
-      } catch {
-        // ignore
-      }
-    }, 200);
-    return () => clearInterval(interval);
-  }, [isActiveSlide, isParentVisible, player, isSeeking]);
-
-  const progressPercent = isSeeking ? seekPercent : Math.min(100, Math.max(0, (currentTime / duration) * 100));
-
   // Autoplay / pause on viewport visibility change
   useEffect(() => {
-    const shouldPlay = isActiveSlide && isParentVisible;
+    const shouldPlay = isPlaybackActive;
     try {
       if (shouldPlay) {
         player.play();
@@ -137,14 +166,42 @@ function VideoPostItem({
     } catch {
       // Ignore calls on released native handles
     }
-  }, [isActiveSlide, isParentVisible, player]);
+  }, [isPlaybackActive, player]);
+
+  // Track player readiness to smoothly fade poster thumbnail without flickering
+  useEffect(() => {
+    const statusSub = player.addListener('statusChange', (event) => {
+      if (event.status === 'readyToPlay') {
+        setIsReady(true);
+      }
+    });
+    const playingSub = player.addListener('playingChange', (event) => {
+      if (event.isPlaying) {
+        setIsReady(true);
+      }
+    });
+    return () => {
+      statusSub.remove();
+      playingSub.remove();
+    };
+  }, [player]);
+
+  useEffect(() => {
+    if (isReady) {
+      Animated.timing(posterOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isReady, posterOpacity]);
 
   // NOTE: Clean up unmount without calling player.pause() directly on native C++ instance to avoid release rejection error
   useEffect(() => {
     return () => {
       if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
     };
-  }, []);
+  }, [isActiveSlide, isParentVisible]);
 
   const triggerPlayIconAnim = (type: 'play' | 'pause') => {
     setShowPlayStateIcon(type);
@@ -163,6 +220,7 @@ function VideoPostItem({
 
   const handlePress = () => {
     const now = Date.now();
+    if (heldRef.current || session.snapshot().status !== 'idle') return;
     const DOUBLE_TAP_DELAY = 300;
 
     if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
@@ -193,58 +251,13 @@ function VideoPostItem({
   };
 
   const handlePressIn = () => {
-    try {
-      player.playbackRate = 2.0;
-      setIsFastForwarding(true);
-    } catch {
-      // ignore
-    }
+    if (heldRef.current) return;
+    heldRef.current = true;
+    if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+    session.beginHold();
+    refresh();
   };
-
-  const handlePressOut = () => {
-    try {
-      player.playbackRate = 1.0;
-      setIsFastForwarding(false);
-    } catch {
-      // ignore
-    }
-  };
-
-  // Drag scrubber seeking with PanResponder
-  const progressPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
-        setIsSeeking(true);
-        updateSeekRatio(evt.nativeEvent.locationX);
-      },
-      onPanResponderMove: (evt) => {
-        updateSeekRatio(evt.nativeEvent.locationX);
-      },
-      onPanResponderRelease: (evt) => {
-        const ratio = updateSeekRatio(evt.nativeEvent.locationX);
-        if (duration > 0) {
-          try {
-            player.currentTime = ratio * duration;
-            setCurrentTime(ratio * duration);
-          } catch {
-            // ignore
-          }
-        }
-        setIsSeeking(false);
-      },
-      onPanResponderTerminate: () => {
-        setIsSeeking(false);
-      },
-    })
-  ).current;
-
-  const updateSeekRatio = (x: number): number => {
-    const ratio = Math.max(0, Math.min(1, x / MEDIA_WIDTH));
-    setSeekPercent(ratio * 100);
-    return ratio;
-  };
+  const handlePressOut = () => { session.endHold(); refresh(); };
 
   return (
     <View style={{ width: '100%', height: '100%', backgroundColor: '#000000', position: 'relative' }}>
@@ -252,18 +265,51 @@ function VideoPostItem({
         player={player}
         style={{ width: '100%', height: '100%' }}
         nativeControls={false}
+        surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
       />
+
+      {thumbnailUrl ? (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            opacity: posterOpacity,
+            backgroundColor: '#000000',
+          }}
+        >
+          <CachedImage
+            uri={thumbnailUrl}
+            style={{ width: '100%', height: '100%' }}
+            recyclingKey={thumbnailUrl}
+          />
+        </Animated.View>
+      ) : null}
 
       {/* Main Touch Overlay for Single Tap, Double Tap, and Long Press 2x */}
       <Pressable
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 20 }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 44 }}
         onPress={handlePress}
         onLongPress={handlePressIn}
         onPressOut={handlePressOut}
-        delayLongPress={250}
+        delayLongPress={300}
+        onTouchStart={(event) => {
+          heldRef.current = false;
+          touchStartRef.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+        }}
+        onTouchMove={(event) => {
+          if (Math.hypot(event.nativeEvent.pageX - touchStartRef.current.x, event.nativeEvent.pageY - touchStartRef.current.y) > 10) {
+            heldRef.current = true;
+            session.endHold();
+            refresh();
+          }
+        }}
       >
         {/* Floating 2x Speed Indicator Overlay */}
-        {isFastForwarding && (
+        {snapshot.holding && (
           <View style={{
             position: 'absolute',
             top: 14,
@@ -336,49 +382,13 @@ function VideoPostItem({
         <Ionicons name={isMuted ? 'volume-mute' : 'volume-high'} size={18} color="#ffffff" />
       </TouchableOpacity>
 
-      {/* Instagram-Style Touch Progress Bar Scrubber */}
-      <View
-        {...progressPanResponder.panHandlers}
-        style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 22,
-          justifyContent: 'center',
-          zIndex: 20,
-          paddingHorizontal: 0,
-        }}
-      >
-        {/* Track Background */}
-        <View style={{ height: 4, width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.35)', position: 'relative' }}>
-          {/* Progress Fill */}
-          <View
-            style={{
-              height: '100%',
-              width: `${progressPercent}%`,
-              backgroundColor: '#10b981',
-            }}
-          />
-          {/* Draggable Thumb Indicator Dot */}
-          <View
-            style={{
-              position: 'absolute',
-              top: -4,
-              left: `${Math.max(0, Math.min(97, progressPercent))}%`,
-              width: 12,
-              height: 12,
-              borderRadius: 6,
-              backgroundColor: '#ffffff',
-              shadowColor: '#000000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.3,
-              shadowRadius: 2,
-              elevation: 3,
-            }}
-          />
-        </View>
-      </View>
+      <PlaybackSeekBar session={session} snapshot={snapshot} onChange={refresh} onSeekingChange={(seeking) => {
+        if (seeking) {
+          if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+          lastTapRef.current = 0;
+        }
+        onSeekingChange(seeking);
+      }} />
     </View>
   );
 }
@@ -389,16 +399,18 @@ export default function ImageAndVideoPostSection({
   onLike,
 }: ImageAndVideoPostSectionProps) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [mediaWidth, setMediaWidth] = useState(MEDIA_WIDTH);
+  const [seeking, setSeeking] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   const handleMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    setActiveIndex(Math.round(event.nativeEvent.contentOffset.x / MEDIA_WIDTH));
+    setActiveIndex(Math.round(event.nativeEvent.contentOffset.x / mediaWidth));
   };
 
   const handlePrevSlide = () => {
     if (activeIndex > 0) {
       const nextIndex = activeIndex - 1;
-      scrollRef.current?.scrollTo({ x: nextIndex * MEDIA_WIDTH, animated: true });
+      scrollRef.current?.scrollTo({ x: nextIndex * mediaWidth, animated: true });
       setActiveIndex(nextIndex);
     }
   };
@@ -406,16 +418,17 @@ export default function ImageAndVideoPostSection({
   const handleNextSlide = () => {
     if (activeIndex < media.length - 1) {
       const nextIndex = activeIndex + 1;
-      scrollRef.current?.scrollTo({ x: nextIndex * MEDIA_WIDTH, animated: true });
+      scrollRef.current?.scrollTo({ x: nextIndex * mediaWidth, animated: true });
       setActiveIndex(nextIndex);
     }
   };
 
   return (
-    <View style={{ borderRadius: 0, overflow: 'hidden', backgroundColor: '#111827', position: 'relative' }}>
+    <View onLayout={(event) => setMediaWidth(event.nativeEvent.layout.width)} style={{ borderRadius: 0, overflow: 'hidden', backgroundColor: '#111827', position: 'relative' }}>
       <ScrollView
         ref={scrollRef}
         horizontal
+        scrollEnabled={!seeking}
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={handleMomentumEnd}
@@ -423,15 +436,44 @@ export default function ImageAndVideoPostSection({
         {media.map((item, index) => (
           <View
             key={item.id ?? `${item.typeUrl}-${index}`}
-            style={{ width: MEDIA_WIDTH, height: 330, backgroundColor: '#111827' }}
+            style={{ width: mediaWidth, height: 330, backgroundColor: '#111827' }}
           >
             {item.type === 'video' && index === activeIndex && isParentVisible ? (
               <VideoPostItem
+                key={item.typeUrl}
                 url={item.typeUrl}
+                thumbnailUrl={item.thumbnailUrl}
                 isActiveSlide={index === activeIndex}
                 isParentVisible={isParentVisible}
                 onLike={onLike}
+                onSeekingChange={setSeeking}
+                trimStartSeconds={item.trimStartSeconds}
+                trimEndSeconds={item.trimEndSeconds}
               />
+            ) : item.type === 'video' ? (
+              <View style={{ width: '100%', height: '100%', position: 'relative', backgroundColor: '#000000' }}>
+                {item.thumbnailUrl ? (
+                  <CachedImage
+                    uri={item.thumbnailUrl}
+                    style={{ width: '100%', height: '100%' }}
+                    recyclingKey={item.thumbnailUrl}
+                  />
+                ) : null}
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: item.thumbnailUrl ? 'rgba(0, 0, 0, 0.25)' : '#111827',
+                  }}
+                >
+                  <Ionicons name="play-circle-outline" size={54} color="#ffffff" />
+                </View>
+              </View>
             ) : item.type === 'image' ? (
               <ImagePostItem
                 url={item.typeUrl}

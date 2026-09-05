@@ -7,9 +7,8 @@ import AppHeader from "@/components/ui/AppHeader";
 import CreatePostModal from "@/components/home/MiddleSection/MiddleSectionComponent/CreatePostModal";
 import NotificationsModal from "@/components/home/NotificationsModal";
 import { AuthService } from "@/lib/services/AuthService";
-import type { PostItem } from "@/lib/services/PostService";
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
-import { profileResourceService } from '@/lib/services/ProfileResourceService';
+import PostUploadProgressBanner from '@/components/home/PostUploadProgressBanner';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppDrawer } from '@/lib/contexts/AppDrawerContext';
 
@@ -24,7 +23,6 @@ export default function FeedsScreen() {
   const { resource: profileResource } = useProfileResource({ kind: 'own', userId: currentUser?.uid ?? '' });
   const userProfile = profileResource.data?.profile ?? null;
   const profileError = profileResource.error?.message ?? null;
-  const [createdPost, setCreatedPost] = useState<PostItem | null>(null);
 
   useEffect(() => {
     void SplashScreen.hideAsync().catch(() => undefined);
@@ -34,11 +32,6 @@ export default function FeedsScreen() {
     setIsCreatePostModalOpen(true);
   };
 
-  const handlePostCreated = (post: PostItem) => {
-    setCreatedPost(post);
-    if (currentUser?.uid) void profileResourceService.adjustOwnStats(currentUser.uid, { posts: 1 });
-    setIsCreatePostModalOpen(false);
-  };
 
 
   if (!userProfile) {
@@ -70,9 +63,9 @@ export default function FeedsScreen() {
         profilePictureUrl={userProfile.profilePicture}
       />
 
+      <PostUploadProgressBanner userId={userProfile.uid} />
       <MiddleSection
         userProfile={userProfile}
-        createdPost={createdPost}
         onCreatePost={handleCreatePost}
       />
 
@@ -80,7 +73,6 @@ export default function FeedsScreen() {
         <CreatePostModal
           setTogglePostForm={setIsCreatePostModalOpen}
           userProfile={userProfile}
-          onCreatePost={handlePostCreated}
         />
       )}
 

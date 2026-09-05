@@ -15,7 +15,6 @@ import { useRouter, type Href } from 'expo-router';
 import {
   ChevronLeft,
   Search,
-  BookOpen,
   Star,
   Clock,
   Users,
@@ -29,7 +28,7 @@ const CATEGORIES = ['All', 'Technology', 'CSEC Prep', 'Business', 'Languages', '
 
 export default function CoursesCatalogScreen() {
   const router = useRouter();
-  const { colors, isDark } = useAppTheme();
+  const { colors } = useAppTheme();
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('All');

@@ -21,7 +21,6 @@ import {
   PlayCircle,
   FileText,
   HelpCircle,
-  Lock,
   Unlock,
   BookOpen,
   ArrowRight,
@@ -36,7 +35,7 @@ export default function CourseDetailScreen() {
   const router = useRouter();
   const { courseId } = useLocalSearchParams<{ courseId: string }>();
   const id = courseId as string;
-  const { colors, isDark } = useAppTheme();
+  const { colors } = useAppTheme();
   const { activeUserId } = useAppData();
 
   const [course, setCourse] = useState<Course | null>(null);

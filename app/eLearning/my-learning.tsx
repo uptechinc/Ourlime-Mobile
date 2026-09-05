@@ -16,9 +16,7 @@ import {
   BookOpen,
   Award,
   PlayCircle,
-  CheckCircle2,
   TrendingUp,
-  Clock,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';

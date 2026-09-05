@@ -303,7 +303,7 @@ export function CallProvider({ children }: CallProviderProps) {
   const toggleMute = useCallback(() => { const next = !useCallStore.getState().isMuted; agoraCallService.setMuted(next); useCallStore.getState().setMuted(next); }, []);
   const toggleVideo = useCallback(() => { const next = !useCallStore.getState().isVideoMuted; agoraCallService.setVideoMuted(next); useCallStore.getState().setVideoMuted(next); }, []);
   const toggleSpeaker = useCallback(() => { const next = !useCallStore.getState().isSpeakerEnabled; agoraCallService.setSpeakerEnabled(next); useCallStore.getState().setSpeakerEnabled(next); }, []);
-  const switchCamera = useCallback(() => agoraCallService.switchCamera(), []);
+  const switchCamera = useCallback(() => { void agoraCallService.switchCamera(); }, []);
   const minimize = useCallback(() => useCallStore.getState().setMinimized(true), []);
   const restore = useCallback(() => useCallStore.getState().setMinimized(false), []);
 

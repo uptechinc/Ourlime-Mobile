@@ -17,7 +17,7 @@ const AppDrawerContext = createContext<AppDrawerContextValue | null>(null);
 const authService = AuthService.getInstance();
 
 export function AppDrawerProvider({ children }: AppDrawerProviderProps) {
-  const { authorization, getDecision } = usePageAccess();
+  const { authorization, getDecision, triggerOverlay } = usePageAccess();
   const user = authService.getCurrentUser();
   const { resource } = useProfileResource({ kind: 'own', userId: user?.uid ?? '' });
   const [state, setState] = useState<AppDrawerState>('closed');
@@ -51,9 +51,16 @@ export function AppDrawerProvider({ children }: AppDrawerProviderProps) {
 
   const navigateAfterClose = useCallback((item: MenuItem) => {
     if (!item.route) return;
+    const routeString = typeof item.route === 'string' ? item.route : (item.route as { pathname: string }).pathname;
+    const decision = getDecision(routeString);
+    if (!decision.canAccess) {
+      setState((current) => current === 'closed' ? current : 'closing');
+      triggerOverlay(routeString);
+      return;
+    }
     pendingRoute.current = item.route;
     setState((current) => current === 'closed' ? current : 'closing');
-  }, []);
+  }, [getDecision, triggerOverlay]);
 
   const menuItems = useMemo<MenuItem[]>(() => [
     ...getAppNavigationItems({

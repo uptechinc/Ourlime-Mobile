@@ -74,7 +74,7 @@ function AppRouteTree() {
             }}
           >
             <Stack.Screen name="index" options={{ animation: 'none' }} />
-            <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+            <Stack.Screen name="(tabs)" />
             <Stack.Screen name="(auth)/login" options={{ animation: 'none' }} />
             <Stack.Screen name="(auth)/register" options={{ animation: 'slide_from_right' }} />
           </Stack>

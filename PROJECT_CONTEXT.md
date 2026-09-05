@@ -1,113 +1,100 @@
 # Ourlime Mobile — Product and Engineering Context
 
-Last audited and updated: 2026-08-29 (Web Commit `20bc694e` / Mobile Head)
+Source audit: **2026-09-04**, current local working trees, not a deployed release.
 
-- **Web Baseline**: `C:\Users\aaron\Github\Ourlime-Web` at latest `Main` commit (`20bc694e`)
-- **Mobile Source**: `C:\Users\aaron\Github\Ourlime-Web\Ourlime-Mobile`
+- Web/API source: `C:\Users\aaron\Github\Ourlime-Web`.
+- Native source: `C:\Users\aaron\Github\Ourlime-Web\Ourlime-Mobile`.
+- Code inventory is not runtime validation. Earlier “100% Matched” labels were unsupported by comprehensive parity tests and have been removed.
+- Scope of this update: routes/manifests, playback, sharing, and moderation/lifecycle entrypoints. Other feature areas below are an inventory, not a renewed end-to-end audit.
 
----
+## Engineering contracts and runtime
 
-## 1. Scope Control & Engineering Discipline
+- Service-oriented OOP: domain state, API access, validation, caching, and formatting belong to typed services. Hooks bind lifecycle and player adapters; components bind gestures and presentation.
+- No `any`; use concrete `type` contracts and direct React imports. Preserve explicit safe-area edges on headers and existing native navigation behavior.
+- The manifest declares Expo `~57.0.15`, Expo Router `~57.0.15`, React `19.2.3`, React Native `0.86.2`, Reanimated `4.5.1`, NativeWind `^4.1.23`, Zustand `^5.0.3`, FlashList `2.0.2`, and expo-video `^57.0.2`. These replace the stale Reanimated 3 description.
+- Calling entrypoints: `CallService`, `AgoraCallService`, `NativeCallService`, and `components/calls/GlobalCallOverlay.tsx`. The manifest includes Agora/CallKeep; this does not certify device/lockscreen behavior. Native calling needs the appropriate development/standalone native runtime, not assumed Expo Go compatibility.
+- No mock fallbacks should replace canonical product data. Loading, empty, unavailable, and error states must remain explicit.
 
-Implementation strictly adheres to service-oriented Object-Oriented Programming (OOP), explicit type safety, zero-mock integrity, and strict separation of presentation and domain layers:
-- **Zero-`any` & Zero-Lazy-Record**: Concrete typed models with zero loose `any` casts (`type` over `interface`).
-- **Direct React Imports**: Explicit hook imports (`import { useState, useEffect, useCallback } from 'react'`).
-- **Service Layer Boundary**: UI components strictly present views and bind gestures; domain logic, API queries, Firestore transactions, security checks, and SQLite caching live inside singleton service classes in `lib/services/`.
-- **Safe Area & Modal Standards**: Safe area insets with explicit edges (`edges={['top', 'left', 'right']}`); Reanimated 3-driven slide-up surfaces with native haptic spring dismissal.
+## Route inventory
 
----
+Mobile paths below are relative to `app/`; route groups are not public URL segments. Existence is verified; complete Web/Mobile parity is **not** asserted.
 
-## 2. Web vs. Mobile Feature & Route Parity Matrix
+| Area | Web entrypoints | Mobile entrypoints |
+| --- | --- | --- |
+| Feeds/posts | `/`, `/post/[id]` | `(tabs)/index.tsx`, `post/[id].tsx` |
+| Limes | `/limes`, `/limes/[id]`, legacy `/lime/[id]` | `(tabs)/Limes.tsx`, `limes/viewer.tsx`, `profile/limes.tsx` |
+| Communities/discovery | `/discover`, `/communities` | `(tabs)/Discover.tsx`, `communities/index.tsx`, `communities/[id]/index.tsx` |
+| Chat | Chat widget and `/chat` routes | `(tabs)/Chat.tsx`, `chat/index.tsx`, `chat/[id]/index.tsx` (not the old `chat/[id].tsx`) |
+| Profiles/search | `/profile`, profile subroutes | `(tabs)/Profile.tsx`, `(tabs)/Search.tsx`, `profile/[username].tsx` |
+| Projects | `/projectManagement` | `projectManagement/index.tsx`, `projectManagement/[id]/index.tsx` |
+| Learning | `/eLearning` | `eLearning/index.tsx`, `courses/index.tsx`, `courses/[courseId].tsx`, `courses/[courseId]/lesson.tsx`, `cxc.tsx`, `my-learning.tsx` beneath `eLearning/` |
+| Hub/wallet | `/ehub`, `/eWallet` | `ehub/index.tsx`, `eWallet/index.tsx` |
+| Market/jobs | `/market`, `/jobs` | `market/index.tsx`, `jobs/index.tsx`, `jobs/[id].tsx`, `jobs/manage.tsx`, `jobs/applications.tsx` |
+| Events/blogs | `/events`, `/blogs` | `events/index.tsx`, `blogs/index.tsx`, `blogs/[id]/index.tsx` |
+| Games | `/games`, `/wordle-game`, `/triniGeoGuesser` | `games/index.tsx`, `wordle-game.tsx`, `triniGeoGuesser/index.tsx` |
+| Admin | `/admin`, `/profile/admin` workflows | `admin/index.tsx`, `admin/user-management/index.tsx`, reports, moderation, support, Child Safety, page access, analytics and other `admin/` routes |
+| Auth/help/safety | Auth, help and policy routes | `(auth)/login.tsx`, `(auth)/register.tsx`, root password/verification routes, `help/`, `child-safety-standards/`, `delete-account.tsx`, policy routes |
 
-| Feature Area | Web Routes & Slugs | Mobile Routes & Slugs | Parity & Implementation Details |
-| :--- | :--- | :--- | :--- |
-| **Home Feeds & Posts** | `/`, `/post/[id]` | `/(tabs)/index.tsx`, `/post/[id].tsx` | **100% Matched**. Regular posts, polls, events, filters (`all`, `photo`, `video`, `poll`, `event`), reposts, likes modal with author avatar stack, comments/replies composer with GIPHY GIFs (Caribbean, Memes, Anime categories) & verified stickers, rich text link preview with OpenGraph enhancements, online/offline location map cards, and Reanimated 3 double-tap floating heart with particle burst and haptic feedback. |
-| **Limes (Short Video Reels)** | `/limes`, `/lime/[id]`, `/limes/[id]` | `/(tabs)/Limes.tsx` | **100% Matched**. Fullscreen vertical feed with 70% viewport autoplay, category filters (`Comedy`, `Educational`, `DIY`, `Music`, `Explore`), Lime creation modal with 30s/100MB validation, comments modal, likes, shares, repost/remove-repost, sound mute/unmute, OpenGraph metadata sharing, and double-tap floating heart animation. |
-| **Discover & Communities** | `/discover`, `/communities`, `/communities/[id]` | `/(tabs)/Discover.tsx`, `/communities/index.tsx`, `/communities/[id]/index.tsx` | **100% Matched**. Community search, category filtering, join/leave, member management, community post creation, events, polls, share community modal, and report intake. |
-| **Messaging & Calling** | `/chat`, `/chat/[id]` | `/(tabs)/Chat.tsx`, `/chat/[id].tsx`, `components/calls/GlobalCallOverlay.tsx` | **100% Matched**. Real-time Firestore chat threads, voice note playback, media bubbles, message forward/reply/reactions, pin/archive/mute, floating bubble for repost & share to chat, bounded chat menus, Agora RTC audio/video calling, and CallKeep telephony integration. |
-| **User Search & Profiles** | `/profile`, `/profile/[username]`, `/profile/viewOtherProfile/[username]`, `/profile/friends` | `/(tabs)/Search.tsx`, `/(tabs)/Profile.tsx`, `/profile/[username].tsx` | **100% Matched**. User search with privacy/visibility enforcement, profile timeline posts, bio/avatar editing, followers/following, friend requests (accept/decline/cancel), block list management, sanitized fallback initials, and **"🛡️ Deleted (Admin)"** post recovery tab. |
-| **E-Projects (Project Management)** | `/projectManagement`, `/projectManagement/[projectId]` | `/projectManagement/index.tsx`, `/projectManagement/[id]/index.tsx` | **100% Matched**. Project dashboard, create/edit project modal, email invite claiming, accept/decline responses, team member cards, task progress counters, and Kanban board status management. |
-| **E-Learning (Limes Academy)** | `/eLearning`, `/eLearning/courses`, `/eLearning/cxc`, `/eLearning/instructor`, `/eLearning/my-learning` | `/eLearning/index.tsx` + `components/eLearning/` | **Matched Core Presentation Hub**. Hero carousel banner, announcement bar, Course Materials, Learning Resources, Tutors directory, and Schedule Work calendar view. |
-| **E-Hub & E-Wallet** | `/ehub`, `/eWallet` | `/ehub/index.tsx`, `/eWallet/index.tsx` | **100% Matched**. Startup and entrepreneurship directory, mentorship connection, transaction history, balance cards, and top-up actions. |
-| **Market & Jobs** | `/market`, `/market/[id]`, `/jobs`, `/jobs/manage`, `/jobs/applications` | `/market/index.tsx`, `/jobs/index.tsx`, `/jobs/manage.tsx`, `/jobs/applications.tsx` | **100% Matched**. Product search and gallery, dynamic size/color variants, seller direct chat inquiry, job listings (professional & quick tasks), resume submission, application tracking, and employer candidate management. |
-| **Events & Blogs** | `/events`, `/events/[id]`, `/events/upcoming`, `/blogs`, `/blogs/[id]` | `/events/index.tsx`, `/blogs/index.tsx`, `/blogs/[id].tsx` | **100% Matched**. Event discovery, online link vs. physical venue presentation, RSVP, blog cards, full article reader with author metadata, and centralized `BlogAuthorizationService` checking verified creator credentials. |
-| **Games Hub** | `/games`, `/wordle-game`, `/triniGeoGuesser` | `/games/index.tsx`, `/wordle-game/index.tsx`, `/triniGeoGuesser/index.tsx` | **100% Matched**. 6-row Trini Wordle with duplicate scoring, full dictionary validation, interactive virtual keyboard, and Trinidad GeoGuesser interactive location guessing. |
-| **Admin Suite** | `/admin`, `/profile/admin/*` (13 modules) | `/admin/index.tsx` + subroutes (13 modules) | **100% Matched**. Analytics dashboard, user lifecycle/ban management, content deletion with mandatory reasoning, appeals management queue, access controls & region/IP whitelisting, rate limiting & anti-abuse engine, page access gating, beta testers, products, communities, categories, stickers, support tickets, and Child Safety review. |
-| **Help, Safety & Auth** | `/login`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email`, `/delete-account`, `/policies`, `/child-safety-standards`, `/help/*` | `/(auth)/login.tsx`, `/(auth)/register.tsx`, `/help/*`, safety routes | **100% Matched**. 13-category CSR child safety intake, support tickets, guardian consent, public unauthenticated safety page access, and permanent account deletion. |
+Some native detail workflows use sheets instead of routes. Audit individual actions before claiming parity or implementing gaps.
 
----
+## Playback interaction ownership (2026-09-04)
 
-## 3. Admin Moderation & Security Architecture
+- Mobile domain: `lib/services/PlaybackInteractionService.ts`. Web equivalent: `lib/media/PlaybackInteractionService.ts`. A singleton factory creates an isolated `PlaybackSession` per player; one player's drag cannot mutate another's interaction state.
+- Contracts: `PlaybackAdapter`, `PlaybackSnapshot`, `PlaybackStatus`, `PlaybackSpeed`. Native `lib/hooks/usePlaybackInteraction.ts` adapts expo-video; Web `components/limes/LimePlaybackControls.tsx` adapts HTML video.
+- State: idle → dragging → settling → idle. Drag-preview time is separate from reported time. Stale progress is ignored until two consecutive target acknowledgments (0.35-second tolerance; Web also checks the player's seeking flag), or a 2.5-second timeout produces an explicit retryable error.
+- Duration is read at interaction time, not captured at initial render. Seeking is disabled without finite positive duration. Measured track width maps touch/pointer position to clamped time.
+- Scrubbing pauses playback. Only a previously playing, still-active player resumes. Cancellation, source replacement, lost visibility, backgrounding and unmount cancel without restarting an off-screen player. Paused players remain paused.
+- Feed: `ImageAndVideoPostSection.tsx` measures card width for paging and places `PlaybackSeekBar` flush with the video bottom. A 44-point invisible target ends at that edge; only a thin track is always visible. Scrubbing locks media paging and clears pending taps. Double-tap liking and hold-to-2× stay separate from seeking.
+- Limes: the tab measures available viewport height, already excluding bottom navigation. `limes/viewer.tsx` wraps the same screen with a bottom safe inset for chat/deep-link entry. `profile/limes.tsx` reuses `ReelItem` with measured pager height and bottom inset. Captions are above the seek target; controls do not add layout height.
+- Web: the track is at the bottom of the existing usable Lime viewport. Pointer capture handles dragging/tapping; Left/Right seek five seconds, Home/End seek endpoints. Accessible slider values/disabled state are exposed. Progress updates stay local to controls, not the whole feed.
+- Limes rates: 0.5×, 1×, 1.5×, 2×; selection belongs to the mounted viewer session, default 1× on fresh mount. Holding video for 300 ms temporarily uses 2×. Release restores the selected speed; movement over ten pixels cancels hold. Action/link/seek controls are excluded; holding does not trigger a release tap. Temporary speed ends on deactivation.
+- Fullscreen entry retains existing native/browser paths; device-specific transitions still need runtime validation. YouTube and unrelated Web feed controls are outside this change.
 
-### 3.1 Content Deletion & Appeals Lifecycle
-- **Three-Dot Menu (`...`)**: Accessible on all user-generated content (posts, comments, products, blogs, projects, communities) opening `AdminDeletionModal`.
-- **Mandatory Reason Requirement**: Admin must select a predefined category (*Inappropriate*, *Harassment*, *Spam*, *Misinformation*, *Copyright*, *Child Safety*, *Terms of Service*, or *Custom*) with required explanations for custom entries.
-- **Transparent Notifications**: Author receives automated notification with exact reason and link to `ContentAppealModal`.
-- **Appeals Queue**: Admin Portal includes an **Appeals** queue to review user justifications with 1-click **"Approve & Restore"** and **"Reject"** actions.
-- **Profile Deletion Tab**: Admins can inspect and restore soft-deleted posts directly from any user profile under the **"🛡️ Deleted (Admin)"** tab.
+## Sharing and covers: entrypoints, not delivery guarantees
 
-### 3.2 Geographic Region & IP Access Controls
-- **Region Enforcement Policy**:
-  - `allow_all`: Global unhindered access.
-  - `allow_selected_only`: Restricts access strictly to selected countries (e.g. Trinidad & Tobago `['TT']`).
-  - `block_selected`: Restricts access from specified blocked countries.
-- **IP Rules & Whitelisting**:
-  - **IP Whitelist**: Always allows specified IPs/CIDR ranges even if located in a blocked country.
-  - **IP Blocklist**: Always denies specified IPs/CIDR ranges even if located in an allowed country.
-- **Account Whitelist Bypass**:
-  - Whitelisted user accounts/emails (e.g. administrators, QA testers) bypass all regional and IP restrictions worldwide.
-- **Services**:
-  - Web: [`adminSecurityService.ts`](file:///c:/Users/aaron/Github/Ourlime-Web/lib/admin/adminSecurityService.ts) and `/api/admin/security/access-controls`.
-  - Mobile: [`AdminSecurityService.ts`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/lib/services/AdminSecurityService.ts) and [`AdminSecurityWorkspace.tsx`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/components/admin/AdminSecurityWorkspace.tsx).
+- Web `lib/navigation/ShareMetadataService.ts` and `/api/link-preview` resolve authorized canonical content. Unavailable/private/deleted content must not fall through to an unrestricted resolver.
+- Web `lib/chat/SharedPostPresentationService.ts` normalizes ordered media, creator/caption, YouTube, location, poll and event details. Hero precedence is first ordered image, otherwise first video/cover; YouTube/location/text provide non-uploaded-media presentations.
+- Mobile `OpenGraphService`, `SharedContentMessageService`, `SharedPostPresentationService`, `SharedPostCardStateService`, and `components/chat/SharedPostCard.tsx` consume/present previews. Shared player state coordinates inline playback and thumbnail caching; `DeepLinkService` owns internal navigation URLs.
+- Generated share copy/raw internal URLs are not intentional commentary. Preserve separately typed commentary and sender-relative conversation summaries. Lime media cards and rich post cards are distinct from green generic message bubbles.
+- Cover entrypoints: `LimeThumbnailService`, `LimeCoverTimelineService`, `components/limes/CreateLimeModal.tsx`. Current native creation validates maximum 30 seconds and 100 MB. Persisted `thumbnailUrl`/`media.thumbnailUrl` provide covers; legacy fallback must be bounded and never substitute a creator avatar as a video cover.
+- No message, thumbnail-storage, API or database format changes in this playback task. Prior shared-post/YouTube reports are not claimed resolved by these controls or this documentation audit.
 
-### 3.3 Security & Anti-Abuse Rate Limiting
-- **Sliding Window Rate Limiter**:
-  - Per-IP and per-user token buckets for Auth (15 req/min), Posts (30 req/min), Comments (45 req/min), and General API (120 req/min).
-  - Enforces HTTP 429 Too Many Requests with calculated retry intervals.
+## Moderation and account lifecycle: server-owned
 
----
+- Mobile `AdminUserService` and `components/admin/UserManagementSection.tsx` expose status/archive/unarchive/permanent deletion, required reasons, operation polling, progress/retry and email state. `AdminUserContentWorkspace` is the managed-user content entrypoint; do not rely on the old blanket claim that every profile has a “Deleted (Admin)” recovery tab.
+- Web `lib/admin/userLifecycleService.ts` owns `userLifecycleOperations`, bounded discovery/deletion work, and dedicated reversible `accountLifecycleHiddenAt`, `accountLifecycleStatus`, `accountLifecycleOperationId`, `accountLifecycleReason` fields, separate from content moderation deletion fields.
+- Lifecycle start/status/retry: `/api/admin/users/[userId]/lifecycle`; protected processing: `/api/internal/user-lifecycle/process`. Mobile consumes these APIs, not a duplicated server worker.
+- Web `lib/moderation/ModerationDeliveryService.ts` owns `moderationDeliveryEvents` and `moderationDeliveryOutbox`, immediate delivery, leases, and retries after 1 minute, 5 minutes, 15 minutes, 1 hour, 6 hours. Processing/retry routes: `/api/internal/moderation-delivery/process`, `/api/admin/moderation-delivery/[eventId]/retry`.
+- Mobile reports sent/queued/failed. Actual email arrival, deployed schedules, credentials and production cleanup completeness were not retested in this playback task.
+- `AdminSecurityService`/`AdminSecurityWorkspace` and Web `lib/admin/adminSecurityService.ts` are access-control entrypoints. Earlier numerical rate-limit guarantees and “every content menu” coverage were not revalidated; consult current implementations/tests rather than treating those claims as verified policy.
 
-## 4. Real-Time Calling Architecture (Agora RTC & VoIP)
+## Validation ledger
 
-Voice and video calling is engineered for high-fidelity native mobile streaming:
-- **Agora Engine (`react-native-agora`)**: Initializes `IRtcEngine` with communication profile, publishing local microphone/camera tracks and subscribing to remote audio/video streams.
-- **Native Telephony Bridge (`react-native-callkeep`)**: Presents native incoming call screens on iOS (CallKit) and Android (ConnectionService) with lockscreen heads-up notifications.
-- **Signaling**: Coordinated in real-time through Firestore `calls/{callId}` sessions and FCM data push payloads.
-- **Development vs. Production Build Requirement**:
-  > [!IMPORTANT]
-  > Native C++ WebRTC modules (`react-native-agora`) cannot run in the sandbox **Expo Go** store client. Audio/video calling in development requires a custom development client build (`npx expo run:android` or `npx eas build --profile development`). When running in Expo Go, the app safely alerts the user that a development build is required.
+### Historical snapshot (document dated 2026-08-29)
 
----
+The prior document reported TypeScript zero errors, discipline checks over 425 files and `scripts/test-moderation-and-security.cjs` 19/19. These historical claims had no recorded execution date here and are not current evidence of full parity.
 
-## 5. UI/UX Motion & Interaction Contract
+### Current task (2026-09-04)
 
-- **Reanimated 3 Double-Tap Liking** ([`PlayfulFloatingHeart.tsx`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/components/ui/PlayfulFloatingHeart.tsx)):
-  - Double-tapping any picture, video, or Lime pops a bouncy spring heart (`scale: 0.1 → 1.35 → 1.0`).
-  - Floats upward with dynamic tilt (`-13°` to `+13°`), radiates 3 sparkle particle bursts, and smoothly fades out.
-  - Accompanied by crisp medium haptic feedback (`Haptics.ImpactFeedbackStyle.Medium`).
-- **Tactile Button Physics** ([`AnimatedActionButton.tsx`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/components/ui/AnimatedActionButton.tsx)):
-  - Like buttons compress (`scale: 0.8`) and explode on release (`scale: 1.3 → 1.0`).
-  - Comment buttons spring-pop (`scale: 1.18 → 1.0`) with light haptic feedback.
-- **Glassmorphism Modals**:
-  - `SwipeDismissSurface` / `SwipeDismissHandle` provide 60fps gesture-tracked downward drag-to-dismiss on Android and iOS without competing with scrollable lists.
+- Mobile `lib/services/PlaybackInteractionService.test.mjs`: 9 passed, 0 failed, 32 assertions.
+- Web `lib/media/PlaybackInteractionService.test.ts`: 9 passed, 0 failed, 32 assertions.
+- Web `e2e/tests/limes-features.spec.ts`, focused seeking/speed test: passed in `media-desktop` and `media-mobile` (2 product tests plus successful auth setup and cleanup). Covers range-aware real MP4 seeking, keyboard rewind, drag positioning, paused restoration, speed/hold cancellation, short viewport placement and previous-video pause. Initial diagnostic runs exposed a non-range-aware fixture and artifact-teardown hangs; the final clean run passed with failure screenshots retained and video/trace recording disabled for this file.
+- Mobile `bun run check`: passed; 482 source files passed discipline checks. There are 20 inherited unused-symbol lint warnings: eLearning (10), blog content (2), YouTube feed preview (2), notifications (1), jobs components (5). No changed-scope lint errors.
+- Web `bun run check`: passed (TypeScript and lint; no lint warnings). A diagnostic attempt overlapped fresh `.next-e2e` startup and saw disappearing generated route types; the final sequential check passed. Do not start a new test server while TypeScript is reading those generated files.
+- Focused chat-return test in `e2e/tests/limes-features.spec.ts`: **failed before playback**. `ChatWidgetPage.selectConversation` clicked the seeded friend, but the `Message` composer did not appear within 20 seconds; the UI remained at “Select a chat to start messaging.” Auth setup and cleanup passed. No playback control was reached, so Back-to-chat position remains unverified, not a claimed pass or a proven playback regression. The existing chat selection/read-receipt path was inspected but not changed outside this task's scope.
+- Android platform tools report no attached device/emulator. No Android runtime validation, build, deployment, migration or git push was performed.
 
----
-
-## 6. Verification Commands & Diagnostics
+Reproducible checks (from the indicated repository):
 
 ```powershell
-# Type verification
-cmd /c "node_modules\.bin\tsc --noEmit"
-
-# Repository discipline & zero-any scan
-cmd /c "node scripts\check-discipline.cjs"
-
-# Automated Moderation & Security E2E Test Suite
-node scripts/test-moderation-and-security.cjs
+# Mobile
+bun test lib/services/PlaybackInteractionService.test.mjs
+bun run check
+# Web
+bun test lib/media/PlaybackInteractionService.test.ts
+bunx playwright test limes-features.spec.ts --config=e2e/playwright.config.ts --project=media-desktop --project=media-mobile --grep="seeks without"
+bunx playwright test limes-features.spec.ts --config=e2e/playwright.config.ts --project=media-desktop --grep="returns from"
+bun run check
 ```
 
-### Verification Results
-- `tsc --noEmit`: **0 errors**.
-- `node scripts/check-discipline.cjs`: **0 violations across 425 TypeScript source files**.
-- `node scripts/test-moderation-and-security.cjs`: **19 / 19 Tests Passed (100%)**.
-- Testing documentation: [`TESTING_GUIDE.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/TESTING_GUIDE.md).
+Remaining manual acceptance: Android feed forward/back scrubbing and mixed-media paging, Lime drag versus vertical swipe/double-tap/hold, short screens, light/dark themes, fullscreen transitions, and chat-return positioning. Passing service tests does not establish device results.

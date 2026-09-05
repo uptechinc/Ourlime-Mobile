@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, type Href } from 'expo-router';
-import { Image, ImageSourcePropType, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image, ImageSourcePropType, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { pageAccessService } from '@/lib/services/PageAccessService';
@@ -34,36 +34,96 @@ const PRESENTATION: PageAccessPresentationMap = {
 export default function PageAccessOverlay() {
   const router = useRouter();
   const pathname = usePathname();
-  const { getDecision, loading } = usePageAccess();
+  const insets = useSafeAreaInsets();
+  const { getDecision, loading, activeOverlayRoute, clearOverlay } = usePageAccess();
   const route = useMemo(() => pageAccessService.normalizeRoute(pathname || '/'), [pathname]);
-  const decision = getDecision(route);
+  const effectiveRoute = activeOverlayRoute ? pageAccessService.normalizeRoute(activeOverlayRoute) : route;
+  const decision = getDecision(effectiveRoute);
   const [previousDestination, setPreviousDestination] = useState<PreviousDestination>({ route: '/(tabs)', label: 'Home' });
+
+  const isTabRoute = useMemo(() => {
+    if (activeOverlayRoute) return true;
+    if (!pathname) return false;
+    const clean = pathname.toLowerCase();
+    return (
+      clean.includes('(tabs)') ||
+      clean === '/' ||
+      clean === '/index' ||
+      clean.startsWith('/discover') ||
+      clean.startsWith('/limes') ||
+      clean.startsWith('/chat') ||
+      clean.startsWith('/profile')
+    );
+  }, [activeOverlayRoute, pathname]);
+
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 20);
+  const tabBarHeight = 56 + bottomInset;
 
   useEffect(() => {
     if (!decision.canAccess || decision.status === 'coming_soon' || pageAccessService.isPublicRoute(route)) return;
     setPreviousDestination({ route, label: decision.setting?.pageName || (route === '/' ? 'Home' : 'Previous Page') });
   }, [decision.canAccess, decision.setting?.pageName, decision.status, loading, route]);
 
-  const shouldBlock = !decision.canAccess;
-  if (pageAccessService.isPublicRoute(route) || !shouldBlock) return null;
+  const shouldBlock = Boolean(activeOverlayRoute) || (!pageAccessService.isPublicRoute(effectiveRoute) && !decision.canAccess);
+  if (!shouldBlock) return null;
   const presentation = PRESENTATION[decision.status];
   const stickerSource = STICKERS[decision.status] || STICKERS.coming_soon;
   const title = decision.setting?.overlayTitle || presentation.title;
   const description = decision.setting?.overlayDescription || decision.setting?.description || presentation.description;
-  const primaryLabel = `Back to ${previousDestination.label}`;
+  const primaryLabel = activeOverlayRoute ? 'Close' : `Back to ${previousDestination.label}`;
 
   const handleReturn = () => {
+    if (activeOverlayRoute) {
+      clearOverlay();
+      return;
+    }
     if (router.canGoBack()) {
       router.back();
       return;
     }
-    router.replace(previousDestination.route as Href);
+    if (previousDestination.route && previousDestination.route !== route) {
+      router.replace(previousDestination.route as Href);
+    } else {
+      router.replace('/(tabs)' as Href);
+    }
   };
 
   return (
-    <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 9999, backgroundColor: 'rgba(2,6,23,0.78)' }}>
+    <View
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: isTabRoute ? tabBarHeight : 0,
+        left: 0,
+        zIndex: 9999,
+        backgroundColor: 'rgba(2,6,23,0.78)',
+      }}
+    >
       <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 }}>
-        <View style={{ width: '100%', maxWidth: 410, alignItems: 'center', borderRadius: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', backgroundColor: 'rgba(15,23,42,0.96)', paddingHorizontal: 26, paddingVertical: 28, shadowColor: '#000', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.4, shadowRadius: 24, elevation: 18 }}>
+        <View style={{ width: '100%', maxWidth: 410, alignItems: 'center', borderRadius: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', backgroundColor: 'rgba(15,23,42,0.96)', paddingHorizontal: 26, paddingVertical: 28, shadowColor: '#000', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.4, shadowRadius: 24, elevation: 18, position: 'relative' }}>
+          {/* Close button */}
+          <TouchableOpacity
+            onPress={handleReturn}
+            hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+            accessibilityLabel="Close overlay"
+            accessibilityRole="button"
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: 'rgba(255,255,255,0.12)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10,
+            }}
+          >
+            <Ionicons name="close" size={20} color="#ffffff" />
+          </TouchableOpacity>
+
           {/* Playful Sticker Artwork */}
           <Image
             source={stickerSource}

@@ -67,13 +67,13 @@ export class ErrorLogService {
       const message = args
         .map((a) => (a instanceof Error ? a.message : typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a ?? '')))
         .join(' ');
-      if (
+      if (!message.includes('[Ourlime.Mobile]') && (
         message.includes('SafeAreaView has been deprecated') ||
         message.includes('WebChannelConnection') ||
         message.includes('@firebase') ||
         message.includes('transport errored') ||
         message.includes("RPC 'Listen' stream")
-      ) {
+      )) {
         return;
       }
       this.originalConsoleWarn(...args);
@@ -130,12 +130,12 @@ export class ErrorLogService {
       .join(' ');
 
     if (
-      !message ||
+      !message || (!message.includes('[Ourlime.Mobile]') && (
       message.includes('@firebase') ||
       message.includes('WebChannelConnection') ||
       message.includes('transport errored') ||
       message.includes('RPC') ||
-      message.includes('SafeAreaView has been deprecated')
+      message.includes('SafeAreaView has been deprecated')))
     ) {
       return;
     }

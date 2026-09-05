@@ -153,7 +153,7 @@ export class LimeService {
     const reels = await Promise.all(feedDocuments.map(async (reelDocument): Promise<Reel> => {
       const data = recordOf(reelDocument.data());
       const creatorId = stringOf(data.userId);
-      const profile = creatorId ? await this.authService.getUserProfile(creatorId) : null;
+      const profile = creatorId ? await this.authService.getUserProfileIfAvailable(creatorId) : null;
       const comments = commentPreviewLimit > 0
         ? await this.fetchComments(reelDocument.id, commentPreviewLimit)
         : { items: [], nextCursor: null, hasMore: false };
@@ -312,7 +312,7 @@ export class LimeService {
     const data = recordOf(reelSnapshot.data());
     if (isDeletedReelRecord(data)) return null;
     const creatorId = stringOf(data.userId);
-    const profile = creatorId ? await this.authService.getUserProfile(creatorId) : null;
+    const profile = creatorId ? await this.authService.getUserProfileIfAvailable(creatorId) : null;
     const comments = commentPreviewLimit > 0
       ? await this.fetchComments(reelId, commentPreviewLimit)
       : { items: [], nextCursor: null, hasMore: false };
@@ -621,7 +621,7 @@ export class LimeService {
       }
       const uniqueMarkers = Array.from(new Map(markerDocuments.map((markerDocument) => [markerDocument.id, markerDocument])).values());
       const userIds = Array.from(new Set(uniqueMarkers.map((markerDocument) => stringOf(markerDocument.data().userId)).filter(Boolean)));
-      const profiles = await Promise.all(userIds.map(async (userId) => [userId, await this.authService.getUserProfile(userId)] as const));
+      const profiles = await Promise.all(userIds.map(async (userId) => [userId, await this.authService.getUserProfileIfAvailable(userId)] as const));
       const profileById = new Map(profiles);
       const repostersByReel = new Map<string, NonNullable<Reel['repostedBy']>>();
       uniqueMarkers.forEach((markerDocument) => {

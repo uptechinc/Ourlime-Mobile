@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Image,
   Linking,
   ScrollView,
@@ -29,6 +28,7 @@ import RichBlogContent from '@/components/blog/RichBlogContent';
 import BlogAuthorCard from '@/components/blog/BlogAuthorCard';
 import BlogEngagementBar from '@/components/blog/BlogEngagementBar';
 import BlogCommentsSection from '@/components/blog/BlogCommentsSection';
+import BlogDetailSkeleton from '@/components/blog/BlogDetailSkeleton';
 import { stripHtml } from '@/lib/utils/htmlUtils';
 import type { BlogPostDetail, BlogComment } from '@/lib/types/blog';
 
@@ -42,20 +42,62 @@ export default function BlogDetailScreen() {
   const { colors, isDark } = useAppTheme();
   const scrollViewRef = useRef<ScrollView>(null);
 
-  const [blog, setBlog] = useState<BlogPostDetail | null>(null);
+  const cached = blogService.getCachedPost(blogId);
+  const initialBlog: BlogPostDetail | null = cached
+    ? ('categoryId' in cached
+        ? (cached as BlogPostDetail)
+        : {
+            id: cached.id,
+            userId: cached.author?.id || '',
+            title: cached.title,
+            type: 'blog',
+            excerpt: cached.excerpt,
+            content: cached.excerpt,
+            coverImage: cached.coverImage,
+            categoryId: cached.category || 'technology',
+            category: cached.category || 'technology',
+            slug: '',
+            readTime: cached.readTime,
+            sources: [],
+            tags: cached.tags?.map((t) => ({ name: t.name })) || [],
+            categories: cached.categories?.map((c) => ({ name: c.name })) || [],
+            engagement: [
+              {
+                likesCount: 'likes' in cached ? cached.likes : 0,
+                commentsCount: 'comments' in cached ? cached.comments : 0,
+                sharesCount: 0,
+                viewsCount: 0,
+                readTimeAverage: 0,
+              },
+            ],
+            status: 'published',
+            author: {
+              id: cached.author?.id || '',
+              name: cached.author?.name || 'Author',
+              avatar: cached.author?.avatar || '',
+              bio: '',
+              role: '',
+              company: '',
+              followersCount: 0,
+              isVerified: cached.author?.isVerified || false,
+            },
+          })
+    : null;
+
+  const [blog, setBlog] = useState<BlogPostDetail | null>(initialBlog);
   const [comments, setComments] = useState<BlogComment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialBlog);
   const [error, setError] = useState<string | null>(null);
   const [isLiked, setIsLiked] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
-  const [likesCount, setLikesCount] = useState(0);
-  const [commentsCount, setCommentsCount] = useState(0);
+  const [likesCount, setLikesCount] = useState(initialBlog?.engagement[0]?.likesCount ?? 0);
+  const [commentsCount, setCommentsCount] = useState(initialBlog?.engagement[0]?.commentsCount ?? 0);
   const [shareVisible, setShareVisible] = useState(false);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
 
   const loadBlogData = useCallback(async () => {
     if (!blogId) return;
-    setLoading(true);
+    if (!blog) setLoading(true);
     setError(null);
     try {
       const [blogData, commentsData, interactions] = await Promise.all([
@@ -75,11 +117,11 @@ export default function BlogDetailScreen() {
       void blogService.updateInteraction(blogId, 'view').catch(() => {});
     } catch (loadError: unknown) {
       console.error('[BlogDetailScreen.loadBlogData]', loadError);
-      setError('This blog post could not be loaded.');
+      if (!blog) setError('This blog post could not be loaded.');
     } finally {
       setLoading(false);
     }
-  }, [blogId]);
+  }, [blog, blogId]);
 
   useEffect(() => {
     void loadBlogData();
@@ -171,7 +213,20 @@ export default function BlogDetailScreen() {
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.safeArea, { backgroundColor: colors.canvas }]}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={styles.headerBtn}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.navigate('/blogs');
+            }
+          }}
+          style={styles.headerBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <ChevronLeft size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
@@ -196,10 +251,7 @@ export default function BlogDetailScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#10b981" />
-          <Text style={[styles.loadingText, { color: colors.mutedText }]}>Loading article...</Text>
-        </View>
+        <BlogDetailSkeleton />
       ) : error || !blog ? (
         <View style={styles.errorContainer}>
           <Text style={[styles.errorText, { color: colors.text }]}>{error || 'Blog not found.'}</Text>
@@ -386,7 +438,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   headerBtn: {
-    padding: 6,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
   },
   headerTitle: {
     fontSize: 17,

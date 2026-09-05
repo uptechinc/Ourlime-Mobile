@@ -11,6 +11,9 @@ type PageAccessContextValue = {
   profile: UserProfile | null;
   authorization: AuthorizationState;
   getDecision: (route: string) => PageAccessDecision;
+  activeOverlayRoute: string | null;
+  triggerOverlay: (route: string) => void;
+  clearOverlay: () => void;
 };
 
 type PageAccessProviderProps = {
@@ -27,6 +30,10 @@ export function PageAccessProvider({ children }: PageAccessProviderProps) {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeOverlayRoute, setActiveOverlayRoute] = useState<string | null>(null);
+
+  const triggerOverlay = useCallback((route: string) => setActiveOverlayRoute(route), []);
+  const clearOverlay = useCallback(() => setActiveOverlayRoute(null), []);
 
   useEffect(() => {
     const unsubscribeAuth = authService.subscribeToVerifiedAuthState((user) => {
@@ -78,7 +85,10 @@ export function PageAccessProvider({ children }: PageAccessProviderProps) {
     profile,
     authorization,
     getDecision,
-  }), [authorization, error, getDecision, profile, profileLoading, settings, settingsLoading]);
+    activeOverlayRoute,
+    triggerOverlay,
+    clearOverlay,
+  }), [activeOverlayRoute, authorization, clearOverlay, error, getDecision, profile, profileLoading, settings, settingsLoading, triggerOverlay]);
 
   return <PageAccessContext.Provider value={value}>{children}</PageAccessContext.Provider>;
 }

@@ -37,6 +37,10 @@ import {
 } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useRouter, useLocalSearchParams, useIsFocused } from 'expo-router';
+import { usePlaybackInteraction } from '@/lib/hooks/usePlaybackInteraction';
+import { PlaybackSeekBar } from '@/components/media/PlaybackSeekBar';
+import { PlaybackSpeedMenu } from '@/components/media/PlaybackSpeedMenu';
+import type { PlaybackSpeed } from '@/lib/services/PlaybackInteractionService';
 import CreateLimeModal from '@/components/limes/CreateLimeModal';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
 import ReportLimeModal from '@/components/limes/ReportLimeModal';
@@ -228,6 +232,9 @@ function FloatingReposterBubble({
 }
 
 export default function LimesScreen() {
+  const [viewportHeight, setViewportHeight] = useState(SCREEN_HEIGHT);
+  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
+  const [seeking, setSeeking] = useState(false);
   const router = useRouter();
   const { limeId, viewer } = useLocalSearchParams<{ limeId?: string; viewer?: string }>();
   const isScreenFocused = useIsFocused();
@@ -380,7 +387,7 @@ export default function LimesScreen() {
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: { index: number | null }[] }) => {
     if (viewableItems.length > 0) {
       setActiveIndex(viewableItems[0].index ?? 0);
-    }
+    } else setActiveIndex(-1);
   }).current;
 
   const viewConfigRef = useRef({ itemVisiblePercentThreshold: 70 }).current;
@@ -443,7 +450,7 @@ export default function LimesScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
       {/* Top Header Overlay */}
@@ -552,7 +559,8 @@ export default function LimesScreen() {
         keyExtractor={(item) => item.id}
         pagingEnabled
         showsVerticalScrollIndicator={false}
-        snapToInterval={SCREEN_HEIGHT}
+        snapToInterval={viewportHeight}
+        scrollEnabled={!seeking}
         snapToAlignment="start"
         decelerationRate="fast"
         initialNumToRender={2}
@@ -560,8 +568,8 @@ export default function LimesScreen() {
         windowSize={3}
         removeClippedSubviews={Platform.OS === 'android'}
         getItemLayout={(_, index) => ({
-          length: SCREEN_HEIGHT,
-          offset: SCREEN_HEIGHT * index,
+          length: viewportHeight,
+          offset: viewportHeight * index,
           index,
         })}
         onViewableItemsChanged={onViewableItemsChanged}
@@ -587,6 +595,10 @@ export default function LimesScreen() {
         }
         renderItem={({ item, index }) => (
           <ReelItem
+            height={viewportHeight}
+            playbackSpeed={playbackSpeed}
+            onPlaybackSpeedChange={setPlaybackSpeed}
+            onSeekingChange={setSeeking}
             reel={item}
             isActive={playbackAllowed && index === activeIndex}
             shouldLoadVideo={playbackAllowed && (
@@ -727,17 +739,22 @@ export default function LimesScreen() {
 /* ─────────────────────────────────────────────────────────────────── */
 type ReelVideoPlayerHandle = {
   enterFullscreen: () => Promise<void>;
+  beginHold: () => void;
+  endHold: () => void;
 };
 
 type ReelVideoPlayerProps = {
   url: string;
   isActive: boolean;
   muted: boolean;
-  onProgressChange: (progress: number) => void;
+  paused: boolean;
+  speed: PlaybackSpeed;
+  onSeekingChange?: (seeking: boolean) => void;
+  onSpeedChange: (speed: PlaybackSpeed) => void;
 };
 
 const ReelVideoPlayer = forwardRef<ReelVideoPlayerHandle, ReelVideoPlayerProps>(function ReelVideoPlayer(
-  { url, isActive, muted, onProgressChange },
+  { url, isActive, muted, paused, speed, onSpeedChange, onSeekingChange },
   ref,
 ) {
   const safeUrl = url && url.length > 4 ? url : undefined;
@@ -747,6 +764,8 @@ const ReelVideoPlayer = forwardRef<ReelVideoPlayerHandle, ReelVideoPlayerProps>(
     p.loop = true;
     p.muted = muted;
   });
+
+  const { session, snapshot, refresh, isPlaybackActive } = usePlaybackInteraction(player, isActive, speed);
 
   useEffect(() => {
     try {
@@ -758,7 +777,7 @@ const ReelVideoPlayer = forwardRef<ReelVideoPlayerHandle, ReelVideoPlayerProps>(
 
   useEffect(() => {
     try {
-      if (isActive && safeUrl) {
+      if (isPlaybackActive && !paused && safeUrl) {
         player.play();
       } else {
         player.pause();
@@ -766,25 +785,19 @@ const ReelVideoPlayer = forwardRef<ReelVideoPlayerHandle, ReelVideoPlayerProps>(
     } catch {
       // ignore
     }
-  }, [player, isActive, safeUrl]);
+  }, [player, isPlaybackActive, paused, safeUrl]);
 
-  useEffect(() => {
-    if (!isActive || !safeUrl) return;
-    const progressTimer = setInterval(() => {
-      const duration = player.duration;
-      const currentTime = player.currentTime;
-      onProgressChange(duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0);
-    }, 250);
-    return () => clearInterval(progressTimer);
-  }, [isActive, onProgressChange, player, safeUrl]);
 
   useImperativeHandle(ref, () => ({
+    beginHold: () => { session.beginHold(); refresh(); },
+    endHold: () => { session.endHold(); refresh(); },
     enterFullscreen: async () => {
       await videoViewRef.current?.enterFullscreen();
     },
-  }), []);
+  }), [session, refresh]);
 
   return (
+    <>
     <View style={styles.videoPlayer}>
       {safeUrl ? (
         <VideoView
@@ -802,6 +815,10 @@ const ReelVideoPlayer = forwardRef<ReelVideoPlayerHandle, ReelVideoPlayerProps>(
         </View>
       )}
     </View>
+    <PlaybackSeekBar session={session} snapshot={snapshot} onChange={refresh} onSeekingChange={onSeekingChange} />
+    <PlaybackSpeedMenu speed={speed} onChange={onSpeedChange} />
+    {snapshot.holding ? <View pointerEvents="none" style={{ position: 'absolute', top: 92, alignSelf: 'center', zIndex: 122, backgroundColor: '#000b', padding: 10, borderRadius: 18 }}><Text style={{ color: '#fff' }}>2× Speed</Text></View> : null}
+    </>
   );
 });
 
@@ -832,6 +849,10 @@ function LimeCaption({ caption, onProfilePress }: LimeCaptionProps) {
 /* ReelItem — core reel card with full feature set                     */
 /* ─────────────────────────────────────────────────────────────────── */
 export type ReelItemProps = {
+  height?: number;
+  playbackSpeed?: PlaybackSpeed;
+  onPlaybackSpeedChange?: (speed: PlaybackSpeed) => void;
+  onSeekingChange?: (seeking: boolean) => void;
   reel: Reel;
   isActive: boolean;
   shouldLoadVideo: boolean;
@@ -852,6 +873,10 @@ export type ReelItemProps = {
 };
 
 export function ReelItem({
+  height = SCREEN_HEIGHT,
+  playbackSpeed,
+  onPlaybackSpeedChange,
+  onSeekingChange,
   reel,
   isActive,
   shouldLoadVideo,
@@ -882,7 +907,9 @@ export function ReelItem({
   const [preparedThumbnailUrl, setPreparedThumbnailUrl] = useState(
     reel.thumbnailUrl || reel.media.thumbnailUrl || ''
   );
-  const [videoProgress, setVideoProgress] = useState(0);
+  const [localSpeed, setLocalSpeed] = useState<PlaybackSpeed>(1);
+  const heldRef = useRef(false);
+  const touchOrigin = useRef({ x: 0, y: 0 });
   const [showReposters, setShowReposters] = useState(false);
   const videoPlayerRef = useRef<ReelVideoPlayerHandle>(null);
   const viewerReposted = isReposted
@@ -994,7 +1021,7 @@ export function ReelItem({
     return () => {
       if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
     };
-  }, []);
+  }, [isActive, reel.media.typeUrl]);
 
   const shareUrl = deepLinkService.getLimeShareUrl(reel.id);
   const shareTitle = reel.caption || `Lime by @${reel.user.userName}`;
@@ -1031,15 +1058,25 @@ export function ReelItem({
   }, [reel.user.userName, onProfilePress]);
 
   return (
-    <View style={styles.reelContainer}>
+    <View style={[styles.reelContainer, { height, width: '100%' }]}>
       {/* 1. Video player — bottom layer */}
       {shouldLoadVideo ? (
         <ReelVideoPlayer
+          key={reel.media.typeUrl}
           ref={videoPlayerRef}
           url={reel.media.typeUrl}
-          isActive={isActive && !paused && !shareSheetVisible && !showReposters}
+          isActive={isActive && !shareSheetVisible && !showReposters && !showOptionsMenu}
+          paused={paused}
+          speed={playbackSpeed ?? localSpeed}
+          onSpeedChange={onPlaybackSpeedChange ?? setLocalSpeed}
+          onSeekingChange={(seeking) => {
+            if (seeking) {
+              if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+              lastTapRef.current = null;
+            }
+            onSeekingChange?.(seeking);
+          }}
           muted={muted}
-          onProgressChange={setVideoProgress}
         />
       ) : (
         <View style={styles.videoPlayer} />
@@ -1048,7 +1085,21 @@ export function ReelItem({
       {/* 2. Double-tap + single-tap zone — full screen, sits behind controls */}
       <Pressable
         style={styles.doubleTapZone}
-        onPress={handleDoubleTapZoneTap}
+        key={`tap-${reel.media.typeUrl}`}
+        onPress={() => { if (!heldRef.current) handleDoubleTapZoneTap(); }}
+        delayLongPress={300}
+        onLongPress={() => { if (heldRef.current) return; heldRef.current = true; if (tapTimerRef.current) clearTimeout(tapTimerRef.current); videoPlayerRef.current?.beginHold(); }}
+        onPressOut={() => videoPlayerRef.current?.endHold()}
+        onTouchStart={(event) => {
+          heldRef.current = false;
+          touchOrigin.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+        }}
+        onTouchMove={(event) => {
+          if (Math.hypot(event.nativeEvent.pageX - touchOrigin.current.x, event.nativeEvent.pageY - touchOrigin.current.y) > 10) {
+            heldRef.current = true;
+            videoPlayerRef.current?.endHold();
+          }
+        }}
       />
 
       {/* 3. Pause indicator — overlay */}
@@ -1212,9 +1263,6 @@ export function ReelItem({
         </View>
       </View>
 
-      <View style={styles.videoProgressTrack} pointerEvents="none">
-        <View style={[styles.videoProgressFill, { width: `${Math.round(videoProgress * 100)}%` }]} />
-      </View>
 
       <ShareContentSheet
         visible={shareSheetVisible}
@@ -1405,7 +1453,7 @@ export const styles = StyleSheet.create({
   },
   reelContainer: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
+    flex: 1,
     backgroundColor: '#000000',
   },
   videoPlayer: {
@@ -1472,7 +1520,7 @@ export const styles = StyleSheet.create({
   bottomOverlay: {
     position: 'absolute',
     left: 16,
-    bottom: 30,
+    bottom: 54,
     right: 80,
     zIndex: 20,
   },

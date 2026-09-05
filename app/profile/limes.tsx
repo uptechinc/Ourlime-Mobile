@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PlaybackSpeed } from '@/lib/services/PlaybackInteractionService';
 import {
   AppState,
   View,
@@ -13,7 +14,7 @@ import {
   StyleSheet,
   type AppStateStatus,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Volume2, VolumeX } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams, useIsFocused } from 'expo-router';
 import type { Reel } from '@/types/userTypes';
@@ -37,6 +38,7 @@ export default function ProfileLimesScreen() {
   const router = useRouter();
   const { userId, limeId } = useLocalSearchParams<{ userId?: string; limeId?: string }>();
   const isScreenFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
 
   const currentUserId = authService.getCurrentUser()?.uid || authService.getVerifiedCurrentUser()?.uid || '';
   const targetUserId = userId || currentUserId;
@@ -44,6 +46,9 @@ export default function ProfileLimesScreen() {
   const [limes, setLimes] = useState<Reel[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(SCREEN_HEIGHT);
+  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
+  const [seeking, setSeeking] = useState(false);
   const [muted, setMuted] = useState(false);
   const [commentReelId, setCommentReelId] = useState<string | null>(null);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
@@ -134,7 +139,7 @@ export default function ProfileLimesScreen() {
     ({ viewableItems }: { viewableItems: { index: number | null }[] }) => {
       if (viewableItems.length > 0 && viewableItems[0].index !== null) {
         setActiveIndex(viewableItems[0].index);
-      }
+      } else setActiveIndex(-1);
     }
   ).current;
 
@@ -225,17 +230,19 @@ export default function ProfileLimesScreen() {
   }
 
   return (
-    <View style={screenStyles.container}>
+    <View style={[screenStyles.container, { paddingBottom: insets.bottom }]}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* Vertical Reel Pager (Scrolls ONLY through this user's profile limes) */}
       <FlatList
+        onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
         ref={limesListRef}
         data={limes}
         keyExtractor={(item) => item.id}
         pagingEnabled
         showsVerticalScrollIndicator={false}
-        snapToInterval={SCREEN_HEIGHT}
+        snapToInterval={viewportHeight}
+        scrollEnabled={!seeking}
         snapToAlignment="start"
         decelerationRate="fast"
         initialNumToRender={2}
@@ -243,8 +250,8 @@ export default function ProfileLimesScreen() {
         windowSize={3}
         removeClippedSubviews={Platform.OS === 'android'}
         getItemLayout={(_, index) => ({
-          length: SCREEN_HEIGHT,
-          offset: SCREEN_HEIGHT * index,
+          length: viewportHeight,
+          offset: viewportHeight * index,
           index,
         })}
         onViewableItemsChanged={onViewableItemsChanged}
@@ -264,6 +271,10 @@ export default function ProfileLimesScreen() {
         }}
         renderItem={({ item, index }) => (
           <ReelItem
+            height={viewportHeight}
+            playbackSpeed={playbackSpeed}
+            onPlaybackSpeedChange={setPlaybackSpeed}
+            onSeekingChange={setSeeking}
             reel={item}
             isActive={playbackAllowed && index === activeIndex}
             shouldLoadVideo={playbackAllowed && Math.abs(index - activeIndex) <= 1}

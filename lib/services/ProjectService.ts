@@ -1,13 +1,18 @@
 import {
   addDoc,
+  arrayRemove,
+  arrayUnion,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   type DocumentData,
@@ -323,15 +328,197 @@ export class ProjectService {
   }
 
   public async inviteMember(projectId: string, emailOrUserId: string, role: ProjectRole): Promise<void> {
-    await apiService.request<InviteProjectMemberResponse>('/api/projects/invite', {
-      method: 'POST',
-      authenticated: true,
-      body: {
+    const clean = emailOrUserId.trim();
+    if (!clean) throw new Error('Recipient is required.');
+
+    const currentUserId = auth.currentUser?.uid;
+    if (!currentUserId) throw new Error('You must be logged in to invite members.');
+
+    const projectRef = doc(db, 'projects', projectId);
+    const projectSnap = await getDoc(projectRef);
+    if (!projectSnap.exists()) throw new Error('Project not found.');
+
+    const projectData = projectSnap.data() as ProjectDocument;
+    const projectName = projectData.name || 'Project';
+    const currentUserName = auth.currentUser?.displayName || 'Project Lead';
+
+    let targetUserId: string | null = null;
+    let targetEmail: string | null = null;
+
+    if (clean.includes('@')) {
+      targetEmail = clean.toLowerCase();
+      const emailQuery = query(collection(db, 'users'), where('email', '==', targetEmail), limit(1));
+      const emailSnap = await getDocs(emailQuery);
+      if (!emailSnap.empty) {
+        targetUserId = emailSnap.docs[0].id;
+      }
+    } else {
+      const userDirectSnap = await getDoc(doc(db, 'users', clean));
+      if (userDirectSnap.exists()) {
+        targetUserId = clean;
+      } else {
+        const usernameQuery = query(collection(db, 'users'), where('userName', '==', clean), limit(1));
+        const usernameSnap = await getDocs(usernameQuery);
+        if (!usernameSnap.empty) {
+          targetUserId = usernameSnap.docs[0].id;
+        }
+      }
+    }
+
+    if (targetUserId) {
+      if (targetUserId === currentUserId) {
+        throw new Error('You cannot invite yourself.');
+      }
+      if (projectData.teamMembers?.[targetUserId]?.membershipStatus === 'accepted') {
+        throw new Error('User is already a member of this project.');
+      }
+
+      await updateDoc(projectRef, {
+        [`teamMembers.${targetUserId}`]: {
+          role,
+          membershipStatus: 'pending',
+          joinedAt: new Date().toISOString(),
+          invitedBy: currentUserId,
+          invitedByName: currentUserName,
+          permissions: {
+            canCreateTasks: role !== 'viewer',
+            canEditTasks: role !== 'viewer',
+            canDeleteTasks: false,
+            canInviteMembers: role === 'admin',
+          },
+        },
+        memberUids: arrayUnion(targetUserId),
+        updatedAt: serverTimestamp(),
+      });
+
+      try {
+        const notifRef = doc(collection(db, 'notifications'));
+        await setDoc(notifRef, {
+          userId: targetUserId,
+          senderId: currentUserId,
+          type: 'project_invitation',
+          title: 'Project Invitation',
+          message: `${currentUserName} invited you to join "${projectName}" as ${role}.`,
+          projectId,
+          projectName,
+          role,
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      } catch (notifErr) {
+        console.warn('[ProjectService.inviteMember] Notification creation skipped:', notifErr);
+      }
+    } else if (targetEmail) {
+      const inviteRef = doc(collection(db, 'projectEmailInvites'));
+      await setDoc(inviteRef, {
+        email: targetEmail,
         projectId,
-        recipient: emailOrUserId,
+        projectName,
         role,
-      },
+        status: 'pending',
+        invitedBy: currentUserId,
+        invitedByName: currentUserName,
+        createdAt: serverTimestamp(),
+      });
+    } else {
+      throw new Error(`User "${clean}" was not found.`);
+    }
+
+    try {
+      if (targetUserId) {
+        await apiService.request('/api/projects/invite', {
+          method: 'POST',
+          authenticated: true,
+          body: {
+            action: 'send',
+            projectId,
+            invitedUserId: targetUserId,
+            role,
+          },
+        });
+      } else if (targetEmail) {
+        await apiService.request('/api/projects/invite', {
+          method: 'POST',
+          authenticated: true,
+          body: {
+            action: 'send-email',
+            projectId,
+            email: targetEmail,
+            role,
+          },
+        });
+      }
+    } catch {
+      // Direct Firebase operation already succeeded
+    }
+  }
+
+  public async cancelInvite(projectId: string, targetUserId: string): Promise<void> {
+    const projectRef = doc(db, 'projects', projectId);
+    await updateDoc(projectRef, {
+      [`teamMembers.${targetUserId}`]: deleteField(),
+      memberUids: arrayRemove(targetUserId),
+      updatedAt: serverTimestamp(),
     });
+    try {
+      await apiService.request('/api/projects/invite', {
+        method: 'POST',
+        authenticated: true,
+        body: {
+          action: 'cancel',
+          projectId,
+          invitedUserId: targetUserId,
+        },
+      });
+    } catch {
+      // Direct Firebase operation already succeeded
+    }
+  }
+
+  public async resendInvite(projectId: string, targetUserId: string): Promise<void> {
+    const currentUserId = auth.currentUser?.uid || '';
+    const currentUserName = auth.currentUser?.displayName || 'Project Lead';
+    const projectRef = doc(db, 'projects', projectId);
+    const projectSnap = await getDoc(projectRef);
+    const projectName = (projectSnap.data() as ProjectDocument)?.name || 'Project';
+
+    await updateDoc(projectRef, {
+      [`teamMembers.${targetUserId}.invitedBy`]: currentUserId,
+      [`teamMembers.${targetUserId}.invitedByName`]: currentUserName,
+      [`teamMembers.${targetUserId}.joinedAt`]: new Date().toISOString(),
+      updatedAt: serverTimestamp(),
+    });
+
+    try {
+      const notifRef = doc(collection(db, 'notifications'));
+      await setDoc(notifRef, {
+        userId: targetUserId,
+        senderId: currentUserId,
+        type: 'project_invitation',
+        title: 'Project Invitation Reminder',
+        message: `${currentUserName} resent your invitation to join "${projectName}".`,
+        projectId,
+        projectName,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    } catch {
+      // Notification optional
+    }
+
+    try {
+      await apiService.request('/api/projects/invite', {
+        method: 'POST',
+        authenticated: true,
+        body: {
+          action: 'resend',
+          projectId,
+          invitedUserId: targetUserId,
+        },
+      });
+    } catch {
+      // Direct Firebase operation already succeeded
+    }
   }
 
   public async changeMemberRole(projectId: string, targetUserId: string, role: ProjectRole): Promise<void> {

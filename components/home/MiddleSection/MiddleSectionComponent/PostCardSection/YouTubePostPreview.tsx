@@ -1,6 +1,5 @@
 import { memo, useState } from 'react';
 import {
-  Dimensions,
   Image,
   Modal,
   StyleSheet,
@@ -17,8 +16,6 @@ type YouTubePostPreviewProps = {
   text: string;
   postId?: string;
 };
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export function getYouTubeVideoId(text: string): string | null {
   if (!text || !text.trim()) return null;
@@ -62,7 +59,7 @@ export function getYouTubeVideoId(text: string): string | null {
 }
 
 function YouTubePostPreviewComponent({ text, postId }: YouTubePostPreviewProps) {
-  const { colors, isDark } = useAppTheme();
+  const { colors } = useAppTheme();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 

@@ -24,7 +24,7 @@ import { DiagnosticLogService } from './DiagnosticLogService';
 import { AvatarService } from './AvatarService';
 import { ApiService, ApiServiceError } from './ApiService';
 import { DeepLinkService } from './DeepLinkService';
-import { PostMediaService, type MediaUploadProgress } from './PostMediaService';
+import { PostMediaService, isCancellationError, type MediaUploadProgress, type PostUploadStage } from './PostMediaService';
 import type { PageResult } from '@/lib/types/serviceResults';
 import { buildFeedQuery } from '@/lib/posts/FeedQuery';
 import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
@@ -47,8 +47,20 @@ export type PostMediaDraft = {
   fileSize?: number;
   durationSeconds?: number;
   thumbnailUri?: string;
+  trimStartSeconds?: number;
+  trimEndSeconds?: number;
 };
-export type PostMedia = { id: string; type: PostMediaType; typeUrl: string; fileName: string; thumbnailUrl?: string; displayOrder?: number };
+export type PostMedia = {
+  id: string;
+  type: PostMediaType;
+  typeUrl: string;
+  fileName: string;
+  thumbnailUrl?: string;
+  displayOrder?: number;
+  trimStartSeconds?: number;
+  trimEndSeconds?: number;
+  durationSeconds?: number;
+};
 export type PostUser = {
   id: string;
   firstName: string;
@@ -142,6 +154,7 @@ export type CreatePostInput = {
   location?: PostLocation;
   signal?: AbortSignal;
   onUploadProgress?: (progress: MediaUploadProgress) => void;
+  onStage?: (stage: PostUploadStage, index?: number) => void;
   communityId?: string;
   communityName?: string;
 };
@@ -218,20 +231,7 @@ export class PostService {
   }
 
   public async fetchCommunityPosts(communityId: string): Promise<PostItem[]> {
-    try {
-      const response = await this.apiService.request<{ data?: unknown[]; error?: string }>(
-        `/api/communities/fetch?type=posts&id=${encodeURIComponent(communityId)}`,
-        { authenticated: true, timeoutMs: 18_000 }
-      );
-      if (!response.data) throw new Error(response.error || 'Failed to load community posts');
-      return response.data.flatMap((record): PostItem[] => {
-        const mapped = this.mapApiPost(record);
-        return mapped ? [{ ...mapped, origin: 'community', communityId }] : [];
-      });
-    } catch (error: unknown) {
-      if (!this.canUseFirestore(error)) throw error;
-      return this.fetchCommunityPostsFromFirestore(communityId);
-    }
+    return this.fetchCommunityPostsFromFirestore(communityId);
   }
 
   public async fetchFeedPage(options: {
@@ -242,37 +242,12 @@ export class PostService {
     authorId?: string;
     signal?: AbortSignal;
   } = {}): Promise<FeedPage> {
-    const search = buildFeedQuery(options);
     try {
-      const response = await this.apiService.request<FeedApiResponse>(
-        `/api/home/MiddleSection/Post?${search}`,
-        { authenticated: Boolean(auth.currentUser), signal: options.signal, timeoutMs: 8_000 }
-      );
-      if (!response.success) throw new Error(response.error || 'Failed to load posts');
-      const posts = (response.data ?? []).flatMap((record): PostItem[] => {
-        const mapped = this.mapApiPost(record);
-        return mapped ? [mapped] : [];
-      });
-      this.logger.success('PostService', 'feed-api', {
-        scope: options.scope ?? 'home',
-        renderedPostCount: posts.length,
-        hasMore: response.pagination?.hasMore === true,
-        hasCursor: Boolean(response.pagination?.nextCursor),
-      });
-      return {
-        posts,
-        nextCursor: response.pagination?.nextCursor ?? null,
-        hasMore: response.pagination?.hasMore === true,
-      };
-    } catch (error: unknown) {
-      if (options.signal?.aborted) throw error;
-      this.logger.warn('PostService', 'feed-api:fallback-to-firestore', { scope: options.scope, error: String(error) });
-      try {
-        return await this.fetchFeedPageFromFirestore(options);
-      } catch (fsError: unknown) {
-        this.logger.error('PostService', 'feed-firestore:error', fsError);
-        throw fsError instanceof Error ? fsError : new Error('Unable to load the feed.');
-      }
+      return await this.fetchFeedPageFromFirestore(options);
+    } catch (fsError: unknown) {
+      if (options.signal?.aborted) throw fsError;
+      this.logger.error('PostService', 'feed-firestore:error', fsError);
+      throw fsError instanceof Error ? fsError : new Error('Unable to load the feed.');
     }
   }
 
@@ -400,6 +375,9 @@ export class PostService {
           typeUrl,
           fileName: readString(document.data.fileName),
           thumbnailUrl: readString(document.data.thumbnailUrl) || undefined,
+          trimStartSeconds: typeof document.data.trimStartSeconds === 'number' ? document.data.trimStartSeconds : undefined,
+          trimEndSeconds: typeof document.data.trimEndSeconds === 'number' ? document.data.trimEndSeconds : undefined,
+          durationSeconds: typeof document.data.durationSeconds === 'number' ? document.data.durationSeconds : undefined,
         });
         mediaByPost.set(postId, items);
       });
@@ -499,6 +477,9 @@ export class PostService {
         typeUrl,
         fileName: readString(document.data.fileName),
         thumbnailUrl: readString(document.data.thumbnailUrl) || undefined,
+        trimStartSeconds: typeof document.data.trimStartSeconds === 'number' ? document.data.trimStartSeconds : undefined,
+        trimEndSeconds: typeof document.data.trimEndSeconds === 'number' ? document.data.trimEndSeconds : undefined,
+        durationSeconds: typeof document.data.durationSeconds === 'number' ? document.data.durationSeconds : undefined,
       });
       mediaByPost.set(postId, mediaItems);
     });
@@ -556,6 +537,9 @@ export class PostService {
 
   public async createPost(input: CreatePostInput): Promise<PostItem> {
     const draftId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const startedAt = Date.now();
+    let stage: 'media-upload' | 'post-persistence' = 'media-upload';
+    let publicationStarted = false;
     let uploadedPaths: string[] = [];
     this.logger.info('PostService', 'create:start', {
       userId: input.userId,
@@ -571,9 +555,14 @@ export class PostService {
         media: input.media,
         signal: input.signal,
         onProgress: input.onUploadProgress,
+        onStage: input.onStage,
       });
       const media = upload.media;
       uploadedPaths = upload.storagePaths;
+      if (input.signal?.aborted) throw new Error('Post submission cancelled.');
+      stage = 'post-persistence';
+      input.onStage?.('publishing');
+      this.logger.info('PostService', 'create:persist:start', { draftId, mediaCount: media.length });
       const pollDuration = input.type === 'poll' ? input.pollDuration ?? 24 : undefined;
       const pollEndTime = pollDuration ? new Date(Date.now() + pollDuration * 60 * 60 * 1000).toISOString() : undefined;
       const pollOptions = input.type === 'poll'
@@ -581,6 +570,7 @@ export class PostService {
         : undefined;
       if (input.communityId) {
         if (input.type !== 'regular') throw new Error('Community polls and events use their dedicated creation tools');
+        publicationStarted = true;
         const communityPost = await addDoc(collection(db, 'communityVariantDetails'), {
           title: input.caption.trim(),
           caption: input.caption.trim(),
@@ -600,6 +590,9 @@ export class PostService {
             fileName: mediaItem.fileName,
             displayOrder: mediaItem.displayOrder ?? mediaIndex,
             ...(mediaItem.thumbnailUrl ? { thumbnailUrl: mediaItem.thumbnailUrl } : {}),
+            ...(typeof mediaItem.trimStartSeconds === 'number' ? { trimStartSeconds: mediaItem.trimStartSeconds } : {}),
+            ...(typeof mediaItem.trimEndSeconds === 'number' ? { trimEndSeconds: mediaItem.trimEndSeconds } : {}),
+            ...(typeof mediaItem.durationSeconds === 'number' ? { durationSeconds: mediaItem.durationSeconds } : {}),
             communityVariantDetailsId: communityPost.id,
           });
           return { ...mediaItem, id: summary.id };
@@ -624,78 +617,147 @@ export class PostService {
           communityName: input.communityName,
         };
       }
-      const response = await this.apiService.request<{
-        success: boolean;
-        data?: { postId?: string; location?: PostLocation | null };
-        error?: string;
-      }>('/api/home/MiddleSection/Post/createPost', {
-        method: 'POST',
-        authenticated: true,
-        signal: input.signal,
-        body: {
-          userId: input.userId,
-          type: input.type,
-          caption: input.caption.trim(),
-          description: input.description.trim(),
-          visibility: input.visibility,
-          hashtags: input.hashtags,
-          mentions: input.mentions,
-          friendReferences: input.friendReferences,
-          media: input.type === 'poll' ? [] : media,
-          pollData: input.type === 'poll' ? {
-            options: (input.pollOptions ?? []).map((option) => ({ id: option.id, text: option.text.trim() })),
-            duration: pollDuration,
-            endTime: pollEndTime,
-            image: media[0]?.typeUrl ?? null,
-          } : undefined,
-          location: input.location ?? null,
-        },
-      });
-      const postId = response.data?.postId;
-      if (!response.success || !postId) throw new Error(response.error || 'Post was not created');
-      this.logger.success('PostService', 'create', {
-        postId,
-        mediaCount: media.length,
-        transport: 'web-api',
-      });
-      try {
-        return await this.fetchPost(postId);
-      } catch (error: unknown) {
-        this.logger.warn('PostService', 'create-hydration-fallback', {
-          postId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      return {
-        id: postId,
-        origin: 'home',
-        userId: input.userId,
-        user: input.user,
-        type: input.type,
-        caption: input.caption.trim(),
-        description: input.description.trim(),
-        visibility: input.visibility,
-        hashtags: input.hashtags,
-        media,
-        mentions: input.mentions,
-        friendReferences: input.friendReferences,
-        stats: { likes: 0, comments: 0, shares: 0 },
-        likedUserIds: [],
-        createdAt: new Date().toISOString(),
-        pollOptions,
-        pollDuration,
-        pollEndTime,
-        pollVotes: {},
-        location: response.data?.location ?? input.location,
-      };
+      publicationStarted = true;
+      return await this.createPostInFirestore(input, media, pollDuration, pollEndTime, pollOptions);
     } catch (error: unknown) {
-      if (uploadedPaths.length > 0) await this.mediaService.cleanup(uploadedPaths);
-      this.logger.error('PostService', 'create', error, { userId: input.userId, draftId });
+      if (isCancellationError(error, input.signal)) {
+        this.logger.info('PostService', 'create:cancelled', { userId: input.userId, draftId, stage, elapsedMs: Date.now() - startedAt });
+      } else {
+        this.logger.error('PostService', 'create', error, { userId: input.userId, draftId, stage, elapsedMs: Date.now() - startedAt });
+      }
+      // A timed-out write may still have committed on the server. Retain its
+      // uploaded media instead of breaking a post whose outcome is uncertain.
+      if (!publicationStarted && uploadedPaths.length > 0) await this.mediaService.cleanup(uploadedPaths);
       throw error;
     }
   }
 
+  private async createPostInFirestore(
+    input: CreatePostInput,
+    media: PostMedia[],
+    pollDuration?: number,
+    pollEndTime?: string,
+    pollOptions?: { id: string; text: string; votes: number }[]
+  ): Promise<PostItem> {
+    const postRef = doc(collection(db, 'feedPosts'));
+    const countRef = doc(collection(db, 'likesCount'));
+    const basePostData: Record<string, unknown> = {
+      userId: input.userId,
+      caption: input.caption.trim(),
+      description: input.description.trim(),
+      visibility: input.visibility,
+      hashtags: input.hashtags || [],
+      mentions: input.mentions || [],
+      friendReferences: input.friendReferences || [],
+      type: input.type || 'regular',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      ...(input.location ? { location: input.location } : {}),
+      ...(input.type === 'poll' ? {
+        pollOptions: (input.pollOptions ?? []).map((o) => ({ id: o.id, text: o.text.trim() })),
+        pollDuration: pollDuration ?? 1,
+        pollEndTime: pollEndTime ?? null,
+        pollVotes: {},
+      } : {}),
+    };
+
+    const batch = writeBatch(db);
+    batch.set(postRef, basePostData);
+    batch.set(countRef, {
+      feedsPostId: postRef.id,
+      likeCount: 0,
+      commentCount: 0,
+      shareCount: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    await batch.commit();
+
+    try {
+      await updateDoc(doc(db, 'users', input.userId), { postsCount: increment(1) });
+    } catch {
+      // User doc update is best-effort
+    }
+
+    const mediaRecords = await Promise.all(
+      media.map(async (mediaItem, mediaIndex) => {
+        const summary = await addDoc(collection(db, 'feedsPostSummary'), {
+          feedsPostId: postRef.id,
+          type: mediaItem.type,
+          typeUrl: mediaItem.typeUrl,
+          fileName: mediaItem.fileName,
+          displayOrder: mediaItem.displayOrder ?? mediaIndex,
+          ...(mediaItem.thumbnailUrl ? { thumbnailUrl: mediaItem.thumbnailUrl } : {}),
+          ...(typeof mediaItem.trimStartSeconds === 'number' ? { trimStartSeconds: mediaItem.trimStartSeconds } : {}),
+          ...(typeof mediaItem.trimEndSeconds === 'number' ? { trimEndSeconds: mediaItem.trimEndSeconds } : {}),
+          ...(typeof mediaItem.durationSeconds === 'number' ? { durationSeconds: mediaItem.durationSeconds } : {}),
+        });
+        return { ...mediaItem, id: summary.id };
+      })
+    );
+
+    this.logger.success('PostService', 'create', {
+      postId: postRef.id,
+      mediaCount: media.length,
+      transport: 'firestore-fallback',
+    });
+
+    return {
+      id: postRef.id,
+      origin: 'home',
+      userId: input.userId,
+      user: input.user,
+      type: input.type,
+      caption: input.caption.trim(),
+      description: input.description.trim(),
+      visibility: input.visibility,
+      hashtags: input.hashtags,
+      media: mediaRecords,
+      mentions: input.mentions,
+      friendReferences: input.friendReferences,
+      stats: { likes: 0, comments: 0, shares: 0 },
+      likedUserIds: [],
+      createdAt: new Date().toISOString(),
+      pollOptions,
+      pollDuration,
+      pollEndTime,
+      pollVotes: {},
+      location: input.location,
+    };
+  }
+
   public async fetchPost(postId: string): Promise<PostItem> {
+    try {
+      const snap = await getDoc(doc(db, 'feedPosts', postId));
+      if (snap.exists()) {
+        const rawData = snap.data();
+        const data = isRecord(rawData) ? rawData : {};
+        const postDoc = { id: snap.id, data };
+        const userId = readString(data.userId);
+        const [userCards, mediaDocs, countDocs, likeDocs] = await Promise.all([
+          this.loadUserCards([userId]),
+          this.getDocumentsByField('feedsPostSummary', 'feedsPostId', [postId]),
+          this.getDocumentsByField('likesCount', 'feedsPostId', [postId]),
+          this.getDocumentsByField('feedsPostLikeCount', 'feedsPostId', [postId]),
+        ]);
+        const userCard = userCards.get(userId) ?? this.emptyUser(userId);
+        const mediaItems = mediaDocs.map((d) => ({
+          id: d.id,
+          type: (readString(d.data.type) === 'video' ? 'video' : 'image') as PostMediaType,
+          typeUrl: readString(d.data.typeUrl),
+          fileName: readString(d.data.fileName),
+          thumbnailUrl: readString(d.data.thumbnailUrl) || undefined,
+          trimStartSeconds: typeof d.data.trimStartSeconds === 'number' ? d.data.trimStartSeconds : undefined,
+          trimEndSeconds: typeof d.data.trimEndSeconds === 'number' ? d.data.trimEndSeconds : undefined,
+          durationSeconds: typeof d.data.durationSeconds === 'number' ? d.data.durationSeconds : undefined,
+        }));
+        const counter = countDocs[0]?.data ?? data;
+        const likedUserIds = likeDocs.filter((d) => d.data.likes === true).map((d) => readString(d.data.userId)).filter(Boolean);
+        return this.mapPost(postDoc, userCard, mediaItems, counter, likedUserIds);
+      }
+    } catch {
+      // Fallback
+    }
     const response = await this.apiService.request<{ success: boolean; data?: unknown; error?: string }>(
       `/api/posts/${encodeURIComponent(postId)}`,
       { authenticated: Boolean(auth.currentUser) }

@@ -59,13 +59,14 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
   const router = useRouter();
   const { isDark, colors } = useAppTheme();
   const swipeDismiss = useSwipeDismiss({ visible: visible && mode === 'modal', onDismiss: onClose });
-  const { notifications, unreadCount, readCount, totalCount, isLoading, hasMore, loadMore, markAsRead, markManyAsRead, markManyAsUnread, markAllAsRead, deleteNotifications, refreshNotifications } = useNotifications();
+  const { notifications, unreadCount, readCount, isLoading, hasMore, loadMore, markAsRead, markManyAsRead, markManyAsUnread, markAllAsRead, deleteNotifications, refreshNotifications } = useNotifications();
 
   const [sortMode, setSortMode] = useState<SortMode>('unread_first');
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [showReadNotifs, setShowReadNotifs] = useState(false);
+  const [isUnreadExpanded, setIsUnreadExpanded] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [markingAllRead, setMarkingAllRead] = useState(false);
@@ -94,6 +95,18 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
     if (!hasMore || loadingMore) return;
     setLoadingMore(true);
     try { await loadMore(); } finally { setLoadingMore(false); }
+  };
+
+  const handleToggleRead = async () => {
+    if (!showReadNotifs && readItems.length === 0 && hasMore) {
+      setLoadingMore(true);
+      try {
+        await loadMore();
+      } finally {
+        setLoadingMore(false);
+      }
+    }
+    setShowReadNotifs((prev) => !prev);
   };
 
   const closeDialog = () => setDialogState((prev) => ({ ...prev, visible: false }));
@@ -150,6 +163,15 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
     return unreadItems.length;
   }, [activeFilter, unreadCount, unreadItems.length]);
 
+  // Visible notifications currently shown in the list
+  const visibleNotifications = useMemo(() => {
+    if (sortMode === 'newest_first') return sortedNotifications;
+    const items: NotificationData[] = [];
+    if (isUnreadExpanded) items.push(...unreadItems);
+    if (showReadNotifs) items.push(...readItems);
+    return items;
+  }, [sortMode, sortedNotifications, isUnreadExpanded, unreadItems, showReadNotifs, readItems]);
+
   // Count unread vs read items among current selection
   const selectedUnreadCount = useMemo(() => {
     return Array.from(selectedIds).filter((id) => {
@@ -166,13 +188,14 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
   }, [selectedIds, sortedNotifications]);
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === sortedNotifications.length && sortedNotifications.length > 0) {
+    const targetItems = visibleNotifications;
+    if (selectedIds.size > 0 && selectedIds.size >= targetItems.length && targetItems.length > 0) {
       setSelectedIds(new Set());
       setSelectionMode(false);
     } else {
-      const validIds = sortedNotifications.map((n) => n.id).filter((id): id is string => typeof id === 'string' && id.length > 0);
+      const validIds = targetItems.map((n) => n.id).filter((id): id is string => typeof id === 'string' && id.length > 0);
       setSelectedIds(new Set(validIds));
-      setSelectionMode(true);
+      setSelectionMode(validIds.length > 0);
     }
   };
 
@@ -605,13 +628,13 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
             {/* Select All / Deselect All */}
             <TouchableOpacity onPress={toggleSelectAll} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}>
               <Icon
-                name={selectedIds.size > 0 && selectedIds.size === sortedNotifications.length ? 'check-square' : 'square'}
+                name={selectedIds.size > 0 && selectedIds.size === visibleNotifications.length ? 'check-square' : 'square'}
                 size={18}
                 color={selectedIds.size > 0 ? '#10b981' : '#64748b'}
                 style={{ marginRight: 6 }}
               />
               <Text style={{ fontSize: 13, color: colors.secondaryText, fontWeight: '700' }}>
-                {selectedIds.size === sortedNotifications.length && sortedNotifications.length > 0 ? 'Deselect all' : 'Select all'}
+                {selectedIds.size === visibleNotifications.length && visibleNotifications.length > 0 ? 'Deselect all' : 'Select all'}
               </Text>
             </TouchableOpacity>
 
@@ -729,62 +752,121 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
             </View>
           ) : (
             <>
-              {/* Unread Section Header */}
-              {unreadItems.length > 0 && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#10b981', marginRight: 6 }} />
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#10b981', letterSpacing: 0.5 }}>
-                    UNREAD · {displayUnreadCount}
-                  </Text>
-                </View>
-              )}
+              {sortMode === 'unread_first' ? (
+                <>
+                  {/* ── Unread Collapsible Section ── */}
+                  {unreadItems.length > 0 && (
+                    <View style={{ marginBottom: 12 }}>
+                      <TouchableOpacity
+                        onPress={() => setIsUnreadExpanded((v) => !v)}
+                        activeOpacity={0.7}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : '#ecfdf5',
+                          paddingVertical: 10,
+                          paddingHorizontal: 14,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#a7f3d0',
+                          marginBottom: isUnreadExpanded ? 10 : 4,
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#10b981', marginRight: 8 }} />
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#10b981', letterSpacing: 0.5 }}>
+                            UNREAD
+                          </Text>
+                          <View
+                            style={{
+                              marginLeft: 8,
+                              backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#d1fae5',
+                              borderRadius: 10,
+                              paddingHorizontal: 8,
+                              paddingVertical: 2,
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#10b981' }}>
+                              {displayUnreadCount}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: '#10b981', marginRight: 4 }}>
+                            {isUnreadExpanded ? 'Collapse' : 'Expand'}
+                          </Text>
+                          <Icon name={isUnreadExpanded ? 'chevron-up' : 'chevron-down'} size={15} color="#10b981" />
+                        </View>
+                      </TouchableOpacity>
 
-              {/* Render Unread Notifications at the Top */}
-              {unreadItems.map(renderNotificationCard)}
-
-              {/* ── Web Parity "Show read notifications" / "Hide read notifications" Toggle Button ── */}
-              {displayReadCount > 0 && (
-                <View style={{ marginTop: 16, marginBottom: 16 }}>
-                  <TouchableOpacity
-                    onPress={() => setShowReadNotifs((v) => !v)}
-                    activeOpacity={0.7}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: colors.surface,
-                      paddingVertical: 12,
-                      paddingHorizontal: 16,
-                      borderRadius: 14,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                    }}
-                  >
-                    <Icon name={showReadNotifs ? 'bell-off' : 'bell'} size={15} color="#64748b" style={{ marginRight: 8 }} />
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.secondaryText }}>
-                      {showReadNotifs ? 'Hide read notifications' : 'Show read notifications'}
-                    </Text>
-                    <View style={{
-                      marginLeft: 8,
-                      backgroundColor: '#e2e8f0',
-                      borderRadius: 10,
-                      paddingHorizontal: 8,
-                      paddingVertical: 2,
-                    }}>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569' }}>
-                        {displayReadCount}
-                      </Text>
-                    </View>
-                    <Icon name={showReadNotifs ? 'chevron-up' : 'chevron-down'} size={16} color="#64748b" style={{ marginLeft: 6 }} />
-                  </TouchableOpacity>
-
-                  {/* Render Read Notifications Below when Expanded */}
-                  {showReadNotifs && (
-                    <View style={{ marginTop: 12 }}>
-                      {readItems.map(renderNotificationCard)}
+                      {/* Render Unread Notifications when Expanded */}
+                      {isUnreadExpanded && unreadItems.map(renderNotificationCard)}
                     </View>
                   )}
-                </View>
+
+                  {/* ── Read Collapsible Section ── */}
+                  {(displayReadCount > 0 || readItems.length > 0) && (
+                    <View style={{ marginTop: unreadItems.length > 0 ? 8 : 0, marginBottom: 16 }}>
+                      <TouchableOpacity
+                        onPress={() => void handleToggleRead()}
+                        activeOpacity={0.7}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          backgroundColor: colors.surface,
+                          paddingVertical: 10,
+                          paddingHorizontal: 14,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          marginBottom: showReadNotifs ? 10 : 0,
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#94a3b8', marginRight: 8 }} />
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: colors.secondaryText, letterSpacing: 0.5 }}>
+                            READ
+                          </Text>
+                          <View
+                            style={{
+                              marginLeft: 8,
+                              backgroundColor: isDark ? 'rgba(148, 163, 184, 0.15)' : '#e2e8f0',
+                              borderRadius: 10,
+                              paddingHorizontal: 8,
+                              paddingVertical: 2,
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.secondaryText }}>
+                              {displayReadCount}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.secondaryText, marginRight: 4 }}>
+                            {showReadNotifs ? 'Collapse' : 'Expand'}
+                          </Text>
+                          {loadingMore && !showReadNotifs && readItems.length === 0 ? (
+                            <ActivityIndicator size="small" color={colors.secondaryText} style={{ transform: [{ scale: 0.8 }] }} />
+                          ) : (
+                            <Icon name={showReadNotifs ? 'chevron-up' : 'chevron-down'} size={15} color={colors.secondaryText} />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+
+                      {/* Render Read Notifications Below when Expanded */}
+                      {showReadNotifs && (
+                        <View style={{ marginTop: 10 }}>
+                          {readItems.map(renderNotificationCard)}
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </>
+              ) : (
+                /* Pure chronological newest first */
+                sortedNotifications.map(renderNotificationCard)
               )}
               {loadingMore ? <ActivityIndicator color="#10b981" style={{ marginVertical: 16 }} /> : null}
             </>

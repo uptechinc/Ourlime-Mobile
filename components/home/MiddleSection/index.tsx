@@ -28,7 +28,6 @@ import { useAppDrawer } from '@/lib/contexts/AppDrawerContext';
 
 type MiddleSectionProps = {
   userProfile: UserProfile;
-  createdPost: PostItem | null;
   onCreatePost: () => void;
 };
 
@@ -84,7 +83,7 @@ function rowKey(row: FeedRow): string {
   return row.kind;
 }
 
-export default function MiddleSection({ userProfile, createdPost, onCreatePost }: MiddleSectionProps) {
+export default function MiddleSection({ userProfile, onCreatePost }: MiddleSectionProps) {
   const { colors, isDark } = useAppTheme();
   const { state: drawerState } = useAppDrawer();
   const [loadingMore, setLoadingMore] = useState(false);
@@ -110,12 +109,6 @@ export default function MiddleSection({ userProfile, createdPost, onCreatePost }
   // Track which post IDs are currently visible in the viewport (for video play/pause)
   const [visiblePostIds, setVisiblePostIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (!createdPost) return;
-    setActiveFilter('All');
-    void feedResourceService.prependCreated({ userId: userProfile.uid, scope: 'home', filter: 'all' }, createdPost);
-    if (createdPost.communityId) void feedResourceService.prependCreated({ userId: userProfile.uid, scope: 'communities', filter: 'all' }, createdPost);
-  }, [createdPost, userProfile.uid]);
 
   const activePost = activePostId ? posts.find((post) => post.id === activePostId) ?? null : null;
 

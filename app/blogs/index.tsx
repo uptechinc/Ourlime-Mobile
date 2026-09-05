@@ -285,7 +285,13 @@ export default function BlogsScreen() {
       <View style={[styles.headerBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <TouchableOpacity
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          onPress={() => router.back()}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.navigate('/(tabs)');
+            }
+          }}
           style={styles.headerIconButton}
           accessibilityLabel="Go back"
         >

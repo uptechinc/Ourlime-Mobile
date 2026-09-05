@@ -1,4 +1,4 @@
-import { db, auth } from '@/lib/firebaseConfig';
+import { db, auth, storage } from '@/lib/firebaseConfig';
 import {
   collection,
   doc,
@@ -13,6 +13,7 @@ import {
   orderBy,
   limit,
 } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { ApiService } from '@/lib/services/ApiService';
 import type {
   BlogPostDetail,
@@ -64,6 +65,26 @@ export class BlogsAndArticlesService {
       BlogsAndArticlesService.instance = new BlogsAndArticlesService();
     }
     return BlogsAndArticlesService.instance;
+  }
+
+  private readonly postCache = new Map<string, BlogListItem | BlogPostDetail>();
+
+  public cachePost(post: BlogListItem | BlogPostDetail): void {
+    if (!post?.id) return;
+    this.postCache.set(post.id, post);
+  }
+
+  public getCachedPost(postId: string): BlogListItem | BlogPostDetail | null {
+    return this.postCache.get(postId) ?? null;
+  }
+
+  public async uploadCoverImage(userId: string, localUri: string): Promise<string> {
+    const filename = `blogs/${userId}/covers/${Date.now()}.jpg`;
+    const storageRef = ref(storage, filename);
+    const response = await fetch(localUri);
+    const blob = await response.blob();
+    await uploadBytesResumable(storageRef, blob, { contentType: 'image/jpeg' });
+    return getDownloadURL(storageRef);
   }
 
   public async createPost(postData: {
@@ -278,6 +299,7 @@ export class BlogsAndArticlesService {
         })
       );
 
+      posts.forEach((item) => this.cachePost(item));
       return posts;
     } catch (error) {
       console.error('Error fetching posts:', error);
@@ -412,7 +434,7 @@ export class BlogsAndArticlesService {
         }
       }
 
-      return {
+      const detail: BlogPostDetail = {
         id: postId,
         userId: readString(data.userId),
         title: readString(data.title, 'Untitled Post'),
@@ -443,6 +465,8 @@ export class BlogsAndArticlesService {
         status: data.status || 'published',
         contentLabels: data.contentLabels || [],
       };
+      this.cachePost(detail);
+      return detail;
     } catch (error) {
       console.error('[getPostDetail] Failed to load blog:', error);
       throw error;

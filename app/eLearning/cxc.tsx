@@ -12,9 +12,7 @@ import {
   ChevronLeft,
   BookOpen,
   FileText,
-  Download,
   CheckCircle,
-  Sparkles,
   GraduationCap,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';

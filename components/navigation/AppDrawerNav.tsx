@@ -25,11 +25,18 @@ type AppDrawerNavProps = {
 const authService = AuthService.getInstance();
 
 export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawerNavProps) {
-  const { authorization, getDecision } = usePageAccess();
+  const { authorization, getDecision, triggerOverlay } = usePageAccess();
   const { isDark } = useAppTheme();
   const router = useRouter();
   const themeStyles = createThemeStyles(isDark);
   const navigateTo = (item: AppNavigationItem) => {
+    const routeString = typeof item.route === 'string' ? item.route : (item.route as { pathname: string }).pathname;
+    const decision = getDecision(routeString);
+    if (!decision.canAccess) {
+      onClose();
+      triggerOverlay(routeString);
+      return;
+    }
     onClose();
     router.push(item.route);
   };

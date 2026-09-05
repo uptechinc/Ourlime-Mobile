@@ -192,20 +192,31 @@ export default function AppHeader({
                                 {unreadCount > 0 && (
                                     <View style={{
                                         position: 'absolute',
-                                        top: -2,
-                                        right: -2,
+                                        top: -4,
+                                        right: unreadCount > 99 ? -8 : unreadCount > 9 ? -6 : -3,
                                         backgroundColor: '#10b981',
                                         borderRadius: 10,
-                                        minWidth: 20,
+                                        minWidth: unreadCount > 99 ? 34 : unreadCount > 9 ? 28 : 20,
                                         height: 20,
                                         alignItems: 'center',
                                         justifyContent: 'center',
-                                        paddingHorizontal: 4,
+                                        paddingHorizontal: unreadCount > 99 ? 4 : unreadCount > 9 ? 4 : 2,
                                         borderWidth: 2,
                                         borderColor: '#ffffff',
                                         elevation: 3,
+                                        flexDirection: 'row',
                                     }}>
-                                        <Text style={{ color: '#ffffff', fontSize: 10, fontWeight: '800' }}>
+                                        <Text
+                                            numberOfLines={1}
+                                            ellipsizeMode="clip"
+                                            style={{
+                                                color: '#ffffff',
+                                                fontSize: unreadCount > 99 ? 9 : 10.5,
+                                                fontWeight: '800',
+                                                textAlign: 'center',
+                                                includeFontPadding: false,
+                                            }}
+                                        >
                                             {unreadCount > 99 ? '99+' : unreadCount}
                                         </Text>
                                     </View>

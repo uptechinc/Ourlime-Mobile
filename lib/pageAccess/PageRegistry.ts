@@ -103,7 +103,7 @@ export const MOBILE_PAGE_REGISTRY: readonly PageRegistryEntry[] = [
 		name: 'Blogs',
 		route: '/blogs',
 		description: 'Blogs and articles',
-		defaultStatus: 'coming_soon',
+		defaultStatus: 'enabled',
 	},
 	{
 		id: 'elearning',

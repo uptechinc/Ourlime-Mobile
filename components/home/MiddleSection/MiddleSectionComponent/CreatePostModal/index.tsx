@@ -18,20 +18,17 @@ import * as ImagePicker from 'expo-image-picker';
 import Icon from 'react-native-vector-icons/Feather';
 import type { UserProfile } from '@/lib/services/AuthService';
 import {
-  PostService,
-  type PostItem,
   type PostLocation,
   type PostMediaDraft,
   type PostType,
   type PostVisibility,
 } from '@/lib/services/PostService';
-import { MAX_POST_MEDIA, PostMediaService, type PendingImageCrop } from '@/lib/services/PostMediaService';
+import { MAX_POST_MEDIA, PostMediaService, type PendingImageCrop, type PendingVideoTrim } from '@/lib/services/PostMediaService';
 import UserAvatar from '@/components/ui/UserAvatar';
 import LocationPickerModal from './LocationPickerModal';
 import MediaCropModal from './MediaCropModal';
+import VideoTrimModal from './VideoTrimModal';
 import { RelationshipService, type RelationshipUser } from '@/lib/services/RelationshipService';
-import { dispatchMentionNotifications } from '@/lib/services/dispatchMentionNotifications';
-import { EventService } from '@/lib/services/EventService';
 import { SearchService } from '@/lib/services/SearchService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import CustomModal from '@/components/ui/CustomModal';
@@ -39,8 +36,9 @@ import { linkPresentationService } from '@/lib/services/LinkPresentationService'
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
-import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
+import { postSubmissionService } from '@/lib/services/PostSubmissionService';
 import VideoThumbnailPicker from '@/components/media/VideoThumbnailPicker';
+import { diagnosticLogService } from '@/lib/services/DiagnosticLogService';
 
 type DraftPollOption = { id: string; text: string };
 type TextSelection = { start: number; end: number };
@@ -50,15 +48,12 @@ type ComposerFeedback = { title: string; message: string };
 type CreatePostModalProps = {
   setTogglePostForm: Dispatch<SetStateAction<boolean>>;
   userProfile: UserProfile;
-  onCreatePost: (post: PostItem) => void;
   communityId?: string;
   communityName?: string;
 };
 
-const postService = PostService.getInstance();
 const mediaService = PostMediaService.getInstance();
 const relationshipService = RelationshipService.getInstance();
-const eventService = EventService.getInstance();
 const searchService = SearchService.getInstance();
 const emojis = ['😀', '😂', '😍', '🥳', '😎', '🤔', '😢', '😡', '👍', '👏', '🙏', '❤️', '🔥', '🎉', '🇹🇹', '🌴', '⚽', '🎵', '🍋', '✨'];
 const pollDurations: PollDurationChoice[] = [
@@ -75,10 +70,9 @@ const pollDurations: PollDurationChoice[] = [
 
 const normalizeHashtag = (value: string): string => value.trim().replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '').toLowerCase();
 
-export default function CreatePostModal({ setTogglePostForm, userProfile, onCreatePost, communityId, communityName }: CreatePostModalProps) {
+export default function CreatePostModal({ setTogglePostForm, userProfile, communityId, communityName }: CreatePostModalProps) {
   const { colors } = useAppTheme();
   const captionInputRef = useRef<TextInput>(null);
-  const uploadControllerRef = useRef<AbortController | undefined>(undefined);
   const [postType, setPostType] = useState<PostType>('regular');
   const [visibility, setVisibility] = useState<PostVisibility>('public');
   const [caption, setCaption] = useState('');
@@ -86,6 +80,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
   const [description] = useState('');
   const [media, setMedia] = useState<PostMediaDraft[]>([]);
   const [cropQueue, setCropQueue] = useState<PendingImageCrop[]>([]);
+  const [trimQueue, setTrimQueue] = useState<PendingVideoTrim[]>([]);
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [hashtagInput, setHashtagInput] = useState('');
   const [location, setLocation] = useState<PostLocation>();
@@ -97,7 +92,6 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
   const [customPollUnit, setCustomPollUnit] = useState<CustomPollUnit>('hours');
   const [pollOptions, setPollOptions] = useState<DraftPollOption[]>([{ id: '1', text: '' }, { id: '2', text: '' }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [friends, setFriends] = useState<RelationshipUser[]>([]);
 
   const [searchedUsers, setSearchedUsers] = useState<RelationshipUser[]>([]);
@@ -210,7 +204,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
 
   const validPollOptions = pollOptions.filter((option) => option.text.trim());
   const hasNonMentionContent = caption.replace(/@[\w.-]+/g, '').trim().length > 0 || eventTitle.trim().length > 0;
-  const isPostDisabled = isSubmitting || cropQueue.length > 0 || (postType === 'poll'
+  const isPostDisabled = isSubmitting || cropQueue.length > 0 || trimQueue.length > 0 || (postType === 'poll'
     ? validPollOptions.length < 2 || !hasNonMentionContent
     : postType === 'event'
     ? !eventTitle.trim() && !hasNonMentionContent
@@ -222,7 +216,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
 
   const handlePickMedia = async () => {
     const maximum = postType === 'poll' ? 1 : MAX_POST_MEDIA;
-    const availableSlots = maximum - media.length - cropQueue.length;
+    const availableSlots = maximum - media.length - cropQueue.length - trimQueue.length;
     if (availableSlots <= 0) {
       setComposerFeedback({ title: 'Media limit reached', message: postType === 'poll' ? 'A poll can contain one optional image.' : `A post can contain up to ${MAX_POST_MEDIA} photos or videos.` });
       return;
@@ -239,15 +233,21 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
       selectionLimit: availableSlots,
     });
     if (result.canceled) return;
-    const validated = await mediaService.validateSelection(result.assets, media.length + cropQueue.length);
+    const validated = await mediaService.validateSelection(result.assets, media.length + cropQueue.length + trimQueue.length);
     if (validated.errors.length > 0) setComposerFeedback({ title: 'Some media could not be added', message: validated.errors.join('\n\n') });
     setMedia((current) => [...current, ...validated.videos].slice(0, maximum));
     setCropQueue((current) => [...current, ...validated.imagesToCrop].slice(0, maximum - media.length - validated.videos.length));
+    setTrimQueue((current) => [...current, ...validated.videosToTrim].slice(0, maximum - media.length - validated.videos.length - validated.imagesToCrop.length));
   };
 
   const handleCroppedMedia = (item: PostMediaDraft) => {
     setMedia((current) => [...current, item].slice(0, MAX_POST_MEDIA));
     setCropQueue((current) => current.slice(1));
+  };
+
+  const handleTrimmedVideo = (item: PostMediaDraft) => {
+    setMedia((current) => [...current, item].slice(0, MAX_POST_MEDIA));
+    setTrimQueue((current) => current.slice(1));
   };
 
   const handleAddHashtag = () => {
@@ -286,15 +286,12 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
     return customPollUnit === 'seconds' ? value / 3600 : customPollUnit === 'minutes' ? value / 60 : customPollUnit === 'days' ? value * 24 : value;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (isPostDisabled) return;
     setIsSubmitting(true);
-    setUploadProgress(0);
-    const controller = new AbortController();
-    uploadControllerRef.current = controller;
     try {
-      if (postType === 'event') {
-        await eventService.createEvent({
+      postSubmissionService.start({
+        event: postType === 'event' ? {
           title: eventTitle.trim() || caption.trim(),
           description: caption.trim() || description.trim(),
           summary: caption.trim(),
@@ -313,10 +310,8 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
             userName: userProfile.userName,
             profileImage: userProfile.profilePicture ?? null,
           },
-        });
-      }
-
-      const createdPost = await postService.createPost({
+        } : undefined,
+        post: {
         userId: userProfile.uid,
         user: {
           id: userProfile.uid,
@@ -336,27 +331,15 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
         pollOptions: postType === 'poll' ? validPollOptions : undefined,
         pollDuration: postType === 'poll' ? getPollDurationHours() : undefined,
         location: postType === 'regular' || postType === 'event' ? location : undefined,
-        signal: controller.signal,
-        onUploadProgress: (progress) => setUploadProgress(Math.min(100, Math.max(0, Math.round(progress.percentage)))),
         communityId,
         communityName,
+        },
       });
-      onCreatePost(createdPost);
-      dispatchMentionNotifications({
-        actorUserId: userProfile.uid,
-        actorName: userProfile.userName || userProfile.firstName,
-        actorProfileImage: userProfile.profilePicture ?? undefined,
-        content: caption.trim(),
-        contentType: 'post',
-        postId: createdPost.id,
-      });
-      void interactionFeedbackService.play('success');
       setTogglePostForm(false);
     } catch (error: unknown) {
-      console.error('[CreatePostModal.handleSubmit]', error);
+      diagnosticLogService.error('CreatePostModal', 'submit', error, { postType, mediaCount: media.length });
       setComposerFeedback({ title: 'Post not created', message: error instanceof Error ? error.message : 'Please check your connection and try again.' });
     } finally {
-      uploadControllerRef.current = undefined;
       setIsSubmitting(false);
     }
   };
@@ -376,16 +359,6 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
-            {isSubmitting && media.length > 0 ? (
-              <View style={{ marginBottom: 14, padding: 12, borderRadius: 12, backgroundColor: colors.successSurface }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <ActivityIndicator size="small" color={colors.accent} />
-                  <Text style={{ flex: 1, marginLeft: 9, color: colors.successText, fontWeight: '700' }}>Uploading media… {uploadProgress}%</Text>
-                  <TouchableOpacity onPress={() => uploadControllerRef.current?.abort()}><Text style={{ color: colors.destructiveText, fontWeight: '700' }}>Cancel</Text></TouchableOpacity>
-                </View>
-                <View style={{ height: 5, marginTop: 9, borderRadius: 3, backgroundColor: colors.control, overflow: 'hidden' }}><View style={{ width: `${uploadProgress}%`, height: '100%', backgroundColor: colors.accent }} /></View>
-              </View>
-            ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 18 }}>
               <UserAvatar profileImage={userProfile.profilePicture} firstName={userProfile.firstName || userProfile.email} size={52} />
               <View style={{ flex: 1, marginLeft: 12 }}>
@@ -654,6 +627,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, onCrea
       </SafeAreaView>
 
       {cropQueue[0] ? <MediaCropModal pending={cropQueue[0]} queueLength={cropQueue.length} onCancel={() => setCropQueue((current) => current.slice(1))} onComplete={handleCroppedMedia} /> : null}
+      {trimQueue[0] ? <VideoTrimModal pending={trimQueue[0]} queueLength={trimQueue.length} onCancel={() => setTrimQueue((current) => current.slice(1))} onComplete={handleTrimmedVideo} /> : null}
       {showLocationPicker ? <LocationPickerModal initialLocation={location} onClose={() => setShowLocationPicker(false)} onSelect={(selectedLocation) => { setLocation(selectedLocation); setShowLocationPicker(false); }} /> : null}
       <CustomModal visible={Boolean(composerFeedback)} title={composerFeedback?.title ?? 'Create post'} message={composerFeedback?.message ?? ''} type="error" onClose={() => setComposerFeedback(null)} />
       </Animated.View>

@@ -16,6 +16,8 @@ export class AgoraCallService {
   private eventHandler: import('react-native-agora').IRtcEngineEventHandler | null = null;
   private listener: AgoraStateListener | null = null;
 
+  private isSwitchingCamera = false;
+
   private constructor() {}
 
   public static getInstance(): AgoraCallService {
@@ -49,8 +51,23 @@ export class AgoraCallService {
     engine.initialize({ appId: credentials.appId, channelProfile: Agora.ChannelProfileType.ChannelProfileCommunication });
     engine.registerEventHandler(this.eventHandler);
     engine.enableAudio();
+
+    // High quality speech audio scenario with platform ducking
+    engine.setAudioProfile(
+      Agora.AudioProfileType.AudioProfileSpeechStandard,
+      Agora.AudioScenarioType.AudioScenarioDefault
+    );
+
     if (type === 'video') {
       engine.enableVideo();
+      // Configure 720p 30fps encoder before startPreview to prevent hardware readjustment flicker
+      engine.setVideoEncoderConfiguration({
+        dimensions: { width: 720, height: 1280 },
+        frameRate: 30,
+        bitrate: 1710,
+        orientationMode: Agora.OrientationMode.OrientationModeAdaptive,
+        degradationPreference: Agora.DegradationPreference.MaintainQuality,
+      });
       engine.startPreview();
     } else {
       engine.disableVideo();
@@ -69,7 +86,22 @@ export class AgoraCallService {
   public setMuted(muted: boolean): void { this.engine?.muteLocalAudioStream(muted); }
   public setVideoMuted(muted: boolean): void { this.engine?.muteLocalVideoStream(muted); }
   public setSpeakerEnabled(enabled: boolean): void { this.engine?.setEnableSpeakerphone(enabled); }
-  public switchCamera(): void { this.engine?.switchCamera(); }
+
+  public async switchCamera(): Promise<void> {
+    if (!this.engine || this.isSwitchingCamera) return;
+    this.isSwitchingCamera = true;
+    try {
+      this.engine.switchCamera();
+    } catch (err: unknown) {
+      this.logger.warn('AgoraCallService', 'switchCamera:failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTimeout(() => {
+        this.isSwitchingCamera = false;
+      }, 650);
+    }
+  }
 
   public async leave(): Promise<void> {
     if (!this.engine) return;
@@ -80,6 +112,7 @@ export class AgoraCallService {
     this.engine = null;
     this.eventHandler = null;
     this.listener = null;
+    this.isSwitchingCamera = false;
   }
 }
 
