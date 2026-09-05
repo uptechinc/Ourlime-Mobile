@@ -13,7 +13,7 @@ export default function AppPreloadCoordinator() {
 
   const canPreload = useCallback((route: string): boolean => {
     const decision = getDecision(route);
-    return decision.canAccess && decision.status !== 'coming_soon' && decision.status !== 'maintenance' && decision.status !== 'disabled';
+    return decision.canAccess;
   }, [getDecision]);
 
   const startPreload = useCallback(() => {

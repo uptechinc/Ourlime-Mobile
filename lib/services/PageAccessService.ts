@@ -133,17 +133,22 @@ export class PageAccessService {
     const setting = this.resolveSetting(settings, route);
     const status = setting?.status ?? 'enabled';
     const canAccess = authorizationService.canAccessStatus(status, authorization);
+    const canPreviewDevelopmentPages =
+      authorization.isTester || authorization.isDeveloper || authorization.isAdmin;
     return {
       setting,
       status,
       canAccess,
       isVisibleInNavigation: setting
-        ? setting.showInNavigation &&
-          setting.status !== 'disabled' &&
-          (setting.status !== 'developer_only' || authorization.isDeveloper) &&
-          (setting.status !== 'admin_only' || authorization.isAdmin)
+        ? canPreviewDevelopmentPages
+          ? setting.route !== '*' &&
+            (setting.status !== 'admin_only' || authorization.isAdmin)
+          : setting.showInNavigation &&
+            setting.status !== 'disabled' &&
+            setting.status !== 'developer_only' &&
+            setting.status !== 'admin_only'
         : true,
-      isDeveloperPreview: (authorization.isDeveloper || authorization.isAdmin) && status !== 'enabled' && status !== 'disabled',
+      isDeveloperPreview: canPreviewDevelopmentPages && status !== 'enabled',
     };
   }
 

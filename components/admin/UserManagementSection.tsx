@@ -33,6 +33,7 @@ const ROLES: readonly AdminUserRole[] = [
 	'user',
 	'premium',
 	'moderator',
+	'tester',
 	'admin',
 	'developer',
 ];
@@ -80,6 +81,7 @@ export default function UserManagementSection() {
 	const [busy, setBusy] = useState(false);
 	const [message, setMessage] = useState<string | null>(null);
 	const [lifecycleOperation, setLifecycleOperation] = useState<UserLifecycleOperation | null>(null);
+	const [pendingRole, setPendingRole] = useState<AdminUserRole | null>(null);
 
 	const loadUsers = useCallback(async () => {
 		setLoading(true);
@@ -794,7 +796,7 @@ export default function UserManagementSection() {
 													selectedUser.id ===
 														adminUserService.getCurrentUserId()
 												}
-												onPress={() => void handleRole(role)}
+												onPress={() => setPendingRole(role)}
 												style={{
 													flexDirection: 'row',
 													alignItems: 'center',
@@ -833,9 +835,11 @@ export default function UserManagementSection() {
 																? 'Content reports and moderation'
 																: role === 'developer'
 																	? 'Developer previews and tools'
-																	: role === 'premium'
-																		? 'Premium product capabilities'
-																		: 'Standard member access'}
+																	: role === 'tester'
+																		? 'Development previews without admin access'
+																		: role === 'premium'
+																			? 'Premium product capabilities'
+																			: 'Standard member access'}
 													</Text>
 												</View>
 												{selectedUser.role === role ? (
@@ -1207,6 +1211,27 @@ export default function UserManagementSection() {
 					</SafeAreaView>
 				</SwipeDismissSurface>
 			</Modal>
+			<CustomModal
+				visible={pendingRole !== null}
+				title={pendingRole === 'admin' ? 'Confirm administrator role' : 'Confirm role change'}
+				message={
+					pendingRole === 'tester'
+						? `Give @${selectedUser?.userName || selectedUser?.email || 'this user'} access to coming-soon, maintenance, beta, developer-only, and disabled pages? Tester access does not include administration or moderation permissions.`
+						: pendingRole === 'admin'
+							? `Give @${selectedUser?.userName || selectedUser?.email || 'this user'} full administrator access? Only trusted users should receive this role.`
+							: `Change @${selectedUser?.userName || selectedUser?.email || 'this user'} from ${selectedUser?.role || 'user'} to ${pendingRole || 'user'}? This removes the permissions of the current role.`
+				}
+				type={pendingRole === 'admin' ? 'danger' : 'warning'}
+				confirmText="Change role"
+				cancelText="Cancel"
+				isLoading={busy}
+				onConfirm={() => {
+					if (!pendingRole) return;
+					void handleRole(pendingRole).then(() => setPendingRole(null));
+				}}
+				onCancel={() => setPendingRole(null)}
+				onClose={() => setPendingRole(null)}
+			/>
 			<CustomModal
 				visible={Boolean(message)}
 				title="User management"

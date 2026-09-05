@@ -23,7 +23,7 @@ type Users = {
     profileImageId?: string;
     isAuthenticated?: boolean;
     accountStatus?: 'active' | 'pending' | 'suspended' | 'banned';
-    role?: 'user' | 'premium' | 'moderator' | 'admin';
+    role?: 'user' | 'premium' | 'moderator' | 'tester' | 'admin' | 'developer';
     _aboutData?: {
         interests: string[];
         skills: string[];

@@ -31,7 +31,7 @@ export type UserLifecycleOperation = {
 type LifecycleStartResponse = { success: boolean; operation: UserLifecycleOperation; correlationId: string; error?: string };
 type LifecycleStatusResponse = { success: boolean; operation: UserLifecycleOperation; error?: string };
 
-export type AdminUserRole = 'user' | 'premium' | 'moderator' | 'admin' | 'developer';
+export type AdminUserRole = 'user' | 'premium' | 'moderator' | 'tester' | 'admin' | 'developer';
 export type AdminUserRecord = {
   id: string;
   firstName: string;
@@ -82,7 +82,7 @@ const readEmbeddedProfileImage = (value: unknown): string => {
   if (!isRecord(value)) return '';
   return readImageUrl(value.profile) || readImageUrl(value.avatar);
 };
-const readRole = (value: unknown): AdminUserRole => value === 'premium' || value === 'moderator' || value === 'admin' || value === 'developer' ? value : 'user';
+const readRole = (value: unknown): AdminUserRole => value === 'premium' || value === 'moderator' || value === 'tester' || value === 'admin' || value === 'developer' ? value : 'user';
 const readVerificationStatus = (value: unknown): AdminUserRecord['verificationStatus'] => value === 'pending' || value === 'verified' || value === 'rejected' ? value : 'unsubmitted';
 const readDateMs = (value: unknown): number => {
   if (value instanceof Date) return value.getTime();

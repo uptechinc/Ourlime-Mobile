@@ -36,7 +36,10 @@ export function PageAccessProvider({ children }: PageAccessProviderProps) {
   const clearOverlay = useCallback(() => setActiveOverlayRoute(null), []);
 
   useEffect(() => {
+    let unsubscribeAccessProfile: (() => void) | undefined;
     const unsubscribeAuth = authService.subscribeToVerifiedAuthState((user) => {
+      unsubscribeAccessProfile?.();
+      unsubscribeAccessProfile = undefined;
       if (!user) {
         setProfile(null);
         setProfileLoading(false);
@@ -47,6 +50,15 @@ export function PageAccessProvider({ children }: PageAccessProviderProps) {
         try {
           const nextProfile = await authService.getUserProfile(user.uid);
           setProfile(nextProfile);
+          unsubscribeAccessProfile = authService.subscribeToUserAccessProfile(
+            user.uid,
+            (accessProfile) => {
+              setProfile((currentProfile) => currentProfile
+                ? { ...currentProfile, ...accessProfile }
+                : currentProfile);
+            },
+            (accessProfileError) => setError(accessProfileError.message),
+          );
         } catch {
           setProfile(null);
         } finally {
@@ -64,6 +76,7 @@ export function PageAccessProvider({ children }: PageAccessProviderProps) {
     });
     return () => {
       unsubscribeAuth();
+      unsubscribeAccessProfile?.();
       unsubscribeSettings();
     };
   }, []);

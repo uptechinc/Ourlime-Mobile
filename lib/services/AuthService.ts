@@ -23,6 +23,7 @@ import {
   FieldValue,
   Timestamp,
   updateDoc,
+  onSnapshot,
   type DocumentData,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
@@ -70,6 +71,11 @@ export type UserProfile = {
   selectedInterests?: string[];
   createdAt?: FieldValue | Timestamp;
 };
+
+export type UserAccessProfile = Pick<
+  UserProfile,
+  'accountType' | 'role' | 'isAdmin' | 'isDeveloper'
+>;
 
 export type RegistrationVerificationType = 'student_id' | 'national_id' | 'guardian' | 'drivers_license' | 'skipped' | '';
 
@@ -126,6 +132,32 @@ export class AuthService {
   public invalidateUserProfile(uid: string): void {
     this.profileMemoryCache.delete(uid);
     this.profilePromises.delete(uid);
+  }
+
+  public subscribeToUserAccessProfile(
+    uid: string,
+    onChange: (profile: UserAccessProfile) => void,
+    onError: (error: Error) => void,
+  ): Unsubscribe {
+    if (!uid) {
+      console.error('[subscribeToUserAccessProfile] uid is required');
+      return () => undefined;
+    }
+
+    return onSnapshot(
+      doc(db, 'users', uid),
+      (snapshot) => {
+        const profileRecord = this.toRecord(snapshot.data());
+        this.invalidateUserProfile(uid);
+        onChange({
+          accountType: this.readString(profileRecord.accountType, 'regular'),
+          role: this.readString(profileRecord.role) || undefined,
+          isAdmin: profileRecord.isAdmin === true,
+          isDeveloper: profileRecord.isDeveloper === true,
+        });
+      },
+      (error) => onError(error),
+    );
   }
 
   /**
