@@ -401,15 +401,15 @@ export default function UserProfileScreen() {
             <View style={{ flexDirection: 'row', marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border }}>
               <View style={{ marginRight: 24, alignItems: 'center' }}>
                 <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{profile.postsCount ?? 0}</Text>
-                <Text style={{ fontSize: 12, color: colors.mutedText }}>Posts</Text>
+                <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText }}>Posts</Text>
               </View>
               <View style={{ marginRight: 24, alignItems: 'center' }}>
                 <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{profile.followersCount ?? 0}</Text>
-                <Text style={{ fontSize: 12, color: colors.mutedText }}>Followers</Text>
+                <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText }}>Followers</Text>
               </View>
               <View style={{ alignItems: 'center' }}>
                 <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{profile.friendsCount ?? 0}</Text>
-                <Text style={{ fontSize: 12, color: colors.mutedText }}>Friends</Text>
+                <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText }}>Friends</Text>
               </View>
             </View>
           </View>

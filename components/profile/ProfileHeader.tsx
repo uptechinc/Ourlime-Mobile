@@ -183,17 +183,17 @@ export default function ProfileHeader({
         }}>
           <View style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }}>{postsCount}</Text>
-            <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 1, fontWeight: '500' }}>Posts</Text>
+            <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText, marginTop: 1, fontWeight: '500' }}>Posts</Text>
           </View>
           <View style={{ width: 1, height: '80%', backgroundColor: colors.border, alignSelf: 'center' }} />
           <TouchableOpacity onPress={onFriendsPress} disabled={!onFriendsPress} style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }}>{friendsCount}</Text>
-            <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 1, fontWeight: '500' }}>Friends</Text>
+            <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText, marginTop: 1, fontWeight: '500' }}>Friends</Text>
           </TouchableOpacity>
           <View style={{ width: 1, height: '80%', backgroundColor: colors.border, alignSelf: 'center' }} />
           <View style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }}>{followingCount}</Text>
-            <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 1, fontWeight: '500' }}>Following</Text>
+            <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText, marginTop: 1, fontWeight: '500' }}>Following</Text>
           </View>
         </View>
       </View>

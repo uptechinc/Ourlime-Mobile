@@ -63,7 +63,12 @@ import CommunityMemberActionSheet from '@/components/communities/detail/Communit
 import CommunityDetailSkeleton from '@/components/communities/detail/CommunityDetailSkeleton';
 import CommunityReportModal from '@/components/communities/CommunityReportModal';
 import CustomModal from '@/components/ui/CustomModal';
+import IdentityVerificationModal from '@/components/jobs/IdentityVerificationModal';
 import ShareContentSheet from '@/components/sharing/ShareContentSheet';
+import {
+	postAuthorizationService,
+	POST_VERIFICATION_REQUIRED_MESSAGE,
+} from '@/lib/services/PostAuthorizationService';
 import type { ReportReasonCategory } from '@/lib/services/ModerationService';
 import { CHILD_SAFETY_REASON_CATEGORY } from '@/lib/services/ModerationService';
 import type { ChildSafetyIntakeValues } from '@/lib/types/childSafety';
@@ -151,6 +156,7 @@ export default function CommunityDetailScreen() {
 	const [activeTab, setActiveTab] = useState<CommunityTab>('posts');
 	const [activePostId, setActivePostId] = useState<string | null>(null);
 	const [createPostVisible, setCreatePostVisible] = useState(false);
+	const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
 	const [dashboardVisible, setDashboardVisible] = useState(false);
 	const [editVisible, setEditVisible] = useState(false);
 	const [busy, setBusy] = useState(false);
@@ -903,6 +909,10 @@ export default function CommunityDetailScreen() {
 									{community.permissions.canPost ? (
 										<TouchableOpacity
 											onPress={() => {
+												if (!postAuthorizationService.canCreatePost(profile)) {
+													setIsVerificationModalOpen(true);
+													return;
+												}
 												setActiveTab('posts');
 												setCreatePostVisible(true);
 											}}
@@ -1331,6 +1341,12 @@ export default function CommunityDetailScreen() {
 					onClose={() => setShareVisible(false)}
 				/>
 			) : null}
+			<IdentityVerificationModal
+				isOpen={isVerificationModalOpen}
+				onClose={() => setIsVerificationModalOpen(false)}
+				verificationStatus={profile?.verificationStatus}
+				message={POST_VERIFICATION_REQUIRED_MESSAGE}
+			/>
 		</SafeAreaView>
 	);
 }

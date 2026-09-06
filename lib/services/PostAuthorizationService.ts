@@ -1,5 +1,5 @@
 import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebaseConfig';
+import { auth, db } from '../firebaseConfig';
 
 export const POST_VERIFICATION_REQUIRED_MESSAGE = 'You must verify your account before you can create a post.';
 

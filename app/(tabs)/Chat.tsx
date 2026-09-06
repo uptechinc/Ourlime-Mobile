@@ -663,9 +663,20 @@ export default function ChatTabScreen() {
                       </Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Text style={{ fontSize: 13, color: hasUnread ? colors.text : colors.mutedText, fontWeight: hasUnread ? '600' : '400', flex: 1 }} numberOfLines={1}>
-                        {formatLastMessagePreview(user.lastMessage, user.userName, user.lastMessageSenderId === currentUserId)}
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: hasUnread ? 8 : 0 }}>
+                        {user.lastMessageSenderId === currentUserId && Boolean(user.lastMessage) && (
+                          <Ionicons
+                            name="checkmark-done"
+                            size={14}
+                            color={colors.mutedText}
+                            style={{ marginRight: 4 }}
+                            accessibilityLabel="Last message sent by you"
+                          />
+                        )}
+                        <Text style={{ fontSize: 13, color: hasUnread ? colors.text : colors.mutedText, fontWeight: hasUnread ? '600' : '400', flex: 1 }} numberOfLines={1}>
+                          {formatLastMessagePreview(user.lastMessage, user.userName, user.lastMessageSenderId === currentUserId)}
+                        </Text>
+                      </View>
                       {hasUnread && (
                         <View style={{ backgroundColor: '#10b981', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2, marginLeft: 8 }}>
                           <Text style={{ color: '#ffffff', fontSize: 11, fontWeight: '700' }}>

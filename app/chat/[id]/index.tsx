@@ -617,7 +617,7 @@ export default function ChatPage() {
     const [showSettings, setShowSettings] = useState(false);
     const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
     const [showAttachModal, setShowAttachModal] = useState(false);
-    const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; fileName: string; mimeType: string; type: 'image' | 'document' } | null>(null);
+    const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; fileName: string; mimeType: string; type: 'image' | 'video' | 'document' } | null>(null);
     const [wallpaperUri, setWallpaperUri] = useState<string | null>(null);
     const [randomStickerBg, setRandomStickerBg] = useState<string | null>(null);
     const [isBlocked, setIsBlocked] = useState(false);
@@ -820,9 +820,10 @@ export default function ChatPage() {
         const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.8 });
         if (result.canceled || !result.assets[0]) return;
         const asset = result.assets[0];
-        const mimeType = asset.mimeType ?? 'image/jpeg';
-        const fileName = asset.fileName ?? `media_${Date.now()}.jpg`;
-        setPendingAttachment({ uri: asset.uri, fileName, mimeType, type: 'image' });
+        const isVideo = asset.type === 'video' || (asset.mimeType?.startsWith('video/') ?? false);
+        const mimeType = asset.mimeType ?? (isVideo ? 'video/mp4' : 'image/jpeg');
+        const fileName = asset.fileName ?? (isVideo ? `video_${Date.now()}.mp4` : `media_${Date.now()}.jpg`);
+        setPendingAttachment({ uri: asset.uri, fileName, mimeType, type: isVideo ? 'video' : 'image' });
     }, []);
 
     const handleAttachDoc = useCallback(async () => {
@@ -830,7 +831,11 @@ export default function ChatPage() {
         const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
         if (result.canceled) return;
         const asset = result.assets[0];
-        setPendingAttachment({ uri: asset.uri, fileName: asset.name, mimeType: asset.mimeType ?? 'application/octet-stream', type: 'document' });
+        const mimeType = asset.mimeType ?? 'application/octet-stream';
+        const isVideo = mimeType.startsWith('video/');
+        const isImage = mimeType.startsWith('image/');
+        const type = isVideo ? 'video' : isImage ? 'image' : 'document';
+        setPendingAttachment({ uri: asset.uri, fileName: asset.name, mimeType, type });
     }, []);
 
     const handleStickerSelect = useCallback(async (sticker: Sticker) => {
@@ -1051,6 +1056,10 @@ export default function ChatPage() {
                             }}>
                                 {pendingAttachment.type === 'image' ? (
                                     <Image source={{ uri: pendingAttachment.uri }} style={{ width: 44, height: 44, borderRadius: 8, marginRight: 10 }} />
+                                ) : pendingAttachment.type === 'video' ? (
+                                    <View style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: '#dcfce7', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                                        <Icon name="video" size={20} color="#10b981" />
+                                    </View>
                                 ) : (
                                     <View style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: '#dcfce7', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
                                         <Icon name="file-text" size={20} color="#10b981" />
@@ -1061,10 +1070,15 @@ export default function ChatPage() {
                                         {pendingAttachment.fileName}
                                     </Text>
                                     <Text style={{ fontSize: 11, color: '#10b981', fontWeight: '600' }}>
-                                        Ready to send — tap Send to upload
+                                        {pendingAttachment.type === 'video' ? 'Video ready to send — tap Send to upload' : 'Ready to send — tap Send to upload'}
                                     </Text>
                                 </View>
-                                <TouchableOpacity onPress={() => setPendingAttachment(null)} style={{ padding: 6 }}>
+                                <TouchableOpacity
+                                    accessibilityLabel={`Remove ${pendingAttachment.fileName}`}
+                                    accessibilityRole="button"
+                                    onPress={() => setPendingAttachment(null)}
+                                    style={{ padding: 6 }}
+                                >
                                     <Icon name="x" size={18} color="#94a3b8" />
                                 </TouchableOpacity>
                             </View>
