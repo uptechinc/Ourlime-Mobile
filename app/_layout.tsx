@@ -22,6 +22,7 @@ import InAppNotificationBanner from '@/components/ui/InAppNotificationBanner';
 import { crashReportingService } from '@/lib/services/CrashReportingService';
 import { memoryPressureService } from '@/lib/services/MemoryPressureService';
 import NotificationNavigationCoordinator from '@/components/providers/NotificationNavigationCoordinator';
+import RegionalAccessRestrictedModal from '@/components/ui/RegionalAccessRestrictedModal';
 
 export { RouteErrorBoundary as ErrorBoundary } from '@/components/ui/AppErrorBoundary';
 
@@ -82,6 +83,7 @@ function AppRouteTree() {
           <PageAccessOverlay />
           <GlobalCallOverlay />
           <InAppNotificationBanner />
+          <RegionalAccessRestrictedModal />
         </NotificationProvider>
         </AppDrawerProvider>
         </CallProvider>

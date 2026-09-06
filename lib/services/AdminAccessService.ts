@@ -17,6 +17,15 @@ export class AdminAccessService {
     return AdminAccessService.instance;
   }
 
+  public async checkAdmin(): Promise<boolean> {
+    try {
+      const identity = await this.resolveIdentity();
+      return identity.isAdmin;
+    } catch {
+      return false;
+    }
+  }
+
   public async requireAdmin(): Promise<AdminAccessIdentity> {
     const identity = await this.resolveIdentity();
     if (!identity.isAdmin) throw new Error('Admin access required');

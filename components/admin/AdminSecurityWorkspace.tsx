@@ -9,10 +9,15 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import CountryPicker, { type Country } from 'react-native-country-picker-modal';
 import { adminSecurityService } from '@/lib/services/AdminSecurityService';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import CustomModal from '@/components/ui/CustomModal';
+import {
+  evaluateSecurityAccess,
+  type SecurityEvaluationResult,
+} from '@/lib/security/securityAccessEvaluator';
 import type {
   SecurityAccessSettings,
   RegionPolicyMode,
@@ -34,10 +39,11 @@ const REGIONS = [
 export default function AdminSecurityWorkspace() {
   const { colors, isDark } = useAppTheme();
   const [settings, setSettings] = useState<SecurityAccessSettings | null>(null);
-  const [activeTab, setActiveTab] = useState<'region' | 'ip' | 'whitelist' | 'ratelimit'>('region');
+  const [activeTab, setActiveTab] = useState<'region' | 'ip' | 'whitelist' | 'ratelimit' | 'simulate'>('region');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [isCountryPickerVisible, setIsCountryPickerVisible] = useState(false);
 
   // Form states
   const [newIp, setNewIp] = useState('');
@@ -46,6 +52,12 @@ export default function AdminSecurityWorkspace() {
   const [newUserId, setNewUserId] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserReason, setNewUserReason] = useState('');
+
+  // Simulator states
+  const [simIp, setSimIp] = useState('');
+  const [simCountry, setSimCountry] = useState('TT');
+  const [simResult, setSimResult] = useState<SecurityEvaluationResult | null>(null);
+
 
   const loadSettings = useCallback(async () => {
     try {
@@ -176,6 +188,7 @@ export default function AdminSecurityWorkspace() {
             { id: 'ip' as const, label: '🔒 IP Rules' },
             { id: 'whitelist' as const, label: '⭐ Whitelist Bypass' },
             { id: 'ratelimit' as const, label: '⚡ Rate Limits' },
+            { id: 'simulate' as const, label: '🧪 Test Rule' },
           ]
         ).map((tab) => (
           <TouchableOpacity
@@ -276,10 +289,38 @@ export default function AdminSecurityWorkspace() {
 
             {settings.regionPolicy.mode !== 'allow_all' && (
               <View style={{ marginTop: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+                {/* Custom Blocked Notice */}
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+                    CUSTOM BLOCKED NOTICE
+                  </Text>
+                  <TextInput
+                    value={settings.regionPolicy.blockedMessage || ''}
+                    onChangeText={(text) =>
+                      setSettings({
+                        ...settings,
+                        regionPolicy: { ...settings.regionPolicy, blockedMessage: text },
+                      })
+                    }
+                    placeholder="Access is currently restricted in your geographic region."
+                    placeholderTextColor={colors.mutedText}
+                    style={{
+                      backgroundColor: colors.input,
+                      borderColor: colors.border,
+                      borderWidth: 1,
+                      borderRadius: 12,
+                      padding: 10,
+                      color: colors.text,
+                      fontSize: 12,
+                    }}
+                  />
+                </View>
+
                 <Text style={{ color: colors.text, fontWeight: '800', fontSize: 12, marginBottom: 8, textTransform: 'uppercase' }}>
                   Select Countries for {settings.regionPolicy.mode === 'allow_selected_only' ? 'Allowlist' : 'Blocklist'}:
                 </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
                   {REGIONS.map((reg) => {
                     const isSelected = settings.regionPolicy.countries.includes(reg.code);
                     return (
@@ -306,6 +347,93 @@ export default function AdminSecurityWorkspace() {
                       </TouchableOpacity>
                     );
                   })}
+
+                  <TouchableOpacity
+                    onPress={() => setIsCountryPickerVisible(true)}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                      borderRadius: 12,
+                      backgroundColor: colors.control,
+                      borderWidth: 1,
+                      borderColor: '#10b981',
+                      marginBottom: 6,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    <Ionicons name="search-outline" size={13} color="#10b981" />
+                    <Text style={{ color: '#10b981', fontWeight: '700', fontSize: 12 }}>
+                      + Pick Any Country…
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* CountryPicker Modal Component */}
+                <CountryPicker
+                  countryCode="TT"
+                  visible={isCountryPickerVisible}
+                  onClose={() => setIsCountryPickerVisible(false)}
+                  withFilter
+                  withFlag
+                  withAlphaFilter
+                  onSelect={(country: Country) => {
+                    setIsCountryPickerVisible(false);
+                    if (country.cca2) {
+                      const code = country.cca2.toUpperCase();
+                      if (!settings.regionPolicy.countries.includes(code)) {
+                        setSettings({
+                          ...settings,
+                          regionPolicy: {
+                            ...settings.regionPolicy,
+                            countries: [...settings.regionPolicy.countries, code],
+                          },
+                        });
+                      }
+                    }
+                  }}
+                />
+
+                {/* Active Selected Countries List */}
+                <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '700', marginBottom: 6 }}>
+                  ACTIVE REGIONS ({settings.regionPolicy.countries.length})
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {settings.regionPolicy.countries.map((code) => (
+                    <View
+                      key={code}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 10,
+                        backgroundColor:
+                          settings.regionPolicy.mode === 'block_selected'
+                            ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#fee2e2')
+                            : (isDark ? 'rgba(16, 185, 129, 0.2)' : '#d1fae5'),
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '700',
+                          color: settings.regionPolicy.mode === 'block_selected' ? '#ef4444' : '#10b981',
+                        }}
+                      >
+                        {code}
+                      </Text>
+                      <TouchableOpacity onPress={() => handleToggleCountry(code)}>
+                        <Ionicons
+                          name="close-circle"
+                          size={14}
+                          color={settings.regionPolicy.mode === 'block_selected' ? '#ef4444' : '#10b981'}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
                 </View>
               </View>
             )}
@@ -345,9 +473,28 @@ export default function AdminSecurityWorkspace() {
               padding: 16,
             }}
           >
-            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14, marginBottom: 10 }}>
+            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14, marginBottom: 8 }}>
               Add IP Access Rule
             </Text>
+
+            {/* Whitelist Override Explanatory Card */}
+            <View
+              style={{
+                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5',
+                borderColor: '#10b981',
+                borderWidth: 1,
+                borderRadius: 14,
+                padding: 12,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ color: '#10b981', fontWeight: '800', fontSize: 11 }}>
+                ⭐ WHITELIST OVERRIDES REGION BLOCKING
+              </Text>
+              <Text style={{ color: colors.mutedText, fontSize: 11, marginTop: 2 }}>
+                Whitelisted IPs allow users to connect to Ourlime even if their country is blocked. Blocklist denies all traffic unconditionally.
+              </Text>
+            </View>
 
             <TextInput
               value={newIp}
@@ -752,6 +899,156 @@ export default function AdminSecurityWorkspace() {
                 </Text>
               )}
             </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* 5. Access Rule Simulator */}
+      {activeTab === 'simulate' && (
+        <View className="space-y-4">
+          <View
+            style={{
+              backgroundColor: colors.elevated,
+              borderColor: colors.border,
+              borderWidth: 1,
+              borderRadius: 18,
+              padding: 16,
+            }}
+          >
+            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14, marginBottom: 4 }}>
+              Access Rule Simulator
+            </Text>
+            <Text style={{ color: colors.mutedText, fontSize: 11, marginBottom: 12 }}>
+              Test any IP and Country to see if access will be granted or blocked based on active rules.
+            </Text>
+
+            <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+              TEST IP ADDRESS
+            </Text>
+            <TextInput
+              value={simIp}
+              onChangeText={setSimIp}
+              placeholder="e.g. 190.58.12.44"
+              placeholderTextColor={colors.mutedText}
+              style={{
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                borderWidth: 1,
+                borderRadius: 12,
+                padding: 10,
+                color: colors.text,
+                fontSize: 12,
+                marginBottom: 10,
+              }}
+            />
+
+            <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+              TEST COUNTRY CODE
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              {REGIONS.map((reg) => {
+                const isSelected = simCountry === reg.code;
+                return (
+                  <TouchableOpacity
+                    key={reg.code}
+                    onPress={() => setSimCountry(reg.code)}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 10,
+                      backgroundColor: isSelected ? colors.accent : colors.control,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: isSelected ? colors.onAccent : colors.text,
+                        fontWeight: '700',
+                        fontSize: 11,
+                      }}
+                    >
+                      {reg.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              onPress={() => {
+                if (!simIp.trim() || !settings) return;
+                const result = evaluateSecurityAccess(settings, {
+                  ip: simIp.trim(),
+                  countryCode: simCountry.trim(),
+                });
+                setSimResult(result);
+              }}
+              style={{
+                backgroundColor: colors.accent,
+                paddingVertical: 12,
+                borderRadius: 14,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: colors.onAccent, fontWeight: '800', fontSize: 13 }}>
+                Evaluate Rule
+              </Text>
+            </TouchableOpacity>
+
+            {simResult && (
+              <View
+                style={{
+                  marginTop: 14,
+                  padding: 14,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  backgroundColor: simResult.allowed
+                    ? (isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5')
+                    : (isDark ? 'rgba(239, 68, 68, 0.15)' : '#fee2e2'),
+                  borderColor: simResult.allowed ? '#10b981' : '#ef4444',
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <Ionicons
+                    name={simResult.allowed ? 'checkmark-circle' : 'close-circle'}
+                    size={18}
+                    color={simResult.allowed ? '#10b981' : '#ef4444'}
+                  />
+                  <Text
+                    style={{
+                      fontWeight: '800',
+                      fontSize: 13,
+                      color: simResult.allowed ? '#10b981' : '#ef4444',
+                    }}
+                  >
+                    {simResult.allowed ? 'ACCESS GRANTED' : 'ACCESS BLOCKED'}
+                  </Text>
+                  {simResult.bypass && (
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        fontWeight: '700',
+                        color: '#10b981',
+                        backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#d1fae5',
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 6,
+                      }}
+                    >
+                      WHITELIST OVERRIDE
+                    </Text>
+                  )}
+                </View>
+                <Text style={{ fontSize: 11, color: colors.text, marginTop: 2 }}>
+                  Matched Rule: {simResult.ruleMatched}
+                  {simResult.matchedRuleDetail ? ` — ${simResult.matchedRuleDetail}` : ''}
+                </Text>
+                {simResult.reason && (
+                  <Text style={{ fontSize: 11, color: colors.mutedText, marginTop: 2 }}>
+                    Reason: {simResult.reason}
+                  </Text>
+                )}
+              </View>
+            )}
           </View>
         </View>
       )}
