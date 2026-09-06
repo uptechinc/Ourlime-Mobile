@@ -4,6 +4,7 @@ import { adminAccessService } from './AdminAccessService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import {
   evaluateSecurityAccess,
+  matchesIpRule,
   type SecurityEvaluationResult,
 } from '@/lib/security/securityAccessEvaluator';
 
@@ -102,41 +103,65 @@ export class SecurityAccessGateService {
       let ip = '127.0.0.1';
       let countryCode: string | undefined;
 
+      // Try ipwho.is primary
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-        const geoResponse = await fetch('https://api.country.is/', {
+        const geoResponse = await fetch('https://ipwho.is/', {
           signal: controller.signal,
           headers: { Accept: 'application/json' },
         });
         clearTimeout(timeoutId);
 
         if (geoResponse.ok) {
-          const geoData = (await geoResponse.json()) as { ip?: string; country?: string };
+          const geoData = (await geoResponse.json()) as { ip?: string; country_code?: string; success?: boolean };
           if (geoData.ip) ip = geoData.ip.trim();
-          if (geoData.country && /^[A-Za-z]{2}$/.test(geoData.country.trim())) {
-            countryCode = geoData.country.trim().toUpperCase();
+          if (geoData.success && geoData.country_code && /^[A-Za-z]{2}$/.test(geoData.country_code.trim())) {
+            countryCode = geoData.country_code.trim().toUpperCase();
           }
         }
       } catch {
-        // Fallback probe
+        // Fallback to api.country.is
         try {
           const controller2 = new AbortController();
-          const timeoutId2 = setTimeout(() => controller2.abort(), 3000);
-          const fbResponse = await fetch('https://ipapi.co/json/', {
+          const timeoutId2 = setTimeout(() => controller2.abort(), 2500);
+          const fbResponse = await fetch('https://api.country.is/', {
             signal: controller2.signal,
             headers: { Accept: 'application/json' },
           });
           clearTimeout(timeoutId2);
           if (fbResponse.ok) {
-            const fbData = (await fbResponse.json()) as { ip?: string; country_code?: string };
+            const fbData = (await fbResponse.json()) as { ip?: string; country?: string };
             if (fbData.ip) ip = fbData.ip.trim();
-            if (fbData.country_code) countryCode = fbData.country_code.trim().toUpperCase();
+            if (fbData.country && /^[A-Za-z]{2}$/.test(fbData.country.trim())) {
+              countryCode = fbData.country.trim().toUpperCase();
+            }
           }
         } catch {
-          // If both fail, fail-open for offline resilience
+          // Fail-open for offline resilience
         }
+      }
+
+      // Check known Trinidad & Caribbean subnets to correct any third-party database misattribution
+      const CARIBBEAN_SUBNETS: Array<{ subnet: string; code: string }> = [
+        { subnet: '190.58.0.0/15', code: 'TT' },
+        { subnet: '190.213.0.0/16', code: 'TT' },
+        { subnet: '200.108.0.0/16', code: 'TT' },
+        { subnet: '186.230.0.0/16', code: 'TT' },
+        { subnet: '186.177.0.0/16', code: 'TT' },
+        { subnet: '190.10.0.0/16', code: 'TT' },
+        { subnet: '200.12.80.0/20', code: 'TT' },
+        { subnet: '181.189.0.0/16', code: 'TT' },
+        { subnet: '190.83.0.0/16', code: 'JM' },
+        { subnet: '200.56.0.0/16', code: 'JM' },
+        { subnet: '190.107.0.0/16', code: 'BB' },
+        { subnet: '200.7.0.0/16', code: 'BB' },
+        { subnet: '186.179.0.0/16', code: 'GY' },
+      ];
+      const match = CARIBBEAN_SUBNETS.find((entry) => matchesIpRule(ip, entry.subnet));
+      if (match) {
+        countryCode = match.code;
       }
 
       // 3. Check admin status without automatic unconditional bypass for general routes

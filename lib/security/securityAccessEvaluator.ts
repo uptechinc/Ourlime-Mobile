@@ -176,21 +176,11 @@ export function evaluateSecurityAccess(
         };
       }
     } else {
-      const isPrivateOrLocal =
-        normalizedClientIp === '127.0.0.1' ||
-        normalizedClientIp === 'localhost' ||
-        normalizedClientIp.startsWith('192.168.') ||
-        normalizedClientIp.startsWith('10.') ||
-        normalizedClientIp.startsWith('172.');
-
-      if (!isPrivateOrLocal) {
-        return {
-          allowed: false,
-          reason: defaultBlockedMsg,
-          ruleMatched: 'country_not_allowed',
-          matchedRuleDetail: 'Origin country could not be verified for allowlist-only policy.',
-        };
-      }
+      return {
+        allowed: true,
+        ruleMatched: 'default_allow',
+        matchedRuleDetail: 'Origin country unverified on initial check; allowed on grace.',
+      };
     }
   }
 
