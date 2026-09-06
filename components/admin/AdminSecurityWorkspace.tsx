@@ -9,7 +9,8 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import CountryPicker, { type Country } from 'react-native-country-picker-modal';
+import CountryPickerModal from '@/components/ui/CountryPickerModal';
+import { getCountryFlagEmoji } from '@/lib/constants/countries';
 import { adminSecurityService } from '@/lib/services/AdminSecurityService';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -371,26 +372,20 @@ export default function AdminSecurityWorkspace() {
                 </View>
 
                 {/* CountryPicker Modal Component */}
-                <CountryPicker
-                  countryCode="TT"
+                <CountryPickerModal
                   visible={isCountryPickerVisible}
                   onClose={() => setIsCountryPickerVisible(false)}
-                  withFilter
-                  withFlag
-                  withAlphaFilter
-                  onSelect={(country: Country) => {
-                    setIsCountryPickerVisible(false);
-                    if (country.cca2) {
-                      const code = country.cca2.toUpperCase();
-                      if (!settings.regionPolicy.countries.includes(code)) {
-                        setSettings({
-                          ...settings,
-                          regionPolicy: {
-                            ...settings.regionPolicy,
-                            countries: [...settings.regionPolicy.countries, code],
-                          },
-                        });
-                      }
+                  selectedCountries={settings.regionPolicy.countries}
+                  onSelectCountry={(selectedCode) => {
+                    const normalized = selectedCode.toUpperCase();
+                    if (!settings.regionPolicy.countries.includes(normalized)) {
+                      setSettings({
+                        ...settings,
+                        regionPolicy: {
+                          ...settings.regionPolicy,
+                          countries: [...settings.regionPolicy.countries, normalized],
+                        },
+                      });
                     }
                   }}
                 />
@@ -423,7 +418,7 @@ export default function AdminSecurityWorkspace() {
                           color: settings.regionPolicy.mode === 'block_selected' ? '#ef4444' : '#10b981',
                         }}
                       >
-                        {code}
+                        {getCountryFlagEmoji(code)} {code}
                       </Text>
                       <TouchableOpacity onPress={() => handleToggleCountry(code)}>
                         <Ionicons

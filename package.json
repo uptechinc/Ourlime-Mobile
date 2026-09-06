@@ -84,7 +84,6 @@
     "react-native": "0.86.2",
     "react-native-agora": "^4.6.2",
     "react-native-callkeep": "^4.3.16",
-    "react-native-country-picker-modal": "^2.0.0",
     "react-native-elements": "^3.4.3",
     "react-native-feather": "^1.1.2",
     "react-native-gesture-handler": "~2.32.0",
