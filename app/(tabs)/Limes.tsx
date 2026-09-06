@@ -57,6 +57,7 @@ import { deepLinkService } from '@/lib/services/DeepLinkService';
 import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
 import { LimeResourceService } from '@/lib/services/LimeResourceService';
 import { useLimeFeedResource } from '@/lib/hooks/useLimeFeedResource';
+import { ensureMediaUrl } from '@/lib/helpers/mediaUrl';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components/ui/PlayfulFloatingHeart';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
@@ -781,7 +782,7 @@ const ReelVideoPlayer = forwardRef<ReelVideoPlayerHandle, ReelVideoPlayerProps>(
   { url, isActive, muted, paused, speed, onSpeedChange, onSeekingChange },
   ref,
 ) {
-  const safeUrl = url && url.length > 4 ? url : undefined;
+  const safeUrl = url && url.length > 4 ? ensureMediaUrl(url) : undefined;
   const videoViewRef = useRef<VideoView>(null);
 
   const player = useVideoPlayer(safeUrl ?? null, (p) => {
