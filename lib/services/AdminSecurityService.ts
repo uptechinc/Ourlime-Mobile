@@ -40,8 +40,20 @@ export class AdminSecurityService {
     return AdminSecurityService.instance;
   }
 
-  public async getSettings(): Promise<SecurityAccessSettings> {
-    await adminAccessService.requireAdmin();
+  public async getSettings(requireAdminAuth = true): Promise<SecurityAccessSettings> {
+    if (requireAdminAuth) {
+      await adminAccessService.requireAdmin();
+    }
+
+    try {
+      const docRef = doc(db, 'siteConfig', 'securityAccessControls');
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return { ...DEFAULT_SETTINGS, ...snap.data() } as SecurityAccessSettings;
+      }
+    } catch {
+      // Fallback to API if available
+    }
 
     try {
       const response = await this.apiService.request<{ success: boolean; settings: SecurityAccessSettings }>(
@@ -52,16 +64,6 @@ export class AdminSecurityService {
         }
       );
       if (response?.success && response.settings) return response.settings;
-    } catch {
-      // Fallback to Firestore
-    }
-
-    try {
-      const docRef = doc(db, 'siteConfig', 'securityAccessControls');
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        return { ...DEFAULT_SETTINGS, ...snap.data() } as SecurityAccessSettings;
-      }
     } catch {
       // Fallback
     }

@@ -1,7 +1,11 @@
 import { auth } from '@/lib/firebaseConfig';
-import { ApiService } from './ApiService';
+import { adminSecurityService } from './AdminSecurityService';
 import { adminAccessService } from './AdminAccessService';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import {
+  evaluateSecurityAccess,
+  type SecurityEvaluationResult,
+} from '@/lib/security/securityAccessEvaluator';
 
 export type SecurityGateState = {
   isRestricted: boolean;
@@ -16,7 +20,6 @@ type SecurityGateListener = (state: SecurityGateState) => void;
 
 export class SecurityAccessGateService {
   private static instance: SecurityAccessGateService;
-  private readonly apiService = ApiService.getInstance();
   private readonly logger = DiagnosticLogService.getInstance();
 
   private state: SecurityGateState = {
@@ -42,20 +45,9 @@ export class SecurityAccessGateService {
   }
 
   private setupAuthListener(): void {
-    auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        try {
-          const isAdmin = await adminAccessService.checkAdmin();
-          if (isAdmin) {
-            this.updateState({
-              isRestricted: false,
-              reason: null,
-            });
-          }
-        } catch {
-          // Ignore auth check error
-        }
-      }
+    auth.onAuthStateChanged(() => {
+      // Re-evaluate security access when auth state transitions
+      void this.checkAccess(true);
     });
   }
 
@@ -90,12 +82,12 @@ export class SecurityAccessGateService {
 
   public async checkAccess(force = false): Promise<SecurityGateState> {
     const now = Date.now();
-    // Cache positive checks for 5 minutes unless forced
+    // Cache positive checks for 3 minutes unless forced
     if (
       !force &&
       !this.state.isRestricted &&
       this.state.lastCheckedAt &&
-      now - this.state.lastCheckedAt < 300_000
+      now - this.state.lastCheckedAt < 180_000
     ) {
       return this.getState();
     }
@@ -103,55 +95,81 @@ export class SecurityAccessGateService {
     this.updateState({ checking: true });
 
     try {
-      // Check if signed-in user is an administrator first (instant bypass)
-      if (auth.currentUser) {
-        const isAdmin = await adminAccessService.checkAdmin();
-        if (isAdmin) {
-          this.updateState({
-            isRestricted: false,
-            checking: false,
-            lastCheckedAt: now,
+      // 1. Fetch siteConfig/securityAccessControls directly from Cloud Firestore (Zero Next.js dependency)
+      const settings = await adminSecurityService.getSettings(false);
+
+      // 2. Resolve public IP and Country using direct client HTTPS GeoIP
+      let ip = '127.0.0.1';
+      let countryCode: string | undefined;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+        const geoResponse = await fetch('https://api.country.is/', {
+          signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        });
+        clearTimeout(timeoutId);
+
+        if (geoResponse.ok) {
+          const geoData = (await geoResponse.json()) as { ip?: string; country?: string };
+          if (geoData.ip) ip = geoData.ip.trim();
+          if (geoData.country && /^[A-Za-z]{2}$/.test(geoData.country.trim())) {
+            countryCode = geoData.country.trim().toUpperCase();
+          }
+        }
+      } catch {
+        // Fallback probe
+        try {
+          const controller2 = new AbortController();
+          const timeoutId2 = setTimeout(() => controller2.abort(), 3000);
+          const fbResponse = await fetch('https://ipapi.co/json/', {
+            signal: controller2.signal,
+            headers: { Accept: 'application/json' },
           });
-          return this.getState();
+          clearTimeout(timeoutId2);
+          if (fbResponse.ok) {
+            const fbData = (await fbResponse.json()) as { ip?: string; country_code?: string };
+            if (fbData.ip) ip = fbData.ip.trim();
+            if (fbData.country_code) countryCode = fbData.country_code.trim().toUpperCase();
+          }
+        } catch {
+          // If both fail, fail-open for offline resilience
         }
       }
 
-      const response = await this.apiService.request<{
-        success: boolean;
-        allowed: boolean;
-        reason?: string;
-        ip?: string;
-        countryCode?: string;
-        bypass?: boolean;
-      }>('/api/security/check-access', {
-        method: 'GET',
-        timeoutMs: 6000,
-        authenticated: Boolean(auth.currentUser),
+      // 3. Check admin status without automatic unconditional bypass for general routes
+      const isAdmin = auth.currentUser ? await adminAccessService.checkAdmin() : false;
+
+      // 4. Pure evaluation against Firestore rules
+      const result: SecurityEvaluationResult = evaluateSecurityAccess(settings, {
+        ip,
+        countryCode,
+        userId: auth.currentUser?.uid,
+        userEmail: auth.currentUser?.email || undefined,
+        isAdmin,
+        isAccessingAdminPortal: false,
       });
 
-      if (response && response.success) {
-        if (response.allowed === false) {
-          this.updateState({
-            isRestricted: true,
-            reason: response.reason || 'Access is currently restricted in your geographic region.',
-            detectedIp: response.ip || null,
-            detectedCountry: response.countryCode || null,
-            checking: false,
-            lastCheckedAt: now,
-          });
-        } else {
-          this.updateState({
-            isRestricted: false,
-            reason: null,
-            detectedIp: response.ip || null,
-            detectedCountry: response.countryCode || null,
-            checking: false,
-            lastCheckedAt: now,
-          });
-        }
+      if (!result.allowed) {
+        this.updateState({
+          isRestricted: true,
+          reason: result.reason || 'Access is currently restricted in your geographic region.',
+          detectedIp: ip,
+          detectedCountry: countryCode || null,
+          checking: false,
+          lastCheckedAt: now,
+        });
       } else {
-        // Fallback: don't block if response payload is malformed
-        this.updateState({ checking: false, lastCheckedAt: now });
+        this.updateState({
+          isRestricted: false,
+          reason: null,
+          detectedIp: ip,
+          detectedCountry: countryCode || null,
+          checking: false,
+          lastCheckedAt: now,
+        });
       }
     } catch (err) {
       this.logger.warn('SecurityAccessGateService', 'check_access_failed', {

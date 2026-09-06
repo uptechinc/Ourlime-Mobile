@@ -13,10 +13,11 @@ export type SecurityEvaluationContext = {
   userId?: string;
   userEmail?: string;
   isAdmin?: boolean;
+  isAccessingAdminPortal?: boolean;
 };
 
 export type SecurityMatchReason =
-  | 'admin_role'
+  | 'admin_portal_access'
   | 'user_whitelist'
   | 'ip_blocklist'
   | 'ip_whitelist'
@@ -78,10 +79,10 @@ export function matchesIpRule(ipAddress: string, ruleValue: string): boolean {
  * Pure evaluation function for geographic access controls and IP rules.
  *
  * EVALUATION HIERARCHY:
- * 1. Admin Role Bypass -> ALLOWED
- * 2. User Whitelist (UID or Email) -> ALLOWED
- * 3. IP Blocklist (Explicit Deny) -> BLOCKED
- * 4. IP Whitelist (Explicit Allow / Country Override) -> ALLOWED (Bypasses Country Policy)
+ * 1. IP Blocklist (Explicit Deny) -> BLOCKED
+ * 2. IP Whitelist (Explicit Allow / Country Override) -> ALLOWED (Bypasses Country Policy)
+ * 3. User Whitelist (UID or Email) -> ALLOWED
+ * 4. Admin Portal Access (Admin accessing administrative workspace) -> ALLOWED
  * 5. Region Policy ('block_selected' or 'allow_selected_only') -> BLOCKED if condition fails
  * 6. Default -> ALLOWED
  */
@@ -89,17 +90,35 @@ export function evaluateSecurityAccess(
   settings: SecurityAccessSettings,
   context: SecurityEvaluationContext
 ): SecurityEvaluationResult {
-  // 1. Administrator role bypass
-  if (context.isAdmin) {
+  const normalizedClientIp = normalizeIpAddress(context.ip);
+
+  // 1. IP Blocklist check (Explicit block takes precedence)
+  const matchingBlockRule = (settings.ipRules || []).find(
+    (rule) => rule.type === 'blocklist' && matchesIpRule(normalizedClientIp, rule.ip)
+  );
+  if (matchingBlockRule) {
     return {
-      allowed: true,
-      bypass: true,
-      ruleMatched: 'admin_role',
-      matchedRuleDetail: 'User has administrator privileges.',
+      allowed: false,
+      reason: 'Your IP address has been administratively blocked.',
+      ruleMatched: 'ip_blocklist',
+      matchedRuleDetail: matchingBlockRule.label || `IP matched blocklist rule: ${matchingBlockRule.ip}`,
     };
   }
 
-  // 2. User Whitelist bypass (by UID or Email)
+  // 2. IP Whitelist check (Explicit allow OVERRIDES country restriction)
+  const matchingWhitelistRule = (settings.ipRules || []).find(
+    (rule) => rule.type === 'whitelist' && matchesIpRule(normalizedClientIp, rule.ip)
+  );
+  if (matchingWhitelistRule) {
+    return {
+      allowed: true,
+      bypass: true,
+      ruleMatched: 'ip_whitelist',
+      matchedRuleDetail: matchingWhitelistRule.label || `IP matched whitelist override: ${matchingWhitelistRule.ip}`,
+    };
+  }
+
+  // 3. User Whitelist bypass (by UID or Email)
   if (context.userId || context.userEmail) {
     const normalizedEmail = (context.userEmail || '').trim().toLowerCase();
     const matchedUser = (settings.userWhitelist || []).find((entry) => {
@@ -118,31 +137,14 @@ export function evaluateSecurityAccess(
     }
   }
 
-  const normalizedClientIp = normalizeIpAddress(context.ip);
-
-  // 3. IP Blocklist check (Explicit block takes precedence)
-  const matchingBlockRule = (settings.ipRules || []).find(
-    (rule) => rule.type === 'blocklist' && matchesIpRule(normalizedClientIp, rule.ip)
-  );
-  if (matchingBlockRule) {
-    return {
-      allowed: false,
-      reason: 'Your IP address has been administratively blocked.',
-      ruleMatched: 'ip_blocklist',
-      matchedRuleDetail: matchingBlockRule.label || `IP matched blocklist rule: ${matchingBlockRule.ip}`,
-    };
-  }
-
-  // 4. IP Whitelist check (Explicit allow OVERRIDES country restriction)
-  const matchingWhitelistRule = (settings.ipRules || []).find(
-    (rule) => rule.type === 'whitelist' && matchesIpRule(normalizedClientIp, rule.ip)
-  );
-  if (matchingWhitelistRule) {
+  // 4. Admin Portal scope bypass: Allows administrators to access the admin workspace
+  // to manage settings, logs, and whitelists even if connecting from an unlisted country.
+  if (context.isAdmin && context.isAccessingAdminPortal) {
     return {
       allowed: true,
       bypass: true,
-      ruleMatched: 'ip_whitelist',
-      matchedRuleDetail: matchingWhitelistRule.label || `IP matched whitelist override: ${matchingWhitelistRule.ip}`,
+      ruleMatched: 'admin_portal_access',
+      matchedRuleDetail: 'Administrator accessing administrative workspace.',
     };
   }
 
