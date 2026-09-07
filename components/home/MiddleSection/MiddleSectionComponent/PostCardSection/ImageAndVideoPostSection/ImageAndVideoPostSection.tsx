@@ -16,6 +16,7 @@ import { usePlaybackInteraction } from '@/lib/hooks/usePlaybackInteraction';
 import { PlaybackSeekBar } from '@/components/media/PlaybackSeekBar';
 import CachedImage from '@/components/ui/CachedImage';
 import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components/ui/PlayfulFloatingHeart';
+import { ensureMediaUrl } from '@/lib/helpers/mediaUrl';
 
 type DisplayPostMedia = {
   id?: string;
@@ -441,8 +442,8 @@ export default function ImageAndVideoPostSection({
             {item.type === 'video' && index === activeIndex && isParentVisible ? (
               <VideoPostItem
                 key={item.typeUrl}
-                url={item.typeUrl}
-                thumbnailUrl={item.thumbnailUrl}
+                url={ensureMediaUrl(item.typeUrl)}
+                thumbnailUrl={item.thumbnailUrl ? ensureMediaUrl(item.thumbnailUrl) : undefined}
                 isActiveSlide={index === activeIndex}
                 isParentVisible={isParentVisible}
                 onLike={onLike}
@@ -454,7 +455,7 @@ export default function ImageAndVideoPostSection({
               <View style={{ width: '100%', height: '100%', position: 'relative', backgroundColor: '#000000' }}>
                 {item.thumbnailUrl ? (
                   <CachedImage
-                    uri={item.thumbnailUrl}
+                    uri={ensureMediaUrl(item.thumbnailUrl)}
                     style={{ width: '100%', height: '100%' }}
                     recyclingKey={item.thumbnailUrl}
                   />
