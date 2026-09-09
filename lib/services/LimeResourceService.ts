@@ -8,6 +8,7 @@ import { LocalCacheService, type CachedRecord } from './LocalCacheService';
 import { ResourceErrorService } from './ResourceErrorService';
 import { RequestTimeoutService } from './RequestTimeoutService';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { LimeMediaPreloadService } from './LimeMediaPreloadService';
 
 const LIME_NAMESPACE = 'limes';
 const LIME_CACHE_VERSION = 'v3';
@@ -54,6 +55,7 @@ export class LimeResourceService {
   private readonly errorService = ResourceErrorService.getInstance();
   private readonly timeoutService = RequestTimeoutService.getInstance();
   private readonly logger = DiagnosticLogService.getInstance();
+  private readonly mediaPreloadService = LimeMediaPreloadService.getInstance();
   private readonly inFlight = new Map<string, Promise<void>>();
 
   private constructor() {}
@@ -120,6 +122,7 @@ export class LimeResourceService {
       isStale: cached.isExpired || Date.now() - cached.updatedAt >= LIME_STALE_MS,
       error: null,
     });
+    void this.mediaPreloadService.prefetchFeedPosters(data.reels, 0, 4);
     await this.cacheService.touch(query.userId, LIME_NAMESPACE, key);
   }
 
@@ -176,6 +179,7 @@ export class LimeResourceService {
           hasMore: page.hasMore,
           isLoadingMore: false,
         }, 'network');
+        void this.mediaPreloadService.prefetchFeedPosters(page.reels, 0, 6);
       } catch (error: unknown) {
         const latest = useResourceStore.getState().limeFeeds[key];
         if (!latest?.data) return;
@@ -331,6 +335,7 @@ export class LimeResourceService {
         isLoadingMore: false,
       }, 'network');
       void this.prefetchAvatars(page.reels);
+      void this.mediaPreloadService.prefetchFeedPosters(page.reels, 0, 6);
     } catch (error: unknown) {
       const latest = useResourceStore.getState().limeFeeds[key];
       useResourceStore.getState().setLimeFeed(key, {

@@ -9,6 +9,7 @@ import { NotificationService } from './NotificationService';
 import { RelationshipResourceService } from './RelationshipResourceService';
 import { ApiService } from './ApiService';
 import { LimeResourceService } from './LimeResourceService';
+import { LimeMediaPreloadService } from './LimeMediaPreloadService';
 
 const SCOPES: readonly FeedScope[] = ['home', 'friends'];
 
@@ -22,6 +23,7 @@ export class AppPreloadService {
   private readonly relationshipService = RelationshipResourceService.getInstance();
   private readonly apiService = ApiService.getInstance();
   private readonly limeService = LimeResourceService.getInstance();
+  private readonly limeMediaService = LimeMediaPreloadService.getInstance();
   private readonly logger = DiagnosticLogService.getInstance();
   private generation = 0;
   private activeKeys = new Set<string>();
@@ -38,6 +40,7 @@ export class AppPreloadService {
     this.generation += 1;
     this.activeKeys.clear();
     this.apiService.cancelBackgroundRequests();
+    this.limeMediaService.cancel();
     this.logger.info('AppPreloadService', 'queue:cancel');
   }
 

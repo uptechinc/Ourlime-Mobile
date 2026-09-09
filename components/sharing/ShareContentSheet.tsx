@@ -44,6 +44,7 @@ export default function ShareContentSheet({
   const [recipients, setRecipients] = useState<ConversationEntry[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
+  const [attachedMessage, setAttachedMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [sharingExternally, setSharingExternally] = useState(false);
@@ -53,14 +54,25 @@ export default function ShareContentSheet({
     if (!visible) return;
     setSelectedIds(new Set());
     setSearch('');
+    setAttachedMessage('');
     setFeedback(null);
-    setLoading(true);
+
+    const cached = contentShareService.getCachedRecipients(currentUserId);
+    if (cached && cached.length > 0) {
+      setRecipients(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
     void (async () => {
       try {
         const data = await contentShareService.loadRecipients(currentUserId);
         setRecipients(data);
       } catch {
-        setFeedback('Could not load your chats. Try again.');
+        if (!cached || cached.length === 0) {
+          setFeedback('Could not load your chats. Try again.');
+        }
       } finally {
         setLoading(false);
       }
@@ -90,7 +102,7 @@ export default function ShareContentSheet({
     setSending(true);
     setFeedback(null);
     try {
-      const result = await contentShareService.sendToChats(currentUserId, Array.from(selectedIds), url);
+      const result = await contentShareService.sendToChats(currentUserId, Array.from(selectedIds), url, attachedMessage);
       if (result.sentCount === 0) {
         setFeedback('The share could not be sent. Try again.');
         return;
@@ -102,6 +114,7 @@ export default function ShareContentSheet({
       } catch (callbackErr) {
         console.warn('[ShareContentSheet.onShared]', callbackErr);
       }
+      setAttachedMessage('');
       onClose();
     } catch (error: unknown) {
       console.error('[ShareContentSheet.handleSendToChats]', error);
@@ -186,6 +199,17 @@ export default function ShareContentSheet({
           />
         </View>
 
+        <View style={[styles.messageBox, { backgroundColor: colors.input, borderColor: colors.border }]}>
+          <TextInput
+            value={attachedMessage}
+            onChangeText={setAttachedMessage}
+            placeholder="Add a message... (optional)"
+            placeholderTextColor={colors.mutedText}
+            maxLength={500}
+            style={[styles.messageInput, { color: colors.text }]}
+          />
+        </View>
+
         {feedback ? <Text style={[styles.feedback, { color: colors.destructiveText }]}>{feedback}</Text> : null}
 
         {loading ? (
@@ -257,6 +281,8 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 13, fontWeight: '800', marginTop: 18, marginBottom: 8 },
   searchBox: { height: 46, borderRadius: 15, borderWidth: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13 },
   searchInput: { flex: 1, fontSize: 14, marginLeft: 9, paddingVertical: 0 },
+  messageBox: { height: 46, borderRadius: 15, borderWidth: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13, marginTop: 8 },
+  messageInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
   feedback: { fontSize: 12, fontWeight: '700', marginTop: 8 },
   centerState: { minHeight: 150, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 30 },
   emptyTitle: { fontSize: 15, fontWeight: '800' },

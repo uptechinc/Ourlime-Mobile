@@ -56,6 +56,8 @@ import { AuthService } from '@/lib/services/AuthService';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
 import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
 import { LimeResourceService } from '@/lib/services/LimeResourceService';
+import { LimeMediaPreloadService } from '@/lib/services/LimeMediaPreloadService';
+import { LimeVisualPlaceholder } from '@/components/limes/LimeVisualPlaceholder';
 import { useLimeFeedResource } from '@/lib/hooks/useLimeFeedResource';
 import { ensureMediaUrl } from '@/lib/helpers/mediaUrl';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
@@ -76,6 +78,7 @@ import Animated, {
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const authService = AuthService.getInstance();
 const limeResourceService = LimeResourceService.getInstance();
+const limeMediaPreloadService = LimeMediaPreloadService.getInstance();
 
 type ReportTarget = {
   reelId: string;
@@ -385,6 +388,26 @@ export default function LimesScreen() {
     }
     return true;
   });
+
+  // Trigger pagination earlier based on index lead time before reaching the end of feed
+  useEffect(() => {
+    if (displayedLimes.length > 0 && activeIndex >= displayedLimes.length - 4 && !isLoadingMore) {
+      void loadMore();
+    }
+  }, [activeIndex, displayedLimes.length, isLoadingMore, loadMore]);
+
+  // Warm posters around the active Lime in a directional bounded window
+  useEffect(() => {
+    if (displayedLimes.length === 0) return;
+    void limeMediaPreloadService.prefetchFeedPosters(displayedLimes, Math.max(0, activeIndex - 1), 5);
+  }, [activeIndex, displayedLimes]);
+
+  useEffect(() => {
+    if (appState !== 'active') {
+      limeMediaPreloadService.cancel();
+    }
+  }, [appState]);
+
   const isRefreshingEmptyFeed = displayedLimes.length === 0
     && (resource?.status === 'hydrating' || resource?.status === 'refreshing');
 
@@ -776,10 +799,11 @@ type ReelVideoPlayerProps = {
   speed: PlaybackSpeed;
   onSeekingChange?: (seeking: boolean) => void;
   onSpeedChange: (speed: PlaybackSpeed) => void;
+  onReady?: () => void;
 };
 
 const ReelVideoPlayer = forwardRef<ReelVideoPlayerHandle, ReelVideoPlayerProps>(function ReelVideoPlayer(
-  { url, isActive, muted, paused, speed, onSpeedChange, onSeekingChange },
+  { url, isActive, muted, paused, speed, onSpeedChange, onSeekingChange, onReady },
   ref,
 ) {
   const safeUrl = url && url.length > 4 ? ensureMediaUrl(url) : undefined;
@@ -791,6 +815,23 @@ const ReelVideoPlayer = forwardRef<ReelVideoPlayerHandle, ReelVideoPlayerProps>(
   });
 
   const { session, snapshot, refresh, isPlaybackActive } = usePlaybackInteraction(player, isActive, speed);
+
+  useEffect(() => {
+    const statusSub = player.addListener('statusChange', (event) => {
+      if (event.status === 'readyToPlay') {
+        onReady?.();
+      }
+    });
+    const playingSub = player.addListener('playingChange', (event) => {
+      if (event.isPlaying) {
+        onReady?.();
+      }
+    });
+    return () => {
+      statusSub.remove();
+      playingSub.remove();
+    };
+  }, [player, onReady]);
 
   useEffect(() => {
     try {
@@ -934,6 +975,14 @@ export function ReelItem({
   const [preparedThumbnailUrl, setPreparedThumbnailUrl] = useState(
     reel.thumbnailUrl || reel.media.thumbnailUrl || ''
   );
+  const [isFrameReady, setIsFrameReady] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
+
+  useEffect(() => {
+    setIsFrameReady(false);
+    setPosterFailed(false);
+    setPreparedThumbnailUrl(reel.thumbnailUrl || reel.media.thumbnailUrl || '');
+  }, [reel.media.typeUrl, reel.thumbnailUrl, reel.media.thumbnailUrl]);
   const [localSpeed, setLocalSpeed] = useState<PlaybackSpeed>(1);
   const heldRef = useRef(false);
   const touchOrigin = useRef({ x: 0, y: 0 });
@@ -1086,28 +1135,54 @@ export function ReelItem({
 
   return (
     <View style={[styles.reelContainer, { height, width: '100%' }]}>
-      {/* 1. Video player — bottom layer */}
-      {shouldLoadVideo ? (
-        <ReelVideoPlayer
-          key={reel.media.typeUrl}
-          ref={videoPlayerRef}
-          url={reel.media.typeUrl}
-          isActive={isActive && !shareSheetVisible && !showReposters && !showOptionsMenu}
-          paused={paused}
-          speed={playbackSpeed ?? localSpeed}
-          onSpeedChange={onPlaybackSpeedChange ?? setLocalSpeed}
-          onSeekingChange={(seeking) => {
-            if (seeking) {
-              if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
-              lastTapRef.current = null;
-            }
-            onSeekingChange?.(seeking);
-          }}
-          muted={muted}
-        />
-      ) : (
-        <View style={styles.videoPlayer} />
-      )}
+      {/* 1. Video player & visual backdrop layer */}
+      <View style={[styles.videoPlayer, { overflow: 'hidden' }]}>
+        {/* Base fallback surface so transparent/unready areas never expose raw black */}
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#07170e' }]} pointerEvents="none" />
+
+        {shouldLoadVideo ? (
+          <ReelVideoPlayer
+            key={reel.media.typeUrl}
+            ref={videoPlayerRef}
+            url={reel.media.typeUrl}
+            isActive={isActive && !shareSheetVisible && !showReposters && !showOptionsMenu}
+            paused={paused}
+            speed={playbackSpeed ?? localSpeed}
+            onSpeedChange={onPlaybackSpeedChange ?? setLocalSpeed}
+            onSeekingChange={(seeking) => {
+              if (seeking) {
+                if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+                lastTapRef.current = null;
+              }
+              onSeekingChange?.(seeking);
+            }}
+            muted={muted}
+            onReady={() => setIsFrameReady(true)}
+          />
+        ) : null}
+
+        {/* Persistent Poster Layer until decoded first frame */}
+        {!isFrameReady ? (
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            {preparedThumbnailUrl && !posterFailed ? (
+              <Image
+                source={{ uri: preparedThumbnailUrl }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                onError={() => setPosterFailed(true)}
+              />
+            ) : (
+              <LimeVisualPlaceholder isLoading={isActive} />
+            )}
+            {isActive ? (
+              <View style={styles.videoBufferingOverlay} pointerEvents="none">
+                <ActivityIndicator size="large" color="#10b981" />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
 
       {/* 2. Double-tap + single-tap zone — full screen, sits behind controls */}
       <Pressable
@@ -1493,6 +1568,12 @@ export const styles = StyleSheet.create({
     left: 0,
     width: '100%',
     height: '100%',
+  },
+  videoBufferingOverlay: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
   },
   /* Transparent double-tap zone: full screen behind sidebar controls */
   doubleTapZone: {
