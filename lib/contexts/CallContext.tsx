@@ -7,7 +7,8 @@ import { auth, db } from '@/lib/firebaseConfig';
 import { agoraCallService } from '@/lib/services/AgoraCallService';
 import { callService } from '@/lib/services/CallService';
 import { nativeCallService } from '@/lib/services/NativeCallService';
-import { ApiServiceError } from '@/lib/services/ApiService';
+import { pictureInPictureService } from '@/lib/services/PictureInPictureService';
+import { AppServerError } from '@/lib/services/AppServerService';
 import { DiagnosticLogService } from '@/lib/services/DiagnosticLogService';
 import { useCallStore } from '@/lib/store/useCallStore';
 import type { CallAction, CallPushPayload, CallSession, CallType } from '@/lib/types/call';
@@ -23,6 +24,7 @@ type CallContextValue = {
   switchCamera: () => void;
   minimize: () => void;
   restore: () => void;
+  swapVideoFocus: () => void;
 };
 
 type CallProviderProps = { children: ReactNode };
@@ -41,6 +43,7 @@ export function CallProvider({ children }: CallProviderProps) {
   const isMuted = useCallStore((state) => state.isMuted);
   const isVideoMuted = useCallStore((state) => state.isVideoMuted);
   const isSpeakerEnabled = useCallStore((state) => state.isSpeakerEnabled);
+  const connectionStatus = useCallStore((state) => state.connectionStatus);
 
   const scheduleAnsweredCallChat = useCallback((completedSession: CallSession) => {
     const wasAnswered = completedSession.state === 'active' || completedSession.answeredAtMs !== null;
@@ -56,6 +59,10 @@ export function CallProvider({ children }: CallProviderProps) {
     callUnsubscribeRef.current?.();
     callUnsubscribeRef.current = callService.subscribe(callId, (nextSession) => {
       const currentSession = useCallStore.getState().session;
+      // Once this call has ended (or the screen was already closed), later snapshots of the same call document
+      // must not bring the call screen back. This was the "call screen shows twice" bug.
+      if (!currentSession || currentSession.id !== nextSession.id || currentSession.state === 'ended') return;
+      if (nextSession.state !== 'ringing') agoraCallService.stopRingback();
       useCallStore.getState().setSession(nextSession);
       if (nextSession.state === 'connecting') useCallStore.getState().setConnectionStatus('connecting');
       if (nextSession.state === 'active') {
@@ -66,14 +73,19 @@ export function CallProvider({ children }: CallProviderProps) {
         scheduleAnsweredCallChat(currentSession?.id === nextSession.id
           ? { ...nextSession, answeredAtMs: nextSession.answeredAtMs ?? currentSession.answeredAtMs ?? (currentSession.state === 'active' ? Date.now() : null) }
           : nextSession);
+        callUnsubscribeRef.current?.();
+        callUnsubscribeRef.current = null;
         void agoraCallService.leave();
         void nativeCallService.endNativeCall(nextSession.id, nextSession.endReason);
         useCallStore.getState().setConnectionStatus('ending');
-        setTimeout(() => useCallStore.getState().reset(), 350);
+        setTimeout(() => {
+          if (useCallStore.getState().session?.id === nextSession.id) useCallStore.getState().reset();
+        }, 350);
       } else if (currentSession?.state === 'ringing' && nextSession.state === 'connecting' && nextSession.answeredByDeviceId) {
         void callService.getDeviceId().then((deviceId) => {
           if (nextSession.answeredByDeviceId !== deviceId && auth.currentUser?.uid === nextSession.callee.userId) {
             void nativeCallService.endNativeCall(nextSession.id, 'answered_elsewhere');
+            void agoraCallService.leave();
             useCallStore.getState().reset();
           }
         });
@@ -83,7 +95,8 @@ export function CallProvider({ children }: CallProviderProps) {
 
   const joinRtc = useCallback(async (activeSession: CallSession) => {
     const credentials = await callService.getRtcCredentials(activeSession.id);
-    await agoraCallService.join(credentials, activeSession.type, {
+    const peer = activeSession.caller.userId === auth.currentUser?.uid ? activeSession.callee : activeSession.caller;
+    await agoraCallService.join(credentials, activeSession.type, peer.displayName || peer.userName, {
       onConnected: () => {
         const current = useCallStore.getState().session;
         if (current?.state === 'connecting') {
@@ -92,9 +105,14 @@ export function CallProvider({ children }: CallProviderProps) {
         }
         if (current?.state === 'connecting' || current?.state === 'active') void nativeCallService.markConnected(activeSession.id);
       },
-      onRemoteJoined: (uid) => useCallStore.getState().setRemoteUid(uid),
+      onRemoteJoined: (uid) => {
+        agoraCallService.stopRingback();
+        useCallStore.getState().setRemoteUid(uid);
+      },
       onRemoteLeft: () => useCallStore.getState().setRemoteUid(null),
       onError: (message) => useCallStore.getState().setError(message),
+      onLocalPreviewReady: () => useCallStore.getState().setLocalPreviewReady(true),
+      onRemoteVideoChanged: (ready) => useCallStore.getState().setRemoteVideoReady(ready),
     });
   }, [logger]);
 
@@ -105,6 +123,7 @@ export function CallProvider({ children }: CallProviderProps) {
         const currentSession = useCallStore.getState().session;
         if (currentSession?.id === payload.callId) {
           scheduleAnsweredCallChat(currentSession);
+          void agoraCallService.leave();
           useCallStore.getState().reset();
         }
       }
@@ -162,8 +181,10 @@ export function CallProvider({ children }: CallProviderProps) {
               useCallStore.getState().setSession(answered);
               return joinRtc(answered);
             }).catch((error: unknown) => {
-              if (error instanceof ApiServiceError && error.status === 409) {
+              // Answered on another device, or no longer ringing.
+              if (error instanceof AppServerError && error.code === 'failed-precondition') {
                 void nativeCallService.endNativeCall(callId, 'answered_elsewhere');
+                void agoraCallService.leave();
                 useCallStore.getState().reset();
               }
               logger.error('CallCoordinator', 'native-answer', error, { callId });
@@ -197,6 +218,19 @@ export function CallProvider({ children }: CallProviderProps) {
     };
   }, [handleIncomingPayload, joinRtc, logger, subscribeToCall]);
 
+  // Picture-in-picture: pressing Home during a live video call (mine ringing out, connecting or active) shrinks the
+  // app into a floating window with both videos. Not while someone else's call is still ringing for me.
+  const isIncomingRinging = session?.state === 'ringing' && session.callee.userId === auth.currentUser?.uid;
+  const isPictureInPictureAllowed = session?.type === 'video' && !isIncomingRinging
+    && (connectionStatus === 'ringing' || connectionStatus === 'connecting' || connectionStatus === 'active');
+  useEffect(() => {
+    void pictureInPictureService.setEnabled(isPictureInPictureAllowed);
+  }, [isPictureInPictureAllowed]);
+
+  useEffect(() => pictureInPictureService.subscribe((isInPictureInPicture) => {
+    useCallStore.getState().setPictureInPicture(isInPictureInPicture);
+  }), []);
+
   useEffect(() => {
     if (session?.state === 'ringing' && session.callee.userId === auth.currentUser?.uid) {
       Vibration.vibrate([0, 500, 1000], true);
@@ -207,6 +241,30 @@ export function CallProvider({ children }: CallProviderProps) {
       Vibration.cancel();
     };
   }, [session?.callee.userId, session?.state]);
+
+  // Incoming video call: show my own camera while it rings. join() reuses this engine when I answer; every
+  // non-answer exit (decline, cancel, expiry, answered elsewhere) calls leave(), which turns the camera off.
+  const ringingVideoCallId = session?.type === 'video' && session.state === 'ringing' && session.callee.userId === auth.currentUser?.uid
+    ? session.id : null;
+  useEffect(() => {
+    if (!ringingVideoCallId) return;
+    const isStillRinging = () => {
+      const current = useCallStore.getState().session;
+      return current?.id === ringingVideoCallId && current.state === 'ringing';
+    };
+    void (async () => {
+      try {
+        // The public App ID starts the camera the moment it rings; the server round trip is only a fallback.
+        const appId = callService.getPublicAgoraAppId() ?? (await callService.getRtcCredentials(ringingVideoCallId)).appId;
+        if (!isStillRinging()) return;
+        await agoraCallService.startPreview(appId, () => useCallStore.getState().setLocalPreviewReady(true));
+        const current = useCallStore.getState().session;
+        if (current?.id !== ringingVideoCallId) await agoraCallService.leave();
+      } catch (error: unknown) {
+        logger.warn('CallCoordinator', 'ringing-preview', { callId: ringingVideoCallId, message: error instanceof Error ? error.message : String(error) });
+      }
+    })();
+  }, [logger, ringingVideoCallId]);
 
   useEffect(() => {
     if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current);
@@ -219,6 +277,7 @@ export function CallProvider({ children }: CallProviderProps) {
           const expired = await callService.updateCall(session.id, 'expire');
           nativeCallService.endNativeCall(expired.id, expired.endReason);
         } finally {
+          void agoraCallService.leave();
           useCallStore.getState().reset();
         }
       })();
@@ -251,10 +310,14 @@ export function CallProvider({ children }: CallProviderProps) {
       subscribeToCall(created.id);
       await nativeCallService.startOutgoingCall(created);
       await joinRtc(created);
+      // The caller hears the ringback tone until the other phone answers.
+      const current = useCallStore.getState().session;
+      if (current?.id === created.id && current.state === 'ringing') void agoraCallService.startRingback();
     } catch (error: unknown) {
+      logger.error('CallCoordinator', 'start', error, { stack: error instanceof Error ? error.stack ?? null : null });
       useCallStore.getState().setError(error instanceof Error ? error.message : 'The call could not be started.');
     }
-  }), [joinRtc, runExclusive, subscribeToCall]);
+  }), [joinRtc, logger, runExclusive, subscribeToCall]);
 
   const performAction = useCallback(async (action: CallAction) => runExclusive(async () => {
     const current = useCallStore.getState().session;
@@ -280,6 +343,8 @@ export function CallProvider({ children }: CallProviderProps) {
             });
           } catch {}
         })();
+        callUnsubscribeRef.current?.();
+        callUnsubscribeRef.current = null;
         await agoraCallService.leave().catch(() => {});
         if (updated) await nativeCallService.endNativeCall(updated.id, updated.endReason).catch(() => {});
         useCallStore.getState().reset();
@@ -306,8 +371,9 @@ export function CallProvider({ children }: CallProviderProps) {
   const switchCamera = useCallback(() => { void agoraCallService.switchCamera(); }, []);
   const minimize = useCallback(() => useCallStore.getState().setMinimized(true), []);
   const restore = useCallback(() => useCallStore.getState().setMinimized(false), []);
+  const swapVideoFocus = useCallback(() => useCallStore.getState().setLocalPrimary(!useCallStore.getState().isLocalPrimary), []);
 
-  const value = useMemo<CallContextValue>(() => ({ startCall, answerCall, declineCall, endCall, toggleMute, toggleVideo, toggleSpeaker, switchCamera, minimize, restore }), [answerCall, declineCall, endCall, minimize, restore, startCall, switchCamera, toggleMute, toggleSpeaker, toggleVideo]);
+  const value = useMemo<CallContextValue>(() => ({ startCall, answerCall, declineCall, endCall, toggleMute, toggleVideo, toggleSpeaker, switchCamera, minimize, restore, swapVideoFocus }), [answerCall, declineCall, endCall, minimize, restore, startCall, swapVideoFocus, switchCamera, toggleMute, toggleSpeaker, toggleVideo]);
   return <CallContext.Provider value={value}>{children}</CallContext.Provider>;
 }
 

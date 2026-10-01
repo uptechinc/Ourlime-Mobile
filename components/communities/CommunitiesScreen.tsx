@@ -105,8 +105,12 @@ export default function CommunitiesScreen() {
 		}),
 		[scope, visibility, selectedCategoryId, searchQuery, sort]
 	);
-	const { resource, categories, refresh, loadMore, patchCommunity } =
+	const { resource, categories, refresh, refreshCategories, loadMore, patchCommunity } =
 		useCommunitiesResource(activeUserId ?? '', directoryQuery);
+	const visibleCommunities = useMemo(
+		() => (resource.data?.items ?? []).filter((community) => community.id !== cachedHeroCommunity?.id),
+		[resource.data?.items, cachedHeroCommunity?.id]
+	);
 	const selectedCategory =
 		categories.data?.find((category) => category.id === selectedCategoryId) ??
 		null;
@@ -742,7 +746,7 @@ export default function CommunitiesScreen() {
 				data={
 					isInitialLoading
 						? SKELETON_PLACEHOLDERS
-						: (resource.data?.items ?? [])
+						: visibleCommunities
 				}
 				numColumns={columnCount}
 				keyExtractor={(item, index) =>
@@ -753,7 +757,7 @@ export default function CommunitiesScreen() {
 				contentContainerStyle={{
 					paddingBottom: 42,
 					flexGrow:
-						isInitialLoading || resource.data?.items.length ? undefined : 1,
+						isInitialLoading || visibleCommunities.length ? undefined : 1,
 				}}
 				refreshControl={
 					<RefreshControl
@@ -781,6 +785,8 @@ export default function CommunitiesScreen() {
 			<CreateCommunityModal
 				visible={createVisible}
 				categories={categories.data ?? []}
+				categoriesLoading={categories.status === 'hydrating' || categories.status === 'refreshing'}
+				onRetryCategories={() => void refreshCategories()}
 				onClose={() => setCreateVisible(false)}
 				onCreated={(community) => {
 					void patchCommunity(community).then(() => refresh());

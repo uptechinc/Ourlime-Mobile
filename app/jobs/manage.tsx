@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Linking, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Linking, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Archive, Briefcase, CalendarClock, CheckSquare, ChevronDown, ChevronUp, Edit3, ExternalLink, FileText, History, MapPin, RotateCcw, Search, Square, StickyNote, Trash2, XCircle } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PageHeader from '@/components/ui/PageHeader';
+import { JobManagementSkeleton } from '@/components/ui/Skeleton';
 import { JobManagementAuditSheet, JobManagementEditSheet, JobManagementInterviewSheet, JobManagementNotesSheet } from '@/components/jobs/manage/JobManagementSheets';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import {
@@ -188,7 +189,16 @@ export default function ManageJobsScreen() {
     {error ? <Text style={styles.error}>{error}</Text> : null}
   </>;
 
-  if (loading && jobs.length === 0) return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}><PageHeader title="Manage Jobs" onBackPress={() => router.back()} /><View style={styles.center}><ActivityIndicator size="large" color="#10b981" /><Text style={styles.meta}>Loading your jobs…</Text></View></SafeAreaView>;
+  if (loading && jobs.length === 0) {
+    return (
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <PageHeader title="Manage Jobs" onBackPress={() => router.back()} />
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <JobManagementSkeleton />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
   if (!loading && jobs.length === 0) return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}><PageHeader title="Manage Jobs" onBackPress={() => router.back()} /><View style={styles.center}><Briefcase size={42} color={colors.mutedText} /><Text style={styles.jobTitle}>No jobs published</Text><Text style={styles.meta}>Create an opportunity from the Jobs screen.</Text></View></SafeAreaView>;
 
   return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>

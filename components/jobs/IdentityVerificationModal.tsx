@@ -1,5 +1,5 @@
+import { useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
 import {
   ShieldAlert,
   ShieldOff,
@@ -8,6 +8,7 @@ import {
   ArrowRight,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import VerificationUploadModal from '@/components/auth/VerificationUploadModal';
 
 type VerificationStatus = 'required' | 'pending' | 'rejected' | 'expired';
 
@@ -90,72 +91,85 @@ export default function IdentityVerificationModal({
   verificationStatus,
   message,
 }: IdentityVerificationModalProps) {
-  const router = useRouter();
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const { colors, isDark } = useAppTheme();
 
-  if (!isOpen) return null;
+  if (!isOpen && !isUploadModalOpen) return null;
 
   const currentStatus = resolveStatus(verificationStatus);
   const config = STATUS_CONFIG[currentStatus];
   const StatusIcon = config.Icon;
 
   const handleStartVerification = () => {
-    onClose();
-    router.push('/profile' as Href);
+    setIsUploadModalOpen(true);
   };
 
   return (
-    <Modal visible={isOpen} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View
-          style={[
-            styles.modalContent,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
-          {/* Close Button */}
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <X size={20} color={colors.mutedText} />
-          </TouchableOpacity>
-
-          {/* Icon */}
-          <View style={[styles.iconContainer, { backgroundColor: config.iconBg }]}>
-            <StatusIcon size={32} color={config.iconColor} />
-          </View>
-
-          {/* Texts */}
-          <Text style={[styles.title, { color: colors.text }]}>{config.title}</Text>
-          <Text style={[styles.description, { color: colors.mutedText }]}>
-            {message ?? config.description}
-          </Text>
-
-          {/* Actions */}
-          <View style={styles.actions}>
-            {config.showPrimary ? (
-              <TouchableOpacity
-                onPress={handleStartVerification}
-                style={[styles.primaryBtn, { backgroundColor: '#10b981' }]}
-              >
-                <Text style={styles.primaryBtnText}>{config.primaryAction}</Text>
-                <ArrowRight size={16} color="#ffffff" />
-              </TouchableOpacity>
-            ) : null}
-
-            <TouchableOpacity
-              onPress={onClose}
-              style={[
-                styles.secondaryBtn,
-                { borderColor: colors.border, backgroundColor: isDark ? '#1e293b' : '#f8fafc' },
-              ]}
-            >
-              <Text style={[styles.secondaryBtnText, { color: colors.text }]}>
-                {config.secondaryAction}
-              </Text>
+    <>
+      <Modal visible={isOpen && !isUploadModalOpen} transparent animationType="fade" onRequestClose={onClose}>
+        <View style={styles.overlay}>
+          <View
+            style={[
+              styles.modalContent,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            {/* Close Button */}
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+              <X size={20} color={colors.mutedText} />
             </TouchableOpacity>
+
+            {/* Icon */}
+            <View style={[styles.iconContainer, { backgroundColor: config.iconBg }]}>
+              <StatusIcon size={32} color={config.iconColor} />
+            </View>
+
+            {/* Texts */}
+            <Text style={[styles.title, { color: colors.text }]}>{config.title}</Text>
+            <Text style={[styles.description, { color: colors.mutedText }]}>
+              {message ?? config.description}
+            </Text>
+
+            {/* Actions */}
+            <View style={styles.actions}>
+              {config.showPrimary ? (
+                <TouchableOpacity
+                  onPress={handleStartVerification}
+                  style={[styles.primaryBtn, { backgroundColor: '#10b981' }]}
+                >
+                  <Text style={styles.primaryBtnText}>{config.primaryAction}</Text>
+                  <ArrowRight size={16} color="#ffffff" />
+                </TouchableOpacity>
+              ) : null}
+
+              <TouchableOpacity
+                onPress={onClose}
+                style={[
+                  styles.secondaryBtn,
+                  { borderColor: colors.border, backgroundColor: isDark ? '#1e293b' : '#f8fafc' },
+                ]}
+              >
+                <Text style={[styles.secondaryBtnText, { color: colors.text }]}>
+                  {config.secondaryAction}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    </Modal>
+      </Modal>
+
+      <VerificationUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => {
+          setIsUploadModalOpen(false);
+          onClose();
+        }}
+        onUploaded={() => {
+          setIsUploadModalOpen(false);
+          onClose();
+        }}
+      />
+    </>
   );
 }
 

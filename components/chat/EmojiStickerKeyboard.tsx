@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,14 @@ import {
   Pressable,
   Image,
   ActivityIndicator,
+  type ImageSourcePropType,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStickers } from '@/lib/hooks/useStickers';
 import type { Sticker } from '@/lib/types/sticker';
-import { getLocalStickerSource } from '@/assets/images/stickers/stickerMap';
+import { getLocalStickerSource, getRandomLocalStickerSource } from '@/assets/images/stickers/stickerMap';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type KeyboardTab = 'emojis' | 'stickers';
@@ -131,8 +133,16 @@ export function EmojiStickerKeyboard({
   onBackspace,
 }: EmojiStickerKeyboardProps) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useAppTheme();
   const [activeTab, setActiveTab] = useState<KeyboardTab>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
+  const [stickerIconSource, setStickerIconSource] = useState<ImageSourcePropType>(() => getRandomLocalStickerSource());
+
+  useEffect(() => {
+    if (visible) {
+      setStickerIconSource(getRandomLocalStickerSource());
+    }
+  }, [visible]);
 
   // Sticker pack state
   const [activePackId, setActivePackId] = useState('all');
@@ -175,27 +185,27 @@ export function EmojiStickerKeyboard({
       onRequestClose={onClose}
     >
       {/* Backdrop */}
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }} onPress={onClose} />
+      <Pressable style={{ flex: 1, backgroundColor: colors.modalScrim }} onPress={onClose} />
 
       {/* WhatsApp Keyboard Sheet Container */}
       <SwipeDismissSurface
         visible={visible}
         onDismiss={onClose}
-        handleColor="#d1d5db"
+        handleColor={isDark ? '#475569' : '#cbd5e1'}
         accessibilityLabel="Swipe down to close emoji and sticker picker"
         style={{
           position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
-          backgroundColor: '#ffffff',
+          backgroundColor: colors.surface,
           borderTopLeftRadius: 20,
           borderTopRightRadius: 20,
           height: 380 + insets.bottom,
           paddingBottom: insets.bottom,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.12,
+          shadowOpacity: isDark ? 0.35 : 0.12,
           shadowRadius: 16,
           elevation: 12,
         }}
@@ -208,7 +218,7 @@ export function EmojiStickerKeyboard({
           paddingTop: 10,
           paddingBottom: 8,
           borderBottomWidth: 1,
-          borderBottomColor: '#f1f5f9',
+          borderBottomColor: colors.border,
           gap: 10,
         }}>
           {/* Search Box */}
@@ -216,16 +226,16 @@ export function EmojiStickerKeyboard({
             flex: 1,
             flexDirection: 'row',
             alignItems: 'center',
-            backgroundColor: '#f1f5f9',
+            backgroundColor: isDark ? colors.control : '#f1f5f9',
             borderRadius: 20,
             paddingHorizontal: 12,
             paddingVertical: 6,
           }}>
-            <Icon name="search" size={15} color="#94a3b8" style={{ marginRight: 8 }} />
+            <Icon name="search" size={15} color={colors.mutedText} style={{ marginRight: 8 }} />
             <TextInput
-              style={{ flex: 1, fontSize: 14, color: '#0f172a', padding: 0 }}
+              style={{ flex: 1, fontSize: 14, color: colors.text, padding: 0 }}
               placeholder={activeTab === 'emojis' ? 'Search emojis...' : 'Search stickers...'}
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={colors.mutedText}
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoCapitalize="none"
@@ -233,14 +243,14 @@ export function EmojiStickerKeyboard({
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Icon name="x-circle" size={15} color="#94a3b8" />
+                <Icon name="x-circle" size={15} color={colors.mutedText} />
               </TouchableOpacity>
             )}
           </View>
 
           {/* Close button */}
           <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
-            <Icon name="chevron-down" size={22} color="#64748b" />
+            <Icon name="chevron-down" size={22} color={colors.icon} />
           </TouchableOpacity>
         </View>
 
@@ -251,7 +261,7 @@ export function EmojiStickerKeyboard({
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              style={{ maxHeight: 42, borderBottomWidth: 1, borderBottomColor: '#f8fafc' }}
+              style={{ maxHeight: 42, borderBottomWidth: 1, borderBottomColor: colors.border }}
               contentContainerStyle={{ paddingHorizontal: 10, alignItems: 'center', gap: 4 }}
             >
               {EMOJI_CATEGORIES.map((cat) => {
@@ -264,10 +274,10 @@ export function EmojiStickerKeyboard({
                       paddingHorizontal: 12,
                       paddingVertical: 6,
                       borderRadius: 14,
-                      backgroundColor: isActive ? '#dcfce7' : 'transparent',
+                      backgroundColor: isActive ? (isDark ? colors.successSurface : '#dcfce7') : 'transparent',
                     }}
                   >
-                    <Icon name={cat.icon} size={16} color={isActive ? '#10b981' : '#94a3b8'} />
+                    <Icon name={cat.icon} size={16} color={isActive ? colors.accent : colors.mutedText} />
                   </TouchableOpacity>
                 );
               })}
@@ -283,7 +293,7 @@ export function EmojiStickerKeyboard({
                 .filter((cat) => !searchQuery || cat.id === activeEmojiCategory || searchQuery.length > 0)
                 .map((cat) => (
                   <View key={cat.id} style={{ marginBottom: 12 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#94a3b8', letterSpacing: 0.8, marginBottom: 6, paddingHorizontal: 4 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.mutedText, letterSpacing: 0.8, marginBottom: 6, paddingHorizontal: 4 }}>
                       {cat.name.toUpperCase()}
                     </Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
@@ -317,7 +327,7 @@ export function EmojiStickerKeyboard({
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              style={{ maxHeight: 42, borderBottomWidth: 1, borderBottomColor: '#f8fafc' }}
+              style={{ maxHeight: 42, borderBottomWidth: 1, borderBottomColor: colors.border }}
               contentContainerStyle={{ paddingHorizontal: 10, alignItems: 'center', gap: 6 }}
             >
               <TouchableOpacity
@@ -326,10 +336,10 @@ export function EmojiStickerKeyboard({
                   paddingHorizontal: 12,
                   paddingVertical: 5,
                   borderRadius: 14,
-                  backgroundColor: activePackId === 'all' ? '#10b981' : '#f1f5f9',
+                  backgroundColor: activePackId === 'all' ? colors.accent : (isDark ? colors.control : '#f1f5f9'),
                 }}
               >
-                <Text style={{ fontSize: 12, fontWeight: '700', color: activePackId === 'all' ? '#ffffff' : '#64748b' }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: activePackId === 'all' ? colors.onAccent : colors.secondaryText }}>
                   All
                 </Text>
               </TouchableOpacity>
@@ -345,7 +355,7 @@ export function EmojiStickerKeyboard({
                       paddingHorizontal: 12,
                       paddingVertical: 5,
                       borderRadius: 14,
-                      backgroundColor: isActive ? '#10b981' : '#f1f5f9',
+                      backgroundColor: isActive ? colors.accent : (isDark ? colors.control : '#f1f5f9'),
                       flexDirection: 'row',
                       alignItems: 'center',
                       gap: 4,
@@ -354,7 +364,7 @@ export function EmojiStickerKeyboard({
                     {packIconSource ? (
                       <Image source={packIconSource} style={{ width: 16, height: 16, borderRadius: 3 }} resizeMode="contain" />
                     ) : null}
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: isActive ? '#ffffff' : '#64748b' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: isActive ? colors.onAccent : colors.secondaryText }}>
                       {pack.name}
                     </Text>
                   </TouchableOpacity>
@@ -365,7 +375,7 @@ export function EmojiStickerKeyboard({
             {/* Sticker Grid */}
             {stickersLoading ? (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <ActivityIndicator size="small" color="#10b981" />
+                <ActivityIndicator size="small" color={colors.accent} />
               </View>
             ) : (
               <ScrollView
@@ -375,12 +385,18 @@ export function EmojiStickerKeyboard({
               >
                 {recentStickers.length > 0 && !searchQuery && activePackId === 'all' && (
                   <View style={{ marginBottom: 12 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#94a3b8', letterSpacing: 0.8, marginBottom: 6, paddingHorizontal: 4 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.mutedText, letterSpacing: 0.8, marginBottom: 6, paddingHorizontal: 4 }}>
                       RECENT STICKERS
                     </Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
                       {recentStickers.map((stk) => (
-                        <KeyboardStickerTile key={`recent-${stk.id}`} sticker={stk} onSelect={handleSelectSticker} />
+                        <KeyboardStickerTile
+                          key={`recent-${stk.id}`}
+                          sticker={stk}
+                          onSelect={handleSelectSticker}
+                          tileBackground={isDark ? colors.control : '#f8fafc'}
+                          borderColor={isDark ? colors.border : undefined}
+                        />
                       ))}
                     </View>
                   </View>
@@ -388,7 +404,13 @@ export function EmojiStickerKeyboard({
 
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
                   {stickers.map((stk) => (
-                    <KeyboardStickerTile key={stk.id} sticker={stk} onSelect={handleSelectSticker} />
+                    <KeyboardStickerTile
+                      key={stk.id}
+                      sticker={stk}
+                      onSelect={handleSelectSticker}
+                      tileBackground={isDark ? colors.control : '#f8fafc'}
+                      borderColor={isDark ? colors.border : undefined}
+                    />
                   ))}
                 </View>
               </ScrollView>
@@ -402,9 +424,9 @@ export function EmojiStickerKeyboard({
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-around',
-            backgroundColor: '#ffffff',
+            backgroundColor: colors.surface,
             borderTopWidth: 1,
-            borderTopColor: '#f1f5f9',
+            borderTopColor: colors.border,
             paddingVertical: 8,
             paddingHorizontal: 16,
           }}
@@ -418,31 +440,35 @@ export function EmojiStickerKeyboard({
               paddingHorizontal: 20,
               paddingVertical: 6,
               borderRadius: 18,
-              backgroundColor: activeTab === 'emojis' ? '#dcfce7' : 'transparent',
+              backgroundColor: activeTab === 'emojis' ? (isDark ? colors.successSurface : '#dcfce7') : 'transparent',
               gap: 6,
             }}
           >
-            <Icon name="smile" size={20} color={activeTab === 'emojis' ? '#10b981' : '#94a3b8'} />
-            <Text style={{ fontSize: 13, fontWeight: activeTab === 'emojis' ? '700' : '500', color: activeTab === 'emojis' ? '#10b981' : '#64748b' }}>
+            <Icon name="smile" size={20} color={activeTab === 'emojis' ? colors.accent : colors.mutedText} />
+            <Text style={{ fontSize: 13, fontWeight: activeTab === 'emojis' ? '700' : '500', color: activeTab === 'emojis' ? colors.accent : colors.mutedText }}>
               Emojis
             </Text>
           </TouchableOpacity>
 
-          {/* Stickers Mode Button */}
+          {/* Stickers Mode Button with Random Sticker Icon */}
           <TouchableOpacity
             onPress={() => setActiveTab('stickers')}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingHorizontal: 20,
-              paddingVertical: 6,
+              paddingHorizontal: 18,
+              paddingVertical: 5,
               borderRadius: 18,
-              backgroundColor: activeTab === 'stickers' ? '#dcfce7' : 'transparent',
+              backgroundColor: activeTab === 'stickers' ? (isDark ? colors.successSurface : '#dcfce7') : 'transparent',
               gap: 6,
             }}
           >
-            <Icon name="grid" size={20} color={activeTab === 'stickers' ? '#10b981' : '#94a3b8'} />
-            <Text style={{ fontSize: 13, fontWeight: activeTab === 'stickers' ? '700' : '500', color: activeTab === 'stickers' ? '#10b981' : '#64748b' }}>
+            <Image
+              source={stickerIconSource}
+              style={{ width: 22, height: 22, borderRadius: 4 }}
+              resizeMode="contain"
+            />
+            <Text style={{ fontSize: 13, fontWeight: activeTab === 'stickers' ? '700' : '500', color: activeTab === 'stickers' ? colors.accent : colors.mutedText }}>
               Stickers
             </Text>
           </TouchableOpacity>
@@ -450,7 +476,7 @@ export function EmojiStickerKeyboard({
           {/* Backspace Button */}
           {onBackspace && (
             <TouchableOpacity onPress={onBackspace} style={{ padding: 8 }}>
-              <Icon name="delete" size={20} color="#64748b" />
+              <Icon name="delete" size={20} color={colors.icon} />
             </TouchableOpacity>
           )}
         </View>
@@ -459,7 +485,17 @@ export function EmojiStickerKeyboard({
   );
 }
 
-function KeyboardStickerTile({ sticker, onSelect }: { sticker: Sticker; onSelect: (stk: Sticker) => void }) {
+function KeyboardStickerTile({
+  sticker,
+  onSelect,
+  tileBackground,
+  borderColor,
+}: {
+  sticker: Sticker;
+  onSelect: (stk: Sticker) => void;
+  tileBackground: string;
+  borderColor?: string;
+}) {
   const [errored, setErrored] = useState(false);
   const localSource = getLocalStickerSource(sticker.imageUrl);
   const imageSource = localSource ?? { uri: sticker.imageUrl };
@@ -473,7 +509,9 @@ function KeyboardStickerTile({ sticker, onSelect }: { sticker: Sticker; onSelect
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 12,
-        backgroundColor: '#f8fafc',
+        backgroundColor: tileBackground,
+        borderWidth: borderColor ? 1 : 0,
+        borderColor: borderColor ?? 'transparent',
         margin: '1%',
         padding: 4,
       }}

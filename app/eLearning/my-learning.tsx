@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Image,
   RefreshControl,
   ScrollView,
@@ -19,6 +18,7 @@ import {
   TrendingUp,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { CourseCatalogSkeleton } from '@/components/ui/Skeleton';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { courseService } from '@/lib/services/CourseService';
 import type { Enrollment } from '@/lib/types/course';
@@ -26,32 +26,50 @@ import type { Enrollment } from '@/lib/types/course';
 export default function MyLearningScreen() {
   const router = useRouter();
   const { colors, isDark } = useAppTheme();
-  const { activeUserId } = useAppData();
+  const { activeUserId, nativeSession, retryNativeSession } = useAppData();
 
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<'in_progress' | 'completed'>('in_progress');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadGenerationRef = useRef(0);
 
   const loadEnrollments = useCallback(async () => {
     if (!activeUserId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const data = await courseService.getMyEnrollments(activeUserId);
-      setEnrollments(data);
-    } catch {
+      loadGenerationRef.current += 1;
       setEnrollments([]);
-    } finally {
       setLoading(false);
       setRefreshing(false);
+      return;
     }
-  }, [activeUserId]);
+    if (nativeSession.status !== 'ready' || nativeSession.uid !== activeUserId) {
+      setLoading(true);
+      return;
+    }
+    const loadGeneration = ++loadGenerationRef.current;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await courseService.getMyEnrollments(activeUserId);
+      if (loadGeneration !== loadGenerationRef.current) return;
+      setEnrollments(data);
+    } catch {
+      if (loadGeneration !== loadGenerationRef.current) return;
+      setLoadError('Your courses could not be loaded. Check your connection and try again.');
+    } finally {
+      if (loadGeneration === loadGenerationRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, [activeUserId, nativeSession.status, nativeSession.uid]);
 
   useEffect(() => {
     void loadEnrollments();
+    return () => {
+      loadGenerationRef.current += 1;
+    };
   }, [loadEnrollments]);
 
   const inProgressCourses = enrollments.filter((e) => (e.progress || 0) < 100);
@@ -130,8 +148,17 @@ export default function MyLearningScreen() {
 
         {/* Course List */}
         {loading ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color="#10b981" />
+          <CourseCatalogSkeleton />
+        ) : loadError ? (
+          <View style={[styles.emptyContainer, { backgroundColor: colors.destructiveSurface }]}>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>My Learning could not load</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.mutedText }]}>{loadError}</Text>
+            <TouchableOpacity
+              onPress={() => nativeSession.status === 'retryable_failure' ? retryNativeSession() : void loadEnrollments()}
+              style={styles.browseBtn}
+            >
+              <Text style={styles.browseBtnText}>Try Again</Text>
+            </TouchableOpacity>
           </View>
         ) : displayedList.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -164,11 +191,9 @@ export default function MyLearningScreen() {
 
                 <View style={styles.cardInfo}>
                   <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
-                    {item.course?.title || 'Enrolled Course'}
+                    {item.course?.title ?? 'Course unavailable'}
                   </Text>
-                  <Text style={[styles.instructorText, { color: colors.mutedText }]}>
-                    by {item.course?.instructor.name || 'Instructor'}
-                  </Text>
+                  {item.course ? <Text style={[styles.instructorText, { color: colors.mutedText }]}>by {item.course.instructor.name}</Text> : <Text style={[styles.instructorText, { color: colors.mutedText }]}>This course is no longer available in the catalog.</Text>}
 
                   {/* Progress Bar */}
                   <View style={styles.progressSection}>

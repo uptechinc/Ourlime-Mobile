@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -12,18 +12,31 @@ import {
   ChevronLeft,
   BookOpen,
   FileText,
-  CheckCircle,
   GraduationCap,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { CxcHubSkeleton } from '@/components/ui/Skeleton';
 import { courseService } from '@/lib/services/CourseService';
 import type { CxcSubject } from '@/lib/types/course';
 
 export default function CxcStudyCenterScreen() {
   const router = useRouter();
   const { colors, isDark } = useAppTheme();
-  const subjects = courseService.getCxcSubjects();
-  const [selectedSubject, setSelectedSubject] = useState<CxcSubject>(subjects[0]);
+  const [subjects, setSubjects] = useState<CxcSubject[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState<CxcSubject | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    void courseService.getCxcSubjects().then((items) => {
+      if (!active) return;
+      setSubjects(items);
+      setSelectedSubject(items[0] ?? null);
+    }).catch(() => { if (active) setError('CXC resources could not be loaded.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.canvas }]}>
@@ -50,7 +63,12 @@ export default function CxcStudyCenterScreen() {
           </View>
         </View>
 
+        {loading ? <CxcHubSkeleton /> : null}
+        {error ? <Text style={[styles.sectionTitle, { color: colors.destructiveText }]}>{error}</Text> : null}
+        {!loading && !error && subjects.length === 0 ? <View style={[styles.papersContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}><Text style={[styles.sectionTitle, { color: colors.text }]}>No CXC resources published</Text><Text style={{ color: colors.mutedText }}>Subjects and papers will appear here when administrators publish them.</Text></View> : null}
+
         {/* Subjects Horizontal Picker */}
+        {subjects.length > 0 ? <>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Choose Subject</Text>
         <ScrollView
           horizontal
@@ -58,7 +76,7 @@ export default function CxcStudyCenterScreen() {
           contentContainerStyle={styles.subjectList}
         >
           {subjects.map((sub) => {
-            const isSelected = selectedSubject.id === sub.id;
+            const isSelected = selectedSubject?.id === sub.id;
             return (
               <TouchableOpacity
                 key={sub.id}
@@ -98,8 +116,10 @@ export default function CxcStudyCenterScreen() {
             );
           })}
         </ScrollView>
+        </> : null}
 
         {/* Selected Subject Revision Materials */}
+        {selectedSubject ? (
         <View style={[styles.papersContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.papersHeader}>
             <BookOpen size={20} color="#10b981" />
@@ -131,24 +151,8 @@ export default function CxcStudyCenterScreen() {
             ))}
           </View>
         </View>
+        ) : null}
 
-        {/* Syllabus Key Topics Checklist */}
-        <View style={[styles.syllabusCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.syllabusCardTitle, { color: colors.text }]}>
-            High-Yield Caribbean Exam Topics
-          </Text>
-          {[
-            'Core Definitions & Conceptual Formulations',
-            'Paper 01 Speed Practice & Multiple Choice Traps',
-            'Paper 02 Extended Response & Step-by-Step Marks Breakdown',
-            'School-Based Assessment (SBA) Guidelines & Rubrics',
-          ].map((topic, tIdx) => (
-            <View key={`top-${tIdx}`} style={styles.topicRow}>
-              <CheckCircle size={16} color="#10b981" />
-              <Text style={[styles.topicText, { color: colors.text }]}>{topic}</Text>
-            </View>
-          ))}
-        </View>
       </ScrollView>
     </SafeAreaView>
   );

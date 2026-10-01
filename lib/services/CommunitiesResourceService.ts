@@ -5,7 +5,7 @@ import { useResourceStore } from '@/lib/store/useResourceStore';
 import type { ResourceState } from '@/lib/types/resourceState';
 import type { CommunityCardModel, CommunityCategory, CommunityDirectoryPage, CommunityDirectoryQuery, CommunityDirectoryScope, CommunityDirectoryVisibility } from '@/lib/types/community';
 import { DiscoverResourceService } from './DiscoverResourceService';
-import type { ApiRequestPriority } from './ApiService';
+import type { ResourcePriority } from '@/lib/types/resourceState';
 
 const DIRECTORY_NAMESPACE = 'community-directories';
 const CATEGORY_NAMESPACE = 'community-categories';
@@ -96,7 +96,7 @@ export class CommunitiesResourceService {
     }
   }
 
-  public async refresh(userId: string, query: CommunityDirectoryQuery = DEFAULT_COMMUNITY_QUERY, force = false, priority: ApiRequestPriority = 'foreground'): Promise<void> {
+  public async refresh(userId: string, query: CommunityDirectoryQuery = DEFAULT_COMMUNITY_QUERY, force = false, priority: ResourcePriority = 'foreground'): Promise<void> {
     const queryKey = this.getQueryKey(query);
     const requestKey = `refresh:${priority}:${queryKey}`;
     const existing = this.inFlight.get(requestKey);
@@ -217,7 +217,7 @@ export class CommunitiesResourceService {
     return true;
   }
 
-  private async performRefresh(userId: string, query: CommunityDirectoryQuery, queryKey: string, priority: ApiRequestPriority): Promise<void> {
+  private async performRefresh(userId: string, query: CommunityDirectoryQuery, queryKey: string, priority: ResourcePriority): Promise<void> {
     const current = useResourceStore.getState().communityDirectories[queryKey];
     useResourceStore.getState().setCommunityDirectory(queryKey, this.withState(current, { status: current?.data ? 'refreshing' : 'hydrating', error: null }));
     try {

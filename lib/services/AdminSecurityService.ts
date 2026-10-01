@@ -1,6 +1,6 @@
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebaseConfig';
-import { ApiService } from '@/lib/services/ApiService';
+import { isValidIpRuleValue } from '@/lib/security/securityAccessEvaluator';
 import { adminAccessService } from '@/lib/services/AdminAccessService';
 import type {
   SecurityAccessSettings,
@@ -29,7 +29,6 @@ const DEFAULT_SETTINGS: SecurityAccessSettings = {
 
 export class AdminSecurityService {
   private static instance: AdminSecurityService;
-  private readonly apiService = ApiService.getInstance();
 
   private constructor() {}
 
@@ -45,58 +44,45 @@ export class AdminSecurityService {
       await adminAccessService.requireAdmin();
     }
 
-    try {
-      const docRef = doc(db, 'siteConfig', 'securityAccessControls');
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        return { ...DEFAULT_SETTINGS, ...snap.data() } as SecurityAccessSettings;
-      }
-    } catch {
-      // Fallback to API if available
-    }
-
-    try {
-      const response = await this.apiService.request<{ success: boolean; settings: SecurityAccessSettings }>(
-        '/api/admin/security/access-controls',
-        {
-          method: 'GET',
-          authenticated: true,
-        }
-      );
-      if (response?.success && response.settings) return response.settings;
-    } catch {
-      // Fallback
-    }
-
-    return DEFAULT_SETTINGS;
+    const snapshot = await getDoc(doc(db, 'siteConfig', 'securityAccessControls'));
+    return snapshot.exists() ? ({ ...DEFAULT_SETTINGS, ...snapshot.data() } as SecurityAccessSettings) : DEFAULT_SETTINGS;
   }
 
   public async updateSettings(updates: Partial<SecurityAccessSettings>): Promise<SecurityAccessSettings> {
     const identity = await adminAccessService.requireAdmin();
-
-    try {
-      const response = await this.apiService.request<{ success: boolean; settings: SecurityAccessSettings }>(
-        '/api/admin/security/access-controls',
-        {
-          method: 'POST',
-          authenticated: true,
-          body: updates,
+    const current = await this.getSettings(false);
+    // Same validation and clamping as the website's admin security service.
+    const regionPolicy = updates.regionPolicy
+      ? {
+          mode: (updates.regionPolicy.mode === 'allow_selected_only' || updates.regionPolicy.mode === 'block_selected' ? updates.regionPolicy.mode : 'allow_all') as RegionPolicyMode,
+          countries: [...new Set((updates.regionPolicy.countries || []).filter((country) => /^[A-Za-z]{2}$/.test(country)).map((country) => country.toUpperCase()))],
+          blockedMessage: updates.regionPolicy.blockedMessage?.slice(0, 500) || current.regionPolicy.blockedMessage,
         }
-      );
-      if (response?.success && response.settings) return response.settings;
-    } catch {
-      // Fallback to Firestore
-    }
-
-    const docRef = doc(db, 'siteConfig', 'securityAccessControls');
-    const payload = {
-      ...updates,
-      updatedAt: serverTimestamp(),
-      updatedBy: identity.userId,
+      : current.regionPolicy;
+    const ipRules = updates.ipRules
+      ? updates.ipRules.filter((rule) => rule && isValidIpRuleValue(rule.ip) && (rule.type === 'whitelist' || rule.type === 'blocklist')).slice(0, 500)
+      : current.ipRules;
+    const userWhitelist = updates.userWhitelist
+      ? updates.userWhitelist.filter((entry) => entry && (entry.userId?.trim() || entry.email?.trim())).slice(0, 500)
+      : current.userWhitelist;
+    const requestedRateLimits = updates.rateLimits || current.rateLimits;
+    const clampLimit = (value: number): number => Math.min(Math.max(Math.trunc(Number(value) || 1), 1), 100_000);
+    const rateLimits: RateLimitConfig = {
+      enabled: requestedRateLimits.enabled === true,
+      authPerMinute: clampLimit(requestedRateLimits.authPerMinute),
+      postsPerMinute: clampLimit(requestedRateLimits.postsPerMinute),
+      commentsPerMinute: clampLimit(requestedRateLimits.commentsPerMinute),
+      generalPerMinute: clampLimit(requestedRateLimits.generalPerMinute),
     };
-    await setDoc(docRef, payload, { merge: true });
-
-    return { ...DEFAULT_SETTINGS, ...updates } as SecurityAccessSettings;
+    const updated: SecurityAccessSettings = { ...current, regionPolicy, ipRules, userWhitelist, rateLimits };
+    await setDoc(doc(db, 'siteConfig', 'securityAccessControls'), { ...updated, updatedAt: serverTimestamp(), updatedBy: identity.userId }, { merge: true });
+    await addDoc(collection(db, 'securityAuditLog'), {
+      action: 'update_security_settings',
+      adminId: identity.userId,
+      changes: { regionPolicy, ipRules, userWhitelist, rateLimits },
+      timestamp: serverTimestamp(),
+    }).catch((error: unknown) => console.error('[AdminSecurityService.updateSettings] Error:', error instanceof Error ? error.message : 'Audit entry failed'));
+    return updated;
   }
 
   public async updateRegionPolicy(mode: RegionPolicyMode, countries: string[]): Promise<SecurityAccessSettings> {
@@ -165,29 +151,6 @@ export class AdminSecurityService {
       ...current,
       rateLimits: config,
     });
-  }
-
-  public async checkClientAccess(): Promise<{ allowed: boolean; reason?: string; countryCode?: string }> {
-    try {
-      const response = await this.apiService.request<{
-        success: boolean;
-        allowed: boolean;
-        reason?: string;
-        countryCode?: string;
-      }>('/api/security/check-access', {
-        method: 'GET',
-      });
-      if (response?.success) {
-        return {
-          allowed: response.allowed,
-          reason: response.reason,
-          countryCode: response.countryCode,
-        };
-      }
-    } catch {
-      // Default to allowed in offline or error scenario
-    }
-    return { allowed: true };
   }
 }
 

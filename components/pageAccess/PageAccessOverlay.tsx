@@ -35,7 +35,7 @@ export default function PageAccessOverlay() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { getDecision, loading, activeOverlayRoute, clearOverlay } = usePageAccess();
+  const { getDecision, loading, error, retry, enterPreview, activeOverlayRoute, clearOverlay } = usePageAccess();
   const route = useMemo(() => pageAccessService.normalizeRoute(pathname || '/'), [pathname]);
   const effectiveRoute = activeOverlayRoute ? pageAccessService.normalizeRoute(activeOverlayRoute) : route;
   const decision = getDecision(effectiveRoute);
@@ -64,12 +64,12 @@ export default function PageAccessOverlay() {
     setPreviousDestination({ route, label: decision.setting?.pageName || (route === '/' ? 'Home' : 'Previous Page') });
   }, [decision.canAccess, decision.setting?.pageName, decision.status, loading, route]);
 
-  const shouldBlock = Boolean(activeOverlayRoute) || (!pageAccessService.isPublicRoute(effectiveRoute) && !decision.canAccess);
+  const shouldBlock = Boolean(activeOverlayRoute) || (!loading && !pageAccessService.isPublicRoute(effectiveRoute) && !decision.canAccess);
   if (!shouldBlock) return null;
   const presentation = PRESENTATION[decision.status];
   const stickerSource = STICKERS[decision.status] || STICKERS.coming_soon;
-  const title = decision.setting?.overlayTitle || presentation.title;
-  const description = decision.setting?.overlayDescription || decision.setting?.description || presentation.description;
+  const title = loading ? 'Checking access' : error ? 'Access unavailable' : decision.setting?.overlayTitle || presentation.title;
+  const description = error || decision.setting?.overlayDescription || decision.setting?.description || presentation.description;
   const primaryLabel = activeOverlayRoute ? 'Close' : `Back to ${previousDestination.label}`;
 
   const handleReturn = () => {
@@ -146,6 +146,11 @@ export default function PageAccessOverlay() {
           <TouchableOpacity onPress={handleReturn} style={{ marginTop: 22, minWidth: 180, alignItems: 'center', borderRadius: 16, backgroundColor: presentation.color, paddingHorizontal: 22, paddingVertical: 13 }}>
             <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '800' }}>{primaryLabel}</Text>
           </TouchableOpacity>
+          {error ? <TouchableOpacity onPress={retry} accessibilityRole="button" style={{ padding: 14 }}><Text style={{ color: '#ffffff' }}>Retry access check</Text></TouchableOpacity> : null}
+          {decision.canEnterPreview ? <TouchableOpacity accessibilityRole="button" onPress={() => {
+            enterPreview(effectiveRoute);
+            if (activeOverlayRoute) router.push(activeOverlayRoute as Href);
+          }} style={{ padding: 14 }}><Text style={{ color: '#ffffff' }}>Enter read-only staff preview</Text></TouchableOpacity> : null}
           {decision.setting?.secondaryButtonLabel && decision.setting.secondaryButtonRoute ? (
             <TouchableOpacity onPress={() => router.push(decision.setting?.secondaryButtonRoute as Href)} style={{ marginTop: 10, padding: 8 }}>
               <Text style={{ color: presentation.color, fontWeight: '700' }}>{decision.setting.secondaryButtonLabel}</Text>

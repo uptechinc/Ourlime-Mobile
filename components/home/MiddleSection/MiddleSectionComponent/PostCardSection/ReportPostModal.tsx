@@ -19,6 +19,7 @@ import {
 	REPORT_REASONS,
 	type ReportReasonCategory,
 	type ReportEvidenceDraft,
+	type ReportContentType,
 } from '@/lib/services/ModerationService';
 import type { PostItem } from '@/lib/services/PostService';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
@@ -31,11 +32,38 @@ import ChildSafetyIntakeFields from '@/components/safety/ChildSafetyIntakeFields
 import type { ChildSafetyDangerAnswer } from '@/lib/types/childSafety';
 import { useRouter } from 'expo-router';
 
-type ReportPostModalProps = {
-	visible: boolean;
-	post: PostItem;
-	onClose: () => void;
+/** A non-post target (blog, blog comment, ...) reported through the same moderation API. */
+export type ReportTarget = {
+	contentType: ReportContentType;
+	targetId: string;
+	reportedUserId?: string;
+	parentContentId?: string;
+	routePath: string;
+	previewText: string;
+	label: string;
 };
+
+type ReportSubject = ReportTarget & { communityId?: string; contentUrl?: string };
+
+type ReportPostModalProps = { visible: boolean; onClose: () => void } & (
+	| { post: PostItem; target?: undefined }
+	| { post?: undefined; target: ReportTarget }
+);
+
+function toReportSubject(post: PostItem | undefined, target: ReportTarget | undefined): ReportSubject {
+	if (target) return target;
+	if (!post) throw new Error('ReportPostModal requires a post or a target');
+	return {
+		contentType: 'post',
+		targetId: post.id,
+		reportedUserId: post.userId,
+		routePath: `/post/${post.id}`,
+		previewText: post.caption || post.description || 'Post content',
+		label: 'Post',
+		communityId: post.origin === 'community' ? post.communityId : undefined,
+		contentUrl: post.media[0]?.typeUrl,
+	};
+}
 
 const moderationService = ModerationService.getInstance();
 const communityService = CommunityService.getInstance();
@@ -43,8 +71,10 @@ const communityService = CommunityService.getInstance();
 export default function ReportPostModal({
 	visible,
 	post,
+	target,
 	onClose,
 }: ReportPostModalProps) {
+	const subject = toReportSubject(post, target);
 	const router = useRouter();
 	const { colors } = useAppTheme();
 	const [category, setCategory] = useState<ReportReasonCategory | null>(null);
@@ -124,25 +154,26 @@ export default function ReportPostModal({
 		setSubmitting(true);
 		try {
 			if (
-				post.origin === 'community' &&
-				post.communityId &&
+				subject.communityId &&
 				category !== CHILD_SAFETY_REASON_CATEGORY
 			) {
 				await communityService.reportContent({
-					communityId: post.communityId,
-					targetId: post.id,
+					communityId: subject.communityId,
+					targetId: subject.targetId,
 					targetType: 'post',
 					reason,
 					details: description,
 				});
 			} else {
-				const reference = await moderationService.reportPost({
-					targetId: post.id,
-					reportedUserId: post.userId,
+				const reference = await moderationService.reportContent(subject.contentType, {
+					targetId: subject.targetId,
+					reportedUserId: subject.reportedUserId,
+					parentContentId: subject.parentContentId,
+					routePath: subject.routePath,
 					reasonCategory: category,
 					reason,
 					description,
-					contentUrl: post.media[0]?.typeUrl,
+					contentUrl: subject.contentUrl,
 					evidenceFiles:
 						category === CHILD_SAFETY_REASON_CATEGORY ? [] : evidenceFiles,
 					immediateDanger,
@@ -164,7 +195,7 @@ export default function ReportPostModal({
 			handleClose();
 			setFeedback({
 				title: 'Report submitted',
-				message: 'Our moderation team will review this post.',
+				message: `Our moderation team will review this ${subject.label.toLowerCase()}.`,
 				type: 'success',
 			});
 		} catch (error: unknown) {
@@ -229,7 +260,7 @@ export default function ReportPostModal({
 										fontWeight: '800',
 									}}
 								>
-									Report Post
+									Report {subject.label}
 								</Text>
 								<Text style={{ color: colors.mutedText, fontSize: 12 }}>
 									Help us keep Ourlime safe
@@ -252,7 +283,7 @@ export default function ReportPostModal({
 							>
 								<Text numberOfLines={3} style={{ color: colors.secondaryText }}>
 									{linkPresentationService.compactUrlsInText(
-										post.caption || post.description || 'Post content'
+										subject.previewText
 									)}
 								</Text>
 							</View>
@@ -278,7 +309,7 @@ export default function ReportPostModal({
 										onPress={() => {
 											if (key === CHILD_SAFETY_REASON_CATEGORY) {
 												handleClose();
-												router.push({ pathname: '/help/child-safety/report', params: { targetType: 'post', targetId: post.id, ownerUserId: post.userId, routePath: `/post/${post.id}` } });
+												router.push({ pathname: '/help/child-safety/report', params: { targetType: subject.contentType, targetId: subject.targetId, ownerUserId: subject.reportedUserId ?? '', routePath: subject.routePath } });
 												return;
 											}
 											setCategory(key);

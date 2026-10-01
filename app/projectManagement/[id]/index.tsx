@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usePageAccess } from '@/lib/contexts/PageAccessContext';
+import ContentDraftModal from '@/components/drafts/ContentDraftModal';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -17,17 +19,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
 import PageHeader from '@/components/ui/PageHeader';
+import { ProjectBoardSkeleton } from '@/components/ui/Skeleton';
 import CustomModal from '@/components/ui/CustomModal';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { projectService } from '@/lib/services/ProjectService';
-import { AuthService } from '@/lib/services/AuthService';
+import { useAppData } from '@/lib/contexts/AppDataContext';
 import ProjectFriendPickerModal from '@/components/projectManagement/ProjectFriendPickerModal';
 import type {
-  CreateTaskInput,
   Priority,
   ProjectRecord,
+  ProjectMutationCapability,
   ProjectRole,
   ProjectStatus,
   ProjectTeamMember,
@@ -36,23 +39,32 @@ import type {
   TeamMember,
 } from '@/lib/types/project';
 
-const authService = AuthService.getInstance();
-
 export default function ProjectBoardScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const projectId = id as string;
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-  const currentUserId = authService.getCurrentUser()?.uid ?? '';
+  const { activeUserId, nativeSession } = useAppData();
+  const currentUserId = activeUserId ?? '';
+  const sessionReady = Boolean(activeUserId);
+  const mutationReady = Boolean(activeUserId && nativeSession.uid === activeUserId && nativeSession.status === 'ready');
+  const cachedProject = projectService.getCachedProject(projectId);
 
   // Data State
-  const [project, setProject] = useState<ProjectRecord | null>(null);
+  const { getDecision } = usePageAccess();
+  const requestGeneration = useRef(0);
+  const [project, setProject] = useState<ProjectRecord | null>(cachedProject);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(cachedProject === null);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<{ title: string; message: string; type?: 'info' | 'success' | 'warning' | 'danger' } | null>(null);
+
+  const pageCanMutate = getDecision('/projectManagement').canMutate;
+  const writeCapability = projectService.getMutationCapability('create_task', project, { signedIn: Boolean(activeUserId), sessionReady: mutationReady, pageCanMutate });
+  const inviteCapability = projectService.getMutationCapability('invite', project, { signedIn: Boolean(activeUserId), sessionReady: mutationReady, pageCanMutate });
+  const canWrite = writeCapability.allowed;
 
   // Filters & Views
   const [searchQuery, setSearchQuery] = useState('');
@@ -65,17 +77,12 @@ export default function ProjectBoardScreen() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Create Task Form State
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskDesc, setTaskDesc] = useState('');
-  const [taskPriority, setTaskPriority] = useState<Priority>('medium');
-  const [taskStatus, setTaskStatus] = useState<Status>('todo');
-  const [submittingTask, setSubmittingTask] = useState(false);
-
   // Detail Modal Subtask / Comment State
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [newCommentText, setNewCommentText] = useState('');
   const [timeSpentMinutes, setTimeSpentMinutes] = useState('');
+  const [savingSubtask, setSavingSubtask] = useState(false);
+  const [savingComment, setSavingComment] = useState(false);
 
   // Invite Form State
   const [inviteRecipient, setInviteRecipient] = useState('');
@@ -89,75 +96,80 @@ export default function ProjectBoardScreen() {
   const [editStatus, setEditStatus] = useState<ProjectStatus>('active');
   const [savingSettings, setSavingSettings] = useState(false);
 
-  const createSwipeDismiss = useSwipeDismiss({ visible: createTaskOpen, onDismiss: () => setCreateTaskOpen(false), disabled: submittingTask });
   const detailSwipeDismiss = useSwipeDismiss({ visible: activeTask !== null, onDismiss: () => setActiveTask(null) });
   const inviteSwipeDismiss = useSwipeDismiss({ visible: inviteOpen, onDismiss: () => setInviteOpen(false), disabled: inviting });
   const settingsSwipeDismiss = useSwipeDismiss({ visible: settingsOpen, onDismiss: () => setSettingsOpen(false), disabled: savingSettings });
 
+  useEffect(() => {
+    if (!projectId || !activeUserId) return;
+    const availableProject = projectService.getCachedProject(projectId);
+    if (!availableProject) return;
+    setProject(availableProject);
+    setEditName(availableProject.name);
+    setEditDesc(availableProject.description);
+    setEditStatus(availableProject.status);
+    setLoading(false);
+  }, [activeUserId, projectId]);
+
+  useEffect(() => {
+    if (!projectId || !sessionReady) return;
+    return projectService.subscribeToProject(
+      projectId,
+      (updatedProject) => {
+        setProject(updatedProject);
+        setEditName(updatedProject.name);
+        setEditDesc(updatedProject.description);
+        setEditStatus(updatedProject.status);
+        setLoading(false);
+      },
+      (error) => {
+        ++requestGeneration.current;
+        setProject(null); setTasks([]); setActiveTask(null); setLoading(false);
+        setFeedback({ title: 'Project access changed', message: projectMessage(error), type: 'danger' });
+      },
+    );
+  }, [projectId, sessionReady]);
+
   // Load project details & subscribe to tasks
   const loadProject = useCallback(async () => {
-    if (!projectId) return;
+    if (!projectId || !sessionReady) return;
+    const generation = ++requestGeneration.current;
     try {
       const data = await projectService.getProject(projectId);
+      if (generation !== requestGeneration.current) return;
       setProject(data.project);
       setTeamMembers(data.teamMembers);
       setEditName(data.project.name);
       setEditDesc(data.project.description);
       setEditStatus(data.project.status);
     } catch (error: unknown) {
-      setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not load project', type: 'danger' });
+      setFeedback({ title: 'Error', message: projectMessage(error), type: 'danger' });
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [projectId]);
+  }, [projectId, sessionReady]);
 
   useEffect(() => {
-    void loadProject();
-  }, [loadProject]);
+    if (sessionReady) void loadProject();
+    else setLoading(nativeSession.status === 'bridging' || nativeSession.status === 'idle');
+  }, [loadProject, nativeSession.status, sessionReady]);
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !sessionReady) return;
     const unsubscribe = projectService.subscribeToTasks(
       projectId,
       (updatedTasks) => {
         setTasks(updatedTasks);
         setActiveTask((prev) => {
           if (!prev) return null;
-          return updatedTasks.find((t) => t.id === prev.id) || prev;
+          return updatedTasks.find((task) => task.id === prev.id) ?? null;
         });
       },
-      (err) => console.error('[Tasks subscribe error]', err)
+      (error) => { setTasks([]); setActiveTask(null); setFeedback({ title: 'Task access changed', message: projectMessage(error), type: 'danger' }); }
     );
     return () => unsubscribe();
-  }, [projectId]);
-
-  // Handlers
-  const handleCreateTask = async () => {
-    if (!taskTitle.trim()) {
-      setFeedback({ title: 'Missing Title', message: 'Please provide a task title.', type: 'warning' });
-      return;
-    }
-    setSubmittingTask(true);
-    try {
-      const input: CreateTaskInput = {
-        title: taskTitle,
-        description: taskDesc,
-        status: taskStatus,
-        priority: taskPriority,
-        assignee: currentUserId,
-      };
-      await projectService.createTask(projectId, input);
-      setTaskTitle('');
-      setTaskDesc('');
-      setCreateTaskOpen(false);
-      setFeedback({ title: 'Task Created', message: 'Your task has been added.', type: 'success' });
-    } catch (error: unknown) {
-      setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not create task', type: 'danger' });
-    } finally {
-      setSubmittingTask(false);
-    }
-  };
+  }, [projectId, sessionReady]);
 
   const handleUpdateStatus = async (task: Task, nextStatus: Status) => {
     try {
@@ -168,13 +180,18 @@ export default function ProjectBoardScreen() {
   };
 
   const handleAddSubtask = async () => {
-    if (!activeTask || !newSubtaskTitle.trim()) return;
+    if (!writeCapability.allowed) { setFeedback({ title: 'Subtask unavailable', message: writeCapability.reason, type: 'warning' }); return; }
+    if (!activeTask) return;
+    if (!newSubtaskTitle.trim()) { setFeedback({ title: 'Subtask title required', message: 'Enter a subtask title before adding it.', type: 'warning' }); return; }
+    if (savingSubtask) return;
+    setSavingSubtask(true);
     try {
-      await projectService.addSubTask(projectId, activeTask.id, newSubtaskTitle.trim());
-      setNewSubtaskTitle('');
+      const sent = newSubtaskTitle;
+      await projectService.addSubTask(projectId, activeTask.id, sent.trim());
+      setNewSubtaskTitle((current) => current === sent ? '' : current);
     } catch (error: unknown) {
       setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not add subtask', type: 'danger' });
-    }
+    } finally { setSavingSubtask(false); }
   };
 
   const handleToggleSubtask = async (subtaskId: string) => {
@@ -187,22 +204,28 @@ export default function ProjectBoardScreen() {
   };
 
   const handleAddComment = async () => {
-    if (!activeTask || !newCommentText.trim()) return;
+    if (!writeCapability.allowed) { setFeedback({ title: 'Comment unavailable', message: writeCapability.reason, type: 'warning' }); return; }
+    if (!activeTask) return;
+    if (!newCommentText.trim()) { setFeedback({ title: 'Comment required', message: 'Enter a comment before posting it.', type: 'warning' }); return; }
+    if (savingComment) return;
+    setSavingComment(true);
     try {
-      await projectService.addComment(projectId, activeTask.id, newCommentText.trim());
-      setNewCommentText('');
+      const sent = newCommentText;
+      await projectService.addComment(projectId, activeTask.id, sent.trim());
+      setNewCommentText((current) => current === sent ? '' : current);
     } catch (error: unknown) {
       setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not post comment', type: 'danger' });
-    }
+    } finally { setSavingComment(false); }
   };
 
   const handleAddTimeEntry = async () => {
     if (!activeTask || !timeSpentMinutes.trim()) return;
-    const minutes = parseInt(timeSpentMinutes, 10);
-    if (isNaN(minutes) || minutes <= 0) return;
+    const sent = timeSpentMinutes;
+    const minutes = Number(sent);
+    if (!Number.isSafeInteger(minutes) || minutes <= 0) return;
     try {
       await projectService.addTimeEntry(projectId, activeTask.id, minutes);
-      setTimeSpentMinutes('');
+      setTimeSpentMinutes((current) => current === sent ? '' : current);
       setFeedback({ title: 'Time Logged', message: `Logged ${minutes} minutes.`, type: 'success' });
     } catch (error: unknown) {
       setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not log time', type: 'danger' });
@@ -220,7 +243,8 @@ export default function ProjectBoardScreen() {
   };
 
   const handleSendInvite = async () => {
-    if (!inviteRecipient.trim()) return;
+    if (!inviteCapability.allowed) { setFeedback({ title: 'Invitations unavailable', message: inviteCapability.reason, type: 'warning' }); return; }
+    if (!inviteRecipient.trim()) { setFeedback({ title: 'Recipient required', message: 'Choose a friend or enter an email or username.', type: 'warning' }); return; }
     setInviting(true);
     try {
       await projectService.inviteMember(projectId, inviteRecipient.trim(), inviteRole);
@@ -233,6 +257,11 @@ export default function ProjectBoardScreen() {
     } finally {
       setInviting(false);
     }
+  };
+
+  const handleCapabilityAction = (capability: ProjectMutationCapability, title: string, action: () => void): void => {
+    if (!capability.allowed) { setFeedback({ title, message: capability.reason, type: 'warning' }); return; }
+    action();
   };
 
   const pendingInvites = useMemo(() => {
@@ -314,16 +343,26 @@ export default function ProjectBoardScreen() {
     };
   }, [filteredTasks]);
 
-  const canManage = project?.role === 'owner' || project?.role === 'admin';
+  const canManage = inviteCapability.allowed;
 
-  if (loading) {
+  if (!activeUserId) {
+    return (
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <PageHeader title="E-Projects" onBackPress={() => router.back()} />
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Sign in to view this project.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (loading || !sessionReady) {
     return (
       <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
         <PageHeader title="Project Details" onBackPress={() => router.back()} />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#10b981" />
-          <Text style={styles.loadingText}>Loading project board…</Text>
-        </View>
+        <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+          <ProjectBoardSkeleton />
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -396,11 +435,11 @@ export default function ProjectBoardScreen() {
 
           {/* Action Row */}
           <View style={styles.heroActions}>
-            <TouchableOpacity onPress={() => setCreateTaskOpen(true)} style={styles.actionBtn}>
+            <TouchableOpacity onPress={() => handleCapabilityAction(writeCapability, 'New task unavailable', () => setCreateTaskOpen(true))} style={[styles.actionBtn, !canWrite && { opacity: 0.58 }]}>
               <Icon name="plus" size={16} color="#ffffff" />
               <Text style={styles.actionBtnText}>New Task</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setInviteOpen(true)} style={styles.actionBtnSecondary}>
+            <TouchableOpacity onPress={() => handleCapabilityAction(inviteCapability, 'Invitations unavailable', () => setInviteOpen(true))} style={[styles.actionBtnSecondary, !canManage && { opacity: 0.58 }]}>
               <Icon name="user-plus" size={16} color={colors.text} />
               <Text style={styles.actionBtnTextSecondary}>Invite</Text>
             </TouchableOpacity>
@@ -540,73 +579,7 @@ export default function ProjectBoardScreen() {
         </View>
       </ScrollView>
 
-      {/* 1. Create Task Modal */}
-      <Modal visible={createTaskOpen} transparent animationType="none" onRequestClose={createSwipeDismiss.dismissWithAnimation}>
-        <View style={styles.modalBackdrop}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
-            <Animated.View style={[styles.modalSheet, createSwipeDismiss.animatedStyle]}>
-              <SwipeDismissHandle gesture={createSwipeDismiss.gesture} color={colors.border} animatedStyle={createSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close task creation" />
-              <Text style={styles.modalHeading}>Create New Task</Text>
-
-              <TextInput
-                value={taskTitle}
-                onChangeText={setTaskTitle}
-                placeholder="Task title *"
-                placeholderTextColor={colors.mutedText}
-                style={styles.modalInput}
-              />
-
-              <TextInput
-                value={taskDesc}
-                onChangeText={setTaskDesc}
-                placeholder="Description (optional)"
-                placeholderTextColor={colors.mutedText}
-                multiline
-                style={[styles.modalInput, { minHeight: 80, textAlignVertical: 'top' }]}
-              />
-
-              <Text style={styles.inputLabel}>Priority</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                {(['low', 'medium', 'high', 'urgent'] as const).map((pri) => (
-                  <TouchableOpacity
-                    key={pri}
-                    onPress={() => setTaskPriority(pri)}
-                    style={[styles.pillSelect, taskPriority === pri && styles.pillSelectActive]}
-                  >
-                    <Text style={[styles.pillSelectText, taskPriority === pri && styles.pillSelectTextActive]}>
-                      {pri.toUpperCase()}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.inputLabel}>Initial Status</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                {(['todo', 'in-progress', 'done'] as const).map((st) => (
-                  <TouchableOpacity
-                    key={st}
-                    onPress={() => setTaskStatus(st)}
-                    style={[styles.pillSelect, taskStatus === st && styles.pillSelectActive]}
-                  >
-                    <Text style={[styles.pillSelectText, taskStatus === st && styles.pillSelectTextActive]}>
-                      {st === 'todo' ? 'To Do' : st === 'in-progress' ? 'In Progress' : 'Done'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity onPress={() => setCreateTaskOpen(false)} style={styles.cancelButton}>
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => void handleCreateTask()} disabled={submittingTask} style={styles.primaryButton}>
-                  {submittingTask ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.primaryButtonText}>Create Task</Text>}
-                </TouchableOpacity>
-              </View>
-            </Animated.View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
+      {createTaskOpen && currentUserId ? <ContentDraftModal key={`${currentUserId}:${projectId}`} ownerId={currentUserId} kind="task" projectId={projectId} teamMembers={teamMembers} onClose={() => setCreateTaskOpen(false)} onPublished={() => void loadProject()} /> : null}
 
       {/* 2. Task Detail Modal */}
       <Modal visible={activeTask !== null} transparent animationType="none" onRequestClose={detailSwipeDismiss.dismissWithAnimation}>
@@ -632,7 +605,7 @@ export default function ProjectBoardScreen() {
                     {(['todo', 'in-progress', 'done'] as const).map((st) => (
                       <TouchableOpacity
                         key={st}
-                        onPress={() => void handleUpdateStatus(activeTask, st)}
+                        disabled={!canWrite} onPress={() => void handleUpdateStatus(activeTask, st)}
                         style={[styles.pillSelect, activeTask.status === st && styles.pillSelectActive]}
                       >
                         <Text style={[styles.pillSelectText, activeTask.status === st && styles.pillSelectTextActive]}>
@@ -648,7 +621,7 @@ export default function ProjectBoardScreen() {
                     {activeTask.subTasks.map((sub) => (
                       <TouchableOpacity
                         key={sub.id}
-                        onPress={() => void handleToggleSubtask(sub.id)}
+                        disabled={!canWrite} onPress={() => void handleToggleSubtask(sub.id)}
                         style={styles.subtaskItem}
                       >
                         <Icon name={sub.completed ? 'check-square' : 'square'} size={18} color={sub.completed ? '#10b981' : colors.mutedText} />
@@ -657,13 +630,13 @@ export default function ProjectBoardScreen() {
                     ))}
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
                       <TextInput
-                        value={newSubtaskTitle}
+                        editable={canWrite} value={newSubtaskTitle}
                         onChangeText={setNewSubtaskTitle}
                         placeholder="Add subtask..."
                         placeholderTextColor={colors.mutedText}
                         style={[styles.modalInput, { flex: 1 }]}
                       />
-                      <TouchableOpacity onPress={() => void handleAddSubtask()} style={styles.primaryButtonSmall}>
+                      <TouchableOpacity disabled={savingSubtask} onPress={() => void handleAddSubtask()} style={[styles.primaryButtonSmall, savingSubtask && { opacity: 0.58 }]}>
                         <Icon name="plus" size={16} color="#ffffff" />
                       </TouchableOpacity>
                     </View>
@@ -674,19 +647,19 @@ export default function ProjectBoardScreen() {
                     <Text style={styles.sectionHeading}>Comments ({activeTask.comments.length})</Text>
                     {activeTask.comments.map((comm) => (
                       <View key={comm.id} style={styles.commentBubble}>
-                        <Text style={styles.commentAuthor}>{comm.author}</Text>
+                        <Text style={styles.commentAuthor}>{comm.authorName || teamMembers.find((member) => member.id === (comm.userId || comm.author))?.name || (comm.userId && comm.userId !== comm.author ? comm.author : 'Member')}</Text>
                         <Text style={styles.commentText}>{comm.content}</Text>
                       </View>
                     ))}
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
                       <TextInput
-                        value={newCommentText}
+                        editable={canWrite} value={newCommentText}
                         onChangeText={setNewCommentText}
                         placeholder="Write a comment..."
                         placeholderTextColor={colors.mutedText}
                         style={[styles.modalInput, { flex: 1 }]}
                       />
-                      <TouchableOpacity onPress={() => void handleAddComment()} style={styles.primaryButtonSmall}>
+                      <TouchableOpacity disabled={savingComment} onPress={() => void handleAddComment()} style={[styles.primaryButtonSmall, savingComment && { opacity: 0.58 }]}>
                         <Icon name="send" size={15} color="#ffffff" />
                       </TouchableOpacity>
                     </View>
@@ -697,21 +670,21 @@ export default function ProjectBoardScreen() {
                     <Text style={styles.sectionHeading}>Log Time (Minutes)</Text>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       <TextInput
-                        value={timeSpentMinutes}
+                        editable={canWrite} value={timeSpentMinutes}
                         onChangeText={setTimeSpentMinutes}
                         placeholder="e.g. 30"
                         keyboardType="numeric"
                         placeholderTextColor={colors.mutedText}
                         style={[styles.modalInput, { flex: 1 }]}
                       />
-                      <TouchableOpacity onPress={() => void handleAddTimeEntry()} style={styles.primaryButtonSmall}>
+                      <TouchableOpacity disabled={!canWrite} onPress={() => void handleAddTimeEntry()} style={styles.primaryButtonSmall}>
                         <Text style={styles.primaryButtonText}>Log</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
 
                   {/* Delete Button */}
-                  <TouchableOpacity onPress={() => void handleDeleteTask(activeTask.id)} style={styles.dangerButton}>
+                  <TouchableOpacity disabled={!canWrite} onPress={() => void handleDeleteTask(activeTask.id)} style={styles.dangerButton}>
                     <Icon name="trash-2" size={16} color="#ef4444" />
                     <Text style={styles.dangerButtonText}>Delete Task</Text>
                   </TouchableOpacity>
@@ -1163,3 +1136,11 @@ const createStyles = (colors: AppThemeColors, isDark: boolean) =>
     },
     dangerButtonText: { color: '#ef4444', fontWeight: '800', fontSize: 13 },
   });
+
+function projectMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  if (message.includes('permission-denied')) return 'You no longer have access to this project.';
+  if (message.includes('auth/') || message.includes('signed in') || message.includes('account changed')) return 'Your secure session changed. Please retry.';
+  if (message.includes('network') || message.includes('unavailable')) return 'The project could not connect. Check your connection and retry.';
+  return 'The project could not be loaded. Please retry.';
+}

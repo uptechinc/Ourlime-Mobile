@@ -10,15 +10,21 @@ import { FeedResourceService } from '@/lib/services/FeedResourceService';
 import { presenceService } from '@/lib/services/PresenceService';
 import { platformEnvironmentService } from '@/lib/services/PlatformEnvironmentService';
 import { crashReportingService } from '@/lib/services/CrashReportingService';
+import { nativeSessionService, type NativeSessionSnapshot } from '@/lib/services/NativeSessionService';
 
 type AppDataContextValue = {
   activeUserId: string | null;
   cacheReady: boolean;
+  nativeSession: NativeSessionSnapshot;
+  retryNativeSession: () => void;
 };
 
 type AppDataProviderProps = { children: ReactNode };
 
-const AppDataContext = createContext<AppDataContextValue>({ activeUserId: null, cacheReady: false });
+const AppDataContext = createContext<AppDataContextValue>({
+  activeUserId: null, cacheReady: false, nativeSession: nativeSessionService.getSnapshot(),
+  retryNativeSession: () => nativeSessionService.retry(),
+});
 const authService = AuthService.getInstance();
 const cacheService = LocalCacheService.getInstance();
 const conversationService = ConversationResourceService.getInstance();
@@ -29,10 +35,16 @@ const feedService = FeedResourceService.getInstance();
 export function AppDataProvider({ children }: AppDataProviderProps) {
   const [activeUserId, setActiveUserId] = useState<string | null>(authService.getVerifiedCurrentUser()?.uid ?? null);
   const [cacheReady, setCacheReady] = useState(false);
+  const [nativeSession, setNativeSession] = useState<NativeSessionSnapshot>(nativeSessionService.getSnapshot());
   const activeUserIdRef = useRef<string | null>(activeUserId);
 
   useEffect(() => {
     void cacheService.initialize().then(() => setCacheReady(true)).catch(() => setCacheReady(false));
+  }, []);
+
+  useEffect(() => {
+    nativeSessionService.start();
+    return nativeSessionService.subscribe(setNativeSession);
   }, []);
 
   useEffect(() => authService.subscribeToVerifiedAuthState((user) => {
@@ -114,7 +126,7 @@ export function AppDataProvider({ children }: AppDataProviderProps) {
     return () => subscription?.remove();
   }, [activeUserId]);
 
-  return <AppDataContext.Provider value={{ activeUserId, cacheReady }}>{children}</AppDataContext.Provider>;
+  return <AppDataContext.Provider value={{ activeUserId, cacheReady, nativeSession, retryNativeSession: () => nativeSessionService.retry() }}>{children}</AppDataContext.Provider>;
 }
 
 export function useAppData(): AppDataContextValue {

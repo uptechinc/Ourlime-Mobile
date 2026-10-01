@@ -45,10 +45,12 @@ export class AuthorizationService {
 
   public canAccessStatus(status: PageAccessStatus, state: AuthorizationState): boolean {
     if (status === 'enabled') return true;
+    if (state.isAdmin) return true;
+    if (state.isTester) return status !== 'admin_only';
+    if (status === 'coming_soon' || status === 'maintenance' || status === 'disabled') return false;
     if (status === 'admin_only') return state.isAdmin;
-    if (state.isTester || state.isDeveloper || state.isAdmin) return true;
-    if (status === 'developer_only') return false;
-    if (status === 'beta_only') return state.isPremium;
+    if (status === 'developer_only') return state.isDeveloper || state.isAdmin;
+    if (status === 'beta_only') return state.isPremium || state.isAdmin;
     return false;
   }
 }

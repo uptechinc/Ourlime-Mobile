@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Modal,
   ScrollView,
@@ -15,6 +14,7 @@ import { Image } from 'expo-image';
 import { Search, X } from 'lucide-react-native';
 import { gifService, type GifAsset } from '@/lib/services/GifService';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
@@ -29,6 +29,8 @@ const GIF_CATEGORIES = [
   { label: 'Sports', query: 'sports' },
 ] as const;
 
+const GIF_SKELETON_ITEMS = ['gif-skeleton-1', 'gif-skeleton-2', 'gif-skeleton-3', 'gif-skeleton-4'] as const;
+
 type GifPickerModalProps = {
   visible: boolean;
   onClose: () => void;
@@ -42,22 +44,32 @@ export default function GifPickerModal({ visible, onClose, onSelect }: GifPicker
   const [gifs, setGifs] = useState<GifAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const requestGenerationRef = useRef(0);
   const swipeDismiss = useSwipeDismiss({ visible, onDismiss: onClose, disabled: loading });
 
   const load = useCallback(async (value: string) => {
+    const requestGeneration = ++requestGenerationRef.current;
     setLoading(true);
     setError('');
     try {
-      setGifs(await gifService.search(value));
+      const nextGifs = await gifService.search(value);
+      if (requestGeneration !== requestGenerationRef.current) return;
+      setGifs(nextGifs);
     } catch (loadError: unknown) {
+      if (requestGeneration !== requestGenerationRef.current) return;
       setError(loadError instanceof Error ? loadError.message : 'GIFs could not be loaded.');
     } finally {
-      setLoading(false);
+      if (requestGeneration === requestGenerationRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (visible) void load('');
+    if (visible) {
+      setQuery('');
+      void load('');
+      return;
+    }
+    requestGenerationRef.current += 1;
   }, [load, visible]);
 
   const handleCategorySelect = (categoryQuery: string) => {
@@ -93,7 +105,12 @@ export default function GifPickerModal({ visible, onClose, onSelect }: GifPicker
               style={styles.input}
             />
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.categoryScroller}
+            contentContainerStyle={styles.categories}
+          >
             {GIF_CATEGORIES.map((category) => {
               const selected = query === category.query;
               return (
@@ -104,33 +121,46 @@ export default function GifPickerModal({ visible, onClose, onSelect }: GifPicker
                   onPress={() => handleCategorySelect(category.query)}
                   style={[styles.category, selected && styles.categorySelected]}
                 >
-                  <Text style={[styles.categoryText, selected && styles.categoryTextSelected]}>{category.label}</Text>
+                  <Text
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={1.15}
+                    style={[styles.categoryText, selected && styles.categoryTextSelected]}
+                  >
+                    {category.label}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
-          {loading ? (
-            <ActivityIndicator color={colors.accent} style={styles.loader} />
-          ) : error ? (
-            <Text accessibilityRole="alert" style={styles.error}>{error}</Text>
-          ) : (
-            <FlatList
-              data={gifs}
-              numColumns={2}
-              keyExtractor={(gif) => gif.id}
-              contentContainerStyle={styles.grid}
-              columnWrapperStyle={styles.row}
-              renderItem={({ item }) => (
-                <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Use ${item.name} GIF`} onPress={() => onSelect(item)} style={styles.gifButton}>
-                  <Image source={{ uri: item.imageUrl }} recyclingKey={item.id} contentFit="cover" style={styles.gif} />
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={<Text style={styles.empty}>No GIFs found.</Text>}
-              initialNumToRender={8}
-              maxToRenderPerBatch={8}
-              windowSize={5}
-            />
-          )}
+          <View style={styles.resultsRegion}>
+            {loading ? (
+              <View accessibilityLabel="Loading GIFs" style={[styles.grid, styles.skeletonGrid]}>
+                {GIF_SKELETON_ITEMS.map((skeletonId) => (
+                  <Skeleton key={skeletonId} height={148} borderRadius={12} style={styles.skeletonTile} />
+                ))}
+              </View>
+            ) : error ? (
+              <Text accessibilityRole="alert" style={styles.error}>{error}</Text>
+            ) : (
+              <FlatList
+                data={gifs}
+                numColumns={2}
+                keyExtractor={(gif) => gif.id}
+                style={styles.gifList}
+                contentContainerStyle={styles.grid}
+                columnWrapperStyle={styles.row}
+                renderItem={({ item }) => (
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Use ${item.name} GIF`} onPress={() => onSelect(item)} style={styles.gifButton}>
+                    <Image source={{ uri: item.imageUrl }} recyclingKey={item.id} contentFit="cover" style={styles.gif} />
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={<Text style={styles.empty}>No GIFs found.</Text>}
+                initialNumToRender={4}
+                maxToRenderPerBatch={4}
+                windowSize={3}
+              />
+            )}
+          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -147,14 +177,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   closeButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18, backgroundColor: colors.control },
   search: { marginHorizontal: 16, marginBottom: 10, flexDirection: 'row', alignItems: 'center', borderRadius: 12, backgroundColor: colors.control, paddingHorizontal: 12 },
   input: { flex: 1, paddingVertical: 11, paddingHorizontal: 8, color: colors.text },
-  categories: { paddingHorizontal: 16, paddingBottom: 12, gap: 7 },
-  category: { borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 7 },
+  categoryScroller: { flexGrow: 0, flexShrink: 0, height: 50 },
+  categories: { paddingHorizontal: 16, paddingBottom: 12, gap: 7, alignItems: 'center' },
+  category: { minHeight: 38, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 7, alignItems: 'center', justifyContent: 'center' },
   categorySelected: { borderColor: colors.accent, backgroundColor: colors.accent },
-  categoryText: { color: colors.mutedText, fontSize: 12, fontWeight: '700' },
+  categoryText: { color: colors.mutedText, fontSize: 12, lineHeight: 16, fontWeight: '700', includeFontPadding: false },
   categoryTextSelected: { color: colors.onAccent },
-  loader: { marginTop: 60 },
+  resultsRegion: { flex: 1, minHeight: 304 },
+  gifList: { flex: 1 },
   error: { color: colors.destructiveText, padding: 18 },
   grid: { paddingHorizontal: 12, paddingBottom: 28 },
+  skeletonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  skeletonTile: { width: '48.7%' },
   row: { gap: 8 },
   gifButton: { flex: 1, height: 148, marginBottom: 8, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.control },
   gif: { width: '100%', height: '100%' },

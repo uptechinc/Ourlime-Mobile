@@ -4,7 +4,6 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes, uploadBytesResumable } from 'firebase/storage';
 import { db, storage } from '@/lib/firebaseConfig';
 import { limeCoverTimelineService } from '@/lib/services/LimeCoverTimelineService';
-import { apiService } from '@/lib/services/ApiService';
 
 type EnsureLimeThumbnailInput = {
   reelId: string;
@@ -139,18 +138,12 @@ export class LimeThumbnailService {
           customMetadata: { type: 'reel-thumbnail', reelId: reel.id },
         });
         const thumbnailUrl = await getDownloadURL(snapshot.ref);
-        try {
-          await updateDoc(doc(db, 'reels', reel.id), {
-            thumbnailUrl,
-            'media.thumbnailUrl': thumbnailUrl,
-          });
-        } catch {
-          await apiService.request(`/api/limes/${encodeURIComponent(reel.id)}`, {
-            method: 'PATCH',
-            authenticated: true,
-            body: { thumbnailUrl },
-          }).catch(() => undefined);
-        }
+        await updateDoc(doc(db, 'reels', reel.id), {
+          thumbnailUrl,
+          'media.thumbnailUrl': thumbnailUrl,
+        }).catch((error: unknown) => {
+          console.warn('[LimeThumbnailService] Thumbnail URL could not be saved for reel:', reel.id, error);
+        });
         return thumbnailUrl;
       }
 

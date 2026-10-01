@@ -11,7 +11,7 @@ import { DiagnosticLogService } from './DiagnosticLogService';
 import { LimeMediaPreloadService } from './LimeMediaPreloadService';
 
 const LIME_NAMESPACE = 'limes';
-const LIME_CACHE_VERSION = 'v3';
+const LIME_CACHE_VERSION = 'v4';
 const LIME_STALE_MS = 90_000;
 const LIME_RETENTION_MS = 24 * 60 * 60 * 1000;
 const INITIAL_PAGE_SIZE = 12;
@@ -403,6 +403,7 @@ export class LimeResourceService {
     return {
       reels: cached.data.reels.map((reel) => ({
         ...reel,
+        authorUserId: reel.authorUserId || reel.repostedFrom?.userId || reel.userId,
         createdAt: new Date(reel.createdAt),
         repostedBy: Array.isArray(reel.repostedBy)
           ? reel.repostedBy
@@ -458,7 +459,14 @@ export class LimeResourceService {
   }
 
   private dedupe(reels: Reel[]): Reel[] {
-    return Array.from(new Map(reels.map((reel) => [reel.id, reel])).values());
+    const originals = new Map<string, Reel>();
+    for (const reel of reels) {
+      const previous = originals.get(reel.id);
+      const reposters = new Map([...(previous?.repostedBy ?? []), ...(reel.repostedBy ?? [])]
+        .map((reposter) => [reposter.userId, reposter] as const));
+      originals.set(reel.id, { ...reel, repostedBy: [...reposters.values()] });
+    }
+    return [...originals.values()];
   }
 }
 

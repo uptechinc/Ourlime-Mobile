@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { PostService, type PostItem } from '@/lib/services/PostService';
 import PostCardSection from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection';
 import PollCardSection from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PollCardSection';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
+import { FeedSkeleton } from '@/components/ui/Skeleton';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const postService = PostService.getInstance();
@@ -64,9 +65,9 @@ export default function PostScreen() {
         <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginLeft: 10 }}>Post</Text>
       </View>
       {loading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color="#10b981" />
-        </View>
+        <ScrollView contentContainerStyle={{ padding: 16 }} showsVerticalScrollIndicator={false}>
+          <FeedSkeleton />
+        </ScrollView>
       ) : error || !post ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
           <Text style={{ color: colors.mutedText, fontStyle: isTerminalError ? 'italic' : 'normal', textAlign: 'center', fontSize: 15 }}>

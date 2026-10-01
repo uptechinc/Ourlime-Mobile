@@ -14,6 +14,7 @@ import {
     Linking,
     Keyboard,
     FlatList,
+    type ImageSourcePropType,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -25,7 +26,7 @@ import { AuthService, type UserProfile } from '@/lib/services/AuthService';
 import { messagingService, type FullMessage, type Attachment } from '@/lib/messaging/MessagingService';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { StickerService, normalizeStickerUrl } from '@/lib/sticker/StickerService';
-import { getLocalStickerSource } from '@/assets/images/stickers/stickerMap';
+import { getLocalStickerSource, getRandomLocalStickerSource } from '@/assets/images/stickers/stickerMap';
 import { EmojiStickerKeyboard } from '@/components/chat/EmojiStickerKeyboard';
 import { VoiceNotePlayer } from '@/components/chat/VoiceNotePlayer';
 import { ChatSettingsMenu } from '@/components/chat/ChatSettingsMenu';
@@ -43,6 +44,7 @@ import type { Sticker } from '@/lib/types/sticker';
 import type { Timestamp } from 'firebase/firestore';
 import { useSimpleChatMessages } from '@/lib/hooks/useSimpleChatMessages';
 import { useResourceStore } from '@/lib/store/useResourceStore';
+import { ChatConversationSkeleton } from '@/components/ui/Skeleton';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { presenceService, type PresenceState } from '@/lib/services/PresenceService';
 import { useCallCoordinator } from '@/lib/contexts/CallContext';
@@ -614,6 +616,13 @@ export default function ChatPage() {
     const [replyTo, setReplyTo] = useState<FullMessage | null>(null);
     const [isSending, setIsSending] = useState(false);
     const [keyboardState, setKeyboardState] = useState<{ visible: boolean; tab: 'emojis' | 'stickers' }>({ visible: false, tab: 'emojis' });
+    const [composerStickerIcon, setComposerStickerIcon] = useState<ImageSourcePropType>(() => getRandomLocalStickerSource());
+
+    useEffect(() => {
+        if (keyboardState.visible) {
+            setComposerStickerIcon(getRandomLocalStickerSource());
+        }
+    }, [keyboardState.visible]);
     const [showSettings, setShowSettings] = useState(false);
     const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
     const [showAttachModal, setShowAttachModal] = useState(false);
@@ -652,8 +661,12 @@ export default function ChatPage() {
     useEffect(() => {
         return () => {
             sharedPostPresentationService.deactivateAllPlayers();
+            if (friendId && currentUserId) {
+                void simpleChatMessageService.markRead(friendId);
+                void conversationResourceService.patchConversation(currentUserId, friendId, { unreadCount: 0 });
+            }
         };
-    }, []);
+    }, [friendId, currentUserId]);
 
     useEffect(() => {
         if (!friendId) return;
@@ -793,6 +806,12 @@ export default function ChatPage() {
         try {
             const serverMessage = await messagingService.sendMessage(friendId, text, currentUserId, replyRef, attachment);
             addMessage(serverMessage);
+            void conversationResourceService.patchConversation(currentUserId, friendId, {
+                lastMessage: text || (attachment ? attachment.fileName : 'Attachment'),
+                lastMessageTime: serverMessage.timestamp,
+                lastMessageSenderId: currentUserId,
+                unreadCount: 0,
+            });
             void interactionFeedbackService.play('success');
         } catch (err) {
             setChatModal({
@@ -849,7 +868,14 @@ export default function ChatPage() {
             stickerHeight: sticker.height,
         };
         try {
-            addMessage(await messagingService.sendMessage(friendId, '', currentUserId, undefined, undefined, stickerData));
+            const serverMessage = await messagingService.sendMessage(friendId, '', currentUserId, undefined, undefined, stickerData);
+            addMessage(serverMessage);
+            void conversationResourceService.patchConversation(currentUserId, friendId, {
+                lastMessage: '🎨 Sticker',
+                lastMessageTime: serverMessage.timestamp,
+                lastMessageSenderId: currentUserId,
+                unreadCount: 0,
+            });
             void interactionFeedbackService.play('success');
         } catch {
             setChatModal({
@@ -1005,11 +1031,11 @@ export default function ChatPage() {
                         showsVerticalScrollIndicator={false}
                         renderItem={renderMessage}
                     />
+                    ) : isLoading ? (
+                        <ChatConversationSkeleton />
                     ) : (
                         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: activeBg ? 'transparent' : colors.canvas, paddingHorizontal: 32 }}>
-                            {isLoading ? (
-                                <ActivityIndicator size="large" color={colors.accent} />
-                            ) : messageError ? (
+                            {messageError ? (
                                 <>
                                     <Icon name="alert-triangle" size={34} color={colors.destructive} />
                                     <Text style={{ color: colors.destructiveText, textAlign: 'center', fontWeight: '700', marginTop: 12 }}>
@@ -1146,19 +1172,27 @@ export default function ChatPage() {
                                 shadowRadius: 3,
                                 elevation: 1,
                             }}>
-                                {/* Sticker Picker Toggle (Grid icon) */}
+                                {/* Sticker Picker Toggle (Random Sticker Icon) */}
                                 <TouchableOpacity
                                     onPress={() => {
                                         Keyboard.dismiss();
+                                        setComposerStickerIcon(getRandomLocalStickerSource());
                                         setKeyboardState({ visible: true, tab: 'stickers' });
                                     }}
-                                    style={{ padding: 6 }}
+                                    style={{ padding: 4, alignItems: 'center', justifyContent: 'center' }}
                                     activeOpacity={0.7}
+                                    accessibilityLabel="Open stickers"
                                 >
-                                    <Icon
-                                        name="grid"
-                                        size={20}
-                                        color={keyboardState.visible && keyboardState.tab === 'stickers' ? '#10b981' : '#64748b'}
+                                    <Image
+                                        source={composerStickerIcon}
+                                        style={{
+                                             width: 22,
+                                             height: 22,
+                                             borderRadius: 4,
+                                             borderWidth: keyboardState.visible && keyboardState.tab === 'stickers' ? 1.5 : 0,
+                                             borderColor: colors.accent,
+                                        }}
+                                        resizeMode="contain"
                                     />
                                 </TouchableOpacity>
 
@@ -1170,11 +1204,12 @@ export default function ChatPage() {
                                     }}
                                     style={{ padding: 6 }}
                                     activeOpacity={0.7}
+                                    accessibilityLabel="Open emojis"
                                 >
                                     <Icon
                                         name="smile"
                                         size={20}
-                                        color={keyboardState.visible && keyboardState.tab === 'emojis' ? '#10b981' : '#64748b'}
+                                        color={keyboardState.visible && keyboardState.tab === 'emojis' ? colors.accent : colors.icon}
                                     />
                                 </TouchableOpacity>
 

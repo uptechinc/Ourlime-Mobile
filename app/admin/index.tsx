@@ -1,12 +1,13 @@
+import SellerReviewSection from '@/components/admin/SellerReviewSection';
 import { useEffect, useState } from 'react';
 import {
 	View,
 	Text,
 	TouchableOpacity,
 	ScrollView,
-	ActivityIndicator,
 	StyleSheet,
 } from 'react-native';
+import { AdminOverviewSkeleton } from '@/components/ui/Skeleton';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
@@ -92,7 +93,7 @@ export default function AdminPortalScreen() {
 	const { authorization, loading: accessLoading } = usePageAccess();
 	const { colors } = useAppTheme();
 	const [activeSection, setActiveSection] = useState<
-		'overview' | 'users' | 'moderation' | 'page_access' | 'security'
+		'overview' | 'users' | 'moderation' | 'page_access' | 'security' | 'seller_review'
 	>('overview');
 	const [loading, setLoading] = useState(true);
 	const [stats, setStats] = useState<AdminMetrics>({
@@ -109,7 +110,7 @@ export default function AdminPortalScreen() {
 			section === 'users' ||
 			section === 'moderation' ||
 			section === 'page_access' ||
-			section === 'security' ||
+			section === 'security' || section === 'seller_review' ||
 			section === 'overview'
 		)
 			setActiveSection(section);
@@ -164,9 +165,7 @@ export default function AdminPortalScreen() {
 			</View>
 
 			{accessLoading ? (
-				<View style={styles.center}>
-					<ActivityIndicator size="large" color="#10b981" />
-				</View>
+				<AdminOverviewSkeleton />
 			) : !authorization.isAdmin ? (
 				<View style={styles.center}>
 					<Icon name="lock" size={38} color="#c64d53" />
@@ -199,6 +198,7 @@ export default function AdminPortalScreen() {
 								{ key: 'users', label: 'Users', icon: 'users' },
 								{ key: 'moderation', label: 'Reports', icon: 'flag' },
 								{ key: 'page_access', label: 'Pages', icon: 'layers' },
+                { key: 'seller_review', label: 'Sellers', icon: 'user-check' },
 								{ key: 'security', label: 'Security', icon: 'shield' },
 							] as const
 						).map((section) => (
@@ -239,7 +239,7 @@ export default function AdminPortalScreen() {
 							</TouchableOpacity>
 						))}
 					</View>
-					{activeSection === 'security' ? (
+					{activeSection === 'seller_review' ? <SellerReviewSection /> : activeSection === 'security' ? (
 						<ScrollView
 							style={{ flex: 1 }}
 							contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
@@ -268,13 +268,8 @@ export default function AdminPortalScreen() {
 							<ModerationSection />
 						</ScrollView>
 					) : loading ? (
-						<View style={styles.center}>
-							<ActivityIndicator size="large" color="#10b981" />
-							<Text style={{ marginTop: 12, color: colors.mutedText }}>
-								Loading admin dashboard…
-							</Text>
-						</View>
-					) : error ? (
+					<AdminOverviewSkeleton />
+				) : error ? (
 						<View style={styles.center}>
 							<Icon
 								name="alert-triangle"

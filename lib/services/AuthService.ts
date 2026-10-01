@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import {
   signInWithEmailAndPassword,
   signInWithCustomToken,
@@ -36,7 +37,7 @@ import { AuthServiceError } from '@/lib/auth/AuthErrors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { presenceService } from './PresenceService';
 import { nativeCallService } from './NativeCallService';
-import { ApiService } from './ApiService';
+import { AppServerError, appServerService } from './AppServerService';
 import { qrLoginService, QRLoginService } from './QRLoginService';
 export { AuthServiceError, getAuthErrorCode } from '@/lib/auth/AuthErrors';
 export type { AuthServiceErrorCode } from '@/lib/auth/AuthErrors';
@@ -59,6 +60,7 @@ export type UserProfile = {
   emailVerified?: boolean;
   verificationStatus?: string;
   identityVerificationStatus?: string;
+  blogPublishingSuspended?: boolean;
   visibility?: 'public' | 'friends' | 'private';
   followersCount?: number;
   friendsCount?: number;
@@ -66,6 +68,7 @@ export type UserProfile = {
   gender?: string;
   dateOfBirth?: string;
   country?: string;
+  state?: string;
   city?: string;
   phone?: string;
   profilePicture?: string | null;
@@ -80,6 +83,12 @@ export type UserAccessProfile = Pick<
 
 export type RegistrationVerificationType = 'student_id' | 'national_id' | 'guardian' | 'drivers_license' | 'skipped' | '';
 
+export type VerificationDocumentInput = {
+  faceUri?: string | null;
+  frontUri?: string | null;
+  backUri?: string | null;
+};
+
 export type RegistrationInput = {
   firstName: string;
   lastName: string;
@@ -91,12 +100,16 @@ export type RegistrationInput = {
   gender?: string;
   dateOfBirth?: string;
   country?: string;
+  state?: string;
   city?: string;
   phone?: string;
   profilePicture?: string | null;
   selectedInterests?: string[];
   verificationType?: RegistrationVerificationType;
+  idSubType?: 'national_id' | 'passport' | null;
+  guardianRelation?: 'biological_parent' | 'legal_guardian' | null;
   guardianEmail?: string;
+  verificationDocuments?: VerificationDocumentInput;
   referralToken?: string;
   policyAcknowledgements: {
     terms: boolean;
@@ -106,17 +119,19 @@ export type RegistrationInput = {
 };
 
 type RegistrationStartResponse = {
-  success: boolean;
-  message: string;
   userId: string;
   customToken: string;
+};
+
+export type RegistrationResult = {
+  user: FirebaseUser;
+  verificationEmailSent: boolean;
 };
 
 export class AuthService {
   private static instance: AuthService;
   private readonly logger = DiagnosticLogService.getInstance();
   private readonly mediaService = PostMediaService.getInstance();
-  private readonly apiService = ApiService.getInstance();
   private readonly profilePromises = new Map<string, Promise<UserProfile | null>>();
   private readonly profileMemoryCache = new Map<string, { profile: UserProfile; timestamp: number }>();
   private readonly maximumProfileCacheEntries = 100;
@@ -217,27 +232,27 @@ export class AuthService {
   /**
    * Register a new user and save profile to Firestore
    */
-  public async register(formData: RegistrationInput): Promise<FirebaseUser> {
+  public async register(formData: RegistrationInput): Promise<RegistrationResult> {
     if (!formData.policyAcknowledgements.terms || !formData.policyAcknowledgements.privacy || !formData.policyAcknowledgements.childSafety) {
       throw new AuthServiceError('UNKNOWN', 'Accept all required Ourlime policies before registering.');
     }
 
-    const startResponse = await this.apiService.request<RegistrationStartResponse>('/api/auth/register/start', {
-      method: 'POST',
-      body: {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        userName: formData.userName,
-        email: formData.email,
-        password: formData.password,
-        accountType: formData.accountType,
-        referralToken: formData.referralToken,
-      },
-      timeoutMs: 30_000,
+    const startResponse = await appServerService.call<RegistrationStartResponse>('startRegistration', {
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      userName: formData.userName,
+      email: formData.email,
+      password: formData.password,
+      accountType: formData.accountType,
+      referralToken: formData.referralToken,
+      platform: Platform.OS,
+    }, 30_000).catch((error: unknown) => {
+      if (error instanceof AppServerError && error.code === 'already-exists' && error.message === 'auth/email-already-in-use') {
+        throw new AuthServiceError('UNKNOWN', 'An account with this email already exists. Try signing in instead.');
+      }
+      throw new AuthServiceError('UNKNOWN', error instanceof Error ? error.message : 'Failed to start registration.');
     });
-    if (!startResponse.success || !startResponse.userId || !startResponse.customToken) {
-      throw new AuthServiceError('UNKNOWN', startResponse.message || 'Failed to start registration.');
-    }
+    if (!startResponse.userId || !startResponse.customToken) throw new AuthServiceError('UNKNOWN', 'Failed to start registration.');
 
     const credential = await signInWithCustomToken(auth, startResponse.customToken);
     const user = credential.user;
@@ -256,6 +271,7 @@ export class AuthService {
       gender: formData.gender || '',
       dateOfBirth: formData.dateOfBirth || '',
       country: formData.country || '',
+      state: formData.state || '',
       city: formData.city || '',
       phone: formData.phone || '',
       profilePicture,
@@ -263,51 +279,121 @@ export class AuthService {
       createdAt: serverTimestamp(),
     };
 
+      // Handle Verification Documents Upload if provided
+      const docs = formData.verificationDocuments;
+      const hasVerificationDocs = Boolean(
+        formData.verificationType &&
+        formData.verificationType !== 'skipped' &&
+        docs?.faceUri &&
+        docs?.frontUri
+      );
+
+      if (hasVerificationDocs && docs) {
+        const authDocsCollection = collection(db, 'users', user.uid, 'authenticationDocuments');
+
+        // Face doc
+        if (docs.faceUri) {
+          const faceResult = await this.mediaService.uploadVerificationDocument({
+            email: user.email || formData.email,
+            type: 'faceID',
+            uri: docs.faceUri,
+          });
+          await setDoc(doc(authDocsCollection), {
+            type: 'faceID',
+            fileName: faceResult.fileName,
+            imageURL: faceResult.downloadUrl,
+            verified: false,
+            createdAt: serverTimestamp(),
+          });
+        }
+
+        // Front doc
+        if (docs.frontUri) {
+          const frontResult = await this.mediaService.uploadVerificationDocument({
+            email: user.email || formData.email,
+            type: 'frontID',
+            uri: docs.frontUri,
+          });
+          await setDoc(doc(authDocsCollection), {
+            type: 'frontID',
+            fileName: frontResult.fileName,
+            imageURL: frontResult.downloadUrl,
+            verified: false,
+            createdAt: serverTimestamp(),
+          });
+        }
+
+        // Back doc (if provided, e.g. not passport)
+        if (docs.backUri) {
+          const backResult = await this.mediaService.uploadVerificationDocument({
+            email: user.email || formData.email,
+            type: 'backID',
+            uri: docs.backUri,
+          });
+          await setDoc(doc(authDocsCollection), {
+            type: 'backID',
+            fileName: backResult.fileName,
+            imageURL: backResult.downloadUrl,
+            verified: false,
+            createdAt: serverTimestamp(),
+          });
+        }
+
+        // Notify Admin of ID submission
+        await appServerService.call('notifyAdminIdSubmitted').catch((error: unknown) => {
+          this.logger.warn('AuthService', 'register:admin-notification', { error: error instanceof Error ? error.message : String(error) });
+        });
+      }
+
       const verificationType = formData.verificationType || 'skipped';
       const verificationStatus = verificationType === 'skipped'
         ? null
-        : verificationType === 'guardian'
+        : hasVerificationDocs
           ? 'pending'
-          : 'documents_required';
+          : verificationType === 'guardian'
+            ? 'pending'
+            : 'documents_required';
+
       await setDoc(doc(db, 'users', user.uid), {
-      ...userProfile,
-      studentLevel: formData.studentLevel || '',
-      registrationStatus: 'complete',
-      currentStep: 8,
-      emailVerified: false,
-      verificationType,
-      verificationStatus,
-      guardianEmail: formData.guardianEmail?.trim() || null,
-      policyAcknowledgements: {
-        termsAcceptedAt: serverTimestamp(),
-        privacyAcceptedAt: serverTimestamp(),
-        childSafetyAcceptedAt: serverTimestamp(),
-        source: 'ourlime-mobile',
-      },
-      updatedAt: serverTimestamp(),
+        ...userProfile,
+        studentLevel: formData.studentLevel || '',
+        registrationStatus: 'complete',
+        currentStep: 8,
+        emailVerified: false,
+        verificationType,
+        idSubType: formData.idSubType || null,
+        guardianRelation: formData.guardianRelation || null,
+        verificationStatus,
+        guardianEmail: formData.guardianEmail?.trim() || null,
+        policyAcknowledgements: {
+          termsAcceptedAt: serverTimestamp(),
+          privacyAcceptedAt: serverTimestamp(),
+          childSafetyAcceptedAt: serverTimestamp(),
+          source: 'ourlime-mobile',
+        },
+        updatedAt: serverTimestamp(),
       }, { merge: true });
 
       if (verificationType === 'guardian' && formData.guardianEmail?.trim()) {
-        await this.apiService.request('/api/notify-guardian', {
-        method: 'POST',
-        authenticated: true,
-        body: {
-          guardianEmail: formData.guardianEmail.trim(),
-          childName: formData.firstName.trim() || formData.userName.trim(),
-        },
-        }).catch((error: unknown) => {
+        await appServerService.call('notifyGuardian').catch((error: unknown) => {
           this.logger.warn('AuthService', 'register:guardian-notification', { error: error instanceof Error ? error.message : String(error) });
         });
       }
 
+      let verificationEmailSent = true;
       await sendEmailVerification(user, { url: 'https://ourlime.com/verify-email' }).catch((error: unknown) => {
+        verificationEmailSent = false;
         this.logger.warn('AuthService', 'register:verification-email', { error: error instanceof Error ? error.message : String(error) });
       });
 
-      return user;
+      return { user, verificationEmailSent };
     } finally {
       await signOut(auth).catch(() => undefined);
     }
+  }
+
+  public async resendRegistrationVerificationEmail(userId: string): Promise<void> {
+    await appServerService.call('resendVerificationEmail', { userId }, 30_000);
   }
 
   private async assertAccountCanSignIn(account: DocumentData | undefined): Promise<void> {
@@ -476,6 +562,7 @@ export class AuthService {
         emailVerified: profileRecord.emailVerified === true || auth.currentUser?.emailVerified === true,
         verificationStatus: this.readString(profileRecord.verificationStatus) || undefined,
         identityVerificationStatus: this.readString(profileRecord.identityVerificationStatus) || undefined,
+        blogPublishingSuspended: profileRecord.blogPublishingSuspended === true,
         visibility: profileRecord.visibility === 'private' || profileRecord.visibility === 'friends' ? profileRecord.visibility : 'public',
         followersCount: this.readNumber(profileRecord.followersCount),
         friendsCount: this.readNumber(profileRecord.friendsCount),
@@ -576,6 +663,86 @@ export class AuthService {
       coverImage: updates.coverPhoto ?? null,
       coverPicture: updates.coverPhoto ?? null,
       updatedAt: serverTimestamp(),
+    });
+  }
+
+  /**
+   * Upload verification ID documents for an already-registered user.
+   * Called from VerificationUploadModal.
+   */
+  public async uploadVerificationDocuments(options: {
+    files: { faceUri: string; frontUri?: string; backUri?: string };
+    verificationType: string;
+    idSubType?: string | null;
+  }): Promise<void> {
+    const currentUser = auth.currentUser;
+    if (!currentUser || !currentUser.email) {
+      throw new AuthServiceError('UNKNOWN', 'You must be logged in to upload verification documents.');
+    }
+
+    const authCollection = collection(db, 'users', currentUser.uid, 'authenticationDocuments');
+
+    // Face ID
+    const faceResult = await this.mediaService.uploadVerificationDocument({
+      email: currentUser.email,
+      type: 'faceID',
+      uri: options.files.faceUri,
+    });
+    await setDoc(doc(authCollection), {
+      type: 'faceID',
+      fileName: faceResult.fileName,
+      imageURL: faceResult.downloadUrl,
+      verified: false,
+      createdAt: serverTimestamp(),
+    });
+
+    // Front ID
+    if (options.files.frontUri) {
+      const frontResult = await this.mediaService.uploadVerificationDocument({
+        email: currentUser.email,
+        type: 'frontID',
+        uri: options.files.frontUri,
+      });
+      await setDoc(doc(authCollection), {
+        type: 'frontID',
+        fileName: frontResult.fileName,
+        imageURL: frontResult.downloadUrl,
+        verified: false,
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    // Back ID
+    if (options.files.backUri) {
+      const backResult = await this.mediaService.uploadVerificationDocument({
+        email: currentUser.email,
+        type: 'backID',
+        uri: options.files.backUri,
+      });
+      await setDoc(doc(authCollection), {
+        type: 'backID',
+        fileName: backResult.fileName,
+        imageURL: backResult.downloadUrl,
+        verified: false,
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    // Update user document with verification type and status
+    await updateDoc(doc(db, 'users', currentUser.uid), {
+      verificationType: options.verificationType,
+      ...(options.idSubType ? { idSubType: options.idSubType } : {}),
+      verificationStatus: 'pending',
+      updatedAt: serverTimestamp(),
+    });
+
+    this.invalidateUserProfile(currentUser.uid);
+
+    // Notify admin
+    await appServerService.call('notifyAdminIdSubmitted').catch((error: unknown) => {
+      this.logger.warn('AuthService', 'uploadVerificationDocuments:admin-notification', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     });
   }
 

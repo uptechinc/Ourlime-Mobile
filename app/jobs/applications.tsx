@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PageHeader from '@/components/ui/PageHeader';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { ApplicationsSkeleton } from '@/components/ui/Skeleton';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import { jobApplicationService, type JobApplicationStatus, type MyJobApplication } from '@/lib/services/JobApplicationService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -88,7 +89,7 @@ export default function MyJobApplicationsScreen() {
           </View>
         </View>
         {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-        {loading ? <View style={styles.center}><ActivityIndicator size="large" color={colors.accent} /><Text style={styles.mutedText}>Loading applications…</Text></View> : null}
+        {loading ? <ApplicationsSkeleton /> : null}
         {!loading && applications.length === 0 ? (
           <View style={styles.empty}>
             <FileText size={42} color={colors.mutedText} />

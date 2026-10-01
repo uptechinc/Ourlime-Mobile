@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { FeedSkeleton } from "@/components/ui/Skeleton";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as SplashScreen from 'expo-splash-screen';
 import MiddleSection from "@/components/home/MiddleSection";
@@ -46,14 +47,18 @@ export default function FeedsScreen() {
 
   if (!userProfile) {
     return (
-      <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={['top', 'left', 'right']}>
         {profileError ? (
-          <View style={{ paddingHorizontal: 28, alignItems: 'center' }}>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
             <Text style={{ color: '#991b1b', fontSize: 18, fontWeight: '700', textAlign: 'center' }}>Could not load your profile</Text>
             <Text style={{ marginTop: 8, color: '#7f1d1d', textAlign: 'center' }}>{profileError}</Text>
             <Text style={{ marginTop: 8, color: '#6b7280', fontSize: 12, textAlign: 'center' }}>Check Metro for [Ourlime.Mobile][AuthService] logs.</Text>
           </View>
-        ) : <ActivityIndicator size="large" color="#10b981" />}
+        ) : (
+          <View style={{ flex: 1, padding: 16 }}>
+            <FeedSkeleton />
+          </View>
+        )}
       </SafeAreaView>
     );
   }

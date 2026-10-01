@@ -1,6 +1,6 @@
-import { ApiService } from './ApiService';
+import { addDoc, collection, doc, getDoc, serverTimestamp, type DocumentData } from 'firebase/firestore';
 import { deleteObject, getDownloadURL, ref, uploadBytes, type StorageReference } from 'firebase/storage';
-import { auth, storage } from '../firebaseConfig';
+import { auth, db, storage } from '../firebaseConfig';
 import { childSafetyReportService } from './ChildSafetyReportService';
 import { CHILD_SAFETY_CATEGORY_LABELS, type ChildSafetyCategory, type ChildSafetyDangerAnswer, type ChildSafetyTargetType } from '@/lib/types/childSafety';
 
@@ -17,7 +17,7 @@ export const REPORT_REASONS = {
 
 export type ReportReasonCategory = keyof typeof REPORT_REASONS;
 export const CHILD_SAFETY_REASON_CATEGORY: ReportReasonCategory = 'child_safety';
-export type ReportContentType = 'post' | 'user' | 'community' | 'lime' | 'event' | 'marketplace_listing' | 'course' | 'blog' | 'comment' | 'reply' | 'message' | 'conversation' | 'media' | 'other';
+export type ReportContentType = 'post' | 'user' | 'community' | 'lime' | 'event' | 'marketplace_listing' | 'course' | 'blog' | 'blog_comment' | 'comment' | 'reply' | 'message' | 'conversation' | 'media' | 'other';
 
 export type SubmitReportInput = {
   targetId: string;
@@ -40,7 +40,6 @@ export type ReportEvidenceDraft = { uri: string; fileName: string; mimeType?: st
 
 export class ModerationService {
   private static instance: ModerationService;
-  private readonly apiService = ApiService.getInstance();
 
   private constructor() {}
 
@@ -93,36 +92,86 @@ export class ModerationService {
         uploadedReferences.push(evidenceReference);
         evidence.push(await getDownloadURL(evidenceReference));
       }
-      const response = await this.apiService.request<{ success: boolean; data?: { id?: string }; error?: string }>(
-        '/api/moderation/reports',
-        {
-          method: 'POST',
-          authenticated: true,
-          body: {
-            contentType,
-            targetId: input.targetId,
-            reportedUserId: input.reportedUserId ?? null,
-            parentContentId: input.parentContentId ?? null,
-            communityId: input.communityId ?? null,
-            chatId: input.chatId ?? null,
-            reasonCategory: input.reasonCategory,
-            reason: input.reason,
-            description: input.description?.trim() ?? '',
-            evidence,
-            severity: isChildSafetyReport ? 'critical' : input.reasonCategory === 'safety_abuse' ? 'high' : 'medium',
-            routePath: input.routePath ?? this.getDefaultRoute(contentType, input.targetId),
-            contentUrl: input.contentUrl ?? null,
-          },
-        }
-      );
-      if (!response.success || !response.data?.id) throw new Error(response.error || 'Failed to submit report');
-      return response.data.id;
+      // Same document the website's /api/moderation/reports route writes.
+      const reporterId = auth.currentUser?.uid;
+      if (!reporterId) throw new Error('Sign in to submit a report');
+      const { reportedUserId, targetSnapshot } = await this.buildTargetSnapshot(contentType, input);
+      const reporter = (await getDoc(doc(db, 'users', reporterId))).data() ?? {};
+      const reporterName = [reporter.firstName, reporter.lastName].filter(Boolean).join(' ') || reporter.userName || 'Unknown user';
+      const report = await addDoc(collection(db, 'reports'), {
+        contentType,
+        targetId: input.targetId,
+        reportedUserId,
+        reporterId,
+        reporterName,
+        reporterUserName: typeof reporter.userName === 'string' ? reporter.userName : null,
+        reasonCategory: input.reasonCategory || 'other',
+        reason: input.reason,
+        description,
+        evidence,
+        severity: input.reasonCategory === 'safety_abuse' ? 'high' : 'medium',
+        status: 'pending',
+        childSafetyPriority: false,
+        moderatorNotes: '',
+        assignedModerator: null,
+        actionTaken: null,
+        appealStatus: 'none',
+        routePath: input.routePath ?? this.getDefaultRoute(contentType, input.targetId),
+        contentUrl: input.contentUrl ?? null,
+        parentContentId: input.parentContentId ?? null,
+        communityId: input.communityId ?? null,
+        chatId: null,
+        targetSnapshot,
+        conversationContext: [],
+        conversationParticipantIds: [],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return report.id;
     } catch (error: unknown) {
       await Promise.all(uploadedReferences.map(async (reference) => {
         try { await deleteObject(reference); } catch { return; }
       }));
       throw error;
     }
+  }
+
+  /** Validates the reported content and captures a snapshot, like the website report route. */
+  private async buildTargetSnapshot(contentType: ReportContentType, input: SubmitReportInput): Promise<{ reportedUserId: string | null; targetSnapshot: DocumentData | null }> {
+    const text = (value: unknown) => (typeof value === 'string' ? value : '');
+    if (contentType === 'blog_comment') {
+      const blogId = input.parentContentId ?? '';
+      const [commentId, replyId, extra] = input.targetId.split(':');
+      if (!blogId || !commentId || extra !== undefined) throw new Error('A valid blog and comment are required');
+      const [blog, comment] = await Promise.all([getDoc(doc(db, 'blogsAndArticles', blogId)), getDoc(doc(db, 'blogsAndArticles', blogId, 'comments', commentId))]);
+      const commentData = comment.data();
+      if (!blog.exists() || blog.data().status !== 'published' || !commentData || commentData.isDeleted) throw new Error('Reported comment was not found');
+      const replies: DocumentData[] = Array.isArray(commentData.replies) ? commentData.replies : [];
+      const target = replyId ? replies.find((reply) => reply.id === replyId && !reply.isDeleted) : commentData;
+      if (!target) throw new Error('Reported reply was not found');
+      const authorId = text(target.userId) || null;
+      return { reportedUserId: authorId, targetSnapshot: { content: text(target.text).slice(0, 4000), blogId, commentId, replyId: replyId || null, authorId } };
+    }
+    if (contentType === 'comment' || contentType === 'reply') {
+      const target = await getDoc(doc(db, contentType === 'reply' ? 'feedsPostCommentsReplies' : 'feedsPostComments', input.targetId));
+      if (!target.exists()) throw new Error('Reported comment was not found');
+      const data = target.data();
+      const authorId = text(data.userId) || null;
+      return { reportedUserId: authorId, targetSnapshot: { content: text(contentType === 'reply' ? data.reply : data.comment).slice(0, 4000), sticker: data.sticker ?? null, postId: input.parentContentId || data.feedsPostId || null, authorId } };
+    }
+    if (contentType === 'post') {
+      const post = await getDoc(doc(db, 'feedPosts', input.targetId));
+      if (!post.exists()) throw new Error('Reported post was not found');
+      const data = post.data();
+      const authorId = text(data.userId) || input.reportedUserId || null;
+      return { reportedUserId: authorId, targetSnapshot: { content: text(data.caption || data.description || data.content).slice(0, 4000), media: Array.isArray(data.media) ? data.media : [], type: data.type || 'regular', authorId, postId: input.targetId } };
+    }
+    if (contentType === 'community') {
+      const community = await getDoc(doc(db, 'communityVariant', input.targetId));
+      const data = community.data();
+      return { reportedUserId: input.reportedUserId ?? null, targetSnapshot: data ? { name: text(data.name || data.title), description: text(data.description).slice(0, 4000), avatar: data.avatar || data.icon || null, category: data.category || null } : null };
+    }
+    return { reportedUserId: input.reportedUserId ?? null, targetSnapshot: null };
   }
 
   public async reportUser(input: Omit<SubmitReportInput, 'reportedUserId'>): Promise<string> {
@@ -150,7 +199,7 @@ export class ModerationService {
     if (contentType === 'marketplace_listing') return 'marketplace_listing';
     if (contentType === 'course') return 'course';
     if (contentType === 'blog') return 'blog';
-    if (contentType === 'comment') return 'comment';
+    if (contentType === 'comment' || contentType === 'blog_comment') return 'comment';
     if (contentType === 'reply') return 'reply';
     if (contentType === 'message') return 'message';
     if (contentType === 'conversation') return 'conversation';

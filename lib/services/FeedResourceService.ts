@@ -6,9 +6,10 @@ import { useResourceStore, type FeedResourceData } from '@/lib/store/useResource
 import type { ResourceState } from '@/lib/types/resourceState';
 import { communityFeedResourceService } from './CommunityFeedResourceService';
 
-const FEED_NAMESPACE = 'feeds';
+const FEED_NAMESPACE = 'feeds-friend-reposts-v3';
 const FEED_STALE_MS = 60_000;
 const FEED_RETENTION_MS = 48 * 60 * 60 * 1000;
+const SCROLL_PERSIST_DELAY_MS = 750;
 
 export type FeedResourceQuery = {
   userId: string;
@@ -24,6 +25,8 @@ export class FeedResourceService {
   private readonly errorService = ResourceErrorService.getInstance();
   private readonly timeoutService = RequestTimeoutService.getInstance();
   private readonly inFlight = new Map<string, Promise<void>>();
+  private readonly pendingScrollOffsets = new Map<string, number>();
+  private readonly scrollPersistTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   private constructor() {}
 
@@ -112,14 +115,28 @@ export class FeedResourceService {
   public async patchPost(updatedPost: PostItem): Promise<void> {
     const state = useResourceStore.getState();
     state.upsertPostEntities([updatedPost]);
-    await Promise.all(Object.entries(state.feeds).map(async ([key, resource]) => {
-      if (!resource.data) return;
+    const writes: { userId: string; key: string; data: FeedResourceData }[] = [];
+    for (const [key, resource] of Object.entries(state.feeds)) {
+      if (!resource.data?.posts.some((post) => post.id === updatedPost.id)
+        && !resource.data?.pendingPosts.some((post) => post.id === updatedPost.id)) continue;
+      if (!resource.data) continue;
       const userId = key.split(':')[0];
-      const nextData = { ...resource.data, posts: resource.data.posts.map((post) => post.id === updatedPost.id ? updatedPost : post) };
+      const nextData = {
+        ...resource.data,
+        posts: resource.data.posts.map((post) => post.id === updatedPost.id ? updatedPost : post),
+        pendingPosts: resource.data.pendingPosts.map((post) => post.id === updatedPost.id ? updatedPost : post),
+      };
       state.setFeed(key, { ...resource, data: nextData });
-      await this.cacheService.write(userId, FEED_NAMESPACE, key, nextData, { expiresAt: Date.now() + FEED_RETENTION_MS });
-    }));
-    await communityFeedResourceService.patchPost(updatedPost);
+      writes.push({ userId, key, data: nextData });
+    }
+    for (const write of writes) {
+      await this.cacheService.write(write.userId, FEED_NAMESPACE, write.key, write.data, { expiresAt: Date.now() + FEED_RETENTION_MS })
+        .catch(() => { console.warn('[FeedResourceService] Could not persist updated post cache.'); });
+    }
+    if (updatedPost.origin === 'community') {
+      await communityFeedResourceService.patchPost(updatedPost)
+        .catch(() => { console.warn('[FeedResourceService] Could not persist updated community post cache.'); });
+    }
   }
 
   public async reconcileProfileRepostRemoval(query: FeedResourceQuery, updatedPost: PostItem): Promise<void> {
@@ -211,11 +228,20 @@ export class FeedResourceService {
 
   public setScrollOffset(query: FeedResourceQuery, scrollOffset: number): void {
     const key = this.getKey(query);
-    const current = useResourceStore.getState().feeds[key];
-    if (!current?.data) return;
-    const nextData = { ...current.data, scrollOffset };
-    useResourceStore.getState().setFeed(key, { ...current, data: nextData });
-    void this.cacheService.write(query.userId, FEED_NAMESPACE, key, nextData, { expiresAt: Date.now() + FEED_RETENTION_MS });
+    if (!useResourceStore.getState().feeds[key]?.data) return;
+    this.pendingScrollOffsets.set(key, scrollOffset);
+    const existingTimer = this.scrollPersistTimers.get(key);
+    if (existingTimer) clearTimeout(existingTimer);
+    this.scrollPersistTimers.set(key, setTimeout(() => {
+      this.scrollPersistTimers.delete(key);
+      const pendingOffset = this.pendingScrollOffsets.get(key);
+      this.pendingScrollOffsets.delete(key);
+      const current = useResourceStore.getState().feeds[key];
+      if (!current?.data || pendingOffset === undefined || current.data.scrollOffset === pendingOffset) return;
+      const nextData = { ...current.data, scrollOffset: pendingOffset };
+      useResourceStore.getState().setFeed(key, { ...current, data: nextData });
+      void this.cacheService.write(query.userId, FEED_NAMESPACE, key, nextData, { expiresAt: Date.now() + FEED_RETENTION_MS });
+    }, SCROLL_PERSIST_DELAY_MS));
   }
 
   public async reconcileCachedFeeds(userId: string): Promise<void> {

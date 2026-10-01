@@ -1,16 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
-  PanResponder,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  type LayoutChangeEvent,
 } from 'react-native';
+import CustomModal from '@/components/ui/CustomModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import Icon from 'react-native-vector-icons/Feather';
@@ -20,7 +18,7 @@ import {
   type LimeCoverFrame,
   type LimeCoverSelection,
 } from '@/lib/services/LimeThumbnailService';
-import { limeCoverTimelineService } from '@/lib/services/LimeCoverTimelineService';
+import { CoverFramePreview, CoverFrameScrubber } from '@/components/media/CoverFrameScrubber';
 
 type VideoThumbnailPickerProps = {
   videoUri: string;
@@ -28,6 +26,7 @@ type VideoThumbnailPickerProps = {
   selectedThumbnailUri?: string;
   onThumbnailChange: (thumbnailUri: string) => void;
   aspectRatio?: '9:16' | '16:9' | '1:1' | '4:5';
+  openEditorOnMount?: boolean;
 };
 
 type ExtractionState =
@@ -48,20 +47,27 @@ export default function VideoThumbnailPicker({
   durationSeconds,
   selectedThumbnailUri,
   onThumbnailChange,
+  openEditorOnMount = false,
 }: VideoThumbnailPickerProps) {
   const { colors } = useAppTheme();
   const [frames, setFrames] = useState<LimeCoverFrame[]>([]);
   const [selection, setSelection] = useState<LimeCoverSelection | null>(null);
   const [extractionState, setExtractionState] = useState<ExtractionState>({ status: 'loading', message: 'Preparing cover…' });
-  const [editorVisible, setEditorVisible] = useState(false);
-  const [trackWidth, setTrackWidth] = useState(0);
-  const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
+  const [editorVisible, setEditorVisible] = useState(openEditorOnMount);
+  // Cover time in seconds; the selector slides through the whole video, not just the 10 strip frames.
+  const [coverSeconds, setCoverSeconds] = useState(0);
+  const [dialogState, setDialogState] = useState<{
+    visible: boolean;
+    type: 'error' | 'warning' | 'info' | 'success';
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    type: 'info',
+    title: '',
+    message: '',
+  });
   const generationIdRef = useRef(0);
-  const dragStartXRef = useRef(0);
-
-  const selectedFrame = frames[selectedFrameIndex] ?? null;
-  const selectorWidth = frames.length > 0 && trackWidth > 0 ? trackWidth / frames.length : 0;
-  const selectorLeft = selectorWidth * selectedFrameIndex;
 
   const handleGenerateFrames = useCallback(async () => {
     if (!videoUri || durationSeconds <= 0) return;
@@ -75,7 +81,7 @@ export default function VideoThumbnailPicker({
       const defaultIndex = Math.min(2, generatedFrames.length - 1);
       const defaultFrame = generatedFrames[defaultIndex];
       setFrames(generatedFrames);
-      setSelectedFrameIndex(defaultIndex);
+      setCoverSeconds(defaultFrame.timestampSeconds);
       setSelection({ source: 'video-frame', timestampSeconds: defaultFrame.timestampSeconds, previewUri: defaultFrame.previewUri, finalUri: defaultFrame.previewUri });
       onThumbnailChange(defaultFrame.previewUri);
       setExtractionState({ status: 'ready' });
@@ -97,36 +103,12 @@ export default function VideoThumbnailPicker({
     };
   }, [handleGenerateFrames, selectedThumbnailUri, selection]);
 
-  const handleSelectFrame = useCallback((frameIndex: number) => {
-    if (frames.length === 0) return;
-    setSelectedFrameIndex(Math.min(Math.max(frameIndex, 0), frames.length - 1));
-  }, [frames.length]);
-
-  const handleSelectFromTrackX = useCallback((trackX: number) => {
-    if (selectorWidth <= 0 || frames.length === 0) return;
-    handleSelectFrame(limeCoverTimelineService.getFrameIndex(trackX, trackWidth, frames.length));
-  }, [frames.length, handleSelectFrame, selectorWidth, trackWidth]);
-
-  const framePanResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: (event) => {
-      dragStartXRef.current = event.nativeEvent.locationX;
-      handleSelectFromTrackX(event.nativeEvent.locationX);
-    },
-    onPanResponderMove: (_event, gestureState) => {
-      handleSelectFromTrackX(dragStartXRef.current + gestureState.dx);
-    },
-  }), [handleSelectFromTrackX]);
-
-  const handleTrackLayout = (event: LayoutChangeEvent) => setTrackWidth(event.nativeEvent.layout.width);
-
   const handleSaveFrame = async () => {
-    if (!selectedFrame) return;
+    if (frames.length === 0) return;
     setExtractionState({ status: 'loading', message: 'Saving cover…' });
     try {
-      const finalUri = await limeThumbnailService.createThumbnailAtTime(videoUri, selectedFrame.timestampSeconds);
-      setSelection({ source: 'video-frame', timestampSeconds: selectedFrame.timestampSeconds, previewUri: selectedFrame.previewUri, finalUri });
+      const finalUri = await limeThumbnailService.createThumbnailAtTime(videoUri, coverSeconds);
+      setSelection({ source: 'video-frame', timestampSeconds: coverSeconds, previewUri: finalUri, finalUri });
       onThumbnailChange(finalUri);
       setExtractionState({ status: 'ready' });
       setEditorVisible(false);
@@ -139,7 +121,12 @@ export default function VideoThumbnailPicker({
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permission required', 'Please grant media access to choose a cover image.');
+        setDialogState({
+          visible: true,
+          type: 'warning',
+          title: 'Permission required',
+          message: 'Please grant media access to choose a cover image.',
+        });
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [9, 16], quality: 0.86 });
@@ -150,13 +137,29 @@ export default function VideoThumbnailPicker({
       setExtractionState({ status: 'ready' });
       setEditorVisible(false);
     } catch (error: unknown) {
-      Alert.alert('Cover not selected', error instanceof Error ? error.message : 'Please try another image.');
+      setDialogState({
+        visible: true,
+        type: 'error',
+        title: 'Cover not selected',
+        message: error instanceof Error ? error.message : 'Please try another image.',
+      });
     }
   };
 
   return (
     <>
       <View style={[styles.coverCard, { borderColor: colors.border, backgroundColor: colors.control }]}>
+        <View style={styles.coverCardHeader}>
+          <View>
+            <Text style={[styles.coverCardTitle, { color: colors.text }]}>Lime cover</Text>
+            <Text style={[styles.coverCardSubtitle, { color: colors.mutedText }]}>Choose the frame people see before playback.</Text>
+          </View>
+          {selection?.previewUri ? (
+            <TouchableOpacity onPress={() => setEditorVisible(true)} accessibilityRole="button" accessibilityLabel="Edit Lime cover from timeline" style={[styles.coverCardAction, { borderColor: colors.border }]}>
+              <Text style={{ color: colors.accentText, fontWeight: '900' }}>Edit</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
         <View style={styles.coverPreview}>
           {selection?.previewUri ? <Image source={{ uri: selection.previewUri }} style={styles.coverImage} resizeMode="cover" /> : (
             <View style={[styles.coverPlaceholder, { backgroundColor: colors.elevated }]}>
@@ -186,25 +189,31 @@ export default function VideoThumbnailPicker({
               <Icon name="chevron-left" size={26} color={colors.icon} />
             </TouchableOpacity>
             <Text style={[styles.editorTitle, { color: colors.text }]}>Edit cover</Text>
-            <TouchableOpacity onPress={() => void handleSaveFrame()} disabled={!selectedFrame || extractionState.status === 'loading'} style={styles.headerAction}>
-              <Text style={[styles.doneText, { color: colors.accentText }, extractionState.status === 'loading' && { opacity: 0.5 }]}>Done</Text>
+            <TouchableOpacity onPress={() => void handleSaveFrame()} disabled={frames.length === 0 || extractionState.status === 'loading'} style={styles.headerAction}>
+              <Text style={[styles.doneText, { color: colors.accentText }, extractionState.status === 'loading' && { opacity: 0.5 }]}>Finish</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.editorBody}>
             <Text style={[styles.editorHelp, { color: colors.secondaryText }]}>Choose a frame from your video or add a cover from your camera roll.</Text>
+            {/* The exact video frame at the chosen time (no player controls). */}
             <View style={[styles.largePreviewShell, { backgroundColor: colors.control }]}>
-              {selectedFrame?.previewUri || selection?.previewUri ? <Image source={{ uri: selectedFrame?.previewUri ?? selection?.previewUri }} style={styles.largePreview} resizeMode="cover" /> : <ActivityIndicator color={colors.accent} />}
+              {frames.length > 0 ? (
+                <CoverFramePreview uri={videoUri} timeSeconds={coverSeconds} style={styles.largePreview} />
+              ) : selection?.previewUri ? (
+                <Image source={{ uri: selection.previewUri }} style={styles.largePreview} resizeMode="cover" />
+              ) : <ActivityIndicator color={colors.accent} />}
             </View>
-            <Text style={[styles.timestamp, { color: colors.mutedText }]}>Frame {formatSeconds(selectedFrame?.timestampSeconds ?? 0)}</Text>
+            <Text style={[styles.timestamp, { color: colors.mutedText }]}>Frame {formatSeconds(coverSeconds)}</Text>
 
-            {frames.length > 0 ? (
-              <View onLayout={handleTrackLayout} style={styles.frameTrack} {...framePanResponder.panHandlers}>
-                {frames.map((frame) => <Image key={frame.id} source={{ uri: frame.previewUri }} style={styles.frameImage} resizeMode="cover" />)}
-                {selectorWidth > 0 ? <View pointerEvents="none" style={[styles.frameSelector, { width: selectorWidth, left: selectorLeft }]} /> : null}
-              </View>
-            ) : extractionState.status === 'loading' ? (
-              <View style={styles.timelineLoading}><ActivityIndicator color={colors.accent} /><Text style={{ color: colors.mutedText }}>{extractionState.message}</Text></View>
+            {frames.length > 0 || extractionState.status === 'loading' ? (
+              <CoverFrameScrubber
+                durationSeconds={durationSeconds}
+                frames={frames}
+                valueSeconds={coverSeconds}
+                loading={extractionState.status === 'loading'}
+                onChange={setCoverSeconds}
+              />
             ) : (
               <TouchableOpacity onPress={() => void handleGenerateFrames()} style={[styles.retryWide, { backgroundColor: colors.control }]}>
                 <Text style={{ color: colors.accentText, fontWeight: '900' }}>Retry frame extraction</Text>
@@ -220,12 +229,24 @@ export default function VideoThumbnailPicker({
           {extractionState.status === 'loading' ? <View style={styles.busyOverlay} pointerEvents="none"><ActivityIndicator size="large" color="#ffffff" /><Text style={styles.busyText}>{extractionState.message}</Text></View> : null}
         </SafeAreaView>
       </Modal>
+
+      <CustomModal
+        visible={dialogState.visible}
+        type={dialogState.type}
+        title={dialogState.title}
+        message={dialogState.message}
+        onClose={() => setDialogState((prev) => ({ ...prev, visible: false }))}
+      />
     </>
   );
 }
 
 const styles = StyleSheet.create({
   coverCard: { borderWidth: 1, borderRadius: 18, marginTop: 12, marginBottom: 14, overflow: 'hidden' },
+  coverCardHeader: { minHeight: 68, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  coverCardTitle: { fontSize: 15, fontWeight: '900' },
+  coverCardSubtitle: { marginTop: 3, fontSize: 11, lineHeight: 15 },
+  coverCardAction: { minWidth: 58, minHeight: 44, paddingHorizontal: 12, borderWidth: 1, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   coverPreview: { height: 260, backgroundColor: '#050505', alignItems: 'center', justifyContent: 'center' },
   coverImage: { width: 146, height: 260, borderRadius: 22 },
   coverPlaceholder: { width: 146, height: 260, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },

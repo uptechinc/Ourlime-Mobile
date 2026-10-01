@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import CustomModal from '@/components/ui/CustomModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import {
@@ -23,10 +24,12 @@ import {
   HelpCircle,
   Unlock,
   BookOpen,
+  MessageCircle,
   ArrowRight,
 } from 'lucide-react-native';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { CourseDetailSkeleton } from '@/components/ui/Skeleton';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { courseService } from '@/lib/services/CourseService';
 import type { Course, CourseModule, Enrollment } from '@/lib/types/course';
@@ -45,17 +48,35 @@ export default function CourseDetailScreen() {
   const [activeTab, setActiveTab] = useState<'overview' | 'syllabus' | 'instructor'>('overview');
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [dialogState, setDialogState] = useState<{
+    visible: boolean;
+    type: 'error' | 'warning' | 'info' | 'success';
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    type: 'info',
+    title: '',
+    message: '',
+  });
+  const loadGenerationRef = useRef(0);
 
   const loadData = useCallback(async () => {
     if (!id) return;
+    const loadGeneration = ++loadGenerationRef.current;
     setLoading(true);
+    setLoadError(null);
     try {
-      const [courseData, modulesData, enrollData] = await Promise.all([
+      const [courseData, enrollData] = await Promise.all([
         courseService.getCourse(id),
-        courseService.getCourseCurriculum(id),
         activeUserId ? courseService.getEnrollmentStatus(activeUserId, id) : null,
       ]);
+      const modulesData = courseData
+        ? await courseService.getCourseCurriculum(id, enrollData ? 'enrolled' : 'preview')
+        : [];
 
+      if (loadGeneration !== loadGenerationRef.current) return;
       setCourse(courseData);
       setCurriculum(modulesData);
       setEnrollment(enrollData);
@@ -66,13 +87,18 @@ export default function CourseDetailScreen() {
       }
     } catch (err) {
       console.error('[CourseDetailScreen] Error:', err);
+      if (loadGeneration !== loadGenerationRef.current) return;
+      setLoadError('The course could not be loaded. Check your connection and try again.');
     } finally {
-      setLoading(false);
+      if (loadGeneration === loadGenerationRef.current) setLoading(false);
     }
   }, [id, activeUserId]);
 
   useEffect(() => {
     void loadData();
+    return () => {
+      loadGenerationRef.current += 1;
+    };
   }, [loadData]);
 
   const toggleModule = (modId: string) => {
@@ -88,6 +114,15 @@ export default function CourseDetailScreen() {
 
     if (!activeUserId) {
       router.push('/login' as Href);
+      return;
+    }
+    if (course && course.price > 0) {
+      setDialogState({
+        visible: true,
+        type: 'info',
+        title: 'Payments unavailable',
+        message: 'Paid course enrollment is not available in this release.',
+      });
       return;
     }
 
@@ -117,13 +152,17 @@ export default function CourseDetailScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#10b981" />
-          <Text style={[styles.loadingText, { color: colors.mutedText }]}>Loading course overview...</Text>
-        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <CourseDetailSkeleton />
+        </ScrollView>
       ) : !course ? (
         <View style={styles.centerContainer}>
-          <Text style={[styles.errorText, { color: colors.text }]}>Course not found.</Text>
+          <Text style={[styles.errorText, { color: colors.text }]}>{loadError ?? 'Course not found.'}</Text>
+          {loadError ? (
+            <TouchableOpacity onPress={() => void loadData()} style={styles.retryButton} accessibilityRole="button">
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -187,6 +226,14 @@ export default function CourseDetailScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {enrollment ? (
+              <TouchableOpacity accessibilityRole="button" onPress={() => router.push(`/eLearning/courses/${id}/discussions` as Href)} style={[styles.discussionButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <MessageCircle size={19} color="#10b981" />
+                <Text style={[styles.discussionButtonText, { color: colors.text }]}>Course discussions</Text>
+                <ArrowRight size={17} color={colors.mutedText} />
+              </TouchableOpacity>
+            ) : null}
 
             {/* Overview Tab */}
             {activeTab === 'overview' ? (
@@ -318,15 +365,15 @@ export default function CourseDetailScreen() {
           </View>
           <TouchableOpacity
             onPress={handleEnrollOrResume}
-            disabled={enrolling}
-            style={[styles.enrollBtn, { backgroundColor: '#10b981' }]}
+            disabled={enrolling || (!enrollment && course.price > 0)}
+            style={[styles.enrollBtn, { backgroundColor: '#10b981', opacity: !enrollment && course.price > 0 ? 0.55 : 1 }]}
           >
             {enrolling ? (
               <ActivityIndicator size="small" color="#ffffff" />
             ) : (
               <>
                 <Text style={styles.enrollBtnText}>
-                  {enrollment ? 'Continue Learning' : 'Enroll for Free'}
+                  {enrollment ? 'Continue Learning' : course.price > 0 ? 'Payments unavailable' : 'Enroll for Free'}
                 </Text>
                 <ArrowRight size={16} color="#ffffff" />
               </>
@@ -334,6 +381,14 @@ export default function CourseDetailScreen() {
           </TouchableOpacity>
         </View>
       ) : null}
+
+      <CustomModal
+        visible={dialogState.visible}
+        type={dialogState.type}
+        title={dialogState.title}
+        message={dialogState.message}
+        onClose={() => setDialogState((prev) => ({ ...prev, visible: false }))}
+      />
     </SafeAreaView>
   );
 }
@@ -371,6 +426,19 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
+    textAlign: 'center',
+  },
+  retryButton: {
+    minHeight: 44,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#10b981',
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontWeight: '800',
   },
   scrollContent: {
     paddingBottom: 100,
@@ -450,6 +518,8 @@ const styles = StyleSheet.create({
     gap: 14,
     marginTop: 6,
   },
+  discussionButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1 },
+  discussionButtonText: { flex: 1, fontSize: 14, fontWeight: '800' },
   sectionHeading: {
     fontSize: 18,
     fontWeight: '800',

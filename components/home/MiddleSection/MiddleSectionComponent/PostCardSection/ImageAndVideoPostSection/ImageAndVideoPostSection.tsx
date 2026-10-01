@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useIsFocused } from 'expo-router';
 import {
   Dimensions,
   ScrollView,
@@ -32,6 +33,7 @@ type ImageAndVideoPostSectionProps = {
   media: DisplayPostMedia[];
   /** True only when the parent post card is at least 40% visible in the viewport */
   isParentVisible?: boolean;
+  shouldLoadVideo?: boolean;
   onLike?: () => void;
 };
 
@@ -73,7 +75,6 @@ function ImagePostItem({
 
 function VideoPostItem({
   url,
-  thumbnailUrl,
   isActiveSlide,
   isParentVisible,
   onLike,
@@ -82,7 +83,6 @@ function VideoPostItem({
   trimEndSeconds,
 }: {
   url: string;
-  thumbnailUrl?: string;
   onSeekingChange: (seeking: boolean) => void;
   isActiveSlide: boolean;
   isParentVisible: boolean;
@@ -95,8 +95,6 @@ function VideoPostItem({
   const [isMuted, setIsMuted] = useState(true);
   const [showPlayStateIcon, setShowPlayStateIcon] = useState<'play' | 'pause' | null>(null);
   const playIconOpacity = useRef(new Animated.Value(0)).current;
-  const posterOpacity = useRef(new Animated.Value(1)).current;
-  const [isReady, setIsReady] = useState(false);
 
   // Double tap state tracking
   const lastTapRef = useRef<number>(0);
@@ -106,8 +104,13 @@ function VideoPostItem({
 
   const shouldAutoplay = isActiveSlide && isParentVisible;
   const player = useVideoPlayer(url, (p) => {
+    if (Platform.OS === 'android') {
+      p.bufferOptions = { preferredForwardBufferDuration: 3, minBufferForPlayback: 0.5, maxBufferBytes: 4 * 1024 * 1024, prioritizeTimeOverSizeThreshold: false };
+    }
     p.loop = typeof trimEndSeconds !== 'number';
     p.muted = true;
+    // Trimmed posts stop at trimEndSeconds via timeUpdate, which expo-video only emits when an interval is set.
+    if (typeof trimEndSeconds === 'number') p.timeUpdateEventInterval = 0.25;
     if (typeof trimStartSeconds === 'number' && trimStartSeconds > 0) {
       p.currentTime = trimStartSeconds;
     }
@@ -168,34 +171,6 @@ function VideoPostItem({
       // Ignore calls on released native handles
     }
   }, [isPlaybackActive, player]);
-
-  // Track player readiness to smoothly fade poster thumbnail without flickering
-  useEffect(() => {
-    const statusSub = player.addListener('statusChange', (event) => {
-      if (event.status === 'readyToPlay') {
-        setIsReady(true);
-      }
-    });
-    const playingSub = player.addListener('playingChange', (event) => {
-      if (event.isPlaying) {
-        setIsReady(true);
-      }
-    });
-    return () => {
-      statusSub.remove();
-      playingSub.remove();
-    };
-  }, [player]);
-
-  useEffect(() => {
-    if (isReady) {
-      Animated.timing(posterOpacity, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [isReady, posterOpacity]);
 
   // NOTE: Clean up unmount without calling player.pause() directly on native C++ instance to avoid release rejection error
   useEffect(() => {
@@ -268,27 +243,6 @@ function VideoPostItem({
         nativeControls={false}
         surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
       />
-
-      {thumbnailUrl ? (
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            opacity: posterOpacity,
-            backgroundColor: '#000000',
-          }}
-        >
-          <CachedImage
-            uri={thumbnailUrl}
-            style={{ width: '100%', height: '100%' }}
-            recyclingKey={thumbnailUrl}
-          />
-        </Animated.View>
-      ) : null}
 
       {/* Main Touch Overlay for Single Tap, Double Tap, and Long Press 2x */}
       <Pressable
@@ -364,17 +318,20 @@ function VideoPostItem({
       {/* Floating Mute / Unmute Button */}
       <TouchableOpacity
         onPress={toggleMute}
+        accessibilityRole="button"
+        accessibilityLabel={isMuted ? 'Unmute video' : 'Mute video'}
         style={{
           position: 'absolute',
           right: 12,
-          bottom: 28,
-          width: 34,
-          height: 34,
-          borderRadius: 17,
+          bottom: 52,
+          width: 36,
+          height: 36,
+          borderRadius: 18,
           backgroundColor: 'rgba(0, 0, 0, 0.65)',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 30,
+          zIndex: 200,
+          elevation: 20,
           borderWidth: 1,
           borderColor: 'rgba(255, 255, 255, 0.2)',
         }}
@@ -397,8 +354,10 @@ function VideoPostItem({
 export default function ImageAndVideoPostSection({
   media,
   isParentVisible = false,
+  shouldLoadVideo = true,
   onLike,
 }: ImageAndVideoPostSectionProps) {
+  const isScreenFocused = useIsFocused();
   const [activeIndex, setActiveIndex] = useState(0);
   const [mediaWidth, setMediaWidth] = useState(MEDIA_WIDTH);
   const [seeking, setSeeking] = useState(false);
@@ -439,40 +398,26 @@ export default function ImageAndVideoPostSection({
             key={item.id ?? `${item.typeUrl}-${index}`}
             style={{ width: mediaWidth, height: 330, backgroundColor: '#111827' }}
           >
-            {item.type === 'video' && index === activeIndex && isParentVisible ? (
+            {item.type === 'video' && shouldLoadVideo && isParentVisible && isScreenFocused && index === activeIndex ? (
               <VideoPostItem
                 key={item.typeUrl}
                 url={ensureMediaUrl(item.typeUrl)}
-                thumbnailUrl={item.thumbnailUrl ? ensureMediaUrl(item.thumbnailUrl) : undefined}
                 isActiveSlide={index === activeIndex}
-                isParentVisible={isParentVisible}
+                isParentVisible={Boolean(isParentVisible)}
                 onLike={onLike}
                 onSeekingChange={setSeeking}
                 trimStartSeconds={item.trimStartSeconds}
                 trimEndSeconds={item.trimEndSeconds}
               />
-            ) : item.type === 'video' ? (
-              <View style={{ width: '100%', height: '100%', position: 'relative', backgroundColor: '#000000' }}>
-                {item.thumbnailUrl ? (
-                  <CachedImage
-                    uri={ensureMediaUrl(item.thumbnailUrl)}
-                    style={{ width: '100%', height: '100%' }}
-                    recyclingKey={item.thumbnailUrl}
-                  />
-                ) : null}
-                <View
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: item.thumbnailUrl ? 'rgba(0, 0, 0, 0.25)' : '#111827',
-                  }}
-                >
-                  <Ionicons name="play-circle-outline" size={54} color="#ffffff" />
+            ) : item.type === 'video' && item.thumbnailUrl ? (
+              <View style={{ flex: 1 }}>
+                <CachedImage
+                  uri={ensureMediaUrl(item.thumbnailUrl)}
+                  style={{ width: '100%', height: '100%' }}
+                  recyclingKey={item.id ?? item.thumbnailUrl}
+                />
+                <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.18)' }}>
+                  <Ionicons name="play-circle" size={58} color="#ffffff" />
                 </View>
               </View>
             ) : item.type === 'image' ? (

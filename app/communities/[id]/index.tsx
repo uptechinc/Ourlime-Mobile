@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-	ActivityIndicator,
 	RefreshControl,
 	ScrollView,
 	Text,
@@ -61,6 +60,7 @@ import CommunityDashboardSheet from '@/components/communities/detail/CommunityDa
 import EditCommunityModal from '@/components/communities/detail/EditCommunityModal';
 import CommunityMemberActionSheet from '@/components/communities/detail/CommunityMemberActionSheet';
 import CommunityDetailSkeleton from '@/components/communities/detail/CommunityDetailSkeleton';
+import { SkeletonPostCard } from '@/components/home/SkeletonLoaders';
 import CommunityReportModal from '@/components/communities/CommunityReportModal';
 import CustomModal from '@/components/ui/CustomModal';
 import IdentityVerificationModal from '@/components/jobs/IdentityVerificationModal';
@@ -1015,10 +1015,10 @@ export default function CommunityDetailScreen() {
 									{postResource.data === null &&
 									(postResource.status === 'idle' ||
 										postResource.status === 'hydrating') ? (
-										<ActivityIndicator
-											color={colors.accent}
-											style={{ marginVertical: 30 }}
-										/>
+										<View style={{ paddingHorizontal: 12 }}>
+											<SkeletonPostCard />
+											<SkeletonPostCard />
+										</View>
 									) : postResource.data === null && postResource.error ? (
 										<View
 											style={{

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AlertCircle, ClipboardCheck, DollarSign, MapPin, Star, Timer, type LucideIcon } from 'lucide-react-native';
 import JobApplicationModal from './applyJobs/JobApplicationModal';
@@ -7,6 +7,7 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import type { JobRecord } from '@/lib/job/JobsService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { AuthService } from '@/lib/services/AuthService';
+import { jobApplicationService } from '@/lib/services/JobApplicationService';
 
 type QuickTasksListProps = {
   jobs: JobRecord[];
@@ -16,6 +17,7 @@ type QuickTaskCardProps = {
   task: JobRecord;
   onApply: (task: JobRecord) => void;
   onCardPress: (task: JobRecord) => void;
+  isApplied?: boolean;
 };
 
 type TaskBadgeProps = {
@@ -31,7 +33,7 @@ function TaskBadge({ icon: Icon, label }: TaskBadgeProps) {
   return <View style={styles.badge}><Icon size={14} color={colors.icon} /><Text style={styles.badgeText}>{label}</Text></View>;
 }
 
-function QuickTaskCard({ task, onApply, onCardPress }: QuickTaskCardProps) {
+function QuickTaskCard({ task, onApply, onCardPress, isApplied = false }: QuickTaskCardProps) {
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isCreator = authService.getCurrentUser()?.uid === task.basic_info.userId;
@@ -68,14 +70,20 @@ function QuickTaskCard({ task, onApply, onCardPress }: QuickTaskCardProps) {
         <View style={styles.footer}>
           <Text style={styles.postedText}>Posted {task.basic_info.createdAt?.seconds ? new Date(task.basic_info.createdAt.seconds * 1000).toLocaleDateString() : 'Recently'}</Text>
           {!isCreator ? (
-            <TouchableOpacity
-              onPress={(e) => {
-                onApply(task);
-              }}
-              style={styles.applyButton}
-            >
-              <Text style={styles.applyText}>Apply Now</Text>
-            </TouchableOpacity>
+            isApplied ? (
+              <View style={styles.appliedBadge}>
+                <Text style={styles.appliedText}>Applied</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  onApply(task);
+                }}
+                style={styles.applyButton}
+              >
+                <Text style={styles.applyText}>Apply Now</Text>
+              </TouchableOpacity>
+            )
           ) : null}
         </View>
       </View>
@@ -90,6 +98,23 @@ export function QuickTasksList({ jobs }: QuickTasksListProps) {
   const quickTasks = jobs.filter((job) => job.basic_info.type === 'quickTask');
   const [selectedTask, setSelectedTask] = useState<JobRecord | null>(null);
   const [detailTask, setDetailTask] = useState<JobRecord | null>(null);
+  const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const userId = authService.getCurrentUser()?.uid;
+    if (!userId || quickTasks.length === 0) return;
+    let cancelled = false;
+
+    void jobApplicationService.getAppliedJobIds(userId).then((ids) => {
+      if (!cancelled) {
+        setAppliedJobIds(ids);
+      }
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [quickTasks.length]);
 
   const handleApply = (task: JobRecord) => {
     setSelectedTask(task);
@@ -110,13 +135,39 @@ export function QuickTasksList({ jobs }: QuickTasksListProps) {
           <QuickTaskCard
             key={task.id}
             task={task}
+            isApplied={appliedJobIds.has(task.id)}
             onApply={handleApply}
             onCardPress={(selected) => setDetailTask(selected)}
           />
         ))}
       </View>
-      {selectedTask ? <JobApplicationModal isOpen onClose={handleCloseApplication} job={selectedTask} jobType="quickTask" /> : null}
-      {detailTask ? <JobDetailsModal isOpen onClose={() => setDetailTask(null)} job={detailTask} jobType="quickTask" /> : null}
+      {selectedTask ? (
+        <JobApplicationModal
+          isOpen
+          onClose={handleCloseApplication}
+          onApplied={() => {
+            if (selectedTask?.id) {
+              setAppliedJobIds((prev) => new Set(prev).add(selectedTask.id));
+            }
+          }}
+          job={selectedTask}
+          jobType="quickTask"
+        />
+      ) : null}
+      {detailTask ? (
+        <JobDetailsModal
+          isOpen
+          onClose={() => setDetailTask(null)}
+          job={detailTask}
+          jobType="quickTask"
+          isApplied={appliedJobIds.has(detailTask.id)}
+          onApplySuccess={() => {
+            if (detailTask?.id) {
+              setAppliedJobIds((prev) => new Set(prev).add(detailTask.id));
+            }
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -150,5 +201,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   postedText: { color: colors.mutedText, fontSize: 12 },
   applyButton: { backgroundColor: colors.accent, borderRadius: 999, paddingHorizontal: 20, paddingVertical: 9 },
   applyText: { color: colors.onAccent, fontWeight: '800' },
+  appliedBadge: { minWidth: 82, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control, borderColor: colors.border, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999 },
+  appliedText: { color: colors.mutedText, fontWeight: '700', fontSize: 13 },
   darkEdge: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 18, borderWidth: 1, borderColor: colors.border },
 });

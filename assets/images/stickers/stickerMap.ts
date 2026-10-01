@@ -1,5 +1,7 @@
+import type { ImageSourcePropType } from 'react-native';
+
 // Local sticker image asset map for React Native
-export const LOCAL_STICKER_MAP: Record<string, any> = {
+export const LOCAL_STICKER_MAP: Record<string, ImageSourcePropType> = {
   // Reactions
   '/images/stickers/reactions/Laughing.png': require('./reactions/Laughing.png'),
   '/images/stickers/reactions/Confused.png': require('./reactions/Confused.png'),
@@ -40,7 +42,7 @@ export const LOCAL_STICKER_MAP: Record<string, any> = {
   '/images/stickers/funny/WE1.png': require('./funny/WE1.png'),
 };
 
-export function getLocalStickerSource(url: string | undefined): any | null {
+export function getLocalStickerSource(url: string | undefined): ImageSourcePropType | null {
   if (!url) return null;
   // Match relative path
   if (LOCAL_STICKER_MAP[url]) return LOCAL_STICKER_MAP[url];
@@ -52,4 +54,11 @@ export function getLocalStickerSource(url: string | undefined): any | null {
     }
   }
   return null;
+}
+
+const LOCAL_STICKER_LIST: ImageSourcePropType[] = Object.values(LOCAL_STICKER_MAP);
+
+export function getRandomLocalStickerSource(): ImageSourcePropType {
+  const index = Math.floor(Math.random() * LOCAL_STICKER_LIST.length);
+  return LOCAL_STICKER_LIST[index] ?? LOCAL_STICKER_MAP['/images/stickers/reactions/Laughing.png'];
 }

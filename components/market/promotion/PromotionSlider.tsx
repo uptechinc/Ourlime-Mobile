@@ -1,187 +1,76 @@
-// components/market/promotion/PromotionSlider.tsx
-import { View, Text, TouchableOpacity, ScrollView, Image, Dimensions } from 'react-native';
+import { useMemo } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Gift, Package, Sun, TrendingUp, type LucideIcon } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 
 type Promotion = {
-    id: string;
-    name: string;
-    count: number;
-    image: string;
-    description: string;
+  id: string;
+  name: string;
+  description: string;
+  icon: LucideIcon;
+  colors: readonly [string, string];
 };
 
-export default function PromotionSlider() {
-    const promotions = [
-        {
-            id: '1',
-            name: "Summer Collection",
-            count: 24,
-            image: "/images/promotions/summer-collection.jpg",
-            description: "Discover our latest summer essentials"
-        },
-        {
-            id: '2',
-            name: "Best Sellers",
-            count: 42,
-            image: "/images/promotions/best-sellers.jpg",
-            description: "Shop customer favorites and trending items"
-        },
-        {
-            id: '3',
-            name: "New Arrivals",
-            count: 18,
-            image: "/images/promotions/new-arrivals.jpg",
-            description: "Fresh drops and latest additions"
-        },
-        {
-            id: '4',
-            name: "Special Offers",
-            count: 15,
-            image: "/images/promotions/special-offers.jpg",
-            description: "Limited time deals and discounts"
-        }
-    ];
+type PromotionSliderProps = {
+  onSelect?: (promotionId: string) => void;
+};
 
-    const handlePromotionSelect = (promotionId: string) => {
-        // Handle promotion selection logic here
-        console.log('Selected promotion:', promotionId);
-    };
+const PROMOTIONS: readonly Promotion[] = Object.freeze([
+  { id: 'summer', name: 'Summer Collection', description: 'Discover our latest summer essentials', icon: Sun, colors: ['#ff6b6b', '#ff8e53'] },
+  { id: 'best-sellers', name: 'Best Sellers', description: 'Shop trending items everyone loves', icon: TrendingUp, colors: ['#a855f7', '#ec4899'] },
+  { id: 'new-arrivals', name: 'New Arrivals', description: 'Fresh picks and latest additions', icon: Package, colors: ['#3b82f6', '#06b6d4'] },
+  { id: 'offers', name: 'Special Offers', description: 'Limited time deals and discounts', icon: Gift, colors: ['#10b981', '#34d399'] },
+]);
 
-    const screenWidth = Dimensions.get('window').width;
-    const cardWidth = screenWidth * 0.8; // 80% of screen width for mobile
+export default function PromotionSlider({ onSelect }: PromotionSliderProps) {
+  const { colors } = useAppTheme();
+  const { width } = useWindowDimensions();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const cardWidth = Math.min(Math.max(width - 52, 260), 420);
 
-    return (
-        <View style={{ marginBottom: 4 }}>
-            <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingHorizontal: 16 }}
-                snapToInterval={cardWidth + 20}
-                decelerationRate="fast"
+  return (
+    <View accessibilityLabel="Marketplace promotions" style={styles.container}>
+      <ScrollView
+        horizontal
+        decelerationRate="fast"
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={cardWidth + 12}
+        contentContainerStyle={styles.track}
+      >
+        {PROMOTIONS.map((promotion) => {
+          const Icon = promotion.icon;
+          return (
+            <Pressable
+              key={promotion.id}
+              accessibilityRole="button"
+              accessibilityLabel={`${promotion.name}. ${promotion.description}`}
+              onPress={() => onSelect?.(promotion.id)}
+              style={({ pressed }) => [styles.card, { width: cardWidth }, pressed && styles.pressed]}
             >
-                {promotions.map((promotion) => (
-                    <View key={promotion.id} style={{ marginRight: 20 }}>
-                        <PromotionCard
-                            promotion={promotion}
-                            onSelect={() => handlePromotionSelect(promotion.id)}
-                            cardWidth={cardWidth}
-                        />
-                    </View>
-                ))}
-            </ScrollView>
-        </View>
-    );
+              <LinearGradient colors={[...promotion.colors]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.gradient}>
+                <View style={styles.iconSurface}><Icon color="#ffffff" size={20} /></View>
+                <View style={styles.copy}>
+                  <Text style={styles.title}>{promotion.name}</Text>
+                  <Text numberOfLines={1} style={styles.description}>{promotion.description}</Text>
+                </View>
+              </LinearGradient>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
 }
 
-function PromotionCard({ promotion, onSelect, cardWidth }: {
-    promotion: Promotion;
-    onSelect: () => void;
-    cardWidth: number;
-}) {
-    return (
-        <TouchableOpacity
-            onPress={onSelect}
-            style={{ 
-                width: cardWidth, 
-                height: 256, 
-                borderRadius: 16, 
-                overflow: 'hidden',
-                backgroundColor: '#f3f4f6'
-            }}
-        >
-            <Image
-                source={{ uri: promotion.image }}
-                style={{ width: '100%', height: '100%' }}
-                resizeMode="cover"
-            />
-            <View style={{ 
-                position: 'absolute', 
-                top: 0, 
-                left: 0, 
-                right: 0, 
-                bottom: 0, 
-                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                zIndex: 10
-            }}>
-                <View style={{ 
-                    backgroundColor: 'rgba(0, 0, 0, 0.6)', 
-                    paddingHorizontal: 24, 
-                    paddingVertical: 12, 
-                    borderWidth: 4, 
-                    borderColor: '#ffffff', 
-                    borderRadius: 50,
-                    transform: [{ rotate: '-6deg' }]
-                }}>
-                    <Text style={{ 
-                        fontSize: 24, 
-                        fontWeight: 'bold', 
-                        color: '#ffffff', 
-                        letterSpacing: 1,
-                        textTransform: 'uppercase',
-                        opacity: 0.9
-                    }}>
-                        Coming Soon
-                    </Text>
-                </View>
-            </View>
-            <View style={{ 
-                position: 'absolute', 
-                bottom: 0, 
-                left: 0, 
-                right: 0, 
-                padding: 24 
-            }}>
-                <View style={{ 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    marginBottom: 8 
-                }}>
-                    <View style={{ 
-                        paddingHorizontal: 12, 
-                        paddingVertical: 4, 
-                        backgroundColor: 'rgba(255, 255, 255, 0.2)', 
-                        borderRadius: 50 
-                    }}>
-                        <Text style={{ 
-                            color: '#ffffff', 
-                            fontSize: 14 
-                        }}>
-                            {promotion.count} items
-                        </Text>
-                    </View>
-                </View>
-                <Text style={{ 
-                    fontSize: 20, 
-                    fontWeight: 'bold', 
-                    color: '#ffffff', 
-                    marginBottom: 4 
-                }}>
-                    {promotion.name}
-                </Text>
-                <Text style={{ 
-                    color: '#d1d5db', 
-                    fontSize: 14, 
-                    lineHeight: 20 
-                }} numberOfLines={2}>
-                    {promotion.description}
-                </Text>
-                <View style={{ 
-                    position: 'absolute', 
-                    right: 24, 
-                    bottom: 24, 
-                    transform: [{ translateX: 32 }], 
-                    opacity: 0 
-                }}>
-                    <View style={{ 
-                        backgroundColor: '#ffffff', 
-                        borderRadius: 50, 
-                        padding: 8 
-                    }}>
-                        <Text style={{ fontSize: 20, color: '#374151' }}>→</Text>
-                    </View>
-                </View>
-            </View>
-        </TouchableOpacity>
-    );
-}
+const createStyles = (colors: AppThemeColors) => StyleSheet.create({
+  container: { marginHorizontal: -14 },
+  track: { paddingHorizontal: 14, gap: 12 },
+  card: { height: 132, overflow: 'hidden', borderRadius: 20, borderWidth: 1, borderColor: colors.border },
+  pressed: { opacity: 0.88, transform: [{ scale: 0.99 }] },
+  gradient: { flex: 1, padding: 16, justifyContent: 'space-between' },
+  iconSurface: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)' },
+  copy: { gap: 3 },
+  title: { color: '#ffffff', fontSize: 16, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.3 },
+  description: { color: 'rgba(255,255,255,0.84)', fontSize: 12, fontWeight: '600' },
+});

@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Pressable, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Heart, Bookmark, MessageSquare, Share2 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
@@ -7,6 +7,7 @@ type BlogEngagementBarProps = {
   commentsCount: number;
   isLiked: boolean;
   isBookmarked: boolean;
+  interactionsReady?: boolean;
   onLikePress: () => void;
   onBookmarkPress: () => void;
   onCommentPress: () => void;
@@ -18,6 +19,7 @@ export default function BlogEngagementBar({
   commentsCount,
   isLiked,
   isBookmarked,
+  interactionsReady = true,
   onLikePress,
   onBookmarkPress,
   onCommentPress,
@@ -36,7 +38,7 @@ export default function BlogEngagementBar({
         },
       ]}
     >
-      <TouchableOpacity activeOpacity={0.7} onPress={onLikePress} style={styles.actionBtn}>
+      <TouchableOpacity disabled={!interactionsReady} activeOpacity={0.7} accessibilityLabel="Like blog" accessibilityState={{ selected: isLiked, disabled: !interactionsReady }} onPress={onLikePress} style={styles.actionBtn}>
         <Heart
           size={20}
           color={isLiked ? '#ef4444' : colors.text}
@@ -47,12 +49,12 @@ export default function BlogEngagementBar({
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity activeOpacity={0.7} onPress={onCommentPress} style={styles.actionBtn}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Go to responses" onPress={onCommentPress} style={styles.actionBtn}>
         <MessageSquare size={20} color={colors.text} />
         <Text style={[styles.countText, { color: colors.text }]}>{commentsCount}</Text>
-      </TouchableOpacity>
+      </Pressable>
 
-      <TouchableOpacity activeOpacity={0.7} onPress={onBookmarkPress} style={styles.actionBtn}>
+      <TouchableOpacity disabled={!interactionsReady} activeOpacity={0.7} accessibilityLabel="Save blog" onPress={onBookmarkPress} style={styles.actionBtn}>
         <Bookmark
           size={20}
           color={isBookmarked ? '#10b981' : colors.text}
@@ -60,7 +62,7 @@ export default function BlogEngagementBar({
         />
       </TouchableOpacity>
 
-      <TouchableOpacity activeOpacity={0.7} onPress={onSharePress} style={styles.actionBtn}>
+      <TouchableOpacity activeOpacity={0.7} accessibilityLabel="Share blog" onPress={onSharePress} style={styles.actionBtn}>
         <Share2 size={20} color={colors.text} />
       </TouchableOpacity>
     </View>
@@ -89,6 +91,9 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
   },
   countText: {
     fontSize: 13,

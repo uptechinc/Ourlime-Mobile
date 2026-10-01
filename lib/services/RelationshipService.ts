@@ -1,5 +1,6 @@
-import { ApiService } from './ApiService';
+import { relationshipDataService } from './RelationshipDataService';
 import { auth, db } from '@/lib/firebaseConfig';
+import { notificationHelpers } from '@/lib/helpers/notificationHelpers';
 import {
   doc,
   getDoc,
@@ -16,12 +17,6 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 
-type RelationshipActionResponse = {
-  success: boolean;
-  error?: string;
-  message?: string;
-};
-
 export type RelationshipUser = { id: string; firstName: string; lastName: string; userName: string; profileImage?: string };
 export type RelationshipSuggestion = RelationshipUser & { reason?: string };
 export type RelationshipNetworkStats = { friends: number; followers: number; following: number };
@@ -36,12 +31,22 @@ type RelationshipSource = {
   profilePicture?: unknown;
   reason?: unknown;
 };
+type RelationshipNotificationMetadata = {
+  actorUserId?: unknown;
+  sourceUserId?: unknown;
+  senderId?: unknown;
+  userId?: unknown;
+};
+type RelationshipNotificationSource = RelationshipNotificationMetadata & {
+  metadata?: RelationshipNotificationMetadata;
+};
 const isRelationshipSource = (value: unknown): value is RelationshipSource => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isRelationshipNotificationSource = (value: unknown): value is RelationshipNotificationSource => typeof value === 'object' && value !== null && !Array.isArray(value);
 const readString = (value: unknown): string => typeof value === 'string' ? value : '';
 
 export class RelationshipService {
   private static instance: RelationshipService;
-  private readonly apiService = ApiService.getInstance();
+  private readonly data = relationshipDataService;
 
   private constructor() {}
 
@@ -51,59 +56,34 @@ export class RelationshipService {
   }
 
   public async setFollowing(followerId: string, followeeId: string, shouldFollow: boolean): Promise<void> {
-    const response = await this.apiService.request<RelationshipActionResponse>('/api/relationships/followers', {
-      method: 'POST',
-      authenticated: true,
-      body: { followerId, followeeId, action: shouldFollow ? 'follow' : 'unfollow' },
-    });
-    if (!response.success) throw new Error(response.error || response.message || 'Failed to update follow status');
+    if (!followerId || !followeeId || followerId === followeeId) throw new Error('A valid user is required.');
+    const snapshot = await getDocs(query(
+      collection(db, 'followers'),
+      where('followerId', '==', followerId),
+      where('followeeId', '==', followeeId),
+    ));
+    if (shouldFollow) {
+      if (snapshot.empty) {
+        await addDoc(collection(db, 'followers'), { followerId, followeeId, createdAt: serverTimestamp() });
+        await notificationHelpers.createFollowNotification(followeeId, followerId);
+      }
+    } else {
+      await Promise.all(snapshot.docs.map((document) => deleteDoc(document.ref)));
+      await this.deleteRelationshipNotifications(followerId, followeeId, ['follow']);
+    }
+    const persistedState = await this.checkFollowStatus(followerId, followeeId);
+    if (persistedState !== shouldFollow) throw new Error('The follow status could not be confirmed. Please try again.');
   }
 
+  /** userId1 is the signed-in sender; same checks and notification as the website friends route. */
   public async sendFriendRequest(userId1: string, userId2: string): Promise<void> {
-    try {
-      const response = await this.apiService.request<RelationshipActionResponse>('/api/relationships/friends', {
-        method: 'POST',
-        authenticated: true,
-        body: { userId1, userId2, action: 'send-request' },
-        timeoutMs: 18_000,
-      });
-      if (!response.success) throw new Error(response.error || response.message || 'Failed to send friend request');
-    } catch {
-      const [asFirst, asSecond] = await Promise.all([
-        getDocs(query(collection(db, 'friendship'), where('userId1', '==', userId1))),
-        getDocs(query(collection(db, 'friendship'), where('userId2', '==', userId1))),
-      ]);
-      const existing = [...asFirst.docs, ...asSecond.docs].find((document) => {
-        const relationship = document.data();
-        return (relationship.userId1 === userId1 && relationship.userId2 === userId2)
-          || (relationship.userId1 === userId2 && relationship.userId2 === userId1);
-      });
-      if (existing) {
-        await updateDoc(existing.ref, {
-          friendshipStatus: 'pending',
-          status: 'pending',
-          updatedAt: serverTimestamp(),
-        });
-        return;
-      }
-      await addDoc(collection(db, 'friendship'), {
-        userId1,
-        userId2,
-        friendshipStatus: 'pending',
-        status: 'pending',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
+    if (auth.currentUser?.uid !== userId1) throw new Error('Please sign in again to send friend requests.');
+    await this.data.sendFriendRequest(userId2);
   }
 
   public async respondToFriendRequest(requesterId: string, viewerId: string, action: 'accept' | 'decline'): Promise<void> {
-    const response = await this.apiService.request<RelationshipActionResponse>('/api/relationships/friends', {
-      method: 'POST',
-      authenticated: true,
-      body: { userId1: requesterId, userId2: viewerId, action },
-    });
-    if (!response.success) throw new Error(response.error || response.message || `Failed to ${action} friend request`);
+    if (auth.currentUser?.uid !== viewerId) throw new Error('Please sign in again to respond to friend requests.');
+    await this.data.respondToFriendRequest(requesterId, action);
   }
 
   public async getSuggestions(maxResults = 6): Promise<RelationshipSuggestion[]> {
@@ -193,30 +173,93 @@ export class RelationshipService {
   }
 
   public async blockUser(userIdToBlock: string): Promise<void> {
-    const response = await this.apiService.request<RelationshipActionResponse>('/api/profile/blocklist', {
-      method: 'POST',
-      authenticated: true,
-      body: { userIdToBlock },
-    });
-    if (!response.success) throw new Error(response.error || response.message || 'Failed to block user');
+    await this.data.blockUser(userIdToBlock);
   }
 
   public async unblockUser(userIdToUnblock: string): Promise<void> {
-    const response = await this.apiService.request<RelationshipActionResponse>('/api/profile/blocklist', {
-      method: 'DELETE',
-      authenticated: true,
-      body: { userIdToUnblock },
-    });
-    if (!response.success) throw new Error(response.error || response.message || 'Failed to unblock user');
+    await this.data.unblockUser(userIdToUnblock);
   }
 
   public async cancelOrRemoveFriend(userId1: string, userId2: string, status: 'pending' | 'accepted'): Promise<void> {
-    const response = await this.apiService.request<RelationshipActionResponse>('/api/relationships/friends', {
-      method: 'POST',
-      authenticated: true,
-      body: { userId1, userId2, action: status === 'pending' ? 'cancel' : 'remove' },
+    if (status === 'pending') {
+      await this.cancelPendingFriendRequest(userId1, userId2);
+      return;
+    }
+    const documents = await this.getDirectFriendshipDocuments(userId1, userId2);
+    const hasAcceptedRelationship = documents.some((document) => this.readDocumentFriendshipStatus(document.data()) === 'accepted');
+    if (!hasAcceptedRelationship) throw new Error('This friendship no longer exists.');
+    await Promise.all(documents.map((document) => deleteDoc(document.ref)));
+    const persistedStatus = await this.checkFriendshipStatus(userId1, userId2);
+    if (persistedStatus !== 'none') throw new Error('The friendship removal could not be confirmed. Please try again.');
+  }
+
+  public async cancelPendingFriendRequest(currentUserId: string, targetUserId: string): Promise<void> {
+    if (!currentUserId || !targetUserId || currentUserId === targetUserId) {
+      throw new Error('A valid pending friend request is required.');
+    }
+    const documents = await this.getDirectFriendshipDocuments(currentUserId, targetUserId);
+    const pendingDocuments = documents.filter((document) => this.readDocumentFriendshipStatus(document.data()) === 'pending');
+    if (pendingDocuments.length === 0) {
+      const hasAcceptedRelationship = documents.some((document) => this.readDocumentFriendshipStatus(document.data()) === 'accepted');
+      if (hasAcceptedRelationship) throw new Error('This friend request has already been accepted.');
+      await this.deleteRelationshipNotifications(currentUserId, targetUserId, ['friend_request']);
+      return;
+    }
+    await Promise.all(pendingDocuments.map((document) => deleteDoc(document.ref)));
+    await this.deleteRelationshipNotifications(currentUserId, targetUserId, ['friend_request']);
+  }
+
+  private async deleteRelationshipNotifications(actorUserId: string, targetUserId: string, types: Array<'follow' | 'friend_request'>): Promise<void> {
+    const mappedNotifications = await notificationHelpers.getUserNotifications(targetUserId, 200);
+    const matchingMappedNotifications = mappedNotifications.filter((notification) => {
+      if (!types.includes(notification.type as 'follow' | 'friend_request')) return false;
+      return notification.metadata?.sourceUserId === actorUserId
+        || notification.metadata?.sourceId === actorUserId
+        || notification.userDetails?.uid === actorUserId
+        || notification.userDetails?.userId === actorUserId;
     });
-    if (!response.success) throw new Error(response.error || response.message || 'Failed to update friendship');
+    const notificationCollections = [
+      collection(doc(db, 'userNotifications', targetUserId), 'items'),
+      collection(db, `users/${targetUserId}/notifications`),
+    ];
+    const snapshots = await Promise.all(notificationCollections.map((notificationCollection) => (
+      getDocs(query(notificationCollection, where('type', 'in', types))).catch(() => null)
+    )));
+    const matchingDocuments = snapshots.flatMap((snapshot) => snapshot?.docs ?? []).filter((document) => {
+      const value: unknown = document.data();
+      if (!isRelationshipNotificationSource(value)) return false;
+      const metadata = isRelationshipNotificationSource(value.metadata) ? value.metadata : undefined;
+      const notificationActorId = readString(value.actorUserId)
+        || readString(value.sourceUserId)
+        || readString(value.senderId)
+        || readString(value.userId)
+        || readString(metadata?.actorUserId)
+        || readString(metadata?.sourceUserId)
+        || readString(metadata?.senderId)
+        || readString(metadata?.userId);
+      return notificationActorId === actorUserId;
+    });
+    await Promise.all([
+      ...matchingMappedNotifications.map(async (notification) => {
+        if (!notification.id) return;
+        await notificationHelpers.deleteNotification(targetUserId, notification.id);
+        await deleteDoc(doc(db, 'userNotifications', targetUserId, 'items', notification.id)).catch(() => {});
+      }),
+      ...matchingDocuments.map((document) => deleteDoc(document.ref).catch(() => {})),
+    ]);
+  }
+
+  private async getDirectFriendshipDocuments(userId1: string, userId2: string) {
+    const [forwardSnapshot, reverseSnapshot] = await Promise.all([
+      getDocs(query(collection(db, 'friendship'), where('userId1', '==', userId1), where('userId2', '==', userId2))),
+      getDocs(query(collection(db, 'friendship'), where('userId1', '==', userId2), where('userId2', '==', userId1))),
+    ]);
+    return [...forwardSnapshot.docs, ...reverseSnapshot.docs];
+  }
+
+  private readDocumentFriendshipStatus(value: { friendshipStatus?: unknown; status?: unknown }): 'none' | 'pending' | 'accepted' {
+    const status = readString(value.friendshipStatus) || readString(value.status);
+    return status === 'accepted' ? 'accepted' : status === 'pending' ? 'pending' : 'none';
   }
 
   /**
@@ -286,12 +329,8 @@ export class RelationshipService {
 
   public async getFriends(userId: string): Promise<RelationshipUser[]> {
     if (auth.currentUser?.uid === userId) return this.getOwnFriendsFromFirestore(userId);
-    const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>(
-      `/api/relationships/status?userId=${encodeURIComponent(userId)}&type=friends`,
-      { authenticated: true, timeoutMs: 18_000 }
-    );
-    if (!response.success) throw new Error(response.error || 'Failed to load friends');
-    return this.normalizeFriends(response.data ?? []);
+    const friends = await this.data.getFriends(userId);
+    return this.normalizeFriends(friends);
   }
 
   private normalizeFriends(values: unknown[]): RelationshipUser[] {
@@ -359,20 +398,7 @@ export class RelationshipService {
     try {
       return await this.getNetworkStatsFromFirestore(userId);
     } catch {
-      try {
-        const response = await this.apiService.request<{ success: boolean; data?: Partial<RelationshipNetworkStats>; error?: string }>(
-          `/api/relationships/status?userId1=${encodeURIComponent(userId)}&userId2=${encodeURIComponent(userId)}&type=network-stats`,
-          { authenticated: true, timeoutMs: 8_000 }
-        );
-        if (!response.success || !response.data) throw new Error(response.error || 'Failed to load network stats');
-        return {
-          friends: typeof response.data.friends === 'number' ? response.data.friends : 0,
-          followers: typeof response.data.followers === 'number' ? response.data.followers : 0,
-          following: typeof response.data.following === 'number' ? response.data.following : 0,
-        };
-      } catch {
-        return { friends: 0, followers: 0, following: 0 };
-      }
+      return { friends: 0, followers: 0, following: 0 };
     }
   }
 
@@ -415,14 +441,11 @@ export class RelationshipService {
 
   public async checkFriendshipStatus(userId1: string, userId2: string): Promise<'none' | 'pending' | 'accepted'> {
     try {
-      const q1 = query(collection(db, 'friendship'), where('userId1', '==', userId1), where('userId2', '==', userId2));
-      const q2 = query(collection(db, 'friendship'), where('userId1', '==', userId2), where('userId2', '==', userId1));
-      const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-      const docs = [...snap1.docs, ...snap2.docs];
-      if (docs.length === 0) return 'none';
-      const data = docs[0].data();
-      if (data.status === 'accepted') return 'accepted';
-      return 'pending';
+      const documents = await this.getDirectFriendshipDocuments(userId1, userId2);
+      const statuses = documents.map((document) => this.readDocumentFriendshipStatus(document.data()));
+      if (statuses.includes('accepted')) return 'accepted';
+      if (statuses.includes('pending')) return 'pending';
+      return 'none';
     } catch {
       return 'none';
     }

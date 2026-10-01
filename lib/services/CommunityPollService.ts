@@ -1,7 +1,5 @@
-import { ApiService } from './ApiService';
+import { communityDataService } from './CommunityDataService';
 import type { CommunityPage, CommunityPoll } from '@/lib/types/community';
-
-type ApiResult<TData> = { success?: boolean; data?: TData; error?: string };
 
 export type CreateCommunityPollInput = {
   communityId: string;
@@ -11,9 +9,10 @@ export type CreateCommunityPollInput = {
   allowMultiple: boolean;
 };
 
+/** Community polls read and written directly in Firestore (`polls`), same rules as the website. */
 export class CommunityPollService {
   private static instance: CommunityPollService;
-  private readonly apiService = ApiService.getInstance();
+  private readonly data = communityDataService;
 
   private constructor() {}
 
@@ -23,25 +22,19 @@ export class CommunityPollService {
   }
 
   public async fetchPolls(communityId: string): Promise<CommunityPage<CommunityPoll>> {
-    const response = await this.apiService.request<ApiResult<CommunityPage<CommunityPoll>>>(`/api/communities/polls?communityId=${encodeURIComponent(communityId)}`, { authenticated: true });
-    if (!response.success || !response.data) throw new Error(response.error || 'Community polls could not be loaded.');
-    return response.data;
+    return this.data.fetchPolls(communityId);
   }
 
   public async createPoll(input: CreateCommunityPollInput): Promise<string> {
-    const response = await this.apiService.request<ApiResult<{ id: string }>>('/api/communities/polls', { method: 'POST', authenticated: true, body: input });
-    if (!response.success || !response.data) throw new Error(response.error || 'Community poll could not be created.');
-    return response.data.id;
+    return this.data.createPoll(input);
   }
 
   public async vote(communityId: string, pollId: string, optionIndex: number): Promise<void> {
-    const response = await this.apiService.request<ApiResult<never>>('/api/communities/polls', { method: 'PATCH', authenticated: true, body: { communityId, pollId, optionIndex } });
-    if (!response.success) throw new Error(response.error || 'Your vote could not be saved.');
+    await this.data.votePoll(communityId, pollId, optionIndex);
   }
 
   public async deletePoll(communityId: string, pollId: string): Promise<void> {
-    const response = await this.apiService.request<ApiResult<never>>('/api/communities/polls', { method: 'DELETE', authenticated: true, body: { communityId, pollId } });
-    if (!response.success) throw new Error(response.error || 'Community poll could not be deleted.');
+    await this.data.deletePoll(communityId, pollId);
   }
 }
 

@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { adminAccessService } from './AdminAccessService';
-import { apiService } from './ApiService';
+import { adminApiService } from './AdminApiService';
 
 type FirebaseDateValue = { toMillis?: () => number; seconds?: number } | string | number | Date | null | undefined;
 type AdminDocumentData = {
@@ -265,31 +265,31 @@ export class AdminWorkspaceService {
   public async updateBetaRecord(record: AdminBetaRecord, status: string, notes: string): Promise<void> {
     await adminAccessService.requireAdmin();
     if (record.kind === 'tester') {
-      await apiService.request(`/api/beta/admin/testers/${encodeURIComponent(record.id)}`, { method: 'PATCH', authenticated: true, body: { status, notes } });
+      await adminApiService.request(`/api/beta/admin/testers/${encodeURIComponent(record.id)}`, { method: 'PATCH', body: { status, notes } });
       return;
     }
     if (record.kind === 'application') {
       const action = status === 'approved' ? 'approve' : status === 'rejected' ? 'reject' : 'note';
-      await apiService.request(`/api/beta/admin/applications/${encodeURIComponent(record.id)}`, { method: 'PATCH', authenticated: true, body: { action, adminNotes: notes, sendInvitation: status === 'approved' } });
+      await adminApiService.request(`/api/beta/admin/applications/${encodeURIComponent(record.id)}`, { method: 'PATCH', body: { action, adminNotes: notes, sendInvitation: status === 'approved' } });
       return;
     }
     const action = status === 'revoked' ? 'revoke' : status === 'invited' ? 'resend' : 'note';
-    await apiService.request(`/api/beta/admin/invitations/${encodeURIComponent(record.id)}`, { method: 'PATCH', authenticated: true, body: { action, notes } });
+    await adminApiService.request(`/api/beta/admin/invitations/${encodeURIComponent(record.id)}`, { method: 'PATCH', body: { action, notes } });
   }
 
   public async setRegistrationMode(mode: AdminBetaOverview['registrationMode']): Promise<void> {
     await adminAccessService.requireAdmin();
-    await apiService.request('/api/beta/registration-mode', { method: 'PATCH', authenticated: true, body: { mode } });
+    await adminApiService.request('/api/beta/registration-mode', { method: 'PATCH', body: { mode } });
   }
 
   public async inviteBetaTester(fullName: string, email: string, notes: string): Promise<AdminBetaInvitationResult> {
     await adminAccessService.requireAdmin();
-    return apiService.request<AdminBetaInvitationResult>('/api/beta/admin/invitations', { method: 'POST', authenticated: true, body: { fullName: fullName.trim(), email: email.trim(), notes: notes.trim() } });
+    return adminApiService.request<AdminBetaInvitationResult>('/api/beta/admin/invitations', { method: 'POST', body: { fullName: fullName.trim(), email: email.trim(), notes: notes.trim() } });
   }
 
   public async seedStickers(): Promise<void> {
     await adminAccessService.requireAdmin();
-    await apiService.request('/api/admin/stickers/seed', { method: 'POST', authenticated: true });
+    await adminApiService.request('/api/admin/stickers/seed', { method: 'POST' });
   }
 
   private normalizeWorkspaceItem(kind: AdminWorkspaceKind, id: string, value: AdminDocumentData): AdminWorkspaceItem {
@@ -336,9 +336,9 @@ export class AdminWorkspaceService {
     if (action && action !== 'all') params.append('action', action);
     if (resource && resource !== 'all') params.append('resource', resource);
     params.append('limit', '50');
-    const response = await apiService.request<{ success: boolean; data?: { logs?: Record<string, unknown>[] }; error?: string }>(
+    const response = await adminApiService.request<{ success: boolean; data?: { logs?: Record<string, unknown>[] }; error?: string }>(
       `/api/admin/activity-logs?${params.toString()}`,
-      { method: 'GET', authenticated: true, priority: 'foreground' }
+      { method: 'GET' }
     );
     if (!response.success || !response.data?.logs) {
       throw new Error(response.error || 'Failed to load activity logs');
@@ -347,9 +347,9 @@ export class AdminWorkspaceService {
   }
 
   public async restoreActivityLog(logId: string): Promise<void> {
-    const response = await apiService.request<{ success: boolean; message?: string; error?: string }>(
+    const response = await adminApiService.request<{ success: boolean; message?: string; error?: string }>(
       `/api/activity-logs/${encodeURIComponent(logId)}/restore`,
-      { method: 'POST', authenticated: true, priority: 'foreground' }
+      { method: 'POST' }
     );
     if (!response.success) {
       throw new Error(response.error || 'Failed to restore item');

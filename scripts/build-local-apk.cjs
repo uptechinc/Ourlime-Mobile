@@ -89,6 +89,20 @@ if (fs.existsSync(gradlePropertiesPath)) {
   }
 }
 
+// Configure custom APK output filename in android/app/build.gradle
+const appBuildGradlePath = path.join(androidDir, 'app', 'build.gradle');
+if (fs.existsSync(appBuildGradlePath)) {
+  let gradleContent = fs.readFileSync(appBuildGradlePath, 'utf8');
+  if (!gradleContent.includes('outputFileName = "Ourlime-')) {
+    const hookMarker = 'androidResources {';
+    if (gradleContent.includes(hookMarker)) {
+      const customNamingSnippet = `    applicationVariants.all { variant ->\n        variant.outputs.all {\n            def formattedDate = new java.text.SimpleDateFormat("dd.MM.yy").format(new Date())\n            if (variant.buildType.name == 'release') {\n                outputFileName = "Ourlime-\${formattedDate}.apk"\n            } else {\n                outputFileName = "Ourlime-\${formattedDate}-debug.apk"\n            }\n        }\n    }\n\n    ${hookMarker}`;
+      gradleContent = gradleContent.replace(hookMarker, customNamingSnippet);
+      fs.writeFileSync(appBuildGradlePath, gradleContent, 'utf8');
+    }
+  }
+}
+
 // Step 2: Run Gradle assembleRelease
 const isWindows = process.platform === 'win32';
 const gradlewCmd = isWindows ? 'gradlew.bat' : './gradlew';
@@ -114,11 +128,46 @@ execSync(`${gradlewCmd} ${buildType} -x lint -x lintVitalRelease`, {
 });
 
 const outputFolder = buildType === 'assembleDebug' ? 'debug' : 'release';
-const apkPath = path.join(androidDir, 'app', 'build', 'outputs', 'apk', outputFolder, `app-${outputFolder}.apk`);
+const apkDir = path.join(androidDir, 'app', 'build', 'outputs', 'apk', outputFolder);
 
-if (fs.existsSync(apkPath)) {
+// Compute current date format dd.mm.yy (e.g. Ourlime-13.09.26.apk)
+const now = new Date();
+const dd = String(now.getDate()).padStart(2, '0');
+const mm = String(now.getMonth() + 1).padStart(2, '0');
+const yy = String(now.getFullYear()).slice(-2);
+const dateSuffix = `${dd}.${mm}.${yy}`;
+const targetApkName = buildType === 'assembleDebug' ? `Ourlime-${dateSuffix}-debug.apk` : `Ourlime-${dateSuffix}.apk`;
+const targetApkPath = path.join(apkDir, targetApkName);
+const legacyApkPath = path.join(apkDir, `app-${outputFolder}.apk`);
+
+let finalApkPath = null;
+if (fs.existsSync(targetApkPath)) {
+  finalApkPath = targetApkPath;
+} else if (fs.existsSync(legacyApkPath)) {
+  fs.copyFileSync(legacyApkPath, targetApkPath);
+  finalApkPath = targetApkPath;
+} else if (fs.existsSync(apkDir)) {
+  const foundApk = fs.readdirSync(apkDir).find(file => file.endsWith('.apk'));
+  if (foundApk) {
+    const src = path.join(apkDir, foundApk);
+    fs.copyFileSync(src, targetApkPath);
+    finalApkPath = targetApkPath;
+  }
+}
+
+if (finalApkPath && fs.existsSync(finalApkPath)) {
+  // Also copy to root project directory for instant convenience
+  const rootApkPath = path.join(rootDir, targetApkName);
+  try {
+    fs.copyFileSync(finalApkPath, rootApkPath);
+  } catch {
+    // Non-blocking
+  }
+
   console.log('✅ Local Android APK Build Successful!');
-  console.log(`📍 Built APK Location: ${apkPath}`);
+  console.log(`📍 Built APK Location: ${finalApkPath}`);
+  console.log(`📦 Root Shortcut: ${rootApkPath}`);
 } else {
   console.log('⚠️ Build finished. Please check output directory inside android/app/build/outputs/apk/');
 }
+

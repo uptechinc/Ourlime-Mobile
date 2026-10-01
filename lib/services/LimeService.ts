@@ -16,19 +16,20 @@ import {
   startAfter,
   updateDoc,
   where,
+  writeBatch,
   type QueryConstraint,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
-import { db, storage } from '@/lib/firebaseConfig';
+import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
+import { auth, db, storage } from '@/lib/firebaseConfig';
 import type { Reel } from '@/types/userTypes';
 import type { CreateLimeCommentInput, CreateLimeInput, LimeComment, LimeCommentCursor, LimeCommentPage } from '@/lib/types/lime';
 import { AuthService } from './AuthService';
 import { RelationshipService } from './RelationshipService';
 import { moderationService, type ReportReasonCategory } from './ModerationService';
 import type { ChildSafetyIntakeValues } from '@/lib/types/childSafety';
-import { ApiService } from './ApiService';
 import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
+import { limeIdentityService } from './LimeIdentityService';
 
 export type LimeFeedCursor = QueryDocumentSnapshot;
 
@@ -65,7 +66,6 @@ export class LimeService {
   private static instance: LimeService;
   private readonly authService = AuthService.getInstance();
   private readonly relationshipService = RelationshipService.getInstance();
-  private readonly apiService = ApiService.getInstance();
 
   private constructor() {}
 
@@ -157,8 +157,29 @@ export class LimeService {
       ? visibleDocuments.filter((reelDocument) => followingUserSet.has(stringOf(reelDocument.data().userId)))
       : visibleDocuments;
     const commentsByReel: Record<string, LimeComment[]> = {};
-    const reels = await Promise.all(feedDocuments.map(async (reelDocument): Promise<Reel> => {
+    const reels = await Promise.all(feedDocuments.map(async (entry): Promise<Reel | null> => {
+      let reelDocument: Awaited<ReturnType<typeof getDoc>> = entry;
+      const entryData = recordOf(entry.data());
+      const entrySource = recordOf(entryData.repostedFrom);
+      const isRepostEntry = entryData.isRepost === true || Object.keys(entrySource).length > 0;
+      const reposterId = stringOf(entryData.userId);
+      if (isRepostEntry && reposterId !== currentUserId && !friendUserSet.has(reposterId)) return null;
+      const visited = new Set<string>();
+      for (let depth = 0; depth < 10; depth += 1) {
+        if (visited.has(reelDocument.id)) return null;
+        visited.add(reelDocument.id);
+        const currentData = recordOf(reelDocument.data());
+        const source = recordOf(currentData.repostedFrom);
+        const originalId = stringOf(source.reelId) || stringOf(source.postId);
+        if (!originalId) {
+          if (currentData.isRepost === true) return null;
+          break;
+        }
+        reelDocument = await getDoc(doc(db, 'reels', originalId));
+        if (!reelDocument.exists() || depth === 9) return null;
+      }
       const data = recordOf(reelDocument.data());
+      if (isDeletedReelRecord(data)) return null;
       const creatorId = stringOf(data.userId);
       const profile = creatorId ? await this.authService.getUserProfileIfAvailable(creatorId) : null;
       const comments = commentPreviewLimit > 0
@@ -171,7 +192,21 @@ export class LimeService {
       const stats = recordOf(data.stats);
       const embeddedUser = recordOf(data.user);
       const isRepost = Boolean(data.isRepost);
-      const repostedBy = this.readEmbeddedReposters(data.repostedBy, isRepost && profile ? {
+      const repostedFrom = recordOf(data.repostedFrom);
+      const authorUserId = limeIdentityService.resolveAuthorUserId({
+        recordOwnerUserId: creatorId,
+        isRepost: isRepost || Object.keys(repostedFrom).length > 0,
+        repostedFromUserId: stringOf(repostedFrom.userId) || undefined,
+        embeddedUserId: stringOf(embeddedUser.userId) || stringOf(embeddedUser.id) || undefined,
+      });
+      const reposterProfile = isRepostEntry ? await this.authService.getUserProfileIfAvailable(reposterId) : null;
+      const repostedBy = this.readEmbeddedReposters(data.repostedBy, reposterProfile ? {
+        userId: reposterId,
+        userName: reposterProfile.userName,
+        firstName: reposterProfile.firstName,
+        lastName: reposterProfile.lastName,
+        profileImage: reposterProfile.profilePicture || undefined,
+      } : isRepost && profile ? {
         userId: creatorId,
         userName: profile.userName,
         firstName: profile.firstName,
@@ -195,6 +230,7 @@ export class LimeService {
       return {
         id: reelDocument.id,
         userId: creatorId,
+        authorUserId,
         thumbnailUrl: stringOf(data.thumbnailUrl) || stringOf(media.thumbnailUrl) || undefined,
         media: {
           type: media.type === 'image' ? 'image' : 'video',
@@ -224,7 +260,15 @@ export class LimeService {
       };
     }));
 
-    const enrichedReels = await this.attachReposters(reels, currentUserId);
+    const originals = new Map<string, Reel>();
+    for (const reel of reels) {
+      if (!reel) continue;
+      const previous = originals.get(reel.id);
+      const reposters = new Map([...(previous?.repostedBy ?? []), ...(reel.repostedBy ?? [])]
+        .map((reposter) => [reposter.userId, reposter] as const));
+      originals.set(reel.id, { ...reel, repostedBy: [...reposters.values()] });
+    }
+    const enrichedReels = await this.attachReposters([...originals.values()], currentUserId, friendUserSet);
     const lastDoc = scope === 'following' ? null : snapshot.docs.at(-1) ?? null;
     return {
       reels: enrichedReels,
@@ -260,6 +304,7 @@ export class LimeService {
     }
     const reel = await addDoc(collection(db, 'reels'), {
       userId: input.userId,
+      authorUserId: input.userId,
       thumbnailUrl: thumbnailUrl || null,
       media: {
         type: 'video',
@@ -292,6 +337,7 @@ export class LimeService {
       return {
         id: item.id,
         userId,
+        authorUserId: userId,
         thumbnailUrl: stringOf(data.thumbnailUrl) || stringOf(media.thumbnailUrl) || undefined,
         media: {
           type: media.type === 'image' ? 'image' : 'video',
@@ -327,6 +373,13 @@ export class LimeService {
     const stats = recordOf(data.stats);
     const embeddedUser = recordOf(data.user);
     const isRepost = Boolean(data.isRepost);
+    const repostedFrom = recordOf(data.repostedFrom);
+    const authorUserId = limeIdentityService.resolveAuthorUserId({
+      recordOwnerUserId: creatorId,
+      isRepost: isRepost || Object.keys(repostedFrom).length > 0,
+      repostedFromUserId: stringOf(repostedFrom.userId) || undefined,
+      embeddedUserId: stringOf(embeddedUser.userId) || stringOf(embeddedUser.id) || undefined,
+    });
     const repostedBy = this.readEmbeddedReposters(data.repostedBy, isRepost && profile ? {
       userId: creatorId,
       userName: profile.userName,
@@ -351,6 +404,7 @@ export class LimeService {
     const reel: Reel = {
       id: reelId,
       userId: creatorId,
+      authorUserId,
       thumbnailUrl: stringOf(data.thumbnailUrl) || stringOf(media.thumbnailUrl) || undefined,
       media: {
         type: media.type === 'image' ? 'image' : 'video',
@@ -381,23 +435,41 @@ export class LimeService {
     return (await this.attachReposters([reel], this.authService.getCurrentUser()?.uid ?? ''))[0] ?? reel;
   }
 
+  /** Same checks as the website's Lime repost route: one marker per user and Lime, never your own. */
   public async repostLime(reelId: string, userId: string): Promise<string> {
-    if (!userId) throw new Error('Sign in to repost this Lime.');
-    const response = await this.apiService.request<{ success: boolean; error?: string }>(`/api/limes/${encodeURIComponent(reelId)}/repost`, {
-      method: 'POST',
-      authenticated: true,
-    });
-    if (!response.success) throw new Error(response.error || 'Could not repost this Lime.');
+    if (!userId || auth.currentUser?.uid !== userId) throw new Error('Sign in to repost this Lime.');
+    const reel = await getDoc(doc(db, 'reels', reelId));
+    if (!reel.exists()) throw new Error('Lime not found');
+    if (reel.data().userId === userId) throw new Error('You cannot repost your own Lime');
+    const marker = doc(db, 'reelReposts', `${userId}_${reelId}`);
+    if ((await getDoc(marker)).exists()) throw new Error('You already reposted this Lime');
+    await setDoc(marker, { userId, reelId, createdAt: serverTimestamp() });
     return reelId;
   }
 
+  /** Removes the viewer's repost markers for this Lime (matched by id or by the same video), like the website route. */
   public async removeLimeRepost(reelId: string, userId: string): Promise<void> {
-    if (!userId) throw new Error('Sign in to remove this repost.');
-    const response = await this.apiService.request<{ success: boolean; error?: string }>(`/api/limes/${encodeURIComponent(reelId)}/repost`, {
-      method: 'DELETE',
-      authenticated: true,
-    });
-    if (!response.success) throw new Error(response.error || 'Could not remove this repost.');
+    if (!userId || auth.currentUser?.uid !== userId) throw new Error('Sign in to remove this repost.');
+    const targetReel = await getDoc(doc(db, 'reels', reelId));
+    if (!targetReel.exists()) throw new Error('Lime not found');
+    const mediaKeyOf = (value: unknown): string => (typeof value === 'string' ? value.trim().split('?')[0].toLowerCase() : '');
+    const targetMediaKey = mediaKeyOf(targetReel.data().media?.typeUrl);
+    const markers = await getDocs(query(collection(db, 'reelReposts'), where('userId', '==', userId)));
+    const markerReels = await Promise.all(markers.docs.map((marker) => getDoc(doc(db, 'reels', stringOf(marker.data().reelId) || reelId))));
+    const matchingReelIds = new Set(markerReels
+      .filter((markerReel) => markerReel.exists() && (markerReel.id === reelId || (Boolean(targetMediaKey) && mediaKeyOf(markerReel.data()?.media?.typeUrl) === targetMediaKey)))
+      .map((markerReel) => markerReel.id));
+    const matchingMarkers = markers.docs.filter((marker) => matchingReelIds.has(stringOf(marker.data().reelId)));
+    if (matchingMarkers.length === 0) throw new Error('Repost not found');
+    const batch = writeBatch(db);
+    matchingMarkers.forEach((marker) => batch.delete(marker.ref));
+    if (stringOf(targetReel.data().userId) !== userId && targetMediaKey) {
+      const viewerReels = await getDocs(query(collection(db, 'reels'), where('userId', '==', userId)));
+      viewerReels.docs
+        .filter((viewerReel) => viewerReel.id !== reelId && mediaKeyOf(viewerReel.data().media?.typeUrl) === targetMediaKey)
+        .forEach((viewerReel) => batch.delete(viewerReel.ref));
+    }
+    await batch.commit();
   }
 
   public async fetchUserRepostedLimeIds(userId: string): Promise<Set<string>> {
@@ -410,8 +482,9 @@ export class LimeService {
         if (originalId) ids.add(originalId);
       });
       return ids;
-    } catch {
-      return new Set();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'The repost markers could not be loaded.';
+      throw new Error(message);
     }
   }
 
@@ -445,9 +518,9 @@ export class LimeService {
         .filter((r): r is Reel => r !== null)
         .map((r) => ({ ...r, isRepost: true }));
       return repostedReels;
-    } catch (err) {
-      console.error('[LimeService.fetchUserRepostedLimes] Error:', err);
-      return [];
+    } catch (error: unknown) {
+      console.error('[LimeService.fetchUserRepostedLimes] Error:', error);
+      throw error;
     }
   }
 
@@ -456,17 +529,28 @@ export class LimeService {
   }
 
   public async incrementShareCount(reelId: string): Promise<void> {
-    await this.apiService.request<{ success: boolean }>(`/api/limes/${encodeURIComponent(reelId)}/share`, {
-      method: 'POST',
-    }).catch(() => undefined);
+    await updateDoc(doc(db, 'reels', reelId), { shares: increment(1) }).catch(() => undefined);
   }
 
+  /** Owner-only delete: removes the video file, the Lime and its repost markers, like the website route. */
   public async deleteLime(reelId: string): Promise<void> {
-    const response = await this.apiService.request<{ success: boolean; error?: string }>(`/api/limes/${encodeURIComponent(reelId)}`, {
-      method: 'DELETE',
-      authenticated: true,
-    });
-    if (!response.success) throw new Error(response.error || 'Could not delete this Lime.');
+    const viewerId = auth.currentUser?.uid;
+    if (!viewerId) throw new Error('Authentication required');
+    const reelRef = doc(db, 'reels', reelId);
+    const reel = await getDoc(reelRef);
+    if (!reel.exists()) throw new Error('Lime not found');
+    if (reel.data().userId !== viewerId) throw new Error('Only the Lime owner can delete it');
+    const videoUrl = stringOf(reel.data().media?.typeUrl);
+    if (videoUrl) {
+      await deleteObject(ref(storage, videoUrl)).catch((error: unknown) => {
+        console.error('[LimeService.deleteLime] Error:', error instanceof Error ? error.message : 'Video file could not be removed');
+      });
+    }
+    const repostMarkers = await getDocs(query(collection(db, 'reelReposts'), where('reelId', '==', reelId)));
+    const batch = writeBatch(db);
+    batch.delete(reelRef);
+    repostMarkers.docs.forEach((marker) => batch.delete(marker.ref));
+    await batch.commit();
   }
 
   public async updateLime(limeId: string, updates: LimeEditPayload): Promise<void> {
@@ -635,7 +719,7 @@ export class LimeService {
     return reposters.length > 0 ? reposters : undefined;
   }
 
-  private async attachReposters(reels: Reel[], currentUserId: string): Promise<Reel[]> {
+  private async attachReposters(reels: Reel[], currentUserId: string, friendUserIds?: Set<string>): Promise<Reel[]> {
     const reelIds = reels.map((reel) => reel.id).filter(Boolean);
     if (reelIds.length === 0) return reels;
     try {
@@ -649,7 +733,8 @@ export class LimeService {
         canonicalMarkers?.docs.forEach((markerDocument) => markerDocuments.push(markerDocument));
         legacyMarkers?.docs.forEach((markerDocument) => markerDocuments.push(markerDocument));
       }
-      const uniqueMarkers = Array.from(new Map(markerDocuments.map((markerDocument) => [markerDocument.id, markerDocument])).values());
+      const uniqueMarkers = Array.from(new Map(markerDocuments.map((markerDocument) => [markerDocument.id, markerDocument])).values())
+        .filter((marker) => !friendUserIds || stringOf(marker.data().userId) === currentUserId || friendUserIds.has(stringOf(marker.data().userId)));
       const userIds = Array.from(new Set(uniqueMarkers.map((markerDocument) => stringOf(markerDocument.data().userId)).filter(Boolean)));
       const profiles = await Promise.all(userIds.map(async (userId) => [userId, await this.authService.getUserProfileIfAvailable(userId)] as const));
       const profileById = new Map(profiles);
@@ -673,7 +758,7 @@ export class LimeService {
         repostersByReel.set(reelId, current);
       });
       return reels.map((reel) => {
-        const merged = [...(reel.repostedBy ?? [])];
+        const merged = (reel.repostedBy ?? []).filter((reposter) => !friendUserIds || reposter.userId === currentUserId || friendUserIds.has(reposter.userId));
         for (const reposter of repostersByReel.get(reel.id) ?? []) {
           if (!merged.some((item) => item.userId === reposter.userId)) merged.push(reposter);
         }
@@ -690,7 +775,10 @@ export class LimeService {
         };
       });
     } catch {
-      return reels;
+      return reels.map((reel) => ({
+        ...reel,
+        repostedBy: reel.repostedBy?.filter((reposter) => !friendUserIds || reposter.userId === currentUserId || friendUserIds.has(reposter.userId)),
+      }));
     }
   }
 

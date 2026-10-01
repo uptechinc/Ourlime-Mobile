@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Search, Shield, UserMinus, Users } from 'lucide-react-native';
 import CachedImage from '@/components/ui/CachedImage';
+import { Skeleton, SkeletonCircle } from '@/components/ui/Skeleton';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { CommunityMember, CommunityPage } from '@/lib/types/community';
 import type { ResourceState } from '@/lib/types/resourceState';
@@ -30,7 +31,23 @@ export default function CommunityMembersWorkspace({ resource, canManage, onRetry
     return () => clearTimeout(timeout);
   }, [onSearch, search, searchTouched]);
 
-  if (!resource.data && (resource.status === 'hydrating' || resource.status === 'idle')) return <ActivityIndicator color={colors.accent} style={{ marginVertical: 32 }} />;
+  if (!resource.data && (resource.status === 'hydrating' || resource.status === 'idle')) {
+    return (
+      <View style={{ margin: 16, gap: 10 }}>
+        <Skeleton height={46} borderRadius={14} />
+        <Skeleton width="40%" height={12} style={{ marginTop: 4, marginBottom: 4 }} />
+        {[1, 2, 3, 4].map((item) => (
+          <View key={item} style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 10 }}>
+            <SkeletonCircle size={46} />
+            <View style={{ flex: 1, gap: 6 }}>
+              <Skeleton width="60%" height={16} />
+              <Skeleton width="40%" height={12} />
+            </View>
+          </View>
+        ))}
+      </View>
+    );
+  }
   if (!resource.data && resource.status === 'error') return <View style={{ padding: 28, alignItems: 'center' }}><Text style={{ color: colors.destructiveText, textAlign: 'center' }}>{resource.error?.message ?? 'Members could not be loaded.'}</Text><TouchableOpacity onPress={onRetry} style={{ marginTop: 12, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontWeight: '800' }}>Retry</Text></TouchableOpacity></View>;
 
   return <View style={{ margin: 16 }}>

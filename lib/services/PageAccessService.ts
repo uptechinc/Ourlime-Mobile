@@ -18,6 +18,8 @@ const PUBLIC_ROUTES = new Set([
   '/policies',
   '/child-safety-standards',
   '/help',
+  '/market',
+  '/ehub',
 ]);
 
 const EXPO_ROUTE_ALIASES: Readonly<Record<string, string>> = {
@@ -39,15 +41,31 @@ export type PageAccessDecision = {
   canAccess: boolean;
   isVisibleInNavigation: boolean;
   isDeveloperPreview: boolean;
+  canRead: boolean;
+  canMutate: boolean;
+  canEnterPreview: boolean;
 };
 
 export class PageAccessService {
   private static instance: PageAccessService;
+  private currentDecision: ((route: string) => PageAccessDecision) | null = null;
+
+  public bindDecision(resolve: ((route: string) => PageAccessDecision) | null): void {
+    this.currentDecision = resolve;
+  }
+
+  public assertMutation(route: string): void {
+    if (!this.currentDecision?.(route).canMutate) {
+      throw new Error('This page is unavailable or in read-only preview. Your local work is preserved.');
+    }
+  }
 
   private constructor() {}
 
   public static getInstance(): PageAccessService {
-    if (!PageAccessService.instance) PageAccessService.instance = new PageAccessService();
+    if (!PageAccessService.instance) {
+      PageAccessService.instance = new PageAccessService();
+    }
     return PageAccessService.instance;
   }
 
@@ -55,7 +73,8 @@ export class PageAccessService {
     const rawPath = route.split(/[?#]/, 1)[0] || '/';
     const withLeadingSlash = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
     const normalized = withLeadingSlash.length > 1 ? withLeadingSlash.replace(/\/+$/, '') : withLeadingSlash;
-    const aliased = EXPO_ROUTE_ALIASES[normalized] ?? normalized;
+    const baseAlias = EXPO_ROUTE_ALIASES[normalized] ?? normalized;
+    const aliased = baseAlias === '/ehub' || baseAlias.startsWith('/ehub/') ? baseAlias.replace('/ehub', '/market') : baseAlias;
     return aliased === '/profile/admin' || aliased.startsWith('/profile/admin/')
       ? aliased.replace('/profile/admin', '/admin')
       : aliased;
@@ -71,6 +90,7 @@ export class PageAccessService {
       normalized.startsWith('/terms') ||
       normalized.startsWith('/privacy') ||
       normalized.startsWith('/help')
+      || normalized.startsWith('/market/')
     );
   }
 
@@ -122,33 +142,35 @@ export class PageAccessService {
         return settingRoute === normalizedRoute || (settingRoute !== '/' && normalizedRoute.startsWith(`${settingRoute}/`));
       })
       .sort((first, second) => this.normalizeRoute(second.route).length - this.normalizeRoute(first.route).length);
-    return matching.find((setting) => setting.status === 'coming_soon') ?? matching[0] ?? null;
+    return matching.find((setting) => setting.status !== 'enabled') ?? matching[0] ?? null;
   }
 
   public getDecision(
     settings: readonly PageAccessSetting[],
     route: string,
     authorization: AuthorizationState,
+    previewRoute: string | null = null,
+    resolved = true,
   ): PageAccessDecision {
     const setting = this.resolveSetting(settings, route);
     const status = setting?.status ?? 'enabled';
-    const canAccess = authorizationService.canAccessStatus(status, authorization);
-    const canPreviewDevelopmentPages =
-      authorization.isTester || authorization.isDeveloper || authorization.isAdmin;
+    const normalAccess = resolved && authorizationService.canAccessStatus(status, authorization);
+    const canEnterPreview = resolved && !normalAccess && (authorization.isDeveloper || authorization.isAdmin)
+      && status !== 'admin_only' && setting?.showPagePreview !== false;
+    const normalizedRoute = this.normalizeRoute(route);
+    const normalizedPreview = previewRoute === null ? null : this.normalizeRoute(previewRoute);
+    const isDeveloperPreview = canEnterPreview && normalizedPreview !== null
+      && (normalizedRoute === normalizedPreview || (normalizedPreview !== '/' && normalizedRoute.startsWith(`${normalizedPreview}/`)));
+    const canAccess = normalAccess || isDeveloperPreview;
     return {
       setting,
       status,
       canAccess,
-      isVisibleInNavigation: setting
-        ? canPreviewDevelopmentPages
-          ? setting.route !== '*' &&
-            (setting.status !== 'admin_only' || authorization.isAdmin)
-          : setting.showInNavigation &&
-            setting.status !== 'disabled' &&
-            setting.status !== 'developer_only' &&
-            setting.status !== 'admin_only'
-        : true,
-      isDeveloperPreview: canPreviewDevelopmentPages && status !== 'enabled',
+      canRead: canAccess,
+      canMutate: normalAccess,
+      canEnterPreview,
+      isVisibleInNavigation: resolved && (setting?.showInNavigation ?? true) && status !== 'disabled',
+      isDeveloperPreview,
     };
   }
 
@@ -165,6 +187,10 @@ export class PageAccessService {
     const statusValue = typeof value.status === 'string' && statuses.includes(value.status as PageAccessStatus)
       ? value.status as PageAccessStatus
       : 'enabled';
+    const rawBadge = typeof value.badgeText === 'string' ? value.badgeText.trim() : '';
+    const badgeText = statusValue === 'enabled'
+      ? (rawBadge === 'Unavailable' || rawBadge === 'Coming Soon' ? undefined : (rawBadge || undefined))
+      : (rawBadge || undefined);
     return {
       id,
       pageName: typeof value.pageName === 'string' ? value.pageName : id,
@@ -175,7 +201,7 @@ export class PageAccessService {
       showPagePreview: value.showPagePreview !== false,
       overlayTitle: typeof value.overlayTitle === 'string' ? value.overlayTitle : undefined,
       overlayDescription: typeof value.overlayDescription === 'string' ? value.overlayDescription : undefined,
-      badgeText: typeof value.badgeText === 'string' ? value.badgeText : undefined,
+      badgeText,
       primaryButtonLabel: typeof value.primaryButtonLabel === 'string' ? value.primaryButtonLabel : undefined,
       primaryButtonRoute: typeof value.primaryButtonRoute === 'string' ? value.primaryButtonRoute : undefined,
       secondaryButtonLabel: typeof value.secondaryButtonLabel === 'string' ? value.secondaryButtonLabel : undefined,

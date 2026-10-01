@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { SettingsSkeleton } from '@/components/ui/Skeleton';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useRouter } from 'expo-router';
@@ -156,10 +157,7 @@ export default function SettingsScreen() {
   if (loading) {
     return (
       <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, isDark && styles.containerDark]}>
-        <View style={styles.loadingCenter}>
-          <ActivityIndicator size="large" color="#10b981" />
-          <Text style={styles.loadingText}>Loading settings…</Text>
-        </View>
+        <SettingsSkeleton />
       </SafeAreaView>
     );
   }

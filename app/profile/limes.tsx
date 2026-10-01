@@ -9,7 +9,6 @@ import {
   StatusBar,
   Dimensions,
   Platform,
-  ActivityIndicator,
   RefreshControl,
   StyleSheet,
   type AppStateStatus,
@@ -21,6 +20,7 @@ import type { Reel } from '@/types/userTypes';
 import { limeService } from '@/lib/services/LimeService';
 import { AuthService } from '@/lib/services/AuthService';
 import { ReelItem, reelToPostItem } from '@/app/(tabs)/Limes';
+import { LimesSkeleton } from '@/components/ui/Skeleton';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
 import ReportLimeModal from '@/components/limes/ReportLimeModal';
 import CustomModal from '@/components/ui/CustomModal';
@@ -64,7 +64,7 @@ export default function ProfileLimesScreen() {
     if (!targetUserId) return;
     setRefreshing(true);
     try {
-      const data = await limeService.fetchUserAndRepostedReels(targetUserId);
+      const data = await limeService.fetchUserReels(targetUserId);
       setLimes(data);
     } catch (err) {
       console.error('[ProfileLimesScreen] Refresh error:', err);
@@ -93,7 +93,7 @@ export default function ProfileLimesScreen() {
       }
       try {
         setLoading(true);
-        const data = await limeService.fetchUserAndRepostedReels(targetUserId);
+        const data = await limeService.fetchUserReels(targetUserId);
         if (cancelled) return;
         setLimes(data);
 
@@ -203,9 +203,9 @@ export default function ProfileLimesScreen() {
 
   if (loading) {
     return (
-      <View style={screenStyles.loadingContainer}>
+      <View style={{ flex: 1, backgroundColor: '#000000' }}>
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-        <ActivityIndicator size="large" color="#10b981" />
+        <LimesSkeleton />
       </View>
     );
   }
@@ -240,6 +240,7 @@ export default function ProfileLimesScreen() {
         data={limes}
         keyExtractor={(item) => item.id}
         pagingEnabled
+        disableIntervalMomentum
         showsVerticalScrollIndicator={false}
         snapToInterval={viewportHeight}
         scrollEnabled={!seeking}
@@ -248,7 +249,7 @@ export default function ProfileLimesScreen() {
         initialNumToRender={2}
         maxToRenderPerBatch={2}
         windowSize={3}
-        removeClippedSubviews={Platform.OS === 'android'}
+        removeClippedSubviews={false}
         getItemLayout={(_, index) => ({
           length: viewportHeight,
           offset: viewportHeight * index,
@@ -286,6 +287,7 @@ export default function ProfileLimesScreen() {
             }
             isFollowing={false}
             isOwnReel={item.userId === currentUserId}
+            isOwnAuthor={item.authorUserId === currentUserId}
             onToggleMute={() => setMuted((prev) => !prev)}
             onCommentPress={() => setCommentReelId(item.id)}
             onLikeUpdate={handleLikeUpdate}

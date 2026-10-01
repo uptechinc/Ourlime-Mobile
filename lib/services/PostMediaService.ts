@@ -225,6 +225,38 @@ export class PostMediaService {
     });
   }
 
+  public async uploadVerificationDocument(options: {
+    email: string;
+    type: 'faceID' | 'frontID' | 'backID';
+    uri: string;
+  }): Promise<{ downloadUrl: string; fileName: string }> {
+    let preparedUri: string;
+    try {
+      const preparedImage = await manipulateAsync(options.uri, [], {
+        compress: 0.86,
+        format: SaveFormat.JPEG,
+      });
+      preparedUri = preparedImage.uri;
+    } catch (error: unknown) {
+      this.logger.warn('PostMediaService', 'verification-image-conversion-failed', {
+        type: options.type,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error('This verification image could not be converted to a reviewable JPEG. Choose a JPG or PNG image and try again.');
+    }
+
+    const fileName = `${options.type}.jpg`;
+    const storagePath = `authentication/${options.email}/${fileName}`;
+    const fileSize = await this.getFileSize(preparedUri);
+    const downloadUrl = await this.uploadMediaItem({
+      uri: preparedUri,
+      storagePath,
+      mimeType: 'image/jpeg',
+      fileSize: fileSize || 1024,
+    });
+    return { downloadUrl, fileName };
+  }
+
   public async cleanup(storagePaths: string[]): Promise<void> {
     await Promise.all(storagePaths.map(async (path) => {
       try {

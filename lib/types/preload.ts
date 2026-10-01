@@ -13,5 +13,5 @@ export type PreloadTask = {
 export type PagePreloadRegistration = {
   route: string;
   policy: PagePreloadPolicy;
-  resource: 'feed' | 'limes' | 'discover' | 'communities' | 'conversations' | 'profile' | 'admin' | 'static' | 'dynamic';
+  resource: 'feed' | 'limes' | 'discover' | 'communities' | 'conversations' | 'profile' | 'admin' | 'marketplace' | 'blogs' | 'projects' | 'static' | 'dynamic';
 };

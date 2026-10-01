@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
 	ActivityIndicator,
-	Alert,
 	KeyboardAvoidingView,
 	Modal,
 	Platform,
@@ -12,6 +11,7 @@ import {
 	View,
 	type LayoutChangeEvent,
 } from 'react-native';
+import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import {
 	SafeAreaView,
@@ -137,6 +137,24 @@ export default function CommentsModal({
 	const [reportTarget, setReportTarget] = useState<CommentReportTarget | null>(null);
 	const commentsScrollRef = useRef<ScrollView | null>(null);
 	const hasScrolledToFocusRef = useRef(false);
+	const [dialogState, setDialogState] = useState<{
+		visible: boolean;
+		type: CustomModalType;
+		title: string;
+		message: string;
+		confirmText?: string;
+		cancelText?: string;
+		onConfirm?: () => void;
+	}>({
+		visible: false,
+		type: 'info',
+		title: '',
+		message: '',
+	});
+
+	const closeDialog = () => {
+		setDialogState((prev) => ({ ...prev, visible: false }));
+	};
 
 	const handleSubmitReport = useCallback(
 		async (
@@ -302,10 +320,13 @@ export default function CommentsModal({
 				},
 			}));
 		} catch (error: unknown) {
-			Alert.alert(
-				'Replies unavailable',
-				error instanceof Error ? error.message : 'Could not load replies'
-			);
+			setDialogState({
+				visible: true,
+				type: 'error',
+				title: 'Replies unavailable',
+				message: error instanceof Error ? error.message : 'Could not load replies',
+				confirmText: 'OK',
+			});
 			setReplyThreads((current) => ({
 				...current,
 				[commentId]: {
@@ -352,10 +373,13 @@ export default function CommentsModal({
 				...current,
 				[commentId]: { ...thread, loading: false },
 			}));
-			Alert.alert(
-				'Replies unavailable',
-				error instanceof Error ? error.message : 'Could not load more replies'
-			);
+			setDialogState({
+				visible: true,
+				type: 'error',
+				title: 'Replies unavailable',
+				message: error instanceof Error ? error.message : 'Could not load more replies',
+				confirmText: 'OK',
+			});
 		}
 	};
 
@@ -377,10 +401,13 @@ export default function CommentsModal({
 			});
 			void interactionFeedbackService.play('success');
 		} catch (error: unknown) {
-			Alert.alert(
-				'Comment not posted',
-				error instanceof Error ? error.message : 'Please try again'
-			);
+			setDialogState({
+				visible: true,
+				type: 'error',
+				title: 'Comment not posted',
+				message: error instanceof Error ? error.message : 'Please try again',
+				confirmText: 'OK',
+			});
 		} finally {
 			setSubmitting(false);
 		}
@@ -421,10 +448,13 @@ export default function CommentsModal({
 			setReplyTarget(null);
 			void interactionFeedbackService.play('success');
 		} catch (error: unknown) {
-			Alert.alert(
-				'Reply not posted',
-				error instanceof Error ? error.message : 'Please try again'
-			);
+			setDialogState({
+				visible: true,
+				type: 'error',
+				title: 'Reply not posted',
+				message: error instanceof Error ? error.message : 'Please try again',
+				confirmText: 'OK',
+			});
 		} finally {
 			setSubmitting(false);
 		}
@@ -472,10 +502,13 @@ export default function CommentsModal({
 					},
 				}));
 			}
-			Alert.alert(
-				'Like not updated',
-				error instanceof Error ? error.message : 'Please try again'
-			);
+			setDialogState({
+				visible: true,
+				type: 'error',
+				title: 'Like not updated',
+				message: error instanceof Error ? error.message : 'Please try again',
+				confirmText: 'OK',
+			});
 		}
 	};
 
@@ -516,10 +549,13 @@ export default function CommentsModal({
 			setEditTarget(null);
 			setEditText('');
 		} catch (error: unknown) {
-			Alert.alert(
-				'Edit not saved',
-				error instanceof Error ? error.message : 'Please try again'
-			);
+			setDialogState({
+				visible: true,
+				type: 'error',
+				title: 'Edit not saved',
+				message: error instanceof Error ? error.message : 'Please try again',
+				confirmText: 'OK',
+			});
 		} finally {
 			setSubmitting(false);
 		}
@@ -676,7 +712,7 @@ export default function CommentsModal({
 									: { uri: reply.sticker.imageUrl }
 							}
 							recyclingKey={reply.sticker.id}
-							contentFit={reply.sticker.type === 'gif' ? 'cover' : 'contain'}
+							contentFit="contain"
 							style={{
 								width: 180,
 								height: 130,
@@ -921,7 +957,7 @@ export default function CommentsModal({
 																: { uri: comment.sticker.imageUrl }
 														}
 														recyclingKey={comment.sticker.id}
-														contentFit={comment.sticker.type === 'gif' ? 'cover' : 'contain'}
+							contentFit="contain"
 														style={{
 															width: 210,
 															height: 150,
@@ -1108,7 +1144,7 @@ export default function CommentsModal({
 													? getLocalStickerSource(selectedMedia.imageUrl) ?? { uri: selectedMedia.imageUrl }
 													: { uri: selectedMedia.imageUrl }
 											}
-											contentFit={selectedMedia.type === 'gif' ? 'cover' : 'contain'}
+							contentFit="contain"
 											style={{ width: 76, height: 56, borderRadius: 8 }}
 										/>
 										<TouchableOpacity
@@ -1212,7 +1248,7 @@ export default function CommentsModal({
 													? getLocalStickerSource(selectedMedia.imageUrl) ?? { uri: selectedMedia.imageUrl }
 													: { uri: selectedMedia.imageUrl }
 											}
-											contentFit={selectedMedia.type === 'gif' ? 'cover' : 'contain'}
+							contentFit="contain"
 											style={{ width: 76, height: 56, borderRadius: 8 }}
 										/>
 										<TouchableOpacity
@@ -1339,6 +1375,16 @@ export default function CommentsModal({
 					}
 					onClose={() => setReportTarget(null)}
 					onSubmit={handleSubmitReport}
+				/>
+				<CustomModal
+					visible={dialogState.visible}
+					type={dialogState.type}
+					title={dialogState.title}
+					message={dialogState.message}
+					confirmText={dialogState.confirmText}
+					cancelText={dialogState.cancelText}
+					onConfirm={dialogState.onConfirm}
+					onClose={closeDialog}
 				/>
 			</Animated.View>
 		</Modal>

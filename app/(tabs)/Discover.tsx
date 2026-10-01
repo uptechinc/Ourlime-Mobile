@@ -42,7 +42,7 @@ export default function DiscoverScreen() {
   const { isDark, colors } = useAppTheme();
   const router = useRouter();
   const { activeUserId } = useAppData();
-  const { resource, refresh } = useDiscoverResource(activeUserId ?? '');
+  const { resource, refresh, removeSuggestion } = useDiscoverResource(activeUserId ?? '');
   const suggestedPeople = useMemo(() => resource.data?.suggestedPeople ?? [], [resource.data?.suggestedPeople]);
   const communities = useMemo(() => resource.data?.communities ?? [], [resource.data?.communities]);
   const events = useMemo(() => resource.data?.events ?? [], [resource.data?.events]);
@@ -127,6 +127,7 @@ export default function DiscoverScreen() {
 
   const [cancelModalUser, setCancelModalUser] = useState<RelationshipSuggestion | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [friendError, setFriendError] = useState<string | null>(null);
 
   const handleToggleFriend = async (person: RelationshipSuggestion) => {
     const currentUserId = authService.getCurrentUser()?.uid;
@@ -138,8 +139,12 @@ export default function DiscoverScreen() {
     try {
       await relationshipService.sendFriendRequest(currentUserId, person.id);
       setFriendSentIds((previous) => new Set(previous).add(person.id));
-    } catch (friendError: unknown) {
-      console.error('[DiscoverScreen.handleToggleFriend]', friendError);
+    } catch (error: unknown) {
+      console.error('[DiscoverScreen.handleToggleFriend] Error:', error);
+      const message = error instanceof Error ? error.message : 'The friend request could not be sent.';
+      // The suggestion list is cached; drop people you are already connected with.
+      if (message.startsWith('You are already friends') || message.startsWith('This person already sent you')) void removeSuggestion(person.id);
+      setFriendError(message);
     }
   };
 
@@ -157,7 +162,8 @@ export default function DiscoverScreen() {
       });
       setCancelModalUser(null);
     } catch (error: unknown) {
-      console.error('[DiscoverScreen.handleConfirmCancel]', error);
+      console.error('[DiscoverScreen.handleConfirmCancel] Error:', error);
+      setFriendError(error instanceof Error ? error.message : 'The friend request could not be cancelled.');
     } finally {
       setCancelLoading(false);
     }
@@ -446,6 +452,15 @@ export default function DiscoverScreen() {
           isLoading={cancelLoading}
           onConfirm={() => void handleConfirmCancel()}
           onClose={() => setCancelModalUser(null)}
+        />
+      ) : null}
+      {friendError ? (
+        <CustomModal
+          visible={Boolean(friendError)}
+          type="error"
+          title="Friend request"
+          message={friendError}
+          onClose={() => setFriendError(null)}
         />
       ) : null}
       {eventToShare ? (

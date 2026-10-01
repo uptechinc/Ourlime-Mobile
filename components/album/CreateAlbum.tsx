@@ -6,17 +6,10 @@ import {
     TouchableOpacity, 
     Image, 
     ScrollView, 
-    Alert,
     Dimensions
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-//import top from '@/public/images/album/topimg.png';
-
-// TODO: Comment out Firebase setup for later implementation
-// import { uploadFile } from '@/helpers/firebaseStorage';
-// import { Timestamp } from 'firebase/firestore';
-// import { collection, addDoc, updateDoc } from 'firebase/firestore';
-// import { getDoc, doc } from 'firebase/firestore';
+import CustomModal from '@/components/ui/CustomModal';
 
 type CreateAlbumProps = {
 	onGoBack: () => void;
@@ -34,6 +27,17 @@ export default function CreateAlbum({ onGoBack }: CreateAlbumProps) {
 	const [albumName, setAlbumName] = useState('');
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isPublished, setIsPublished] = useState(false);
+	const [dialogState, setDialogState] = useState<{
+		visible: boolean;
+		type: 'error' | 'warning' | 'info' | 'success';
+		title: string;
+		message: string;
+	}>({
+		visible: false,
+		type: 'info',
+		title: '',
+		message: '',
+	});
 
 	const screenWidth = Dimensions.get('window').width;
 
@@ -42,7 +46,12 @@ export default function CreateAlbum({ onGoBack }: CreateAlbumProps) {
 			// Request permissions
 			const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
 			if (status !== 'granted') {
-				Alert.alert('Permission needed', 'Please grant permission to access your media library.');
+				setDialogState({
+					visible: true,
+					type: 'warning',
+					title: 'Permission needed',
+					message: 'Please grant permission to access your media library.',
+				});
 				return;
 			}
 
@@ -64,7 +73,12 @@ export default function CreateAlbum({ onGoBack }: CreateAlbumProps) {
 			}
 		} catch (error) {
 			console.error('Error picking image:', error);
-			Alert.alert('Error', 'Failed to select image. Please try again.');
+			setDialogState({
+				visible: true,
+				type: 'error',
+				title: 'Error',
+				message: 'Failed to select image. Please try again.',
+			});
 		}
 	};
 
@@ -74,7 +88,12 @@ export default function CreateAlbum({ onGoBack }: CreateAlbumProps) {
 
 	const handleSubmit = async () => {
 		if (albumName.trim() === '' || images.length === 0) {
-			Alert.alert('Error', 'Please fill in album name and add at least one image.');
+			setDialogState({
+				visible: true,
+				type: 'warning',
+				title: 'Missing Details',
+				message: 'Please fill in album name and add at least one image.',
+			});
 			return;
 		}
 
@@ -83,34 +102,6 @@ export default function CreateAlbum({ onGoBack }: CreateAlbumProps) {
 		setIsSubmitting(true);
 
 		try {
-			// TODO: Replace with actual Firebase implementation when ready
-			// if (!auth.currentUser) {
-			//   return;
-			// }
-
-			// const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-			// const userName = userDoc.data()?.userName;
-
-			// // 1. Insert album name and user email into Firestore
-			// const albumRef = await addDoc(collection(db, 'albums'), {
-			//   name: albumName,
-			//   userEmail: auth.currentUser.email,
-			//   createdAt: Timestamp.now(),
-			//   updatedAt: Timestamp.now(),
-			// });
-
-			// // 2. Upload images to Firebase Storage
-			// const imageUrls = await Promise.all(
-			//   images.map(async (image, index) => {
-			//     const path = `images/${albumRef.id}/${image.name}`;
-			//     const url = await uploadFile(image, path);
-			//     return url;
-			//   })
-			// );
-
-			// // 3. Update the album document with image URLs
-			// await updateDoc(albumRef, { imageUrls });
-
 			// Simulate API call delay
 			await new Promise(resolve => setTimeout(resolve, 2000));
 
@@ -118,17 +109,23 @@ export default function CreateAlbum({ onGoBack }: CreateAlbumProps) {
 			setAlbumName('');
 			setImages([]);
 
-			Alert.alert(
-				'Success!', 
-				'Congratulations! Your album has been created successfully!',
-				[{ text: 'OK' }]
-			);
+			setDialogState({
+				visible: true,
+				type: 'success',
+				title: 'Success!',
+				message: 'Congratulations! Your album has been created successfully!',
+			});
 
 		} catch (error) {
 			console.error('Error creating album:', error);
 			setIsPublished(false);
 			
-			Alert.alert('Error', 'Failed to create album. Please try again.');
+			setDialogState({
+				visible: true,
+				type: 'error',
+				title: 'Error',
+				message: 'Failed to create album. Please try again.',
+			});
 
 			setTimeout(() => {
 				setIsSubmitting(false);
@@ -347,6 +344,13 @@ export default function CreateAlbum({ onGoBack }: CreateAlbumProps) {
 					</View>
 				</View>
 			</ScrollView>
+			<CustomModal
+				visible={dialogState.visible}
+				type={dialogState.type}
+				title={dialogState.title}
+				message={dialogState.message}
+				onClose={() => setDialogState((prev) => ({ ...prev, visible: false }))}
+			/>
 		</View>
 	);
 }

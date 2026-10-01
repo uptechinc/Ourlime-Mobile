@@ -44,7 +44,7 @@ export default function LimesTab({ userId, refreshKey }: LimesTabProps) {
 
   const loadLimes = useCallback(async () => {
     try {
-      let data = await limeService.fetchUserAndRepostedReels(userId);
+      let data = await limeService.fetchUserReels(userId);
       const missing = data.filter((r) => !r.thumbnailUrl && !r.media?.thumbnailUrl);
 
       if (missing.length > 0) {

@@ -33,6 +33,7 @@ export default function JobCreationModal({ isOpen, onClose, onCreated }: JobCrea
       await jobsService.createJob({
         jobTitle: title, jobDescription: description, jobCategory: jobType, category, userId,
         priceRange: { from, to }, location: { type: 'remote' }, skills: skills.split(',').map((skill) => skill.trim()).filter(Boolean),
+        publicationStatus: 'published',
         category_specific: jobType === 'professional' ? { name: companyName.trim(), industry: industry.trim() } : { urgency: 'medium', duration: duration.trim(), complexity: 'moderate' },
       });
       setTitle(''); setDescription(''); setCategory(''); setPriceFrom(''); setPriceTo(''); setSkills(''); setCompanyName(''); setIndustry(''); setDuration('');

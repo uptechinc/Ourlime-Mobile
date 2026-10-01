@@ -27,6 +27,7 @@ export class PostSubmissionService {
   private readonly logger = DiagnosticLogService.getInstance();
   private task: SubmissionTask | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private completionTimer: ReturnType<typeof setTimeout> | null = null;
   private listening = false;
 
   private constructor() {}
@@ -41,7 +42,9 @@ export class PostSubmissionService {
     if (!postAuthorizationService.canCreatePost(draft.post.user)) {
       throw new Error('You must verify your account before you can create a post.');
     }
+    PostService.getInstance().validateCreateInput(draft.post);
     if (usePostSubmissionStore.getState().submission?.status === 'running') throw new Error('A post is already uploading. You can check its progress on Feeds.');
+    this.clearCompletionTimer();
     if (!this.listening) {
       this.listening = true;
       this.authService.subscribeToAuthState((user) => {
@@ -49,6 +52,7 @@ export class PostSubmissionService {
           this.task.controller.abort();
           this.task = null;
           this.stopTimer();
+          this.clearCompletionTimer();
           usePostSubmissionStore.setState({ submission: null });
         }
       });
@@ -70,6 +74,7 @@ export class PostSubmissionService {
   public retry(): void {
     const task = this.task;
     if (!task || !usePostSubmissionStore.getState().submission?.canRetry || this.authService.getCurrentUser()?.uid !== task.draft.post.userId) return;
+    this.clearCompletionTimer();
     const retryTask = { ...task, controller: new AbortController(), startedAt: Date.now(), lastProgressAt: Date.now(), publishAttempted: false };
     this.task = retryTask;
     this.launch(retryTask);
@@ -84,6 +89,7 @@ export class PostSubmissionService {
   public dismiss(): void {
     if (usePostSubmissionStore.getState().submission?.status === 'running') return;
     this.task = null;
+    this.clearCompletionTimer();
     usePostSubmissionStore.setState({ submission: null });
   }
 
@@ -149,6 +155,7 @@ export class PostSubmissionService {
       this.stopTimer();
       this.logger.success('PostSubmissionService', 'published', { submissionId: task.id, postId: post.id });
       await this.reconcile(task, post).catch((error: unknown) => this.logger.error('PostSubmissionService', 'reconcile', error, { submissionId: task.id, postId: post.id }));
+      this.scheduleCompletedDismissal(task);
     } catch (error: unknown) {
       if (this.task !== task) return;
       const cancelled = task.controller.signal.aborted || isCancellationError(error, task.controller.signal);
@@ -187,6 +194,22 @@ export class PostSubmissionService {
   private stopTimer(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+  }
+
+  private scheduleCompletedDismissal(task: SubmissionTask): void {
+    this.clearCompletionTimer();
+    this.completionTimer = setTimeout(() => {
+      const submission = usePostSubmissionStore.getState().submission;
+      if (this.task !== task || submission?.id !== task.id || submission.status !== 'completed') return;
+      this.task = null;
+      usePostSubmissionStore.setState({ submission: null });
+      this.completionTimer = null;
+    }, 4_000);
+  }
+
+  private clearCompletionTimer(): void {
+    if (this.completionTimer) clearTimeout(this.completionTimer);
+    this.completionTimer = null;
   }
 }
 

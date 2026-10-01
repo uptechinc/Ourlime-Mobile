@@ -1,32 +1,33 @@
 import { useState } from "react";
 import {
-  Alert,
   Modal,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  // Platform,
 } from "react-native";
-
-// ---------------------------------------------------------------------------
-// NOTE: The following Firebase imports are commented out. Uncomment and adapt
-//       them for your React Native project:
-//
-// import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-// ---------------------------------------------------------------------------
+import CustomModal from "@/components/ui/CustomModal";
 
 type PollModalProps = {
   onClose: () => void;
   communityId: string;
-  // If you want control over showing/hiding, add `isOpen: boolean;`
-  // and then conditionally render the <Modal> based on that.
 };
 
 export default function PollModal({ onClose, communityId }: PollModalProps) {
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState(["", ""]); // Default 2 options
-  // const currentUserId = auth.currentUser?.uid; // Example if using Firebase Auth
+  const [dialogState, setDialogState] = useState<{
+    visible: boolean;
+    type: 'error' | 'success' | 'info' | 'warning';
+    title: string;
+    message: string;
+    onConfirm?: () => void;
+  }>({
+    visible: false,
+    type: 'info',
+    title: '',
+    message: '',
+  });
 
   const handleAddOption = () => {
     if (options.length < 5) {
@@ -42,25 +43,34 @@ export default function PollModal({ onClose, communityId }: PollModalProps) {
 
   const handleSubmit = async () => {
     if (!question.trim() || options.some((opt) => !opt.trim())) {
-      Alert.alert("Error", "Please fill out the question and all options.");
+      setDialogState({
+        visible: true,
+        type: 'warning',
+        title: 'Missing Details',
+        message: 'Please fill out the question and all options.',
+      });
       return;
     }
 
     try {
-      // Example Firebase logic:
-      // await addDoc(collection(db, 'polls'), {
-      //   question,
-      //   options: options.map((opt) => ({ option: opt, votes: 0 })),
-      //   createdBy: currentUserId,
-      //   communityId,
-      //   timestamp: serverTimestamp(),
-      // });
-
-      Alert.alert("Poll Created", "Your poll has been created successfully!");
-      onClose();
+      setDialogState({
+        visible: true,
+        type: 'success',
+        title: 'Poll Created',
+        message: 'Your poll has been created successfully!',
+        onConfirm: () => {
+          setDialogState((prev) => ({ ...prev, visible: false }));
+          onClose();
+        },
+      });
     } catch (error) {
       console.error("Error creating poll:", error);
-      Alert.alert("Error", "Unable to create poll. Please try again.");
+      setDialogState({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Unable to create poll. Please try again.',
+      });
     }
   };
 
@@ -212,6 +222,14 @@ export default function PollModal({ onClose, communityId }: PollModalProps) {
           </View>
         </View>
       </View>
+      <CustomModal
+        visible={dialogState.visible}
+        type={dialogState.type}
+        title={dialogState.title}
+        message={dialogState.message}
+        onConfirm={dialogState.onConfirm}
+        onClose={() => setDialogState((prev) => ({ ...prev, visible: false }))}
+      />
     </Modal>
   );
 }

@@ -5,7 +5,6 @@ import type {
   PendingDeepLink,
 } from '@/lib/types/deepLink';
 import { sharedContentMessageService } from '@/lib/services/SharedContentMessageService';
-import { platformEnvironmentService } from '@/lib/services/PlatformEnvironmentService';
 
 const CANONICAL_WEB_BASE_URL = 'https://ourlime.com';
 const PENDING_DEEP_LINK_KEY = 'ourlime.pending-deep-link';
@@ -15,7 +14,6 @@ export class DeepLinkService {
   private static instance: DeepLinkService;
   private readonly webBaseUrl = (
     process.env.EXPO_PUBLIC_SHARE_BASE_URL
-    || platformEnvironmentService.getDevelopmentApiBaseUrl()
     || CANONICAL_WEB_BASE_URL
   ).replace(/\/$/, '');
   private readonly nativeScheme = 'ourlime';
@@ -152,13 +150,20 @@ export class DeepLinkService {
     }
     if (first === 'profile' && segments[1]) return { kind: 'profile', username: this.normalizeUsername(segments[1]) };
     if (first === 'communities' && segments[1]) return { kind: 'community', identifier: segments[1] };
-    if (first === 'blogs' && segments[1]) return { kind: 'blog', blogId: segments[1] };
+    if (first === 'blogs') return segments[1] ? { kind: 'blog', blogId: segments[1] } : { kind: 'blogs' };
     if ((first === 'limes' || first === 'lime') && segments[1]) return { kind: 'lime', limeId: segments[1] };
     if (first === 'events') return { kind: 'event', eventId: segments[1] ?? url.searchParams.get('targetId') };
     if (first === 'jobs') return { kind: 'job', jobId: segments[1] ?? url.searchParams.get('apply') };
     if (first === 'market') return { kind: 'market-product', productId: segments[1] ?? url.searchParams.get('product') };
     if (first === 'admin' && segments[1]?.toLowerCase() === 'reports' && segments[2]) {
       return { kind: 'admin-report', reportId: segments[2] };
+    }
+    if (first === 'ehub') return segments[1] ? { kind: 'market-product', productId: segments[1] } : { kind: 'ehub' };
+    if (first === 'elearning') return { kind: 'elearning', path: segments.slice(1).join('/') || undefined };
+    if (first === 'projectmanagement' || first === 'projects') return { kind: 'projects', projectId: segments[1] };
+    if (first === 'register') {
+      const referralToken = url.searchParams.get('referralToken') || undefined;
+      return { kind: 'register', referralToken };
     }
     return null;
   }
@@ -173,12 +178,17 @@ export class DeepLinkService {
       case 'post': return sharedContentMessageService.getWebPath('post', destination.postId);
       case 'profile': return `/profile/${encodeURIComponent(this.normalizeUsername(destination.username))}`;
       case 'community': return sharedContentMessageService.getWebPath('community', destination.identifier);
+      case 'blogs': return '/blogs';
       case 'blog': return `/blogs/${encodeURIComponent(destination.blogId)}`;
       case 'lime': return `/limes/${encodeURIComponent(destination.limeId)}`;
       case 'event': return destination.eventId ? `/events/${encodeURIComponent(destination.eventId)}` : '/events';
       case 'job': return destination.jobId ? `/jobs/${encodeURIComponent(destination.jobId)}` : '/jobs';
       case 'market-product': return destination.productId ? `/market/${encodeURIComponent(destination.productId)}` : '/market';
       case 'admin-report': return `/admin/reports/${encodeURIComponent(destination.reportId)}`;
+      case 'ehub': return '/ehub';
+      case 'elearning': return destination.path ? `/eLearning/${destination.path}` : '/eLearning';
+      case 'projects': return destination.projectId ? `/projectManagement/${encodeURIComponent(destination.projectId)}` : '/projectManagement';
+      case 'register': return destination.referralToken ? `/register?referralToken=${encodeURIComponent(destination.referralToken)}` : '/register';
     }
     const exhaustiveDestination: never = destination;
     return exhaustiveDestination;
@@ -189,12 +199,17 @@ export class DeepLinkService {
       case 'post': return sharedContentMessageService.getMobileRoute('post', destination.postId);
       case 'profile': return `/profile/${encodeURIComponent(this.normalizeUsername(destination.username))}`;
       case 'community': return sharedContentMessageService.getMobileRoute('community', destination.identifier);
+      case 'blogs': return '/blogs';
       case 'blog': return `/blogs/${encodeURIComponent(destination.blogId)}`;
       case 'lime': return sharedContentMessageService.getMobileRoute('lime', destination.limeId);
       case 'event': return destination.eventId ? `/events?targetId=${encodeURIComponent(destination.eventId)}` : '/events';
       case 'job': return destination.jobId ? `/jobs?apply=${encodeURIComponent(destination.jobId)}` : '/jobs';
       case 'market-product': return destination.productId ? `/market?product=${encodeURIComponent(destination.productId)}` : '/market';
       case 'admin-report': return `/admin/reports/${encodeURIComponent(destination.reportId)}`;
+      case 'ehub': return '/ehub';
+      case 'elearning': return destination.path ? `/eLearning/${destination.path}` : '/eLearning';
+      case 'projects': return destination.projectId ? `/projectManagement/${encodeURIComponent(destination.projectId)}` : '/projectManagement';
+      case 'register': return destination.referralToken ? `/(auth)/register?referralToken=${encodeURIComponent(destination.referralToken)}` : '/(auth)/register';
     }
     const exhaustiveDestination: never = destination;
     return exhaustiveDestination;

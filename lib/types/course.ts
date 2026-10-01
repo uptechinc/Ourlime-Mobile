@@ -115,3 +115,11 @@ export type CxcSubject = {
     url?: string;
   }>;
 };
+
+export type CourseAnnouncement = { id: string; courseId: string; title: string; body: string; authorName: string; authorAvatar?: string; important: boolean; createdAt?: string };
+export type InstructorProfile = { id: string; name: string; avatar?: string; bio?: string; specialties: string[]; rating: number; totalStudents: number; totalCourses: number; isVerified: true };
+export type CourseCategory = { id: string; name: string; description?: string; icon?: string; color?: string; order: number; isActive: boolean; courseCount: number };
+export type CourseDiscussion = { id: string; courseId: string; authorId: string; authorName?: string; body: string; replyCount: number; createdAt?: string };
+export type CourseDiscussionReply = { id: string; discussionId: string; courseId: string; authorId: string; authorName?: string; body: string; createdAt?: string };
+export type DiscussionCursor = { createdAt: string; id: string };
+export type DiscussionPage = { items: CourseDiscussion[]; cursor: DiscussionCursor | null };

@@ -1,5 +1,5 @@
 import { auth } from '@/lib/firebaseConfig';
-import { apiService } from '@/lib/services/ApiService';
+import { jobDataService } from '@/lib/services/JobDataService';
 import { localCacheService } from '@/lib/services/LocalCacheService';
 
 export type ManagedJobStatus = 'draft' | 'published' | 'active' | 'closed' | 'archived';
@@ -164,12 +164,9 @@ type ApiManagedJob = {
   questions?: { id?: string; question?: string; type?: string; answerType?: string; options?: string[] }[];
   applications?: ApiManagedApplication[];
 };
-type ManagedJobsResponse = { status: 'success' | 'error'; jobs?: ApiManagedJob[]; message?: string };
 type ApiEmployerNote = { id?: string; jobId?: string; applicationId?: string; employerId?: string; content?: string; createdAt?: ApiTimestamp };
-type NotesResponse = { status: 'success' | 'error'; notes?: ApiEmployerNote[]; noteId?: string; message?: string };
 type ApiAuditEntry = { id?: string; jobId?: string; applicationId?: string; action?: string; details?: string; previousValue?: string; newValue?: string; createdAt?: ApiTimestamp };
-type AuditResponse = { status: 'success' | 'error'; entries?: ApiAuditEntry[]; message?: string };
-type MutationResponse = { status: 'success' | 'error'; message?: string; succeeded?: number; failed?: number; interviewId?: string };
+type MutationResponse = { status: 'success' | 'error'; message?: string; succeeded?: number; failed?: number };
 type ApplicationMutationContext = { jobId: string; previousStatus?: ApplicationStatus };
 
 const CACHE_NAMESPACE = 'jobs-management';
@@ -199,12 +196,7 @@ export class JobManagementService {
 
   public async listCurrentUserJobs(): Promise<ManagedJob[]> {
     const userId = this.requireUserId();
-    const response = await apiService.request<ManagedJobsResponse>(
-      `/api/jobs/myJobs/applications?userId=${encodeURIComponent(userId)}`,
-      { authenticated: true },
-    );
-    if (response.status !== 'success') throw new Error(response.message || 'Your jobs could not be loaded.');
-    const jobs = (response.jobs ?? []).map((job) => this.normalizeJob(job));
+    const jobs = (await jobDataService.fetchMyJobs()).map((job) => this.normalizeJob(job as ApiManagedJob));
     await localCacheService.write(userId, CACHE_NAMESPACE, CACHE_KEY, jobs, {
       expiresAt: Date.now() + CACHE_TTL_MS,
       schemaVersion: CACHE_SCHEMA_VERSION,
@@ -214,9 +206,7 @@ export class JobManagementService {
   }
 
   public async changeJobState(jobId: string, action: 'close' | 'archive' | 'reopen'): Promise<void> {
-    await apiService.request<MutationResponse>('/api/jobs/myJobs/close', {
-      method: 'POST', authenticated: true, body: { jobId, action },
-    });
+    await jobDataService.setJobState(jobId, action);
     await this.logAudit({
       jobId,
       action: `job_${action}`,
@@ -226,9 +216,8 @@ export class JobManagementService {
   }
 
   public async updateApplication(applicationId: string, status: ApplicationStatus, context?: ApplicationMutationContext): Promise<void> {
-    await apiService.request<MutationResponse>('/api/jobs/myJobs/applications', {
-      method: 'PATCH', authenticated: true, body: { applicationId, status, employerId: this.requireUserId() },
-    });
+    if (status === 'job_withdrawn') throw new Error('This status cannot be set by an employer.');
+    await jobDataService.updateApplicationStatus(applicationId, status);
     if (context) {
       await this.logAudit({
         jobId: context.jobId,
@@ -244,9 +233,13 @@ export class JobManagementService {
 
   public async bulkUpdateApplications(jobId: string, applicationIds: string[], status: ApplicationStatus): Promise<MutationResponse> {
     if (applicationIds.length === 0) throw new Error('Select at least one application.');
-    const response = await apiService.request<MutationResponse>('/api/jobs/myJobs/bulk', {
-      method: 'POST', authenticated: true, body: { applicationIds, status },
-    });
+    if (status === 'job_withdrawn') throw new Error('This status cannot be set by an employer.');
+    const result = await jobDataService.bulkUpdateApplications(jobId, applicationIds, status);
+    const response: MutationResponse = {
+      status: 'success',
+      message: `Updated ${result.succeeded} application(s) to ${status}${result.failed > 0 ? `. ${result.failed} failed.` : ''}`,
+      ...result,
+    };
     await this.logAudit({
       jobId,
       action: `bulk_${status}`,
@@ -263,30 +256,23 @@ export class JobManagementService {
     if (input.priceRange.from < 0 || input.priceRange.to < input.priceRange.from) {
       throw new Error('Enter a valid compensation range.');
     }
-    await apiService.request<MutationResponse>(`/api/jobs?jobId=${encodeURIComponent(jobId)}`, {
-      method: 'PATCH',
-      authenticated: true,
-      body: {
-        userId: this.requireUserId(),
-        title: input.title.trim(),
-        description: input.description.trim(),
-        category: input.category.trim(),
-        priceRange: input.priceRange,
-        location: input.location,
-        skills: input.skills,
-        requirements: input.requirements,
-        qualifications: input.qualifications,
-        category_specific: input.categoryDetails,
-      },
+    await jobDataService.updateJob(jobId, {
+      title: input.title.trim(),
+      description: input.description.trim(),
+      category: input.category.trim(),
+      priceRange: input.priceRange,
+      location: input.location,
+      skills: input.skills,
+      requirements: input.requirements,
+      qualifications: input.qualifications,
+      category_specific: input.categoryDetails,
     });
     await this.logAudit({ jobId, action: 'job_updated', details: 'Job listing details updated' });
     await this.invalidateCache();
   }
 
   public async scheduleInterview(input: ScheduleInterviewInput): Promise<void> {
-    await apiService.request<MutationResponse>('/api/jobs/myJobs/interviews', {
-      method: 'POST', authenticated: true, body: { ...input, employerId: this.requireUserId() },
-    });
+    await jobDataService.scheduleInterview(input);
     await this.updateApplication(input.applicationId, 'interviewing', { jobId: input.jobId });
     await this.logAudit({
       jobId: input.jobId,
@@ -297,12 +283,8 @@ export class JobManagementService {
   }
 
   public async listNotes(applicationId: string): Promise<EmployerNote[]> {
-    const response = await apiService.request<NotesResponse>(
-      `/api/jobs/myJobs/notes?applicationId=${encodeURIComponent(applicationId)}`,
-      { authenticated: true },
-    );
-    if (response.status !== 'success') throw new Error(response.message || 'Notes could not be loaded.');
-    return (response.notes ?? []).map((note) => ({
+    const notes = (await jobDataService.listNotes(applicationId)) as ApiEmployerNote[];
+    return notes.map((note) => ({
       id: note.id ?? '', jobId: note.jobId ?? '', applicationId: note.applicationId ?? applicationId,
       employerId: note.employerId ?? '', content: note.content ?? '', createdAtMs: this.readTimestampMs(note.createdAt),
     }));
@@ -311,28 +293,19 @@ export class JobManagementService {
   public async addNote(jobId: string, applicationId: string, content: string): Promise<void> {
     const trimmedContent = content.trim();
     if (!trimmedContent) throw new Error('Write a note before saving.');
-    await apiService.request<NotesResponse>('/api/jobs/myJobs/notes', {
-      method: 'POST', authenticated: true,
-      body: { jobId, applicationId, employerId: this.requireUserId(), content: trimmedContent },
-    });
+    await jobDataService.addNote(jobId, applicationId, trimmedContent);
     await this.logAudit({ jobId, applicationId, action: 'note_added', details: 'Private employer note added' });
   }
 
   public async deleteNote(jobId: string, applicationId: string, noteId: string): Promise<void> {
-    await apiService.request<MutationResponse>(`/api/jobs/myJobs/notes?noteId=${encodeURIComponent(noteId)}`, {
-      method: 'DELETE', authenticated: true,
-    });
+    await jobDataService.deleteNote(noteId);
     await this.logAudit({ jobId, applicationId, action: 'note_deleted', details: 'Private employer note deleted' });
   }
 
   public async listAuditHistory(jobId: string, maximumEntries = 50): Promise<JobAuditEntry[]> {
     const boundedMaximum = Math.min(Math.max(maximumEntries, 1), 50);
-    const response = await apiService.request<AuditResponse>(
-      `/api/jobs/myJobs/audit?jobId=${encodeURIComponent(jobId)}&limit=${boundedMaximum}`,
-      { authenticated: true },
-    );
-    if (response.status !== 'success') throw new Error(response.message || 'Activity history could not be loaded.');
-    return (response.entries ?? []).map((entry) => ({
+    const entries = (await jobDataService.listAuditHistory(jobId, boundedMaximum)) as ApiAuditEntry[];
+    return entries.map((entry) => ({
       id: entry.id ?? '', jobId: entry.jobId ?? jobId, applicationId: entry.applicationId ?? '',
       action: entry.action ?? 'activity', details: entry.details ?? '', previousValue: entry.previousValue ?? '',
       newValue: entry.newValue ?? '', createdAtMs: this.readTimestampMs(entry.createdAt),
@@ -340,9 +313,7 @@ export class JobManagementService {
   }
 
   public async deleteJob(jobId: string): Promise<void> {
-    await apiService.request('/api/jobs/delete', {
-      method: 'DELETE', authenticated: true, body: { jobId, userId: this.requireUserId() },
-    });
+    await jobDataService.deleteJob(jobId);
     await this.invalidateCache();
   }
 
@@ -354,9 +325,7 @@ export class JobManagementService {
     previousValue?: string;
     newValue?: string;
   }): Promise<void> {
-    await apiService.request<MutationResponse>('/api/jobs/myJobs/audit', {
-      method: 'POST', authenticated: true, body: { ...entry, employerId: this.requireUserId() },
-    }).catch(() => undefined);
+    await jobDataService.logAudit(entry).catch(() => undefined);
   }
 
   private async invalidateCache(): Promise<void> {

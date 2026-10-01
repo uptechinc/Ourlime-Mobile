@@ -5,6 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import type { Event, MediaItem } from '@/types/eventTypes';
 import type { ResourceState } from '@/lib/types/resourceState';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { EventsSkeleton } from '@/components/ui/Skeleton';
 import { communityMediaService } from '@/lib/services/CommunityMediaService';
 import CachedImage from '@/components/ui/CachedImage';
 import CustomModal from '@/components/ui/CustomModal';
@@ -64,7 +65,7 @@ export default function CommunityEventsWorkspace({ resource, canCreate, createRe
     finally { setBusy(false); }
   };
 
-  if (!resource.data && (resource.status === 'hydrating' || resource.status === 'idle')) return <ActivityIndicator color={colors.accent} style={{ marginVertical: 32 }} />;
+  if (!resource.data && (resource.status === 'hydrating' || resource.status === 'idle')) return <View style={{ margin: 16 }}><EventsSkeleton /></View>;
   if (!resource.data && resource.status === 'error') return <View style={{ padding: 28, alignItems: 'center' }}><Text style={{ color: colors.destructiveText, textAlign: 'center' }}>{resource.error?.message ?? 'Events could not be loaded.'}</Text><TouchableOpacity onPress={onRetry} style={{ marginTop: 12, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontWeight: '800' }}>Retry</Text></TouchableOpacity></View>;
 
   const fields: { key: 'title' | 'summary' | 'startDate' | 'endDate' | 'location' | 'imageUrl'; label: string; placeholder: string; multiline?: boolean }[] = [

@@ -1,14 +1,14 @@
+import { durableWorkService } from './DurableWorkService';
+import { nativeSessionService } from './NativeSessionService';
+import { nativeTaskService } from './NativeTaskService';
+import { contentDraftService } from './ContentDraftService';
+import { pageAccessService } from './PageAccessService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  addDoc,
-  arrayRemove,
-  arrayUnion,
   collection,
-  deleteDoc,
-  deleteField,
   doc,
   getDoc,
   getDocs,
-  limit,
   onSnapshot,
   query,
   serverTimestamp,
@@ -19,7 +19,7 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
-import { apiService } from '@/lib/services/ApiService';
+import { reliabilityDecoder } from './ReliabilityDecoderService';
 import { accountLifecycleVisibilityService } from '@/lib/services/AccountLifecycleVisibilityService';
 import type {
   Comment,
@@ -27,10 +27,11 @@ import type {
   CreateTaskInput,
   FileAttachment,
   ProjectMembershipStatus,
+  ProjectMutationAction,
+  ProjectMutationCapability,
   ProjectRecord,
   ProjectRole,
   ProjectStatus,
-  ProjectTeamMember,
   Status,
   SubTask,
   Task,
@@ -38,9 +39,6 @@ import type {
   TimeEntry,
 } from '@/lib/types/project';
 
-type ClaimProjectInvitesResponse = { success: boolean; claimed?: number };
-type RespondProjectInviteResponse = { success: boolean; message?: string };
-type InviteProjectMemberResponse = { success: boolean; message?: string };
 
 type ProjectDocument = {
   name?: unknown;
@@ -53,40 +51,89 @@ type ProjectDocument = {
   completedTasks?: unknown;
   color?: unknown;
   updatedAt?: unknown;
-  teamMembers?: { [userId: string]: ProjectTeamMember };
+  teamMembers?: Record<string, { role?: unknown; membershipStatus?: unknown; invitedByName?: unknown }>;
   memberUids?: string[];
 };
 
 export class ProjectService {
   private static instance: ProjectService;
+  private readonly projectCache = new Map<string, { viewerId: string; project: ProjectRecord }>();
 
   private constructor() {}
+  private get database() { return db; }
 
   public static getInstance(): ProjectService {
     if (!ProjectService.instance) ProjectService.instance = new ProjectService();
     return ProjectService.instance;
   }
 
+  public getMutationCapability(
+    action: ProjectMutationAction,
+    project: ProjectRecord | null,
+    context: { signedIn: boolean; sessionReady: boolean; pageCanMutate: boolean; mutationInFlight?: boolean },
+  ): ProjectMutationCapability {
+    if (!context.signedIn) return { allowed: false, reason: 'Sign in to make changes to E-Projects.' };
+    if (!context.sessionReady) return { allowed: false, reason: 'Your secure session is still connecting. Try again in a moment.' };
+    if (!context.pageCanMutate) return { allowed: false, reason: 'E-Projects is currently read-only for your account.' };
+    if (context.mutationInFlight) return { allowed: false, reason: 'Another project change is still being saved.' };
+    if (action === 'create_project') return { allowed: true };
+    if (!project) return { allowed: false, reason: 'This project is not available.' };
+    if (project.status !== 'active') return { allowed: false, reason: 'Archived and completed projects are read-only.' };
+    if (project.membershipStatus !== 'accepted') return { allowed: false, reason: 'Accept the project invitation before making changes.' };
+    if (action === 'invite' && project.role !== 'owner' && project.role !== 'admin') return { allowed: false, reason: 'Only project owners and admins can invite members.' };
+    if (project.role === 'viewer') return { allowed: false, reason: 'Viewers cannot change project content.' };
+    return { allowed: true };
+  }
+
+  public async saveTaskDraft(projectId: string, draft: CreateTaskInput): Promise<void> {
+    await AsyncStorage.setItem(`taskDraft:${this.requireUserId()}:${projectId}`, JSON.stringify(draft));
+  }
+  public async loadTaskDraft(projectId: string): Promise<CreateTaskInput | null> {
+    const saved = await AsyncStorage.getItem(`taskDraft:${this.requireUserId()}:${projectId}`);
+    if (!saved) return null;
+    const draft: Partial<CreateTaskInput> = JSON.parse(saved);
+    if (typeof draft.title !== 'string' || typeof draft.description !== 'string') return null;
+    return { title: draft.title, description: draft.description,
+      priority: draft.priority === 'high' || draft.priority === 'low' ? draft.priority : 'medium',
+      status: draft.status === 'done' || draft.status === 'in-progress' ? draft.status : 'todo',
+      assignee: this.requireUserId() };
+  }
+  public async clearTaskDraft(projectId: string): Promise<void> {
+    await AsyncStorage.removeItem(`taskDraft:${this.requireUserId()}:${projectId}`);
+  }
+
   public async listForCurrentUser(): Promise<ProjectRecord[]> {
     const userId = this.requireUserId();
-    const projectQuery = query(collection(db, 'projects'), where('memberUids', 'array-contains', userId));
-    const snapshot = await getDocs(projectQuery);
-    const projects = snapshot.docs
-      .filter((projectSnapshot) => !accountLifecycleVisibilityService.isHidden(projectSnapshot.data()))
-      .map((projectSnapshot) => this.mapProject(projectSnapshot, userId));
+    const [memberSnapshot, ownerSnapshot] = await Promise.all([
+      getDocs(query(collection(this.database, 'projects'), where('memberUids', 'array-contains', userId))),
+      getDocs(query(collection(this.database, 'projects'), where('ownerId', '==', userId))),
+    ]);
+    const projectDocuments = [...new Map(
+      [...memberSnapshot.docs, ...ownerSnapshot.docs].map((projectDocument) => [projectDocument.id, projectDocument] as const),
+    ).values()];
+    const projects: ProjectRecord[] = projectDocuments
+      .filter((projectSnapshot: QueryDocumentSnapshot) => !this.isProjectHidden(projectSnapshot.data()))
+      .map((projectSnapshot: QueryDocumentSnapshot) => this.mapProject(projectSnapshot, userId));
     const ownerIds = [...new Set(projects.map((project) => project.ownerId).filter(Boolean))];
     const ownerEntries = await Promise.all(ownerIds.map(async (ownerId) => [ownerId, await this.resolveUserName(ownerId)] as const));
     const ownerNames = new Map(ownerEntries);
-    return projects
+    const resolvedProjects = projects
       .map((project) => ({ ...project, ownerName: project.ownerName || ownerNames.get(project.ownerId) || 'Project owner' }))
       .sort((leftProject, rightProject) => rightProject.updatedAt.getTime() - leftProject.updatedAt.getTime());
+    resolvedProjects.forEach((project) => this.projectCache.set(project.id, { viewerId: userId, project }));
+    return resolvedProjects;
+  }
+
+  public getCachedProject(projectId: string): ProjectRecord | null {
+    const cached = this.projectCache.get(projectId);
+    return cached && cached.viewerId === auth.currentUser?.uid ? cached.project : null;
   }
 
   public async getProject(projectId: string): Promise<{ project: ProjectRecord; teamMembers: TeamMember[] }> {
     const userId = this.requireUserId();
-    const projectDocument = await getDoc(doc(db, 'projects', projectId));
-    if (!projectDocument.exists() || accountLifecycleVisibilityService.isHidden(projectDocument.data())) throw new Error('Project not found');
-    const project = this.mapProject(projectDocument as QueryDocumentSnapshot<DocumentData>, userId);
+    const projectDocument = await getDoc(doc(this.database, 'projects', projectId));
+    if (!projectDocument.exists() || this.isProjectHidden(projectDocument.data())) throw new Error('Project not found');
+    const project = this.mapProject(projectDocument as QueryDocumentSnapshot, userId);
     project.ownerName = await this.resolveUserName(project.ownerId);
     const data = projectDocument.data() as ProjectDocument;
     const rawMembers = data.teamMembers ?? {};
@@ -102,57 +149,97 @@ export class ProjectService {
           avatar: userProfile.avatar,
           role: this.readRole(memberData?.role),
           membershipStatus: this.readMembershipStatus(memberData?.membershipStatus),
-          status: 'online',
+          status: 'offline',
           isOwner: memberId === project.ownerId,
         };
       })
     );
+    this.projectCache.set(project.id, { viewerId: userId, project });
     return { project, teamMembers };
   }
 
   public async claimEmailInvites(): Promise<number> {
-    const response = await apiService.request<ClaimProjectInvitesResponse>('/api/projects/invite', {
-      method: 'POST',
-      authenticated: true,
-      body: { action: 'claim' },
-    });
-    return response.claimed ?? 0;
+    const result = await this.membershipMutation({ action: 'claim' });
+    return result.claimed === undefined ? 0 : reliabilityDecoder.integer(result.claimed);
   }
 
   public async respondToInvite(projectId: string, action: 'accept' | 'decline'): Promise<void> {
-    await apiService.request<RespondProjectInviteResponse>('/api/projects/respondInvite', {
-      method: 'POST',
-      authenticated: true,
-      body: { projectId, action },
-    });
+    await this.membershipMutation({ action, projectId });
   }
 
+  private readonly projectCreations = new Map<string, Promise<string>>();
   public async createProject(input: CreateProjectInput): Promise<string> {
-    const userId = this.requireUserId();
-    const trimmedName = input.name.trim();
-    if (!trimmedName) throw new Error('Project name is required.');
-    const projectReference = await addDoc(collection(db, 'projects'), {
-      name: trimmedName,
-      description: input.description.trim(),
-      ownerId: userId,
-      memberUids: [userId],
-      teamMembers: {
-        [userId]: { role: 'owner', membershipStatus: 'accepted' },
-      },
+    const ownerId = this.requireUserId();
+    const fields = { name: input.name.trim(), description: input.description.trim() };
+    if (!fields.name) throw new Error('Project name is required.');
+
+    const identity = JSON.stringify([ownerId, fields.name, fields.description]);
+    const existing = this.projectCreations.get(identity);
+    if (existing) return await existing;
+
+    const operation = (async () => {
+      try {
+        return await this.createProjectPending(ownerId, input, identity);
+      } catch (mutationError: unknown) {
+        console.warn('[ProjectService.createProject] Cloud mutation failed; executing direct Firestore project creation:', mutationError);
+        return await this.createProjectDirect(ownerId, fields);
+      }
+    })().finally(() => this.projectCreations.delete(identity));
+
+    this.projectCreations.set(identity, operation);
+    return await operation;
+  }
+
+  private async createProjectDirect(ownerId: string, fields: { name: string; description: string }): Promise<string> {
+    const projectsCollection = collection(this.database, 'projects');
+    const projectRef = doc(projectsCollection);
+    const now = new Date().toISOString();
+    await setDoc(projectRef, {
+      name: fields.name,
+      description: fields.description || '',
+      color: 'bg-emerald-500',
       status: 'active',
       visibility: 'private',
+      tags: [],
+      endDate: null,
+      ownerId,
+      memberUids: [ownerId],
+      teamMembers: {
+        [ownerId]: { role: 'owner', membershipStatus: 'accepted', joinedAt: now }
+      },
       totalTasks: 0,
       completedTasks: 0,
       progress: 0,
-      color: 'bg-emerald-500',
+      teamMembersCount: 1,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    return projectReference.id;
+    return projectRef.id;
+  }
+
+  private async createProjectPending(ownerId: string, input: CreateProjectInput, identity: string): Promise<string> {
+    pageAccessService.assertMutation('/projectManagement');
+    await nativeSessionService.ensure(ownerId);
+    const fields = { name: input.name.trim(), description: input.description.trim() };
+    if (!fields.name) throw new Error('Project name is required.');
+    const key = `create-project:${identity}`;
+    const previous = await durableWorkService.read(ownerId, 'mutation', key, (value) => {
+      const record = reliabilityDecoder.object(value);
+      if (typeof record.projectId !== 'string') throw new Error('Saved project creation needs recovery.');
+      return { projectId: record.projectId };
+    });
+    const projectId = previous?.value.projectId ?? await contentDraftService.newId();
+    const revision = previous?.revision ?? await durableWorkService.write(ownerId, 'mutation', key, { projectId }, 0);
+    nativeSessionService.assertOwner(ownerId);
+    await this.membershipMutation({ action: 'create', projectId, fields });
+    await durableWorkService.remove(ownerId, 'mutation', key, revision);
+    return projectId;
   }
 
   public async updateProjectSettings(projectId: string, updates: { name?: string; description?: string; status?: ProjectStatus }): Promise<void> {
-    const projectReference = doc(db, 'projects', projectId);
+    await nativeSessionService.ensure(this.requireUserId());
+    pageAccessService.assertMutation('/projectManagement');
+    const projectReference = doc(this.database, 'projects', projectId);
     await updateDoc(projectReference, {
       ...updates,
       updatedAt: serverTimestamp(),
@@ -160,418 +247,113 @@ export class ProjectService {
   }
 
   public async deleteProject(projectId: string): Promise<void> {
-    await deleteDoc(doc(db, 'projects', projectId));
+    await this.membershipMutation({ action: 'delete_project', projectId });
   }
 
   public async leaveProject(projectId: string): Promise<void> {
-    const userId = this.requireUserId();
-    const projectRef = doc(db, 'projects', projectId);
-    const snapshot = await getDoc(projectRef);
-    if (!snapshot.exists()) return;
-    const data = snapshot.data() as ProjectDocument;
-    const nextMembers = { ...(data.teamMembers ?? {}) };
-    delete nextMembers[userId];
-    const nextUids = (data.memberUids ?? []).filter((uid) => uid !== userId);
-    await updateDoc(projectRef, {
-      teamMembers: nextMembers,
-      memberUids: nextUids,
-      updatedAt: serverTimestamp(),
-    });
+    await this.membershipMutation({ action: 'leave', projectId });
   }
 
   public subscribeToTasks(projectId: string, onUpdate: (tasks: Task[]) => void, onError?: (error: Error) => void): () => void {
-    const tasksQuery = collection(db, 'projects', projectId, 'tasks');
-    return onSnapshot(
-      tasksQuery,
-      (snapshot) => {
-        const tasks = snapshot.docs.map((docSnap) => this.mapTask(docSnap));
-        onUpdate(tasks);
-      },
-      (error) => {
-        if (onError) onError(error);
-      }
-    );
+    let active = true;
+    this.requireUserId();
+    const unsubscribe = onSnapshot(collection(this.database, 'projects', projectId, 'tasks'), (snapshot) => {
+        if (!active) return;
+        try { onUpdate(snapshot.docs.map((document: QueryDocumentSnapshot) => this.mapTask(document)).filter((task: Task) => !task.archived)); }
+        catch (error: unknown) { onError?.(error instanceof Error ? error : new Error('Task access changed.')); }
+      }, (error) => onError?.(error));
+    return () => { active = false; unsubscribe?.(); };
+  }
+  public subscribeToProject(projectId: string, onUpdate: (project: ProjectRecord) => void, onError: (error: Error) => void): () => void {
+    let active = true;
+    const ownerId = this.requireUserId();
+    const unsubscribe = onSnapshot(doc(this.database, 'projects', projectId), (snapshot) => {
+        if (!active) return;
+        try {
+          if (!snapshot.exists() || accountLifecycleVisibilityService.isHidden(snapshot.data())) throw new Error('Project access is no longer available.');
+          const project = this.mapProject(snapshot as QueryDocumentSnapshot, ownerId);
+          this.projectCache.set(project.id, { viewerId: ownerId, project });
+          onUpdate(project);
+        } catch (error: unknown) { onError(error instanceof Error ? error : new Error('Project access changed.')); }
+      }, (error) => { if (active) onError(error); });
+    return () => { active = false; unsubscribe?.(); };
   }
 
   public async fetchTasks(projectId: string): Promise<Task[]> {
-    const tasksSnapshot = await getDocs(collection(db, 'projects', projectId, 'tasks'));
-    return tasksSnapshot.docs.map((docSnap) => this.mapTask(docSnap));
+    this.requireUserId();
+    const tasksSnapshot = await getDocs(collection(this.database, 'projects', projectId, 'tasks'));
+    return tasksSnapshot.docs.filter((docSnap: QueryDocumentSnapshot) => docSnap.data().archived !== true).map((docSnap: QueryDocumentSnapshot) => this.mapTask(docSnap));
   }
 
   public async createTask(projectId: string, input: CreateTaskInput): Promise<string> {
-    const userId = this.requireUserId();
-    const taskData = {
-      title: input.title.trim(),
-      description: (input.description ?? '').trim(),
-      status: input.status ?? 'todo',
-      priority: input.priority ?? 'medium',
-      assignee: input.assignee ?? userId,
-      assignees: input.assignees ?? [input.assignee ?? userId],
-      assignedToAll: false,
-      createdBy: userId,
-      dueDate: input.dueDate ?? new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      subTasks: [],
-      comments: [],
-      attachments: [],
-      timeEntries: [],
-      estimatedTime: input.estimatedTime ?? 1,
-      tags: input.tags ?? [],
-      progress: 0,
-      archived: false,
-    };
-    const taskReference = await addDoc(collection(db, 'projects', projectId, 'tasks'), taskData);
-    await this.recalculateProjectStats(projectId);
-    return taskReference.id;
+    pageAccessService.assertMutation('/projectManagement');
+    const ownerId = this.requireUserId();
+    const draft = await contentDraftService.create(ownerId, 'task', { title: input.title, description: input.description ?? '', status: input.status ?? 'todo', priority: input.priority ?? 'medium', assignee: input.assignee ?? ownerId, assignees: input.assignees ?? [input.assignee ?? ownerId], dueDate: input.dueDate ?? null, estimatedTime: input.estimatedTime ?? 1, tags: input.tags ?? [] }, projectId);
+    return (await contentDraftService.publish(draft)).destinationId;
   }
-
   public async updateTaskStatus(projectId: string, taskId: string, status: Status): Promise<void> {
-    const taskRef = doc(db, 'projects', projectId, 'tasks', taskId);
-    await updateDoc(taskRef, {
-      status,
-      updatedAt: new Date().toISOString(),
-      progress: status === 'done' ? 100 : status === 'in-progress' ? 50 : 0,
-    });
-    await this.recalculateProjectStats(projectId);
+    await nativeSessionService.ensure(this.requireUserId());
+    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'update', payload: { status } });
   }
-
   public async updateTask(projectId: string, taskId: string, updates: Partial<Task>): Promise<void> {
-    const taskRef = doc(db, 'projects', projectId, 'tasks', taskId);
-    await updateDoc(taskRef, {
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    });
-    await this.recalculateProjectStats(projectId);
+    await nativeSessionService.ensure(this.requireUserId());
+    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'update', payload: updates });
   }
-
   public async deleteTask(projectId: string, taskId: string): Promise<void> {
-    await deleteDoc(doc(db, 'projects', projectId, 'tasks', taskId));
-    await this.recalculateProjectStats(projectId);
+    await nativeSessionService.ensure(this.requireUserId());
+    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'delete', payload: {} });
   }
-
   public async addSubTask(projectId: string, taskId: string, title: string): Promise<void> {
-    const taskRef = doc(db, 'projects', projectId, 'tasks', taskId);
-    const taskSnap = await getDoc(taskRef);
-    if (!taskSnap.exists()) return;
-    const task = this.mapTask(taskSnap);
-    const newSubTask: SubTask = {
-      id: `sub_${Date.now()}`,
-      title: title.trim(),
-      completed: false,
-      createdAt: new Date().toISOString(),
-    };
-    const nextSubTasks = [...task.subTasks, newSubTask];
-    const completedCount = nextSubTasks.filter((s) => s.completed).length;
-    const progress = Math.round((completedCount / nextSubTasks.length) * 100);
-    await updateDoc(taskRef, {
-      subTasks: nextSubTasks,
-      progress,
-      updatedAt: new Date().toISOString(),
-    });
+    await nativeSessionService.ensure(this.requireUserId());
+    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'add_subtask', payload: { title } });
   }
-
   public async toggleSubTask(projectId: string, taskId: string, subtaskId: string): Promise<void> {
-    const taskRef = doc(db, 'projects', projectId, 'tasks', taskId);
-    const taskSnap = await getDoc(taskRef);
-    if (!taskSnap.exists()) return;
-    const task = this.mapTask(taskSnap);
-    const nextSubTasks = task.subTasks.map((s) => (s.id === subtaskId ? { ...s, completed: !s.completed } : s));
-    const completedCount = nextSubTasks.filter((s) => s.completed).length;
-    const progress = nextSubTasks.length > 0 ? Math.round((completedCount / nextSubTasks.length) * 100) : task.progress;
-    await updateDoc(taskRef, {
-      subTasks: nextSubTasks,
-      progress,
-      updatedAt: new Date().toISOString(),
-    });
+    await nativeSessionService.ensure(this.requireUserId());
+    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'toggle_subtask', payload: { subtaskId } });
   }
-
   public async addComment(projectId: string, taskId: string, content: string): Promise<void> {
-    const userId = this.requireUserId();
-    const userProfile = await this.resolveUserProfile(userId);
-    const taskRef = doc(db, 'projects', projectId, 'tasks', taskId);
-    const taskSnap = await getDoc(taskRef);
-    if (!taskSnap.exists()) return;
-    const task = this.mapTask(taskSnap);
-    const newComment: Comment = {
-      id: `comment_${Date.now()}`,
-      author: userProfile.name,
-      avatar: userProfile.avatar,
-      content: content.trim(),
-      timestamp: new Date().toISOString(),
-    };
-    await updateDoc(taskRef, {
-      comments: [...task.comments, newComment],
-      updatedAt: new Date().toISOString(),
-    });
+    await nativeSessionService.ensure(this.requireUserId());
+    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'comment', payload: { content } });
   }
-
   public async addTimeEntry(projectId: string, taskId: string, duration: number, description = ''): Promise<void> {
-    const userId = this.requireUserId();
-    const taskRef = doc(db, 'projects', projectId, 'tasks', taskId);
-    const taskSnap = await getDoc(taskRef);
-    if (!taskSnap.exists()) return;
-    const task = this.mapTask(taskSnap);
-    const newEntry: TimeEntry = {
-      id: `time_${Date.now()}`,
-      taskId,
-      userId,
-      startTime: new Date(Date.now() - duration * 60000).toISOString(),
-      duration,
-      description,
-      date: new Date().toISOString().split('T')[0],
-    };
-    await updateDoc(taskRef, {
-      timeEntries: [...task.timeEntries, newEntry],
-      updatedAt: new Date().toISOString(),
-    });
+    await nativeSessionService.ensure(this.requireUserId());
+    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'time', payload: { duration, description } });
   }
 
   public async inviteMember(projectId: string, emailOrUserId: string, role: ProjectRole): Promise<void> {
-    const clean = emailOrUserId.trim();
-    if (!clean) throw new Error('Recipient is required.');
-
-    const currentUserId = auth.currentUser?.uid;
-    if (!currentUserId) throw new Error('You must be logged in to invite members.');
-
-    const projectRef = doc(db, 'projects', projectId);
-    const projectSnap = await getDoc(projectRef);
-    if (!projectSnap.exists()) throw new Error('Project not found.');
-
-    const projectData = projectSnap.data() as ProjectDocument;
-    const projectName = projectData.name || 'Project';
-    const currentUserName = auth.currentUser?.displayName || 'Project Lead';
-
-    let targetUserId: string | null = null;
-    let targetEmail: string | null = null;
-
-    if (clean.includes('@')) {
-      targetEmail = clean.toLowerCase();
-      const emailQuery = query(collection(db, 'users'), where('email', '==', targetEmail), limit(1));
-      const emailSnap = await getDocs(emailQuery);
-      if (!emailSnap.empty) {
-        targetUserId = emailSnap.docs[0].id;
-      }
-    } else {
-      const userDirectSnap = await getDoc(doc(db, 'users', clean));
-      if (userDirectSnap.exists()) {
-        targetUserId = clean;
-      } else {
-        const usernameQuery = query(collection(db, 'users'), where('userName', '==', clean), limit(1));
-        const usernameSnap = await getDocs(usernameQuery);
-        if (!usernameSnap.empty) {
-          targetUserId = usernameSnap.docs[0].id;
-        }
-      }
-    }
-
-    if (targetUserId) {
-      if (targetUserId === currentUserId) {
-        throw new Error('You cannot invite yourself.');
-      }
-      if (projectData.teamMembers?.[targetUserId]?.membershipStatus === 'accepted') {
-        throw new Error('User is already a member of this project.');
-      }
-
-      await updateDoc(projectRef, {
-        [`teamMembers.${targetUserId}`]: {
-          role,
-          membershipStatus: 'pending',
-          joinedAt: new Date().toISOString(),
-          invitedBy: currentUserId,
-          invitedByName: currentUserName,
-          permissions: {
-            canCreateTasks: role !== 'viewer',
-            canEditTasks: role !== 'viewer',
-            canDeleteTasks: false,
-            canInviteMembers: role === 'admin',
-          },
-        },
-        memberUids: arrayUnion(targetUserId),
-        updatedAt: serverTimestamp(),
-      });
-
-      try {
-        const notifRef = doc(collection(db, 'notifications'));
-        await setDoc(notifRef, {
-          userId: targetUserId,
-          senderId: currentUserId,
-          type: 'project_invitation',
-          title: 'Project Invitation',
-          message: `${currentUserName} invited you to join "${projectName}" as ${role}.`,
-          projectId,
-          projectName,
-          role,
-          read: false,
-          createdAt: serverTimestamp(),
-        });
-      } catch (notifErr) {
-        console.warn('[ProjectService.inviteMember] Notification creation skipped:', notifErr);
-      }
-    } else if (targetEmail) {
-      const inviteRef = doc(collection(db, 'projectEmailInvites'));
-      await setDoc(inviteRef, {
-        email: targetEmail,
-        projectId,
-        projectName,
-        role,
-        status: 'pending',
-        invitedBy: currentUserId,
-        invitedByName: currentUserName,
-        createdAt: serverTimestamp(),
-      });
-    } else {
-      throw new Error(`User "${clean}" was not found.`);
-    }
-
-    try {
-      if (targetUserId) {
-        await apiService.request('/api/projects/invite', {
-          method: 'POST',
-          authenticated: true,
-          body: {
-            action: 'send',
-            projectId,
-            invitedUserId: targetUserId,
-            role,
-          },
-        });
-      } else if (targetEmail) {
-        await apiService.request('/api/projects/invite', {
-          method: 'POST',
-          authenticated: true,
-          body: {
-            action: 'send-email',
-            projectId,
-            email: targetEmail,
-            role,
-          },
-        });
-      }
-    } catch {
-      // Direct Firebase operation already succeeded
-    }
+    await this.membershipMutation({ action: 'invite', projectId, recipient: emailOrUserId.trim(), role });
   }
 
   public async cancelInvite(projectId: string, targetUserId: string): Promise<void> {
-    const projectRef = doc(db, 'projects', projectId);
-    await updateDoc(projectRef, {
-      [`teamMembers.${targetUserId}`]: deleteField(),
-      memberUids: arrayRemove(targetUserId),
-      updatedAt: serverTimestamp(),
-    });
-    try {
-      await apiService.request('/api/projects/invite', {
-        method: 'POST',
-        authenticated: true,
-        body: {
-          action: 'cancel',
-          projectId,
-          invitedUserId: targetUserId,
-        },
-      });
-    } catch {
-      // Direct Firebase operation already succeeded
-    }
+    await this.membershipMutation({ action: 'cancel', projectId, targetId: targetUserId });
   }
 
   public async resendInvite(projectId: string, targetUserId: string): Promise<void> {
-    const currentUserId = auth.currentUser?.uid || '';
-    const currentUserName = auth.currentUser?.displayName || 'Project Lead';
-    const projectRef = doc(db, 'projects', projectId);
-    const projectSnap = await getDoc(projectRef);
-    const projectName = (projectSnap.data() as ProjectDocument)?.name || 'Project';
-
-    await updateDoc(projectRef, {
-      [`teamMembers.${targetUserId}.invitedBy`]: currentUserId,
-      [`teamMembers.${targetUserId}.invitedByName`]: currentUserName,
-      [`teamMembers.${targetUserId}.joinedAt`]: new Date().toISOString(),
-      updatedAt: serverTimestamp(),
-    });
-
-    try {
-      const notifRef = doc(collection(db, 'notifications'));
-      await setDoc(notifRef, {
-        userId: targetUserId,
-        senderId: currentUserId,
-        type: 'project_invitation',
-        title: 'Project Invitation Reminder',
-        message: `${currentUserName} resent your invitation to join "${projectName}".`,
-        projectId,
-        projectName,
-        read: false,
-        createdAt: serverTimestamp(),
-      });
-    } catch {
-      // Notification optional
-    }
-
-    try {
-      await apiService.request('/api/projects/invite', {
-        method: 'POST',
-        authenticated: true,
-        body: {
-          action: 'resend',
-          projectId,
-          invitedUserId: targetUserId,
-        },
-      });
-    } catch {
-      // Direct Firebase operation already succeeded
-    }
+    await this.membershipMutation({ action: 'resend', projectId, targetId: targetUserId });
   }
 
   public async changeMemberRole(projectId: string, targetUserId: string, role: ProjectRole): Promise<void> {
-    const projectRef = doc(db, 'projects', projectId);
-    await updateDoc(projectRef, {
-      [`teamMembers.${targetUserId}.role`]: role,
-      updatedAt: serverTimestamp(),
-    });
+    await this.membershipMutation({ action: 'role', projectId, targetId: targetUserId, role });
   }
 
   public async removeMember(projectId: string, targetUserId: string): Promise<void> {
-    const projectRef = doc(db, 'projects', projectId);
-    const snapshot = await getDoc(projectRef);
-    if (!snapshot.exists()) return;
-    const data = snapshot.data() as ProjectDocument;
-    const nextMembers = { ...(data.teamMembers ?? {}) };
-    delete nextMembers[targetUserId];
-    const nextUids = (data.memberUids ?? []).filter((uid) => uid !== targetUserId);
-    await updateDoc(projectRef, {
-      teamMembers: nextMembers,
-      memberUids: nextUids,
-      updatedAt: serverTimestamp(),
-    });
+    await this.membershipMutation({ action: 'remove', projectId, targetId: targetUserId });
   }
 
   public async transferOwnership(projectId: string, newOwnerId: string): Promise<void> {
-    const projectRef = doc(db, 'projects', projectId);
-    await updateDoc(projectRef, {
-      ownerId: newOwnerId,
-      [`teamMembers.${newOwnerId}.role`]: 'owner',
-      updatedAt: serverTimestamp(),
-    });
+    await this.membershipMutation({ action: 'transfer', projectId, targetId: newOwnerId });
+  }
+  private async membershipMutation(input: { action: 'claim' | 'accept' | 'decline' | 'invite' | 'cancel' | 'resend' | 'role' | 'remove' | 'leave' | 'transfer' | 'create' | 'delete_project'; fields?: { name: string; description: string }; projectId?: string; targetId?: string; recipient?: string; role?: ProjectRole }): Promise<{ claimed?: unknown }> {
+    pageAccessService.assertMutation('/projectManagement');
+    const ownerId = this.requireUserId();
+    await nativeSessionService.ensure(ownerId);
+    const { getFunctions, httpsCallable } = await import('@react-native-firebase/functions');
+    const result = await httpsCallable(getFunctions(), 'mutateProjectMembership')(input);
+    nativeSessionService.assertOwner(ownerId);
+    return reliabilityDecoder.object(result.data);
   }
 
-  private async recalculateProjectStats(projectId: string): Promise<void> {
-    try {
-      const tasksSnapshot = await getDocs(collection(db, 'projects', projectId, 'tasks'));
-      const tasks = tasksSnapshot.docs.map((docSnap) => this.mapTask(docSnap));
-      const totalTasks = tasks.length;
-      const completedTasks = tasks.filter((t) => t.status === 'done').length;
-      const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-      await updateDoc(doc(db, 'projects', projectId), {
-        totalTasks,
-        completedTasks,
-        progress,
-        updatedAt: serverTimestamp(),
-      });
-    } catch {
-      // Non-blocking background stat recalculation
-    }
-  }
-
-  private mapTask(snapshot: QueryDocumentSnapshot<DocumentData> | DocumentData): Task {
+  private mapTask(snapshot: QueryDocumentSnapshot | DocumentData): Task {
     const data = (typeof snapshot.data === 'function' ? snapshot.data() : snapshot) as Record<string, unknown>;
     return {
       id: snapshot.id || this.readString(data.id),
@@ -584,8 +366,8 @@ export class ProjectService {
       assignedToAll: data.assignedToAll === true,
       createdBy: this.readString(data.createdBy),
       dueDate: this.readString(data.dueDate),
-      createdAt: this.readString(data.createdAt) || new Date().toISOString(),
-      updatedAt: this.readString(data.updatedAt) || new Date().toISOString(),
+      createdAt: this.readString(data.createdAt),
+      updatedAt: this.readString(data.updatedAt),
       subTasks: Array.isArray(data.subTasks) ? (data.subTasks as SubTask[]) : [],
       comments: Array.isArray(data.comments) ? (data.comments as Comment[]) : [],
       attachments: Array.isArray(data.attachments) ? (data.attachments as FileAttachment[]) : [],
@@ -603,7 +385,7 @@ export class ProjectService {
     return userId;
   }
 
-  private mapProject(snapshot: QueryDocumentSnapshot<DocumentData>, userId: string): ProjectRecord {
+  private mapProject(snapshot: QueryDocumentSnapshot, userId: string): ProjectRecord {
     const data = snapshot.data() as ProjectDocument;
     const membership = data.teamMembers?.[userId];
     const ownerId = this.readString(data.ownerId);
@@ -632,7 +414,7 @@ export class ProjectService {
 
   private async resolveUserName(userId: string): Promise<string> {
     try {
-      const userDocument = await getDoc(doc(db, 'users', userId));
+      const userDocument = await getDoc(doc(this.database, 'users', userId));
       const userData = userDocument.data();
       const fullName = [this.readString(userData?.firstName), this.readString(userData?.lastName)].filter(Boolean).join(' ');
       return this.readString(userData?.displayName)
@@ -647,7 +429,7 @@ export class ProjectService {
 
   private async resolveUserProfile(userId: string): Promise<{ name: string; email: string; avatar: string }> {
     try {
-      const userDocument = await getDoc(doc(db, 'users', userId));
+      const userDocument = await getDoc(doc(this.database, 'users', userId));
       const userData = userDocument.data();
       const fullName = [this.readString(userData?.firstName), this.readString(userData?.lastName)].filter(Boolean).join(' ');
       return {
@@ -658,6 +440,12 @@ export class ProjectService {
     } catch {
       return { name: 'User', email: '', avatar: '' };
     }
+  }
+
+  private isProjectHidden(value: unknown): boolean {
+    if (accountLifecycleVisibilityService.isHidden(value)) return true;
+    const project = reliabilityDecoder.object(value);
+    return project.isDeleted === true || project.status === 'deleted';
   }
 
   private readString(value: unknown, fallback = ''): string {

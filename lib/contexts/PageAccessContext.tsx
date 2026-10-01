@@ -3,6 +3,7 @@ import { AuthService, type UserProfile } from '@/lib/services/AuthService';
 import { authorizationService, type AuthorizationState } from '@/lib/services/AuthorizationService';
 import { pageAccessService, type PageAccessDecision } from '@/lib/services/PageAccessService';
 import type { PageAccessSetting } from '@/lib/types/pageAccess';
+import { nativeSessionService } from '@/lib/services/NativeSessionService';
 
 type PageAccessContextValue = {
   settings: PageAccessSetting[];
@@ -14,6 +15,9 @@ type PageAccessContextValue = {
   activeOverlayRoute: string | null;
   triggerOverlay: (route: string) => void;
   clearOverlay: () => void;
+  enterPreview: (route: string) => void;
+  exitPreview: () => void;
+  retry: () => void;
 };
 
 type PageAccessProviderProps = {
@@ -31,13 +35,28 @@ export function PageAccessProvider({ children }: PageAccessProviderProps) {
   const [profileLoading, setProfileLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeOverlayRoute, setActiveOverlayRoute] = useState<string | null>(null);
+  const [previewRoute, setPreviewRoute] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const exitPreview = useCallback(() => setPreviewRoute(null), []);
+  const retry = useCallback(() => setAttempt((current) => current + 1), []);
 
   const triggerOverlay = useCallback((route: string) => setActiveOverlayRoute(route), []);
   const clearOverlay = useCallback(() => setActiveOverlayRoute(null), []);
 
   useEffect(() => {
+    nativeSessionService.start();
+    let generation = 0;
+    setSettingsLoading(true);
+    setProfileLoading(true);
+    setError(null);
+    setProfileError(null);
     let unsubscribeAccessProfile: (() => void) | undefined;
     const unsubscribeAuth = authService.subscribeToVerifiedAuthState((user) => {
+      const requestGeneration = ++generation;
+      setPreviewRoute(null);
+      setProfile(null);
+      setProfileError(null);
       unsubscribeAccessProfile?.();
       unsubscribeAccessProfile = undefined;
       if (!user) {
@@ -49,25 +68,32 @@ export function PageAccessProvider({ children }: PageAccessProviderProps) {
       void (async () => {
         try {
           const nextProfile = await authService.getUserProfile(user.uid);
+          if (requestGeneration !== generation) return;
+          if (!nextProfile) throw new Error('Access profile unavailable.');
           setProfile(nextProfile);
           unsubscribeAccessProfile = authService.subscribeToUserAccessProfile(
             user.uid,
             (accessProfile) => {
+              if (requestGeneration !== generation) return;
+              setPreviewRoute(null);
               setProfile((currentProfile) => currentProfile
                 ? { ...currentProfile, ...accessProfile }
                 : currentProfile);
             },
-            (accessProfileError) => setError(accessProfileError.message),
+            () => { if (requestGeneration === generation) { setProfileError('Your access could not be verified.'); setPreviewRoute(null); } },
           );
         } catch {
+          if (requestGeneration !== generation) return;
           setProfile(null);
+          setProfileError('Your access could not be verified.');
         } finally {
-          setProfileLoading(false);
+          if (requestGeneration === generation) setProfileLoading(false);
         }
       })();
     });
     const unsubscribeSettings = pageAccessService.subscribeToSettings((nextSettings) => {
       setSettings(nextSettings);
+      setPreviewRoute(null);
       setError(null);
       setSettingsLoading(false);
     }, (subscriptionError) => {
@@ -75,11 +101,14 @@ export function PageAccessProvider({ children }: PageAccessProviderProps) {
       setSettingsLoading(false);
     });
     return () => {
+      ++generation;
       unsubscribeAuth();
       unsubscribeAccessProfile?.();
       unsubscribeSettings();
     };
-  }, []);
+  }, [attempt]);
+
+  useEffect(() => { nativeSessionService.setPreview(previewRoute); }, [previewRoute]);
 
   const authorization = useMemo(
     () => profile ? authorizationService.resolve(profile) : EMPTY_AUTHORIZATION,
@@ -87,21 +116,32 @@ export function PageAccessProvider({ children }: PageAccessProviderProps) {
   );
 
   const getDecision = useCallback(
-    (route: string) => pageAccessService.getDecision(settings, route, authorization),
-    [authorization, settings],
+    (route: string) => pageAccessService.getDecision(settings, route, authorization, previewRoute, !settingsLoading && !profileLoading && !error && !profileError),
+    [authorization, settings, previewRoute, settingsLoading, profileLoading, error, profileError],
   );
+  const enterPreview = useCallback((route: string) => {
+    if (!getDecision(route).canEnterPreview) return;
+    nativeSessionService.setPreview(pageAccessService.normalizeRoute(route));
+    setPreviewRoute(pageAccessService.normalizeRoute(route));
+    setActiveOverlayRoute(null);
+  }, [getDecision]);
+  useEffect(() => {
+    pageAccessService.bindDecision(getDecision);
+    return () => pageAccessService.bindDecision(null);
+  }, [getDecision]);
 
   const value = useMemo<PageAccessContextValue>(() => ({
     settings,
     loading: settingsLoading || profileLoading,
-    error,
+    error: error ?? profileError,
     profile,
     authorization,
     getDecision,
     activeOverlayRoute,
     triggerOverlay,
     clearOverlay,
-  }), [activeOverlayRoute, authorization, clearOverlay, error, getDecision, profile, profileLoading, settings, settingsLoading, triggerOverlay]);
+    enterPreview, exitPreview, retry,
+  }), [activeOverlayRoute, authorization, clearOverlay, enterPreview, error, exitPreview, getDecision, profile, profileError, profileLoading, retry, settings, settingsLoading, triggerOverlay]);
 
   return <PageAccessContext.Provider value={value}>{children}</PageAccessContext.Provider>;
 }

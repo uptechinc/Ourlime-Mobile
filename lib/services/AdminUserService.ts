@@ -1,4 +1,4 @@
-import { ApiService, ApiServiceError } from './ApiService';
+import { AdminApiService, AdminApiError } from './AdminApiService';
 import { addDoc, collection, documentId, doc, getDocs, limit, orderBy, query, serverTimestamp, startAfter, updateDoc, where } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import type { PageResult } from '@/lib/types/serviceResults';
@@ -53,6 +53,8 @@ export type AdminUserRecord = {
   createdAtMs: number;
 };
 export type AdminAccountStatus = 'active' | 'pending' | 'suspended' | 'banned';
+export type AuthenticationDocumentType = 'faceID' | 'frontID' | 'backID';
+export type AuthenticationDocumentRecord = { id: string; type: AuthenticationDocumentType; imageUrl: string; fileName: string };
 
 type AdminUserSource = {
   id?: unknown; firstName?: unknown; lastName?: unknown; userName?: unknown; email?: unknown;
@@ -93,7 +95,7 @@ const readDateMs = (value: unknown): number => {
 
 export class AdminUserService {
   private static instance: AdminUserService;
-  private readonly apiService = ApiService.getInstance();
+  private readonly apiService = AdminApiService.getInstance();
   private readonly logger = DiagnosticLogService.getInstance();
 
   private constructor() {}
@@ -116,7 +118,7 @@ export class AdminUserService {
       this.logger.warn('AdminUserService', 'users:firestore-fallback', {
         message: firestoreError instanceof Error ? firestoreError.message : 'Unknown Firestore error',
       });
-      const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string; pagination?: { hasMore?: boolean; nextCursor?: string | null } }>(`/api/admin/users?${search.toString()}`, { authenticated: true, timeoutMs: 18_000 });
+      const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string; pagination?: { hasMore?: boolean; nextCursor?: string | null } }>(`/api/admin/users?${search.toString()}`, { timeoutMs: 18_000 });
       if (!response.success) throw new Error(response.error || 'Unable to load users');
       return this.resolveProfilePictures(this.createPage(
         response.data ?? [],
@@ -128,9 +130,9 @@ export class AdminUserService {
 
   public async updateRole(userId: string, role: AdminUserRole): Promise<void> {
     try {
-      await this.apiService.request(`/api/admin/users/${encodeURIComponent(userId)}/role`, { method: 'PATCH', authenticated: true, body: { role }, timeoutMs: 18_000 });
+      await this.apiService.request(`/api/admin/users/${encodeURIComponent(userId)}/role`, { method: 'PATCH', body: { role }, timeoutMs: 18_000 });
     } catch (error: unknown) {
-      if (error instanceof ApiServiceError && error.code === 'REQUEST_TIMEOUT') {
+      if (error instanceof AdminApiError && error.code === 'REQUEST_TIMEOUT') {
         throw new Error('Role changes require the secure Ourlime server, which is currently unavailable.');
       }
       throw error;
@@ -150,16 +152,14 @@ export class AdminUserService {
       this.logger.info('AdminUserService', 'lifecycle:start', { correlationId, userId, action });
       const response = await this.apiService.request<LifecycleStartResponse>(`/api/admin/users/${encodeURIComponent(userId)}/lifecycle`, {
         method: 'POST',
-        authenticated: true,
         body: { action, reason: normalizedReason },
         headers: { 'X-Ourlime-Correlation-Id': correlationId },
         timeoutMs: USER_LIFECYCLE_START_TIMEOUT_MS,
-        availabilityImpact: 'request-only',
       });
       onProgress?.(response.operation);
       return await this.waitForLifecycleOperation(userId, response.operation.id, onProgress);
     } catch (error: unknown) {
-      if (error instanceof ApiServiceError && error.code === 'REQUEST_TIMEOUT') {
+      if (error instanceof AdminApiError && error.code === 'REQUEST_TIMEOUT') {
         throw new Error('The lifecycle job was queued but progress could not be loaded. Refresh the user to resume tracking it.');
       }
       throw error;
@@ -175,7 +175,6 @@ export class AdminUserService {
       `/api/admin/users/${encodeURIComponent(userId)}/status`,
       {
         method: 'PATCH',
-        authenticated: true,
         body: {
           status,
           reason: normalizedReason,
@@ -193,7 +192,7 @@ export class AdminUserService {
   public async retryLifecycleOperation(userId: string, operationId: string): Promise<UserLifecycleOperation> {
     const response = await this.apiService.request<LifecycleStatusResponse>(
       `/api/admin/users/${encodeURIComponent(userId)}/lifecycle/${encodeURIComponent(operationId)}/retry`,
-      { method: 'POST', authenticated: true, timeoutMs: USER_LIFECYCLE_START_TIMEOUT_MS },
+      { method: 'POST', timeoutMs: USER_LIFECYCLE_START_TIMEOUT_MS },
     );
     if (!response.success) throw new Error(response.error || 'Unable to retry lifecycle operation.');
     return this.waitForLifecycleOperation(userId, operationId);
@@ -202,7 +201,7 @@ export class AdminUserService {
   public async retryModerationDelivery(eventId: string): Promise<ModerationDeliveryResult> {
     const response = await this.apiService.request<{ success: boolean; delivery: ModerationDeliveryResult; error?: string }>(
       `/api/admin/moderation-delivery/${encodeURIComponent(eventId)}/retry`,
-      { method: 'POST', authenticated: true, timeoutMs: USER_LIFECYCLE_START_TIMEOUT_MS },
+      { method: 'POST', timeoutMs: USER_LIFECYCLE_START_TIMEOUT_MS },
     );
     if (!response.success) throw new Error(response.error || 'Unable to retry email delivery.');
     this.logger.info('AdminUserService', 'delivery:retry', {
@@ -220,15 +219,24 @@ export class AdminUserService {
   }
 
   public async updateIdentityVerification(userId: string, status: 'verified' | 'rejected', reason: string): Promise<void> {
-    const administrator = await adminAccessService.requireAdmin();
-    await updateDoc(doc(db, 'users', userId), {
-      isAuthenticated: status === 'verified',
-      verificationStatus: status,
-      verificationRejectionReason: status === 'rejected' ? reason.trim() : '',
-      verificationReviewedAt: serverTimestamp(),
-      verificationReviewedBy: administrator.userId,
+    await adminAccessService.requireAdmin();
+    const response = await this.apiService.request<{ success?: boolean; error?: string }>(`/api/admin/users/${encodeURIComponent(userId)}/identity-verification`, {
+      method: 'PATCH',
+      body: { status, reason: reason.trim() },
+      timeoutMs: 30_000,
     });
-    await addDoc(collection(db, 'adminLogs'), { action: status === 'verified' ? 'authenticate_user' : 'reject_verification', adminId: administrator.userId, targetUserId: userId, reason: reason.trim(), createdAt: serverTimestamp(), timestamp: serverTimestamp() });
+    if (!response.success) throw new Error(response.error || 'Identity review could not be completed.');
+  }
+
+  public async getAuthenticationDocuments(userId: string): Promise<AuthenticationDocumentRecord[]> {
+    await adminAccessService.requireAdmin();
+    const snapshot = await getDocs(collection(db, 'users', userId, 'authenticationDocuments'));
+    return snapshot.docs.flatMap((document): AuthenticationDocumentRecord[] => {
+      const data = document.data();
+      const type = data.type;
+      if (type !== 'faceID' && type !== 'frontID' && type !== 'backID') return [];
+      return [{ id: document.id, type, imageUrl: readString(data.imageURL), fileName: readString(data.fileName) }];
+    });
   }
 
   public createCsv(users: readonly AdminUserRecord[]): string {
@@ -376,7 +384,7 @@ export class AdminUserService {
     while (Date.now() - startedAt < USER_LIFECYCLE_POLL_TIMEOUT_MS) {
       const response = await this.apiService.request<LifecycleStatusResponse>(
         `/api/admin/users/${encodeURIComponent(userId)}/lifecycle/${encodeURIComponent(operationId)}`,
-        { authenticated: true, timeoutMs: USER_LIFECYCLE_START_TIMEOUT_MS, availabilityImpact: 'request-only' },
+        { timeoutMs: USER_LIFECYCLE_START_TIMEOUT_MS },
       );
       const operation = response.operation;
       onProgress?.(operation);

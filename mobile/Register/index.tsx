@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,20 +15,26 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { authService } from '@/lib/services/AuthService';
-import { ApiService } from '@/lib/services/ApiService';
+import { authService, type RegistrationVerificationType } from '@/lib/services/AuthService';
+import { registrationDataService, type RegistrationMode } from '@/lib/services/RegistrationDataService';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { cartoonAvatars, realisticAvatars } from './registrationAvatars';
 import BetaAccessView, { type BetaAccessState } from '@/components/auth/BetaAccessView';
 import TermsModal from '@/components/auth/TermsModal';
 import PrivacyModal from '@/components/auth/PrivacyModal';
 import ChildSafetyPolicyModal from '@/components/auth/ChildSafetyPolicyModal';
+import { COUNTRIES, isCaribbeanCountry } from '@/lib/helpers/countryData';
+import LocationPickerModal, { type LocationPickerItem } from '@/components/auth/LocationPickerModal';
+import VerificationSection from '@/components/auth/VerificationSection';
+import { dateOfBirthService } from '@/lib/services/DateOfBirthService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GREEN = '#01eb53';
 const GREEN_DARK = '#10b981';
 const TOTAL_STEPS = 7; // Steps 1 to 7 (Step 0 is Welcome)
+const NAME_REGEX = /^[a-zA-Z\s'-]+$/;
 
 type AvatarType = 'cartoon' | 'realistic';
 
@@ -44,12 +50,20 @@ type FormData = {
   gender: string;
   dateOfBirth: string;
   country: string;
+  state: string;
   phone: string;
   city: string;
   profilePicture: string | null;
   selectedInterests: string[];
-  verificationType: 'student_id' | 'national_id' | 'guardian' | 'drivers_license' | 'skipped' | '';
+  verificationType: RegistrationVerificationType;
+  idSubType: 'national_id' | 'passport' | null;
+  guardianRelation: 'biological_parent' | 'legal_guardian' | null;
   guardianEmail: string;
+  verificationDocuments?: {
+    faceUri: string;
+    frontUri: string;
+    backUri?: string;
+  };
 };
 
 type RegistrationErrorField = keyof FormData | 'terms' | 'privacy' | 'childSafety' | 'interests' | 'global';
@@ -91,6 +105,12 @@ export default function Register() {
   const [isPrivacyAccepted, setIsPrivacyAccepted] = useState(false);
   const [isChildSafetyAccepted, setIsChildSafetyAccepted] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [registeredUserId, setRegisteredUserId] = useState('');
+  const [verificationEmailSent, setVerificationEmailSent] = useState(false);
+  const [isRetryingVerificationEmail, setIsRetryingVerificationEmail] = useState(false);
+  const [verificationEmailError, setVerificationEmailError] = useState('');
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [hasPhoneNumber, setHasPhoneNumber] = useState<boolean | null>(null);
 
   // Username / Email Availability
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
@@ -99,6 +119,10 @@ export default function Register() {
   const [usernameExistsError, setUsernameExistsError] = useState('');
   const emailDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Password Visibility
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Avatar tab
   const [activeTab, setActiveTab] = useState<AvatarType>('cartoon');
@@ -115,63 +139,80 @@ export default function Register() {
     studentLevel: '',
     gender: '',
     dateOfBirth: '',
-    country: 'Trinidad & Tobago',
+    country: 'Trinidad and Tobago',
+    state: '',
     phone: '',
     city: '',
     profilePicture: null,
     selectedInterests: [],
     verificationType: 'skipped',
+    idSubType: null,
+    guardianRelation: null,
     guardianEmail: '',
   });
 
   const [errors, setErrors] = useState<RegistrationErrors>({});
 
+  // Age calculation
+  const calculatedAge = useMemo(() => {
+    if (!formData.dateOfBirth.trim()) return null;
+    const dob = new Date(formData.dateOfBirth);
+    if (Number.isNaN(dob.getTime())) return null;
+    const today = new Date();
+    let a = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+      a--;
+    }
+    return a;
+  }, [formData.dateOfBirth]);
+
   // ── Beta Registration Access Check ───────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
 
     const checkBetaAccess = async () => {
+      let mode: RegistrationMode | undefined;
       try {
-        const response = await ApiService.getInstance().request<{ success?: boolean; mode?: 'open' | 'invite_only' | 'closed' }>(
-          '/api/beta/registration-mode',
-          { signal: controller.signal }
-        );
-        const mode = response?.mode || 'invite_only';
+        mode = await registrationDataService.getRegistrationMode();
         if (cancelled) return;
 
-        if (mode === 'closed') { setRegistrationAccess('closed'); return; }
-        if (mode === 'open') { setRegistrationAccess('allowed'); return; }
+        if (mode === 'closed') {
+          setRegistrationAccess('closed');
+          return;
+        }
+        if (mode === 'open') {
+          setRegistrationAccess('allowed');
+          return;
+        }
 
         if (!referralToken) {
           setRegistrationAccess('invite_required');
           return;
         }
 
-        const tokenRes = await ApiService.getInstance().request<{ valid?: boolean; reason?: string }>(
-          `/api/beta/validate-token?token=${encodeURIComponent(referralToken)}`,
-          { signal: controller.signal }
-        );
+        const tokenRes = await registrationDataService.validateInvitation(referralToken);
         if (cancelled) return;
 
-        if (!tokenRes?.valid) {
-          const supported: BetaAccessState[] = ['invalid', 'expired', 'revoked', 'used'];
-          setRegistrationAccess(supported.includes(tokenRes?.reason as BetaAccessState) ? (tokenRes?.reason as BetaAccessState) : 'invalid');
+        if (!tokenRes.valid) {
+          setRegistrationAccess(tokenRes.reason);
           return;
+        }
+        if (tokenRes.email) {
+          updateField('email', tokenRes.email);
         }
         setRegistrationAccess('allowed');
       } catch {
         if (!cancelled) {
-          setRegistrationAccess(referralToken ? 'allowed' : 'invite_required');
+          setRegistrationAccess(referralToken ? 'allowed' : (mode === 'open' ? 'allowed' : 'invite_required'));
         }
-      } finally {
-        clearTimeout(timeoutId);
       }
     };
 
     void checkBetaAccess();
-    return () => { cancelled = true; controller.abort(); clearTimeout(timeoutId); };
+    return () => {
+      cancelled = true;
+    };
   }, [referralToken]);
 
   // ── Real-time Email & Username Checks ─────────────────────────────────────
@@ -184,10 +225,7 @@ export default function Register() {
       setIsCheckingEmail(true);
       emailDebounceRef.current = setTimeout(async () => {
         try {
-          const res = await ApiService.getInstance().request<{ available?: boolean }>('/api/auth/registration-availability', {
-            method: 'POST', body: { email: trimmed },
-          });
-          if (res && res.available === false) {
+          if (!await registrationDataService.isEmailAvailable(trimmed)) {
             setEmailExistsError('This email is already registered.');
           }
         } catch {
@@ -210,10 +248,7 @@ export default function Register() {
       setIsCheckingUsername(true);
       usernameDebounceRef.current = setTimeout(async () => {
         try {
-          const res = await ApiService.getInstance().request<{ available?: boolean }>('/api/auth/registration-availability', {
-            method: 'POST', body: { username: trimmed },
-          });
-          if (res && res.available === false) {
+          if (!await registrationDataService.isUsernameAvailable(trimmed)) {
             setUsernameExistsError('Username is already taken.');
           }
         } catch {
@@ -232,6 +267,139 @@ export default function Register() {
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
   };
 
+  // ── Location Modal & Data States ──────────────────────────────────────────
+  const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
+  const [isStateModalOpen, setIsStateModalOpen] = useState(false);
+  const [isCityModalOpen, setIsCityModalOpen] = useState(false);
+
+  const [cities, setCities] = useState<string[]>([]);
+  const [citiesLoading, setCitiesLoading] = useState(false);
+  const [states, setStates] = useState<Array<{ name: string; state_code: string }>>([]);
+  const [statesLoading, setStatesLoading] = useState(false);
+  const cityAbortRef = useRef<AbortController | null>(null);
+  const stateAbortRef = useRef<AbortController | null>(null);
+
+  const isCaribbean = useMemo(() => isCaribbeanCountry(formData.country), [formData.country]);
+
+  const fetchCities = useCallback(async (countryName: string) => {
+    if (cityAbortRef.current) cityAbortRef.current.abort();
+    setCitiesLoading(true);
+    setCities([]);
+    const controller = new AbortController();
+    cityAbortRef.current = controller;
+
+    try {
+      const res = await fetch('https://countriesnow.space/api/v0.1/countries/cities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ country: countryName }),
+        signal: controller.signal,
+      });
+      const data = await res.json();
+      if (!data.error && Array.isArray(data.data)) {
+        setCities(data.data.filter((c: string) => c && c.trim()));
+      }
+    } catch {
+      // Non-blocking
+    } finally {
+      setCitiesLoading(false);
+    }
+  }, []);
+
+  const fetchStates = useCallback(async (countryName: string) => {
+    if (stateAbortRef.current) stateAbortRef.current.abort();
+    setStatesLoading(true);
+    setStates([]);
+    const controller = new AbortController();
+    stateAbortRef.current = controller;
+
+    try {
+      const res = await fetch('https://countriesnow.space/api/v0.1/countries/states', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ country: countryName }),
+        signal: controller.signal,
+      });
+      const data = await res.json();
+      if (!data.error && Array.isArray(data.data?.states)) {
+        setStates(data.data.states);
+      }
+    } catch {
+      // Non-blocking
+    } finally {
+      setStatesLoading(false);
+    }
+  }, []);
+
+  const fetchCitiesForState = useCallback(async (countryName: string, stateName: string) => {
+    if (cityAbortRef.current) cityAbortRef.current.abort();
+    setCitiesLoading(true);
+    setCities([]);
+    const controller = new AbortController();
+    cityAbortRef.current = controller;
+
+    try {
+      const res = await fetch('https://countriesnow.space/api/v0.1/countries/state/cities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ country: countryName, state: stateName }),
+        signal: controller.signal,
+      });
+      const data = await res.json();
+      if (!data.error && Array.isArray(data.data) && data.data.length > 0) {
+        setCities(data.data.filter((c: string) => c && c.trim()));
+      } else {
+        fetchCities(countryName);
+      }
+    } catch {
+      fetchCities(countryName);
+    } finally {
+      setCitiesLoading(false);
+    }
+  }, [fetchCities]);
+
+  useEffect(() => {
+    return () => {
+      cityAbortRef.current?.abort();
+      stateAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (formData.country) {
+      if (isCaribbean) {
+        setStates([]);
+        updateField('state', '');
+        fetchCities(formData.country);
+      } else {
+        fetchStates(formData.country);
+        if (formData.state) {
+          fetchCitiesForState(formData.country, formData.state);
+        } else {
+          fetchCities(formData.country);
+        }
+      }
+    }
+  }, [formData.country, isCaribbean, fetchCities, fetchStates, fetchCitiesForState]);
+
+  const handleCountrySelect = (item: LocationPickerItem) => {
+    updateField('country', item.label);
+    updateField('state', '');
+    updateField('city', '');
+  };
+
+  const handleStateSelect = (item: LocationPickerItem) => {
+    updateField('state', item.label);
+    updateField('city', '');
+    if (formData.country) {
+      fetchCitiesForState(formData.country, item.label);
+    }
+  };
+
+  const handleCitySelect = (item: LocationPickerItem) => {
+    updateField('city', item.label);
+  };
+
   // ── Step Validation ────────────────────────────────────────────────────────
   const validateStep = (): boolean => {
     const newErrors: RegistrationErrors = {};
@@ -242,7 +410,11 @@ export default function Register() {
 
     if (step === 2) {
       if (!formData.firstName.trim()) newErrors.firstName = 'First name is required.';
+      else if (!NAME_REGEX.test(formData.firstName.trim())) newErrors.firstName = 'First name can only contain letters, spaces, hyphens, and apostrophes.';
+
       if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required.';
+      else if (!NAME_REGEX.test(formData.lastName.trim())) newErrors.lastName = 'Last name can only contain letters, spaces, hyphens, and apostrophes.';
+
       if (!formData.userName.trim()) newErrors.userName = 'Username is required.';
       else if (usernameExistsError) newErrors.userName = usernameExistsError;
 
@@ -258,7 +430,8 @@ export default function Register() {
     }
 
     if (step === 3) {
-      if (!formData.dateOfBirth.trim()) newErrors.dateOfBirth = 'Date of birth is required.';
+      const dateValidation = dateOfBirthService.validate(formData.dateOfBirth, formData.accountType);
+      if (!dateValidation.valid) newErrors.dateOfBirth = dateValidation.message;
       if (!formData.gender) newErrors.gender = 'Please select a gender.';
       if (formData.accountType === 'student' && !formData.studentLevel) {
         newErrors.studentLevel = 'Please select your student level.';
@@ -267,7 +440,11 @@ export default function Register() {
 
     if (step === 4) {
       if (!formData.country.trim()) newErrors.country = 'Country is required.';
-      if (!formData.phone.trim()) newErrors.phone = 'Phone number is required.';
+      if (!isCaribbean && states.length > 0 && !formData.state.trim()) {
+        newErrors.state = 'Please select your state or province.';
+      }
+      if (hasPhoneNumber === null) newErrors.phone = 'Please select Yes or No.';
+      if (hasPhoneNumber && !formData.phone.trim()) newErrors.phone = 'Phone number is required when Yes is selected.';
     }
 
     if (step === 5) {
@@ -301,12 +478,33 @@ export default function Register() {
   };
 
   // ── Final Registration Submit ─────────────────────────────────────────────
-  const handleSubmit = async () => {
-    if (!validateStep()) return;
+  const handleSubmit = async (verificationPayload?: {
+    verificationType: RegistrationVerificationType;
+    idSubType?: 'national_id' | 'passport' | null;
+    guardianRelation?: 'biological_parent' | 'legal_guardian' | null;
+    guardianEmail?: string;
+    documents?: {
+      faceUri: string;
+      frontUri: string;
+      backUri?: string;
+    };
+  }) => {
     setIsSubmitting(true);
+    setErrors(prev => ({ ...prev, global: undefined }));
     try {
-      await authService.register({
+      const vType = verificationPayload?.verificationType ?? formData.verificationType;
+      const idSub = verificationPayload?.idSubType !== undefined ? verificationPayload.idSubType : formData.idSubType;
+      const gRel = verificationPayload?.guardianRelation !== undefined ? verificationPayload.guardianRelation : formData.guardianRelation;
+      const gEmail = verificationPayload?.guardianEmail !== undefined ? verificationPayload.guardianEmail : formData.guardianEmail;
+      const vDocs = verificationPayload?.documents;
+
+      const registrationResult = await authService.register({
         ...formData,
+        verificationType: vType,
+        idSubType: idSub,
+        guardianRelation: gRel,
+        guardianEmail: gEmail,
+        verificationDocuments: vDocs,
         referralToken,
         policyAcknowledgements: {
           terms: isTermsAccepted,
@@ -314,10 +512,13 @@ export default function Register() {
           childSafety: isChildSafetyAccepted,
         },
       });
+      setRegisteredUserId(registrationResult.user.uid);
+      setVerificationEmailSent(registrationResult.verificationEmailSent);
+      setVerificationEmailError(registrationResult.verificationEmailSent ? '' : 'Your account was created, but the verification email could not be sent.');
       setShowSuccessModal(true);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Registration failed. Please try again.';
-      setErrors({ global: msg });
+      setErrors(prev => ({ ...prev, global: msg }));
     } finally {
       setIsSubmitting(false);
     }
@@ -559,25 +760,47 @@ export default function Register() {
                   </View>
 
                   {/* Password & Confirm */}
-                  <TextInput
-                    placeholder="Password (min 8 chars)"
-                    placeholderTextColor="#64748b"
-                    secureTextEntry
-                    value={formData.password}
-                    onChangeText={v => updateField('password', v)}
-                    style={styles.input}
-                  />
-                  {errors.password ? <Text style={styles.fieldError}>{errors.password}</Text> : null}
+                  <View>
+                    <View style={{ position: 'relative' }}>
+                      <TextInput
+                        placeholder="Password (min 8 chars)"
+                        placeholderTextColor="#64748b"
+                        secureTextEntry={!showPassword}
+                        value={formData.password}
+                        onChangeText={v => updateField('password', v)}
+                        style={[styles.input, { paddingRight: 46 }]}
+                      />
+                      <TouchableOpacity
+                        onPress={() => setShowPassword(!showPassword)}
+                        style={{ position: 'absolute', right: 14, top: 12 }}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94a3b8" />
+                      </TouchableOpacity>
+                    </View>
+                    {errors.password ? <Text style={styles.fieldError}>{errors.password}</Text> : null}
+                  </View>
 
-                  <TextInput
-                    placeholder="Confirm Password"
-                    placeholderTextColor="#64748b"
-                    secureTextEntry
-                    value={formData.confirmPassword}
-                    onChangeText={v => updateField('confirmPassword', v)}
-                    style={styles.input}
-                  />
-                  {errors.confirmPassword ? <Text style={styles.fieldError}>{errors.confirmPassword}</Text> : null}
+                  <View>
+                    <View style={{ position: 'relative' }}>
+                      <TextInput
+                        placeholder="Confirm Password"
+                        placeholderTextColor="#64748b"
+                        secureTextEntry={!showConfirmPassword}
+                        value={formData.confirmPassword}
+                        onChangeText={v => updateField('confirmPassword', v)}
+                        style={[styles.input, { paddingRight: 46 }]}
+                      />
+                      <TouchableOpacity
+                        onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                        style={{ position: 'absolute', right: 14, top: 12 }}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#94a3b8" />
+                      </TouchableOpacity>
+                    </View>
+                    {errors.confirmPassword ? <Text style={styles.fieldError}>{errors.confirmPassword}</Text> : null}
+                  </View>
 
                   {/* Terms & Privacy Toggles */}
                   <View style={{ marginTop: 8, gap: 10 }}>
@@ -622,16 +845,39 @@ export default function Register() {
                 <View style={{ gap: 14, marginTop: 14 }}>
                   {/* Date of Birth */}
                   <View>
-                    <Text style={styles.label}>Date of Birth (YYYY-MM-DD)</Text>
-                    <TextInput
-                      placeholder="2000-01-01"
-                      placeholderTextColor="#64748b"
-                      value={formData.dateOfBirth}
-                      onChangeText={v => updateField('dateOfBirth', v)}
-                      style={styles.input}
-                    />
+                    <Text style={styles.label}>Date of Birth</Text>
+                    <TouchableOpacity
+                      onPress={() => setIsDatePickerOpen(true)}
+                      style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                    >
+                      <Text style={{ color: formData.dateOfBirth ? '#ffffff' : '#64748b', fontSize: 16 }}>
+                        {formData.dateOfBirth
+                          ? dateOfBirthService.parse(formData.dateOfBirth)?.toLocaleDateString() ?? 'Select your date of birth'
+                          : 'Select your date of birth'}
+                      </Text>
+                      <Ionicons name="calendar-outline" size={20} color="#94a3b8" />
+                    </TouchableOpacity>
                     {errors.dateOfBirth ? <Text style={styles.fieldError}>{errors.dateOfBirth}</Text> : null}
                   </View>
+
+                  {/* Under 16 regular account warning banner */}
+                  {formData.accountType === 'regular' && calculatedAge !== null && calculatedAge < 16 && (
+                    <View style={styles.ageAlertCard}>
+                      <Ionicons name="alert-circle-outline" size={24} color="#f87171" style={{ marginBottom: 6 }} />
+                      <Text style={styles.ageAlertText}>
+                        Regular accounts require users to be at least 16 years old. Please register as a Student instead.
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          updateField('accountType', 'student');
+                          setErrors(prev => ({ ...prev, dateOfBirth: undefined }));
+                        }}
+                        style={styles.switchStudentButton}
+                      >
+                        <Text style={styles.switchStudentButtonText}>Switch to Student Account</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
 
                   {/* Gender Selection */}
                   <View>
@@ -683,40 +929,88 @@ export default function Register() {
                 <Text style={styles.stepSubtitle}>Help us connect you locally.</Text>
 
                 <View style={{ gap: 14, marginTop: 14 }}>
+                  {/* Country */}
                   <View>
                     <Text style={styles.label}>Country</Text>
-                    <TextInput
-                      placeholder="Country"
-                      placeholderTextColor="#64748b"
-                      value={formData.country}
-                      onChangeText={v => updateField('country', v)}
-                      style={styles.input}
-                    />
+                    <TouchableOpacity
+                      onPress={() => setIsCountryModalOpen(true)}
+                      style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ color: formData.country ? '#ffffff' : '#64748b', fontSize: 16 }}>
+                        {formData.country || 'Select your country'}
+                      </Text>
+                      <Ionicons name="chevron-down" size={18} color="#94a3b8" />
+                    </TouchableOpacity>
                     {errors.country ? <Text style={styles.fieldError}>{errors.country}</Text> : null}
                   </View>
 
+                  {/* State / Province - ONLY for Non-Caribbean Countries */}
+                  {!isCaribbean && formData.country ? (
+                    <View>
+                      <Text style={styles.label}>
+                        State / Province {states.length > 0 ? '(Required)' : '(Optional)'}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => setIsStateModalOpen(true)}
+                        style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={{ color: formData.state ? '#ffffff' : '#64748b', fontSize: 16 }}>
+                          {formData.state || (statesLoading ? 'Loading states...' : 'Select your state or province')}
+                        </Text>
+                        <Ionicons name="chevron-down" size={18} color="#94a3b8" />
+                      </TouchableOpacity>
+                      {errors.state ? <Text style={styles.fieldError}>{errors.state}</Text> : null}
+                    </View>
+                  ) : null}
+
+                  {/* Optional Phone Number */}
                   <View>
-                    <Text style={styles.label}>Phone Number</Text>
-                    <TextInput
-                      placeholder="+1 (868) 000-0000"
-                      placeholderTextColor="#64748b"
-                      keyboardType="phone-pad"
-                      value={formData.phone}
-                      onChangeText={v => updateField('phone', v)}
-                      style={styles.input}
-                    />
+                    <Text style={styles.label}>Do you have a phone number?</Text>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      {([true, false] as const).map((choice) => (
+                        <TouchableOpacity
+                          key={String(choice)}
+                          onPress={() => {
+                            setHasPhoneNumber(choice);
+                            if (!choice) updateField('phone', '');
+                            setErrors((currentErrors) => ({ ...currentErrors, phone: undefined }));
+                          }}
+                          style={[styles.chip, { flex: 1, alignItems: 'center' }, hasPhoneNumber === choice && styles.chipActive]}
+                        >
+                          <Text style={[styles.chipText, hasPhoneNumber === choice && styles.chipTextActive]}>{choice ? 'Yes' : 'No'}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    {hasPhoneNumber ? (
+                      <TextInput
+                        placeholder="+1 (868) 000-0000"
+                        placeholderTextColor="#64748b"
+                        keyboardType="phone-pad"
+                        value={formData.phone}
+                        onChangeText={(value) => updateField('phone', value)}
+                        style={[styles.input, { marginTop: 10 }]}
+                      />
+                    ) : null}
                     {errors.phone ? <Text style={styles.fieldError}>{errors.phone}</Text> : null}
                   </View>
 
+                  {/* City / Town / Region */}
                   <View>
-                    <Text style={styles.label}>City / Town</Text>
-                    <TextInput
-                      placeholder="Port of Spain"
-                      placeholderTextColor="#64748b"
-                      value={formData.city}
-                      onChangeText={v => updateField('city', v)}
-                      style={styles.input}
-                    />
+                    <Text style={styles.label}>
+                      {isCaribbean ? 'City / Town / Region (Optional)' : 'City / Town (Optional)'}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setIsCityModalOpen(true)}
+                      style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ color: formData.city ? '#ffffff' : '#64748b', fontSize: 16 }}>
+                        {formData.city || (citiesLoading ? 'Loading cities...' : 'Select your city / town')}
+                      </Text>
+                      <Ionicons name="chevron-down" size={18} color="#94a3b8" />
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -802,56 +1096,15 @@ export default function Register() {
 
             {/* ── STEP 7: Identity Verification & Submit ── */}
             {step === 7 && (
-              <View>
-                <Text style={styles.stepTitle}>Identity Verification</Text>
-                <Text style={styles.stepSubtitle}>Help keep Ourlime safe by verifying your identity (optional).</Text>
-
-                <View style={{ gap: 12, marginVertical: 16 }}>
-                  {([
-                    { id: 'skipped', label: 'Skip Verification for Now', desc: 'Proceed directly to registration.' },
-                    { id: 'student_id', label: 'Student ID', desc: 'Choose this method now and securely submit the documents from Account Verification.' },
-                    { id: 'national_id', label: 'National ID / Passport', desc: 'Choose this method now and securely submit the documents from Account Verification.' },
-                    { id: 'drivers_license', label: 'Driver\'s License', desc: 'Choose this method now and securely submit the documents from Account Verification.' },
-                    { id: 'guardian', label: 'Parent or Guardian', desc: 'Send a consent request to a parent or guardian.' },
-                  ] as const).map((option) => (
-                    <TouchableOpacity
-                      key={option.id}
-                      onPress={() => updateField('verificationType', option.id)}
-                      style={[styles.typeCard, formData.verificationType === option.id && styles.typeCardActive]}
-                    >
-                      <Ionicons name={formData.verificationType === option.id ? 'radio-button-on' : 'radio-button-off'} size={20} color={formData.verificationType === option.id ? GREEN_DARK : '#64748b'} style={{ marginRight: 10 }} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.typeCardTitle, formData.verificationType === option.id && { color: GREEN }]}>{option.label}</Text>
-                        <Text style={styles.typeCardDesc}>{option.desc}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {formData.verificationType === 'guardian' ? (
-                  <View style={{ marginBottom: 16 }}>
-                    <Text style={styles.label}>Guardian email address</Text>
-                    <TextInput
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                      value={formData.guardianEmail}
-                      onChangeText={(value) => updateField('guardianEmail', value)}
-                      placeholder="guardian@example.com"
-                      placeholderTextColor="#64748b"
-                      style={styles.input}
-                    />
-                    {errors.guardianEmail ? <Text style={styles.fieldError}>{errors.guardianEmail}</Text> : null}
-                  </View>
-                ) : null}
-
-                <TouchableOpacity onPress={handleSubmit} disabled={isSubmitting} style={styles.primaryButton}>
-                  {isSubmitting ? (
-                    <ActivityIndicator color="#ffffff" />
-                  ) : (
-                    <Text style={styles.primaryButtonText}>Complete Registration 🎉</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
+              <VerificationSection
+                dateOfBirth={formData.dateOfBirth}
+                accountType={formData.accountType}
+                isSubmitting={isSubmitting}
+                submissionError={errors.global}
+                onSkipVerification={() => handleSubmit({ verificationType: 'skipped' })}
+                onSubmitVerification={(data) => handleSubmit(data)}
+                onBackToInterests={() => setStep(6)}
+              />
             )}
 
           </View>
@@ -864,6 +1117,34 @@ export default function Register() {
       <PrivacyModal isOpen={isPrivacyOpen} onClose={() => setIsPrivacyOpen(false)} onAccept={() => setIsPrivacyAccepted(true)} />
       <ChildSafetyPolicyModal isOpen={isChildSafetyOpen} onClose={() => setIsChildSafetyOpen(false)} onAccept={() => setIsChildSafetyAccepted(true)} />
 
+      <Modal visible={isDatePickerOpen} transparent animationType="fade" onRequestClose={() => setIsDatePickerOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center', padding: 24 }} onPress={() => setIsDatePickerOpen(false)}>
+          <Pressable style={{ borderRadius: 20, backgroundColor: '#111827', padding: 20 }} onPress={(event) => event.stopPropagation()}>
+            <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: '800', marginBottom: 14 }}>Select date of birth</Text>
+            <DateTimePicker
+              value={dateOfBirthService.parse(formData.dateOfBirth) ?? new Date(2000, 0, 1)}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
+              maximumDate={new Date()}
+              minimumDate={new Date(new Date().getFullYear() - 120, new Date().getMonth(), new Date().getDate())}
+              onChange={(_, selectedDate) => {
+                if (Platform.OS === 'android') setIsDatePickerOpen(false);
+                if (selectedDate) {
+                  updateField('dateOfBirth', dateOfBirthService.formatIso(selectedDate));
+                  setErrors((currentErrors) => ({ ...currentErrors, dateOfBirth: undefined }));
+                }
+              }}
+              themeVariant="dark"
+            />
+            {Platform.OS === 'ios' ? (
+              <TouchableOpacity onPress={() => setIsDatePickerOpen(false)} style={[styles.primaryButton, { marginTop: 14 }]}>
+                <Text style={styles.primaryButtonText}>Done</Text>
+              </TouchableOpacity>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Success / Email Verification Polling Modal */}
       <Modal visible={showSuccessModal} transparent animationType="fade">
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
@@ -873,8 +1154,28 @@ export default function Register() {
             </View>
             <Text style={{ fontSize: 22, fontWeight: '800', color: '#ffffff', textAlign: 'center' }}>Verify Your Email Address</Text>
             <Text style={{ fontSize: 14, color: '#94a3b8', textAlign: 'center', marginTop: 10, lineHeight: 22 }}>
-              We sent a verification link to <Text style={{ color: GREEN, fontWeight: '700' }}>{formData.email}</Text>. Please click the link in your email to activate your account.
+              {verificationEmailSent
+                ? <>We sent a verification link to <Text style={{ color: GREEN, fontWeight: '700' }}>{formData.email}</Text>. Please click the link in your email to activate your account.</>
+                : <>Your account was created, but we could not send a verification email to <Text style={{ color: GREEN, fontWeight: '700' }}>{formData.email}</Text>.</>}
             </Text>
+
+            {verificationEmailError ? <Text style={[styles.fieldError, { marginTop: 12, textAlign: 'center' }]}>{verificationEmailError}</Text> : null}
+            {!verificationEmailSent && registeredUserId ? (
+              <TouchableOpacity
+                disabled={isRetryingVerificationEmail}
+                onPress={() => {
+                  setIsRetryingVerificationEmail(true);
+                  setVerificationEmailError('');
+                  void authService.resendRegistrationVerificationEmail(registeredUserId)
+                    .then(() => setVerificationEmailSent(true))
+                    .catch((error: unknown) => setVerificationEmailError(error instanceof Error ? error.message : 'Unable to resend the verification email.'))
+                    .finally(() => setIsRetryingVerificationEmail(false));
+                }}
+                style={[styles.primaryButton, { marginTop: 18, width: '100%' }]}
+              >
+                {isRetryingVerificationEmail ? <ActivityIndicator color="#000000" /> : <Text style={styles.primaryButtonText}>Retry verification email</Text>}
+              </TouchableOpacity>
+            ) : null}
 
             <TouchableOpacity
               onPress={() => {
@@ -888,6 +1189,41 @@ export default function Register() {
           </View>
         </View>
       </Modal>
+
+      {/* Location Picker Modals */}
+      <LocationPickerModal
+        visible={isCountryModalOpen}
+        title="Select Country"
+        placeholder="Search country..."
+        items={COUNTRIES.map(c => ({ label: c.label, value: c.label, subtitle: c.value }))}
+        selectedValue={formData.country}
+        onSelect={handleCountrySelect}
+        onClose={() => setIsCountryModalOpen(false)}
+      />
+
+      <LocationPickerModal
+        visible={isStateModalOpen}
+        title="Select State / Province"
+        placeholder="Search state / province..."
+        loading={statesLoading}
+        items={states.map(s => ({ label: s.name, value: s.name, subtitle: s.state_code }))}
+        selectedValue={formData.state}
+        emptyText="No states found in database. Tap below to use your input."
+        onSelect={handleStateSelect}
+        onClose={() => setIsStateModalOpen(false)}
+      />
+
+      <LocationPickerModal
+        visible={isCityModalOpen}
+        title={isCaribbean ? "Select City / Region" : "Select City / Town"}
+        placeholder="Search city / town..."
+        loading={citiesLoading}
+        items={cities.map(c => ({ label: c, value: c }))}
+        selectedValue={formData.city}
+        emptyText="No cities found in database. Tap below to use your input."
+        onSelect={handleCitySelect}
+        onClose={() => setIsCityModalOpen(false)}
+      />
     </View>
   );
 }
@@ -1045,5 +1381,34 @@ const styles = StyleSheet.create({
   },
   avatarOptionSelected: {
     borderColor: GREEN_DARK,
+  },
+  ageAlertCard: {
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.3)',
+    padding: 16,
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  ageAlertText: {
+    color: '#fca5a5',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  switchStudentButton: {
+    backgroundColor: '#2563eb',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    width: '100%',
+  },
+  switchStudentButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

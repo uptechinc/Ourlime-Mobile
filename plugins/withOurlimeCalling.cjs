@@ -14,6 +14,7 @@ const ANDROID_PERMISSIONS = [
   'android.permission.POST_NOTIFICATIONS',
   'android.permission.FOREGROUND_SERVICE',
   'android.permission.FOREGROUND_SERVICE_MICROPHONE',
+  'android.permission.FOREGROUND_SERVICE_CAMERA',
   'android.permission.USE_FULL_SCREEN_INTENT',
   'android.permission.WAKE_LOCK',
   'android.permission.VIBRATE',
@@ -45,7 +46,21 @@ function withCallingAndroid(config) {
       if (!existing.has(permission)) manifest['uses-permission'].push({ $: { 'android:name': permission } });
     });
     if (manifest.application && manifest.application.length > 0) {
-      manifest.application[0].$['android:largeHeap'] = 'true';
+      const application = manifest.application[0];
+      application.$['android:largeHeap'] = 'true';
+      const mainActivity = (application.activity || []).find((activity) => activity.$['android:name'] === '.MainActivity');
+      if (mainActivity) {
+        mainActivity.$['android:supportsPictureInPicture'] = 'true';
+        mainActivity.$['android:resizeableActivity'] = 'true';
+      }
+      application.service ||= [];
+      if (!application.service.some((service) => service.$['android:name'] === '.OurlimeOngoingCallService')) {
+        application.service.push({ $: {
+          'android:name': '.OurlimeOngoingCallService',
+          'android:exported': 'false',
+          'android:foregroundServiceType': 'microphone|camera',
+        } });
+      }
     }
     return result;
   });
@@ -93,6 +108,24 @@ function withCallingMainActivity(config) {
 `;
       source = source.replace(marker, `${method}${marker}`);
     }
+    if (!source.includes('import android.content.res.Configuration')) {
+      source = source.replace('import android.os.Bundle', 'import android.os.Bundle\nimport android.content.res.Configuration');
+    }
+    if (!source.includes('OurlimePictureInPicture.onUserLeaveHint(this)')) {
+      const marker = '  /**\n   * Returns the name of the main component registered from JavaScript.';
+      const methods = `  override fun onUserLeaveHint() {
+    super.onUserLeaveHint()
+    OurlimePictureInPicture.onUserLeaveHint(this)
+  }
+
+  override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+    super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+    OurlimePictureInPicture.onModeChanged(isInPictureInPictureMode)
+  }
+
+`;
+      source = source.replace(marker, `${methods}${marker}`);
+    }
     if (!source.includes('private fun configureIncomingCallWindow(intent: Intent?)')) {
       source = source.replaceAll(
         '    OurlimeIncomingCallModule.captureIntent(this, intent)',
@@ -135,7 +168,7 @@ function withCallingAndroidSources(config) {
       'app',
     );
     fs.mkdirSync(packageDirectory, { recursive: true });
-    ['OurlimeIncomingCallModule.kt', 'OurlimeIncomingCallPackage.kt'].forEach((fileName) => {
+    ['OurlimeIncomingCallModule.kt', 'OurlimeIncomingCallPackage.kt', 'OurlimeOngoingCallService.kt', 'OurlimePictureInPicture.kt'].forEach((fileName) => {
       fs.copyFileSync(path.join(__dirname, 'native-call', fileName), path.join(packageDirectory, fileName));
     });
     return result;

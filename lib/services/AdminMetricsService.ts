@@ -1,6 +1,6 @@
 import { collection, getCountFromServer } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
-import { apiService } from './ApiService';
+import { adminApiService } from './AdminApiService';
 import { adminAccessService } from './AdminAccessService';
 
 export type AdminMetrics = {
@@ -43,7 +43,7 @@ export class AdminMetricsService {
       return await this.fetchMetricsFromFirestore();
     } catch (firestoreError: unknown) {
       console.warn('[AdminMetricsService] Firestore metrics unavailable; trying the secure API.', firestoreError);
-      return apiService.request<AdminMetrics>('/api/admin/metrics', { authenticated: true, timeoutMs: 18_000 });
+      return adminApiService.request<AdminMetrics>('/api/admin/metrics', { timeoutMs: 18_000 });
     }
   }
 

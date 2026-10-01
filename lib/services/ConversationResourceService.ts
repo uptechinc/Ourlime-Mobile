@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, limit, onSnapshot, query, where, Timestamp, type DocumentData, type QueryDocumentSnapshot, type Unsubscribe } from 'firebase/firestore';
+import { collection, limit, onSnapshot, query, Timestamp, type DocumentData, type QueryDocumentSnapshot, type Unsubscribe } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { MessagingService, type ConversationEntry } from '@/lib/messaging/MessagingService';
 import { LocalCacheService, type CachedRecord } from './LocalCacheService';
@@ -68,152 +68,72 @@ export class ConversationResourceService {
     return this.inFlight;
   }
 
+  /**
+   * Live chat list. users/{uid}/conversationSummaries is the single source of truth for unread counts and the last
+   * message (the website's chat list does the same); each summary change overwrites that conversation's entry.
+   */
   public startRealtime(userId: string): void {
     if (this.activeUserId === userId && this.unsubs.length > 0) return;
     this.stopRealtime();
     this.activeUserId = userId;
     this.logger.info('ConversationResourceService', 'listener:start', { userId });
 
-    // 1. Listen to user's conversationSummaries subcollection
-    let isInitialSummaries = true;
+    let isInitialSnapshot = true;
+    const lastUnreadByPeer = new Map<string, number>();
     const summariesQuery = query(collection(db, 'users', userId, 'conversationSummaries'), limit(100));
     const summariesUnsub = onSnapshot(summariesQuery, (snapshot) => {
       const incoming = snapshot.docs.map((document) => this.mapSummary(document)).filter((item): item is ConversationEntry => item !== null);
       this.logger.info('ConversationResourceService', 'summaries:reconcile', { changeCount: snapshot.docChanges().length, recordCount: incoming.length });
-      if (incoming.length > 0) {
-        const existing = useResourceStore.getState().conversations.data ?? [];
-        this.scheduleCommit(userId, [...incoming, ...existing]);
-      }
+      if (incoming.length > 0) this.scheduleCommit(userId, this.mergeSummaries(useResourceStore.getState().conversations.data ?? [], incoming));
 
-      if (isInitialSummaries) {
-        isInitialSummaries = false;
+      if (isInitialSnapshot) {
+        isInitialSnapshot = false;
+        incoming.forEach((item) => lastUnreadByPeer.set(item.uid, item.unreadCount));
         return;
       }
 
-      // Check for incoming new messages from modified summaries after initial load
+      // Drop-down banner only when a conversation's unread count goes up (a new incoming message).
       for (const change of snapshot.docChanges()) {
-        if (change.type === 'modified' || change.type === 'added') {
-          const item = this.mapSummary(change.doc);
-          if (item && item.unreadCount > 0 && item.lastMessage) {
-            if (item.isArchived || item.isMuted) continue;
-            const isCall = item.lastMessage.includes('call') || item.lastMessage.includes('Call') || item.lastMessage.includes('[SYS:');
-            if (!isCall) {
-              inAppNotificationService.showNotification({
-                peerId: item.uid,
-                senderName: `${item.firstName} ${item.lastName}`.trim() || item.userName || 'Ourlime User',
-                avatarUrl: item.profilePicture ?? null,
-                messageText: item.lastMessage,
-              });
-            }
-          }
-        }
+        if (change.type === 'removed') continue;
+        const item = this.mapSummary(change.doc);
+        if (!item) continue;
+        const previousUnread = lastUnreadByPeer.get(item.uid) ?? 0;
+        lastUnreadByPeer.set(item.uid, item.unreadCount);
+        if (item.unreadCount <= previousUnread || !item.lastMessage || item.isArchived || item.isMuted) continue;
+        if (change.doc.data().lastMessageType === 'system') continue;
+        inAppNotificationService.showNotification({
+          id: `message:${item.uid}:${item.lastMessageTime?.toMillis() ?? Date.now()}`,
+          kind: 'message',
+          title: `${item.firstName} ${item.lastName}`.trim() || item.userName || 'Ourlime User',
+          body: item.lastMessage,
+          avatarUrl: item.profilePicture ?? null,
+          peerId: item.uid,
+          destination: { type: 'message', senderId: item.uid, chatId: item.uid },
+        });
       }
     }, (error) => {
       this.logger.warn('ConversationResourceService', 'summaries:error', { error: error.message });
     });
     this.unsubs.push(summariesUnsub);
+  }
 
-    // 2. Listen to global chats collection for real-time updates when messages arrive
-    let isInitialChats = true;
-    const chatsQuery = query(collection(db, 'chats'), where('participants', 'array-contains', userId), limit(50));
-    const chatsUnsub = onSnapshot(chatsQuery, async (snapshot) => {
-      const changes = snapshot.docChanges();
-      if (changes.length === 0) return;
-      this.logger.info('ConversationResourceService', 'chats:reconcile', { changeCount: changes.length });
-
-      if (isInitialChats) {
-        isInitialChats = false;
-        return;
-      }
-
-      const currentList = [...(useResourceStore.getState().conversations.data ?? [])];
-      let hasUpdates = false;
-
-      for (const change of changes) {
-        const data = change.doc.data();
-        const participants = Array.isArray(data.participants) ? data.participants as string[] : [];
-        const messages = Array.isArray(data.messages) ? data.messages as Array<Record<string, unknown>> : [];
-        const latestMsg = messages[messages.length - 1] as Record<string, unknown> | undefined;
-
-        const peerId = latestMsg?.senderId && latestMsg.senderId !== userId
-          ? String(latestMsg.senderId)
-          : participants.find((p) => p !== userId);
-
-        if (!peerId || peerId === userId) continue;
-
-        const lastMessageTime = data.lastMessageTime instanceof Timestamp ? data.lastMessageTime : undefined;
-        const lastMessage = typeof data.lastMessage === 'string' ? data.lastMessage : (typeof latestMsg?.message === 'string' ? latestMsg.message : '');
-        const lastMessageSenderId = typeof data.lastMessageSenderId === 'string'
-          ? data.lastMessageSenderId
-          : typeof latestMsg?.senderId === 'string'
-            ? latestMsg.senderId
-            : undefined;
-        const unreadCount = typeof data.unreadCount === 'number' ? data.unreadCount : 0;
-
-        const existingIndex = currentList.findIndex((item) => item.uid === peerId);
-        if (existingIndex >= 0) {
-          const prev = currentList[existingIndex];
-          currentList[existingIndex] = {
-            ...prev,
-            lastMessage: lastMessage || prev.lastMessage,
-            lastMessageSenderId: lastMessageSenderId ?? prev.lastMessageSenderId,
-            lastMessageTime: lastMessageTime ?? prev.lastMessageTime,
-            unreadCount: unreadCount > 0 ? unreadCount : prev.unreadCount,
-          };
-          hasUpdates = true;
-        } else {
-          try {
-            const userDoc = await getDoc(doc(db, 'users', peerId));
-            if (userDoc.exists()) {
-              const u = userDoc.data();
-              currentList.push({
-                uid: peerId,
-                firstName: typeof u.firstName === 'string' ? u.firstName : 'User',
-                lastName: typeof u.lastName === 'string' ? u.lastName : '',
-                userName: typeof u.userName === 'string' ? u.userName : 'user',
-                email: typeof u.email === 'string' ? u.email : '',
-                accountType: typeof u.accountType === 'string' ? u.accountType : 'user',
-                profilePicture: typeof u.profilePicture === 'string' ? u.profilePicture : null,
-                lastMessage,
-                lastMessageSenderId,
-                lastMessageTime,
-                unreadCount,
-                isOnline: u.isOnline === true,
-              });
-              hasUpdates = true;
-            }
-          } catch {
-            // Silently continue
-          }
-        }
-
-        const isCall = lastMessage.includes('call') || lastMessage.includes('Call') || lastMessage.includes('[SYS:');
-        if (change.type === 'modified' && latestMsg?.senderId === peerId && lastMessage && !isCall) {
-          const peerEntry = currentList.find((item) => item.uid === peerId);
-          inAppNotificationService.showNotification({
-            peerId,
-            senderName: peerEntry ? `${peerEntry.firstName} ${peerEntry.lastName}`.trim() || peerEntry.userName : 'Ourlime User',
-            avatarUrl: peerEntry?.profilePicture ?? null,
-            messageText: lastMessage,
-          });
-        }
-      }
-
-      if (hasUpdates) {
-        this.scheduleCommit(userId, currentList);
-      }
-    }, (error) => {
-      this.logger.warn('ConversationResourceService', 'chats:error', { error: error.message });
+  /** Fresh summaries win per conversation; details the summary lacks (online state, a missing photo) are kept. */
+  private mergeSummaries(existing: ConversationEntry[], incoming: ConversationEntry[]): ConversationEntry[] {
+    const byId = new Map(existing.map((item) => [item.uid, item]));
+    incoming.forEach((item) => {
+      const previous = byId.get(item.uid);
+      byId.set(item.uid, previous
+        ? { ...previous, ...item, isOnline: previous.isOnline, profilePicture: item.profilePicture ?? previous.profilePicture }
+        : item);
     });
-    this.unsubs.push(chatsUnsub);
+    return [...byId.values()];
   }
 
   private commitTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingCommitData: { userId: string; list: ConversationEntry[] } | null = null;
 
   public scheduleCommit(userId: string, list: ConversationEntry[]): void {
-    const sorted = [...list].sort(this.sortByActivity);
-    const unique = Array.from(new Map(sorted.map((item) => [item.uid, item])).values()).slice(0, 200);
+    const unique = Array.from(new Map(list.map((item) => [item.uid, item])).values()).sort(this.sortByActivity).slice(0, 200);
     useResourceStore.getState().setConversations({
       data: unique,
       updatedAt: Date.now(),
@@ -326,6 +246,7 @@ export class ConversationResourceService {
     const peerId = typeof record.peerId === 'string' ? record.peerId : document.id;
     if (!peerId) return null;
     const timestamp = record.lastMessageTime instanceof Timestamp ? record.lastMessageTime : record.lastActivityAt instanceof Timestamp ? record.lastActivityAt : undefined;
+    const lastMessageSenderId = typeof record.lastMessageSenderId === 'string' ? record.lastMessageSenderId : undefined;
     return {
       uid: peerId,
       firstName: typeof record.peerFirstName === 'string' ? record.peerFirstName : 'User',
@@ -335,9 +256,11 @@ export class ConversationResourceService {
       accountType: 'user',
       profilePicture: typeof record.peerProfileImage === 'string' ? record.peerProfileImage : null,
       lastMessage: typeof record.lastMessagePreview === 'string' ? record.lastMessagePreview : '',
-      lastMessageSenderId: typeof record.lastMessageSenderId === 'string' ? record.lastMessageSenderId : undefined,
+      lastMessageSenderId,
       lastMessageTime: timestamp,
-      unreadCount: typeof record.unreadCount === 'number' ? record.unreadCount : 0,
+      unreadCount: (this.activeUserId && lastMessageSenderId === this.activeUserId)
+        ? 0
+        : (typeof record.unreadCount === 'number' ? record.unreadCount : 0),
       isOnline: record.isOnline === true,
       isPinned: record.isPinned === true,
       isArchived: record.isArchived === true,

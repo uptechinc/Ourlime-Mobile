@@ -65,6 +65,8 @@ export type NativePushDataV1 = {
   childSafetyReviewerView?: string;
   supportTicketId?: string;
   supportStaffView?: string;
+  imageUrl?: string;
+  avatarUrl?: string;
 };
 
 export type NotificationMetadata = {
@@ -103,6 +105,38 @@ export type NotificationMetadata = {
   childSafetyReviewerView?: string;
   supportTicketId?: string;
   supportStaffView?: string;
+  communityAvatar?: string | null;
+  communityBanner?: string | null;
+  communityTitle?: string;
+  communityName?: string;
+  contentTitle?: string;
+  productImage?: string | null;
+  productId?: string;
+  productTitle?: string;
+  productName?: string;
+  blogCoverImage?: string | null;
+  blogTitle?: string;
+  eventImage?: string | null;
+  eventTitle?: string;
+  courseThumbnail?: string | null;
+  courseTitle?: string;
+  projectAvatar?: string | null;
+  projectName?: string;
+  imageUrl?: string | null;
+  image?: string | null;
+  coverImage?: string | null;
+  bannerImageUrl?: string | null;
+  thumbnail?: string | null;
+  thumbnailUrl?: string | null;
+  senderProfileImage?: string | null;
+  actorProfileImage?: string | null;
+  avatar?: string | null;
+  avatarUrl?: string | null;
+  photoURL?: string | null;
+  profilePic?: string | null;
+  actorUserId?: string;
+  userId?: string;
+  authorId?: string;
 };
 
 export type NotificationData = {

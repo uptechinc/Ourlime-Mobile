@@ -174,6 +174,8 @@ type PostData = {
 type Reel = {
     id: string;
     userId: string;
+    authorUserId: string;
+    legacyLimeMigrationVersion?: number;
     thumbnailUrl?: string;
     media: {
         type: 'video' | 'image';

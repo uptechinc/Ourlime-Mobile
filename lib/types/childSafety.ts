@@ -16,6 +16,17 @@ export const CHILD_SAFETY_CATEGORIES = [
 
 export type ChildSafetyCategory = typeof CHILD_SAFETY_CATEGORIES[number];
 export type ChildSafetyDangerAnswer = 'yes' | 'no' | 'unsure';
+export type ChildSafetyValidationField = 'category' | 'description' | 'evidence' | 'good_faith';
+export type ChildSafetyValidationResult =
+  | { valid: true }
+  | { valid: false; step: 1 | 3 | 4; field: ChildSafetyValidationField; message: string };
+export type ChildSafetyValidationDraft = {
+  category: ChildSafetyCategory | null;
+  description: string;
+  goodFaithAcknowledged: boolean;
+  hasAttachments: boolean;
+  evidenceAcknowledged: boolean;
+};
 export type ChildSafetyStatus = 'submitted' | 'under_review' | 'escalated' | 'action_required' | 'resolved' | 'reported_to_authority' | 'closed';
 export type ChildSafetyPriority = 'critical' | 'high' | 'medium' | 'standard';
 export type ChildSafetyTargetType = 'profile' | 'post' | 'media' | 'comment' | 'reply' | 'message' | 'conversation' | 'lime' | 'community' | 'event' | 'marketplace_listing' | 'course' | 'blog' | 'other';

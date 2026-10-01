@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,13 +6,13 @@ import {
   TouchableOpacity,
   ScrollView,
   Modal,
-  Alert,
   ActivityIndicator,
   StyleSheet,
   Image,
 } from 'react-native';
+import CustomModal from '@/components/ui/CustomModal';
 import Animated from 'react-native-reanimated';
-import { X, Upload, Globe, Users, Lock, Film, Sparkles, Laugh, Lightbulb, Video as VideoIcon, Music2, Compass } from 'lucide-react-native';
+import { X, Upload, Globe, Users, Lock, Film, Sparkles, Laugh, Lightbulb, Video as VideoIcon, Music2, Compass, Image as ImageIcon } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { AuthService } from '@/lib/services/AuthService';
 import { SearchService } from '@/lib/services/SearchService';
@@ -23,9 +23,12 @@ import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { limeThumbnailService, type LimeCoverFrame } from '@/lib/services/LimeThumbnailService';
 import VideoThumbnailPicker from '@/components/media/VideoThumbnailPicker';
+import { CoverFramePreview, CoverFrameScrubber } from '@/components/media/CoverFrameScrubber';
+import VideoTrimModal, { type TrimmedVideoResult } from '@/components/media/VideoTrimModal';
+import { videoTrimService } from '@/lib/services/VideoTrimService';
 const authService = AuthService.getInstance();
 const searchService = SearchService.getInstance();
 const MAX_LIME_VIDEO_DURATION_SECONDS = 30;
@@ -62,6 +65,7 @@ type CreateLimeModalProps = {
   onSuccess: () => void;
 };
 
+/** Playable preview of the chosen Lime on the compose screen. */
 function SelectedVideoPreview({ uri }: { uri: string }) {
   const player = useVideoPlayer(uri, (videoPlayer) => {
     videoPlayer.loop = true;
@@ -80,6 +84,174 @@ function SelectedVideoPreview({ uri }: { uri: string }) {
   );
 }
 
+type LimeVideoConfirmationModalProps = {
+  asset: ImagePicker.ImagePickerAsset | null;
+  selectedThumbnailUri?: string;
+  onThumbnailChange?: (uri: string) => void;
+  onCancel: () => void;
+  onFinish: () => void;
+};
+
+function LimeVideoConfirmationModal({
+  asset,
+  selectedThumbnailUri,
+  onThumbnailChange,
+  onCancel,
+  onFinish,
+}: LimeVideoConfirmationModalProps) {
+  const { colors } = useAppTheme();
+  const [frames, setFrames] = useState<LimeCoverFrame[]>([]);
+  const [framesLoading, setFramesLoading] = useState(false);
+  // Cover time in seconds; the selector slides through the whole video, not just the 10 strip frames.
+  const [coverSeconds, setCoverSeconds] = useState(0);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [customCoverUri, setCustomCoverUri] = useState<string | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+
+  const durationSeconds = typeof asset?.duration === 'number' ? asset.duration / 1000 : 0;
+
+  useEffect(() => {
+    if (!asset || durationSeconds <= 0) {
+      setFrames([]);
+      setCustomCoverUri(null);
+      return;
+    }
+    let active = true;
+    setFramesLoading(true);
+    setCustomCoverUri(null);
+    void (async () => {
+      try {
+        const generated = await limeThumbnailService.createTimelineFrames(asset.uri, durationSeconds, 10);
+        if (active) {
+          setFrames(generated);
+          setCoverSeconds(generated[Math.min(2, Math.max(0, generated.length - 1))]?.timestampSeconds ?? 0);
+          setFramesLoading(false);
+        }
+      } catch (err) {
+        if (active) {
+          console.warn('[LimeVideoConfirmationModal] Failed to extract timeline frames:', err);
+          setFramesLoading(false);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [asset, durationSeconds]);
+
+  const handleCoverChange = useCallback((seconds: number) => {
+    setCoverSeconds(seconds);
+    setCustomCoverUri(null);
+  }, []);
+
+  const handlePickCustomCover = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) return;
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [9, 16],
+        quality: 0.86,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        const uri = result.assets[0].uri;
+        setCustomCoverUri(uri);
+        if (onThumbnailChange) {
+          onThumbnailChange(uri);
+        }
+      }
+    } catch (err) {
+      console.warn('[LimeVideoConfirmationModal] Custom cover pick failed:', err);
+    }
+  };
+
+  const handleFinish = async () => {
+    if (!asset) return;
+    if (customCoverUri) {
+      if (onThumbnailChange) onThumbnailChange(customCoverUri);
+      onFinish();
+      return;
+    }
+    setIsExtracting(true);
+    try {
+      const finalUri = await limeThumbnailService.createThumbnailAtTime(asset.uri, coverSeconds);
+      if (onThumbnailChange) onThumbnailChange(finalUri);
+    } catch {
+      // Closest strip frame as a fallback cover.
+      const nearest = frames.reduce<LimeCoverFrame | null>((best, frame) => (
+        !best || Math.abs(frame.timestampSeconds - coverSeconds) < Math.abs(best.timestampSeconds - coverSeconds) ? frame : best
+      ), null);
+      if (nearest && onThumbnailChange) onThumbnailChange(nearest.previewUri);
+    } finally {
+      setIsExtracting(false);
+    }
+    onFinish();
+  };
+
+  const frameMinutes = Math.floor(coverSeconds / 60);
+  const frameSeconds = Math.floor(coverSeconds % 60);
+  const formattedFrameTime = `${frameMinutes.toString().padStart(2, '0')}:${frameSeconds.toString().padStart(2, '0')}`;
+
+  return (
+    <Modal visible={Boolean(asset)} animationType="slide" presentationStyle="fullScreen" onRequestClose={onCancel}>
+      <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={[styles.confirmationScreen, { backgroundColor: colors.canvas }]}>
+        <View style={[styles.confirmationHeader, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cancel selected Lime video" style={styles.confirmationHeaderAction}>
+            <Text style={[styles.confirmationCancelText, { color: colors.secondaryText }]}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={[styles.confirmationTitle, { color: colors.text }]}>Confirm video</Text>
+          <TouchableOpacity onPress={() => void handleFinish()} disabled={isExtracting} accessibilityRole="button" accessibilityLabel="Finish selecting Lime video" style={styles.confirmationHeaderAction}>
+            {isExtracting ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : (
+              <Text style={[styles.confirmationFinishText, { color: colors.accentText }]}>Finish</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={styles.confirmationBody} keyboardShouldPersistTaps="handled" scrollEnabled={!isScrubbing}>
+          {/* Big preview of the chosen cover: the exact video frame (or the custom photo). */}
+          {customCoverUri ? (
+            <Image source={{ uri: customCoverUri }} style={styles.selectedVideoPreview} resizeMode="cover" />
+          ) : asset ? (
+            <CoverFramePreview uri={asset.uri} timeSeconds={coverSeconds} style={styles.selectedVideoPreview} />
+          ) : null}
+
+          {/* 10-Frame Thumbnail Scrubber Strip */}
+          <View style={[styles.confirmationCoverSection, { backgroundColor: colors.control, borderColor: colors.border }]}>
+            <View style={styles.confirmationCoverHeader}>
+              <Text style={[styles.confirmationCoverTitle, { color: colors.text }]}>Choose cover frame</Text>
+              <Text style={[styles.confirmationCoverSubtitle, { color: colors.mutedText }]}>
+                {customCoverUri ? 'Custom photo cover' : `Frame ${formattedFrameTime}`}
+              </Text>
+            </View>
+
+            <CoverFrameScrubber
+              durationSeconds={durationSeconds}
+              frames={frames}
+              valueSeconds={coverSeconds}
+              loading={framesLoading}
+              onChange={handleCoverChange}
+              onDraggingChange={setIsScrubbing}
+            />
+
+                        {/* Custom Cover Upload Button */}
+            <TouchableOpacity onPress={() => void handlePickCustomCover()} style={[styles.confirmationCustomCoverBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <ImageIcon size={18} color={colors.accent} />
+              <Text style={[styles.confirmationCustomCoverText, { color: colors.text }]}>
+                {customCoverUri ? 'Change cover photo' : 'Add cover from camera roll'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={[styles.confirmationHelp, { color: colors.secondaryText }]}>Review the edited video, then tap Finish to return to your Lime.</Text>
+          {asset?.duration ? <Text style={[styles.confirmationMeta, { color: colors.mutedText }]}>{Math.round(asset.duration / 1000)} seconds</Text> : null}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLimeModalProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useAppTheme();
@@ -87,6 +259,9 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
   const [category, setCategory] = useState('For You');
   const [caption, setCaption] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [pendingAsset, setPendingAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  // A picked video longer than the Lime limit: the trimmer opens so the user can keep the best part.
+  const [trimSourceAsset, setTrimSourceAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [selectedThumbnailUri, setSelectedThumbnailUri] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -142,13 +317,54 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
   };
 
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [dialogState, setDialogState] = useState<{
+    visible: boolean;
+    type: 'error' | 'warning' | 'info' | 'success';
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    type: 'info',
+    title: '',
+    message: '',
+  });
+
+  const handleTrimmedLimeVideo = (result: TrimmedVideoResult) => {
+    const source = trimSourceAsset;
+    setTrimSourceAsset(null);
+    if (!source) return;
+    if (result.fileSize > MAX_LIME_VIDEO_SIZE_BYTES) {
+      setDialogState({ visible: true, type: 'warning', title: 'Video too large', message: 'Lime videos can be up to 100 MB. Try a shorter part.' });
+      return;
+    }
+    // Continue into the usual cover-frame step with the shortened file.
+    setPendingAsset({
+      ...source,
+      uri: result.uri,
+      // A cut can land a few milliseconds over the limit (frame timing); the Lime itself is within it.
+      duration: Math.round(Math.min(result.durationSeconds, MAX_LIME_VIDEO_DURATION_SECONDS) * 1000),
+      fileSize: result.fileSize,
+      mimeType: 'video/mp4',
+      fileName: `${(source.fileName ?? 'lime').replace(/\.[^.]+$/, '')}.mp4`,
+    });
+  };
+
+  const handleTrimLimeError = (message: string) => {
+    setTrimSourceAsset(null);
+    setDialogState({ visible: true, type: 'error', title: 'Video trimming', message });
+  };
 
   /* ── Video Picker with 9:16 Instagram Crop Aspect Ratio (Non-deprecated) ── */
   const handlePickVideo = async () => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permission required', 'Please grant media library access to pick a video.');
+        setDialogState({
+          visible: true,
+          type: 'warning',
+          title: 'Permission required',
+          message: 'Please grant media library access to pick a video.',
+        });
         return;
       }
 
@@ -164,26 +380,56 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
         const asset = result.assets[0];
         const durationSeconds = typeof asset.duration === 'number' ? asset.duration / 1000 : 0;
         if (asset.mimeType && !ALLOWED_LIME_VIDEO_TYPES.has(asset.mimeType.toLowerCase())) {
-          Alert.alert('Unsupported video', 'Please select an MP4, MOV, or WebM video.');
+          setDialogState({
+            visible: true,
+            type: 'warning',
+            title: 'Unsupported video',
+            message: 'Please select an MP4, MOV, or WebM video.',
+          });
           return;
         }
         if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-          Alert.alert('Unreadable video', 'The video duration could not be read. Please select another video.');
+          setDialogState({
+            visible: true,
+            type: 'error',
+            title: 'Unreadable video',
+            message: 'The video duration could not be read. Please select another video.',
+          });
           return;
         }
         if (durationSeconds > MAX_LIME_VIDEO_DURATION_SECONDS) {
-          Alert.alert('Video too long', `Limes can be up to ${MAX_LIME_VIDEO_DURATION_SECONDS} seconds.`);
+          // Too long: open the trimmer (the file is really cut on the device, then the 100 MB check runs on the result).
+          if (videoTrimService.isAvailable()) {
+            setTrimSourceAsset(asset);
+            return;
+          }
+          setDialogState({
+            visible: true,
+            type: 'warning',
+            title: 'Video too long',
+            message: `Limes can be up to ${MAX_LIME_VIDEO_DURATION_SECONDS} seconds.`,
+          });
           return;
         }
         if (typeof asset.fileSize === 'number' && asset.fileSize > MAX_LIME_VIDEO_SIZE_BYTES) {
-          Alert.alert('Video too large', 'Lime videos can be up to 100 MB.');
+          setDialogState({
+            visible: true,
+            type: 'warning',
+            title: 'Video too large',
+            message: 'Lime videos can be up to 100 MB.',
+          });
           return;
         }
-        setSelectedAsset(asset);
+        setPendingAsset(asset);
       }
     } catch (error) {
       console.error('[CreateLimeModal] Video pick error:', error);
-      Alert.alert('Error', 'Could not select video file.');
+      setDialogState({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Could not select video file.',
+      });
     }
   };
 
@@ -192,21 +438,46 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
     setSelectedThumbnailUri('');
   };
 
+  const handleCancelPendingVideo = () => {
+    setPendingAsset(null);
+  };
+
+  const handleFinishPendingVideo = () => {
+    if (!pendingAsset) return;
+    setSelectedAsset(pendingAsset);
+    setPendingAsset(null);
+  };
+
   const handleSubmit = async () => {
     const user = authService.getCurrentUser();
     if (!user) {
-      Alert.alert('Authentication required', 'Please sign in to post a Lime.');
+      setDialogState({
+        visible: true,
+        type: 'warning',
+        title: 'Authentication required',
+        message: 'Please sign in to post a Lime.',
+      });
       return;
     }
 
     if (!selectedAsset) {
-      Alert.alert('Video required', 'Please select a video file to post.');
+      setDialogState({
+        visible: true,
+        type: 'warning',
+        title: 'Video required',
+        message: 'Please select a video file to post.',
+      });
       return;
     }
 
     const durationSeconds = typeof selectedAsset.duration === 'number' ? selectedAsset.duration / 1000 : 0;
     if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > MAX_LIME_VIDEO_DURATION_SECONDS) {
-      Alert.alert('Invalid video', `Choose a readable video that is ${MAX_LIME_VIDEO_DURATION_SECONDS} seconds or shorter.`);
+      setDialogState({
+        visible: true,
+        type: 'warning',
+        title: 'Invalid video',
+        message: `Choose a readable video that is ${MAX_LIME_VIDEO_DURATION_SECONDS} seconds or shorter.`,
+      });
       return;
     }
 
@@ -221,11 +492,28 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
         try {
           thumbnailUri = await limeThumbnailService.createThumbnail(selectedAsset.uri, durationSeconds);
         } catch (thumbnailError: unknown) {
-          console.warn(
-            '[CreateLimeModal] Thumbnail generation failed:',
-            thumbnailError instanceof Error ? thumbnailError.message : 'Unknown error'
-          );
+          setIsUploading(false);
+          setUploadProgress(0);
+          setDialogState({
+            visible: true,
+            type: 'error',
+            title: 'Cover not prepared',
+            message: thumbnailError instanceof Error ? thumbnailError.message : 'A video cover is required before posting a Lime.',
+          });
+          return;
         }
+      }
+
+      if (!thumbnailUri) {
+        setIsUploading(false);
+        setUploadProgress(0);
+        setDialogState({
+          visible: true,
+          type: 'error',
+          title: 'Cover not prepared',
+          message: 'A video cover is required before posting a Lime.',
+        });
+        return;
       }
 
       await limeService.createLime({
@@ -247,13 +535,19 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
       console.error('[CreateLimeModal] Submit error:', error);
       setIsUploading(false);
       setUploadProgress(0);
-      Alert.alert('Upload Failed', error instanceof Error ? error.message : 'Could not upload your Lime reel.');
+      setDialogState({
+        visible: true,
+        type: 'error',
+        title: 'Upload Failed',
+        message: error instanceof Error ? error.message : 'Could not upload your Lime reel.',
+      });
     }
   };
 
   const handleFinishSuccess = () => {
     setShowSuccessModal(false);
     setSelectedAsset(null);
+    setPendingAsset(null);
     setSelectedThumbnailUri('');
     setCaption('');
     setCategory('For You');
@@ -262,6 +556,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
   };
 
   return (
+    <>
     <Modal visible={isOpen} animationType="none" transparent onRequestClose={swipeDismiss.dismissWithAnimation}>
       <View style={[styles.overlay, { backgroundColor: colors.modalScrim }]}>
         <Animated.View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border, paddingBottom: Math.max(24, insets.bottom) }, swipeDismiss.animatedStyle]}>
@@ -392,6 +687,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
                   selectedThumbnailUri={selectedThumbnailUri}
                   onThumbnailChange={setSelectedThumbnailUri}
                   aspectRatio="9:16"
+                  openEditorOnMount
                 />
               </>
             ) : (
@@ -461,7 +757,38 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
           </View>
         </View>
       )}
+
+      <CustomModal
+        visible={dialogState.visible}
+        type={dialogState.type}
+        title={dialogState.title}
+        message={dialogState.message}
+        onClose={() => setDialogState((prev) => ({ ...prev, visible: false }))}
+      />
     </Modal>
+    {trimSourceAsset ? (
+      <VideoTrimModal
+        source={{
+          uri: trimSourceAsset.uri,
+          durationSeconds: (trimSourceAsset.duration ?? 0) / 1000,
+          fileSize: trimSourceAsset.fileSize ?? 0,
+        }}
+        maxDurationSeconds={MAX_LIME_VIDEO_DURATION_SECONDS}
+        title="Trim your Lime"
+        requireCut
+        onCancel={() => setTrimSourceAsset(null)}
+        onComplete={handleTrimmedLimeVideo}
+        onError={handleTrimLimeError}
+      />
+    ) : null}
+    <LimeVideoConfirmationModal
+      asset={pendingAsset}
+      selectedThumbnailUri={selectedThumbnailUri}
+      onThumbnailChange={setSelectedThumbnailUri}
+      onCancel={handleCancelPendingVideo}
+      onFinish={handleFinishPendingVideo}
+    />
+    </>
   );
 }
 
@@ -488,10 +815,89 @@ const styles = StyleSheet.create({
   },
   selectedVideoPreview: {
     width: '100%',
-    height: 260,
+    height: 240,
     borderRadius: 18,
     backgroundColor: '#000000',
   },
+  confirmationScreen: { flex: 1 },
+  confirmationHeader: {
+    minHeight: 58,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  confirmationHeaderAction: { minWidth: 72, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  confirmationCancelText: { fontSize: 15, fontWeight: '700' },
+  confirmationFinishText: { fontSize: 15, fontWeight: '900' },
+  confirmationTitle: { fontSize: 17, fontWeight: '900' },
+  confirmationBody: { padding: 18, paddingBottom: 36, alignItems: 'center' },
+  confirmationCoverSection: {
+    width: '100%',
+    marginTop: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+  },
+  confirmationCoverHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  confirmationCoverTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  confirmationCoverSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  confirmationFrameTrack: {
+    height: 56,
+    borderRadius: 10,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    position: 'relative',
+    backgroundColor: '#000000',
+  },
+  confirmationFrameThumb: {
+    flex: 1,
+    height: '100%',
+  },
+  confirmationFrameSelector: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    borderWidth: 2.5,
+    borderColor: '#10b981',
+    borderRadius: 6,
+    backgroundColor: 'rgba(16, 185, 129, 0.25)',
+  },
+  confirmationFramesLoading: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmationCustomCoverBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+  },
+  confirmationCustomCoverText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  confirmationHelp: { marginTop: 14, fontSize: 13, lineHeight: 18, textAlign: 'center', fontWeight: '600' },
+  confirmationMeta: { marginTop: 6, fontSize: 12, textAlign: 'center' },
   dragHandleWrapper: {
     width: '100%',
     alignItems: 'center',

@@ -1,5 +1,5 @@
 import { CalendarDays, Edit3, Flag, Heart, Lock, Settings2, Share2, ShieldCheck, Users } from 'lucide-react-native';
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { CommunityCardModel } from '@/lib/types/community';
@@ -27,6 +27,8 @@ const membershipLabel = (community: CommunityCardModel): string => {
 
 export default function CommunityDetailHeader({ community, busyAction, onMembershipAction, onLeave, onLike, onShare, onReport, onEdit, onDashboard }: CommunityDetailHeaderProps) {
   const { colors } = useAppTheme();
+  const { width } = useWindowDimensions();
+  const isNarrow = width < 390;
   const isOwner = community.membershipState === 'owner';
   const isMember = community.membershipState === 'member';
   const isPending = community.membershipState === 'pending';
@@ -72,7 +74,8 @@ export default function CommunityDetailHeader({ community, busyAction, onMembers
           </View>
         </View>
         <Text style={{ marginTop: 13, color: colors.secondaryText, lineHeight: 21 }}>{community.description || 'This community has not added a description yet.'}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 13 }}>
+        <View style={{ flexDirection: isNarrow ? 'column' : 'row', alignItems: isNarrow ? 'flex-start' : 'center', marginTop: 13, gap: isNarrow ? 9 : 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: isNarrow ? undefined : 1, maxWidth: '100%' }}>
           {community.creatorProfilePicture ? (
             <CachedImage uri={community.creatorProfilePicture} recyclingKey={`community-owner-${community.creatorId}-${community.creatorProfilePicture}`} style={{ width: 34, height: 34, borderRadius: 17 }} contentFit="cover" />
           ) : (
@@ -80,12 +83,13 @@ export default function CommunityDetailHeader({ community, busyAction, onMembers
               <Text style={{ color: colors.accentText, fontWeight: '900' }}>{community.creatorName.charAt(0).toUpperCase()}</Text>
             </View>
           )}
-          <View style={{ marginLeft: 9, flex: 1 }}>
+          <View style={{ marginLeft: 9, flex: 1, minWidth: 0 }}>
             <Text style={{ color: colors.mutedText, fontSize: 11 }}>Created by</Text>
-            <Text style={{ color: colors.accentText, fontWeight: '800' }}>{community.creatorName}</Text>
+            <Text numberOfLines={2} style={{ color: colors.accentText, fontWeight: '800' }}>{community.creatorName}</Text>
           </View>
-          <CalendarDays size={15} color={colors.icon} />
-          <Text style={{ marginLeft: 5, color: colors.mutedText, fontSize: 11 }}>{createdDate}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: isNarrow ? 43 : 10 }}><CalendarDays size={15} color={colors.icon} />
+          <Text style={{ marginLeft: 5, color: colors.mutedText, fontSize: 11 }}>{createdDate}</Text></View>
         </View>
         <View style={{ flexDirection: 'row', marginTop: 17, padding: 13, borderRadius: 15, backgroundColor: colors.control }}>
           <View style={{ flex: 1, alignItems: 'center' }}>

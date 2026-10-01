@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { BadgeCheck, UserPlus, UserCheck } from 'lucide-react-native';
@@ -22,21 +22,34 @@ export default function BlogAuthorCard({ author }: BlogAuthorCardProps) {
 
   const isSelf = activeUserId === author.id;
 
+  useEffect(() => { setFollowersCount(author.followersCount ?? 0); }, [author.followersCount]);
+
+  useEffect(() => {
+    if (!activeUserId || !author.id || activeUserId === author.id) { setIsFollowing(false); return; }
+    let cancelled = false;
+    void followService.getFollowStatus(activeUserId, author.id)
+      .then((status) => { if (!cancelled) setIsFollowing(Boolean(status.data)); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [activeUserId, author.id]);
+
   const handleToggleFollow = async () => {
     if (!activeUserId || !author.id || isSelf || followLoading) return;
     setFollowLoading(true);
     try {
       if (isFollowing) {
-        await followService.unfollowUser(activeUserId, author.id);
+        const result = await followService.unfollowUser(activeUserId, author.id);
+        if (!result.success) throw new Error(result.error);
         setIsFollowing(false);
         setFollowersCount((count) => Math.max(0, count - 1));
       } else {
-        await followService.followUser(activeUserId, author.id);
+        const result = await followService.followUser(activeUserId, author.id);
+        if (!result.success) throw new Error(result.error);
         setIsFollowing(true);
         setFollowersCount((count) => count + 1);
       }
     } catch (err) {
-      console.warn('[BlogAuthorCard] Failed to toggle follow:', err);
+      console.warn('[BlogAuthorCard.handleToggleFollow] Error:', err instanceof Error ? err.message : err);
     } finally {
       setFollowLoading(false);
     }
@@ -76,7 +89,7 @@ export default function BlogAuthorCard({ author }: BlogAuthorCardProps) {
         </Text>
       ) : null}
 
-      {!isSelf && author.id ? (
+      {!isSelf && author.id && activeUserId ? (
         <TouchableOpacity
           onPress={handleToggleFollow}
           disabled={followLoading}

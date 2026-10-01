@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,8 +22,10 @@ import {
 import UserAvatar from '@/components/ui/UserAvatar';
 import JobApplicationModal from '@/components/jobs/applyJobs/JobApplicationModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { JobDetailSkeleton } from '@/components/ui/Skeleton';
 import { AuthService } from '@/lib/services/AuthService';
 import { JobsService, type JobRecord } from '@/lib/job/JobsService';
+import { jobApplicationService } from '@/lib/services/JobApplicationService';
 
 const jobsService = JobsService.getInstance();
 const authService = AuthService.getInstance();
@@ -46,6 +47,7 @@ export default function JobDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [applyModalOpen, setApplyModalOpen] = useState(false);
+  const [isApplied, setIsApplied] = useState(false);
 
   const loadJob = useCallback(async () => {
     if (!jobId) return;
@@ -70,6 +72,20 @@ export default function JobDetailScreen() {
   useEffect(() => {
     void loadJob();
   }, [loadJob]);
+
+  useEffect(() => {
+    const userId = authService.getCurrentUser()?.uid;
+    if (!userId || !jobId) return;
+    let cancelled = false;
+    void jobApplicationService.getAppliedJobIds(userId).then((ids) => {
+      if (!cancelled && ids.has(jobId)) {
+        setIsApplied(true);
+      }
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId]);
 
   const currentUserId = authService.getCurrentUser()?.uid;
   const isCreator = Boolean(job && currentUserId === job.basic_info.userId);
@@ -102,10 +118,9 @@ export default function JobDetailScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#10b981" />
-          <Text style={[styles.statusText, { color: colors.mutedText }]}>Loading job details...</Text>
-        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <JobDetailSkeleton />
+        </ScrollView>
       ) : error || !job ? (
         <View style={styles.centerContainer}>
           <Text style={[styles.errorText, { color: colors.text }]}>{error || 'Job not found.'}</Text>
@@ -265,10 +280,17 @@ export default function JobDetailScreen() {
             <Text style={[styles.priceLabel, { color: colors.mutedText }]}>Compensation</Text>
             <Text style={[styles.priceValue, { color: colors.text }]}>{priceFormatted}</Text>
           </View>
-          <TouchableOpacity onPress={() => setApplyModalOpen(true)} style={styles.applyBtn}>
-            <Send size={16} color="#ffffff" />
-            <Text style={styles.applyBtnText}>Apply Now</Text>
-          </TouchableOpacity>
+          {isApplied ? (
+            <View style={[styles.applyBtn, { backgroundColor: colors.control, borderColor: colors.border, borderWidth: 1 }]}>
+              <CheckCircle2 size={16} color={colors.mutedText} />
+              <Text style={[styles.applyBtnText, { color: colors.mutedText }]}>Applied</Text>
+            </View>
+          ) : (
+            <TouchableOpacity onPress={() => setApplyModalOpen(true)} style={styles.applyBtn}>
+              <Send size={16} color="#ffffff" />
+              <Text style={styles.applyBtnText}>Apply Now</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : null}
 
@@ -277,6 +299,7 @@ export default function JobDetailScreen() {
         <JobApplicationModal
           isOpen={applyModalOpen}
           onClose={() => setApplyModalOpen(false)}
+          onApplied={() => setIsApplied(true)}
           job={job}
           jobType={isQuickTask ? 'quickTask' : 'professional'}
         />

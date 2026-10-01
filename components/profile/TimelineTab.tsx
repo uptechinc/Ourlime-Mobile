@@ -34,7 +34,7 @@ export default function TimelineTab({ userId }: TimelineTabProps) {
   const [activePostId, setActivePostId] = useState<string | null>(null);
   const query = { userId: viewerId, scope: 'home' as const, filter: apiFilters[activeFilter], authorId: userId };
   const { resource, refresh, loadMore } = useFeedQuery(query);
-  const posts = resource.data?.posts ?? [];
+  const posts = (resource.data?.posts ?? []).filter((post) => post.userId === userId);
   const activePost = activePostId ? posts.find((post) => post.id === activePostId) ?? null : null;
   const isInitialLoading = !resource.data && (resource.status === 'idle' || resource.status === 'hydrating');
 

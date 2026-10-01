@@ -195,7 +195,7 @@ export default function EditPostModal({ visible, post, currentUserId, onClose, o
 				return;
 			}
 
-			await postService.updatePost(post.id, post.origin, updates);
+			await postService.updatePost(post.id, post.origin, updates, post.communityId);
 
 			const updatedPost: PostItem = {
 				...post,

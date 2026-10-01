@@ -7,20 +7,14 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
-import { ApiService } from './ApiService';
+import { chatDataService } from './ChatDataService';
 import { MessagingService, type FullMessage } from '@/lib/messaging/MessagingService';
 
 const RECENT_MESSAGE_LIMIT = 50;
 
-type RecentMessagesResponse = {
-  status: 'success' | 'error';
-  data?: { items?: unknown[] };
-  message?: string;
-};
-
 export class SimpleChatMessageService {
   private static instance: SimpleChatMessageService;
-  private readonly apiService = ApiService.getInstance();
+  private readonly chatData = chatDataService;
   private readonly messagingService = MessagingService.getInstance();
 
   private constructor() {}
@@ -33,15 +27,8 @@ export class SimpleChatMessageService {
   }
 
   public async loadRecent(peerId: string): Promise<FullMessage[]> {
-    const search = new URLSearchParams({ peerId, limit: String(RECENT_MESSAGE_LIMIT) });
-    const response = await this.apiService.request<RecentMessagesResponse>(
-      `/api/messaging?${search.toString()}`,
-      { authenticated: true },
-    );
-    if (response.status !== 'success') {
-      throw new Error(response.message ?? 'Could not load messages.');
-    }
-    return this.normalizeRecent(response.data?.items ?? []);
+    const page = await this.chatData.getMessagePage(peerId, RECENT_MESSAGE_LIMIT);
+    return this.normalizeRecent(page.items);
   }
 
   public subscribeToRecent(
@@ -82,13 +69,9 @@ export class SimpleChatMessageService {
     if (this.markReadInFlight.has(peerId)) return;
     this.markReadInFlight.add(peerId);
     try {
-      await this.apiService.request('/api/messaging', {
-        authenticated: true,
-        method: 'PATCH',
-        body: { peerId, action: 'read' },
-      });
+      await this.chatData.updateConversation(peerId, 'read');
     } catch {
-      // Non-fatal
+      // Non-fatal: the next open marks the conversation read again.
     } finally {
       setTimeout(() => this.markReadInFlight.delete(peerId), 2000);
     }
@@ -96,11 +79,7 @@ export class SimpleChatMessageService {
 
   public async markUnread(peerId: string): Promise<void> {
     try {
-      await this.apiService.request('/api/messaging', {
-        authenticated: true,
-        method: 'PATCH',
-        body: { peerId, action: 'unread' },
-      });
+      await this.chatData.updateConversation(peerId, 'unread');
     } catch {
       // Non-fatal
     }
@@ -108,11 +87,7 @@ export class SimpleChatMessageService {
 
   public async setArchiveStatus(peerId: string, isArchived: boolean): Promise<void> {
     try {
-      await this.apiService.request('/api/messaging', {
-        authenticated: true,
-        method: 'PATCH',
-        body: { peerId, action: isArchived ? 'archive' : 'unarchive' },
-      });
+      await this.chatData.updateConversation(peerId, isArchived ? 'archive' : 'unarchive');
     } catch {
       // Non-fatal
     }
@@ -120,11 +95,7 @@ export class SimpleChatMessageService {
 
   public async setPinStatus(peerId: string, isPinned: boolean): Promise<void> {
     try {
-      await this.apiService.request('/api/messaging', {
-        authenticated: true,
-        method: 'PATCH',
-        body: { peerId, action: isPinned ? 'pin' : 'unpin' },
-      });
+      await this.chatData.updateConversation(peerId, isPinned ? 'pin' : 'unpin');
     } catch {
       // Non-fatal
     }

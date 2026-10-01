@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Briefcase, ClipboardList, Clock, Plus, Search, Settings2 } from 'lucide-react-native';
 import { useRouter, type Href } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import { QuickTasksList } from '@/components/jobs/QuickTasksList';
 import JobCreationModal from '@/components/jobs/createJobsModal/jobCreationModal';
 import { JobsService, type JobRecord } from '@/lib/job/JobsService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { SkeletonJobCard } from '@/components/home/SkeletonLoaders';
 
 type JobTab = 'professional' | 'quickTask';
 const jobsService = JobsService.getInstance();
@@ -64,7 +65,14 @@ export default function JobsPage() {
       {categories.length > 0 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}><TouchableOpacity onPress={() => setSelectedCategory(null)} style={[styles.chip, !selectedCategory && styles.chipActive]}><Text style={[styles.chipText, !selectedCategory && styles.chipTextActive]}>All</Text></TouchableOpacity>{categories.map(([category, count]) => <TouchableOpacity key={category} onPress={() => setSelectedCategory(category)} style={[styles.chip, selectedCategory === category && styles.chipActive]}><Text style={[styles.chipText, selectedCategory === category && styles.chipTextActive]}>{category} ({count})</Text></TouchableOpacity>)}</ScrollView> : null}
       <View style={styles.toolbar}><View style={styles.tabs}>{([{ id: 'professional', label: 'Professional', Icon: Briefcase }, { id: 'quickTask', label: 'Quick Tasks', Icon: Clock }] as const).map(({ id, label, Icon }) => <TouchableOpacity key={id} onPress={() => setActiveTab(id)} style={[styles.tab, activeTab === id && styles.tabActive]}><Icon size={17} color={activeTab === id ? '#ffffff' : '#10b981'} /><Text style={[styles.tabText, activeTab === id && styles.tabTextActive]}>{label}</Text></TouchableOpacity>)}</View><TouchableOpacity onPress={() => setModalOpen(true)} style={styles.addButton}><Plus size={18} color="#ffffff" /></TouchableOpacity></View>
       {error ? <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text><TouchableOpacity onPress={() => void loadJobs()}><Text style={styles.retryText}>Try again</Text></TouchableOpacity></View> : null}
-      {loading ? <ActivityIndicator size="large" color="#10b981" style={styles.loader} /> : activeTab === 'professional' ? <ProfessionalJobsList jobs={filteredJobs} /> : <QuickTasksList jobs={filteredJobs} />}
+      {loading ? (
+        <View style={{ paddingHorizontal: 18, gap: 10 }}>
+          <SkeletonJobCard />
+          <SkeletonJobCard />
+          <SkeletonJobCard />
+          <SkeletonJobCard />
+        </View>
+      ) : activeTab === 'professional' ? <ProfessionalJobsList jobs={filteredJobs} /> : <QuickTasksList jobs={filteredJobs} />}
     </ScrollView>
     <JobCreationModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onCreated={() => void loadJobs()} />
   </SafeAreaView>;

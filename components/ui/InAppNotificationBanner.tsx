@@ -14,15 +14,10 @@ import { usePathname, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import UserAvatar from '@/components/ui/UserAvatar';
-import { inAppNotificationService } from '@/lib/services/InAppNotificationService';
+import { inAppNotificationService, type InAppNotificationPayload } from '@/lib/services/InAppNotificationService';
 import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
 
-type BannerData = {
-  peerId: string;
-  senderName: string;
-  avatarUrl: string | null;
-  messageText: string;
-};
+type BannerData = InAppNotificationPayload;
 
 export default function InAppNotificationBanner() {
   const router = useRouter();
@@ -83,9 +78,11 @@ export default function InAppNotificationBanner() {
 
   useEffect(() => {
     const unsub = inAppNotificationService.subscribe((payload) => {
-      const isInThisChat =
+      // A message from the chat that is already open needs no banner.
+      const isInThisChat = Boolean(payload.peerId) && (
         pathname.includes(`/chat/${payload.peerId}`) ||
-        pathname.includes(`/chat/${encodeURIComponent(payload.peerId)}`);
+        pathname.includes(`/chat/${encodeURIComponent(payload.peerId ?? '')}`)
+      );
       if (!isInThisChat) {
         showBanner(payload);
       }
@@ -112,9 +109,7 @@ export default function InAppNotificationBanner() {
 
   const handlePress = () => {
     dismiss();
-    if (activeBanner?.peerId) {
-      router.push(notificationDestinationRegistry.resolve({ type: 'message', senderId: activeBanner.peerId }).route);
-    }
+    if (activeBanner) router.push(notificationDestinationRegistry.resolve(activeBanner.destination).route);
   };
 
   if (!activeBanner) {
@@ -167,7 +162,7 @@ export default function InAppNotificationBanner() {
               <View style={styles.topMetaRow}>
                 <View style={styles.appTag}>
                   <View style={styles.appIconCircle}>
-                    <Ionicons name="chatbubble-ellipses" size={11} color="#ffffff" />
+                    <Ionicons name={activeBanner.kind === 'message' ? 'chatbubble-ellipses' : 'notifications'} size={11} color="#ffffff" />
                   </View>
                   <Text style={styles.appNameText}>Ourlime</Text>
                 </View>
@@ -183,16 +178,16 @@ export default function InAppNotificationBanner() {
               <View style={styles.messageRow}>
                 <UserAvatar
                   profileImage={activeBanner.avatarUrl}
-                  firstName={activeBanner.senderName || 'User'}
+                  firstName={activeBanner.title || 'Ourlime'}
                   size={42}
                 />
 
                 <View style={styles.textContainer}>
                   <Text style={[styles.senderName, { color: colors.text }]} numberOfLines={1}>
-                    {activeBanner.senderName || 'Ourlime User'}
+                    {activeBanner.title || 'Ourlime'}
                   </Text>
                   <Text style={[styles.messagePreview, { color: isDark ? '#94a3b8' : '#475569' }]} numberOfLines={2}>
-                    {activeBanner.messageText}
+                    {activeBanner.body}
                   </Text>
                 </View>
               </View>

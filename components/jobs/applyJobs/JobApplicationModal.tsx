@@ -12,11 +12,12 @@ type Question = { id: string; question?: string; type?: string; options?: string
 type JobApplicationModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  onApplied?: () => void;
   job: { id: string; basic_info: { title: string }; category_specific: { name?: string }; questions?: Question[] };
   jobType: 'professional' | 'quicktasks' | 'quickTask';
 };
 
-export default function JobApplicationModal({ isOpen, onClose, job, jobType }: JobApplicationModalProps) {
+export default function JobApplicationModal({ isOpen, onClose, onApplied, job, jobType }: JobApplicationModalProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [coverLetter, setCoverLetter] = useState(''); const [resume, setResume] = useState<ResumeAsset | null>(null); const [portfolioLink, setPortfolioLink] = useState('');
@@ -40,6 +41,7 @@ export default function JobApplicationModal({ isOpen, onClose, job, jobType }: J
     try {
       await jobApplicationService.createApplication({ jobId: job.id, jobType: isQuickTask ? 'quickTask' : 'professional', coverLetter, resume: resume ?? undefined, portfolioLink, answers });
       setSuccess(true);
+      onApplied?.();
     } catch (submitError: unknown) { setError(submitError instanceof Error ? submitError.message : 'Your application could not be submitted.'); }
     finally { setSubmitting(false); }
   };

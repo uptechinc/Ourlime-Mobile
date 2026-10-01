@@ -1,6 +1,6 @@
 import { collection, limit, onSnapshot, orderBy, query, Timestamp, where, type Unsubscribe } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
-import { ApiService } from './ApiService';
+import { chatDataService } from './ChatDataService';
 import { LocalCacheService } from './LocalCacheService';
 import { ResourceErrorService } from './ResourceErrorService';
 import { MessagingService, type FullMessage } from '@/lib/messaging/MessagingService';
@@ -12,15 +12,9 @@ const MESSAGE_NAMESPACE = 'messages';
 const MESSAGE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MESSAGE_PAGE_SIZE = 30;
 
-type MessagePageResponse = {
-  status: 'success' | 'error';
-  data?: { items?: unknown[]; nextCursor?: string | null; hasMore?: boolean; clearedAt?: number | null };
-  message?: string;
-};
-
 export class MessageResourceService {
   private static instance: MessageResourceService;
-  private readonly apiService = ApiService.getInstance();
+  private readonly chatData = chatDataService;
   private readonly cacheService = LocalCacheService.getInstance();
   private readonly errorService = ResourceErrorService.getInstance();
   private readonly messagingService = MessagingService.getInstance();
@@ -162,7 +156,7 @@ export class MessageResourceService {
   }
 
   public async markRead(peerId: string): Promise<void> {
-    await this.apiService.request('/api/messaging', { method: 'PATCH', authenticated: true, body: { peerId } });
+    await this.chatData.updateConversation(peerId, 'read');
   }
 
   public async insertOptimistic(userId: string, chatId: string, message: FullMessage): Promise<void> {
@@ -190,15 +184,12 @@ export class MessageResourceService {
     const current = useResourceStore.getState().messages[chatId];
     useResourceStore.getState().setMessages(chatId, this.withState(current, { status: current?.data ? 'refreshing' : 'hydrating', error: null }));
     try {
-      const search = new URLSearchParams({ peerId, limit: String(MESSAGE_PAGE_SIZE) });
-      if (cursor) search.set('cursor', cursor);
-      const response = await this.apiService.request<MessagePageResponse>(`/api/messaging?${search.toString()}`, { authenticated: true });
-      if (response.status !== 'success') throw new Error(response.message ?? 'Could not load messages.');
-      const page = (response.data?.items ?? []).map((item) => this.messagingService.normalizeMessage(item)).filter((message): message is FullMessage => message !== null);
-      const clearedAt = response.data?.clearedAt ?? current?.data?.clearedAt;
+      const response = await this.chatData.getMessagePage(peerId, MESSAGE_PAGE_SIZE, cursor);
+      const page = response.items.map((item) => this.messagingService.normalizeMessage(item)).filter((message): message is FullMessage => message !== null);
+      const clearedAt = response.clearedAt ?? current?.data?.clearedAt;
       const currentMessages = (current?.data?.messages ?? []).filter((message) => !clearedAt || message.timestamp.toMillis() > clearedAt);
       const messages = appendOlder ? this.mergeMessages([...page, ...currentMessages]) : this.mergeMessages([...currentMessages, ...page]);
-      await this.commit(userId, chatId, { messages, nextCursor: response.data?.nextCursor ?? null, hasMore: response.data?.hasMore === true, clearedAt, pagination: { status: 'idle', errorMessage: null } }, 'network');
+      await this.commit(userId, chatId, { messages, nextCursor: response.nextCursor, hasMore: response.hasMore, clearedAt, pagination: { status: 'idle', errorMessage: null } }, 'network');
       if (clearedAt && clearedAt !== current?.data?.clearedAt && this.listenerContexts.has(chatId)) {
         const context = this.listenerContexts.get(chatId);
         this.listeners.get(chatId)?.();

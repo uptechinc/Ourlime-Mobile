@@ -120,6 +120,8 @@ export default function AppHeader({
                     }}>
                         {showBackButton ? (
                             <TouchableOpacity 
+                                accessibilityRole="button"
+                                accessibilityLabel="Go back"
                                 onPress={onBackPress} 
                                 style={{
                                     padding: 8,
@@ -155,6 +157,7 @@ export default function AppHeader({
                         {profilePictureUrl ? (
                             <Image
                                 source={{ uri: profilePictureUrl }}
+                                accessibilityLabel="Your profile"
                                 style={{
                                     width: 34,
                                     height: 34,
@@ -164,7 +167,9 @@ export default function AppHeader({
                                 }}
                             />
                         ) : (
-                            <View style={{
+                            <View 
+                                accessibilityLabel="Your profile"
+                                style={{
                                 width: 34,
                                 height: 34,
                                 borderRadius: 17,
@@ -179,6 +184,8 @@ export default function AppHeader({
                         )}
                         {onNotificationPress && (
                             <TouchableOpacity 
+                                accessibilityRole="button"
+                                accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
                                 onPress={onNotificationPress} 
                                 style={{
                                     padding: 8,
@@ -224,6 +231,8 @@ export default function AppHeader({
                             </TouchableOpacity>
                         )}
                         <TouchableOpacity 
+                            accessibilityRole="button"
+                            accessibilityLabel="Open navigation menu"
                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                             onPress={onMenuPress} 
                             style={{

@@ -1,7 +1,5 @@
 import {
   addDoc,
-  arrayRemove,
-  arrayUnion,
   collection,
   deleteDoc,
   doc,
@@ -22,7 +20,7 @@ import {
 import { auth, db } from '../firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { AvatarService } from './AvatarService';
-import { ApiService, ApiServiceError } from './ApiService';
+import { communityDataService } from './CommunityDataService';
 import { DeepLinkService } from './DeepLinkService';
 import { PostMediaService, isCancellationError, type MediaUploadProgress, type PostUploadStage } from './PostMediaService';
 import type { PageResult } from '@/lib/types/serviceResults';
@@ -125,6 +123,7 @@ export type PostItem = {
   repostedFrom?: RepostedFrom;
   repostedByViewer?: boolean;
   repostedByUserIds?: string[];
+  reposters?: PostUser[];
   relationshipStatus?: PostRelationshipStatus;
   communityId?: string;
   communityName?: string;
@@ -213,9 +212,10 @@ export class PostService {
   private static instance: PostService;
   private readonly logger = DiagnosticLogService.getInstance();
   private readonly avatarService = AvatarService.getInstance();
-  private readonly apiService = ApiService.getInstance();
   private readonly deepLinkService = DeepLinkService.getInstance();
   private readonly mediaService = PostMediaService.getInstance();
+
+  private readonly pendingReposts = new Map<string, Promise<string>>();
 
   private constructor() {}
 
@@ -247,8 +247,51 @@ export class PostService {
     }
   }
 
+  /** Community feed read from Firestore (same data the website's community posts route returns). */
   public async fetchCommunityPosts(communityId: string): Promise<PostItem[]> {
-    return this.fetchCommunityPostsFromFirestore(communityId);
+    const viewerId = auth.currentUser?.uid ?? null;
+    const access = await communityDataService.resolveAccess(communityId);
+    if (!access) throw new Error('Community not found.');
+    if (!access.hasAccess) throw new Error('Community access required.');
+    const snapshot = await getDocs(query(collection(db, 'communityVariantDetails'), where('communityVariantId', '==', access.communityId)));
+    const documents: DataDocument[] = snapshot.docs
+      .map((document) => ({ id: document.id, data: isRecord(document.data()) ? document.data() : {} }))
+      .filter((document) => document.data.hidden !== true)
+      .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
+    const postIds = documents.map((document) => document.id);
+    const [mediaDocuments, viewerLikes, counters, users] = await Promise.all([
+      this.getDocumentsByField('communityVariantDetailsSummary', 'communityVariantDetailsId', postIds),
+      viewerId ? getDocs(query(collection(db, 'communityVariantDetailsLikes'), where('userId', '==', viewerId))) : Promise.resolve(null),
+      Promise.all(postIds.map((postId) => getDoc(doc(db, 'communityVariantDetailsCounter', postId)).catch(() => null))),
+      this.loadUserCards(documents.map((document) => readString(document.data.userId))),
+    ]);
+    const mediaByPost = new Map<string, PostMedia[]>();
+    mediaDocuments.forEach((document) => {
+      const postId = readString(document.data.communityVariantDetailsId);
+      const typeUrl = readString(document.data.typeUrl);
+      if (!postId || !typeUrl) return;
+      mediaByPost.set(postId, [...(mediaByPost.get(postId) ?? []), {
+        id: document.id,
+        type: document.data.type === 'video' ? 'video' : 'image',
+        typeUrl,
+        fileName: readString(document.data.fileName),
+        thumbnailUrl: readString(document.data.thumbnailUrl) || undefined,
+      }]);
+    });
+    const likedPostIds = new Set((viewerLikes?.docs ?? []).map((like) => readString(like.data().postId)));
+    const posts = documents.map((document, index) => {
+      const userId = readString(document.data.userId);
+      const likeCount = Math.max(0, Number(counters[index]?.data()?.likeCount) || 0);
+      return this.mapPost(
+        { id: document.id, data: { ...document.data, communityId: access.communityId, communityName: readString(access.communityData.title) } },
+        users.get(userId) ?? this.emptyUser(userId),
+        mediaByPost.get(document.id) ?? [],
+        { likeCount, commentCount: document.data.commentCount, shareCount: document.data.shareCount },
+        viewerId && likedPostIds.has(document.id) ? [viewerId] : [],
+      );
+    });
+    this.logger.success('PostService', 'community-posts:firestore', { communityId, renderedPostCount: posts.length });
+    return posts;
   }
 
   public async fetchFeedPage(options: {
@@ -407,6 +450,7 @@ export class PostService {
       });
 
       const filteredDocuments = rawDocuments.filter((document) => {
+        if (!this.hasRenderablePostContent(document.data, mediaByPost.get(document.id) ?? [])) return false;
         const filter = options.filter ?? 'all';
         if (filter === 'all') return true;
         if (filter === 'poll' || filter === 'event') return document.data.type === filter;
@@ -470,17 +514,51 @@ export class PostService {
       .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
 
     const relationships = await this.loadRelationships(viewerId);
-    const visibleDocuments = rawDocuments.filter((document) => {
+    const eligibleDocuments = rawDocuments.filter((document) => {
       if (!this.canViewPost(document.data, viewerId, relationships)) return false;
+      const isRepost = document.data.isRepost === true || isRecord(document.data.repostedFrom);
+      const reposterId = readString(document.data.userId);
+      if (isRepost && !options.authorId && reposterId !== viewerId && !relationships.friends.has(reposterId)) return false;
       if (options.scope === 'friends') return relationships.friends.has(readString(document.data.userId));
       return true;
     });
+    // A repost is distribution of the original, never a second authored post.
+    const repostAuthorsByPost = new Map<string, Set<string>>();
+    const originalsById = new Map<string, DataDocument>();
+    const resolvedEntries: { entry: DataDocument; original: DataDocument | null }[] = [];
+    for (let offset = 0; offset < eligibleDocuments.length; offset += 4) {
+      resolvedEntries.push(...await Promise.all(eligibleDocuments.slice(offset, offset + 4).map(async (entry) => ({
+        entry,
+        original: await this.resolveOriginalPost(entry),
+      }))));
+    }
+    for (const { entry, original } of resolvedEntries) {
+      if (!original || !this.canViewPost(original.data, viewerId, relationships)) continue;
+      originalsById.set(original.id, original);
+      if (entry.id !== original.id) {
+        const reposters = repostAuthorsByPost.get(original.id) ?? new Set<string>();
+        reposters.add(readString(entry.data.userId));
+        repostAuthorsByPost.set(original.id, reposters);
+      }
+    }
+    const visibleDocuments = [...originalsById.values()];
     const postIds = visibleDocuments.map((document) => document.id);
-    const [mediaDocuments, countDocuments, likeDocuments] = await Promise.all([
+    const [mediaDocuments, countDocuments, likeDocuments, viewerRepostedPostIds, currentRepostMarkers, legacyRepostMarkers] = await Promise.all([
       this.getDocumentsByField('feedsPostSummary', 'feedsPostId', postIds),
       this.getDocumentsByField('likesCount', 'feedsPostId', postIds),
       this.getDocumentsByField('feedsPostLikeCount', 'feedsPostId', postIds),
+      this.loadViewerRepostedPostIds(viewerId),
+      this.getDocumentsByField('postReposts', 'originalPostId', postIds),
+      this.getDocumentsByField('postReposts', 'postId', postIds),
     ]);
+    for (const marker of [...currentRepostMarkers, ...legacyRepostMarkers]) {
+      const reposterId = readString(marker.data.userId);
+      if (!reposterId || (reposterId !== viewerId && reposterId !== options.authorId && !relationships.friends.has(reposterId))) continue;
+      const originalId = readString(marker.data.originalPostId) || readString(marker.data.postId);
+      const reposters = repostAuthorsByPost.get(originalId) ?? new Set<string>();
+      reposters.add(reposterId);
+      repostAuthorsByPost.set(originalId, reposters);
+    }
 
     const mediaByPost = new Map<string, PostMedia[]>();
     mediaDocuments.forEach((document) => {
@@ -511,6 +589,7 @@ export class PostService {
     });
 
     const filteredDocuments = visibleDocuments.filter((document) => {
+      if (!this.hasRenderablePostContent(document.data, mediaByPost.get(document.id) ?? [])) return false;
       const filter = options.filter ?? 'all';
       if (filter === 'all') return true;
       if (filter === 'poll' || filter === 'event') return document.data.type === filter;
@@ -526,16 +605,29 @@ export class PostService {
       return false;
     });
     const pageDocuments = filteredDocuments.slice(0, fetchLimit);
-    const usersMap = await this.loadUserCards(pageDocuments.map((document) => readString(document.data.userId)));
+    const usersMap = await this.loadUserCards([
+      ...pageDocuments.map((document) => readString(document.data.userId)),
+      ...[...repostAuthorsByPost.values()].flatMap((userIds) => [...userIds]),
+    ]);
     const posts = pageDocuments.map((document) => {
       const userId = readString(document.data.userId);
-      return this.mapPost(
+      const post = this.mapPost(
         document,
         usersMap.get(userId) ?? this.emptyUser(userId),
         mediaByPost.get(document.id) ?? [],
         countsByPost.get(document.id) ?? document.data,
         likedUsersByPost.get(document.id) ?? [],
       );
+      const reposterIds = [...(repostAuthorsByPost.get(document.id) ?? [])];
+      return {
+        ...post,
+        repostedByViewer: viewerRepostedPostIds.has(document.id),
+        repostedByUserIds: reposterIds,
+        reposters: reposterIds.flatMap((reposterId) => {
+          const reposter = usersMap.get(reposterId);
+          return reposter ? [reposter] : [];
+        }),
+      };
     });
 
     this.logger.success('PostService', 'feed-firestore', {
@@ -552,7 +644,38 @@ export class PostService {
     };
   }
 
+  private async resolveOriginalPost(entry: DataDocument): Promise<DataDocument | null> {
+    let current = entry;
+    const visited = new Set<string>();
+    for (let depth = 0; depth < 10; depth += 1) {
+      if (visited.has(current.id)) return null;
+      visited.add(current.id);
+      const source = isRecord(current.data.repostedFrom) ? current.data.repostedFrom : null;
+      const originalId = source ? readString(source.postId) : '';
+      if (!originalId) return current.data.isRepost === true ? null : current;
+      const snapshot = await getDoc(doc(db, 'feedPosts', originalId));
+      if (!snapshot.exists()) return null;
+      const data = snapshot.data();
+      current = { id: snapshot.id, data: isRecord(data) ? data : {} };
+    }
+    return null;
+  }
+
+  private async loadViewerRepostedPostIds(viewerId: string | null): Promise<Set<string>> {
+    if (!viewerId) return new Set<string>();
+    const snapshot = await getDocs(
+      query(collection(db, 'postReposts'), where('userId', '==', viewerId), limit(200)),
+    ).catch(() => null);
+    if (!snapshot) return new Set<string>();
+    return new Set(snapshot.docs.flatMap((document): string[] => {
+      const marker = document.data();
+      const originalPostId = readString(marker.originalPostId) || readString(marker.postId);
+      return originalPostId ? [originalPostId] : [];
+    }));
+  }
+
   public async createPost(input: CreatePostInput): Promise<PostItem> {
+    this.validateCreateInput(input);
     await postAuthorizationService.requireVerifiedUser(input.userId);
     const draftId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const startedAt = Date.now();
@@ -650,6 +773,33 @@ export class PostService {
     }
   }
 
+  public validateCreateInput(input: Pick<CreatePostInput, 'type' | 'caption' | 'description' | 'hashtags' | 'media' | 'pollOptions'>): void {
+    const visibleText = `${input.caption} ${input.description}`.replace(/@[\w.-]+/g, '').trim();
+    const hasText = visibleText.length > 0;
+    const hasMedia = input.media.length > 0;
+    const hasHashtags = input.hashtags.some((hashtag) => hashtag.trim().length > 0);
+    if (input.type === 'poll') {
+      const validOptions = (input.pollOptions ?? []).filter((option) => option.text.trim().length > 0);
+      if (!hasText || validOptions.length < 2) throw new Error('Add a question and at least two poll options before posting.');
+      return;
+    }
+    if (input.type === 'event') {
+      if (!hasText) throw new Error('Add an event title before posting.');
+      return;
+    }
+    if (!hasText && !hasMedia && !hasHashtags) throw new Error('Add text, a hashtag, a photo, or a video before posting.');
+  }
+
+  private hasRenderablePostContent(data: UnknownRecord, media: PostMedia[]): boolean {
+    const text = [data.caption, data.description, data.title, data.content]
+      .some((value) => readString(value).trim().length > 0);
+    const hashtags = Array.isArray(data.hashtags)
+      && data.hashtags.some((hashtag) => typeof hashtag === 'string' && hashtag.trim().length > 0);
+    const pollOptions = Array.isArray(data.pollOptions)
+      && data.pollOptions.some((option) => isRecord(option) && readString(option.text).trim().length > 0);
+    return text || hashtags || pollOptions || media.length > 0;
+  }
+
   private async createPostInFirestore(
     input: CreatePostInput,
     media: PostMedia[],
@@ -745,6 +895,13 @@ export class PostService {
   }
 
   public async fetchPost(postId: string): Promise<PostItem> {
+    const reference = await getDoc(doc(db, 'feedPosts', postId));
+    if (reference.exists()) {
+      const data = reference.data();
+      const original = await this.resolveOriginalPost({ id: reference.id, data: isRecord(data) ? data : {} });
+      if (!original) throw new Error('The original post is no longer available.');
+      if (original.id !== postId) return this.fetchPost(original.id);
+    }
     try {
       let snap = await getDoc(doc(db, 'feedPosts', postId));
       let isCommunity = false;
@@ -799,42 +956,38 @@ export class PostService {
         const likedUserIds = likeDocs.filter((d) => d.data.likes === true).map((d) => readString(d.data.userId)).filter(Boolean);
         return this.mapPost(postDoc, userCard, mediaItems, counter, likedUserIds);
       }
-    } catch (err: unknown) {
-      if (err instanceof Error && (err.message === 'This post was removed by an admin.' || err.message === 'This post was deleted.')) {
-        throw err;
+    } catch (error: unknown) {
+      if (error instanceof Error && (error.message === 'This post was removed by an admin.' || error.message === 'This post was deleted.')) {
+        throw error;
       }
-      // Fallback
-    }
-    try {
-      const response = await this.apiService.request<{ success: boolean; data?: unknown; error?: string; message?: string }>(
-        `/api/posts/${encodeURIComponent(postId)}`,
-        { authenticated: Boolean(auth.currentUser) }
-      );
-      const post = this.mapApiPost(response.data);
-      if (response.success && post) return post;
-      const message = response.message || response.error;
-      if (message) throw new Error(message);
-    } catch (apiError: unknown) {
-      if (apiError instanceof Error) {
-        if (apiError.message.includes('removed by an admin') || apiError.message.includes('POST_REMOVED_BY_ADMIN')) {
-          throw new Error('This post was removed by an admin.');
-        }
-        if (apiError.message.includes('deleted') || apiError.message.includes('POST_DELETED') || apiError.message.includes('not found')) {
-          throw new Error('This post was deleted.');
-        }
-        throw apiError;
-      }
+      console.error('[PostService.fetchPost] Error:', error instanceof Error ? error.message : 'Unknown error');
+      throw new Error('This post could not be loaded.');
     }
     throw new Error('This post was deleted.');
   }
 
-  public async updatePost(postId: string, origin: PostOrigin, updates: PostEditPayload): Promise<void> {
+  public async updatePost(postId: string, origin: PostOrigin, updates: PostEditPayload, communityId?: string): Promise<void> {
     const currentUserId = auth.currentUser?.uid;
     if (!currentUserId) throw new Error('Must be logged in to edit a post.');
+    if (origin === 'community') {
+      if (!communityId) throw new Error('This community post is missing its community.');
+      const caption = (updates.caption ?? '').trim();
+      const visibility = updates.visibility === 'private' ? 'private' : updates.visibility === 'friends' || updates.visibility === 'friends_followers' ? 'friends' : 'public';
+      if (caption.length > 280) throw new Error('Post content exceeds the allowed length');
+      if (!caption) throw new Error('Add a title or post content');
+      const postRef = doc(db, 'communityVariantDetails', postId);
+      const snap = await getDoc(postRef);
+      if (!snap.exists()) throw new Error('Post not found');
+      const access = await communityDataService.resolveAccess(communityId);
+      if (!access?.hasAccess || snap.data().communityVariantId !== access.communityId) throw new Error('Post does not belong to this community');
+      if (snap.data().userId !== currentUserId) throw new Error('Only the post author can edit this post');
+      const title = caption.slice(0, 75);
+      const description = updates.description?.trim() ?? '';
+      await updateDoc(postRef, { title, caption, content: caption, description, visibility, updatedAt: new Date().toISOString() });
+      return;
+    }
 
-    const isCommunity = origin === 'community';
-    const collectionName = isCommunity ? 'communityVariantDetails' : 'feedPosts';
-    const postRef = doc(db, collectionName, postId);
+    const postRef = doc(db, 'feedPosts', postId);
     const snap = await getDoc(postRef);
 
     if (!snap.exists()) throw new Error('Post not found.');
@@ -844,13 +997,7 @@ export class PostService {
       updatedAt: serverTimestamp(),
     };
 
-    if (updates.caption !== undefined) {
-      updateData.caption = updates.caption.trim();
-      if (isCommunity) {
-        updateData.title = updates.caption.trim();
-        updateData.content = updates.caption.trim();
-      }
-    }
+    if (updates.caption !== undefined) updateData.caption = updates.caption.trim();
     if (updates.description !== undefined) updateData.description = updates.description.trim();
     if (updates.visibility !== undefined) updateData.visibility = updates.visibility;
     if (updates.hashtags !== undefined) updateData.hashtags = updates.hashtags;
@@ -861,89 +1008,175 @@ export class PostService {
     await updateDoc(postRef, updateData);
   }
 
-  public async toggleLike(post: Pick<PostItem, 'id' | 'origin'>, userId: string, desiredLiked: boolean): Promise<CommunityReactionResult> {
+  public async toggleLike(post: Pick<PostItem, 'id' | 'origin'> & Partial<Pick<PostItem, 'stats' | 'likedUserIds'>>, userId: string, desiredLiked?: boolean): Promise<CommunityReactionResult> {
     if (post.origin === 'community') {
-      const response = await this.apiService.request<{ status?: string; data?: CommunityReactionResult; error?: string }>('/api/communities/like', {
-        method: 'POST',
-        authenticated: true,
-        priority: 'foreground',
-        body: { postId: post.id, desiredLiked },
-      });
-      if (response.status !== 'success' || !response.data) throw new Error(response.error || 'Failed to update community like');
-      return response.data;
+      const wasLiked = (post.likedUserIds ?? []).includes(userId);
+      const shouldLike = desiredLiked ?? !wasLiked;
+      const postSnap = await getDoc(doc(db, 'communityVariantDetails', post.id));
+      if (!postSnap.exists()) throw new Error('Post not found.');
+      const access = await communityDataService.resolveAccess(readString(postSnap.data().communityVariantId));
+      if (!access?.hasAccess) throw new Error('Community access required.');
+      const existingLikes = await getDocs(query(collection(db, 'communityVariantDetailsLikes'), where('postId', '==', post.id), where('userId', '==', userId)));
+      const isAlreadyLiked = !existingLikes.empty;
+      const counterRef = doc(db, 'communityVariantDetailsCounter', post.id);
+      const batch = writeBatch(db);
+      if (shouldLike && !isAlreadyLiked) {
+        batch.set(doc(collection(db, 'communityVariantDetailsLikes')), { postId: post.id, userId, timestamp: serverTimestamp() });
+        batch.set(counterRef, { likeCount: increment(1) }, { merge: true });
+      } else if (!shouldLike && isAlreadyLiked) {
+        existingLikes.docs.forEach((like) => batch.delete(like.ref));
+        batch.set(counterRef, { likeCount: increment(-1) }, { merge: true });
+      }
+      await batch.commit();
+      const baseCount = post.stats?.likes ?? 0;
+      const likeCount = Math.max(0, baseCount + (shouldLike && !wasLiked ? 1 : !shouldLike && wasLiked ? -1 : 0));
+      return { liked: shouldLike, likeCount };
     }
-    const response = await this.apiService.request<{
-      success: boolean;
-      data?: { liked?: boolean; likeCount?: number };
-      error?: string;
-    }>('/api/home/MiddleSection/Post/Likes', {
-      method: 'POST',
-      authenticated: true,
-      priority: 'foreground',
-      body: { postId: post.id, desiredLiked },
-    });
-    if (!response.success || typeof response.data?.liked !== 'boolean') throw new Error(response.error || 'Failed to update like');
-    this.logger.success('PostService', 'like-api', { postId: post.id, userId, desiredLiked, liked: response.data.liked });
-    return { liked: response.data.liked, likeCount: response.data.likeCount ?? 0 };
+
+    const likeRef = doc(db, 'feedsPostLikeCount', `${post.id}_${userId}`);
+    const [likeSnap, countSnap] = await Promise.all([
+      getDoc(likeRef),
+      getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', post.id), limit(1))),
+    ]);
+    const isAlreadyLiked = likeSnap.exists() && (likeSnap.data() as UnknownRecord)?.likes === true;
+    const shouldLike = desiredLiked !== undefined ? desiredLiked : !isAlreadyLiked;
+    const countDoc = !countSnap.empty ? countSnap.docs[0] : null;
+    const currentCount = countDoc ? Number((countDoc.data() as UnknownRecord)?.likeCount || 0) : 0;
+    const nextCount = shouldLike ? currentCount + (isAlreadyLiked ? 0 : 1) : Math.max(0, currentCount - (isAlreadyLiked ? 1 : 0));
+
+    const batch = writeBatch(db);
+    if (shouldLike) {
+      batch.set(likeRef, { feedsPostId: post.id, userId, likes: true, timestamp: serverTimestamp() });
+    } else {
+      batch.delete(likeRef);
+    }
+    if (countDoc) {
+      batch.set(countDoc.ref, { likeCount: nextCount, updatedAt: serverTimestamp() }, { merge: true });
+    } else {
+      const newCountRef = doc(collection(db, 'likesCount'));
+      batch.set(newCountRef, {
+        feedsPostId: post.id,
+        likeCount: nextCount,
+        commentCount: 0,
+        shareCount: 0,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+
+    if (shouldLike && !isAlreadyLiked) {
+      void this.fetchPost(post.id).then((p) => {
+        if (p && p.userId && p.userId !== userId) {
+          const u = auth.currentUser;
+          addDoc(collection(db, `users/${p.userId}/notifications`), {
+            type: 'like',
+            actorUserId: userId,
+            actorName: u?.displayName || u?.email?.split('@')[0] || 'User',
+            actorProfileImage: u?.photoURL || null,
+            content: 'liked your post',
+            postId: post.id,
+            createdAt: serverTimestamp(),
+            read: false,
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    }
+
+    this.logger.success('PostService', 'like-firestore', { postId: post.id, userId, desiredLiked, liked: shouldLike });
+    return { liked: shouldLike, likeCount: nextCount };
   }
 
   public async fetchPostLikes(postId: string, origin: PostOrigin, cursor?: string | null): Promise<PostLikesPage> {
-    const search = new URLSearchParams({ postId });
-    if (cursor) search.set('cursor', cursor);
-    const response = await this.apiService.request<{
-      success: boolean;
-      data?: unknown[];
-      error?: string;
-      pagination?: { nextCursor?: number | string | null; hasMore?: boolean };
-    }>(`${origin === 'community' ? '/api/communities/like' : '/api/home/MiddleSection/Post/Likes'}?${search.toString()}`, { authenticated: Boolean(auth.currentUser) });
-    if (!response.success) throw new Error(response.error || 'Failed to load likes');
-    const users = (response.data ?? []).flatMap((value): PostUser[] => {
-      if (!isRecord(value)) return [];
-      const id = readString(value.id);
-      if (!id) return [];
-      return [{
-        id,
-        firstName: readString(value.firstName),
-        lastName: readString(value.lastName),
-        userName: readString(value.userName),
-        profileImage: readString(value.profileImage) || undefined,
-        emailVerified: typeof value.emailVerified === 'boolean' ? value.emailVerified : undefined,
-        identityVerificationStatus: readString(value.identityVerificationStatus) || undefined,
-        verificationStatus: readString(value.verificationStatus) || undefined,
-        isAdmin: typeof value.isAdmin === 'boolean' ? value.isAdmin : undefined,
-        accountType: readString(value.accountType) || undefined,
-      }];
-    });
-    const nextCursor = response.pagination?.nextCursor;
-    return { users, nextCursor: nextCursor === null || nextCursor === undefined ? null : String(nextCursor), hasMore: response.pagination?.hasMore === true };
+    if (origin === 'community') {
+      const likes = await getDocs(query(collection(db, 'communityVariantDetailsLikes'), where('postId', '==', postId), limit(50)));
+      const userIds = Array.from(new Set(likes.docs.map((like) => readString(like.data().userId)).filter(Boolean)));
+      const usersMap = await this.loadUserCards(userIds);
+      const users = userIds.map((id) => usersMap.get(id)).filter((user): user is PostUser => Boolean(user));
+      return { users, nextCursor: null, hasMore: false };
+    }
+
+    let docs: { data(): Record<string, unknown> }[];
+    try {
+      const q = query(
+        collection(db, 'feedsPostLikeCount'),
+        where('feedsPostId', '==', postId),
+        where('likes', '==', true),
+        orderBy('timestamp', 'desc'),
+        limit(21)
+      );
+      const snap = await getDocs(q);
+      docs = snap.docs as unknown as { data(): Record<string, unknown> }[];
+    } catch {
+      const fallbackSnap = await getDocs(
+        query(
+          collection(db, 'feedsPostLikeCount'),
+          where('feedsPostId', '==', postId),
+          where('likes', '==', true),
+          limit(50)
+        )
+      );
+      docs = (fallbackSnap.docs as unknown as { data(): Record<string, unknown> }[]).sort(
+        (a, b) => timestampMillis(b.data().timestamp) - timestampMillis(a.data().timestamp)
+      );
+    }
+
+    const hasMore = docs.length > 20;
+    const pageDocs = docs.slice(0, 20);
+    const userIds = Array.from(new Set(pageDocs.map((d) => readString(d.data().userId)).filter(Boolean)));
+    const usersMap = await this.loadUserCards(userIds);
+    const users = userIds.map((id) => usersMap.get(id)).filter((u): u is PostUser => Boolean(u));
+    return {
+      users,
+      nextCursor: null,
+      hasMore,
+    };
   }
 
   public async voteOnPoll(postId: string, userId: string, optionId: string): Promise<{ selectedOptionId: string; counts: Record<string, number>; total: number }> {
-    const response = await this.apiService.request<{
-      success: boolean;
-      data?: { selectedOptionId?: string; counts?: Record<string, number>; total?: number };
-      error?: string;
-    }>(`/api/posts/${encodeURIComponent(postId)}/vote`, {
-      method: 'POST',
-      authenticated: true,
-      body: { optionId },
-    });
-    if (!response.success || !response.data?.selectedOptionId) throw new Error(response.error || 'Failed to record vote');
-    this.logger.success('PostService', 'poll-vote-api', { postId, userId, optionId });
+    const postRef = doc(db, 'feedPosts', postId);
+    const snap = await getDoc(postRef);
+    if (!snap.exists()) throw new Error('Poll not found');
+    const postData = (snap.data() || {}) as Record<string, unknown>;
+    if (postData.type !== 'poll') throw new Error('Post is not a poll');
+    const pollEndTime = postData.pollEndTime ? new Date(readString(postData.pollEndTime)).getTime() : null;
+    if (pollEndTime !== null && !isNaN(pollEndTime) && pollEndTime <= Date.now()) {
+      throw new Error('This poll has ended');
+    }
+    const currentVotes = isRecord(postData.pollVotes) ? { ...postData.pollVotes } : {};
+    currentVotes[userId] = optionId;
+    await updateDoc(postRef, { pollVotes: currentVotes });
+    const counts = Object.values(currentVotes).reduce<Record<string, number>>((acc, val) => {
+      const k = String(val);
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
+    this.logger.success('PostService', 'poll-vote-firestore', { postId, userId, optionId });
     return {
-      selectedOptionId: response.data.selectedOptionId,
-      counts: response.data.counts ?? {},
-      total: response.data.total ?? 0,
+      selectedOptionId: optionId,
+      counts,
+      total: Object.keys(currentVotes).length,
     };
   }
 
   public async recordShare(postId: string): Promise<{ path: string; shareCount: number }> {
-    const response = await this.apiService.request<{ success: boolean; data?: { path?: string; shareCount?: number }; error?: string }>(
-      `/api/posts/${encodeURIComponent(postId)}/share`,
-      { method: 'POST', body: { increment: true } },
-    );
-    if (!response.success || !response.data?.path) throw new Error(response.error || 'Failed to record share');
-    return { path: response.data.path, shareCount: response.data.shareCount ?? 0 };
+    const countSnap = await getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', postId), limit(1))).catch(() => null);
+    let shareCount = 1;
+    if (countSnap && !countSnap.empty) {
+      const countDoc = countSnap.docs[0];
+      shareCount = (Number((countDoc.data() as UnknownRecord)?.shareCount) || 0) + 1;
+      await updateDoc(countDoc.ref, { shareCount: increment(1), updatedAt: serverTimestamp() }).catch(() => {});
+    } else {
+      await addDoc(collection(db, 'likesCount'), {
+        feedsPostId: postId,
+        likeCount: 0,
+        commentCount: 0,
+        shareCount: 1,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }).catch(() => {});
+    }
+    return { path: `/post/${encodeURIComponent(postId)}`, shareCount };
   }
 
   public getPostUrl(postId: string): string {
@@ -951,109 +1184,157 @@ export class PostService {
   }
 
   public async repost(postId: string): Promise<string> {
+    const key = `${auth.currentUser?.uid ?? ''}:${postId}`;
+    const pending = this.pendingReposts.get(key);
+    if (pending) return pending;
+    const operation = this.createRepost(postId);
+    this.pendingReposts.set(key, operation);
     try {
-      const response = await this.apiService.request<{ success: boolean; data?: { postId?: string }; error?: string }>(
-          `/api/posts/${encodeURIComponent(postId)}/repost`,
-          { method: 'POST', authenticated: true, timeoutMs: 12_000 }
-      );
-      if (!response.success || !response.data?.postId) throw new Error(response.error || 'Failed to repost');
-
-      if (auth.currentUser) {
-        void this.fetchPost(postId).then((post) => {
-          if (post && auth.currentUser && post.userId !== auth.currentUser.uid) {
-            const u = auth.currentUser;
-            addDoc(collection(db, `users/${post.userId}/notifications`), {
-              type: 'repost',
-              actorUserId: u.uid,
-              actorName: u.displayName || u.email?.split('@')[0] || 'User',
-              actorProfileImage: u.photoURL || null,
-              content: 'reposted your post',
-              postId,
-              createdAt: serverTimestamp(),
-              read: false,
-            }).catch(() => {});
-          }
-        }).catch(() => {});
-      }
-
-      return response.data.postId;
-    } catch (error: unknown) {
-      if (!this.canUseFirestore(error)) throw error;
-      const currentUserId = auth.currentUser?.uid;
-      if (!currentUserId) throw new Error('You must be signed in to repost');
-      const postRef = doc(db, 'feedPosts', postId);
-      const postSnap = await getDoc(postRef);
-      if (!postSnap.exists()) throw new Error('Post not found');
-      const postData = (postSnap.data() || {}) as UnknownRecord;
-
-      const newPostRef = await addDoc(collection(db, 'feedPosts'), {
-        userId: currentUserId,
-        type: 'repost',
-        caption: postData.caption || '',
-        description: postData.description || '',
-        visibility: 'public',
-        repostedFrom: {
-          postId,
-          userId: postData.userId || '',
-        },
-        createdAt: serverTimestamp(),
-        hashtags: postData.hashtags || [],
-      });
-
-      await updateDoc(postRef, {
-        repostedBy: arrayUnion(currentUserId),
-      }).catch(() => {});
-
-      return newPostRef.id;
+      return await operation;
+    } finally {
+      this.pendingReposts.delete(key);
     }
   }
 
-  public async removeRepost(postId: string): Promise<void> {
-    try {
-      const response = await this.apiService.request<{ success: boolean; error?: string }>(
-          `/api/posts/${encodeURIComponent(postId)}/repost`,
-          { method: 'DELETE', authenticated: true, timeoutMs: 12_000 }
-      );
-      if (!response.success) throw new Error(response.error || 'Failed to remove repost');
-    } catch (error: unknown) {
-      if (!this.canUseFirestore(error)) throw error;
-      const currentUserId = auth.currentUser?.uid;
-      if (!currentUserId) throw new Error('You must be signed in');
-      const postRef = doc(db, 'feedPosts', postId);
-      await updateDoc(postRef, {
-        repostedBy: arrayRemove(currentUserId),
-      }).catch(() => {});
+  private async createRepost(postId: string): Promise<string> {
+    const currentUserId = auth.currentUser?.uid;
+    if (!currentUserId) throw new Error('You must be signed in to repost');
 
-      const q = query(
-        collection(db, 'feedPosts'),
-        where('userId', '==', currentUserId),
-        where('repostedFrom.postId', '==', postId)
-      );
-      const snap = await getDocs(q).catch(() => null);
-      if (snap) {
-        await Promise.all(snap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
+    const [sourceSnapshot, viewerSnapshot] = await Promise.all([
+      getDoc(doc(db, 'feedPosts', postId)),
+      getDoc(doc(db, 'users', currentUserId)),
+    ]);
+    if (!sourceSnapshot.exists()) throw new Error('Post not found');
+    const sourceData = sourceSnapshot.data();
+    const source = await this.resolveOriginalPost({ id: postId, data: isRecord(sourceData) ? sourceData : {} });
+    if (!source) throw new Error('The original post is no longer available.');
+    const viewerData = viewerSnapshot.data();
+    const publicRelationships: RelationshipSets = {
+      friends: new Set<string>(),
+      following: new Set<string>(),
+      blockedUsers: new Set(isRecord(viewerData) ? readStringArray(viewerData.blockList) : []),
+    };
+    if (readString(source.data.visibility, 'public') !== 'public' ||
+        !this.canViewPost(source.data, currentUserId, publicRelationships)) {
+      throw new Error('Only available public posts can be reposted.');
+    }
+    postId = source.id;
+
+    const repostMarkerRef = doc(db, 'postReposts', `${currentUserId}_${postId}`);
+    const original = source.data;
+    const originalAuthorId = readString(original.userId);
+    const [markerSnap, authorsMap, origCountSnap] = await Promise.all([
+      getDoc(repostMarkerRef),
+      this.loadUserCards([originalAuthorId]),
+      getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', postId), limit(1))),
+    ]);
+    if (markerSnap.exists()) {
+      throw new Error('You already reposted this post');
+    }
+    const originalAuthor = authorsMap.get(originalAuthorId);
+
+    const newPostRef = doc(collection(db, 'feedPosts'));
+    const batch = writeBatch(db);
+
+    batch.set(newPostRef, {
+      ...original,
+      userId: currentUserId,
+      visibility: 'public',
+      isRepost: true,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      repostedFrom: {
+        postId,
+        userId: originalAuthorId,
+        userName: originalAuthor?.userName || '',
+        firstName: originalAuthor?.firstName || '',
+        lastName: originalAuthor?.lastName || '',
+        profileImage: originalAuthor?.profileImage || '',
+      },
+    });
+
+    batch.set(repostMarkerRef, {
+      userId: currentUserId,
+      originalPostId: postId,
+      repostPostId: newPostRef.id,
+      createdAt: serverTimestamp(),
+    });
+
+    if (!origCountSnap.empty) {
+      batch.update(origCountSnap.docs[0].ref, { shareCount: increment(1), updatedAt: serverTimestamp() });
+    }
+
+    if (originalAuthorId && originalAuthorId !== currentUserId) {
+      const u = auth.currentUser;
+      batch.set(doc(collection(db, `users/${originalAuthorId}/notifications`)), {
+        type: 'repost',
+        actorUserId: currentUserId,
+        actorName: u?.displayName || u?.email?.split('@')[0] || 'User',
+        actorProfileImage: u?.photoURL || null,
+        content: 'reposted your post',
+        postId,
+        createdAt: serverTimestamp(),
+        read: false,
+      });
+    }
+
+    await batch.commit();
+    return newPostRef.id;
+  }
+
+  public async removeRepost(postId: string): Promise<void> {
+    const currentUserId = auth.currentUser?.uid;
+    if (!currentUserId) throw new Error('You must be signed in');
+    const repostMarkerRef = doc(db, 'postReposts', `${currentUserId}_${postId}`);
+    const markerSnap = await getDoc(repostMarkerRef);
+    if (markerSnap.exists()) {
+      const repostPostId = readString((markerSnap.data() as UnknownRecord)?.repostPostId);
+      if (repostPostId) {
+        await deleteDoc(doc(db, 'feedPosts', repostPostId)).catch(() => {});
       }
+      await deleteDoc(repostMarkerRef).catch(() => {});
+    }
+    const q = query(
+      collection(db, 'feedPosts'),
+      where('userId', '==', currentUserId),
+      where('repostedFrom.postId', '==', postId)
+    );
+    const snap = await getDocs(q).catch(() => null);
+    if (snap) {
+      await Promise.all(snap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
+    }
+    const countSnap = await getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', postId), limit(1))).catch(() => null);
+    if (countSnap && !countSnap.empty) {
+      await updateDoc(countSnap.docs[0].ref, { shareCount: increment(-1), updatedAt: serverTimestamp() }).catch(() => {});
     }
   }
 
   public async updateVisibility(postId: string, visibility: 'public' | 'private'): Promise<void> {
-    const response = await this.apiService.request<{ success: boolean; error?: string }>(
-      `/api/posts/${encodeURIComponent(postId)}`,
-      {
-        method: 'PATCH',
-        authenticated: true,
-        body: { visibility },
-      }
-    );
-    if (!response.success) throw new Error(response.error || 'Failed to update post visibility');
+    await updateDoc(doc(db, 'feedPosts', postId), { visibility, updatedAt: serverTimestamp() });
   }
 
-  public async deletePost(postId: string): Promise<void> {
-    const response = await this.apiService.request<{ success: boolean; error?: string }>(
-      `/api/posts/${encodeURIComponent(postId)}`,
-      { method: 'DELETE', authenticated: true }
-    );
-    if (!response.success) throw new Error(response.error || 'The post could not be deleted.');
+  public async deletePost(postId: string, origin: PostOrigin = 'home'): Promise<void> {
+    if (origin === 'community') {
+      await this.deleteCommunityPost(postId);
+      return;
+    }
+    const currentUserId = auth.currentUser?.uid;
+    const postRef = doc(db, 'feedPosts', postId);
+    const postSnap = await getDoc(postRef);
+    if (postSnap.exists()) {
+      await deleteDoc(postRef);
+      if (currentUserId) {
+        await updateDoc(doc(db, 'users', currentUserId), { postsCount: increment(-1) }).catch(() => {});
+      }
+      return;
+    }
+    const commRef = doc(db, 'communityVariantDetails', postId);
+    const commSnap = await getDoc(commRef);
+    if (commSnap.exists()) {
+      await deleteDoc(commRef);
+      return;
+    }
+    throw new Error('The post could not be deleted.');
   }
 
   private async getDocumentsByField(collectionName: string, field: string, values: string[]): Promise<DataDocument[]> {
@@ -1070,6 +1351,39 @@ export class PostService {
     })));
     this.logger.success('PostService', 'join-query', { collection: collectionName, documentCount: documents.length });
     return documents;
+  }
+
+  /** Community post removal with the same cleanup and permissions as the website's post delete route. */
+  private async deleteCommunityPost(postId: string): Promise<void> {
+    const viewerId = auth.currentUser?.uid;
+    if (!viewerId) throw new Error('Authentication required');
+    const postRef = doc(db, 'communityVariantDetails', postId);
+    const postSnap = await getDoc(postRef);
+    if (!postSnap.exists()) throw new Error('Post not found');
+    const authorId = readString(postSnap.data().userId);
+    if (authorId !== viewerId) {
+      const access = await communityDataService.resolveAccess(readString(postSnap.data().communityVariantId));
+      if (!access?.canModerate) throw new Error('Unauthorized');
+    }
+    const [media, likes, comments, notifications] = await Promise.all([
+      getDocs(query(collection(db, 'communityVariantDetailsSummary'), where('communityVariantDetailsId', '==', postId))),
+      getDocs(query(collection(db, 'communityVariantDetailsLikes'), where('postId', '==', postId))),
+      getDocs(query(collection(db, 'feedsPostComments'), where('feedsPostId', '==', postId))),
+      getDocs(query(collection(db, 'notifications'), where('postId', '==', postId))),
+    ]);
+    const commentChildren = await Promise.all(comments.docs.map(async (comment) => {
+      const [replies, commentLikes] = await Promise.all([
+        getDocs(query(collection(db, 'feedsPostCommentsReplies'), where('feedsPostCommentId', '==', comment.id))),
+        getDocs(query(collection(db, 'feedsPostCommentLikes'), where('targetId', '==', comment.id))),
+      ]);
+      return [...replies.docs, ...commentLikes.docs];
+    }));
+    const references = [postRef, doc(db, 'communityVariantDetailsCounter', postId), ...[...media.docs, ...likes.docs, ...comments.docs, ...notifications.docs, ...commentChildren.flat()].map((entry) => entry.ref)];
+    for (let index = 0; index < references.length; index += 450) {
+      const batch = writeBatch(db);
+      references.slice(index, index + 450).forEach((reference) => batch.delete(reference));
+      await batch.commit();
+    }
   }
 
   private async loadUserCards(userIds: string[]): Promise<Map<string, PostUser>> {
@@ -1192,164 +1506,8 @@ export class PostService {
     return false;
   }
 
-  private mapApiPost(value: unknown): PostItem | null {
-    if (!isRecord(value)) return null;
-    const id = readString(value.id);
-    if (!id) return null;
-    const userRecord = isRecord(value.user) ? value.user : isRecord(value.author) ? value.author : {};
-    const userId = readString(value.userId, readString(userRecord.id));
-    const user: PostUser = {
-      id: readString(userRecord.id, userId),
-      firstName: readString(userRecord.firstName),
-      lastName: readString(userRecord.lastName),
-      userName: readString(userRecord.userName),
-      profileImage: readString(userRecord.profileImage) || undefined,
-      emailVerified: typeof userRecord.emailVerified === 'boolean' ? userRecord.emailVerified : undefined,
-      identityVerificationStatus: readString(userRecord.identityVerificationStatus) || undefined,
-      verificationStatus: readString(userRecord.verificationStatus) || undefined,
-      isAdmin: typeof userRecord.isAdmin === 'boolean' ? userRecord.isAdmin : undefined,
-      accountType: readString(userRecord.accountType) || undefined,
-    };
-    const rawMedia = Array.isArray(value.mediaDetails) ? value.mediaDetails : value.media;
-    const media = Array.isArray(rawMedia)
-      ? rawMedia.flatMap((item, index): PostMedia[] => {
-          if (!isRecord(item)) return [];
-          const typeUrl = readString(item.typeUrl);
-          if (!typeUrl) return [];
-          return [{
-            id: readString(item.id, `${id}-${index}`),
-            type: item.type === 'video' ? 'video' : 'image',
-            typeUrl,
-            fileName: readString(item.fileName),
-            thumbnailUrl: readString(item.thumbnailUrl) || undefined,
-          }];
-        })
-      : [];
-    const stats = isRecord(value.stats) ? value.stats : {};
-    const rawLikedUsers = Array.isArray(value.likedUsers) ? value.likedUsers : [];
-    const likedUsers: PostUser[] = rawLikedUsers.flatMap((likedUser): PostUser[] => {
-      if (!isRecord(likedUser)) return [];
-      const likedUserId = readString(likedUser.id);
-      if (!likedUserId) return [];
-      return [{
-        id: likedUserId,
-        firstName: readString(likedUser.firstName),
-        lastName: readString(likedUser.lastName),
-        userName: readString(likedUser.userName),
-        profileImage: readString(likedUser.profileImage) || undefined,
-        emailVerified: typeof likedUser.emailVerified === 'boolean' ? likedUser.emailVerified : undefined,
-        identityVerificationStatus: readString(likedUser.identityVerificationStatus) || undefined,
-        verificationStatus: readString(likedUser.verificationStatus) || undefined,
-      }];
-    });
-    const likedUserIds = likedUsers.length > 0
-      ? likedUsers.map((item) => item.id)
-      : Array.isArray(value.likedUserIds)
-      ? value.likedUserIds.flatMap((likedUserId): string[] => typeof likedUserId === 'string' && likedUserId ? [likedUserId] : [])
-      : [];
-    const post = this.mapPost(
-      { id, data: value },
-      user,
-      media,
-      {
-        likeCount: readNumber(stats.likes, readNumber(value.likeCount)),
-        commentCount: readNumber(stats.comments, readNumber(value.commentCount)),
-        shareCount: readNumber(stats.shares, readNumber(value.shareCount)),
-      },
-      likedUserIds
-    );
-    const repostedFromRecord = isRecord(value.repostedFrom) ? value.repostedFrom : null;
-    const repostedByUserIds = Array.isArray(value.repostedBy)
-      ? value.repostedBy.flatMap((reposter): string[] => {
-          const reposterUserId = typeof reposter === 'string'
-            ? reposter
-            : isRecord(reposter) ? readString(reposter.id) : '';
-          return reposterUserId ? [reposterUserId] : [];
-        })
-      : [];
-    const relationshipRecord = isRecord(value.relationshipStatus) ? value.relationshipStatus : null;
-    return {
-      ...post,
-      likedUsers: likedUsers.length > 0 ? likedUsers : undefined,
-      repostedFrom: repostedFromRecord ? {
-        postId: readString(repostedFromRecord.postId),
-        userId: readString(repostedFromRecord.userId),
-        userName: readString(repostedFromRecord.userName),
-        firstName: readString(repostedFromRecord.firstName),
-        lastName: readString(repostedFromRecord.lastName),
-        profileImage: readString(repostedFromRecord.profileImage) || undefined,
-      } : undefined,
-      repostedByViewer: value.repostedByViewer === true,
-      repostedByUserIds,
-      relationshipStatus: relationshipRecord ? {
-        isFollowing: relationshipRecord.isFollowing === true,
-        friendshipStatus: this.readFriendshipStatus(relationshipRecord.friendshipStatus),
-      } : undefined,
-      communityId: readString(value.communityId) || undefined,
-      communityName: readString(value.communityName) || readString(value.communityTitle) || undefined,
-      communitySlug: readString(value.communitySlug) || undefined,
-      communityAvatar: readString(value.communityAvatar) || undefined,
-      eventId: readString(value.eventId) || undefined,
-      startDate: readString(value.startDate) || undefined,
-      endDate: readString(value.endDate) || undefined,
-      recurrence: readString(value.recurrence) || undefined,
-      category: readString(value.category) || undefined,
-    };
-  }
-
   private readFriendshipStatus(value: unknown): PostRelationshipStatus['friendshipStatus'] {
     return value === 'pending' || value === 'accepted' || value === 'declined' ? value : 'none';
-  }
-
-  private async fetchCommunityPostsFromFirestore(communityId: string): Promise<PostItem[]> {
-    const snapshot = await getDocs(query(collection(db, 'communityVariantDetails'), where('communityVariantId', '==', communityId)));
-    const documents: DataDocument[] = snapshot.docs
-      .map((document) => ({ id: document.id, data: isRecord(document.data()) ? document.data() : {} }))
-      .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
-    const postIds = documents.map((document) => document.id);
-    const [mediaDocuments, likeDocuments, counters] = await Promise.all([
-      this.getDocumentsByField('communityVariantDetailsSummary', 'communityVariantDetailsId', postIds),
-      this.getDocumentsByField('communityVariantDetailsLikes', 'postId', postIds),
-      Promise.all(postIds.map((postId) => getDoc(doc(db, 'communityVariantDetailsCounter', postId)))),
-    ]);
-    const mediaByPost = new Map<string, PostMedia[]>();
-    mediaDocuments.forEach((document) => {
-      const postId = readString(document.data.communityVariantDetailsId);
-      const typeUrl = readString(document.data.typeUrl);
-      if (!postId || !typeUrl) return;
-      mediaByPost.set(postId, [...(mediaByPost.get(postId) ?? []), {
-        id: document.id,
-        type: document.data.type === 'video' ? 'video' : 'image',
-        typeUrl,
-        fileName: readString(document.data.fileName),
-        thumbnailUrl: readString(document.data.thumbnailUrl) || undefined,
-      }]);
-    });
-    const likedUsersByPost = new Map<string, string[]>();
-    likeDocuments.forEach((document) => {
-      const postId = readString(document.data.postId);
-      const userId = readString(document.data.userId);
-      if (postId && userId) likedUsersByPost.set(postId, [...(likedUsersByPost.get(postId) ?? []), userId]);
-    });
-    const users = await this.loadUserCards(documents.map((document) => readString(document.data.userId)));
-    const posts = documents.map((document, index) => {
-      const userId = readString(document.data.userId);
-      const counter = counters[index]?.data() ?? {};
-      return this.mapPost(
-        document,
-        users.get(userId) ?? this.emptyUser(userId),
-        mediaByPost.get(document.id) ?? [],
-        { ...document.data, ...counter },
-        likedUsersByPost.get(document.id) ?? [],
-      );
-    });
-    this.logger.success('PostService', 'community-posts:firestore', { communityId, renderedPostCount: posts.length });
-    return posts;
-  }
-
-  private canUseFirestore(error: unknown): boolean {
-    return error instanceof ApiServiceError
-      && (error.code === 'REQUEST_TIMEOUT' || error.code === 'NETWORK_ERROR' || error.status >= 500);
   }
 
   private mapPost(document: DataDocument, user: PostUser, media: PostMedia[], counts: UnknownRecord, likedUserIds: string[]): PostItem {

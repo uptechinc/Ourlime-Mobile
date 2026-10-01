@@ -1,4 +1,4 @@
-import { ApiService } from './ApiService';
+import { appServerService } from './AppServerService';
 import type {
 	ChildSafetyCaseActionInput,
 	ChildSafetyMessage,
@@ -7,27 +7,20 @@ import type {
 	ChildSafetyReportInput,
 	ChildSafetyReportRecord,
 	ChildSafetyStatus,
+	ChildSafetyValidationDraft,
+	ChildSafetyValidationResult,
 	ReportedAccountReference,
 } from '@/lib/types/childSafety';
 
-type ItemResponse = {
-	success: boolean;
-	data?: ChildSafetyReportRecord | null;
-	error?: string;
-};
-type PageResponse = {
-	success: boolean;
-	data?: {
-		items: ChildSafetyReportRecord[];
-		hasMore: boolean;
-		nextCursor: string | null;
-	};
-	error?: string;
+type ReportPage = {
+	items: ChildSafetyReportRecord[];
+	hasMore: boolean;
+	nextCursor: string | null;
 };
 
+/** Child-safety reports and the restricted reviewer queue, through the app's own server functions. */
 export class ChildSafetyReportService {
 	private static instance: ChildSafetyReportService;
-	private readonly apiService = ApiService.getInstance();
 
 	private constructor() {}
 
@@ -37,29 +30,20 @@ export class ChildSafetyReportService {
 		return ChildSafetyReportService.instance;
 	}
 
-	public async submit(
-		input: ChildSafetyReportInput
-	): Promise<ChildSafetyReportRecord> {
+	public validate(draft: ChildSafetyValidationDraft): ChildSafetyValidationResult {
+		if (!draft.category) return { valid: false, step: 1, field: 'category', message: 'Choose the category that best describes the concern.' };
+		if (draft.description.trim().length < 20) return { valid: false, step: 3, field: 'description', message: 'Describe the concern in at least 20 characters.' };
+		if (draft.hasAttachments && !draft.evidenceAcknowledged) return { valid: false, step: 4, field: 'evidence', message: 'Confirm that the selected images do not contain suspected CSAM.' };
+		if (!draft.goodFaithAcknowledged) return { valid: false, step: 4, field: 'good_faith', message: 'Confirm that this report is accurate and submitted in good faith.' };
+		return { valid: true };
+	}
+
+	public async submit(input: ChildSafetyReportInput): Promise<ChildSafetyReportRecord> {
 		if (input.description.trim().length < 20)
 			throw new Error('Describe the concern in at least 20 characters.');
 		if (!input.goodFaithAcknowledged)
-			throw new Error(
-				'Confirm that this report is being submitted in good faith.'
-			);
-		const response = await this.apiService.request<ItemResponse>(
-			'/api/child-safety/reports',
-			{
-				method: 'POST',
-				authenticated: true,
-				body: input,
-				timeoutMs: 20_000,
-			}
-		);
-		if (!response.success || !response.data)
-			throw new Error(
-				response.error || 'The child-safety report could not be submitted.'
-			);
-		return response.data;
+			throw new Error('Confirm that this report is being submitted in good faith.');
+		return appServerService.call<ChildSafetyReportRecord>('submitChildSafetyReport', input, 20_000);
 	}
 
 	public async listCases(
@@ -69,161 +53,42 @@ export class ChildSafetyReportService {
 			assignedReviewerId?: string;
 			cursor?: string;
 		} = {}
-	): Promise<{
-		items: ChildSafetyReportRecord[];
-		hasMore: boolean;
-		nextCursor: string | null;
-	}> {
-		const parameters = [
-			filters.status ? `status=${encodeURIComponent(filters.status)}` : '',
-			filters.priority
-				? `priority=${encodeURIComponent(filters.priority)}`
-				: '',
-			filters.assignedReviewerId
-				? `assignedReviewerId=${encodeURIComponent(filters.assignedReviewerId)}`
-				: '',
-			filters.cursor ? `cursor=${encodeURIComponent(filters.cursor)}` : '',
-		]
-			.filter(Boolean)
-			.join('&');
-		const response = await this.apiService.request<PageResponse>(
-			`/api/admin/child-safety/reports${parameters ? `?${parameters}` : ''}`,
-			{ authenticated: true }
-		);
-		if (!response.success || !response.data)
-			throw new Error(
-				response.error || 'Restricted cases could not be loaded.'
-			);
-		return response.data;
+	): Promise<ReportPage> {
+		const result = await appServerService.call<{ page: ReportPage }>('listChildSafetyCases', filters);
+		return result.page;
 	}
 
-	public async listMyReports(cursor?: string): Promise<{
-		items: ChildSafetyReportRecord[];
-		hasMore: boolean;
-		nextCursor: string | null;
-	}> {
-		const response = await this.apiService.request<PageResponse>(
-			`/api/child-safety/reports${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
-			{ authenticated: true }
-		);
-		if (!response.success || !response.data)
-			throw new Error(response.error || 'Safety reports could not be loaded.');
-		return response.data;
+	public listMyReports(cursor?: string): Promise<ReportPage> {
+		return appServerService.call<ReportPage>('listMyChildSafetyReports', cursor ? { cursor } : {});
 	}
 
-	public async getMyReport(reportId: string): Promise<ChildSafetyReportRecord> {
-		const response = await this.apiService.request<ItemResponse>(
-			`/api/child-safety/reports/${encodeURIComponent(reportId)}`,
-			{ authenticated: true }
-		);
-		if (!response.success || !response.data)
-			throw new Error(response.error || 'Safety report could not be loaded.');
-		return response.data;
+	public getMyReport(reportId: string): Promise<ChildSafetyReportRecord> {
+		return appServerService.call<ChildSafetyReportRecord>('getMyChildSafetyReport', { reportId });
 	}
 
-	public async setReporterContact(
-		reportId: string,
-		allowContact: boolean
-	): Promise<ChildSafetyReportRecord> {
-		const response = await this.apiService.request<ItemResponse>(
-			`/api/child-safety/reports/${encodeURIComponent(reportId)}`,
-			{ method: 'PATCH', authenticated: true, body: { allowContact } }
-		);
-		if (!response.success || !response.data)
-			throw new Error(
-				response.error || 'Contact preference could not be updated.'
-			);
-		return response.data;
+	public setReporterContact(reportId: string, allowContact: boolean): Promise<ChildSafetyReportRecord> {
+		return appServerService.call<ChildSafetyReportRecord>('setChildSafetyReportContact', { reportId, allowContact });
 	}
 
-	public async listMessages(
-		reportId: string,
-		reviewerMode = false
-	): Promise<ChildSafetyMessagePage> {
-		const prefix = reviewerMode
-			? '/api/admin/child-safety/reports'
-			: '/api/child-safety/reports';
-		const response = await this.apiService.request<{
-			success: boolean;
-			data?: ChildSafetyMessagePage;
-			error?: string;
-		}>(`${prefix}/${encodeURIComponent(reportId)}/messages`, {
-			authenticated: true,
-		});
-		if (!response.success || !response.data)
-			throw new Error(
-				response.error || 'Secure case messages could not be loaded.'
-			);
-		return response.data;
+	public listMessages(reportId: string, reviewerMode = false): Promise<ChildSafetyMessagePage> {
+		return appServerService.call<ChildSafetyMessagePage>('listChildSafetyMessages', { reportId, reviewerView: reviewerMode });
 	}
 
-	public async sendMessage(
-		reportId: string,
-		text: string,
-		attachmentIds: string[] = [],
-		reviewerMode = false
-	): Promise<ChildSafetyMessage> {
-		const prefix = reviewerMode
-			? '/api/admin/child-safety/reports'
-			: '/api/child-safety/reports';
-		const response = await this.apiService.request<{
-			success: boolean;
-			data?: ChildSafetyMessage;
-			error?: string;
-		}>(`${prefix}/${encodeURIComponent(reportId)}/messages`, {
-			method: 'POST',
-			authenticated: true,
-			body: { text, attachmentIds },
-		});
-		if (!response.success || !response.data)
-			throw new Error(
-				response.error || 'Secure case message could not be sent.'
-			);
-		return response.data;
+	public sendMessage(reportId: string, text: string, attachmentIds: string[] = [], reviewerMode = false): Promise<ChildSafetyMessage> {
+		return appServerService.call<ChildSafetyMessage>('sendChildSafetyMessage', { reportId, text, attachmentIds, reviewerView: reviewerMode });
 	}
 
-	public async searchReportedAccounts(
-		query: string
-	): Promise<ReportedAccountReference[]> {
-		const response = await this.apiService.request<{
-			success: boolean;
-			data?: ReportedAccountReference[];
-			error?: string;
-		}>(`/api/child-safety/accounts/search?q=${encodeURIComponent(query)}`, {
-			authenticated: true,
-		});
-		if (!response.success)
-			throw new Error(response.error || 'Accounts could not be searched.');
-		return response.data ?? [];
+	public searchReportedAccounts(query: string): Promise<ReportedAccountReference[]> {
+		return appServerService.call<ReportedAccountReference[]>('searchChildSafetyAccounts', { query });
 	}
 
-	public async getCase(reportId: string): Promise<ChildSafetyReportRecord> {
-		const response = await this.apiService.request<ItemResponse>(
-			`/api/admin/child-safety/reports/${encodeURIComponent(reportId)}`,
-			{ authenticated: true }
-		);
-		if (!response.success || !response.data)
-			throw new Error(response.error || 'Restricted case could not be loaded.');
-		return response.data;
+	public getCase(reportId: string): Promise<ChildSafetyReportRecord> {
+		return appServerService.call<ChildSafetyReportRecord>('getChildSafetyCase', { reportId });
 	}
 
-	public async applyAction(
-		reportId: string,
-		input: ChildSafetyCaseActionInput
-	): Promise<ChildSafetyReportRecord | null> {
-		const response = await this.apiService.request<ItemResponse>(
-			`/api/admin/child-safety/reports/${encodeURIComponent(reportId)}`,
-			{
-				method: 'PATCH',
-				authenticated: true,
-				body: input,
-			}
-		);
-		if (!response.success)
-			throw new Error(
-				response.error || 'Restricted case could not be updated.'
-			);
-		return response.data ?? null;
+	public async applyAction(reportId: string, input: ChildSafetyCaseActionInput): Promise<ChildSafetyReportRecord | null> {
+		const result = await appServerService.call<{ report: ChildSafetyReportRecord | null }>('updateChildSafetyCase', { ...input, reportId });
+		return result.report;
 	}
 }
 

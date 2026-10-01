@@ -22,6 +22,7 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { CommunityPoll } from '@/lib/types/community';
 import type { ResourceState } from '@/lib/types/resourceState';
 import CustomModal from '@/components/ui/CustomModal';
+import { FeedSkeleton } from '@/components/ui/Skeleton';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type CommunityPollsWorkspaceProps = {
@@ -99,7 +100,9 @@ export default function CommunityPollsWorkspace({
 		(resource.status === 'hydrating' || resource.status === 'idle')
 	)
 		return (
-			<ActivityIndicator color={colors.accent} style={{ marginVertical: 32 }} />
+			<View style={{ margin: 16 }}>
+				<FeedSkeleton />
+			</View>
 		);
 	if (!resource.data && resource.status === 'error')
 		return (

@@ -1,10 +1,10 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { signInWithCustomToken } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebaseConfig';
-import { ApiService } from '@/lib/services/ApiService';
+import { auth, db } from '@/lib/firebaseConfig';
+import { appServerService } from '@/lib/services/AppServerService';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
-import { platformEnvironmentService } from '@/lib/services/PlatformEnvironmentService';
 import type {
   QRLoginSession,
   ActiveDeviceSession,
@@ -14,7 +14,6 @@ import type {
 type QRScanIdentifier = {
   sessionId?: string;
   shortCode?: string;
-  apiOrigin?: string;
 };
 
 type QRCodePayload = QRScanIdentifier & {
@@ -22,10 +21,14 @@ type QRCodePayload = QRScanIdentifier & {
   action?: string;
 };
 
+type QrInitResult = { sessionId: string; shortCode: string; token: string; expiresAt: string; qrDataUrl: string };
+type QrStatusResult = { status: QRLoginSession['status']; customToken?: string; rejectionReason?: string; isExpired: boolean };
+
+/** QR sign-in and the signed-in devices list, through the app's own server functions. */
 export class QRLoginService {
   private static instance: QRLoginService;
-  private readonly apiService = ApiService.getInstance();
-  private readonly sessionApiOrigins = new Map<string, string>();
+
+  public static readonly NATIVE_SESSION_KEY = '@ourlime_native_session_id';
 
   private constructor() {}
 
@@ -36,188 +39,70 @@ export class QRLoginService {
     return QRLoginService.instance;
   }
 
-  public async initSession(): Promise<{
-    sessionId: string;
-    shortCode: string;
-    token: string;
-    expiresAt: string;
-    qrDataUrl: string;
-  }> {
-    const deviceInfo: DeviceInfo = {
-      platform: Platform.OS === 'ios' ? 'ios' : 'android',
-      deviceType: 'mobile',
-      deviceName: Platform.OS === 'ios' ? 'Ourlime App on iOS' : 'Ourlime App on Android',
-      browser: 'Ourlime Mobile App',
-      os: Platform.OS === 'ios' ? 'iOS' : 'Android',
-    };
-
-    const response = await this.apiService.request<{
-      success: boolean;
-      sessionId: string;
-      shortCode: string;
-      token: string;
-      expiresAt: string;
-      qrDataUrl: string;
-    }>('/api/auth/qr/init', {
-      method: 'POST',
-      body: deviceInfo,
-    });
-
-    if (!response?.success) {
-      throw new Error('Failed to initialize QR session.');
-    }
-
-    return response;
+  public async initSession(): Promise<QrInitResult> {
+    return appServerService.call<QrInitResult>('initQrLogin', this.getDeviceInfo());
   }
 
-  public async getSessionStatus(
-    sessionId: string,
-    token?: string
-  ): Promise<{
-    status: QRLoginSession['status'];
-    customToken?: string;
-    rejectionReason?: string;
-    isExpired: boolean;
-  }> {
-    const tokenQuery = token ? `&token=${encodeURIComponent(token)}` : '';
-    const response = await this.apiService.request<{
-      success: boolean;
-      status: QRLoginSession['status'];
-      customToken?: string;
-      rejectionReason?: string;
-      isExpired: boolean;
-    }>(`/api/auth/qr/status?sessionId=${sessionId}${tokenQuery}`, {
-      method: 'GET',
-    });
-
-    if (!response?.success) {
+  public async getSessionStatus(sessionId: string, token?: string): Promise<QrStatusResult> {
+    try {
+      return await appServerService.call<QrStatusResult>('getQrLoginStatus', { sessionId, ...(token ? { token } : {}) });
+    } catch {
       return { status: 'expired', isExpired: true };
     }
-
-    return response;
   }
 
-  public async scanPayload(payload: string): Promise<{
-    success: boolean;
-    session?: QRLoginSession;
-    error?: string;
-  }> {
-    const identifier = this.parsePayload(payload);
-    return this.scanQR(identifier);
+  public async scanPayload(payload: string): Promise<{ success: boolean; session?: QRLoginSession; error?: string }> {
+    try {
+      return await this.scanQR(this.parsePayload(payload));
+    } catch (error: unknown) {
+      return { success: false, error: error instanceof Error ? error.message : 'Could not scan QR code.' };
+    }
   }
 
-  public async scanShortCode(shortCode: string): Promise<{
-    success: boolean;
-    session?: QRLoginSession;
-    error?: string;
-  }> {
-    return this.scanQR({
-      shortCode: shortCode.trim().toUpperCase(),
-      apiOrigin: this.getDevelopmentApiOrigin(),
-    });
+  public async scanShortCode(shortCode: string): Promise<{ success: boolean; session?: QRLoginSession; error?: string }> {
+    return this.scanQR({ shortCode: shortCode.trim().toUpperCase() });
   }
 
-  public async scanQR(identifier: QRScanIdentifier): Promise<{
-    success: boolean;
-    session?: QRLoginSession;
-    error?: string;
-  }> {
+  public async scanQR(identifier: QRScanIdentifier): Promise<{ success: boolean; session?: QRLoginSession; error?: string }> {
     try {
       void interactionFeedbackService.play('post');
-      const apiOrigin = this.resolveApiOrigin(identifier.apiOrigin);
-      const response = await this.apiService.request<{
-        success: boolean;
-        session?: QRLoginSession;
-        error?: string;
-      }>('/api/auth/qr/scan', {
-        method: 'POST',
-        authenticated: true,
-        body: {
-          sessionId: identifier.sessionId,
-          shortCode: identifier.shortCode,
-          platform: Platform.OS === 'ios' ? 'ios' : 'android',
-          deviceType: 'mobile',
-          deviceName: Platform.OS === 'ios' ? 'Ourlime App on iOS' : 'Ourlime App on Android',
-          browser: 'Ourlime Mobile App',
-          os: Platform.OS === 'ios' ? 'iOS' : 'Android',
-        },
-        baseUrlOverride: apiOrigin,
-        availabilityImpact: 'request-only',
+      const result = await appServerService.call<{ session: QRLoginSession }>('scanQrLogin', {
+        sessionId: identifier.sessionId,
+        shortCode: identifier.shortCode,
+        ...this.getDeviceInfo(),
       });
-
-      if (response.success && response.session?.sessionId && apiOrigin) {
-        this.sessionApiOrigins.set(response.session.sessionId, apiOrigin);
-      }
-
-      return response;
-    } catch (err: unknown) {
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : 'Could not scan QR code.',
-      };
+      return { success: true, session: result.session };
+    } catch (error: unknown) {
+      return { success: false, error: error instanceof Error ? error.message : 'Could not scan QR code.' };
     }
   }
 
   public async confirmLogin(sessionId: string): Promise<{ success: boolean; error?: string }> {
     try {
       void interactionFeedbackService.play('post');
-      const response = await this.apiService.request<{
-        success: boolean;
-        error?: string;
-      }>('/api/auth/qr/confirm', {
-        method: 'POST',
-        authenticated: true,
-        body: {
-          sessionId,
-          platform: Platform.OS === 'ios' ? 'ios' : 'android',
-          deviceType: 'mobile',
-          deviceName: Platform.OS === 'ios' ? 'Ourlime App on iOS' : 'Ourlime App on Android',
-          browser: 'Ourlime Mobile App',
-          os: Platform.OS === 'ios' ? 'iOS' : 'Android',
-        },
-        baseUrlOverride: this.sessionApiOrigins.get(sessionId),
-        availabilityImpact: 'request-only',
-      });
-
-      if (response?.success) {
-        void interactionFeedbackService.play('success');
-      }
-      return response;
-    } catch (err: unknown) {
+      await appServerService.call('confirmQrLogin', { sessionId, ...this.getDeviceInfo() });
+      void interactionFeedbackService.play('success');
+      return { success: true };
+    } catch (error: unknown) {
       void interactionFeedbackService.play('warning');
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : 'Could not confirm login.',
-      };
+      return { success: false, error: error instanceof Error ? error.message : 'Could not confirm login.' };
     }
   }
 
   public async rejectLogin(sessionId: string, reason = 'User declined'): Promise<void> {
     try {
-      await this.apiService.request('/api/auth/qr/reject', {
-        method: 'POST',
-        authenticated: true,
-        body: { sessionId, reason },
-        baseUrlOverride: this.sessionApiOrigins.get(sessionId),
-        availabilityImpact: 'request-only',
-      });
+      await appServerService.call('rejectQrLogin', { sessionId, reason });
       void interactionFeedbackService.play('warning');
     } catch {
-      // Ignore
+      // The code simply expires if the rejection cannot be saved.
     }
   }
 
   public async getActiveSessions(): Promise<ActiveDeviceSession[]> {
     try {
-      const response = await this.apiService.request<{
-        success: boolean;
-        sessions: ActiveDeviceSession[];
-      }>('/api/auth/sessions', {
-        method: 'GET',
-        authenticated: true,
-      });
-
-      return response?.sessions || [];
+      const currentSessionId = await AsyncStorage.getItem(QRLoginService.NATIVE_SESSION_KEY);
+      const result = await appServerService.call<{ sessions: ActiveDeviceSession[] }>('listDeviceSessions', currentSessionId ? { currentSessionId } : {});
+      return result.sessions;
     } catch {
       return [];
     }
@@ -225,64 +110,36 @@ export class QRLoginService {
 
   public async revokeSession(sessionId: string): Promise<boolean> {
     try {
-      const response = await this.apiService.request<{ success: boolean }>('/api/auth/sessions', {
-        method: 'DELETE',
-        authenticated: true,
-        body: { sessionId },
-      });
-
-      if (response?.success) {
-        void interactionFeedbackService.play('success');
-        return true;
-      }
-      return false;
+      const result = await appServerService.call<{ success: boolean }>('revokeDeviceSessions', { sessionId });
+      if (result.success) void interactionFeedbackService.play('success');
+      return result.success;
     } catch {
       return false;
     }
   }
 
+  /** Signs every other device out; this device signs back in with the fresh token the server returns. */
   public async revokeAllOtherSessions(): Promise<{ success: boolean; revokedCount?: number }> {
     try {
-      const response = await this.apiService.request<{ success: boolean; revokedCount?: number }>('/api/auth/sessions', {
-        method: 'DELETE',
-        authenticated: true,
-        body: { allOther: true },
+      const currentSessionId = await AsyncStorage.getItem(QRLoginService.NATIVE_SESSION_KEY);
+      const result = await appServerService.call<{ success: boolean; revokedCount: number; customToken?: string }>('revokeDeviceSessions', {
+        allOther: true,
+        ...(currentSessionId ? { currentSessionId } : {}),
       });
-
-      if (response?.success) {
-        void interactionFeedbackService.play('success');
-        return { success: true, revokedCount: response.revokedCount };
-      }
-      return { success: false };
+      if (result.customToken) await signInWithCustomToken(auth, result.customToken);
+      void interactionFeedbackService.play('success');
+      return { success: true, revokedCount: result.revokedCount };
     } catch {
       return { success: false };
     }
   }
-
-  public static readonly NATIVE_SESSION_KEY = '@ourlime_native_session_id';
 
   public async registerCurrentNativeSession(loginMethod: 'password' | 'qr_code' = 'password'): Promise<void> {
     try {
-      const deviceInfo: DeviceInfo & { loginMethod: string } = {
-        platform: Platform.OS === 'ios' ? 'ios' : 'android',
-        deviceType: 'mobile',
-        deviceName: Platform.OS === 'ios' ? 'Ourlime App on iOS' : 'Ourlime App on Android',
-        browser: 'Ourlime Mobile App',
-        os: Platform.OS === 'ios' ? 'iOS' : 'Android',
-        loginMethod,
-      };
-
-      const response = await this.apiService.request<{ success: boolean; session?: { id: string } }>('/api/auth/sessions/register', {
-        method: 'POST',
-        authenticated: true,
-        body: deviceInfo,
-      });
-
-      if (response?.session?.id) {
-        await AsyncStorage.setItem(QRLoginService.NATIVE_SESSION_KEY, response.session.id);
-      }
+      const result = await appServerService.call<{ session: { id: string } }>('registerDeviceSession', { ...this.getDeviceInfo(), loginMethod });
+      await AsyncStorage.setItem(QRLoginService.NATIVE_SESSION_KEY, result.session.id);
     } catch {
-      // Non-blocking
+      // Non-blocking: the device list simply won't show this phone.
     }
   }
 
@@ -311,6 +168,16 @@ export class QRLoginService {
     };
   }
 
+  private getDeviceInfo(): DeviceInfo {
+    return {
+      platform: Platform.OS === 'ios' ? 'ios' : 'android',
+      deviceType: 'mobile',
+      deviceName: Platform.OS === 'ios' ? 'Ourlime App on iOS' : 'Ourlime App on Android',
+      browser: 'Ourlime Mobile App',
+      os: Platform.OS === 'ios' ? 'iOS' : 'Android',
+    };
+  }
+
   private parsePayload(payload: string): QRScanIdentifier {
     const normalizedPayload = payload.trim();
     try {
@@ -318,58 +185,13 @@ export class QRLoginService {
       if (parsed.app && parsed.app !== 'ourlime') throw new Error('This QR code is not from Ourlime.');
       if (parsed.action && parsed.action !== 'qr_login') throw new Error('This QR code cannot be used to log in.');
       if (!parsed.sessionId && !parsed.shortCode) throw new Error('This QR code is missing its session.');
-      return {
-        sessionId: parsed.sessionId,
-        shortCode: parsed.shortCode,
-        apiOrigin: parsed.apiOrigin ?? this.getDevelopmentApiOrigin(),
-      };
+      return { sessionId: parsed.sessionId, shortCode: parsed.shortCode };
     } catch (error: unknown) {
-      if (error instanceof SyntaxError) {
-        if (normalizedPayload.toUpperCase().startsWith('OL-')) {
-          return {
-            shortCode: normalizedPayload.toUpperCase(),
-            apiOrigin: this.getDevelopmentApiOrigin(),
-          };
-        }
-        return {
-          sessionId: normalizedPayload,
-          apiOrigin: this.getDevelopmentApiOrigin(),
-        };
-      }
-      throw error;
+      if (!(error instanceof SyntaxError)) throw error;
+      return normalizedPayload.toUpperCase().startsWith('OL-')
+        ? { shortCode: normalizedPayload.toUpperCase() }
+        : { sessionId: normalizedPayload };
     }
-  }
-
-  private resolveApiOrigin(apiOrigin?: string): string | undefined {
-    if (!apiOrigin) return undefined;
-    const parsedOrigin = new URL(apiOrigin);
-    const hostName = parsedOrigin.hostname.toLowerCase();
-    const isLocalHost = hostName === 'localhost' || hostName === '127.0.0.1';
-    if (isLocalHost) {
-      const developmentHost = platformEnvironmentService.getDevelopmentHostName();
-      if (!developmentHost) {
-        throw new Error('The local Ourlime server address could not be resolved from this device.');
-      }
-      return `${parsedOrigin.protocol}//${developmentHost}${parsedOrigin.port ? `:${parsedOrigin.port}` : ''}`;
-    }
-
-    const isOurlimeHost = hostName === 'ourlime.com' || hostName === 'www.ourlime.com';
-    const developmentHost = platformEnvironmentService.getDevelopmentHostName()?.toLowerCase();
-    const isDevelopmentHost = __DEV__
-      && parsedOrigin.protocol === 'http:'
-      && Boolean(developmentHost)
-      && hostName === developmentHost;
-    if (!isOurlimeHost && !isDevelopmentHost) {
-      throw new Error('This QR code points to an untrusted server.');
-    }
-    if (parsedOrigin.protocol !== 'https:' && !isDevelopmentHost) {
-      throw new Error('This QR code does not use a secure server connection.');
-    }
-    return parsedOrigin.origin;
-  }
-
-  private getDevelopmentApiOrigin(): string | undefined {
-    return platformEnvironmentService.getDevelopmentApiBaseUrl() ?? undefined;
   }
 }
 

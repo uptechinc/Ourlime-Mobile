@@ -82,7 +82,10 @@ export class ApiService {
 	private constructor() {
 		const explicitUrl = process.env.EXPO_PUBLIC_OURLIME_API_BASE_URL?.trim();
 		const legacyConfiguredUrl = process.env.EXPO_PUBLIC_WEB_API_URL?.trim();
-		const developmentUrl = platformEnvironmentService.getDevelopmentApiBaseUrl();
+		const allowLocalDevApi = process.env.EXPO_PUBLIC_USE_LOCAL_API === 'true';
+		const developmentUrl = allowLocalDevApi
+			? platformEnvironmentService.getDevelopmentApiBaseUrl()
+			: null;
 		const developmentConfiguredUrl = __DEV__
 			&& legacyConfiguredUrl
 			&& legacyConfiguredUrl.replace(/\/$/, '') !== PRODUCTION_API_BASE_URL

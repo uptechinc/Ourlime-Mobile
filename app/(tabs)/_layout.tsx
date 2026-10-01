@@ -19,8 +19,12 @@ const TabLayout = () => {
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 20);
   const tabBarHeight = 56 + bottomInset;
 
+  const currentUserId = authService.getCurrentUser()?.uid;
   const conversations = useResourceStore((state) => state.conversations.data);
-  const unreadChatCount = (conversations ?? []).reduce((sum, item) => sum + (item.unreadCount || 0), 0);
+  const unreadChatCount = (conversations ?? []).reduce((sum, item) => {
+    if (currentUserId && item.lastMessageSenderId === currentUserId) return sum;
+    return sum + (item.unreadCount || 0);
+  }, 0);
 
   useEffect(() => {
     const unsub = authService.subscribeToVerifiedAuthState((user) => {

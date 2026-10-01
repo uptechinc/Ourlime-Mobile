@@ -159,7 +159,7 @@ export default function ChatTabScreen() {
     const isArchived = archivedUids.has(user.uid) || user.isArchived === true;
     if (activeFilter === 'archived') return isArchived;
     if (isArchived) return false;
-    if (activeFilter === 'unread') return (user.unreadCount ?? 0) > 0;
+    if (activeFilter === 'unread') return user.lastMessageSenderId !== currentUserId && (user.unreadCount ?? 0) > 0;
     return true;
   });
 
@@ -167,19 +167,23 @@ export default function ChatTabScreen() {
     if (!user) return false;
     const isSearching = Boolean(searchQuery.trim());
     if (!isSearching) {
-      return activeFilter === 'archived' ? true : Boolean(user.lastMessage || user.lastMessageTime || (user.unreadCount ?? 0) > 0);
+      return activeFilter === 'archived' ? true : Boolean(user.lastMessage || user.lastMessageTime || (user.lastMessageSenderId !== currentUserId && (user.unreadCount ?? 0) > 0));
     }
     const name = `${user.firstName ?? ''} ${user.lastName ?? ''} ${user.userName ?? ''}`.toLowerCase();
     return name.includes(searchQuery.trim().toLowerCase());
   });
 
-  const unreadFilterCount = conversations.filter((c) => !archivedUids.has(c.uid) && !c.isArchived && (c.unreadCount ?? 0) > 0).length;
+  const unreadFilterCount = conversations.filter((c) => !archivedUids.has(c.uid) && !c.isArchived && c.lastMessageSenderId !== currentUserId && (c.unreadCount ?? 0) > 0).length;
   const archivedFilterCount = conversations.filter((c) => archivedUids.has(c.uid) || c.isArchived === true).length;
 
   const handleOpenChat = (user: UserProfile) => {
     if (isSelectionMode) {
       toggleSelectUser(user.uid);
       return;
+    }
+    if (currentUserId) {
+      void conversationResourceService.patchConversation(currentUserId, user.uid, { unreadCount: 0 });
+      void simpleChatMessageService.markRead(user.uid);
     }
     router.push({ pathname: '/chat/[id]', params: { id: user.uid } });
   };
@@ -313,9 +317,9 @@ export default function ChatTabScreen() {
   const anyUnreadSelected = selectedUids.size > 0
     ? Array.from(selectedUids).some((uid) => {
         const item = conversations.find((c) => c.uid === uid);
-        return (item?.unreadCount ?? 0) > 0;
+        return item?.lastMessageSenderId !== currentUserId && (item?.unreadCount ?? 0) > 0;
       })
-    : filteredConversations.some((c) => (c.unreadCount ?? 0) > 0);
+    : filteredConversations.some((c) => c.lastMessageSenderId !== currentUserId && (c.unreadCount ?? 0) > 0);
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -585,7 +589,7 @@ export default function ChatTabScreen() {
             ) : null}
 
             {filteredConversations.map((user) => {
-              const hasUnread = (user.unreadCount ?? 0) > 0;
+              const hasUnread = user.lastMessageSenderId !== currentUserId && (user.unreadCount ?? 0) > 0;
               const isSelected = selectedUids.has(user.uid);
               const isPinned = pinnedUids.has(user.uid);
               const isMuted = mutedUids.has(user.uid);

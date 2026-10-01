@@ -1,14 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   Modal,
+  KeyboardAvoidingView,
+  Keyboard,
+  Platform,
   ScrollView,
   ActivityIndicator,
   StyleSheet,
   Image,
+  findNodeHandle,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
@@ -18,6 +22,7 @@ import { feedResourceService } from '@/lib/services/FeedResourceService';
 import { ProfileMediaService } from '@/lib/services/ProfileMediaService';
 import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 const authService = AuthService.getInstance();
@@ -29,6 +34,22 @@ type EditProfileModalProps = {
   onClose: () => void;
   onProfileUpdated: () => void;
 };
+
+type ProfileField = 'firstName' | 'lastName' | 'userName' | 'bio' | 'location';
+type ProfileFieldOffsets = Partial<{
+  firstName: number;
+  lastName: number;
+  userName: number;
+  bio: number;
+  location: number;
+}>;
+type ProfileFieldInputs = Partial<{
+  firstName: TextInput;
+  lastName: TextInput;
+  userName: TextInput;
+  bio: TextInput;
+  location: TextInput;
+}>;
 
 export default function EditProfileModal({
   visible,
@@ -47,6 +68,10 @@ export default function EditProfileModal({
   const [saving, setSaving] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const fieldOffsetsRef = useRef<ProfileFieldOffsets>({});
+  const fieldInputsRef = useRef<ProfileFieldInputs>({});
+  const focusedFieldRef = useRef<ProfileField | null>(null);
 
   useEffect(() => {
     setFirstName(profile.firstName || '');
@@ -138,14 +163,66 @@ export default function EditProfileModal({
     onClose();
   };
 
+  const handleFieldLayout = (field: ProfileField, offset: number): void => {
+    fieldOffsetsRef.current[field] = offset;
+  };
+
+  const scrollFocusedFieldIntoView = useCallback((field: ProfileField): void => {
+    const offset = fieldOffsetsRef.current[field];
+    const inputHandle = findNodeHandle(fieldInputsRef.current[field] ?? null);
+
+    if (inputHandle !== null) {
+      scrollViewRef.current?.scrollResponderScrollNativeHandleToKeyboard(inputHandle, 32, true);
+    }
+
+    setTimeout(() => {
+      if (field === 'location') {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      } else if (inputHandle === null && offset !== undefined) {
+        scrollViewRef.current?.scrollTo({ y: Math.max(0, offset - 20), animated: true });
+      } else if (inputHandle === null) {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }
+    }, 120);
+  }, []);
+
+  const handleFieldFocus = (field: ProfileField): void => {
+    focusedFieldRef.current = field;
+    setTimeout(() => {
+      scrollFocusedFieldIntoView(field);
+    }, 350);
+  };
+
+  useEffect(() => {
+    const keyboardSubscription = Keyboard.addListener('keyboardDidShow', () => {
+      const focusedField = focusedFieldRef.current;
+      if (!focusedField) return;
+      setTimeout(() => scrollFocusedFieldIntoView(focusedField), 350);
+    });
+    const keyboardHideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      focusedFieldRef.current = null;
+    });
+    return () => {
+      keyboardSubscription.remove();
+      keyboardHideSubscription.remove();
+    };
+  }, [scrollFocusedFieldIntoView]);
+
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <View style={[styles.overlay, { backgroundColor: colors.modalScrim }]}>
-        <SwipeDismissSurface visible={visible} onDismiss={onClose} handleColor={colors.mutedText} disabled={saving} accessibilityLabel="Swipe down to close profile editor" style={[styles.card, { backgroundColor: colors.surface }]}>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={onClose}>
+      <SwipeDismissSurface
+        visible={visible}
+        onDismiss={onClose}
+        handleColor={colors.mutedText}
+        disabled={saving}
+        accessibilityLabel="Swipe down to close profile editor"
+        style={[styles.container, { backgroundColor: colors.canvas }]}
+      >
+        <SafeAreaView edges={['top', 'left', 'right']} style={[styles.safeArea, { backgroundColor: colors.canvas }]}>
           {/* Header */}
-          <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <View style={[styles.header, { borderBottomColor: colors.border, backgroundColor: colors.surface }]}>
             <TouchableOpacity onPress={onClose} disabled={saving} style={styles.closeBtn}>
               <Icon name="x" size={22} color={colors.icon} />
             </TouchableOpacity>
@@ -155,7 +232,22 @@ export default function EditProfileModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body} contentContainerStyle={{ padding: 20, gap: 16 }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.body}
+            keyboardVerticalOffset={0}
+          >
+          <ScrollView
+            cssInterop={false}
+            ref={(node) => {
+              scrollViewRef.current = node;
+            }}
+            style={styles.body}
+            contentContainerStyle={{ padding: 20, paddingBottom: 40, gap: 16 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          >
             {/* Cover Photo Picker */}
             <View style={styles.imagePickerSection}>
               <Text style={[styles.label, { color: colors.secondaryText }]}>Cover Banner</Text>
@@ -192,101 +284,100 @@ export default function EditProfileModal({
             </View>
 
             {/* First Name */}
-            <View>
+            <View onLayout={(event) => handleFieldLayout('firstName', event.nativeEvent.layout.y)}>
               <Text style={[styles.label, { color: colors.secondaryText }]}>First Name</Text>
               <TextInput
+                ref={(input) => { fieldInputsRef.current.firstName = input ?? undefined; }}
                 style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 value={firstName}
                 onChangeText={setFirstName}
                 placeholder="First name"
                 placeholderTextColor={colors.mutedText}
+                onFocus={() => handleFieldFocus('firstName')}
               />
             </View>
 
             {/* Last Name */}
-            <View>
+            <View onLayout={(event) => handleFieldLayout('lastName', event.nativeEvent.layout.y)}>
               <Text style={[styles.label, { color: colors.secondaryText }]}>Last Name</Text>
               <TextInput
+                ref={(input) => { fieldInputsRef.current.lastName = input ?? undefined; }}
                 style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 value={lastName}
                 onChangeText={setLastName}
                 placeholder="Last name"
                 placeholderTextColor={colors.mutedText}
+                onFocus={() => handleFieldFocus('lastName')}
               />
             </View>
 
             {/* Username */}
-            <View>
+            <View onLayout={(event) => handleFieldLayout('userName', event.nativeEvent.layout.y)}>
               <Text style={[styles.label, { color: colors.secondaryText }]}>Username</Text>
               <TextInput
+                ref={(input) => { fieldInputsRef.current.userName = input ?? undefined; }}
                 style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 value={userName}
                 onChangeText={setUserName}
                 placeholder="Username"
                 placeholderTextColor={colors.mutedText}
                 autoCapitalize="none"
+                onFocus={() => handleFieldFocus('userName')}
               />
             </View>
 
             {/* Bio */}
-            <View>
+            <View onLayout={(event) => handleFieldLayout('bio', event.nativeEvent.layout.y)}>
               <Text style={[styles.label, { color: colors.secondaryText }]}>Bio</Text>
               <TextInput
+                ref={(input) => { fieldInputsRef.current.bio = input ?? undefined; }}
                 style={[styles.input, { height: 80, textAlignVertical: 'top', backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 value={bio}
                 onChangeText={setBio}
                 placeholder="Tell others about yourself..."
                 placeholderTextColor={colors.mutedText}
                 multiline
+                onFocus={() => handleFieldFocus('bio')}
               />
             </View>
 
             {/* Location */}
-            <View>
+            <View onLayout={(event) => handleFieldLayout('location', event.nativeEvent.layout.y)}>
               <Text style={[styles.label, { color: colors.secondaryText }]}>Location</Text>
               <TextInput
+                ref={(input) => { fieldInputsRef.current.location = input ?? undefined; }}
                 style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 value={location}
                 onChangeText={setLocation}
                 placeholder="e.g. San Francisco, CA"
                 placeholderTextColor={colors.mutedText}
+                onFocus={() => handleFieldFocus('location')}
               />
             </View>
           </ScrollView>
-        </SwipeDismissSurface>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </SwipeDismissSurface>
 
-        <CustomModal
-          visible={showSuccessModal}
-          type="success"
-          title="Profile updated!"
-          message="Your profile information and images were saved successfully."
-          confirmText="Great!"
-          onClose={handleSuccessClose}
-        />
-        <CustomModal visible={Boolean(errorMessage)} type="error" title="Profile not updated" message={errorMessage ?? ''} onClose={() => setErrorMessage(null)} />
-      </View>
+      <CustomModal
+        visible={showSuccessModal}
+        type="success"
+        title="Profile updated!"
+        message="Your profile information and images were saved successfully."
+        confirmText="Great!"
+        onClose={handleSuccessClose}
+      />
+      <CustomModal visible={Boolean(errorMessage)} type="error" title="Profile not updated" message={errorMessage ?? ''} onClose={() => setErrorMessage(null)} />
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
+  container: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
-    justifyContent: 'flex-end',
   },
-  card: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    height: '88%',
-    width: '100%',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 20,
+  safeArea: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',

@@ -1,11 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, doc, onSnapshot, query, where, type Unsubscribe } from 'firebase/firestore';
-import { apiService } from './ApiService';
+import { appServerService } from './AppServerService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { db } from '@/lib/firebaseConfig';
 import type { AgoraParticipantCredentials, CallAction, CallSession, CallState, CallEndReason, CallType } from '@/lib/types/call';
 
-type ApiEnvelope<T> = { success: true; data: T };
 type FirestoreCallRecord = {
   caller?: unknown;
   callee?: unknown;
@@ -41,32 +40,29 @@ export class CallService {
 
   public async createCall(calleeId: string, type: CallType): Promise<CallSession> {
     const startedAt = Date.now();
-    const response = await apiService.request<ApiEnvelope<CallSession>>('/api/calls', {
-      method: 'POST', authenticated: true, body: { calleeId, type }, timeoutMs: 15_000,
-    });
-    this.logger.info('CallService', 'call:create', { callId: response.data.id, type, elapsedMs: Date.now() - startedAt });
-    return response.data;
+    const session = await appServerService.call<CallSession>('createCall', { calleeId, type });
+    this.logger.info('CallService', 'call:create', { callId: session.id, type, elapsedMs: Date.now() - startedAt });
+    return session;
   }
 
   public async getCall(callId: string): Promise<CallSession> {
-    const response = await apiService.request<ApiEnvelope<CallSession>>(`/api/calls/${encodeURIComponent(callId)}`, { authenticated: true });
-    return response.data;
+    return appServerService.call<CallSession>('getCall', { callId });
   }
 
   public async updateCall(callId: string, action: CallAction): Promise<CallSession> {
     const deviceId = await this.getDeviceId();
-    const response = await apiService.request<ApiEnvelope<CallSession>>(`/api/calls/${encodeURIComponent(callId)}`, {
-      method: 'PATCH', authenticated: true, body: { action, deviceId }, timeoutMs: 15_000,
-    });
-    this.logger.info('CallService', 'call:transition', { callId, action, state: response.data.state, endReason: response.data.endReason });
-    return response.data;
+    const session = await appServerService.call<CallSession>('updateCall', { callId, action, deviceId });
+    this.logger.info('CallService', 'call:transition', { callId, action, state: session.state, endReason: session.endReason });
+    return session;
+  }
+
+  /** The Agora App ID is public (every client ships it); only tokens come from the server. Lets the camera start instantly. */
+  public getPublicAgoraAppId(): string | null {
+    return process.env.EXPO_PUBLIC_AGORA_APP_ID?.trim() || null;
   }
 
   public async getRtcCredentials(callId: string): Promise<AgoraParticipantCredentials> {
-    const response = await apiService.request<ApiEnvelope<AgoraParticipantCredentials>>(`/api/calls/${encodeURIComponent(callId)}/rtc-token`, {
-      authenticated: true, timeoutMs: 15_000,
-    });
-    return response.data;
+    return appServerService.call<AgoraParticipantCredentials>('getCallCredentials', { callId });
   }
 
   public subscribe(callId: string, onChange: (session: CallSession) => void, onError: (message: string) => void): Unsubscribe {

@@ -1,4 +1,4 @@
-import { ApiService } from './ApiService';
+import { relationshipDataService } from './RelationshipDataService';
 import { LocalCacheService } from './LocalCacheService';
 import { ResourceErrorService } from './ResourceErrorService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
@@ -11,7 +11,7 @@ const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export class RelationshipResourceService {
   private static instance: RelationshipResourceService;
-  private readonly api = ApiService.getInstance();
+  private readonly data = relationshipDataService;
   private readonly cache = LocalCacheService.getInstance();
   private readonly errors = ResourceErrorService.getInstance();
   private readonly inFlight = new Map<string, Promise<void>>();
@@ -86,13 +86,9 @@ export class RelationshipResourceService {
     if (existing) return existing;
     const request = (async () => {
       try {
-        const response = await this.api.request<{ success: boolean; data?: RelationshipHubPage; error?: string }>(
-          `/api/relationships/hub?ownerId=${encodeURIComponent(userId)}&section=${section}&limit=30&cursor=${encodeURIComponent(current.data!.nextCursor!)}`,
-          { authenticated: true },
-        );
-        if (!response.success || !response.data) throw new Error(response.error || 'More relationships are unavailable');
-        const items = Array.from(new Map([...current.data!.items, ...response.data.items].map((item) => [item.id, item])).values());
-        const data = { ...response.data, items };
+        const next = await this.data.getHubPage(userId, section, { cursor: current.data!.nextCursor, limit: 30 });
+        const items = Array.from(new Map([...current.data!.items, ...next.items].map((item) => [item.id, item])).values());
+        const data = { ...next, items };
         useResourceStore.getState().setRelationshipHub(section, { ...current, data, status: 'ready', source: 'network', updatedAt: Date.now(), error: null });
         await this.cache.write(userId, NAMESPACE, section, data, { expiresAt: Date.now() + RETENTION_MS });
       } finally {
@@ -107,14 +103,10 @@ export class RelationshipResourceService {
     const current = useResourceStore.getState().relationshipHub[section] ?? createIdleResource<RelationshipHubPage>();
     useResourceStore.getState().setRelationshipHub(section, { ...current, status: current.data ? 'refreshing' : 'hydrating', error: null });
     try {
-      const response = await this.api.request<{ success: boolean; data?: RelationshipHubPage; error?: string }>(
-        `/api/relationships/hub?ownerId=${encodeURIComponent(userId)}&section=${section}&limit=30`,
-        { authenticated: true },
-      );
-      if (!response.success || !response.data) throw new Error(response.error || 'Relationships unavailable');
+      const data = await this.data.getHubPage(userId, section, { limit: 30 });
       const updatedAt = Date.now();
-      useResourceStore.getState().setRelationshipHub(section, { data: response.data, status: 'ready', source: 'network', updatedAt, isStale: false, error: null });
-      await this.cache.write(userId, NAMESPACE, section, response.data, { expiresAt: updatedAt + RETENTION_MS });
+      useResourceStore.getState().setRelationshipHub(section, { data, status: 'ready', source: 'network', updatedAt, isStale: false, error: null });
+      await this.cache.write(userId, NAMESPACE, section, data, { expiresAt: updatedAt + RETENTION_MS });
     } catch (error: unknown) {
       useResourceStore.getState().setRelationshipHub(section, { ...current, status: current.data ? 'ready' : 'error', isStale: true, error: this.errors.normalize(error, 'Relationships are unavailable.') });
     }

@@ -58,6 +58,8 @@ export default function LimeOptionsSheet({
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
 
   const isOwner = Boolean(currentUserId && currentUserId === reel.userId);
+  const relationshipTargetUserId = reel.authorUserId || reel.userId;
+  const isAuthorSelf = Boolean(currentUserId && currentUserId === relationshipTargetUserId);
 
   useEffect(() => {
     adminAccessService
@@ -71,9 +73,9 @@ export default function LimeOptionsSheet({
   }, [isFollowing]);
 
   useEffect(() => {
-    if (!currentUserId || !reel.userId || isOwner) return;
+    if (!currentUserId || !relationshipTargetUserId || isAuthorSelf) return;
     relationshipService
-      .checkFriendshipStatus(currentUserId, reel.userId)
+      .checkFriendshipStatus(currentUserId, relationshipTargetUserId)
       .then((status: 'none' | 'pending' | 'accepted') => {
         if (status === 'accepted' || status === 'pending') {
           setFriendshipStatus(status);
@@ -82,7 +84,7 @@ export default function LimeOptionsSheet({
         }
       })
       .catch(() => setFriendshipStatus('none'));
-  }, [currentUserId, isOwner, reel.userId]);
+  }, [currentUserId, isAuthorSelf, relationshipTargetUserId]);
 
   const runAction = async (action: string, operation: () => Promise<void>, successMessage: string) => {
     if (busyAction) return;
@@ -104,7 +106,7 @@ export default function LimeOptionsSheet({
   const handleFollowToggle = () => {
     if (!currentUserId) return;
     const nextFollowing = !following;
-    onFollowToggle(reel.userId, following);
+    onFollowToggle(relationshipTargetUserId, following);
     setFollowing(nextFollowing);
   };
 
@@ -113,7 +115,7 @@ export default function LimeOptionsSheet({
     void runAction(
       'friend',
       async () => {
-        await relationshipService.sendFriendRequest(currentUserId, reel.userId);
+        await relationshipService.sendFriendRequest(currentUserId, relationshipTargetUserId);
         setFriendshipStatus('pending');
       },
       'Friend request sent'
@@ -129,8 +131,8 @@ export default function LimeOptionsSheet({
     void runAction(
       'block',
       async () => {
-        await relationshipService.blockUser(reel.userId);
-        onBlock?.(reel.userId);
+        await relationshipService.blockUser(relationshipTargetUserId);
+        onBlock?.(relationshipTargetUserId);
         onClose();
       },
       'User blocked'
@@ -191,7 +193,7 @@ export default function LimeOptionsSheet({
 
           {/* Options List */}
           <View style={styles.optionsList}>
-            {!isOwner ? (
+            {!isAuthorSelf ? (
               <>
                 {/* 1. Add Friend */}
                 <TouchableOpacity
@@ -269,7 +271,7 @@ export default function LimeOptionsSheet({
                 <TouchableOpacity
                   onPress={() => {
                     onClose();
-                    onReport(reel.id, reel.userId, 'user');
+                    onReport(reel.id, relationshipTargetUserId, 'user');
                   }}
                   style={[styles.optionItem, { backgroundColor: colors.control }]}
                   activeOpacity={0.7}

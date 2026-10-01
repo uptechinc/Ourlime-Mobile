@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { contentDateService } from '@/lib/services/ContentDateService';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
   View,
   Text,
@@ -7,37 +8,25 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { Send, CornerDownRight, Trash2, Flag, BadgeCheck } from 'lucide-react-native';
+import { Send, CornerDownRight, Trash2, Flag, BadgeCheck, Heart } from 'lucide-react-native';
 import UserAvatar from '@/components/ui/UserAvatar';
 import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
-import type { BlogComment } from '@/lib/types/blog';
+import type { BlogComment, BlogCommentLikeState, BlogCommentReply } from '@/lib/types/blog';
 
 type BlogCommentsSectionProps = {
   comments: BlogComment[];
   submitting: boolean;
   onSubmitComment: (text: string, replyToCommentId?: string) => Promise<void>;
   onDeleteComment: (commentId: string) => Promise<void>;
-  onReportComment: (comment: BlogComment) => void;
+  onReportComment: (comment: BlogComment | BlogCommentReply, parentId?: string) => void;
+  onLikeComment?: (commentId: string, enabled: boolean, replyId?: string) => Promise<BlogCommentLikeState>;
+  composerRef?: RefObject<TextInput | null>;
+  canMutate?: boolean;
+  /** Blog author — may delete any top-level comment (web rule). */
+  blogOwnerId?: string;
 };
-
-function formatTimeAgo(rawDate: { seconds?: number } | string | Date | undefined): string {
-  if (!rawDate) return 'just now';
-  const timestamp = typeof rawDate === 'object' && 'seconds' in rawDate && rawDate.seconds
-    ? rawDate.seconds * 1000
-    : new Date(rawDate as string | Date).getTime();
-  if (isNaN(timestamp)) return 'just now';
-  const diffSec = Math.floor((Date.now() - timestamp) / 1000);
-  if (diffSec < 60) return `${Math.max(1, diffSec)}s ago`;
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 30) return `${diffDays}d ago`;
-  return `${Math.floor(diffDays / 30)}mo ago`;
-}
 
 export default function BlogCommentsSection({
   comments,
@@ -45,6 +34,8 @@ export default function BlogCommentsSection({
   onSubmitComment,
   onDeleteComment,
   onReportComment,
+  onLikeComment,
+  composerRef, canMutate = true, blogOwnerId,
 }: BlogCommentsSectionProps) {
   const { colors, isDark } = useAppTheme();
   const { activeUserId } = useAppData();
@@ -53,20 +44,67 @@ export default function BlogCommentsSection({
   const [replyText, setReplyText] = useState('');
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [likeOverrides, setLikeOverrides] = useState<{ [targetKey: string]: BlogCommentLikeState }>({});
+  const pendingLikes = useRef(new Set<string>());
+  const mounted = useRef(true);
+  const sending = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+
+  const readLikeState = (commentId: string, target: { isLiked?: boolean; likesCount?: number }, replyId?: string): BlogCommentLikeState =>
+    likeOverrides[`${commentId}:${replyId ?? ''}`] ?? { isLiked: Boolean(target.isLiked), likesCount: target.likesCount ?? 0 };
+
+  const handleToggleLike = async (commentId: string, current: BlogCommentLikeState, replyId?: string) => {
+    const targetKey = `${commentId}:${replyId ?? ''}`;
+    if (!onLikeComment || !canMutate || pendingLikes.current.has(targetKey)) return;
+    pendingLikes.current.add(targetKey);
+    const optimistic = { isLiked: !current.isLiked, likesCount: Math.max(0, current.likesCount + (current.isLiked ? -1 : 1)) };
+    setLikeOverrides((overrides) => ({ ...overrides, [targetKey]: optimistic }));
+    try {
+      const confirmed = await onLikeComment(commentId, optimistic.isLiked, replyId);
+      if (mounted.current) setLikeOverrides((overrides) => ({ ...overrides, [targetKey]: confirmed }));
+    } catch {
+      if (mounted.current) setLikeOverrides((overrides) => ({ ...overrides, [targetKey]: current }));
+    } finally {
+      pendingLikes.current.delete(targetKey);
+    }
+  };
+
+  const renderLikeButton = (commentId: string, target: { isLiked?: boolean; likesCount?: number; isDeleted?: boolean }, replyId?: string) => {
+    if (!onLikeComment || target.isDeleted) return null;
+    const likeState = readLikeState(commentId, target, replyId);
+    const tint = likeState.isLiked ? '#10b981' : colors.mutedText;
+    return (
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityState={{ selected: likeState.isLiked }}
+        accessibilityLabel={likeState.isLiked ? 'Unlike' : 'Like'}
+        disabled={!canMutate}
+        onPress={() => void handleToggleLike(commentId, likeState, replyId)}
+        style={styles.likeTrigger}
+      >
+        <Heart size={14} color={tint} fill={likeState.isLiked ? tint : 'transparent'} />
+        <Text style={[styles.likeTriggerText, { color: tint }]}>
+          {likeState.isLiked ? 'Liked' : 'Like'}{likeState.likesCount ? ` (${likeState.likesCount})` : ''}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
   const handleSendMainComment = async () => {
-    if (!commentText.trim() || submitting) return;
+    if (!canMutate || !commentText.trim() || submitting || sending.current) return;
+    sending.current = true;
     const text = commentText;
-    setCommentText('');
-    await onSubmitComment(text);
+    try { await onSubmitComment(text); if (mounted.current) setCommentText((current) => current === text ? '' : current); } catch { /* Keep the text available for retry. */ }
+    finally { sending.current = false; }
   };
 
   const handleSendReply = async (commentId: string) => {
-    if (!replyText.trim() || submitting) return;
+    if (!canMutate || !replyText.trim() || submitting || sending.current) return;
+    sending.current = true;
     const text = replyText;
-    setReplyText('');
-    setReplyingToId(null);
-    await onSubmitComment(text, commentId);
+    try { await onSubmitComment(text, commentId); if (mounted.current) { setReplyText((current) => current === text ? '' : current); setReplyingToId(null); } } catch { /* Keep the reply available for retry. */ }
+    finally { sending.current = false; }
   };
 
   const confirmDelete = (commentId: string) => {
@@ -79,7 +117,10 @@ export default function BlogCommentsSection({
     const id = deletingCommentId;
     setDeleteModalVisible(false);
     setDeletingCommentId(null);
-    await onDeleteComment(id);
+    try {
+      await onDeleteComment(id);
+      setActionError('');
+    } catch { setActionError('Comment could not be deleted. Retry.'); }
   };
 
   return (
@@ -91,6 +132,8 @@ export default function BlogCommentsSection({
       {/* Main Comment Input */}
       <View style={[styles.inputBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <TextInput
+          ref={composerRef}
+          editable={canMutate}
           placeholder="What are your thoughts?"
           placeholderTextColor={colors.mutedText}
           value={commentText}
@@ -100,7 +143,7 @@ export default function BlogCommentsSection({
         />
         <TouchableOpacity
           onPress={handleSendMainComment}
-          disabled={!commentText.trim() || submitting}
+          disabled={!canMutate || !commentText.trim() || submitting}
           style={[
             styles.sendBtn,
             { backgroundColor: commentText.trim() ? '#10b981' : isDark ? '#334155' : '#e2e8f0' },
@@ -115,10 +158,17 @@ export default function BlogCommentsSection({
       </View>
 
       {/* Comments List */}
+      {actionError ? <Text style={{ color: colors.destructive, marginBottom: 8 }}>{actionError}</Text> : null}
+      {comments.length === 0 ? (
+        <Text style={[styles.emptyText, { color: colors.mutedText }]}>No comments yet. Be the first to share your thoughts!</Text>
+      ) : null}
       <View style={styles.commentsList}>
         {comments.map((comment) => {
           const isOwn = activeUserId === comment.userId;
+          // Web: the comment author or the blog owner may delete; report is hidden on your own comments.
+          const canDelete = canMutate && Boolean(activeUserId) && (isOwn || activeUserId === blogOwnerId);
           const isReplying = replyingToId === comment.id;
+          const replies = (comment.replies ?? []).filter((reply) => !reply.isDeleted);
 
           return (
             <View
@@ -142,39 +192,38 @@ export default function BlogCommentsSection({
                     {comment.isVerified ? <BadgeCheck size={14} color="#10b981" /> : null}
                   </View>
                   <Text style={[styles.timeText, { color: colors.mutedText }]}>
-                    {formatTimeAgo(comment.createdAt)}
+                    {contentDateService.formatCommentDate(comment.createdAt)}
                   </Text>
                 </View>
 
-                {isOwn ? (
-                  <TouchableOpacity
-                    onPress={() => confirmDelete(comment.id)}
-                    style={styles.headerActionBtn}
-                  >
+                {canDelete ? (
+                  <TouchableOpacity onPress={() => confirmDelete(comment.id)} style={styles.headerActionBtn} accessibilityLabel="Delete comment">
                     <Trash2 size={16} color="#ef4444" />
                   </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => onReportComment(comment)}
-                    style={styles.headerActionBtn}
-                  >
+                ) : null}
+                {canMutate && !isOwn ? (
+                  <TouchableOpacity onPress={() => onReportComment(comment)} style={styles.headerActionBtn} accessibilityLabel="Report comment">
                     <Flag size={15} color={colors.mutedText} />
                   </TouchableOpacity>
-                )}
+                ) : null}
               </View>
 
               <Text style={[styles.commentBody, { color: colors.text }]}>{comment.text}</Text>
 
-              {/* Reply Button */}
-              <TouchableOpacity
-                onPress={() => setReplyingToId(isReplying ? null : comment.id)}
-                style={styles.replyTrigger}
-              >
-                <CornerDownRight size={14} color="#10b981" />
-                <Text style={styles.replyTriggerText}>
-                  {isReplying ? 'Cancel' : 'Reply'}
-                </Text>
-              </TouchableOpacity>
+              {/* Like & Reply Buttons */}
+              <View style={styles.commentActionsRow}>
+                {renderLikeButton(comment.id, comment)}
+                <TouchableOpacity
+                  disabled={!canMutate || comment.isDeleted}
+                  onPress={() => setReplyingToId(isReplying ? null : comment.id)}
+                  style={styles.replyTrigger}
+                >
+                  <CornerDownRight size={14} color="#10b981" />
+                  <Text style={styles.replyTriggerText}>
+                    {isReplying ? 'Cancel' : 'Reply'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
               {/* Inline Reply Input */}
               {isReplying ? (
@@ -206,9 +255,9 @@ export default function BlogCommentsSection({
               ) : null}
 
               {/* Nested Replies */}
-              {comment.replies && comment.replies.length > 0 ? (
+              {replies.length > 0 ? (
                 <View style={styles.repliesList}>
-                  {comment.replies.map((reply) => (
+                  {replies.map((reply) => (
                     <View
                       key={reply.id}
                       style={[
@@ -227,11 +276,20 @@ export default function BlogCommentsSection({
                             {reply.authorName}
                           </Text>
                           <Text style={[styles.replyTimeText, { color: colors.mutedText }]}>
-                            {formatTimeAgo(reply.createdAt)}
+                            {contentDateService.formatCommentDate(reply.createdAt)}
                           </Text>
                         </View>
                       </View>
                       <Text style={[styles.replyBody, { color: colors.text }]}>{reply.text}</Text>
+                      <View style={styles.commentActionsRow}>
+                        {renderLikeButton(comment.id, reply, reply.id)}
+                        {canMutate && activeUserId !== reply.userId ? (
+                          <TouchableOpacity accessibilityLabel="Report reply" style={styles.likeTrigger} onPress={() => onReportComment(reply, comment.id)}>
+                            <Flag size={13} color={colors.mutedText} />
+                            <Text style={[styles.likeTriggerText, { color: colors.mutedText }]}>Report</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
                     </View>
                   ))}
                 </View>
@@ -325,6 +383,27 @@ const styles = StyleSheet.create({
   commentBody: {
     fontSize: 15,
     lineHeight: 22,
+  },
+  emptyText: {
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 18,
+  },
+  commentActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+  },
+  likeTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  likeTriggerText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   replyTrigger: {
     flexDirection: 'row',

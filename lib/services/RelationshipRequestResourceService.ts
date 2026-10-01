@@ -1,4 +1,4 @@
-import { ApiService } from './ApiService';
+import { relationshipDataService } from './RelationshipDataService';
 import { LocalCacheService } from './LocalCacheService';
 import { ResourceErrorService } from './ResourceErrorService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
@@ -10,7 +10,7 @@ const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export class RelationshipRequestResourceService {
   private static instance: RelationshipRequestResourceService;
-  private readonly api = ApiService.getInstance();
+  private readonly data = relationshipDataService;
   private readonly cache = LocalCacheService.getInstance();
   private readonly errors = ResourceErrorService.getInstance();
   private readonly inFlight = new Map<string, Promise<void>>();
@@ -88,12 +88,8 @@ export class RelationshipRequestResourceService {
     const current = useResourceStore.getState().relationshipRequests[key] ?? createIdleResource<RelationshipHubPage>();
     useResourceStore.getState().setRelationshipRequests(key, { ...current, status: current.data ? 'refreshing' : 'hydrating', error: null });
     try {
-      const parameters = new URLSearchParams({ ownerId: userId, section: 'requests', direction, limit: '30' });
-      if (search.trim()) parameters.set('search', search.trim());
-      if (cursor) parameters.set('cursor', cursor);
-      const response = await this.api.request<{ success: boolean; data?: RelationshipHubPage; error?: string }>(`/api/relationships/hub?${parameters.toString()}`, { authenticated: true });
-      if (!response.success || !response.data) throw new Error(response.error ?? 'Requests are unavailable.');
-      const data = append && current.data ? { ...response.data, items: Array.from(new Map([...current.data.items, ...response.data.items].map((item) => [item.id, item])).values()) } : response.data;
+      const page = await this.data.getHubPage(userId, 'requests', { direction, search, cursor, limit: 30 });
+      const data = append && current.data ? { ...page, items: Array.from(new Map([...current.data.items, ...page.items].map((item) => [item.id, item])).values()) } : page;
       const updatedAt = Date.now();
       useResourceStore.getState().setRelationshipRequests(key, { data, status: 'ready', source: 'network', updatedAt, isStale: false, error: null });
       await this.cache.write(userId, NAMESPACE, key, data, { expiresAt: updatedAt + RETENTION_MS });

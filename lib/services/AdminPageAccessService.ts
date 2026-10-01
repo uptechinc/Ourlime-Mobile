@@ -1,4 +1,3 @@
-import { apiService } from './ApiService';
 import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { getDefaultMobilePageSettings } from '@/lib/pageAccess/PageRegistry';
@@ -22,10 +21,6 @@ type PageAccessResponseItem = {
   secondaryButtonRoute?: unknown;
   updatedBy?: unknown;
   order?: unknown;
-};
-
-type PageAccessResponse = {
-  settings: PageAccessResponseItem[];
 };
 
 export type AdminPageAccessAuditEntry = {
@@ -63,13 +58,7 @@ export class AdminPageAccessService {
   }
 
   public async fetchSettings(): Promise<PageAccessSetting[]> {
-    try {
-      return await this.fetchSettingsFromFirestore();
-    } catch (firestoreError: unknown) {
-      console.warn('[AdminPageAccessService] Firestore settings unavailable; trying the secure API.', firestoreError);
-      const response = await apiService.request<PageAccessResponse>('/api/page-access', { authenticated: true, timeoutMs: 18_000 });
-      return this.mergeWithDefaults(response.settings.map((item, index) => this.normalize(item, index)));
-    }
+    return this.fetchSettingsFromFirestore();
   }
 
   private async fetchSettingsFromFirestore(): Promise<PageAccessSetting[]> {
@@ -80,67 +69,27 @@ export class AdminPageAccessService {
   }
 
   public async updateSetting(id: string, updates: PageAccessUpdate): Promise<void> {
-    try {
-      const administrator = await adminAccessService.requireAdmin();
-      const batch = writeBatch(db);
-      batch.set(doc(db, 'pageAccessSettings', id), { ...updates, updatedAt: serverTimestamp(), updatedBy: administrator.userId }, { merge: true });
-      batch.set(doc(collection(db, 'pageAccessAuditLogs')), { pageId: id, pageName: id, action: 'setting_updated', previousStatus: 'unknown', newStatus: updates.status ?? 'unchanged', adminId: administrator.userId, adminName: administrator.userId, createdAt: serverTimestamp() });
-      await batch.commit();
-    } catch (firestoreError: unknown) {
-      console.warn('[AdminPageAccessService] Firestore update unavailable; trying the secure API.', firestoreError);
-      await apiService.request('/api/page-access', {
-        method: 'PUT',
-        authenticated: true,
-        body: { id, updates },
-        timeoutMs: 18_000,
-      });
-    }
+    const administrator = await adminAccessService.requireAdmin();
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'pageAccessSettings', id), { ...updates, updatedAt: serverTimestamp(), updatedBy: administrator.userId }, { merge: true });
+    batch.set(doc(collection(db, 'pageAccessAuditLogs')), { pageId: id, pageName: id, action: 'setting_updated', previousStatus: 'unknown', newStatus: updates.status ?? 'unchanged', adminId: administrator.userId, adminName: administrator.userId, createdAt: serverTimestamp() });
+    await batch.commit();
   }
 
   public async bulkUpdate(ids: string[], updates: PageAccessUpdate): Promise<void> {
-    try {
-      const administrator = await adminAccessService.requireAdmin();
-      const batch = writeBatch(db);
-      ids.forEach((id) => batch.set(doc(db, 'pageAccessSettings', id), { ...updates, updatedAt: serverTimestamp(), updatedBy: administrator.userId }, { merge: true }));
-      ids.forEach((id) => batch.set(doc(collection(db, 'pageAccessAuditLogs')), { pageId: id, pageName: id, action: 'bulk_setting_updated', previousStatus: 'unknown', newStatus: updates.status ?? 'unchanged', adminId: administrator.userId, adminName: administrator.userId, createdAt: serverTimestamp() }));
-      await batch.commit();
-    } catch (firestoreError: unknown) {
-      console.warn('[AdminPageAccessService] Firestore bulk update unavailable; trying the secure API.', firestoreError);
-      await apiService.request('/api/page-access', {
-        method: 'POST',
-        authenticated: true,
-        body: { action: 'bulk_update', ids, updates },
-        timeoutMs: 18_000,
-      });
-    }
+    const administrator = await adminAccessService.requireAdmin();
+    const batch = writeBatch(db);
+    ids.forEach((id) => batch.set(doc(db, 'pageAccessSettings', id), { ...updates, updatedAt: serverTimestamp(), updatedBy: administrator.userId }, { merge: true }));
+    ids.forEach((id) => batch.set(doc(collection(db, 'pageAccessAuditLogs')), { pageId: id, pageName: id, action: 'bulk_setting_updated', previousStatus: 'unknown', newStatus: updates.status ?? 'unchanged', adminId: administrator.userId, adminName: administrator.userId, createdAt: serverTimestamp() }));
+    await batch.commit();
   }
 
   public async resetDefaults(): Promise<void> {
-    try {
-      await this.writeDefaults(false);
-    } catch (firestoreError: unknown) {
-      console.warn('[AdminPageAccessService] Firestore reset unavailable; trying the secure API.', firestoreError);
-      await apiService.request('/api/page-access', {
-        method: 'POST',
-        authenticated: true,
-        body: { action: 'reset_defaults' },
-        timeoutMs: 18_000,
-      });
-    }
+    await this.writeDefaults(false);
   }
 
   public async initializeDefaults(): Promise<void> {
-    try {
-      await this.writeDefaults(true);
-    } catch (firestoreError: unknown) {
-      console.warn('[AdminPageAccessService] Firestore initialization unavailable; trying the secure API.', firestoreError);
-      await apiService.request('/api/page-access', {
-        method: 'POST',
-        authenticated: true,
-        body: { action: 'initialize' },
-        timeoutMs: 18_000,
-      });
-    }
+    await this.writeDefaults(true);
   }
 
   public async fetchAuditLogs(maximum = 100): Promise<AdminPageAccessAuditEntry[]> {

@@ -1,5 +1,4 @@
 import * as Location from 'expo-location';
-import { ApiService } from './ApiService';
 import type { PostLocation } from './PostService';
 
 export type LocationSearchResult = {
@@ -18,9 +17,12 @@ const isSearchResult = (value: unknown): value is LocationSearchResult => {
     && Number.isFinite(record.lng);
 };
 
+// Trinidad & Tobago bounds (same search box as the website's geocode route).
+const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
+const TT_VIEWBOX = '-61.5633000,10.8670000,-59.9455000,9.9526000';
+
 export class LocationService {
   private static instance: LocationService;
-  private readonly apiService = ApiService.getInstance();
 
   private constructor() {}
 
@@ -32,10 +34,19 @@ export class LocationService {
   public async search(query: string): Promise<LocationSearchResult[]> {
     const normalized = query.trim();
     if (normalized.length < 3) return [];
-    const response = await this.apiService.request<unknown[]>(
-      `/api/triniGeoGuesser/geocode?q=${encodeURIComponent(normalized)}&limit=6`
-    );
-    return response.filter(isSearchResult);
+    const parameters = new URLSearchParams({
+      q: normalized, format: 'jsonv2', addressdetails: '0', limit: '6', 'accept-language': 'en',
+      countrycodes: 'tt', viewbox: TT_VIEWBOX, bounded: '1',
+    });
+    const response = await fetch(`${NOMINATIM_SEARCH_URL}?${parameters.toString()}`, {
+      headers: { Accept: 'application/json', 'User-Agent': 'Ourlime-Mobile/1.0 (ourlimeadmin@gmail.com)' },
+    });
+    if (!response.ok) throw new Error(`Location search failed (${response.status}).`);
+    const places: unknown = await response.json();
+    if (!Array.isArray(places)) return [];
+    return places
+      .map((place: { lat?: unknown; lon?: unknown; display_name?: unknown }) => ({ lat: Number(place.lat), lng: Number(place.lon), displayName: place.display_name }))
+      .filter(isSearchResult);
   }
 
   public async getCurrentLocation(): Promise<PostLocation> {

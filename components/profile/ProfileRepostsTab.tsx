@@ -46,6 +46,7 @@ export default function ProfileRepostsTab({ userId, refreshKey }: ProfileReposts
   const [activeFilter, setActiveFilter] = useState<RepostFilter>('all');
   const [repostedLimes, setRepostedLimes] = useState<Reel[]>([]);
   const [isLimesLoading, setIsLimesLoading] = useState(true);
+  const [limesError, setLimesError] = useState<string | null>(null);
   const [activePostId, setActivePostId] = useState<string | null>(null);
 
   // Feed posts query for this profile
@@ -58,6 +59,8 @@ export default function ProfileRepostsTab({ userId, refreshKey }: ProfileReposts
   );
 
   const loadRepostedLimes = useCallback(async () => {
+    setIsLimesLoading(true);
+    setLimesError(null);
     try {
       let limes = await limeService.fetchUserRepostedLimes(userId);
       const missing = limes.filter((r) => !r.thumbnailUrl && !r.media?.thumbnailUrl);
@@ -87,8 +90,9 @@ export default function ProfileRepostsTab({ userId, refreshKey }: ProfileReposts
       }
 
       setRepostedLimes(limes);
-    } catch (err) {
-      console.error('[ProfileRepostsTab] Error fetching reposted limes:', err);
+    } catch (error: unknown) {
+      console.error('[ProfileRepostsTab] Error fetching reposted limes:', error);
+      setLimesError(error instanceof Error ? error.message : 'Reposted Limes could not be loaded.');
     } finally {
       setIsLimesLoading(false);
     }
@@ -143,7 +147,35 @@ export default function ProfileRepostsTab({ userId, refreshKey }: ProfileReposts
         })}
       </View>
 
-      {/* Empty State */}
+      {limesError ? (
+        <View
+          style={{
+            marginHorizontal: 16,
+            padding: 20,
+            alignItems: 'center',
+            backgroundColor: colors.surface,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Ionicons name="alert-circle-outline" size={36} color={colors.destructiveText} />
+          <Text style={{ marginTop: 10, color: colors.text, fontSize: 15, fontWeight: '800' }}>
+            Reposted Limes unavailable
+          </Text>
+          <Text style={{ marginTop: 4, color: colors.secondaryText, fontSize: 13, textAlign: 'center' }}>
+            {limesError}
+          </Text>
+          <TouchableOpacity
+            onPress={() => void loadRepostedLimes()}
+            style={{ marginTop: 14, borderRadius: 18, backgroundColor: colors.accent, paddingHorizontal: 16, paddingVertical: 9 }}
+          >
+            <Text style={{ color: colors.onAccent, fontWeight: '800' }}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+        {/* Empty State */}
       {totalCount === 0 ? (
         <View
           style={{
@@ -341,6 +373,8 @@ export default function ProfileRepostsTab({ userId, refreshKey }: ProfileReposts
               <Text style={{ fontSize: 14, color: colors.secondaryText }}>No reposted Limes.</Text>
             </View>
           )}
+        </>
+      )}
         </>
       )}
 

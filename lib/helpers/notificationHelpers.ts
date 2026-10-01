@@ -295,6 +295,7 @@ export const notificationHelpers = {
           sourceId: sourceUserId,
           sourceUserId: sourceUserId,
           actionUrl: `/profile/${sourceUser.userName || sourceUserId}`,
+          sourceProfileImage: sourceUser.profileImage || '',
         },
         userDetails: {
           profileImage: sourceUser.profileImage || '',
@@ -308,6 +309,45 @@ export const notificationHelpers = {
       return await this.addNotification(notification);
     } catch (error) {
       console.error('Error creating friend request notification:', error);
+      return false;
+    }
+  },
+
+  async createFollowNotification(targetUserId: string, sourceUserId: string): Promise<boolean> {
+    const existing = await this.getUserNotifications(targetUserId, 50);
+    const alreadyExists = existing.some((notification) => notification.type === 'follow'
+      && notification.metadata?.sourceUserId === sourceUserId);
+    if (alreadyExists) return false;
+
+    try {
+      const sourceUserDocument = await getDoc(doc(db, 'users', sourceUserId));
+      if (!sourceUserDocument.exists()) return false;
+      const sourceUser = sourceUserDocument.data();
+      const senderName = `${sourceUser.firstName || ''} ${sourceUser.lastName || ''}`.trim() || sourceUser.userName || 'Someone';
+      const notification = this.createNotification({
+        userId: targetUserId,
+        type: 'follow',
+        title: 'New Follower',
+        message: `${senderName} started following you`,
+        isRead: false,
+        metadata: {
+          sourceId: sourceUserId,
+          sourceUserId,
+          actionUrl: `/profile/${sourceUser.userName || sourceUserId}`,
+          sourceProfileImage: sourceUser.profileImage || sourceUser.profilePicture || '',
+        },
+        userDetails: {
+          uid: sourceUserId,
+          userId: sourceUserId,
+          profileImage: sourceUser.profileImage || sourceUser.profilePicture || '',
+          firstName: sourceUser.firstName || '',
+          lastName: sourceUser.lastName || '',
+          userName: sourceUser.userName || '',
+        },
+      });
+      return await this.addNotification(notification);
+    } catch (error: unknown) {
+      console.error('[notificationHelpers.createFollowNotification]', error);
       return false;
     }
   },
@@ -330,6 +370,7 @@ export const notificationHelpers = {
         metadata: {
           sourceUserId: sourceUserId,
           actionUrl: `/profile/${sourceUser.userName || sourceUserId}`,
+          sourceProfileImage: sourceUser.profileImage || '',
         },
         userDetails: {
           profileImage: sourceUser.profileImage || '',
@@ -364,6 +405,7 @@ export const notificationHelpers = {
         isRead: false,
         metadata: {
           sourceUserId: sourceUserId,
+          sourceProfileImage: sourceUser.profileImage || '',
         },
         userDetails: {
           profileImage: sourceUser.profileImage || '',

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-	ActivityIndicator,
 	RefreshControl,
 	ScrollView,
 	Text,
 	TouchableOpacity,
 	View,
 } from 'react-native';
+import { ChildSafetyListSkeleton } from '@/components/ui/Skeleton';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
@@ -216,7 +216,7 @@ export default function ChildSafetyCasesScreen({
 					</View>
 				) : null}
 				{loading && items.length === 0 ? (
-					<ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
+					<ChildSafetyListSkeleton />
 				) : (
 					items.map((report) => (
 						<TouchableOpacity

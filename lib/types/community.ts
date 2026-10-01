@@ -31,6 +31,16 @@ export type CommunityPermissionSet = {
   canReport: boolean;
 };
 
+export type CommunityCapabilities = Pick<CommunityPermissionSet,
+  'canManageMembers' | 'canModerate' | 'canEdit' | 'canDelete'
+>;
+
+export type CommunityCreateField = 'title' | 'slug' | 'availability' | 'category' | 'terms';
+
+export type CommunityValidationResult =
+  | { valid: true }
+  | { valid: false; field: CommunityCreateField; message: string };
+
 export type CommunityCardModel = {
   id: string;
   slug: string;

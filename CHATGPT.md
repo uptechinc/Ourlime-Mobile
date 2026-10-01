@@ -2,6 +2,8 @@
 
 React Native app built with **Expo Router**, **TypeScript**, **NativeWind (Tailwind CSS)**, **React Native Reanimated**, **SQLite (Local Caching)**, and **Zustand**.
 
+> **Latest Session Handoff & Context:** See [`CHATGPT_CONTEXT.md`](CHATGPT_CONTEXT.md) for recent work history, solved problems, architectural explanations, and pending items.
+
 ---
 
 ## 0. Scope Control

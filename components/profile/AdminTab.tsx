@@ -8,6 +8,7 @@ type AdminTabProps = { profile: UserProfile };
 export default function AdminTab({ profile }: AdminTabProps) {
   const router = useRouter();
   const items = [
+    { id: 'seller_review', label: 'Seller Review', description: 'Private verification applications and decisions', icon: 'storefront-outline' as const },
     { id: 'overview', label: 'Admin Overview', description: 'Platform metrics and operational status', icon: 'grid-outline' as const },
     { id: 'users', label: 'User Management', description: 'Roles, account status, archive and restore', icon: 'people-outline' as const },
     { id: 'moderation', label: 'Content Moderation', description: 'Review and resolve reported content', icon: 'flag-outline' as const },

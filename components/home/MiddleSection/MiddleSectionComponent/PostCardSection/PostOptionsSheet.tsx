@@ -38,6 +38,7 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [following, setFollowing] = useState(post.relationshipStatus?.isFollowing === true);
   const [friendshipStatus, setFriendshipStatus] = useState(post.relationshipStatus?.friendshipStatus ?? 'none');
+  const [relationshipLoading, setRelationshipLoading] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [adminDeleteVisible, setAdminDeleteVisible] = useState(false);
@@ -57,6 +58,37 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
     setFollowing(post.relationshipStatus?.isFollowing === true);
     setFriendshipStatus(post.relationshipStatus?.friendshipStatus ?? 'none');
   }, [post.relationshipStatus]);
+
+  useEffect(() => {
+    if (!visible || !currentUserId || currentUserId === post.userId) return;
+    let isCurrent = true;
+    setRelationshipLoading(true);
+    void (async () => {
+      try {
+        const [isFollowing, currentFriendshipStatus] = await Promise.all([
+          relationshipService.checkFollowStatus(currentUserId, post.userId),
+          relationshipService.checkFriendshipStatus(currentUserId, post.userId),
+        ]);
+        if (!isCurrent) return;
+        setFollowing(isFollowing);
+        setFriendshipStatus(currentFriendshipStatus);
+      } catch {
+        // Retain the feed snapshot when live relationship hydration fails.
+      } finally {
+        if (isCurrent) setRelationshipLoading(false);
+      }
+    })();
+    return () => {
+      isCurrent = false;
+    };
+  }, [currentUserId, post.userId, visible]);
+
+  const reconcileRelationshipStatus = (isFollowing: boolean, currentFriendshipStatus: 'none' | 'pending' | 'accepted'): void => {
+    onPostUpdate({
+      ...post,
+      relationshipStatus: { isFollowing, friendshipStatus: currentFriendshipStatus },
+    });
+  };
 
   const runAction = async (action: string, operation: () => Promise<void>, successMessage: string) => {
     if (busyAction) return;
@@ -85,7 +117,7 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
   };
 
   const handleConfirmDelete = async () => {
-    await postService.deletePost(post.id);
+    await postService.deletePost(post.id, post.origin);
     onDelete(post.id);
   };
 
@@ -95,6 +127,7 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
     void runAction('follow', async () => {
       await relationshipService.setFollowing(currentUserId, post.userId, nextFollowing);
       setFollowing(nextFollowing);
+      reconcileRelationshipStatus(nextFollowing, friendshipStatus === 'declined' ? 'none' : friendshipStatus);
     }, nextFollowing ? 'You are now following this user' : 'You unfollowed this user');
   };
 
@@ -103,7 +136,28 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
     void runAction('friend', async () => {
       await relationshipService.sendFriendRequest(currentUserId, post.userId);
       setFriendshipStatus('pending');
+      reconcileRelationshipStatus(following, 'pending');
     }, 'Friend request sent');
+  };
+
+  const handleCancelFriendRequest = () => {
+    if (!currentUserId || friendshipStatus !== 'pending') return;
+    void runAction('friend', async () => {
+      await relationshipService.cancelPendingFriendRequest(currentUserId, post.userId);
+      setFriendshipStatus('none');
+      reconcileRelationshipStatus(following, 'none');
+    }, 'Friend request cancelled');
+  };
+
+  const handleRemoveFriend = () => {
+    if (!currentUserId || friendshipStatus !== 'accepted') return;
+    void runAction('friend', async () => {
+      await relationshipService.cancelOrRemoveFriend(currentUserId, post.userId, 'accepted');
+      const confirmedStatus = await relationshipService.checkFriendshipStatus(currentUserId, post.userId);
+      if (confirmedStatus !== 'none') throw new Error('The friendship removal could not be confirmed. Please try again.');
+      setFriendshipStatus('none');
+      reconcileRelationshipStatus(following, 'none');
+    }, 'Friend removed');
   };
 
   const handleBlock = () => {
@@ -140,19 +194,21 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
                 <>
                   {/* 1. Add Friend */}
                   <TouchableOpacity
-                    disabled={friendshipStatus !== 'none' || Boolean(busyAction)}
-                    onPress={handleFriendRequest}
-                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, opacity: friendshipStatus !== 'none' ? 0.5 : 1 }}
+                    disabled={relationshipLoading || Boolean(busyAction)}
+                    onPress={friendshipStatus === 'accepted' ? handleRemoveFriend : friendshipStatus === 'pending' ? handleCancelFriendRequest : handleFriendRequest}
+                    accessibilityRole="button"
+                    accessibilityLabel={friendshipStatus === 'accepted' ? 'Remove friend' : friendshipStatus === 'pending' ? 'Cancel friend request' : 'Add friend'}
+                    style={{ flexDirection: 'row', alignItems: 'center', minHeight: 44, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12 }}
                   >
-                    <Icon name="user-plus" size={20} color={colors.icon} />
+                    {busyAction === 'friend' || relationshipLoading ? <ActivityIndicator size="small" color={colors.accent} /> : <Icon name={friendshipStatus === 'none' ? 'user-plus' : 'user-minus'} size={20} color={colors.icon} />}
                     <Text style={{ marginLeft: 12, fontSize: 15, fontWeight: '700', color: colors.text }}>
-                      {friendshipStatus === 'accepted' ? 'Friends' : friendshipStatus === 'pending' ? 'Request Pending' : 'Add Friend'}
+                      {friendshipStatus === 'accepted' ? 'Remove Friend' : friendshipStatus === 'pending' ? 'Cancel friend request' : 'Add Friend'}
                     </Text>
                   </TouchableOpacity>
 
                   {/* 2. Follow */}
                   <TouchableOpacity
-                    disabled={Boolean(busyAction)}
+                    disabled={relationshipLoading || Boolean(busyAction)}
                     onPress={handleFollow}
                     style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12 }}
                   >

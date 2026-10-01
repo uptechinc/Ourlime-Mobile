@@ -20,14 +20,21 @@ export function usePlaybackInteraction(player: VideoPlayer, active: boolean, spe
   const [snapshot, setSnapshot] = useState(session.snapshot());
   useEffect(() => {
     session.setActive(eligible && AppState.currentState === 'active');
+    setSnapshot(session.snapshot());
     if (!eligible) { try { player.pause(); } catch { /* Released. */ } }
     const listener = AppState.addEventListener('change', (state) => {
       setForeground(state === 'active');
       session.setActive(eligible && state === 'active');
       if (state !== 'active') { try { player.pause(); } catch { /* Released. */ } }
     });
-    const timer = setInterval(() => setSnapshot(session.tick()), 100);
-    return () => { clearInterval(timer); listener.remove(); session.setActive(false); };
+    const timer = eligible
+      ? setInterval(() => setSnapshot(session.tick()), 250)
+      : null;
+    return () => {
+      if (timer) clearInterval(timer);
+      listener.remove();
+      session.setActive(false);
+    };
   }, [eligible, player, session]);
   useEffect(() => { session.setSpeed(speed); }, [session, speed]);
   return { session, snapshot, isPlaybackActive: eligible && foreground, refresh: () => setSnapshot(session.snapshot()) };

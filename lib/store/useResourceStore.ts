@@ -9,6 +9,7 @@ import type { RelationshipHubPage, RelationshipHubSection } from '@/lib/types/re
 import type { CommunityCategory, CommunityDashboardData, CommunityDetailResource, CommunityDirectoryPage, CommunityJoinRequest, CommunityMember, CommunityPage, CommunityPoll } from '@/lib/types/community';
 import type { Event } from '@/types/eventTypes';
 import type { LimeFeedResourceData } from '@/lib/services/LimeResourceService';
+import type { ProjectRecord } from '@/lib/types/project';
 
 export type OwnProfileResource = {
   profile: UserProfile;
@@ -55,6 +56,7 @@ type ResourceStore = {
   relationshipRequests: Record<string, ResourceState<RelationshipHubPage>>;
   communityFeeds: Record<string, ResourceState<PostItem[]>>;
   limeFeeds: Record<string, ResourceState<LimeFeedResourceData>>;
+  projectDirectories: Record<string, ResourceState<ProjectRecord[]>>;
   setConversations: (resource: ResourceState<ConversationEntry[]>) => void;
   setMessages: (chatId: string, resource: ResourceState<MessageResourceData>) => void;
   upsertPostEntities: (posts: PostItem[]) => void;
@@ -75,6 +77,7 @@ type ResourceStore = {
   setRelationshipRequests: (key: string, resource: ResourceState<RelationshipHubPage>) => void;
   setCommunityFeed: (key: string, resource: ResourceState<PostItem[]>) => void;
   setLimeFeed: (key: string, resource: ResourceState<LimeFeedResourceData>) => void;
+  setProjectDirectory: (userId: string, resource: ResourceState<ProjectRecord[]>) => void;
   clearUserResources: () => void;
 };
 
@@ -104,6 +107,7 @@ export const useResourceStore = create<ResourceStore>((set) => ({
   relationshipRequests: {},
   communityFeeds: {},
   limeFeeds: {},
+  projectDirectories: {},
   setConversations: (conversations) => set({ conversations }),
   setMessages: (chatId, resource) => set((state) => ({ messages: { ...state.messages, [chatId]: resource } })),
   upsertPostEntities: (posts) => set((state) => {
@@ -129,5 +133,6 @@ export const useResourceStore = create<ResourceStore>((set) => ({
   setRelationshipRequests: (key, resource) => set((state) => ({ relationshipRequests: { ...state.relationshipRequests, [key]: resource } })),
   setCommunityFeed: (key, resource) => set((state) => ({ communityFeeds: { ...state.communityFeeds, [key]: resource } })),
   setLimeFeed: (key, resource) => set((state) => ({ limeFeeds: { ...state.limeFeeds, [key]: resource } })),
-  clearUserResources: () => set({ conversations: emptyConversations, messages: {}, postEntities: {}, feeds: {}, ownProfiles: {}, publicProfiles: {}, discover: emptyDiscover, communities: emptyCommunities, communityDirectories: {}, communityCategories: emptyCommunityCategories, communityDetails: {}, communityMembers: {}, communityRequests: {}, communityEvents: {}, communityPolls: {}, communityDashboards: {}, relationshipHub: {}, relationshipRequests: {}, communityFeeds: {}, limeFeeds: {} }),
+  setProjectDirectory: (userId, resource) => set((state) => ({ projectDirectories: { ...state.projectDirectories, [userId]: resource } })),
+  clearUserResources: () => set({ conversations: emptyConversations, messages: {}, postEntities: {}, feeds: {}, ownProfiles: {}, publicProfiles: {}, discover: emptyDiscover, communities: emptyCommunities, communityDirectories: {}, communityCategories: emptyCommunityCategories, communityDetails: {}, communityMembers: {}, communityRequests: {}, communityEvents: {}, communityPolls: {}, communityDashboards: {}, relationshipHub: {}, relationshipRequests: {}, communityFeeds: {}, limeFeeds: {}, projectDirectories: {} }),
 }));

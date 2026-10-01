@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
 	ActivityIndicator,
+	Image,
 	Modal,
 	ScrollView,
 	Share,
@@ -21,6 +22,7 @@ import {
 	type AdminAccountStatus,
 	type AdminUserRecord,
 	type AdminUserRole,
+	type AuthenticationDocumentRecord,
 	type UserLifecycleOperation,
 } from '@/lib/services/AdminUserService';
 import { relationshipResourceService } from '@/lib/services/RelationshipResourceService';
@@ -82,6 +84,27 @@ export default function UserManagementSection() {
 	const [message, setMessage] = useState<string | null>(null);
 	const [lifecycleOperation, setLifecycleOperation] = useState<UserLifecycleOperation | null>(null);
 	const [pendingRole, setPendingRole] = useState<AdminUserRole | null>(null);
+	const [authenticationDocuments, setAuthenticationDocuments] = useState<AuthenticationDocumentRecord[]>([]);
+	const [authenticationDocumentsLoading, setAuthenticationDocumentsLoading] = useState(false);
+	const [authenticationDocumentsError, setAuthenticationDocumentsError] = useState('');
+	const [previewDocumentUrl, setPreviewDocumentUrl] = useState<string | null>(null);
+
+	const loadAuthenticationDocuments = useCallback(async () => {
+		if (!selectedUser) return;
+		setAuthenticationDocumentsLoading(true);
+		setAuthenticationDocumentsError('');
+		try {
+			setAuthenticationDocuments(await adminUserService.getAuthenticationDocuments(selectedUser.id));
+		} catch (error: unknown) {
+			setAuthenticationDocumentsError(error instanceof Error ? error.message : 'Unable to load identity documents.');
+		} finally {
+			setAuthenticationDocumentsLoading(false);
+		}
+	}, [selectedUser]);
+
+	useEffect(() => {
+		if (detailTab === 'verification' && selectedUser) void loadAuthenticationDocuments();
+	}, [detailTab, selectedUser, loadAuthenticationDocuments]);
 
 	const loadUsers = useCallback(async () => {
 		setLoading(true);
@@ -1001,6 +1024,19 @@ export default function UserManagementSection() {
 											<Text style={{ color: colors.text, fontWeight: '900' }}>
 												Identity authentication
 											</Text>
+											{authenticationDocumentsLoading ? <ActivityIndicator color={colors.accent} style={{ marginVertical: 18 }} /> : null}
+											{authenticationDocumentsError ? (
+												<View style={{ marginTop: 10 }}><Text style={{ color: colors.destructiveText }}>{authenticationDocumentsError}</Text><TouchableOpacity onPress={() => void loadAuthenticationDocuments()} style={{ marginTop: 8, alignSelf: 'flex-start', borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 7 }}><Text style={{ color: colors.text, fontWeight: '800' }}>Retry</Text></TouchableOpacity></View>
+											) : null}
+											{!authenticationDocumentsLoading && !authenticationDocumentsError ? (
+												<ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }} contentContainerStyle={{ paddingRight: 8 }}>
+													{(['faceID', 'frontID', 'backID'] as const).map((documentType) => {
+														const identityDocument = authenticationDocuments.find((document) => document.type === documentType);
+														const label = documentType === 'faceID' ? 'Selfie' : documentType === 'frontID' ? 'Front ID' : 'Back ID';
+														return <View key={documentType} style={{ width: 180, marginRight: 10 }}><Text style={{ color: colors.mutedText, fontSize: 12, fontWeight: '800', marginBottom: 6 }}>{label}</Text>{identityDocument?.imageUrl ? <TouchableOpacity onPress={() => setPreviewDocumentUrl(identityDocument.imageUrl)}><Image source={{ uri: identityDocument.imageUrl }} resizeMode="contain" style={{ width: 180, height: 130, borderRadius: 12, backgroundColor: colors.input }} /></TouchableOpacity> : <View style={{ width: 180, height: 130, borderRadius: 12, backgroundColor: colors.input, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.mutedText }}>Not provided</Text></View>}</View>;
+													})}
+												</ScrollView>
+											) : null}
 											<Text
 												style={{
 													marginTop: 4,
@@ -1210,6 +1246,12 @@ export default function UserManagementSection() {
 						) : null}
 					</SafeAreaView>
 				</SwipeDismissSurface>
+			</Modal>
+			<Modal visible={Boolean(previewDocumentUrl)} transparent animationType="fade" onRequestClose={() => setPreviewDocumentUrl(null)}>
+				<SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' }}>
+					<TouchableOpacity onPress={() => setPreviewDocumentUrl(null)} style={{ alignSelf: 'flex-end', margin: 16, padding: 10 }} accessibilityLabel="Close identity document preview"><Icon name="x" size={26} color="#ffffff" /></TouchableOpacity>
+					{previewDocumentUrl ? <Image source={{ uri: previewDocumentUrl }} resizeMode="contain" style={{ flex: 1, width: '100%' }} /> : null}
+				</SafeAreaView>
 			</Modal>
 			<CustomModal
 				visible={pendingRole !== null}

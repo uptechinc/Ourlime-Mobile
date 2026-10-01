@@ -71,6 +71,7 @@ export type CreateJobInput = {
     qualifications?: string[];
     category_specific?: JobRecord['category_specific'];
     questions?: JobQuestionInput[];
+    publicationStatus?: 'published' | 'draft' | 'pending_review' | string;
 };
 
 export type UpdateJobInput = {
@@ -106,14 +107,21 @@ export class JobsService {
             console.log('Creating job with data:', jobData);
             console.log('Job category being saved:', jobData.jobCategory);
             console.log('Selected topic/category being saved:', jobData.category);
-            
+
+            const effectivePublicationStatus =
+                jobData.jobCategory === 'quickTask' ||
+                jobData.jobCategory === 'quicktasks' ||
+                jobData.publicationStatus === 'published'
+                    ? 'published'
+                    : (jobData.publicationStatus === 'draft' ? 'draft' : 'published');
+
             const jobRef = await addDoc(collection(this.db, 'jobs'), {
                 basic_info: {
                     title: jobData.jobTitle,
                     description: jobData.jobDescription,
                     type: jobData.jobCategory,
                     category: jobData.category,
-                    status: 'active',
+                    status: effectivePublicationStatus,
                     createdAt: Timestamp.now(),
                     updatedAt: Timestamp.now(),
                     userId: jobData.userId,

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { ActivityIndicator, Image, Modal, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Image, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { PostMediaService, type CropPreset, type PendingImageCrop } from '@/lib/services/PostMediaService';
 import type { PostMediaDraft } from '@/lib/services/PostService';
@@ -22,6 +22,7 @@ const presets: { value: CropPreset; label: string }[] = [
 ];
 
 export default function MediaCropModal({ pending, queueLength, onCancel, onComplete }: MediaCropModalProps) {
+  const insets = useSafeAreaInsets();
   const [preset, setPreset] = useState<CropPreset>('fit');
   const [zoom, setZoom] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -35,7 +36,8 @@ export default function MediaCropModal({ pending, queueLength, onCancel, onCompl
     return w / h;
   };
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<void> => {
+    if (saving) return;
     setSaving(true);
     try {
       const cropped = await mediaService.cropImage(pending, preset, zoom);
@@ -58,14 +60,27 @@ export default function MediaCropModal({ pending, queueLength, onCancel, onCompl
           <Text style={{ flex: 1, color: '#ffffff', textAlign: 'center', fontSize: 18, fontWeight: '700' }}>
             Crop photo {queueLength > 1 ? `(${queueLength} left)` : ''}
           </Text>
-          <View style={{ width: 40 }} />
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Finish cropping photo"
+            onPress={() => void handleSave()}
+            disabled={saving}
+            style={{ minWidth: 68, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: '#10b981', opacity: saving ? 0.7 : 1 }}
+          >
+            {saving ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={{ color: '#ffffff', fontWeight: '800' }}>Finish</Text>}
+          </TouchableOpacity>
         </View>
 
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', margin: 16 }}>
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 16, paddingBottom: 20 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+        <View style={{ flexGrow: 1, minHeight: 220, alignItems: 'center', justifyContent: 'center', marginVertical: 8 }}>
           <View style={{
             width: '100%',
             aspectRatio: getAspectRatio(preset),
-            maxHeight: '85%',
+            maxHeight: 520,
             overflow: 'hidden',
             borderRadius: 18,
             backgroundColor: '#000000',
@@ -82,7 +97,7 @@ export default function MediaCropModal({ pending, queueLength, onCancel, onCompl
           </View>
         </View>
 
-        <View style={{ paddingHorizontal: 18, paddingBottom: 20 }}>
+        <View style={{ paddingHorizontal: 2 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 16 }}>
             {presets.map((item) => (
               <TouchableOpacity
@@ -111,8 +126,11 @@ export default function MediaCropModal({ pending, queueLength, onCancel, onCompl
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => void handleSave()} disabled={saving} style={{ height: 50, borderRadius: 15, backgroundColor: '#10b981', alignItems: 'center', justifyContent: 'center' }}>
-            {saving ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: '#ffffff', fontWeight: '800' }}>{queueLength > 1 ? 'Use photo and crop next' : 'Use photo'}</Text>}
+        </View>
+        </ScrollView>
+        <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: Math.max(insets.bottom, Platform.OS === 'android' ? 48 : 12), backgroundColor: '#111827' }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Finish cropping photo" onPress={() => void handleSave()} disabled={saving} style={{ height: 50, borderRadius: 15, backgroundColor: '#10b981', alignItems: 'center', justifyContent: 'center', opacity: saving ? 0.7 : 1 }}>
+            {saving ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: '#ffffff', fontWeight: '800' }}>{queueLength > 1 ? 'Finish and crop next' : 'Finish'}</Text>}
           </TouchableOpacity>
         </View>
       </SafeAreaView>

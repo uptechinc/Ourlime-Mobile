@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Bookmark, BriefcaseBusiness, Building2, Clock, DollarSign, MapPin, Users } from 'lucide-react-native';
 import JobApplicationModal from './applyJobs/JobApplicationModal';
@@ -7,6 +7,7 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import type { JobRecord } from '@/lib/job/JobsService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { AuthService } from '@/lib/services/AuthService';
+import { jobApplicationService } from '@/lib/services/JobApplicationService';
 
 type ProfessionalJobsListProps = {
   jobs: JobRecord[];
@@ -16,11 +17,12 @@ type ProfessionalJobCardProps = {
   job: JobRecord;
   onApply: (job: JobRecord) => void;
   onCardPress: (job: JobRecord) => void;
+  isApplied?: boolean;
 };
 
 const authService = AuthService.getInstance();
 
-function ProfessionalJobCard({ job, onApply, onCardPress }: ProfessionalJobCardProps) {
+function ProfessionalJobCard({ job, onApply, onCardPress, isApplied = false }: ProfessionalJobCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isCreator = authService.getCurrentUser()?.uid === job.basic_info.userId;
@@ -55,14 +57,20 @@ function ProfessionalJobCard({ job, onApply, onCardPress }: ProfessionalJobCardP
           <View style={styles.cardActions}>
             <TouchableOpacity style={styles.bookmarkButton} accessibilityLabel="Save job"><Bookmark size={20} color={colors.icon} /></TouchableOpacity>
             {!isCreator ? (
-              <TouchableOpacity
-                onPress={(e) => {
-                  onApply(job);
-                }}
-                style={styles.applyButton}
-              >
-                <Text style={styles.applyText}>Apply</Text>
-              </TouchableOpacity>
+              isApplied ? (
+                <View style={styles.appliedBadge}>
+                  <Text style={styles.appliedText}>Applied</Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => {
+                    onApply(job);
+                  }}
+                  style={styles.applyButton}
+                >
+                  <Text style={styles.applyText}>Apply</Text>
+                </TouchableOpacity>
+              )
             ) : null}
           </View>
         </View>
@@ -91,6 +99,23 @@ export function ProfessionalJobsList({ jobs }: ProfessionalJobsListProps) {
   const professionalJobs = jobs.filter((job) => job.basic_info.type === 'professional');
   const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
   const [detailJob, setDetailJob] = useState<JobRecord | null>(null);
+  const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const userId = authService.getCurrentUser()?.uid;
+    if (!userId || professionalJobs.length === 0) return;
+    let cancelled = false;
+
+    void jobApplicationService.getAppliedJobIds(userId).then((ids) => {
+      if (!cancelled) {
+        setAppliedJobIds(ids);
+      }
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [professionalJobs.length]);
 
   const handleApply = (job: JobRecord) => {
     setSelectedJob(job);
@@ -111,13 +136,39 @@ export function ProfessionalJobsList({ jobs }: ProfessionalJobsListProps) {
           <ProfessionalJobCard
             key={job.id}
             job={job}
+            isApplied={appliedJobIds.has(job.id)}
             onApply={handleApply}
             onCardPress={(selected) => setDetailJob(selected)}
           />
         ))}
       </View>
-      {selectedJob ? <JobApplicationModal isOpen onClose={handleCloseApplication} job={selectedJob} jobType="professional" /> : null}
-      {detailJob ? <JobDetailsModal isOpen onClose={() => setDetailJob(null)} job={detailJob} jobType="professional" /> : null}
+      {selectedJob ? (
+        <JobApplicationModal
+          isOpen
+          onClose={handleCloseApplication}
+          onApplied={() => {
+            if (selectedJob?.id) {
+              setAppliedJobIds((prev) => new Set(prev).add(selectedJob.id));
+            }
+          }}
+          job={selectedJob}
+          jobType="professional"
+        />
+      ) : null}
+      {detailJob ? (
+        <JobDetailsModal
+          isOpen
+          onClose={() => setDetailJob(null)}
+          job={detailJob}
+          jobType="professional"
+          isApplied={appliedJobIds.has(detailJob.id)}
+          onApplySuccess={() => {
+            if (detailJob?.id) {
+              setAppliedJobIds((prev) => new Set(prev).add(detailJob.id));
+            }
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -144,6 +195,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   bookmarkButton: { padding: 6 },
   applyButton: { minWidth: 82, alignItems: 'center', backgroundColor: colors.accent, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999 },
   applyText: { color: colors.onAccent, fontWeight: '800' },
+  appliedBadge: { minWidth: 82, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control, borderColor: colors.border, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999 },
+  appliedText: { color: colors.mutedText, fontWeight: '700', fontSize: 13 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   skillChip: { backgroundColor: colors.control, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
   skillText: { color: colors.secondaryText, fontSize: 12 },

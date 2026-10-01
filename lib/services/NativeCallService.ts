@@ -1,11 +1,11 @@
 import { AppState, NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { apiService } from './ApiService';
+import { appServerService } from './AppServerService';
 import { callService } from './CallService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { platformEnvironmentService } from './PlatformEnvironmentService';
 import { notificationSoundPreferenceService } from './NotificationSoundPreferenceService';
-import type { CallEndReason, CallPushPayload, CallSession } from '@/lib/types/call';
+import type { CallEndReason, CallPushPayload, CallSession, CallType } from '@/lib/types/call';
 
 type NativeCallCallbacks = {
   onIncomingCall: (payload: CallPushPayload) => void;
@@ -16,7 +16,6 @@ type NativeCallCallbacks = {
 
 type NativeSubscription = { remove: () => void };
 type StoredNativeToken = { token: string; platform: 'android' | 'ios'; transport: 'fcm' | 'apns_voip' };
-type PushTokenResponse = { success: boolean };
 type CallNotificationAction = 'open' | 'answer' | 'decline';
 type PendingCallInteraction = { payload: CallPushPayload; action: CallNotificationAction };
 type AndroidIncomingCallModule = {
@@ -26,6 +25,8 @@ type AndroidIncomingCallModule = {
   stopRingtone: () => Promise<void>;
   openNotificationSettings: () => Promise<void>;
   consumePendingInteraction: () => Promise<unknown>;
+  startOngoingCall?: (peerName: string, isVideo: boolean) => Promise<void>;
+  stopOngoingCall?: () => Promise<void>;
   addListener: (eventName: string) => void;
   removeListeners: (count: number) => void;
 };
@@ -236,6 +237,24 @@ export class NativeCallService {
     }
   }
 
+  public async startOngoingCall(peerName: string, type: CallType): Promise<void> {
+    if (Platform.OS !== 'android') return;
+    try {
+      await getAndroidIncomingCallModule()?.startOngoingCall?.(peerName, type === 'video');
+    } catch (error: unknown) {
+      this.logger.warn('NativeCallService', 'ongoing:start-failed', { message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  public async stopOngoingCall(): Promise<void> {
+    if (Platform.OS !== 'android') return;
+    try {
+      await getAndroidIncomingCallModule()?.stopOngoingCall?.();
+    } catch (error: unknown) {
+      this.logger.warn('NativeCallService', 'ongoing:stop-failed', { message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   public async endNativeCall(callId: string, reason: CallEndReason | null): Promise<void> {
     this.clearRingingTimer(callId);
     this.displayedCallIds.delete(callId);
@@ -268,9 +287,7 @@ export class NativeCallService {
 
   public async unregisterTokens(): Promise<void> {
     const tokens = await this.readStoredTokens();
-    await Promise.allSettled(tokens.map((token) => apiService.request<PushTokenResponse>('/api/push-tokens', {
-      method: 'DELETE', authenticated: true, body: { token: token.token },
-    })));
+    await Promise.allSettled(tokens.map((token) => appServerService.call('registerNativePush', { token: token.token, remove: true })));
     await AsyncStorage.removeItem(TOKENS_KEY);
   }
 
@@ -550,9 +567,7 @@ export class NativeCallService {
 
   private async registerToken(token: string, platform: 'android' | 'ios', transport: 'fcm' | 'apns_voip'): Promise<void> {
     const deviceId = await callService.getDeviceId();
-    await apiService.request<PushTokenResponse>('/api/push-tokens', {
-      method: 'POST', authenticated: true, body: { token, platform, transport, deviceId }, timeoutMs: 15_000,
-    });
+    await appServerService.call('registerNativePush', { token, platform, transport, deviceId });
     const tokens = (await this.readStoredTokens()).filter((stored) => stored.transport !== transport);
     tokens.push({ token, platform, transport });
     await AsyncStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));

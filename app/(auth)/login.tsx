@@ -27,9 +27,6 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
-// Background SVG
-import BackgroundSVG from '../../assets/images/login/mobileBackground.svg';
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GREEN = '#01eb53';
 const GREEN_DARK = '#10b981';
@@ -168,7 +165,7 @@ export default function LoginScreen() {
 
       {/* Background */}
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flex: 1 }}>
-        <BackgroundSVG width="100%" height="100%" preserveAspectRatio="xMidYMid slice" />
+        <Image source={require('../../assets/images/login/mobileBackground.jpg')} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
         {/* Gradient overlay matching web: bg-black/35 backdrop-blur */}
         <View
           style={{

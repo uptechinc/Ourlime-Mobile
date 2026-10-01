@@ -374,7 +374,19 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
                 <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{userProfile.firstName} {userProfile.lastName}</Text>
                 <View style={{ flexDirection: 'row', marginTop: 6 }}>
                   {(['public', 'friends', 'private'] as const).map((option) => (
-                    <TouchableOpacity key={option} onPress={() => setVisibility(option)} style={{ marginRight: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: visibility === option ? colors.selectedControl : colors.control }}>
+                    <TouchableOpacity
+                      key={option}
+                      activeOpacity={1}
+                      onPress={() => setVisibility(option)}
+                      hitSlop={8}
+                      style={{
+                        marginRight: 6,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 12,
+                        backgroundColor: visibility === option ? colors.selectedControl : colors.control,
+                      }}
+                    >
                       <Text style={{ color: visibility === option ? colors.selectedText : colors.secondaryText, fontSize: 12, textTransform: 'capitalize' }}>{option}</Text>
                     </TouchableOpacity>
                   ))}
@@ -384,7 +396,18 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
 
             <View style={{ flexDirection: 'row', backgroundColor: colors.control, borderRadius: 14, padding: 4, marginBottom: 16 }}>
               {(communityId ? (['regular'] as const) : (['regular', 'poll', 'event'] as const)).map((option) => (
-                <TouchableOpacity key={option} onPress={() => setPostType(option)} style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 11, backgroundColor: postType === option ? colors.surface : 'transparent' }}>
+                <TouchableOpacity
+                  key={option}
+                  activeOpacity={1}
+                  onPress={() => setPostType(option)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                    borderRadius: 11,
+                    backgroundColor: postType === option ? colors.surface : 'transparent',
+                  }}
+                >
                   <Text style={{ color: postType === option ? colors.accentText : colors.secondaryText, fontWeight: '700', textTransform: 'capitalize' }}>
                     {option === 'regular' ? 'Post' : option === 'poll' ? 'Poll' : '📅 Event'}
                   </Text>
@@ -636,7 +659,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
       </SafeAreaView>
 
       {cropQueue[0] ? <MediaCropModal pending={cropQueue[0]} queueLength={cropQueue.length} onCancel={() => setCropQueue((current) => current.slice(1))} onComplete={handleCroppedMedia} /> : null}
-      {trimQueue[0] ? <VideoTrimModal pending={trimQueue[0]} queueLength={trimQueue.length} onCancel={() => setTrimQueue((current) => current.slice(1))} onComplete={handleTrimmedVideo} /> : null}
+      {trimQueue[0] ? <VideoTrimModal pending={trimQueue[0]} queueLength={trimQueue.length} onCancel={() => setTrimQueue((current) => current.slice(1))} onComplete={handleTrimmedVideo} onError={(message) => setComposerFeedback({ title: 'Video trimming', message })} /> : null}
       {showLocationPicker ? <LocationPickerModal initialLocation={location} onClose={() => setShowLocationPicker(false)} onSelect={(selectedLocation) => { setLocation(selectedLocation); setShowLocationPicker(false); }} /> : null}
       <CustomModal visible={Boolean(composerFeedback)} title={composerFeedback?.title ?? 'Create post'} message={composerFeedback?.message ?? ''} type="error" onClose={() => setComposerFeedback(null)} />
       </Animated.View>

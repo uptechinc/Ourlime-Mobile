@@ -30,6 +30,7 @@ type JobDetailsModalProps = {
   onClose: () => void;
   job: JobRecord | null;
   jobType?: 'professional' | 'quickTask';
+  isApplied?: boolean;
   onApplySuccess?: () => void;
 };
 
@@ -47,6 +48,7 @@ export default function JobDetailsModal({
   onClose,
   job,
   jobType = 'professional',
+  isApplied = false,
   onApplySuccess,
 }: JobDetailsModalProps) {
   const { colors, isDark } = useAppTheme();
@@ -235,10 +237,17 @@ export default function JobDetailsModal({
               <Text style={[styles.priceLabel, { color: colors.mutedText }]}>Compensation</Text>
               <Text style={[styles.priceValue, { color: colors.text }]}>{priceFormatted}</Text>
             </View>
-            <TouchableOpacity onPress={() => setApplyModalOpen(true)} style={styles.applyBtn}>
-              <Send size={16} color="#ffffff" />
-              <Text style={styles.applyBtnText}>Apply Now</Text>
-            </TouchableOpacity>
+            {isApplied ? (
+              <View style={[styles.applyBtn, { backgroundColor: colors.control, borderColor: colors.border, borderWidth: 1 }]}>
+                <CheckCircle2 size={16} color={colors.mutedText} />
+                <Text style={[styles.applyBtnText, { color: colors.mutedText }]}>Applied</Text>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={() => setApplyModalOpen(true)} style={styles.applyBtn}>
+                <Send size={16} color="#ffffff" />
+                <Text style={styles.applyBtnText}>Apply Now</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : null}
 
@@ -246,8 +255,8 @@ export default function JobDetailsModal({
         {applyModalOpen ? (
           <JobApplicationModal
             isOpen={applyModalOpen}
-            onClose={() => {
-              setApplyModalOpen(false);
+            onClose={() => setApplyModalOpen(false)}
+            onApplied={() => {
               onApplySuccess?.();
             }}
             job={job}

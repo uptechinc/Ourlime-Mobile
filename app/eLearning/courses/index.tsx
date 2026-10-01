@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Image,
   RefreshControl,
   ScrollView,
@@ -21,28 +20,35 @@ import {
   GraduationCap,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { CourseCatalogSkeleton } from '@/components/ui/Skeleton';
 import { courseService } from '@/lib/services/CourseService';
-import type { Course } from '@/lib/types/course';
-
-const CATEGORIES = ['All', 'Technology', 'CSEC Prep', 'Business', 'Languages', 'Science'];
+import type { Course, CourseCategory } from '@/lib/types/course';
 
 export default function CoursesCatalogScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
 
   const [courses, setCourses] = useState<Course[]>([]);
+  const [categories, setCategories] = useState<CourseCategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
   const loadCourses = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
-      const data = await courseService.getCourses(selectedCategory, search);
+      const [data, categoryData] = await Promise.all([
+        courseService.getCourses(selectedCategory, search),
+        courseService.getCategories(),
+      ]);
       setCourses(data);
-    } catch {
-      setCourses([]);
+      setCategories(categoryData);
+    } catch (loadError: unknown) {
+      console.error('[CoursesCatalogScreen] Load failed:', loadError);
+      setError('Courses could not be loaded. Check your connection and retry.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -50,7 +56,8 @@ export default function CoursesCatalogScreen() {
   }, [selectedCategory, search]);
 
   useEffect(() => {
-    void loadCourses();
+    const timer = setTimeout(() => { void loadCourses(); }, 300);
+    return () => clearTimeout(timer);
   }, [loadCourses]);
 
   const filteredCourses = useMemo(() => {
@@ -101,7 +108,7 @@ export default function CoursesCatalogScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.categoryPills}
         >
-          {CATEGORIES.map((cat) => (
+          {['All', ...categories.map((category) => category.name)].map((cat) => (
             <TouchableOpacity
               key={cat}
               onPress={() => setSelectedCategory(cat)}
@@ -125,11 +132,8 @@ export default function CoursesCatalogScreen() {
         </ScrollView>
 
         {/* Course List */}
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#10b981" />
-            <Text style={[styles.loadingText, { color: colors.mutedText }]}>Discovering courses...</Text>
-          </View>
+        {error && !loading ? <View style={styles.emptyContainer}><Text style={[styles.emptyText, { color: colors.destructiveText }]}>{error}</Text><TouchableOpacity onPress={() => void loadCourses()} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: colors.accentText, fontWeight: '800' }}>Try Again</Text></TouchableOpacity></View> : loading ? (
+          <CourseCatalogSkeleton />
         ) : filteredCourses.length === 0 ? (
           <View style={styles.emptyContainer}>
             <GraduationCap size={44} color={colors.mutedText} />

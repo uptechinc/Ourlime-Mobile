@@ -2,13 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
 import { useCallback, useEffect } from 'react';
 import {
-	ActivityIndicator,
 	RefreshControl,
 	ScrollView,
 	Text,
 	TouchableOpacity,
 	View,
 } from 'react-native';
+import { TicketListSkeleton } from '@/components/ui/Skeleton';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -91,7 +91,7 @@ export default function SupportTicketsScreen() {
 					</Text>
 				) : null}
 				{resource.status === 'hydrating' && !items.length ? (
-					<ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+					<TicketListSkeleton />
 				) : null}
 				{!items.length && resource.status === 'ready' ? (
 					<Text

@@ -1,457 +1,241 @@
-import { db } from '@/lib/firebaseConfig';
 import {
   collection,
   doc,
-  getDocs,
   getDoc,
-  setDoc,
+  getDocs,
+  limit,
   query,
   where,
-  orderBy,
-  limit,
-  serverTimestamp,
-  Firestore,
+  type DocumentData,
+  type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import type {
-  Course,
-  CourseModule,
-  CourseLesson,
-  Enrollment,
-  CourseReview,
-  CxcSubject,
-} from '@/lib/types/course';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app, auth, db } from '@/lib/firebaseConfig';
+import { nativeSessionService } from './NativeSessionService';
+import type { Course, CourseAnnouncement, CourseCategory, CourseModule, CourseLesson, Enrollment, InstructorProfile, CxcSubject } from '@/lib/types/course';
 
-const FALLBACK_COURSES: Course[] = [
-  {
-    id: 'course-react-native-mastery',
-    title: 'Mobile App Architecture with React Native',
-    description: 'Learn modern React Native, Expo, NativeWind, TypeScript, and offline-first state architecture with real-world Caribbean mobile projects.',
-    shortDescription: 'Master modern React Native with TypeScript and Expo.',
-    instructor: {
-      id: 'inst-1',
-      name: 'Dr. Kevin Vance',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-      role: 'Lead Mobile Architect',
-    },
-    category: 'Technology',
-    level: 'intermediate',
-    duration: 18,
-    price: 0,
-    image: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600',
-    rating: 4.9,
-    totalRatings: 128,
-    enrolledStudents: 1420,
-    status: 'published',
-    isPublic: true,
-    tags: ['React Native', 'Expo', 'TypeScript', 'Mobile'],
-    learningObjectives: [
-      'Build scalable multi-screen mobile apps',
-      'Integrate Firebase Authentication & Firestore',
-      'Optimize UI performance with FlashList & Reanimated',
-    ],
-    featured: true,
-  },
-  {
-    id: 'course-csec-math-bootcamp',
-    title: 'CSEC Mathematics Comprehensive Prep',
-    description: 'Complete revision of Paper 1 and Paper 2 CXC CSEC Mathematics with step-by-step worked solutions for Caribbean students.',
-    shortDescription: 'Ace your CSEC Mathematics exam with proven techniques.',
-    instructor: {
-      id: 'inst-2',
-      name: 'Prof. Ronald Persad',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-      role: 'Senior CXC Examiner',
-    },
-    category: 'CSEC Prep',
-    level: 'beginner',
-    duration: 24,
-    price: 0,
-    image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600',
-    rating: 4.8,
-    totalRatings: 340,
-    enrolledStudents: 3890,
-    status: 'published',
-    isPublic: true,
-    tags: ['CSEC', 'CXC', 'Mathematics', 'Algebra', 'Geometry'],
-    learningObjectives: [
-      'Master Algebra, Relations, Functions & Graphs',
-      'Solve Trigonometry and Coordinate Geometry problems',
-      'Excel in Probability & Statistics Paper 1 & 2',
-    ],
-    featured: true,
-  },
-  {
-    id: 'course-caribbean-business-finance',
-    title: 'Principles of Caribbean Business & Entrepreneurship',
-    description: 'Discover how to start, fund, and scale modern Caribbean businesses navigating regional regulations, banking, and digital commerce.',
-    shortDescription: 'Start and grow successful Caribbean digital ventures.',
-    instructor: {
-      id: 'inst-3',
-      name: 'Camille St. Louis',
-      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
-      role: 'Caribbean Venture Partner',
-    },
-    category: 'Business',
-    level: 'beginner',
-    duration: 12,
-    price: 0,
-    image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600',
-    rating: 4.7,
-    totalRatings: 94,
-    enrolledStudents: 980,
-    status: 'published',
-    isPublic: true,
-    tags: ['Entrepreneurship', 'Business', 'Caribbean', 'Finance'],
-    featured: true,
-  },
-];
-
-const CXC_SUBJECTS_DATA: CxcSubject[] = [
-  {
-    id: 'csec-math',
-    code: 'MATH-01',
-    title: 'CSEC Mathematics',
-    level: 'CSEC',
-    category: 'Sciences & Math',
-    topicsCount: 14,
-    pastPapersCount: 22,
-    papers: [
-      { year: 2025, paperNumber: 1, title: 'May/June Paper 01 Solutions' },
-      { year: 2025, paperNumber: 2, title: 'May/June Paper 02 Solutions' },
-      { year: 2024, paperNumber: 1, title: 'May/June Paper 01 Solutions' },
-      { year: 2024, paperNumber: 2, title: 'May/June Paper 02 Solutions' },
-    ],
-  },
-  {
-    id: 'csec-english-a',
-    code: 'ENG-A',
-    title: 'CSEC English A',
-    level: 'CSEC',
-    category: 'Languages',
-    topicsCount: 10,
-    pastPapersCount: 18,
-    papers: [
-      { year: 2025, paperNumber: 1, title: 'Paper 01 Comprehension Practice' },
-      { year: 2025, paperNumber: 2, title: 'Paper 02 Summary & Essay Guides' },
-    ],
-  },
-  {
-    id: 'csec-it',
-    code: 'IT-03',
-    title: 'CSEC Information Technology',
-    level: 'CSEC',
-    category: 'Technology',
-    topicsCount: 12,
-    pastPapersCount: 16,
-    papers: [
-      { year: 2025, paperNumber: 1, title: 'Theory & Problem Solving' },
-      { year: 2025, paperNumber: 2, title: 'SBA & Programming Solutions' },
-    ],
-  },
-  {
-    id: 'csec-biology',
-    code: 'BIO-04',
-    title: 'CSEC Biology',
-    level: 'CSEC',
-    category: 'Sciences & Math',
-    topicsCount: 16,
-    pastPapersCount: 15,
-    papers: [
-      { year: 2025, paperNumber: 1, title: 'Living Organisms & Ecology' },
-      { year: 2025, paperNumber: 2, title: 'Genetics & Physiology' },
-    ],
-  },
-  {
-    id: 'csec-poa',
-    code: 'POA-05',
-    title: 'CSEC Principles of Accounts',
-    level: 'CSEC',
-    category: 'Business',
-    topicsCount: 11,
-    pastPapersCount: 14,
-    papers: [
-      { year: 2025, paperNumber: 1, title: 'Balance Sheets & Ledgers' },
-      { year: 2025, paperNumber: 2, title: 'Partnership Accounts Practice' },
-    ],
-  },
-];
+type Data = DocumentData;
+type QueryDocument = QueryDocumentSnapshot<Data>;
+type QuerySnapshot = { docs: QueryDocument[]; size: number; empty: boolean };
+export type LearningOverview = { courses: Course[]; announcements: CourseAnnouncement[]; instructors: InstructorProfile[]; categories: CourseCategory[] };
+type MutationResponse = { id: string };
 
 export class CourseService {
   private static instance: CourseService;
-  private readonly db: Firestore;
+  private constructor() {}
+  private get database() { return db; }
+  public static getInstance(): CourseService { return this.instance ??= new CourseService(); }
 
-  private constructor() {
-    this.db = db;
+  public async getOverview(userId: string): Promise<LearningOverview> {
+    this.assertWebSession(userId);
+    const [courses, announcements, instructors, categories] = await Promise.all([
+      this.getCourses(), this.getAnnouncements(userId), this.getInstructors(), this.getCategories(),
+    ]);
+    nativeSessionService.assertOwner(userId);
+    return { courses, announcements, instructors, categories };
   }
 
-  public static getInstance(): CourseService {
-    if (!CourseService.instance) {
-      CourseService.instance = new CourseService();
+  public async getCourses(category = 'All', searchQuery = ''): Promise<Course[]> {
+    this.requireUserId();
+    const q = query(collection(this.database, 'courses'), where('status', '==', 'published'), limit(60));
+    const snapshot = await getDocs(q);
+    let docs = snapshot.docs;
+    if (category !== 'All') {
+      docs = docs.filter((item) => (item.data() as { category?: string }).category?.toLowerCase() === category.toLowerCase());
     }
-    return CourseService.instance;
-  }
-
-  public async getCourses(category?: string, searchQuery?: string): Promise<Course[]> {
-    try {
-      const coursesRef = collection(this.db, 'courses');
-      const q = category && category !== 'All'
-        ? query(coursesRef, where('category', '==', category), limit(40))
-        : query(coursesRef, limit(40));
-
-      const snapshot = await getDocs(q);
-      let list = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })) as Course[];
-
-      if (list.length === 0) {
-        list = FALLBACK_COURSES;
-      }
-
-      if (searchQuery && searchQuery.trim()) {
-        const lower = searchQuery.trim().toLowerCase();
-        list = list.filter(
-          (c) =>
-            c.title.toLowerCase().includes(lower) ||
-            c.description.toLowerCase().includes(lower) ||
-            c.tags?.some((t) => t.toLowerCase().includes(lower))
-        );
-      }
-
-      return list;
-    } catch {
-      return FALLBACK_COURSES;
-    }
+    const search = searchQuery.trim().toLocaleLowerCase();
+    return docs.map((item) => this.course(item.id, item.data()))
+      .filter((item): item is Course => item !== null)
+      .filter((item) => !search || [item.title, item.description, ...item.tags].some((value) => value.toLocaleLowerCase().includes(search)));
   }
 
   public async getCourse(courseId: string): Promise<Course | null> {
-    try {
-      const courseSnap = await getDoc(doc(this.db, 'courses', courseId));
-      if (courseSnap.exists()) {
-        return { id: courseSnap.id, ...courseSnap.data() } as Course;
-      }
-      return FALLBACK_COURSES.find((c) => c.id === courseId) ?? null;
-    } catch {
-      return FALLBACK_COURSES.find((c) => c.id === courseId) ?? null;
-    }
+    this.requireUserId();
+    const snapshot = await getDoc(doc(this.database, 'courses', courseId));
+    const data = snapshot.data();
+    return snapshot.exists() && data ? this.course(snapshot.id, data) : null;
   }
 
-  public async getCourseCurriculum(courseId: string): Promise<CourseModule[]> {
-    try {
-      const modulesRef = collection(this.db, 'courseModules');
-      const q = query(modulesRef, where('courseId', '==', courseId), orderBy('order', 'asc'));
-      const snapshot = await getDocs(q);
-
-      if (!snapshot.empty) {
-        return Promise.all(
-          snapshot.docs.map(async (docSnap) => {
-            const modData = docSnap.data();
-            const lessonsRef = collection(this.db, 'courseLessons');
-            const lQ = query(lessonsRef, where('moduleId', '==', docSnap.id), orderBy('order', 'asc'));
-            const lSnap = await getDocs(lQ);
-            const lessons = lSnap.docs.map((lDoc) => ({ id: lDoc.id, ...lDoc.data() })) as CourseLesson[];
-
-            return {
-              id: docSnap.id,
-              courseId,
-              title: modData.title,
-              description: modData.description,
-              order: modData.order ?? 0,
-              lessons,
-            };
-          })
-        );
+  public async getCourseCurriculum(courseId: string, access: 'preview' | 'enrolled'): Promise<CourseModule[]> {
+    this.requireUserId();
+    const q = query(collection(this.database, 'courseModules'), where('courseId', '==', courseId), limit(100));
+    const snapshot = await getDocs(q);
+    const sortedDocs = [...snapshot.docs].sort((a, b) => this.integer(a.data().order) - this.integer(b.data().order));
+    const values: Array<CourseModule | null> = await Promise.all(sortedDocs.map(async (moduleDocument): Promise<CourseModule | null> => {
+      let lessonDocuments: QueryDocument[] = [];
+      if (access === 'enrolled') {
+        const lessonsSnap = await getDocs(query(collection(this.database, 'courseLessons'), where('courseId', '==', courseId), where('moduleId', '==', moduleDocument.id), limit(200)));
+        lessonDocuments = [...lessonsSnap.docs].sort((a, b) => this.integer(a.data().order) - this.integer(b.data().order));
+      } else {
+        lessonDocuments = await this.getPreviewLessonDocuments(courseId, moduleDocument.id);
       }
+      const decodedLessons = lessonDocuments.map((item) => this.lesson(item.id, item.data())).filter((item): item is CourseLesson => item !== null);
+      const data = moduleDocument.data();
+      return this.text(data.courseId) && this.text(data.title) ? {
+        id: moduleDocument.id, courseId: this.text(data.courseId), title: this.text(data.title), description: this.optionalText(data.description),
+        order: this.integer(data.order), isPublished: data.isPublished !== false, lessons: decodedLessons,
+      } satisfies CourseModule : null;
+    }));
+    return values.filter((item): item is CourseModule => item !== null);
+  }
 
-      // Fallback sample curriculum
-      return [
-        {
-          id: 'mod-1',
-          courseId,
-          title: 'Module 1: Foundations & Core Concepts',
-          description: 'Introduction and fundamental principles.',
-          order: 1,
-          lessons: [
-            {
-              id: 'les-1-1',
-              moduleId: 'mod-1',
-              courseId,
-              title: '1.1 Getting Started & Setup',
-              type: 'video',
-              duration: 15,
-              order: 1,
-              content: 'Welcome to this comprehensive course! In this lesson, we establish our core workspace setup and roadmap.',
-              isFree: true,
-            },
-            {
-              id: 'les-1-2',
-              moduleId: 'mod-1',
-              courseId,
-              title: '1.2 Fundamental Architecture',
-              type: 'text',
-              duration: 20,
-              order: 2,
-              content: 'Understanding state management, component decomposition, and high-performance layout rendering.',
-            },
-          ],
-        },
-        {
-          id: 'mod-2',
-          courseId,
-          title: 'Module 2: Advanced Techniques & Practical Implementation',
-          description: 'Hands-on practical walkthroughs.',
-          order: 2,
-          lessons: [
-            {
-              id: 'les-2-1',
-              moduleId: 'mod-2',
-              courseId,
-              title: '2.1 Building Real-World Solutions',
-              type: 'video',
-              duration: 35,
-              order: 1,
-              content: 'Step-by-step coding and architecture walkthrough.',
-            },
-            {
-              id: 'les-2-2',
-              moduleId: 'mod-2',
-              courseId,
-              title: '2.2 Knowledge Check & Quiz',
-              type: 'quiz',
-              duration: 15,
-              order: 2,
-              content: 'Interactive assessment covering core principles.',
-            },
-          ],
-        },
-      ];
-    } catch {
-      return [];
-    }
+  private async getPreviewLessonDocuments(courseId: string, moduleId: string): Promise<QueryDocument[]> {
+    const [previewSnapshot, legacyFreeSnapshot] = await Promise.all([
+      getDocs(query(collection(this.database, 'courseLessons'), where('courseId', '==', courseId), where('moduleId', '==', moduleId), where('isPreview', '==', true), limit(50))),
+      getDocs(query(collection(this.database, 'courseLessons'), where('courseId', '==', courseId), where('moduleId', '==', moduleId), where('isFree', '==', true), limit(50))),
+    ]);
+    const uniqueDocuments = new Map<string, QueryDocument>();
+    [...previewSnapshot.docs, ...legacyFreeSnapshot.docs].forEach((lessonDocument) => uniqueDocuments.set(lessonDocument.id, lessonDocument));
+    return [...uniqueDocuments.values()].sort((leftDocument, rightDocument) => this.integer(leftDocument.data().order) - this.integer(rightDocument.data().order));
   }
 
   public async getEnrollmentStatus(userId: string, courseId: string): Promise<Enrollment | null> {
-    try {
-      const q = query(
-        collection(this.db, 'enrollments'),
-        where('userId', '==', userId),
-        where('courseId', '==', courseId),
-        limit(1)
-      );
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Enrollment;
-      }
-      return null;
-    } catch {
-      return null;
-    }
+    this.assertWebSession(userId);
+    const snapshot = await getDoc(doc(this.database, 'enrollments', userId + '_' + courseId));
+    nativeSessionService.assertOwner(userId);
+    const data = snapshot.data();
+    return snapshot.exists() && data ? this.enrollment(snapshot.id, data) : null;
   }
 
-  public async enrollInCourse(userId: string, courseId: string): Promise<Enrollment> {
-    const existing = await this.getEnrollmentStatus(userId, courseId);
-    if (existing) return existing;
-
-    const newEnrollmentRef = doc(collection(this.db, 'enrollments'));
-    const enrollmentData = {
-      userId,
-      courseId,
-      enrolledAt: serverTimestamp(),
-      status: 'active',
-      progress: 0,
-      completedLessons: [],
-      certificateIssued: false,
-    };
-
-    await setDoc(newEnrollmentRef, enrollmentData);
-    return {
-      id: newEnrollmentRef.id,
-      ...enrollmentData,
-      enrolledAt: new Date(),
-    } as Enrollment;
+  public async enrollInCourse(userId: string, courseId: string, operationId = userId + '_' + courseId): Promise<Enrollment> {
+    await nativeSessionService.ensure(userId);
+    await httpsCallable<{ courseId: string; operationId: string }, MutationResponse>(getFunctions(app), 'enrollInCourse')({ courseId, operationId });
+    const value = await this.getEnrollmentStatus(userId, courseId);
+    if (!value) throw new Error('Enrollment could not be confirmed.');
+    return value;
   }
 
   public async getMyEnrollments(userId: string): Promise<Enrollment[]> {
-    try {
-      const q = query(collection(this.db, 'enrollments'), where('userId', '==', userId));
-      const snapshot = await getDocs(q);
-      const enrollments = await Promise.all(
-        snapshot.docs.map(async (docSnap) => {
-          const data = docSnap.data() as Enrollment;
-          const course = await this.getCourse(data.courseId);
-          return {
-            ...data,
-            id: docSnap.id,
-            course: course ?? undefined,
-          };
-        })
-      );
-
-      if (enrollments.length === 0) {
-        return [
-          {
-            id: 'mock-enr-1',
-            userId,
-            courseId: FALLBACK_COURSES[0].id,
-            course: FALLBACK_COURSES[0],
-            enrolledAt: new Date(),
-            status: 'active',
-            progress: 35,
-            completedLessons: ['les-1-1'],
-          },
-          {
-            id: 'mock-enr-2',
-            userId,
-            courseId: FALLBACK_COURSES[1].id,
-            course: FALLBACK_COURSES[1],
-            enrolledAt: new Date(),
-            status: 'active',
-            progress: 75,
-            completedLessons: ['les-1-1', 'les-1-2'],
-          },
-        ];
-      }
-
-      return enrollments;
-    } catch {
-      return [];
-    }
+    this.assertWebSession(userId);
+    const snapshot = await getDocs(query(collection(this.database, 'enrollments'), where('userId', '==', userId), limit(100)));
+    const sortedDocs = [...snapshot.docs].sort((a, b) => {
+      const timeA = new Date(String(a.data().enrolledAt || 0)).getTime();
+      const timeB = new Date(String(b.data().enrolledAt || 0)).getTime();
+      return timeB - timeA;
+    });
+    const values = await Promise.all(sortedDocs.map(async (item) => {
+      const enrollment = this.enrollment(item.id, item.data());
+      if (!enrollment) return null;
+      const course = await this.getCourse(enrollment.courseId);
+      return course ? { ...enrollment, course } : enrollment;
+    }));
+    nativeSessionService.assertOwner(userId);
+    return values.filter((item): item is Enrollment => item !== null);
   }
 
-  public async markLessonCompleted(
-    enrollmentId: string,
-    lessonId: string,
-    totalLessonsCount: number
-  ): Promise<void> {
-    try {
-      const enrollmentRef = doc(this.db, 'enrollments', enrollmentId);
-      const snap = await getDoc(enrollmentRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        const completed: string[] = data.completedLessons || [];
-        if (!completed.includes(lessonId)) {
-          completed.push(lessonId);
-          const progress = Math.min(100, Math.round((completed.length / Math.max(1, totalLessonsCount)) * 100));
-          await setDoc(
-            enrollmentRef,
-            {
-              completedLessons: completed,
-              progress,
-              status: progress >= 100 ? 'completed' : 'active',
-              lastAccessed: serverTimestamp(),
-            },
-            { merge: true }
-          );
-        }
-      }
-    } catch (err) {
-      console.warn('[markLessonCompleted] Error:', err);
-    }
+  public async markLessonCompleted(enrollmentId: string, lessonId: string, _totalLessonsCount: number): Promise<void> {
+    const userId = this.requireUserId();
+    await nativeSessionService.ensure(userId);
+    await httpsCallable<{ enrollmentId: string; lessonId: string; operationId: string }, MutationResponse>(getFunctions(app), 'completeCourseLesson')({
+      enrollmentId, lessonId, operationId: enrollmentId + '_' + lessonId,
+    });
+    nativeSessionService.assertOwner(userId);
   }
 
-  public getCxcSubjects(): CxcSubject[] {
-    return CXC_SUBJECTS_DATA;
+  public async getAnnouncements(userId: string): Promise<CourseAnnouncement[]> {
+    const enrollments = await this.getMyEnrollments(userId);
+    const courseIds = [...new Set(enrollments.map((item) => item.courseId))].slice(0, 10);
+    if (!courseIds.length) return [];
+    const snapshot = await getDocs(query(collection(this.database, 'courseAnnouncements'), where('courseId', 'in', courseIds), limit(20)));
+    return snapshot.docs.map((item) => this.announcement(item.id, item.data())).filter((item): item is CourseAnnouncement => item !== null);
+  }
+
+  public async getInstructors(): Promise<InstructorProfile[]> {
+    this.requireUserId();
+    const snapshot = await getDocs(query(collection(this.database, 'instructors'), where('isVerified', '==', true), limit(20)));
+    return snapshot.docs.map((item) => this.instructor(item.id, item.data())).filter((item): item is InstructorProfile => item !== null);
+  }
+
+  public async getCategories(): Promise<CourseCategory[]> {
+    this.requireUserId();
+    const snapshot = await getDocs(query(collection(this.database, 'courseCategories'), where('isActive', '==', true), limit(100)));
+    const sorted = [...snapshot.docs].sort((a, b) => this.integer(a.data().order) - this.integer(b.data().order));
+    return sorted.map((item) => this.category(item.id, item.data())).filter((item): item is CourseCategory => item !== null);
+  }
+
+  public async getCxcSubjects(): Promise<CxcSubject[]> {
+    this.requireUserId();
+    const snapshot = await getDocs(query(collection(this.database, 'cxcSubjects'), where('published', '==', true), limit(100)));
+    const sorted = [...snapshot.docs].sort((a, b) => this.text(a.data().title).localeCompare(this.text(b.data().title)));
+    const subjects = sorted.map((item) => this.cxc(item.id, item.data())).filter((item): item is CxcSubject => item !== null);
+    return Promise.all(subjects.map(async (subject) => {
+      const papers = await getDocs(query(collection(this.database, 'cxcPapers'), where('subjectId', '==', subject.id), where('published', '==', true), limit(100)));
+      const sortedPapers = [...papers.docs].sort((a, b) => this.integer(b.data().year) - this.integer(a.data().year));
+      return { ...subject, papers: sortedPapers.map((paper) => {
+        const data = paper.data();
+        return { year: this.integer(data.year), paperNumber: this.integer(data.paperNumber), title: this.text(data.title), url: this.optionalText(data.url) };
+      }).filter((paper) => paper.year > 0 && paper.paperNumber > 0 && Boolean(paper.title)) };
+    }));
+  }
+
+  private course(id: string, data: Data): Course | null {
+    const instructor = this.object(data.instructor);
+    const level = data.level === 'beginner' || data.level === 'intermediate' || data.level === 'advanced' ? data.level : null;
+    if (!level || data.status !== 'published' || !this.text(data.title) || !this.text(data.description) || !this.text(data.category) || !instructor || !this.text(instructor.id) || !this.text(instructor.name)) return null;
+    return { id, title: this.text(data.title), description: this.text(data.description), shortDescription: this.optionalText(data.shortDescription),
+      instructor: { id: this.text(instructor.id), name: this.text(instructor.name), email: this.optionalText(instructor.email), avatar: this.optionalText(instructor.avatar), role: this.optionalText(instructor.role) },
+      category: this.text(data.category), subcategory: this.optionalText(data.subcategory), level, duration: this.number(data.duration), price: this.number(data.price),
+      image: this.text(data.image), thumbnail: this.optionalText(data.thumbnail), rating: this.number(data.rating), totalRatings: this.integer(data.totalRatings),
+      enrolledStudents: this.integer(data.enrolledStudents), status: 'published', isPublic: data.isPublic !== false, tags: this.textList(data.tags),
+      prerequisites: this.textList(data.prerequisites), learningObjectives: this.textList(data.learningObjectives), featured: data.featured === true,
+      difficulty: this.integer(data.difficulty), language: this.optionalText(data.language), createdAt: this.timestamp(data.createdAt), updatedAt: this.timestamp(data.updatedAt) };
+  }
+  private enrollment(id: string, data: Data): Enrollment | null {
+    const status = data.status === 'active' || data.status === 'completed' || data.status === 'dropped' || data.status === 'suspended' ? data.status : null;
+    if (!status || !this.text(data.userId) || !this.text(data.courseId)) return null;
+    return { id, userId: this.text(data.userId), courseId: this.text(data.courseId), enrolledAt: this.timestamp(data.enrolledAt) ?? 'Date unavailable',
+      status, progress: Math.max(0, Math.min(100, this.number(data.progress))), lastAccessed: this.timestamp(data.lastAccessed),
+      completedLessons: this.textList(data.completedLessons ?? data.completedModules), certificateIssued: data.certificateIssued === true,
+      certificateUrl: this.optionalText(data.certificateUrl) };
+  }
+  private lesson(id: string, data: Data): CourseLesson | null {
+    const allowed = ['video', 'text', 'quiz', 'assignment', 'resource'] as const;
+    const type = allowed.find((candidate) => candidate === data.type);
+    if (!type || !this.text(data.courseId) || !this.text(data.moduleId) || !this.text(data.title)) return null;
+    return { id, courseId: this.text(data.courseId), moduleId: this.text(data.moduleId), title: this.text(data.title), description: this.optionalText(data.description),
+      type, content: this.optionalText(data.content ?? data.contentUrl), duration: this.integer(data.duration), order: this.integer(data.order),
+      isRequired: data.isRequired === true, isPublished: data.isPublished !== false, isFree: data.isFree === true || data.isPreview === true };
+  }
+  private announcement(id: string, data: Data): CourseAnnouncement | null {
+    if (!this.text(data.courseId) || !this.text(data.title) || !this.text(data.body ?? data.content)) return null;
+    return { id, courseId: this.text(data.courseId), title: this.text(data.title), body: this.text(data.body ?? data.content),
+      authorName: this.text(data.authorName) || 'Instructor', authorAvatar: this.optionalText(data.authorAvatar), important: data.important === true, createdAt: this.timestamp(data.createdAt) };
+  }
+  private instructor(id: string, data: Data): InstructorProfile | null {
+    if (!this.text(data.name) || data.isVerified !== true) return null;
+    return { id, name: this.text(data.name), avatar: this.optionalText(data.avatar), bio: this.optionalText(data.bio), specialties: this.textList(data.specialties),
+      rating: this.number(data.rating), totalStudents: this.integer(data.totalStudents), totalCourses: this.integer(data.totalCourses), isVerified: true };
+  }
+  private category(id: string, data: Data): CourseCategory | null {
+    if (!this.text(data.name)) return null;
+    return { id, name: this.text(data.name), description: this.optionalText(data.description), icon: this.optionalText(data.icon), color: this.optionalText(data.color),
+      order: this.integer(data.order), isActive: data.isActive === true, courseCount: this.integer(data.courseCount) };
+  }
+  private cxc(id: string, data: Data): CxcSubject | null {
+    const level = data.level === 'CSEC' || data.level === 'CAPE' ? data.level : null;
+    if (!level || !this.text(data.title) || !this.text(data.code)) return null;
+    return { id, code: this.text(data.code), title: this.text(data.title), level, category: this.text(data.category),
+      topicsCount: this.integer(data.topicsCount), pastPapersCount: this.integer(data.pastPapersCount), papers: [] };
+  }
+  private requireUserId(): string { const userId = auth.currentUser?.uid; if (!userId) throw new Error('You must be signed in to use E-Learning.'); return userId; }
+  private assertWebSession(userId: string): void {
+    if (!userId || auth.currentUser?.uid !== userId) throw new Error('Your account changed. Reopen E-Learning.');
+  }
+  private object(value: unknown): Data | null { return value && typeof value === 'object' && !Array.isArray(value) ? value as Data : null; }
+  private text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
+  private optionalText(value: unknown): string | undefined { const result = this.text(value); return result || undefined; }
+  private number(value: unknown): number { return typeof value === 'number' && Number.isFinite(value) ? value : 0; }
+  private integer(value: unknown): number { return Math.max(0, Math.round(this.number(value))); }
+  private textList(value: unknown): string[] { return Array.isArray(value) ? value.map((entry) => this.text(entry)).filter(Boolean) : []; }
+  private timestamp(value: unknown): string | undefined {
+    if (typeof value === 'string' && Number.isFinite(Date.parse(value))) return new Date(value).toISOString();
+    if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString();
+    const candidate = this.object(value);
+    if (candidate && typeof candidate.toDate === 'function') {
+      const converted: unknown = candidate.toDate();
+      if (converted instanceof Date && Number.isFinite(converted.getTime())) return converted.toISOString();
+    }
+    return undefined;
   }
 }
-
 export const courseService = CourseService.getInstance();

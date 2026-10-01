@@ -1,5 +1,11 @@
 export type ProjectStatus = 'active' | 'completed' | 'on-hold' | 'archived';
 export type ProjectRole = 'owner' | 'admin' | 'member' | 'viewer';
+
+export type ProjectMutationAction = 'create_project' | 'create_task' | 'invite' | 'add_subtask' | 'add_comment';
+
+export type ProjectMutationCapability =
+  | { allowed: true }
+  | { allowed: false; reason: string };
 export type ProjectMembershipStatus = 'accepted' | 'pending';
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
 export type Status = 'todo' | 'in-progress' | 'done';
@@ -14,6 +20,8 @@ export type SubTask = {
 export type Comment = {
   id: string;
   author: string;
+  userId?: string;
+  authorName?: string;
   content: string;
   timestamp: string;
   avatar?: string;
@@ -121,4 +129,3 @@ export type CreateTaskInput = {
   estimatedTime?: number;
   tags?: string[];
 };
-

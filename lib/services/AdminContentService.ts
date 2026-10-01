@@ -1,6 +1,6 @@
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, serverTimestamp, limit } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
-import { ApiService } from '@/lib/services/ApiService';
+import { AdminApiService } from '@/lib/services/AdminApiService';
 import { adminAccessService } from '@/lib/services/AdminAccessService';
 import { DiagnosticLogService } from '@/lib/services/DiagnosticLogService';
 import type {
@@ -63,7 +63,7 @@ const isAdminDeletedContent = (value: UnknownRecord): boolean => (
 
 export class AdminContentService {
   private static instance: AdminContentService;
-  private readonly apiService = ApiService.getInstance();
+  private readonly apiService = AdminApiService.getInstance();
   private readonly logger = DiagnosticLogService.getInstance();
 
   private constructor() {}
@@ -81,7 +81,7 @@ export class AdminContentService {
     this.logger.info('AdminContentService', 'delete:start', { correlationId, contentId: params.contentId, contentType: params.contentType });
     const response = await this.apiService.request<AdminContentMutationResult>(
       '/api/admin/content/delete',
-      { method: 'POST', authenticated: true, body: params, headers: { 'X-Ourlime-Correlation-Id': correlationId }, timeoutMs: 45_000 },
+      { method: 'POST', body: params, headers: { 'X-Ourlime-Correlation-Id': correlationId }, timeoutMs: 45_000 },
     );
     this.logDelivery('delete', response.delivery, correlationId);
     return response.success
@@ -95,7 +95,7 @@ export class AdminContentService {
     this.logger.info('AdminContentService', 'restore:start', { correlationId, contentId: params.contentId, contentType: params.contentType });
     const response = await this.apiService.request<AdminContentMutationResult>(
       '/api/admin/content/restore',
-      { method: 'POST', authenticated: true, body: params, headers: { 'X-Ourlime-Correlation-Id': correlationId }, timeoutMs: 45_000 },
+      { method: 'POST', body: params, headers: { 'X-Ourlime-Correlation-Id': correlationId }, timeoutMs: 45_000 },
     );
     this.logDelivery('restore', response.delivery, correlationId);
     return response.success
@@ -106,7 +106,7 @@ export class AdminContentService {
   public async retryDelivery(eventId: string): Promise<ModerationDeliveryResult> {
     const response = await this.apiService.request<{ success: boolean; delivery: ModerationDeliveryResult; error?: string }>(
       `/api/admin/moderation-delivery/${encodeURIComponent(eventId)}/retry`,
-      { method: 'POST', authenticated: true, timeoutMs: 18_000 },
+      { method: 'POST', timeoutMs: 18_000 },
     );
     if (!response.success) throw new Error(response.error || 'Unable to retry email delivery.');
     return response.delivery;
@@ -135,7 +135,6 @@ export class AdminContentService {
         '/api/appeals',
         {
           method: 'POST',
-          authenticated: true,
           body: submission,
         }
       );
@@ -178,7 +177,6 @@ export class AdminContentService {
           error?: string;
         }>(`/api/admin/users/${encodeURIComponent(userId)}/posts?${search.toString()}`, {
           method: 'GET',
-          authenticated: true,
           timeoutMs: 18_000,
         });
         if (response.success && response.data) return response.data;
@@ -318,7 +316,6 @@ export class AdminContentService {
         `/api/admin/users/${userId}/deleted-posts`,
         {
           method: 'GET',
-          authenticated: true,
         }
       );
       if (response?.success && Array.isArray(response.data)) return response.data;
@@ -358,7 +355,6 @@ export class AdminContentService {
         '/api/admin/appeals',
         {
           method: 'GET',
-          authenticated: true,
         }
       );
       if (response?.success && Array.isArray(response.data)) return response.data;
@@ -397,7 +393,6 @@ export class AdminContentService {
         '/api/admin/appeals',
         {
           method: 'POST',
-          authenticated: true,
           body: { appealId, decision, reviewNote },
         }
       );

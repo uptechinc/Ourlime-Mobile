@@ -36,25 +36,7 @@ export class NotificationService {
     const operation = (async () => {
       try {
         const parentRef = collection(doc(db, 'userNotifications', userId), 'items');
-
-        const parseDoc = (docSnap: { id: string; data: () => Record<string, unknown> }): NotificationData => {
-          const data = docSnap.data();
-          const rawCreatedAt = data.createdAt as { toDate?: () => Date } | string | undefined;
-          const createdAt = rawCreatedAt && typeof rawCreatedAt === 'object' && typeof rawCreatedAt.toDate === 'function'
-            ? rawCreatedAt.toDate().toISOString()
-            : (typeof rawCreatedAt === 'string' ? rawCreatedAt : new Date().toISOString());
-          return {
-            id: docSnap.id,
-            userId: typeof data.userId === 'string' ? data.userId : userId,
-            type: (data.type as NotificationData['type']) || 'general',
-            title: typeof data.title === 'string' ? data.title : '',
-            message: typeof data.message === 'string' ? data.message : '',
-            isRead: Boolean(data.isRead ?? data.read ?? false),
-            createdAt,
-            metadata: (data.metadata as NotificationData['metadata']) || {},
-            userDetails: (data.userDetails as NotificationData['userDetails']) || undefined,
-          };
-        };
+        const parseDoc = (docSnap: { id: string; data: () => Record<string, unknown> }): NotificationData => this.toNotification(docSnap, userId);
 
         if (!cursor) {
           // 1. Query all unread items first to ensure unreadCount and unread notifications are accurate
@@ -142,12 +124,37 @@ export class NotificationService {
     return operation;
   }
 
-  public subscribeToInvalidation(userId: string, onChange: () => void, onError: (error: Error) => void): () => void {
+  /**
+   * Live watch on the newest inbox item. onChange receives the notifications that just arrived from the server
+   * (same "added and not a local pending write" filter as the website), for the in-app drop-down banner.
+   */
+  public subscribeToInvalidation(userId: string, onChange: (arrived: NotificationData[]) => void, onError: (error: Error) => void): () => void {
     return onSnapshot(
       query(collection(doc(db, 'userNotifications', userId), 'items'), orderBy('createdAt', 'desc'), limit(1)),
-      () => onChange(),
+      (snapshot) => onChange(snapshot.docChanges()
+        .filter((change) => change.type === 'added' && !change.doc.metadata.hasPendingWrites)
+        .map((change) => this.toNotification(change.doc, userId))),
       onError,
     );
+  }
+
+  private toNotification(docSnap: { id: string; data: () => Record<string, unknown> }, userId: string): NotificationData {
+    const data = docSnap.data();
+    const rawCreatedAt = data.createdAt as { toDate?: () => Date } | string | undefined;
+    const createdAt = rawCreatedAt && typeof rawCreatedAt === 'object' && typeof rawCreatedAt.toDate === 'function'
+      ? rawCreatedAt.toDate().toISOString()
+      : (typeof rawCreatedAt === 'string' ? rawCreatedAt : new Date().toISOString());
+    return {
+      id: docSnap.id,
+      userId: typeof data.userId === 'string' ? data.userId : userId,
+      type: (data.type as NotificationData['type']) || 'general',
+      title: typeof data.title === 'string' ? data.title : '',
+      message: typeof data.message === 'string' ? data.message : '',
+      isRead: Boolean(data.isRead ?? data.read ?? false),
+      createdAt,
+      metadata: (data.metadata as NotificationData['metadata']) || {},
+      userDetails: (data.userDetails as NotificationData['userDetails']) || undefined,
+    };
   }
 
   public async mutate(action: NotificationAction, notificationIds: string[] = []): Promise<void> {

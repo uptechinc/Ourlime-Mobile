@@ -1,8 +1,6 @@
-import { useState } from 'react';
 import { View, Text, TouchableOpacity, StatusBar, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import BetaApplicationModal from './BetaApplicationModal';
 
 export type BetaAccessState =
   | 'invite_required'
@@ -18,8 +16,8 @@ type BetaAccessViewProps = {
 
 const messages: Record<BetaAccessState, { title: string; detail: string }> = {
   invite_required: {
-    title: 'Registration is currently open to invited beta testers only.',
-    detail: 'OurLime is welcoming a limited group while we prepare for public registration. You can apply to join the beta programme.',
+    title: 'Registration is currently open to invited members only.',
+    detail: 'Registration is invite-only. Ask an Ourlime administrator for a new invitation.',
   },
   closed: {
     title: 'Registration is currently closed.',
@@ -31,11 +29,11 @@ const messages: Record<BetaAccessState, { title: string; detail: string }> = {
   },
   expired: {
     title: 'This invitation has expired.',
-    detail: 'You can apply for a new beta invitation below.',
+    detail: 'Ask an Ourlime administrator for a new invitation.',
   },
   revoked: {
     title: 'This invitation has been revoked.',
-    detail: 'You can apply to be considered for another invitation.',
+    detail: 'Contact an Ourlime administrator if you need another invitation.',
   },
   used: {
     title: 'This invitation has already been used.',
@@ -47,7 +45,6 @@ export default function BetaAccessView({ state }: BetaAccessViewProps) {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isWide = width >= 540;
-  const [applicationOpen, setApplicationOpen] = useState(false);
   const message = messages[state] ?? messages.invite_required;
 
   return (
@@ -172,25 +169,6 @@ export default function BetaAccessView({ state }: BetaAccessViewProps) {
             justifyContent: 'center',
           }}
         >
-          {state !== 'closed' && (
-            <TouchableOpacity
-              onPress={() => setApplicationOpen(true)}
-              style={{
-                flex: isWide ? 1 : undefined,
-                width: isWide ? undefined : '100%',
-                backgroundColor: '#10b981',
-                paddingVertical: 14,
-                paddingHorizontal: 20,
-                borderRadius: 12,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 15 }}>
-                Apply to Be a Beta Tester
-              </Text>
-            </TouchableOpacity>
-          )}
-
           <TouchableOpacity
             onPress={() => router.replace('/(auth)/login')}
             style={{
@@ -212,7 +190,6 @@ export default function BetaAccessView({ state }: BetaAccessViewProps) {
         </View>
       </View>
 
-      <BetaApplicationModal isOpen={applicationOpen} onClose={() => setApplicationOpen(false)} />
     </View>
   );
 }

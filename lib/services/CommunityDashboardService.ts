@@ -1,11 +1,11 @@
-import { ApiService } from './ApiService';
+import { communityDataService } from './CommunityDataService';
 import { LocalCacheService } from './LocalCacheService';
 import { ResourceErrorService } from './ResourceErrorService';
+import { CommunityService } from './CommunityService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import type { CommunityDashboardData, CommunityReportStatus } from '@/lib/types/community';
 import type { ResourceState } from '@/lib/types/resourceState';
 
-type DashboardResult = { success?: boolean; data?: CommunityDashboardData; error?: string };
 export type CommunityReportAction = 'assign' | 'dismiss' | 'resolve' | 'hide';
 export type CommunityReportActionInput = {
   communityId: string;
@@ -22,9 +22,10 @@ const STALE_MS = 5 * 60 * 1000;
 
 export class CommunityDashboardService {
   private static instance: CommunityDashboardService;
-  private readonly apiService = ApiService.getInstance();
+  private readonly data = communityDataService;
   private readonly cacheService = LocalCacheService.getInstance();
   private readonly errorService = ResourceErrorService.getInstance();
+  private readonly communityService = CommunityService.getInstance();
   private readonly inFlight = new Map<string, Promise<void>>();
 
   private constructor() {}
@@ -49,11 +50,14 @@ export class CommunityDashboardService {
     useResourceStore.getState().setCommunityDashboard(communityId, this.state(current, current?.data ? 'refreshing' : 'hydrating'));
     const request = (async () => {
       try {
-        const response = await this.apiService.request<DashboardResult>(`/api/communities/dashboard?communityId=${encodeURIComponent(communityId)}`, { authenticated: true });
-        if (!response.success || !response.data) throw new Error(response.error || 'Community dashboard could not be loaded.');
+        const [dashboard, community] = await Promise.all([
+          this.data.getDashboard(communityId),
+          this.communityService.fetchCommunity(communityId),
+        ]);
+        const dashboardData = { ...dashboard, memberCount: community.memberCount };
         const updatedAt = Date.now();
-        useResourceStore.getState().setCommunityDashboard(communityId, { data: response.data, status: 'ready', source: 'network', updatedAt, isStale: false, error: null });
-        await this.cacheService.write(userId, NAMESPACE, communityId, response.data, { expiresAt: updatedAt + RETENTION_MS });
+        useResourceStore.getState().setCommunityDashboard(communityId, { data: dashboardData, status: 'ready', source: 'network', updatedAt, isStale: false, error: null });
+        await this.cacheService.write(userId, NAMESPACE, communityId, dashboardData, { expiresAt: updatedAt + RETENTION_MS });
       } catch (error: unknown) {
         const latest = useResourceStore.getState().communityDashboards[communityId];
         useResourceStore.getState().setCommunityDashboard(communityId, { ...this.state(latest, latest?.data ? 'ready' : 'error'), isStale: true, error: this.errorService.normalize(error, 'Community dashboard could not be loaded.') });
@@ -66,8 +70,7 @@ export class CommunityDashboardService {
   }
 
   public async moderate(userId: string, input: CommunityReportActionInput): Promise<void> {
-    const response = await this.apiService.request<{ success?: boolean; error?: string }>('/api/communities/dashboard', { method: 'PATCH', authenticated: true, body: input });
-    if (!response.success) throw new Error(response.error || 'The moderation action could not be completed.');
+    await this.data.moderateReports(input);
     await this.refresh(userId, input.communityId, true);
   }
 

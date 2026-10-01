@@ -1,6 +1,20 @@
-import { collection, doc, getDoc, getDocs, query, where, type DocumentData } from 'firebase/firestore';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  increment,
+  limit,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
+  type DocumentData,
+} from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
-import { ApiService, ApiServiceError } from './ApiService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 
 export type CommentMediaAsset = {
@@ -77,7 +91,6 @@ type ItemApiResponse<TItem> = {
 
 export class CommentService {
   private static instance: CommentService;
-  private readonly apiService = ApiService.getInstance();
   private readonly logger = DiagnosticLogService.getInstance();
 
   private constructor() {}
@@ -88,84 +101,80 @@ export class CommentService {
   }
 
   public async fetchComments(postId: string, cursor?: number | null): Promise<CommentPage<PostComment>> {
-    try {
-      const search = cursor ? `?limit=20&cursor=${cursor}` : '?limit=20';
-      const response = await this.apiService.request<PaginatedApiResponse<PostComment>>(
-        `/api/posts/${encodeURIComponent(postId)}/comments${search}`,
-        { authenticated: true, timeoutMs: 18_000 }
-      );
-      if (!response.success) throw new Error(response.error || 'Failed to load comments');
-      const page = this.toPage(response);
-      return {
-        ...page,
-        items: page.items.map((comment) => ({
-          ...comment,
-          sticker: this.readCommentMedia(comment.sticker),
-        })),
-      };
-    } catch (error: unknown) {
-      if (!this.canUseFirestore(error)) throw error;
-      return this.fetchCommentsFromFirestore(postId, cursor);
-    }
+    return this.fetchCommentsFromFirestore(postId, cursor);
   }
 
   public async fetchReplies(commentId: string, cursor?: number | null): Promise<CommentPage<PostReply>> {
-    try {
-      const search = cursor ? `?limit=20&cursor=${cursor}` : '?limit=20';
-      const response = await this.apiService.request<PaginatedApiResponse<PostReply>>(
-        `/api/posts/comments/${encodeURIComponent(commentId)}/replies${search}`,
-        { authenticated: true, timeoutMs: 18_000 }
-      );
-      if (!response.success) throw new Error(response.error || 'Failed to load replies');
-      const page = this.toPage(response);
-      return {
-        ...page,
-        items: page.items.map((reply) => ({
-          ...reply,
-          sticker: this.readCommentMedia(reply.sticker),
-        })),
-      };
-    } catch (error: unknown) {
-      if (!this.canUseFirestore(error)) throw error;
-      return this.fetchRepliesFromFirestore(commentId, cursor);
-    }
+    return this.fetchRepliesFromFirestore(commentId, cursor);
   }
 
   public async fetchCommentFocus(postId: string, target: CommentFocusTarget): Promise<CommentFocusResult> {
-    const parameters = [
-      target.rootCommentId ? `rootCommentId=${encodeURIComponent(target.rootCommentId)}` : '',
-      target.commentId ? `commentId=${encodeURIComponent(target.commentId)}` : '',
-      target.replyId ? `replyId=${encodeURIComponent(target.replyId)}` : '',
-    ].filter(Boolean).join('&');
-    if (!parameters) throw new Error('A comment target is required');
-    const response = await this.apiService.request<ItemApiResponse<CommentFocusResult>>(
-      `/api/posts/${encodeURIComponent(postId)}/comments/focus?${parameters}`,
-      { authenticated: true, timeoutMs: 18_000 }
-    );
-    if (!response.success || !response.data) throw new Error(response.error || 'Focused comment is unavailable');
+    const rootCommentId = target.rootCommentId || target.commentId;
+    if (!rootCommentId) throw new Error('A comment target is required');
+    const rootDoc = await getDoc(doc(db, 'feedsPostComments', rootCommentId));
+    if (!rootDoc.exists()) throw new Error('Root comment not found');
+    const rootData = rootDoc.data();
+    const viewerId = auth.currentUser?.uid ?? '';
+    const [author, like, repliesPage] = await Promise.all([
+      this.getAuthor(typeof rootData.userId === 'string' ? rootData.userId : ''),
+      viewerId ? getDoc(doc(db, 'feedsPostCommentLikes', `comment_${rootDoc.id}_${viewerId}`)) : null,
+      this.fetchRepliesFromFirestore(rootCommentId),
+    ]);
+    const rootComment: PostComment = {
+      id: rootDoc.id,
+      content: typeof rootData.comment === 'string' ? rootData.comment : '',
+      createdAtMs: this.toMillis(rootData.createdAt),
+      editedAtMs: rootData.editedAt ? this.toMillis(rootData.editedAt) : null,
+      likeCount: typeof rootData.likeCount === 'number' ? rootData.likeCount : 0,
+      replyCount: typeof rootData.replyCount === 'number' ? rootData.replyCount : 0,
+      isLiked: like?.exists() === true,
+      author,
+      sticker: this.readCommentMedia(rootData.sticker),
+    };
     return {
-      ...response.data,
-      rootComment: {
-        ...response.data.rootComment,
-        sticker: this.readCommentMedia(response.data.rootComment.sticker),
-      },
-      replies: response.data.replies.map((reply) => ({
-        ...reply,
-        sticker: this.readCommentMedia(reply.sticker),
-      })),
+      rootComment,
+      replies: repliesPage.items,
+      targetId: target.replyId || target.commentId || rootCommentId,
+      truncated: repliesPage.hasMore,
     };
   }
 
   public async createComment(postId: string, content: string, sticker?: CommentMediaAsset): Promise<PostComment> {
     const normalizedContent = content.trim();
     if (!normalizedContent && !sticker) throw new Error('Add text, an emoji, a sticker, or a GIF to your comment');
-    const response = await this.apiService.request<ItemApiResponse<PostComment>>(
-      `/api/posts/${encodeURIComponent(postId)}/comments`,
-      { method: 'POST', authenticated: true, body: { content: normalizedContent ? this.validateContent(normalizedContent, 'Comment') : '', sticker: sticker ?? null } }
-    );
-    if (!response.success || !response.data) throw new Error(response.error || 'Failed to post comment');
-    this.logger.success('CommentService', 'create-comment', { postId, commentId: response.data.id });
-    return { ...response.data, sticker: this.readCommentMedia(response.data.sticker) };
+    const currentUserId = auth.currentUser?.uid;
+    if (!currentUserId) throw new Error('You must be signed in to comment');
+    const validatedContent = normalizedContent ? this.validateContent(normalizedContent, 'Comment') : '';
+
+    const commentRef = await addDoc(collection(db, 'feedsPostComments'), {
+      feedsPostId: postId,
+      userId: currentUserId,
+      comment: validatedContent,
+      content: validatedContent,
+      createdAt: serverTimestamp(),
+      likeCount: 0,
+      replyCount: 0,
+      sticker: sticker ?? null,
+    });
+
+    const countSnap = await getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', postId), limit(1))).catch(() => null);
+    if (countSnap && !countSnap.empty) {
+      await updateDoc(countSnap.docs[0].ref, { commentCount: increment(1), updatedAt: serverTimestamp() }).catch(() => {});
+    }
+
+    const author = await this.getAuthor(currentUserId);
+    this.logger.success('CommentService', 'create-comment', { postId, commentId: commentRef.id });
+    return {
+      id: commentRef.id,
+      content: validatedContent,
+      createdAtMs: Date.now(),
+      editedAtMs: null,
+      likeCount: 0,
+      replyCount: 0,
+      isLiked: false,
+      author,
+      sticker: sticker ?? null,
+    };
   }
 
   public async createReply(input: {
@@ -177,49 +186,100 @@ export class CommentService {
   }): Promise<PostReply> {
     const normalizedContent = input.content.trim();
     if (!normalizedContent && !input.sticker) throw new Error('Add text, an emoji, a sticker, or a GIF to your reply');
-    const response = await this.apiService.request<ItemApiResponse<PostReply>>(
-        `/api/posts/comments/${encodeURIComponent(input.commentId)}/replies`,
-        {
-          method: 'POST',
-          authenticated: true,
-          body: {
-            content: normalizedContent ? this.validateContent(normalizedContent, 'Reply') : '',
-            parentReplyId: input.parentReplyId ?? null,
-            replyToUserName: input.replyToUserName ?? null,
-            sticker: input.sticker ?? null,
-          },
-        },
-      );
-      if (!response.success || !response.data) throw new Error(response.error || 'Failed to post reply');
-      this.logger.success('CommentService', 'create-reply', { commentId: input.commentId, replyId: response.data.id });
-      return { ...response.data, sticker: this.readCommentMedia(response.data.sticker) };
+    const currentUserId = auth.currentUser?.uid;
+    if (!currentUserId) throw new Error('You must be signed in to reply');
+    const validatedContent = normalizedContent ? this.validateContent(normalizedContent, 'Reply') : '';
+
+    const replyRef = await addDoc(collection(db, 'feedsPostCommentsReplies'), {
+      feedsPostCommentId: input.commentId,
+      userId: currentUserId,
+      reply: validatedContent,
+      content: validatedContent,
+      parentReplyId: input.parentReplyId ?? null,
+      replyToUserName: input.replyToUserName ?? null,
+      sticker: input.sticker ?? null,
+      createdAt: serverTimestamp(),
+      likeCount: 0,
+    });
+
+    await updateDoc(doc(db, 'feedsPostComments', input.commentId), {
+      replyCount: increment(1),
+    }).catch(() => {});
+
+    const author = await this.getAuthor(currentUserId);
+    this.logger.success('CommentService', 'create-reply', { commentId: input.commentId, replyId: replyRef.id });
+    return {
+      id: replyRef.id,
+      content: validatedContent,
+      createdAtMs: Date.now(),
+      editedAtMs: null,
+      likeCount: 0,
+      isLiked: false,
+      parentReplyId: input.parentReplyId ?? null,
+      replyToUserName: input.replyToUserName ?? null,
+      author,
+      sticker: input.sticker ?? null,
+    };
   }
 
   public async editComment(postId: string, commentId: string, content: string): Promise<number> {
-    const response = await this.apiService.request<ItemApiResponse<{ id: string; content: string; editedAtMs: number }>>(
-        `/api/posts/${encodeURIComponent(postId)}/comments`,
-        { method: 'PATCH', authenticated: true, body: { commentId, content: this.validateContent(content, 'Comment') } }
-      );
-    if (!response.success || !response.data) throw new Error(response.error || 'Failed to edit comment');
-    return response.data.editedAtMs;
+    const validatedContent = this.validateContent(content, 'Comment');
+    await updateDoc(doc(db, 'feedsPostComments', commentId), {
+      comment: validatedContent,
+      content: validatedContent,
+      editedAt: serverTimestamp(),
+    });
+    return Date.now();
   }
 
   public async editReply(rootCommentId: string, replyId: string, content: string): Promise<number> {
-    const response = await this.apiService.request<ItemApiResponse<{ id: string; content: string; editedAtMs: number }>>(
-        `/api/posts/comments/${encodeURIComponent(rootCommentId)}/replies`,
-        { method: 'PATCH', authenticated: true, body: { replyId, content: this.validateContent(content, 'Reply') } }
-      );
-    if (!response.success || !response.data) throw new Error(response.error || 'Failed to edit reply');
-    return response.data.editedAtMs;
+    const validatedContent = this.validateContent(content, 'Reply');
+    await updateDoc(doc(db, 'feedsPostCommentsReplies', replyId), {
+      reply: validatedContent,
+      content: validatedContent,
+      editedAt: serverTimestamp(),
+    });
+    return Date.now();
+  }
+
+  public async deleteComment(postId: string, commentId: string): Promise<void> {
+    await deleteDoc(doc(db, 'feedsPostComments', commentId));
+    const countSnap = await getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', postId), limit(1))).catch(() => null);
+    if (countSnap && !countSnap.empty) {
+      await updateDoc(countSnap.docs[0].ref, { commentCount: increment(-1), updatedAt: serverTimestamp() }).catch(() => {});
+    }
+  }
+
+  public async deleteReply(commentId: string, replyId: string): Promise<void> {
+    await deleteDoc(doc(db, 'feedsPostCommentsReplies', replyId));
+    await updateDoc(doc(db, 'feedsPostComments', commentId), {
+      replyCount: increment(-1),
+    }).catch(() => {});
   }
 
   public async toggleLike(targetType: 'comment' | 'reply', targetId: string): Promise<boolean> {
-    const response = await this.apiService.request<ItemApiResponse<{ liked: boolean }>>(
-        `/api/posts/comments/${encodeURIComponent(targetId)}/like`,
-        { method: 'POST', authenticated: true, body: { targetType } }
-      );
-    if (!response.success || typeof response.data?.liked !== 'boolean') throw new Error(response.error || 'Failed to update like');
-    return response.data.liked;
+    const currentUserId = auth.currentUser?.uid;
+    if (!currentUserId) throw new Error('You must be signed in to like');
+    const likeDocId = `${targetType}_${targetId}_${currentUserId}`;
+    const likeRef = doc(db, 'feedsPostCommentLikes', likeDocId);
+    const existingSnap = await getDoc(likeRef);
+    const isAlreadyLiked = existingSnap.exists();
+    const targetCollection = targetType === 'comment' ? 'feedsPostComments' : 'feedsPostCommentsReplies';
+    const targetDocRef = doc(db, targetCollection, targetId);
+
+    if (isAlreadyLiked) {
+      await deleteDoc(likeRef);
+      await updateDoc(targetDocRef, { likeCount: increment(-1) }).catch(() => {});
+      return false;
+    } else {
+      await setDoc(likeRef, {
+        [targetType === 'comment' ? 'feedsPostCommentId' : 'replyId']: targetId,
+        userId: currentUserId,
+        createdAt: serverTimestamp(),
+      });
+      await updateDoc(targetDocRef, { likeCount: increment(1) }).catch(() => {});
+      return true;
+    }
   }
 
   private async fetchCommentsFromFirestore(postId: string, cursor?: number | null): Promise<CommentPage<PostComment>> {
@@ -289,10 +349,6 @@ export class CommentService {
       userName: typeof data.userName === 'string' ? data.userName : 'deleted-user',
       profileImage: typeof data.profilePicture === 'string' ? data.profilePicture : typeof data.profileImage === 'string' ? data.profileImage : null,
     };
-  }
-
-  private canUseFirestore(error: unknown): boolean {
-    return error instanceof ApiServiceError && (error.code === 'REQUEST_TIMEOUT' || error.code === 'NETWORK_ERROR' || error.status >= 500);
   }
 
   private toMillis(value: unknown): number {

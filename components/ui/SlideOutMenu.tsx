@@ -266,7 +266,7 @@ export default function SlideOutMenu({
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     {badgeLabel ? (
                         <View style={{
-                            backgroundColor: '#ef4444',
+                            backgroundColor: badgeLabel === 'Beta' ? '#8b5cf6' : badgeLabel === 'Coming Soon' ? '#f59e0b' : '#ef4444',
                             borderRadius: 10,
                             paddingHorizontal: 7,
                             paddingVertical: 3,

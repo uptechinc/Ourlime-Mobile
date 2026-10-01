@@ -1,12 +1,11 @@
-import { addDoc, collection, deleteDoc, getDocs, query, serverTimestamp, Timestamp, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, getDocs, query, serverTimestamp, Timestamp, where, type DocumentData } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { ApiService } from './ApiService';
 import { AuthService } from './AuthService';
 import type { Event, MediaItem } from '@/types/eventTypes';
 import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
+import { communityDataService } from './CommunityDataService';
 
 export type EventAttendanceStatus = { isAttending: boolean; attendeeCount: number };
-type CommunityEventApiResult<TData> = { success?: boolean; data?: TData; error?: string };
 type EventMediaRecord = { type?: unknown; url?: unknown; typeUrl?: unknown };
 export type CreateEventInput = {
   title: string;
@@ -26,9 +25,33 @@ export type CreateEventInput = {
   media?: MediaItem[];
 };
 
+/** Web helpers/Events isEventVisible: hides archived, hidden, draft, cancelled, removed and not-yet-published events. */
+const isEventVisible = (data: DocumentData): boolean => {
+  if (data.isArchived === true || data.deletedAt != null) return false;
+  if (data.hidden === true || data.isHidden === true || data.moderationVisibility === 'hidden') return false;
+  if (data.draft === true || data.isDraft === true) return false;
+  if (data.cancelled === true || data.isCancelled === true) return false;
+  if (data.removed === true || data.isRemoved === true || data.isDeleted === true) return false;
+  const status = typeof data.status === 'string' ? data.status.toLowerCase() : '';
+  if (['draft', 'cancelled', 'removed', 'deleted', 'archived', 'inactive'].includes(status)) return false;
+  if (status === 'scheduled' && data.publishAt) {
+    const publishTime = new Date(data.publishAt instanceof Timestamp ? data.publishAt.toMillis() : String(data.publishAt)).getTime();
+    if (!Number.isNaN(publishTime) && publishTime > Date.now()) return false;
+  }
+  if (data.isExpired === true) return false;
+  const toMillis = (value: unknown): number | null => {
+    if (value instanceof Timestamp) return value.toMillis();
+    if (value instanceof Date) return value.getTime();
+    if (typeof value !== 'string' || !value) return null;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? null : parsed;
+  };
+  const endsAt = toMillis(data.endDate) ?? toMillis(data.startDate);
+  return endsAt === null || endsAt >= Date.now();
+};
+
 export class EventService {
   private static instance: EventService;
-  private readonly apiService = ApiService.getInstance();
   private readonly authService = AuthService.getInstance();
 
   private constructor() {}
@@ -38,23 +61,11 @@ export class EventService {
     return EventService.instance;
   }
 
+  /** All visible events, newest start date first (same filters as the website's events fetch). */
   public async fetchEvents(): Promise<Event[]> {
-    try {
-      const response = await this.apiService.request<{ status: 'success'; data: Event[] }>('/api/events/fetch', {
-        timeoutMs: 18_000,
-      });
-      return Array.isArray(response.data)
-        ? response.data.filter((event) => !accountLifecycleVisibilityService.isHidden(event))
-        : [];
-    } catch {
-      return this.fetchEventsFromFirestore();
-    }
-  }
-
-  private async fetchEventsFromFirestore(): Promise<Event[]> {
     const snapshot = await getDocs(collection(db, 'events'));
     return snapshot.docs
-      .filter((document) => !accountLifecycleVisibilityService.isHidden(document.data()))
+      .filter((document) => !accountLifecycleVisibilityService.isHidden(document.data()) && isEventVisible(document.data()))
       .map((document): Event => {
         const event = document.data();
         const startDate = event.startDate instanceof Timestamp
@@ -94,7 +105,7 @@ export class EventService {
           communityVariantId: typeof event.communityVariantId === 'string' ? event.communityVariantId : undefined,
         };
       })
-      .sort((left, right) => new Date(left.startDate).getTime() - new Date(right.startDate).getTime());
+      .sort((left, right) => new Date(right.startDate).getTime() - new Date(left.startDate).getTime());
   }
 
   public async createEvent(input: CreateEventInput): Promise<string> {
@@ -102,37 +113,29 @@ export class EventService {
     return event.id;
   }
 
+  /** Community events read and written directly in Firestore (same logic as the website's community events route). */
   public async fetchCommunityEvents(communityId: string): Promise<Event[]> {
-    const response = await this.apiService.request<CommunityEventApiResult<Event[]>>(`/api/communities/events?communityId=${encodeURIComponent(communityId)}`, { authenticated: true });
-    if (!response.success || !Array.isArray(response.data)) throw new Error(response.error || 'Community events could not be loaded.');
-    return response.data.filter((event) => !accountLifecycleVisibilityService.isHidden(event));
+    const events = await communityDataService.fetchEvents(communityId);
+    return events.filter((event) => !accountLifecycleVisibilityService.isHidden(event));
   }
 
   public async createCommunityEvent(input: CreateEventInput): Promise<string> {
     if (!input.communityVariantId) throw new Error('Community is required.');
-    const response = await this.apiService.request<CommunityEventApiResult<{ id: string }>>('/api/communities/events', { method: 'POST', authenticated: true, body: { communityId: input.communityVariantId, ...input } });
-    if (!response.success || !response.data?.id) throw new Error(response.error || 'Community event could not be created.');
-    return response.data.id;
+    return communityDataService.createEvent(input.communityVariantId, input);
   }
 
   public async updateCommunityEvent(communityId: string, eventId: string, updates: Partial<CreateEventInput>): Promise<void> {
-    const response = await this.apiService.request<CommunityEventApiResult<never>>('/api/communities/events', { method: 'PATCH', authenticated: true, body: { communityId, eventId, ...updates } });
-    if (!response.success) throw new Error(response.error || 'Community event could not be updated.');
+    await communityDataService.updateEvent(communityId, eventId, updates);
   }
 
   public async deleteCommunityEvent(communityId: string, eventId: string): Promise<void> {
-    const response = await this.apiService.request<CommunityEventApiResult<never>>('/api/communities/events', { method: 'DELETE', authenticated: true, body: { communityId, eventId } });
-    if (!response.success) throw new Error(response.error || 'Community event could not be deleted.');
+    await communityDataService.deleteEvent(communityId, eventId);
   }
 
   public async toggleCommunityAttendance(communityId: string, eventId: string, desiredAttending?: boolean): Promise<EventAttendanceStatus> {
-    const response = await this.apiService.request<CommunityEventApiResult<EventAttendanceStatus>>('/api/communities/events', {
-      method: 'PATCH',
-      authenticated: true,
-      body: { action: 'attendance', communityId, eventId, desiredAttending },
-    });
-    if (!response.success || !response.data) throw new Error(response.error || 'Event attendance could not be updated.');
-    return response.data;
+    const result = await communityDataService.toggleAttendance(communityId, eventId, desiredAttending);
+    if (result.onWaitlist) throw new Error(`This event is full. You are number ${result.position ?? 1} on the waitlist.`);
+    return { isAttending: result.isAttending, attendeeCount: result.attendeeCount };
   }
 
   public async getAttendance(eventId: string): Promise<EventAttendanceStatus> {

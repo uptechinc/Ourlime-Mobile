@@ -3,11 +3,11 @@ import {
 	View,
 	Text,
 	TouchableOpacity,
-	Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
+import CustomModal from '@/components/ui/CustomModal';
 
 type Stories = {
 	id: string;
@@ -25,6 +25,17 @@ export default function AddStory({
 }) {
 	const [fileSelected, setFileSelected] = useState<boolean>(false);
 	const [selectedFile, setSelectedFile] = useState<string | null>(null);
+	const [dialogState, setDialogState] = useState<{
+		visible: boolean;
+		type: 'error' | 'warning' | 'info' | 'success';
+		title: string;
+		message: string;
+	}>({
+		visible: false,
+		type: 'info',
+		title: '',
+		message: '',
+	});
 	
 	const pickDocument = async () => {
 		try {
@@ -38,7 +49,12 @@ export default function AddStory({
 				setFileSelected(true);
 			}
 		} catch {
-			Alert.alert('Error', 'Failed to pick document');
+			setDialogState({
+				visible: true,
+				type: 'error',
+				title: 'Error',
+				message: 'Failed to pick document',
+			});
 		}
 	};
 
@@ -56,7 +72,12 @@ export default function AddStory({
 			setStories((prevStories) => [...newStory, ...prevStories]);
 			setAddStory(false);
 		} else {
-			Alert.alert('Warning', 'Please select a file first');
+			setDialogState({
+				visible: true,
+				type: 'warning',
+				title: 'Warning',
+				message: 'Please select a file first',
+			});
 		}
 	};
 
@@ -113,6 +134,14 @@ export default function AddStory({
 					</Text>
 				</TouchableOpacity>
 			</View>
+
+			<CustomModal
+				visible={dialogState.visible}
+				type={dialogState.type}
+				title={dialogState.title}
+				message={dialogState.message}
+				onClose={() => setDialogState((prev) => ({ ...prev, visible: false }))}
+			/>
 		</SafeAreaView>
 	);
 }

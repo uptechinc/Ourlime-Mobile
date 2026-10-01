@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStickers } from '@/lib/hooks/useStickers';
 import type { Sticker } from '@/lib/types/sticker';
 import { getLocalStickerSource } from '@/assets/images/stickers/stickerMap';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type StickerPickerProps = {
@@ -25,6 +26,7 @@ type StickerPickerProps = {
 
 export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPickerProps) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useAppTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [activePackId, setActivePackId] = useState('all');
 
@@ -51,7 +53,7 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
     >
       {/* Backdrop */}
       <Pressable
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }}
+        style={{ flex: 1, backgroundColor: colors.modalScrim }}
         onPress={onClose}
       />
 
@@ -59,20 +61,20 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
       <SwipeDismissSurface
         visible={visible}
         onDismiss={onClose}
-        handleColor="#d1d5db"
+        handleColor={isDark ? '#475569' : '#cbd5e1'}
         accessibilityLabel="Swipe down to close sticker picker"
         style={{
           position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
-          backgroundColor: '#ffffff',
+          backgroundColor: colors.surface,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
           maxHeight: '72%',
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.12,
+          shadowOpacity: isDark ? 0.35 : 0.12,
           shadowRadius: 16,
           elevation: 12,
           paddingBottom: insets.bottom,
@@ -80,14 +82,14 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
       >
         {/* Drag handle */}
         <View style={{ alignItems: 'center', paddingVertical: 10 }}>
-          <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#e2e8f0' }} />
+          <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: isDark ? '#475569' : '#e2e8f0' }} />
         </View>
 
         {/* Header row */}
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 10 }}>
-          <Text style={{ fontSize: 17, fontWeight: '800', color: '#111827', flex: 1 }}>Stickers</Text>
+          <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text, flex: 1 }}>Stickers</Text>
           <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
-            <Icon name="x" size={20} color="#94a3b8" />
+            <Icon name="x" size={20} color={colors.icon} />
           </TouchableOpacity>
         </View>
 
@@ -96,16 +98,16 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
           <View style={{
             flexDirection: 'row',
             alignItems: 'center',
-            backgroundColor: '#f1f5f9',
+            backgroundColor: isDark ? colors.control : '#f1f5f9',
             borderRadius: 12,
             paddingHorizontal: 12,
             paddingVertical: 8,
           }}>
-            <Icon name="search" size={15} color="#94a3b8" style={{ marginRight: 8 }} />
+            <Icon name="search" size={15} color={colors.mutedText} style={{ marginRight: 8 }} />
             <TextInput
-              style={{ flex: 1, fontSize: 14, color: '#0f172a' }}
+              style={{ flex: 1, fontSize: 14, color: colors.text }}
               placeholder="Search stickers..."
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={colors.mutedText}
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoCapitalize="none"
@@ -113,7 +115,7 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Icon name="x-circle" size={15} color="#94a3b8" />
+                <Icon name="x-circle" size={15} color={colors.mutedText} />
               </TouchableOpacity>
             )}
           </View>
@@ -133,10 +135,10 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
               paddingHorizontal: 14,
               paddingVertical: 7,
               borderRadius: 16,
-              backgroundColor: activePackId === 'all' ? '#10b981' : '#f1f5f9',
+              backgroundColor: activePackId === 'all' ? colors.accent : (isDark ? colors.control : '#f1f5f9'),
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: '700', color: activePackId === 'all' ? '#ffffff' : '#475569' }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: activePackId === 'all' ? colors.onAccent : colors.secondaryText }}>
               All
             </Text>
           </TouchableOpacity>
@@ -152,7 +154,7 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
                   paddingHorizontal: 14,
                   paddingVertical: 7,
                   borderRadius: 16,
-                  backgroundColor: activePackId === pack.id ? '#10b981' : '#f1f5f9',
+                  backgroundColor: activePackId === pack.id ? colors.accent : (isDark ? colors.control : '#f1f5f9'),
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 6,
@@ -165,7 +167,7 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
                     resizeMode="contain"
                   />
                 ) : null}
-                <Text style={{ fontSize: 13, fontWeight: '700', color: activePackId === pack.id ? '#ffffff' : '#475569' }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: activePackId === pack.id ? colors.onAccent : colors.secondaryText }}>
                   {pack.name}
                 </Text>
               </TouchableOpacity>
@@ -176,13 +178,13 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
         {/* Sticker content */}
         {loading ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
-            <ActivityIndicator size="large" color="#10b981" />
-            <Text style={{ marginTop: 12, color: '#94a3b8', fontSize: 14 }}>Loading stickers...</Text>
+            <ActivityIndicator size="large" color={colors.accent} />
+            <Text style={{ marginTop: 12, color: colors.mutedText, fontSize: 14 }}>Loading stickers...</Text>
           </View>
         ) : stickers.length === 0 && recentStickers.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
-            <Icon name="smile" size={36} color="#cbd5e1" />
-            <Text style={{ marginTop: 10, color: '#94a3b8', fontSize: 14 }}>
+            <Icon name="smile" size={36} color={colors.icon} />
+            <Text style={{ marginTop: 10, color: colors.mutedText, fontSize: 14 }}>
               {searchQuery ? `No stickers found for "${searchQuery}"` : 'No stickers available'}
             </Text>
           </View>
@@ -195,7 +197,7 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
             {/* Recent section */}
             {showRecent && (
               <View style={{ marginBottom: 16 }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: '#94a3b8', letterSpacing: 1, marginBottom: 8, paddingHorizontal: 4 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: colors.mutedText, letterSpacing: 1, marginBottom: 8, paddingHorizontal: 4 }}>
                   RECENT
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
@@ -204,6 +206,8 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
                       key={`recent-${sticker.id}`}
                       sticker={sticker}
                       onSelect={handleSelect}
+                      tileBackground={isDark ? colors.control : '#f8fafc'}
+                      borderColor={isDark ? colors.border : undefined}
                     />
                   ))}
                 </View>
@@ -214,7 +218,7 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
             {stickers.length > 0 && (
               <View>
                 {!searchQuery && activePackId === 'all' && recentStickers.length > 0 && (
-                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#94a3b8', letterSpacing: 1, marginBottom: 8, paddingHorizontal: 4 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: colors.mutedText, letterSpacing: 1, marginBottom: 8, paddingHorizontal: 4 }}>
                     ALL STICKERS
                   </Text>
                 )}
@@ -224,6 +228,8 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
                       key={sticker.id}
                       sticker={sticker}
                       onSelect={handleSelect}
+                      tileBackground={isDark ? colors.control : '#f8fafc'}
+                      borderColor={isDark ? colors.border : undefined}
                     />
                   ))}
                 </View>
@@ -239,9 +245,11 @@ export function StickerPicker({ visible, onClose, onStickerSelect }: StickerPick
 type StickerTileProps = {
   sticker: Sticker;
   onSelect: (sticker: Sticker) => void;
+  tileBackground: string;
+  borderColor?: string;
 };
 
-function StickerTile({ sticker, onSelect }: StickerTileProps) {
+function StickerTile({ sticker, onSelect, tileBackground, borderColor }: StickerTileProps) {
   const [errored, setErrored] = useState(false);
   const localSource = getLocalStickerSource(sticker.imageUrl);
   const imageSource = localSource ?? { uri: sticker.imageUrl };
@@ -255,7 +263,9 @@ function StickerTile({ sticker, onSelect }: StickerTileProps) {
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 12,
-        backgroundColor: '#f8fafc',
+        backgroundColor: tileBackground,
+        borderWidth: borderColor ? 1 : 0,
+        borderColor: borderColor ?? 'transparent',
         margin: '1%',
         padding: 4,
       }}

@@ -1,4 +1,4 @@
-import { ApiService, ApiServiceError } from './ApiService';
+import { AdminApiService, AdminApiError } from './AdminApiService';
 import { collection, getDocs, limit, orderBy, query, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { adminAccessService } from './AdminAccessService';
@@ -46,7 +46,7 @@ const readString = (value: unknown): string => typeof value === 'string' ? value
 
 export class AdminModerationService {
   private static instance: AdminModerationService;
-  private readonly apiService = ApiService.getInstance();
+  private readonly apiService = AdminApiService.getInstance();
   private constructor() {}
   public static getInstance(): AdminModerationService { if (!AdminModerationService.instance) AdminModerationService.instance = new AdminModerationService(); return AdminModerationService.instance; }
 
@@ -55,7 +55,7 @@ export class AdminModerationService {
       return await this.fetchReportsFromFirestore();
     } catch (firestoreError: unknown) {
       console.warn('[AdminModerationService] Firestore reports unavailable; trying the secure API.', firestoreError);
-      const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>('/api/moderation/reports', { authenticated: true, timeoutMs: 18_000 });
+      const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string }>('/api/moderation/reports', { timeoutMs: 18_000 });
       if (!response.success) throw new Error(response.error || 'Failed to load reports');
       return this.normalizeReports(response.data ?? []);
     }
@@ -63,10 +63,10 @@ export class AdminModerationService {
 
   public async takeAction(reportId: string, action: AdminModerationAction, reason: string, durationMs?: number): Promise<void> {
     try {
-      const response = await this.apiService.request<{ success: boolean; error?: string }>(`/api/moderation/reports/${encodeURIComponent(reportId)}/action`, { method: 'POST', authenticated: true, body: { action, reason, duration: durationMs, durationLabel: durationMs ? `${Math.round(durationMs / 86_400_000)} days` : undefined } });
+      const response = await this.apiService.request<{ success: boolean; error?: string }>(`/api/moderation/reports/${encodeURIComponent(reportId)}/action`, { method: 'POST', body: { action, reason, duration: durationMs, durationLabel: durationMs ? `${Math.round(durationMs / 86_400_000)} days` : undefined } });
       if (!response.success) throw new Error(response.error || 'Moderation action failed');
     } catch (error: unknown) {
-      if (error instanceof ApiServiceError && error.code === 'REQUEST_TIMEOUT') {
+      if (error instanceof AdminApiError && error.code === 'REQUEST_TIMEOUT') {
         throw new Error('Moderation actions require the secure Ourlime server, which is currently unavailable.');
       }
       throw error;
@@ -82,9 +82,9 @@ export class AdminModerationService {
 
   public async deleteReport(reportId: string): Promise<void> {
     try {
-      await this.apiService.request<{ success: boolean }>(`/api/moderation/reports/${encodeURIComponent(reportId)}`, { method: 'DELETE', authenticated: true });
+      await this.apiService.request<{ success: boolean }>(`/api/moderation/reports/${encodeURIComponent(reportId)}`, { method: 'DELETE' });
     } catch (error: unknown) {
-      if (error instanceof ApiServiceError && error.code === 'REQUEST_TIMEOUT') throw new Error('Deleting a report requires the secure Ourlime server, which is currently unavailable.');
+      if (error instanceof AdminApiError && error.code === 'REQUEST_TIMEOUT') throw new Error('Deleting a report requires the secure Ourlime server, which is currently unavailable.');
       throw error;
     }
   }

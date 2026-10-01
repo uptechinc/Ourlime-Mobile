@@ -3,7 +3,7 @@
     "name": "Ourlime",
     "slug": "ourlime",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/logo.png",
     "scheme": "ourlime",
     "userInterfaceStyle": "automatic",
@@ -83,6 +83,11 @@
               "scheme": "https",
               "host": "ourlime.com",
               "pathPrefix": "/admin/reports"
+            },
+            {
+              "scheme": "https",
+              "host": "ourlime.com",
+              "pathPrefix": "/register"
             }
           ],
           "category": [
@@ -109,6 +114,7 @@
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+        "android.permission.FOREGROUND_SERVICE_CAMERA",
         "android.permission.USE_FULL_SCREEN_INTENT",
         "android.permission.WAKE_LOCK",
         "android.permission.VIBRATE"
@@ -137,11 +143,18 @@
           "microphonePermission": "Ourlime requires microphone access for voice and video calls."
         }
       ],
-      "expo-notifications",
+      "./plugins/withOurlimeNotifications.cjs",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/transparentLogo.png",
+          "color": "#10b981"
+        }
+      ],
       "@react-native-firebase/app",
       "@react-native-firebase/crashlytics",
-      "@react-native-firebase/messaging",
       "./plugins/withOurlimeCalling.cjs",
+      "./plugins/withOurlimeMedia.cjs",
       [
         "expo-build-properties",
         {
@@ -153,7 +166,15 @@
         }
       ],
       "expo-image",
-      "expo-audio"
+      "expo-audio",
+      "@react-native-firebase/auth",
+      "expo-font",
+      "expo-sharing",
+      "expo-sqlite",
+      "expo-video",
+      "expo-web-browser",
+      "expo-asset",
+      "./plugins/withCustomApkName.cjs"
     ],
     "experiments": {
       "typedRoutes": true

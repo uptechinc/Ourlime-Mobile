@@ -40,6 +40,7 @@ class OurlimeIncomingCallModule(
     private const val CHANNEL_ID = "ourlime-calls-v3"
     private const val CHANNEL_NAME = "Ourlime incoming calls"
     private const val EVENT_NAME = "OurlimeIncomingCallInteraction"
+    private const val PICTURE_IN_PICTURE_EVENT_NAME = "OurlimePictureInPictureChanged"
     private const val PREFERENCES_NAME = "ourlime_incoming_call"
     private const val PENDING_INTERACTION_KEY = "pending_interaction"
     private const val ACTION_OPEN = "com.ourlime.app.INCOMING_CALL_OPEN"
@@ -94,6 +95,13 @@ class OurlimeIncomingCallModule(
 
   init {
     activeContext = WeakReference(applicationContext)
+    OurlimePictureInPicture.setModeListener { isInPictureInPicture ->
+      activeContext.get()?.takeIf { it.hasActiveReactInstance() }?.let { reactContext ->
+        reactContext
+          .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+          .emit(PICTURE_IN_PICTURE_EVENT_NAME, Arguments.createMap().apply { putBoolean("isInPictureInPicture", isInPictureInPicture) })
+      }
+    }
   }
 
   override fun getName(): String = MODULE_NAME
@@ -249,6 +257,60 @@ class OurlimeIncomingCallModule(
       promise.resolve(jsonToWritableMap(JSONObject(rawPayload)))
     } catch (error: Throwable) {
       promise.reject("INCOMING_CALL_INTERACTION_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun startOngoingCall(peerName: String, isVideo: Boolean, promise: Promise) {
+    try {
+      OurlimeOngoingCallService.start(applicationContext, peerName, isVideo)
+      promise.resolve(null)
+    } catch (error: Throwable) {
+      promise.reject("ONGOING_CALL_START_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun stopOngoingCall(promise: Promise) {
+    try {
+      OurlimeOngoingCallService.stop(applicationContext)
+      promise.resolve(null)
+    } catch (error: Throwable) {
+      promise.reject("ONGOING_CALL_STOP_FAILED", error.message, error)
+    }
+  }
+
+  /** Allows (or stops) the call shrinking into picture-in-picture when the user presses Home. */
+  @ReactMethod
+  fun setPictureInPictureEnabled(enabled: Boolean, promise: Promise) {
+    val activity = applicationContext.currentActivity
+    if (activity == null) {
+      promise.resolve(false)
+      return
+    }
+    activity.runOnUiThread {
+      try {
+        OurlimePictureInPicture.setEnabled(activity, enabled)
+        promise.resolve(OurlimePictureInPicture.isSupported(activity))
+      } catch (error: Throwable) {
+        promise.reject("PICTURE_IN_PICTURE_FAILED", error.message, error)
+      }
+    }
+  }
+
+  @ReactMethod
+  fun enterPictureInPicture(promise: Promise) {
+    val activity = applicationContext.currentActivity
+    if (activity == null) {
+      promise.resolve(false)
+      return
+    }
+    activity.runOnUiThread {
+      try {
+        promise.resolve(OurlimePictureInPicture.enter(activity))
+      } catch (error: Throwable) {
+        promise.reject("PICTURE_IN_PICTURE_FAILED", error.message, error)
+      }
     }
   }
 

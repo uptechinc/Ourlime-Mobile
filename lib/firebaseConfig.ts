@@ -1,9 +1,9 @@
 import 'expo-blob';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, initializeFirestore } from 'firebase/firestore';
+import { connectFirestoreEmulator, getFirestore, initializeFirestore } from 'firebase/firestore';
 import * as FirebaseAuth from 'firebase/auth';
 import type { Persistence } from 'firebase/auth';
-import { getStorage } from 'firebase/storage';
+import { connectStorageEmulator, getStorage } from 'firebase/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, LogBox } from 'react-native';
 import { DiagnosticLogService } from './services/DiagnosticLogService';
@@ -57,6 +57,14 @@ try {
   auth = FirebaseAuth.getAuth(app);
 }
 const storage = getStorage(app);
+const emulatorHost = __DEV__ ? process.env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST?.trim() : '';
+if (emulatorHost) {
+  const validHost = /^(localhost|127\.0\.0\.1|10\.0\.2\.2)$/.test(emulatorHost);
+  if (!validHost) throw new Error('Development Firebase emulator host must be localhost, 127.0.0.1 or the Android emulator host.');
+  try { FirebaseAuth.connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true }); } catch { /* Existing development connection. */ }
+  try { connectFirestoreEmulator(db, emulatorHost, 8080); } catch { /* Existing development connection. */ }
+  try { connectStorageEmulator(storage, emulatorHost, 9199); } catch { /* Existing development connection. */ }
+}
 
 diagnosticLogService.info('Firebase', 'initialize', {
   platform: Platform.OS,
@@ -65,6 +73,7 @@ diagnosticLogService.info('Firebase', 'initialize', {
   authDomain: app.options.authDomain,
   authPersistence: Platform.OS === 'web' ? 'web-default' : 'async-storage',
   reusedExistingApp: !isNewApp,
+  emulator: emulatorHost ? 'local-development' : 'disabled',
 });
 
 export { app, db, auth, storage };

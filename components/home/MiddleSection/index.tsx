@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Platform,
   RefreshControl,
   Text,
   TouchableOpacity,
@@ -106,11 +107,12 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
   const nextCursor = resource.data?.nextCursor ?? null;
   const hasMore = resource.data?.hasMore === true;
 
-  // Track which post IDs are currently visible in the viewport (for video play/pause)
-  const [visiblePostIds, setVisiblePostIds] = useState<Set<string>>(new Set());
+  const [activeMediaPostId, setActiveMediaPostId] = useState<string | null>(null);
 
 
   const activePost = activePostId ? posts.find((post) => post.id === activePostId) ?? null : null;
+
+  const flatListRef = useRef<FlatList<FeedRow>>(null);
 
   const handleRefresh = useCallback(async () => {
     if (isPullRefreshing) return;
@@ -123,14 +125,18 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
   }, [isPullRefreshing, refreshFeed]);
 
   const handleFilterChange = useCallback((filter: FeedFilter) => {
+    if (filter === activeFilter) return;
     setActiveFilter(filter);
-    setVisiblePostIds(new Set());
-  }, []);
+    setActiveMediaPostId(null);
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [activeFilter]);
 
   const handleFeedSourceChange = useCallback((source: FeedSource) => {
-    setVisiblePostIds(new Set());
+    if (source === activeFeedSource) return;
+    setActiveMediaPostId(null);
     setActiveFeedSource(source);
-  }, []);
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [activeFeedSource]);
 
   const handleLoadMore = useCallback(async () => {
     if (!hasMore || !nextCursor || loadingMore || refreshing || isLoading) return;
@@ -155,14 +161,16 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
 
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const ids = new Set<string>();
-      for (const token of viewableItems) {
-        const row = token.item as FeedRow;
-        if (row.kind === 'post') ids.add(row.post.id);
-      }
-      setVisiblePostIds(ids);
+      const firstVisiblePost = viewableItems.find((token) => (token.item as FeedRow).kind === 'post');
+      const row = firstVisiblePost?.item as FeedRow | undefined;
+      const nextPostId = row?.kind === 'post' ? row.post.id : null;
+      setActiveMediaPostId((currentPostId) => currentPostId === nextPostId ? currentPostId : nextPostId);
     },
   ).current;
+
+  const activeMediaIndex = activeMediaPostId
+    ? posts.findIndex((post) => post.id === activeMediaPostId)
+    : -1;
 
   const suggestedIndexRef = useRef<number>(5);
   useEffect(() => {
@@ -268,7 +276,21 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
             </View>
           );
 
-        case 'empty':
+        case 'empty': {
+          const isCommunities = activeFeedSource === 'communities';
+          const isFriends = activeFeedSource === 'friends';
+          const emptyTitle = isCommunities
+            ? (activeFilter === 'All' ? 'No community posts yet' : `No ${activeFilter.toLowerCase()} in your communities`)
+            : isFriends
+            ? (activeFilter === 'All' ? 'No posts from friends yet' : `No ${activeFilter.toLowerCase()} from friends`)
+            : (activeFilter === 'All' ? 'Your feed is quiet!' : `No ${activeFilter.toLowerCase()} posts yet`);
+          const emptySubtitle = isCommunities
+            ? 'Join communities or share the first post to get discussions started.'
+            : isFriends
+            ? 'Connect with friends or pull down to check for updates.'
+            : (activeFilter === 'All'
+              ? 'Say hello or share what is on your mind to get the lime started.'
+              : 'Try selecting another filter or pulling down to refresh.');
           return (
             <View style={{ minHeight: 360, paddingHorizontal: 32, alignItems: 'center', justifyContent: 'center' }}>
               <Image
@@ -278,17 +300,17 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
                 accessibilityLabel="Friendly Welcome"
               />
               <Text style={{ color: colors.text, fontSize: 22, fontWeight: '800', textAlign: 'center' }}>
-                {activeFilter === 'All' ? 'Your feed is quiet!' : `No ${activeFilter.toLowerCase()} posts yet`}
+                {emptyTitle}
               </Text>
               <Text style={{ marginTop: 8, color: colors.mutedText, fontSize: 15, textAlign: 'center', maxWidth: 280, lineHeight: 22 }}>
-                {activeFilter === 'All'
-                  ? 'Say hello or share what is on your mind to get the lime started.'
-                  : 'Try selecting another filter or pulling down to refresh.'}
+                {emptySubtitle}
               </Text>
               {activeFilter === 'All' ? (
                 <TouchableOpacity
                   onPress={onCreatePost}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Create a Post"
                   style={{
                     marginTop: 18,
                     flexDirection: 'row',
@@ -311,14 +333,17 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
               ) : null}
             </View>
           );
+        }
 
-        case 'post':
+        case 'post': {
+          const shouldLoadVideo = activeMediaIndex < 0 ? row.index < 2 : Math.abs(row.index - activeMediaIndex) <= 1;
           return (
             <View style={{ width: '100%', paddingHorizontal: 12, marginBottom: 14 }}>
               {row.post.type === 'poll' ? (
                 <PollCardSection
                   post={row.post}
-                  isVisible={visiblePostIds.has(row.post.id)}
+                  isVisible={activeMediaPostId === row.post.id}
+                  shouldLoadVideo={shouldLoadVideo}
                   onCommentClick={handleCommentClick}
                   onPostDelete={handlePostDelete}
                   onAuthorBlocked={handleAuthorBlocked}
@@ -327,7 +352,8 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
               ) : (
                 <PostCardSection
                   post={row.post}
-                  isVisible={visiblePostIds.has(row.post.id)}
+                  isVisible={activeMediaPostId === row.post.id}
+                  shouldLoadVideo={shouldLoadVideo}
                   onCommentClick={handleCommentClick}
                   onPostDelete={handlePostDelete}
                   onAuthorBlocked={handleAuthorBlocked}
@@ -336,6 +362,7 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
               )}
             </View>
           );
+        }
 
         case 'promoted':
           return null;
@@ -366,7 +393,8 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
     [
       activeFilter,
       activeFeedSource,
-      visiblePostIds,
+      activeMediaIndex,
+      activeMediaPostId,
       isLoading,
       feedError,
       loadingMore,
@@ -380,6 +408,7 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
   return (
     <>
       <FlatList
+        ref={flatListRef}
         data={rows}
         keyExtractor={rowKey}
         renderItem={renderRow}
@@ -401,9 +430,9 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
             colors={['#10b981']}
           />
         }
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={8}
-        windowSize={11}
+        removeClippedSubviews={Platform.OS === 'android'}
+        maxToRenderPerBatch={4}
+        windowSize={7}
         initialNumToRender={5}
       />
 

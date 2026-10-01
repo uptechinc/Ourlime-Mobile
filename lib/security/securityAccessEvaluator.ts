@@ -75,6 +75,27 @@ export function matchesIpRule(ipAddress: string, ruleValue: string): boolean {
   return (address & mask) === (network & mask);
 }
 
+function isValidIpv6Address(value: string): boolean {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed.includes(':')) return false;
+  const parts = trimmed.split('::');
+  if (parts.length > 2) return false;
+  return parts.every((part) => !part || part.split(':').every((block) => block.length > 0 && block.length <= 4 && /^[0-9a-f]+$/i.test(block)) && part.split(':').length <= 8);
+}
+
+/** An exact IPv4/IPv6 address or an IPv4 CIDR range (same rule as the website). */
+export function isValidIpRuleValue(ruleValue: string): boolean {
+  const rawRule = ruleValue.trim();
+  if (!rawRule) return false;
+  if (!rawRule.includes('/')) {
+    const normalized = normalizeIpAddress(rawRule);
+    return parseIpv4Address(normalized) !== null || isValidIpv6Address(normalized);
+  }
+  const [networkValue, prefixValue] = rawRule.split('/');
+  const prefix = Number(prefixValue);
+  return parseIpv4Address(normalizeIpAddress(networkValue)) !== null && Number.isInteger(prefix) && prefix >= 0 && prefix <= 32;
+}
+
 /**
  * Pure evaluation function for geographic access controls and IP rules.
  *

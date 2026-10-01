@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   AppState,
+  BackHandler,
   View,
   Text,
   StyleSheet,
@@ -10,15 +11,18 @@ import {
   StatusBar,
   Pressable,
   ActivityIndicator,
-  Platform,
   Linking,
   ScrollView,
   Modal,
+  Platform,
   RefreshControl,
   type AppStateStatus,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import { LimesSkeleton } from '@/components/ui/Skeleton';
 import Icon from 'react-native-vector-icons/Feather';
 import {
   Heart,
@@ -32,14 +36,15 @@ import {
   Compass,
   MoreVertical,
   Maximize2,
+  Minimize2,
   ChevronLeft,
   X,
 } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useEventListener } from 'expo';
 import { useRouter, useLocalSearchParams, useIsFocused } from 'expo-router';
 import { usePlaybackInteraction } from '@/lib/hooks/usePlaybackInteraction';
 import { PlaybackSeekBar } from '@/components/media/PlaybackSeekBar';
-import { PlaybackSpeedMenu } from '@/components/media/PlaybackSpeedMenu';
 import type { PlaybackSpeed } from '@/lib/services/PlaybackInteractionService';
 import CreateLimeModal from '@/components/limes/CreateLimeModal';
 import EditLimeModal from '@/components/limes/EditLimeModal';
@@ -63,17 +68,6 @@ import { ensureMediaUrl } from '@/lib/helpers/mediaUrl';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components/ui/PlayfulFloatingHeart';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
-import Animated, {
-  Easing,
-  cancelAnimation,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withDelay,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const authService = AuthService.getInstance();
@@ -98,9 +92,9 @@ export function reelToPostItem(reel: Reel): PostItem {
   return {
     id: reel.id,
     origin: 'home',
-    userId: reel.userId,
+    userId: reel.authorUserId,
     user: {
-      id: reel.userId,
+      id: reel.authorUserId,
       firstName: reel.user?.firstName || 'Lime',
       lastName: reel.user?.lastName || 'Creator',
       userName: reel.user?.userName || 'user',
@@ -131,94 +125,25 @@ export function reelToPostItem(reel: Reel): PostItem {
   };
 }
 
-type FloatingReposterBubbleProps = {
+type ReposterAvatarProps = {
   reposter: LimeReposter;
   reposterIndex: number;
   visibleReposterCount: number;
-  showBadge?: boolean;
 };
 
-function FloatingReposterBubble({
+function ReposterAvatar({
   reposter,
   reposterIndex,
   visibleReposterCount,
-  showBadge = false,
-}: FloatingReposterBubbleProps) {
-  const reduceMotion = useReducedMotion();
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const scale = useSharedValue(1);
-  const baseTranslateY = reposterIndex === 1 ? -6 : reposterIndex === 2 ? 3 : 0;
-
-  useEffect(() => {
-    if (reduceMotion) return;
-    const direction = reposterIndex % 2 === 0 ? 1 : -1;
-    const delayMs = reposterIndex * 180;
-    const horizontalRadius = (4 + reposterIndex) * direction;
-    const verticalRadius = 5 + reposterIndex;
-    const easing = Easing.inOut(Easing.ease);
-
-    translateX.value = withDelay(
-      delayMs,
-      withRepeat(
-        withSequence(
-          withTiming(horizontalRadius, { duration: 1_350 + reposterIndex * 120, easing }),
-          withTiming(-horizontalRadius * 0.7, { duration: 1_550 + reposterIndex * 100, easing }),
-          withTiming(0, { duration: 1_100, easing })
-        ),
-        -1,
-        false
-      )
-    );
-    translateY.value = withDelay(
-      delayMs + 90,
-      withRepeat(
-        withSequence(
-          withTiming(-verticalRadius, { duration: 1_200 + reposterIndex * 140, easing }),
-          withTiming(verticalRadius * 0.65, { duration: 1_450 + reposterIndex * 110, easing }),
-          withTiming(0, { duration: 1_050, easing })
-        ),
-        -1,
-        false
-      )
-    );
-    scale.value = withDelay(
-      delayMs,
-      withRepeat(
-        withSequence(
-          withTiming(1.035, { duration: 1_300, easing }),
-          withTiming(0.985, { duration: 1_500, easing }),
-          withTiming(1, { duration: 1_050, easing })
-        ),
-        -1,
-        false
-      )
-    );
-
-    return () => {
-      cancelAnimation(translateX);
-      cancelAnimation(translateY);
-      cancelAnimation(scale);
-    };
-  }, [reduceMotion, reposterIndex, scale, translateX, translateY]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: baseTranslateY + translateY.value },
-      { scale: scale.value },
-    ],
-  }));
-
+}: ReposterAvatarProps) {
   return (
-    <Animated.View
+    <View
       style={[
         styles.reposterBubbleShell,
         {
           marginLeft: reposterIndex === 0 ? 0 : -12,
           zIndex: visibleReposterCount - reposterIndex,
         },
-        animatedStyle,
       ]}
     >
       <Image
@@ -227,12 +152,7 @@ function FloatingReposterBubble({
         contentFit="cover"
         cachePolicy="memory-disk"
       />
-      {showBadge ? (
-        <View style={styles.reposterRepeatBadge} pointerEvents="none">
-          <Repeat2 size={10} color="#ffffff" />
-        </View>
-      ) : null}
-    </Animated.View>
+    </View>
   );
 }
 
@@ -261,7 +181,9 @@ export default function LimesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const [preloadAdjacentVideos, setPreloadAdjacentVideos] = useState(true);
+  const [pagerScrolling, setPagerScrolling] = useState(false);
   const limesListRef = useRef<FlatList<Reel>>(null);
+  const pagerSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentUserId = authService.getCurrentUser()?.uid || '';
   const { query, resource, refresh, loadMore } = useLimeFeedResource({
@@ -411,32 +333,61 @@ export default function LimesScreen() {
   const isRefreshingEmptyFeed = displayedLimes.length === 0
     && (resource?.status === 'hydrating' || resource?.status === 'refreshing');
 
-  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: { index: number | null }[] }) => {
-    if (viewableItems.length > 0) {
-      setActiveIndex(viewableItems[0].index ?? 0);
-    } else setActiveIndex(-1);
-  }).current;
+  const commitSettledPagerIndex = useCallback((offsetY: number): void => {
+    const maximumIndex = Math.max(0, displayedLimes.length - 1);
+    const nextIndex = Math.min(maximumIndex, Math.max(0, Math.round(offsetY / viewportHeight)));
+    setActiveIndex(nextIndex);
+    setPagerScrolling(false);
+  }, [displayedLimes.length, viewportHeight]);
 
-  const viewConfigRef = useRef({ itemVisiblePercentThreshold: 70 }).current;
+  const handlePagerDragStart = useCallback((): void => {
+    if (pagerSettleTimerRef.current) clearTimeout(pagerSettleTimerRef.current);
+    pagerSettleTimerRef.current = null;
+    setPagerScrolling(true);
+  }, []);
+
+  const handlePagerDragEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    if (pagerSettleTimerRef.current) clearTimeout(pagerSettleTimerRef.current);
+    pagerSettleTimerRef.current = setTimeout(() => {
+      pagerSettleTimerRef.current = null;
+      commitSettledPagerIndex(offsetY);
+    }, 120);
+  }, [commitSettledPagerIndex]);
+
+  const handlePagerMomentumStart = useCallback((): void => {
+    if (pagerSettleTimerRef.current) clearTimeout(pagerSettleTimerRef.current);
+    pagerSettleTimerRef.current = null;
+    setPagerScrolling(true);
+  }, []);
+
+  const handlePagerMomentumEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+    if (pagerSettleTimerRef.current) clearTimeout(pagerSettleTimerRef.current);
+    pagerSettleTimerRef.current = null;
+    commitSettledPagerIndex(event.nativeEvent.contentOffset.y);
+  }, [commitSettledPagerIndex]);
+
+  useEffect(() => () => {
+    if (pagerSettleTimerRef.current) clearTimeout(pagerSettleTimerRef.current);
+  }, []);
 
   if (loading) {
     return (
-      <View style={styles.loadingScreen}>
+      <View style={{ flex: 1, backgroundColor: '#000000' }}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
-        <ActivityIndicator size="large" color="#10b981" />
+        <LimesSkeleton />
       </View>
     );
   }
 
-  const emptyFeed = (
+  const emptyFeed = isRefreshingEmptyFeed ? (
+    <LimesSkeleton />
+  ) : (
     <View style={[styles.loadingScreen, styles.emptyFeed]}>
-      {isRefreshingEmptyFeed ? <ActivityIndicator size="large" color="#10b981" /> : null}
       <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '800', marginTop: 12 }}>
         {resource?.status === 'error'
           ? 'Couldn’t load Limes'
-          : isRefreshingEmptyFeed
-            ? feedTab === 'following' ? 'Loading Following…' : 'Refreshing Limes…'
-            : 'No Limes yet'}
+          : 'No Limes yet'}
       </Text>
       <Text style={{ color: '#64748b', fontSize: 13, marginTop: 6, textAlign: 'center' }}>
         {resource?.status === 'error'
@@ -585,6 +536,7 @@ export default function LimesScreen() {
         data={displayedLimes}
         keyExtractor={(item) => item.id}
         pagingEnabled
+        disableIntervalMomentum
         showsVerticalScrollIndicator={false}
         snapToInterval={viewportHeight}
         scrollEnabled={!seeking}
@@ -593,14 +545,16 @@ export default function LimesScreen() {
         initialNumToRender={2}
         maxToRenderPerBatch={2}
         windowSize={3}
-        removeClippedSubviews={Platform.OS === 'android'}
+        removeClippedSubviews={false}
         getItemLayout={(_, index) => ({
           length: viewportHeight,
           offset: viewportHeight * index,
           index,
         })}
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={viewConfigRef}
+        onScrollBeginDrag={handlePagerDragStart}
+        onScrollEndDrag={handlePagerDragEnd}
+        onMomentumScrollBegin={handlePagerMomentumStart}
+        onMomentumScrollEnd={handlePagerMomentumEnd}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -627,10 +581,10 @@ export default function LimesScreen() {
             onPlaybackSpeedChange={setPlaybackSpeed}
             onSeekingChange={setSeeking}
             reel={item}
-            isActive={playbackAllowed && index === activeIndex}
+            isActive={playbackAllowed && !pagerScrolling && index === activeIndex}
             shouldLoadVideo={playbackAllowed && (
               index === activeIndex
-              || (preloadAdjacentVideos && Math.abs(index - activeIndex) <= 1)
+              || (Platform.OS !== 'android' && !pagerScrolling && preloadAdjacentVideos && Math.abs(index - activeIndex) <= 1)
             )}
             muted={muted}
             isRepostedInitial={
@@ -639,9 +593,10 @@ export default function LimesScreen() {
               (Boolean(item.isRepost) && item.userId === currentUserId)
             }
             isFollowing={
-              item.userId !== currentUserId && followingUserIds.has(item.userId)
+              item.authorUserId !== currentUserId && followingUserIds.has(item.authorUserId)
             }
             isOwnReel={item.userId === currentUserId}
+            isOwnAuthor={item.authorUserId === currentUserId}
             onToggleMute={() => setMuted((prev) => !prev)}
             onCommentPress={() => setCommentReelId(item.id)}
             currentUserId={currentUserId}
@@ -786,10 +741,20 @@ export default function LimesScreen() {
 /* Video Player — isolated & rock solid like Feed Post videos          */
 /* ─────────────────────────────────────────────────────────────────── */
 type ReelVideoPlayerHandle = {
-  enterFullscreen: () => Promise<void>;
   beginHold: () => void;
   endHold: () => void;
+  retry: () => Promise<void>;
 };
+
+type FullscreenButtonFrame = {
+  top: number;
+  right: number;
+};
+
+type PlaybackSurfaceState = 'preparing' | 'decoded' | 'retrying' | 'error';
+type PlaybackSurfaceMode = 'inline' | 'fullscreen';
+const POSTER_REVEAL_HOLD_MS = 900;
+const LEGACY_POSTER_REVEAL_HOLD_MS = 3_500;
 
 type ReelVideoPlayerProps = {
   url: string;
@@ -799,39 +764,133 @@ type ReelVideoPlayerProps = {
   speed: PlaybackSpeed;
   onSeekingChange?: (seeking: boolean) => void;
   onSpeedChange: (speed: PlaybackSpeed) => void;
-  onReady?: () => void;
+  isFullscreen: boolean;
+  fullscreenButtonFrame: FullscreenButtonFrame;
+  posterUrl?: string;
+  posterRevealHoldMs: number;
+  onPosterError: () => void;
+  onExitFullscreen: () => void;
+  onTogglePaused: () => void;
 };
 
 const ReelVideoPlayer = forwardRef<ReelVideoPlayerHandle, ReelVideoPlayerProps>(function ReelVideoPlayer(
-  { url, isActive, muted, paused, speed, onSpeedChange, onSeekingChange, onReady },
+  {
+    url,
+    isActive,
+    muted,
+    paused,
+    speed,
+    onSpeedChange,
+    onSeekingChange,
+    isFullscreen,
+    fullscreenButtonFrame,
+    posterUrl,
+    posterRevealHoldMs,
+    onPosterError,
+    onExitFullscreen,
+    onTogglePaused,
+  },
   ref,
 ) {
   const safeUrl = url && url.length > 4 ? ensureMediaUrl(url) : undefined;
-  const videoViewRef = useRef<VideoView>(null);
+  const surfaceMode: PlaybackSurfaceMode = isFullscreen ? 'fullscreen' : 'inline';
+  const [surfaceState, setSurfaceState] = useState<PlaybackSurfaceState>('preparing');
+  const [surfaceGeneration, setSurfaceGeneration] = useState(1);
+  const [decodedSurfaceMode, setDecodedSurfaceMode] = useState<PlaybackSurfaceMode | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const surfaceGenerationRef = useRef(1);
+  const surfacePreparedAtRef = useRef(Date.now());
+  const previousFullscreenRef = useRef(isFullscreen);
+  const previousSafeUrlRef = useRef(safeUrl);
+  const automaticRetryCountRef = useRef(0);
+  const lastObservedTimeRef = useRef(0);
+  const lastPlaybackProgressAtRef = useRef(Date.now());
+  const frameRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const player = useVideoPlayer(safeUrl ?? null, (p) => {
+    if (Platform.OS === 'android') {
+      p.bufferOptions = { preferredForwardBufferDuration: 3, minBufferForPlayback: 0.5, maxBufferBytes: 4 * 1024 * 1024, prioritizeTimeOverSizeThreshold: false };
+    }
     p.loop = true;
     p.muted = muted;
   });
 
-  const { session, snapshot, refresh, isPlaybackActive } = usePlaybackInteraction(player, isActive, speed);
+  useEventListener(player, 'statusChange', ({ status, error }) => {
+    if (status === 'error') {
+      setSurfaceState('error');
+      setPlaybackError(error?.message || 'This video could not be played.');
+    }
+  });
 
-  useEffect(() => {
-    const statusSub = player.addListener('statusChange', (event) => {
-      if (event.status === 'readyToPlay') {
-        onReady?.();
-      }
-    });
-    const playingSub = player.addListener('playingChange', (event) => {
-      if (event.isPlaying) {
-        onReady?.();
-      }
-    });
-    return () => {
-      statusSub.remove();
-      playingSub.remove();
+  const { session, snapshot, refresh, isPlaybackActive } = usePlaybackInteraction(player, isActive, speed);
+  const previousPlaybackActiveRef = useRef(isPlaybackActive);
+
+  const beginSurfacePreparation = useCallback((nextState: Extract<PlaybackSurfaceState, 'preparing' | 'retrying'>): void => {
+    if (frameRevealTimerRef.current) clearTimeout(frameRevealTimerRef.current);
+    frameRevealTimerRef.current = null;
+    const nextGeneration = surfaceGenerationRef.current + 1;
+    surfaceGenerationRef.current = nextGeneration;
+    surfacePreparedAtRef.current = Date.now();
+    setSurfaceGeneration(nextGeneration);
+    setSurfaceState(nextState);
+  }, []);
+
+  const handleDecodedFrame = useCallback((decodedGeneration: number, decodedMode: PlaybackSurfaceMode) => {
+    const revealDecodedSurface = (): void => {
+      if (decodedGeneration !== surfaceGenerationRef.current) return;
+      frameRevealTimerRef.current = null;
+      setDecodedSurfaceMode(decodedMode);
+      setSurfaceState('decoded');
+      setPlaybackError(null);
+      automaticRetryCountRef.current = 0;
+      lastPlaybackProgressAtRef.current = Date.now();
     };
-  }, [player, onReady]);
+    if (decodedGeneration !== surfaceGenerationRef.current) return;
+    const remainingPosterHold = Math.max(
+      0,
+      posterRevealHoldMs - (Date.now() - surfacePreparedAtRef.current),
+    );
+    if (frameRevealTimerRef.current) clearTimeout(frameRevealTimerRef.current);
+    if (remainingPosterHold === 0) {
+      revealDecodedSurface();
+      return;
+    }
+    frameRevealTimerRef.current = setTimeout(revealDecodedSurface, remainingPosterHold);
+  }, [posterRevealHoldMs]);
+
+  useEventListener(player, 'playToEnd', () => {
+    if (!isPlaybackActive || paused) return;
+    surfacePreparedAtRef.current = Date.now();
+    setSurfaceState('preparing');
+    handleDecodedFrame(surfaceGenerationRef.current, surfaceMode);
+  });
+
+  useEffect(() => () => {
+    if (frameRevealTimerRef.current) clearTimeout(frameRevealTimerRef.current);
+  }, []);
+
+  const reloadSource = useCallback(async (): Promise<void> => {
+    if (!safeUrl) {
+      setSurfaceState('error');
+      setPlaybackError('This video does not have a valid source.');
+      return;
+    }
+    const savedTime = Number.isFinite(player.currentTime) ? player.currentTime : 0;
+    const shouldResume = isPlaybackActive && !paused;
+    setPlaybackError(null);
+    beginSurfacePreparation('retrying');
+    try {
+      await player.replaceAsync(safeUrl);
+      player.currentTime = savedTime;
+      player.loop = true;
+      player.muted = muted;
+      player.playbackRate = speed;
+      if (shouldResume) player.play();
+    } catch (error: unknown) {
+      setSurfaceState('error');
+      setPlaybackError(error instanceof Error ? error.message : 'This video could not be played.');
+    }
+  }, [beginSurfacePreparation, isPlaybackActive, muted, paused, player, safeUrl, speed]);
 
   useEffect(() => {
     try {
@@ -853,26 +912,181 @@ const ReelVideoPlayer = forwardRef<ReelVideoPlayerHandle, ReelVideoPlayerProps>(
     }
   }, [player, isPlaybackActive, paused, safeUrl]);
 
+  useEffect(() => {
+    if (previousFullscreenRef.current === isFullscreen) return;
+    previousFullscreenRef.current = isFullscreen;
+    beginSurfacePreparation('preparing');
+  }, [beginSurfacePreparation, isFullscreen]);
+
+  useEffect(() => {
+    const wasPlaybackActive = previousPlaybackActiveRef.current;
+    previousPlaybackActiveRef.current = isPlaybackActive;
+    if (!wasPlaybackActive && isPlaybackActive) beginSurfacePreparation('preparing');
+  }, [beginSurfacePreparation, isPlaybackActive]);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const backSubscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onExitFullscreen();
+      return true;
+    });
+    return () => backSubscription.remove();
+  }, [isFullscreen, onExitFullscreen]);
+
+  useEffect(() => {
+    if (previousSafeUrlRef.current === safeUrl) return;
+    previousSafeUrlRef.current = safeUrl;
+    automaticRetryCountRef.current = 0;
+    lastObservedTimeRef.current = 0;
+    lastPlaybackProgressAtRef.current = Date.now();
+    setPlaybackError(null);
+    beginSurfacePreparation('preparing');
+  }, [beginSurfacePreparation, safeUrl]);
+
+  useEffect(() => {
+    if (!isPlaybackActive || paused || !safeUrl || playbackError) return;
+    lastObservedTimeRef.current = Number.isFinite(player.currentTime) ? player.currentTime : 0;
+    lastPlaybackProgressAtRef.current = Date.now();
+    if (surfaceState !== 'decoded') surfacePreparedAtRef.current = Date.now();
+    const watchdog = setInterval(() => {
+      const now = Date.now();
+      const currentTime = Number.isFinite(player.currentTime) ? player.currentTime : 0;
+      if (Math.abs(currentTime - lastObservedTimeRef.current) >= 0.15) {
+        lastObservedTimeRef.current = currentTime;
+        lastPlaybackProgressAtRef.current = now;
+      }
+      const firstFrameTimedOut = surfaceState !== 'decoded'
+        && now - surfacePreparedAtRef.current >= 5_000;
+      const playbackTimedOut = surfaceState === 'decoded'
+        && now - lastPlaybackProgressAtRef.current >= 5_000;
+      if (!firstFrameTimedOut && !playbackTimedOut) return;
+      if (automaticRetryCountRef.current === 0) {
+        automaticRetryCountRef.current = 1;
+        lastPlaybackProgressAtRef.current = now;
+        void reloadSource();
+        return;
+      }
+      setSurfaceState('error');
+      setPlaybackError(surfaceState === 'decoded'
+        ? 'Playback stopped responding.'
+        : 'The first video frame did not load.');
+    }, 1_000);
+    return () => clearInterval(watchdog);
+  }, [isPlaybackActive, paused, playbackError, player, reloadSource, safeUrl, surfaceState]);
+
 
   useImperativeHandle(ref, () => ({
     beginHold: () => { session.beginHold(); refresh(); },
     endHold: () => { session.endHold(); refresh(); },
-    enterFullscreen: async () => {
-      await videoViewRef.current?.enterFullscreen();
+    retry: async () => {
+      automaticRetryCountRef.current = 0;
+      lastPlaybackProgressAtRef.current = Date.now();
+      await reloadSource();
     },
-  }), [session, refresh]);
+  }), [refresh, reloadSource, session]);
+
+  const handleRetryPlayback = useCallback(() => {
+    automaticRetryCountRef.current = 0;
+    lastPlaybackProgressAtRef.current = Date.now();
+    void reloadSource();
+  }, [reloadSource]);
+
+  const showPoster = surfaceState !== 'decoded' || decodedSurfaceMode !== surfaceMode;
+
+  if (isFullscreen) {
+    return (
+      <Modal
+        visible
+        animationType="fade"
+        presentationStyle="overFullScreen"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={onExitFullscreen}
+      >
+        <StatusBar hidden />
+        <View style={styles.fullscreenContainer}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={paused ? 'Play fullscreen Lime' : 'Pause fullscreen Lime'}
+            onPress={onTogglePaused}
+            style={StyleSheet.absoluteFill}
+          >
+            {safeUrl ? (
+              <VideoView
+                key={`fullscreen:${surfaceGeneration}`}
+                player={player}
+                style={StyleSheet.absoluteFill}
+                nativeControls={false}
+                contentFit="cover"
+                surfaceType="textureView"
+                fullscreenOptions={{ enable: false }}
+                useExoShutter={false}
+                onFirstFrameRender={() => handleDecodedFrame(surfaceGeneration, 'fullscreen')}
+              />
+            ) : null}
+          </Pressable>
+
+          {showPoster ? (
+            <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <LimeVisualPlaceholder isLoading />
+              {posterUrl ? (
+                <Image
+                  source={{ uri: posterUrl }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  onError={onPosterError}
+                />
+              ) : null}
+            </View>
+          ) : null}
+
+          {playbackError ? (
+            <View style={styles.playbackErrorOverlay}>
+              <Text style={styles.playbackErrorTitle}>Video unavailable</Text>
+              <Text style={styles.playbackErrorMessage} numberOfLines={2}>{playbackError}</Text>
+              <TouchableOpacity
+                onPress={handleRetryPlayback}
+                accessibilityRole="button"
+                accessibilityLabel="Retry Lime video"
+                style={styles.playbackRetryButton}
+              >
+                <Text style={styles.playbackRetryText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            onPress={onExitFullscreen}
+            accessibilityRole="button"
+            accessibilityLabel="Exit Lime fullscreen"
+            activeOpacity={0.72}
+            style={[
+              styles.fullscreenExitButton,
+              { top: fullscreenButtonFrame.top, right: fullscreenButtonFrame.right },
+            ]}
+          >
+            <Minimize2 size={24} color="#ffffff" />
+          </TouchableOpacity>
+        </View>
+      </Modal>
+    );
+  }
 
   return (
     <>
     <View style={styles.videoPlayer}>
       {safeUrl ? (
         <VideoView
-          ref={videoViewRef}
+          key={`inline:${surfaceGeneration}`}
           player={player}
           style={{ width: '100%', height: '100%' }}
           nativeControls={false}
           contentFit="cover"
-          fullscreenOptions={{ enable: true }}
+          surfaceType="textureView"
+          fullscreenOptions={{ enable: false }}
+          useExoShutter={false}
+          onFirstFrameRender={() => handleDecodedFrame(surfaceGeneration, 'inline')}
         />
       ) : (
         <View style={{ flex: 1, backgroundColor: '#0a0a0a', alignItems: 'center', justifyContent: 'center' }}>
@@ -880,9 +1094,41 @@ const ReelVideoPlayer = forwardRef<ReelVideoPlayerHandle, ReelVideoPlayerProps>(
           <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '600' }}>No video</Text>
         </View>
       )}
+      {showPoster ? (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <LimeVisualPlaceholder isLoading={isActive} />
+          {posterUrl ? (
+            <Image
+              source={{ uri: posterUrl }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              onError={onPosterError}
+            />
+          ) : null}
+          {isActive && !playbackError ? (
+            <View style={styles.videoBufferingOverlay} pointerEvents="none">
+              <ActivityIndicator size="large" color="#10b981" />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+      {playbackError ? (
+        <View style={styles.playbackErrorOverlay}>
+          <Text style={styles.playbackErrorTitle}>Video unavailable</Text>
+          <Text style={styles.playbackErrorMessage} numberOfLines={2}>{playbackError}</Text>
+          <TouchableOpacity
+            onPress={handleRetryPlayback}
+            accessibilityRole="button"
+            accessibilityLabel="Retry Lime video"
+            style={styles.playbackRetryButton}
+          >
+            <Text style={styles.playbackRetryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
     <PlaybackSeekBar session={session} snapshot={snapshot} onChange={refresh} onSeekingChange={onSeekingChange} />
-    <PlaybackSpeedMenu speed={speed} onChange={onSpeedChange} />
     {snapshot.holding ? <View pointerEvents="none" style={{ position: 'absolute', top: 92, alignSelf: 'center', zIndex: 122, backgroundColor: '#000b', padding: 10, borderRadius: 18 }}><Text style={{ color: '#fff' }}>2× Speed</Text></View> : null}
     </>
   );
@@ -927,6 +1173,7 @@ export type ReelItemProps = {
   isRepostedInitial: boolean;
   isFollowing: boolean;
   isOwnReel: boolean;
+  isOwnAuthor: boolean;
   onToggleMute: () => void;
   onCommentPress: () => void;
   onLikeUpdate: (reelId: string, liked: boolean) => void;
@@ -952,6 +1199,7 @@ export function ReelItem({
   isRepostedInitial,
   isFollowing,
   isOwnReel,
+  isOwnAuthor,
   onToggleMute,
   onCommentPress,
   onLikeUpdate,
@@ -975,11 +1223,14 @@ export function ReelItem({
   const [preparedThumbnailUrl, setPreparedThumbnailUrl] = useState(
     reel.thumbnailUrl || reel.media.thumbnailUrl || ''
   );
-  const [isFrameReady, setIsFrameReady] = useState(false);
   const [posterFailed, setPosterFailed] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenButtonFrame, setFullscreenButtonFrame] = useState<FullscreenButtonFrame>({
+    top: Math.round(SCREEN_HEIGHT * 0.27),
+    right: 12,
+  });
 
   useEffect(() => {
-    setIsFrameReady(false);
     setPosterFailed(false);
     setPreparedThumbnailUrl(reel.thumbnailUrl || reel.media.thumbnailUrl || '');
   }, [reel.media.typeUrl, reel.thumbnailUrl, reel.media.thumbnailUrl]);
@@ -988,6 +1239,7 @@ export function ReelItem({
   const touchOrigin = useRef({ x: 0, y: 0 });
   const [showReposters, setShowReposters] = useState(false);
   const videoPlayerRef = useRef<ReelVideoPlayerHandle>(null);
+  const fullscreenButtonRef = useRef<View>(null);
   const viewerReposted = isReposted
     || reel.repostedByViewer === true
     || Boolean(currentUserId && reel.repostedBy?.some((reposter) => reposter.userId === currentUserId));
@@ -1015,6 +1267,7 @@ export function ReelItem({
     if (!isActive) {
       setShowOptionsMenu(false);
       setShowReposters(false);
+      setIsFullscreen(false);
     }
   }, [isActive]);
 
@@ -1133,12 +1386,31 @@ export function ReelItem({
     onProfilePress(reel.user.userName);
   }, [reel.user.userName, onProfilePress]);
 
+  const handleEnterFullscreen = useCallback(() => {
+    const fullscreenButton = fullscreenButtonRef.current;
+    if (!fullscreenButton) {
+      setIsFullscreen(true);
+      return;
+    }
+    fullscreenButton.measureInWindow((buttonX, buttonY, buttonWidth) => {
+      setFullscreenButtonFrame({
+        top: buttonY,
+        right: Math.max(12, SCREEN_WIDTH - buttonX - buttonWidth),
+      });
+      setIsFullscreen(true);
+    });
+  }, []);
+
+  const handleExitFullscreen = useCallback(() => {
+    setIsFullscreen(false);
+  }, []);
+
   return (
     <View style={[styles.reelContainer, { height, width: '100%' }]}>
       {/* 1. Video player & visual backdrop layer */}
       <View style={[styles.videoPlayer, { overflow: 'hidden' }]}>
-        {/* Base fallback surface so transparent/unready areas never expose raw black */}
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#07170e' }]} pointerEvents="none" />
+        {/* Permanent branded base so Android surface gaps never expose a blank frame. */}
+        <LimeVisualPlaceholder isLoading={false} />
 
         {shouldLoadVideo ? (
           <ReelVideoPlayer
@@ -1157,12 +1429,17 @@ export function ReelItem({
               onSeekingChange?.(seeking);
             }}
             muted={muted}
-            onReady={() => setIsFrameReady(true)}
+            isFullscreen={isFullscreen}
+            fullscreenButtonFrame={fullscreenButtonFrame}
+            posterUrl={preparedThumbnailUrl && !posterFailed ? preparedThumbnailUrl : undefined}
+            posterRevealHoldMs={reel.legacyLimeMigrationVersion
+              ? LEGACY_POSTER_REVEAL_HOLD_MS
+              : POSTER_REVEAL_HOLD_MS}
+            onPosterError={() => setPosterFailed(true)}
+            onExitFullscreen={handleExitFullscreen}
+            onTogglePaused={() => setPaused((wasPaused) => !wasPaused)}
           />
-        ) : null}
-
-        {/* Persistent Poster Layer until decoded first frame */}
-        {!isFrameReady ? (
+        ) : (
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
             {preparedThumbnailUrl && !posterFailed ? (
               <Image
@@ -1173,15 +1450,10 @@ export function ReelItem({
                 onError={() => setPosterFailed(true)}
               />
             ) : (
-              <LimeVisualPlaceholder isLoading={isActive} />
+              <LimeVisualPlaceholder isLoading={false} />
             )}
-            {isActive ? (
-              <View style={styles.videoBufferingOverlay} pointerEvents="none">
-                <ActivityIndicator size="large" color="#10b981" />
-              </View>
-            ) : null}
           </View>
-        ) : null}
+        )}
       </View>
 
       {/* 2. Double-tap + single-tap zone — full screen, sits behind controls */}
@@ -1221,7 +1493,8 @@ export function ReelItem({
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => void videoPlayerRef.current?.enterFullscreen()}
+          ref={fullscreenButtonRef}
+          onPress={handleEnterFullscreen}
           style={styles.actionBtn}
           accessibilityLabel="Watch Lime fullscreen"
           activeOpacity={0.7}
@@ -1304,14 +1577,15 @@ export function ReelItem({
             activeOpacity={0.82}
             style={styles.reposterBubbleAnchor}
           >
+            <Repeat2 size={15} color="#ffffff" strokeWidth={2.7} />
+            <Text style={styles.reposterLabel}>Reposted by</Text>
             <View style={styles.reposterBubbleCluster}>
               {visibleReposters.map((reposter, reposterIndex) => (
-                <FloatingReposterBubble
+                <ReposterAvatar
                   key={reposter.userId}
                   reposter={reposter}
                   reposterIndex={reposterIndex}
                   visibleReposterCount={visibleReposters.length}
-                  showBadge={reposterIndex === 0}
                 />
               ))}
               {visibleReposters.length === 0 ? (
@@ -1342,15 +1616,15 @@ export function ReelItem({
               cachePolicy="memory-disk"
             />
           </TouchableOpacity>
-          <TouchableOpacity style={{ flex: 1 }} onPress={handleProfilePress} activeOpacity={0.8}>
-            <Text style={styles.creatorName}>
+          <TouchableOpacity style={styles.creatorIdentity} onPress={handleProfilePress} activeOpacity={0.8}>
+            <Text style={styles.creatorName} numberOfLines={1}>
               {reel.user.firstName} {reel.user.lastName}
             </Text>
-            <Text style={styles.handle}>@{reel.user.userName}</Text>
+            <Text style={styles.handle} numberOfLines={1}>@{reel.user.userName}</Text>
           </TouchableOpacity>
-          {!isOwnReel ? (
+          {!isOwnAuthor ? (
             <TouchableOpacity
-              onPress={() => onFollowToggle(reel.userId, isFollowing)}
+              onPress={() => onFollowToggle(reel.authorUserId, isFollowing)}
               style={[styles.followBtn, isFollowing && styles.followingBtn]}
               activeOpacity={0.8}
             >
@@ -1604,13 +1878,15 @@ export const styles = StyleSheet.create({
   },
   rightSidebar: {
     position: 'absolute',
-    right: 16,
-    bottom: 110,
+    right: 12,
+    bottom: 40,
     alignItems: 'center',
-    gap: 22,
+    gap: 14,
     zIndex: 99,
   },
   actionBtn: {
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000000',
@@ -1639,8 +1915,12 @@ export const styles = StyleSheet.create({
   creatorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     marginBottom: 10,
+  },
+  creatorIdentity: {
+    flexShrink: 1,
+    maxWidth: '55%',
   },
   avatar: {
     width: 40,
@@ -1666,6 +1946,9 @@ export const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
   followBtn: {
+    minHeight: 36,
+    justifyContent: 'center',
+    marginLeft: 2,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 16,
@@ -1710,13 +1993,74 @@ export const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  reposterBubbleAnchor: { position: 'absolute', left: 0, bottom: '100%', marginBottom: 12, zIndex: 40 },
-  reposterBubbleCluster: { minWidth: 48, minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingRight: 5 },
+  fullscreenContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  fullscreenExitButton: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.36)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+    zIndex: 120,
+    elevation: 20,
+  },
+  playbackErrorOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 42,
+    backgroundColor: 'rgba(2,6,23,0.78)',
+    zIndex: 115,
+  },
+  playbackErrorTitle: { color: '#ffffff', fontSize: 17, fontWeight: '900', textAlign: 'center' },
+  playbackErrorMessage: { color: '#cbd5e1', fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: 5 },
+  playbackRetryButton: {
+    minWidth: 92,
+    minHeight: 44,
+    marginTop: 14,
+    paddingHorizontal: 18,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10b981',
+  },
+  playbackRetryText: { color: '#ffffff', fontSize: 14, fontWeight: '900' },
+  reposterBubbleAnchor: {
+    position: 'absolute',
+    left: 0,
+    bottom: '100%',
+    marginBottom: 12,
+    zIndex: 40,
+    minHeight: 44,
+    maxWidth: 248,
+    paddingLeft: 12,
+    paddingRight: 7,
+    borderRadius: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: 'rgba(2,6,23,0.76)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  reposterLabel: { color: '#ffffff', fontSize: 12, fontWeight: '800' },
+  reposterBubbleCluster: { minWidth: 32, minHeight: 32, flexDirection: 'row', alignItems: 'center' },
   reposterBubbleShell: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 0,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.82)',
     padding: 0,
     backgroundColor: 'rgba(2,6,23,0.72)',
     shadowColor: '#000000',
@@ -1725,23 +2069,9 @@ export const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 12,
   },
-  reposterBubbleAvatar: { width: '100%', height: '100%', borderRadius: 21 },
+  reposterBubbleAvatar: { width: '100%', height: '100%', borderRadius: 15 },
   reposterCountBubble: { alignItems: 'center', justifyContent: 'center', borderColor: 'rgba(255,255,255,0.8)', flexDirection: 'row', gap: 2 },
   reposterCountText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
-  reposterRepeatBadge: {
-    position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#10b981',
-    borderWidth: 2,
-    borderColor: '#020617',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 30,
-  },
   reposterSheetBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.58)' },
   reposterSheet: {
     position: 'absolute',

@@ -130,7 +130,7 @@ export function FeedsFilterSection({
       <Text style={{ marginBottom: 10, color: colors.text, fontSize: 15, fontWeight: '600' }}>
         Filters
       </Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 24 }}>
         {filterOptions.map((filter) => {
           const isActive = activeFilter === filter.name && !filter.comingSoon;
           const isComingSoon = filter.comingSoon === true;
@@ -140,6 +140,9 @@ export function FeedsFilterSection({
               key={filter.name}
               onPress={() => handleFilterPress(filter)}
               activeOpacity={isComingSoon ? 0.6 : 0.75}
+              accessibilityRole="button"
+              accessibilityLabel={isComingSoon ? `${filter.name}, Coming soon` : `${filter.name} filter`}
+              accessibilityState={{ selected: isActive }}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',

@@ -245,7 +245,11 @@ export default function UserProfileScreen() {
           relationshipRequestResourceService.removeUserFromCachedRequests(profile.uid);
           void conversationResourceService.removeConversation(currentUserId, profile.uid);
         }
-        await relationshipService.cancelOrRemoveFriend(currentUserId ?? '', profile.uid, friendshipStatus === 'none' ? 'pending' : friendshipStatus);
+        if (friendshipStatus === 'pending') {
+          await relationshipService.cancelPendingFriendRequest(currentUserId ?? '', profile.uid);
+        } else {
+          await relationshipService.cancelOrRemoveFriend(currentUserId ?? '', profile.uid, 'accepted');
+        }
         const wasAccepted = friendshipStatus === 'accepted';
         setFriendshipStatus('none');
         if (wasAccepted && currentUserId) await profileResourceService.adjustOwnStats(currentUserId, { friends: -1 });
@@ -372,7 +376,7 @@ export default function UserProfileScreen() {
                     }}
                   >
                     <Text style={{ color: friendshipStatus === 'accepted' ? '#047857' : friendshipStatus === 'pending' ? '#b45309' : '#ffffff', fontWeight: '700', fontSize: 13 }}>
-                      {friendshipStatus === 'accepted' ? 'Friends' : friendshipStatus === 'pending' ? 'Cancel Request' : 'Add Friend'}
+                      {friendshipStatus === 'accepted' ? 'Remove Friend' : friendshipStatus === 'pending' ? 'Cancel Request' : 'Add Friend'}
                     </Text>
                   </TouchableOpacity>
 

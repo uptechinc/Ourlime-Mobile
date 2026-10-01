@@ -25,6 +25,7 @@ import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 type PostCardSectionProps = {
   post: PostItem;
   isVisible?: boolean;
+  shouldLoadVideo?: boolean;
   isProfileRepost?: boolean;
   canModerateCommunityPost?: boolean;
   onCommentClick: (postId: string) => void;
@@ -47,7 +48,7 @@ const formatTimestamp = (createdAt: string): string => {
   return createdDate.toLocaleDateString();
 };
 
-export default function PostCardSection({ post, isVisible = false, isProfileRepost = false, canModerateCommunityPost = false, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate, onRepostRemoved }: PostCardSectionProps) {
+export default function PostCardSection({ post, isVisible = false, shouldLoadVideo = true, isProfileRepost = false, canModerateCommunityPost = false, onCommentClick, onPostDelete, onAuthorBlocked, onPostUpdate, onRepostRemoved }: PostCardSectionProps) {
   const router = useRouter();
   const { colors, isDark } = useAppTheme();
   const { activeUserId: currentUserId } = useAppData();
@@ -153,6 +154,7 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
   };
 
   const handleCreateRepost = async () => {
+    if (repostBusy) return;
     if (!currentUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to repost.' });
     setRepostBusy(true);
     try {
@@ -172,6 +174,7 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
   };
 
   const handleRepostPress = () => {
+    if (repostBusy) return;
     if (!currentUserId) {
       setFeedback({ title: 'Sign in required', message: 'Sign in to repost.' });
       return;
@@ -192,6 +195,7 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
       const updatedPost = {
         ...post,
         repostedByViewer: false,
+        reposters: post.reposters?.filter((reposter) => reposter.id !== currentUserId),
         repostedByUserIds: currentUserId
           ? post.repostedByUserIds?.filter((reposterUserId) => reposterUserId !== currentUserId)
           : post.repostedByUserIds,
@@ -246,8 +250,25 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
           </TouchableOpacity>
         ) : null}
 
+        {post.reposters?.length ? (
+          <TouchableOpacity
+            onPress={() => handleNavigateProfile(post.reposters?.[0]?.userName)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}
+          >
+            <Icon name="repeat" size={15} color={colors.mutedText} />
+            <Text style={{ color: colors.mutedText, fontSize: 12, fontWeight: '600', flexShrink: 1 }}>
+              {post.reposters.slice(0, 2).map((reposter) => reposter.id === currentUserId ? 'You' : `@${reposter.userName || reposter.firstName}`).join(' and ')}
+              {post.reposters.length > 2 ? ` and ${post.reposters.length - 2} others` : ''} reposted
+            </Text>
+          </TouchableOpacity>
+        ) : null}
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity onPress={() => handleNavigateProfile()} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={`View @${post.user.userName}'s profile`}
+            onPress={() => handleNavigateProfile()}
+            style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+          >
             <UserAvatar profileImage={post.user.profileImage} firstName={post.user.firstName || post.user.userName} size={48} />
             <View style={{ flex: 1, marginLeft: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -260,7 +281,14 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
               </View>
             </View>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setOptionsVisible(true)} style={{ padding: 8 }}><Icon name="more-horizontal" size={21} color={colors.icon} /></TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Post options"
+            onPress={() => setOptionsVisible(true)}
+            style={{ padding: 8 }}
+          >
+            <Icon name="more-horizontal" size={21} color={colors.icon} />
+          </TouchableOpacity>
         </View>
 
         {post.repostedFrom ? (
@@ -268,6 +296,14 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
             <Icon name="repeat" size={15} color={isDark ? '#34d399' : '#047857'} />
             <Text style={{ marginLeft: 7, color: isDark ? '#34d399' : '#047857', fontSize: 12, fontWeight: '700' }}>Reposted from @{post.repostedFrom.userName}</Text>
           </TouchableOpacity>
+        ) : null}
+        {!post.repostedFrom && isReposted ? (
+          <View accessibilityLabel={`You reposted this from @${post.user.userName}`} style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: 11, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 13, backgroundColor: isDark ? '#064e3b' : '#ecfdf5' }}>
+            <Icon name="repeat" size={15} color={isDark ? '#34d399' : '#047857'} />
+            <Text style={{ marginLeft: 7, color: isDark ? '#34d399' : '#047857', fontSize: 12, fontWeight: '700' }}>
+              You reposted this from @{post.user.userName}
+            </Text>
+          </View>
         ) : null}
 
         {/* 1. Text */}
@@ -295,7 +331,7 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
       </View>
 
       {/* 3. Media (Images & Videos) — 100% Edge-to-Edge */}
-      {post.media.length > 0 ? <View style={{ marginTop: 12 }}><ImageAndVideoPostSection media={post.media} isParentVisible={isVisible} onLike={() => void handleLike()} /></View> : null}
+      {post.media.length > 0 ? <View style={{ marginTop: 12 }}><ImageAndVideoPostSection media={post.media} isParentVisible={isVisible} shouldLoadVideo={shouldLoadVideo} onLike={() => void handleLike()} /></View> : null}
 
       {/* 4. Footer & Actions */}
       <View style={{ paddingHorizontal: 16 }}>
@@ -325,7 +361,15 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
             <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike post' : 'Like post'} onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
               <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} />
             </AnimatedActionButton>
-            <TouchableOpacity onPress={() => setLikesVisible(true)} disabled={likeCount === 0} style={{ marginLeft: 7, marginRight: 22, paddingVertical: 6 }}><Text style={{ color: isLiked ? '#c64d53' : colors.mutedText, fontWeight: '600' }}>{likeCount}</Text></TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={`View ${likeCount} ${likeCount === 1 ? 'like' : 'likes'}`}
+              onPress={() => setLikesVisible(true)}
+              disabled={likeCount === 0}
+              style={{ marginLeft: 7, marginRight: 22, paddingVertical: 6 }}
+            >
+              <Text style={{ color: isLiked ? '#c64d53' : colors.mutedText, fontWeight: '600' }}>{likeCount}</Text>
+            </TouchableOpacity>
             <AnimatedActionButton feedback="comment" accessibilityLabel="Open post comments" onPress={() => onCommentClick(post.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 22, paddingVertical: 6 }}>
               <Icon name="message-circle" size={22} color={colors.icon} />
               <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{post.stats.comments}</Text>
@@ -334,7 +378,7 @@ export default function PostCardSection({ post, isVisible = false, isProfileRepo
               <Icon name="share-2" size={22} color={colors.icon} />
               <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text>
             </AnimatedActionButton>
-            {!post.communityId ? <AnimatedActionButton disabled={repostBusy} onPress={handleRepostPress} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, opacity: repostBusy ? 0.6 : 1 }} accessibilityLabel={isReposted ? 'Remove repost' : 'Repost'}><Icon name="repeat" size={22} color={isReposted ? '#10b981' : colors.icon} /></AnimatedActionButton> : null}
+            {!post.communityId ? <AnimatedActionButton disabled={repostBusy} onPress={handleRepostPress} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, opacity: repostBusy ? 0.6 : 1 }} accessibilityLabel={repostBusy ? 'Updating repost' : isReposted ? 'Remove repost' : 'Repost'}>{repostBusy ? <ActivityIndicator size="small" color={colors.icon} /> : <Icon name="repeat" size={22} color={isReposted ? '#10b981' : colors.icon} />}</AnimatedActionButton> : null}
           </View>
 
           {/* Liked Users Display on the right */}

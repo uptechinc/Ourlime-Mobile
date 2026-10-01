@@ -1,7 +1,4 @@
-import { ApiService } from '@/lib/services/ApiService';
-import { db } from '@/lib/firebaseConfig';
-import { doc, getDoc } from 'firebase/firestore';
-import { sharedContentMessageService } from '@/lib/services/SharedContentMessageService';
+import { linkPreviewDataService } from '@/lib/services/LinkPreviewDataService';
 
 export type OurlimeLinkPreviewKind =
   | 'profile'
@@ -60,20 +57,6 @@ export type LinkPreviewData = {
   entity?: OurlimeLinkPreviewEntity;
 };
 
-type LinkPreviewApiData = {
-  url: string;
-  title: string;
-  description: string;
-  imageUrl?: string;
-  siteName: string;
-  entity?: OurlimeLinkPreviewEntity;
-};
-
-type LinkPreviewApiResponse = {
-  success: boolean;
-  data?: LinkPreviewApiData;
-};
-
 const MAX_CACHE_ENTRIES = 100;
 
 const URL_PATTERN = /https?:\/\/[^\s<]+/gi;
@@ -102,7 +85,6 @@ export class OpenGraphService {
   private static instance: OpenGraphService;
   private readonly cache = new Map<string, LinkPreviewData | null>();
   private readonly pending = new Map<string, Promise<LinkPreviewData | null>>();
-  private readonly apiService = ApiService.getInstance();
 
   private constructor() {}
 
@@ -184,30 +166,22 @@ export class OpenGraphService {
 
     if (this.isOurlimeUrl(url)) {
       try {
-        const response = await this.apiService.request<LinkPreviewApiResponse>(
-          `/api/link-preview?url=${encodeURIComponent(url)}`,
-          { authenticated: true }
-        );
-        if (response.success && response.data?.entity) {
-          console.log('[OpenGraphService] Fetched Ourlime preview for', url, {
-            kind: response.data.entity?.kind,
-            hasPost: Boolean(response.data.entity?.post),
-            postSubtype: response.data.entity?.post?.subtype,
-          });
+        const preview = await linkPreviewDataService.getLinkPreview(url);
+        if (preview?.entity) {
           return {
-            url: response.data.url,
-            title: response.data.title,
-            description: response.data.description,
-            image: response.data.imageUrl,
-            siteName: response.data.siteName,
+            url: preview.url,
+            title: preview.title,
+            description: preview.description,
+            image: preview.imageUrl,
+            siteName: preview.siteName,
             domain,
-            entity: response.data.entity,
+            entity: preview.entity,
           };
         }
-      } catch (e) {
-        console.log('[OpenGraphService] Error fetching Ourlime preview for', url, e);
+      } catch (error: unknown) {
+        console.error('[OpenGraphService.doFetch] Error:', error instanceof Error ? error.message : 'Ourlime preview unavailable');
       }
-      return this.resolveOurlimeFallback(url, domain);
+      return { url, domain, siteName: 'Ourlime' };
     }
 
     // 1. YouTube oEmbed
@@ -299,7 +273,6 @@ export class OpenGraphService {
     try {
       const parsed = new URL(value);
       const hostname = parsed.hostname.toLowerCase();
-      const apiOrigin = new URL(this.apiService.getBaseUrl()).origin;
       const isPrivateDevelopmentHost = (typeof __DEV__ !== 'undefined' && __DEV__)
         && (
           hostname === 'localhost'
@@ -310,153 +283,10 @@ export class OpenGraphService {
         );
       return hostname === 'ourlime.com'
         || hostname === 'www.ourlime.com'
-        || parsed.origin === apiOrigin
         || isPrivateDevelopmentHost;
     } catch {
       return false;
     }
-  }
-
-  private async resolveOurlimeFallback(url: string, domain: string): Promise<LinkPreviewData> {
-    const shared = sharedContentMessageService.parse(url);
-    if (shared?.kind === 'post') {
-      try {
-        let snap = await getDoc(doc(db, 'feedPosts', shared.entityId));
-        if (!snap.exists()) {
-          snap = await getDoc(doc(db, 'communityVariantDetails', shared.entityId));
-        }
-        if (!snap.exists()) {
-          snap = await getDoc(doc(db, 'posts', shared.entityId));
-        }
-        if (!snap.exists()) {
-          return {
-            url,
-            title: 'Post Deleted',
-            description: 'This post was deleted.',
-            domain,
-            siteName: 'Ourlime Posts',
-            entity: {
-              kind: 'post',
-              id: shared.entityId,
-              path: shared.mobileRoute,
-              unavailable: true,
-              unavailableReason: 'deleted',
-            },
-          };
-        }
-        const data = snap.data() || {};
-        const isAdminDeleted =
-          data.deletionSource === 'admin_moderation' ||
-          data.status === 'admin_deleted' ||
-          data.deletedByAdmin === true ||
-          data.moderated === true ||
-          data.banned === true;
-        if (isAdminDeleted) {
-          return {
-            url,
-            title: 'Post Removed',
-            description: 'This post was removed by an admin.',
-            domain,
-            siteName: 'Ourlime Posts',
-            entity: {
-              kind: 'post',
-              id: shared.entityId,
-              path: shared.mobileRoute,
-              unavailable: true,
-              unavailableReason: 'admin_taken_down',
-            },
-          };
-        }
-        const isUserDeleted = data.isDeleted === true || data.status === 'deleted';
-        if (isUserDeleted) {
-          return {
-            url,
-            title: 'Post Deleted',
-            description: 'This post was deleted.',
-            domain,
-            siteName: 'Ourlime Posts',
-            entity: {
-              kind: 'post',
-              id: shared.entityId,
-              path: shared.mobileRoute,
-              unavailable: true,
-              unavailableReason: 'deleted',
-            },
-          };
-        }
-      } catch (err) {
-        console.warn('[OpenGraphService] Firestore fallback error for post:', err);
-      }
-    } else if (shared?.kind === 'lime') {
-      try {
-        let snap = await getDoc(doc(db, 'reels', shared.entityId));
-        if (!snap.exists()) {
-          snap = await getDoc(doc(db, 'feedPosts', shared.entityId));
-        }
-        if (!snap.exists()) {
-          snap = await getDoc(doc(db, 'limes', shared.entityId));
-        }
-        if (!snap.exists()) {
-          return {
-            url,
-            title: 'Lime Deleted',
-            description: 'This Lime was deleted.',
-            domain,
-            siteName: 'Ourlime Limes',
-            entity: {
-              kind: 'lime',
-              id: shared.entityId,
-              path: shared.mobileRoute,
-              unavailable: true,
-              unavailableReason: 'deleted',
-            },
-          };
-        }
-        const data = snap.data() || {};
-        const isAdminDeleted =
-          data.deletionSource === 'admin_moderation' ||
-          data.status === 'admin_deleted' ||
-          data.deletedByAdmin === true ||
-          data.moderated === true ||
-          data.banned === true;
-        if (isAdminDeleted) {
-          return {
-            url,
-            title: 'Lime Removed',
-            description: 'This Lime was removed by an admin.',
-            domain,
-            siteName: 'Ourlime Limes',
-            entity: {
-              kind: 'lime',
-              id: shared.entityId,
-              path: shared.mobileRoute,
-              unavailable: true,
-              unavailableReason: 'admin_taken_down',
-            },
-          };
-        }
-        const isUserDeleted = data.isDeleted === true || data.status === 'deleted';
-        if (isUserDeleted) {
-          return {
-            url,
-            title: 'Lime Deleted',
-            description: 'This Lime was deleted.',
-            domain,
-            siteName: 'Ourlime Limes',
-            entity: {
-              kind: 'lime',
-              id: shared.entityId,
-              path: shared.mobileRoute,
-              unavailable: true,
-              unavailableReason: 'deleted',
-            },
-          };
-        }
-      } catch (err) {
-        console.warn('[OpenGraphService] Firestore fallback error for lime:', err);
-      }
-    }
-    return { url, domain, siteName: 'Ourlime' };
   }
 }
 

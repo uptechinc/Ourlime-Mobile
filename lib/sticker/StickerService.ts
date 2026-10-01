@@ -6,7 +6,7 @@ import {
     onSnapshot,
 } from 'firebase/firestore';
 import type { Sticker, StickerPack, StickerSearchParams } from '@/lib/types/sticker';
-import { ApiService } from '@/lib/services/ApiService';
+import { OURLIME_SITE_URL } from '@/lib/constants/site';
 
 const PACKS_COLLECTION = 'stickerPacks';
 const STICKERS_COLLECTION = 'stickers';
@@ -16,7 +16,7 @@ export function normalizeStickerUrl(url: string | undefined): string {
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
         return url;
     }
-    const webBaseUrl = ApiService.getInstance().getBaseUrl();
+    const webBaseUrl = OURLIME_SITE_URL;
     if (url.startsWith('/')) {
         return `${webBaseUrl}${url}`;
     }

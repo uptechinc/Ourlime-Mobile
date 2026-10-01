@@ -1,17 +1,15 @@
-import { ApiService } from './ApiService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { AuthService, type UserProfile } from './AuthService';
 import { auth, db } from '@/lib/firebaseConfig';
-import { collection, doc, getDoc, getDocs, limit, query } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, query, where, type QueryDocumentSnapshot } from 'firebase/firestore';
 import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
 
-type UnknownRecord = Record<string, unknown>;
-const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null && !Array.isArray(value);
+const QUERY_OVERSCAN_MULTIPLIER = 3;
 const readString = (value: unknown): string => typeof value === 'string' ? value : '';
+const readStringList = (value: unknown): string[] => Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 
 export class SearchService {
   private static instance: SearchService;
-  private readonly apiService = ApiService.getInstance();
   private readonly logger = DiagnosticLogService.getInstance();
   private readonly authService = AuthService.getInstance();
 
@@ -26,60 +24,28 @@ export class SearchService {
     const trimmed = searchQuery.trim();
     if (!trimmed) return [];
     this.logger.info('SearchService', 'searchUsers:start', { query: trimmed });
-    try {
-      const response = await this.apiService.request<{ success: boolean; data?: unknown[]; error?: string; message?: string }>(
-        `/api/users/search?q=${encodeURIComponent(trimmed)}&limit=${encodeURIComponent(String(Math.min(20, Math.max(1, maxResults))))}`,
-        { authenticated: true, timeoutMs: 18_000 }
-      );
-      if (!response.success) throw new Error(response.error || response.message || 'Search failed');
-      const profiles = this.normalizeProfiles(response.data ?? []);
-      this.logger.success('SearchService', 'searchUsers', { resultCount: profiles.length, source: 'api' });
-      return profiles;
-    } catch {
-      const profiles = await this.searchUsersFromFirestore(trimmed, maxResults);
-      this.logger.success('SearchService', 'searchUsers', { resultCount: profiles.length, source: 'firestore' });
-      return profiles;
-    }
+    const profiles = await this.searchUsersFromFirestore(trimmed, maxResults);
+    this.logger.success('SearchService', 'searchUsers', { resultCount: profiles.length });
+    return profiles;
   }
 
-  private normalizeProfiles(values: unknown[]): UserProfile[] {
-    return values.flatMap((value): UserProfile[] => {
-      if (!isRecord(value)) return [];
-      if (accountLifecycleVisibilityService.isHidden(value)) return [];
-      const uid = readString(value.id) || readString(value.uid);
-      if (!uid) return [];
-      return [{
-        uid,
-        firstName: readString(value.firstName),
-        lastName: readString(value.lastName),
-        userName: readString(value.userName),
-        email: '',
-        accountType: readString(value.accountType) || 'user',
-        emailVerified: value.emailVerified === true,
-        profilePicture: readString(value.profileImage) || readString(value.profilePicture) || null,
-      }];
-    });
-  }
-
+  /** Same indexed prefix queries and privacy/block filters as the website's user search route. */
   private async searchUsersFromFirestore(searchQuery: string, maxResults: number): Promise<UserProfile[]> {
-    const normalizedQuery = searchQuery.toLowerCase().replace(/^@/, '');
+    const resultLimit = Math.min(20, Math.max(1, maxResults));
     const currentUserId = auth.currentUser?.uid;
-    const snapshot = await getDocs(query(collection(db, 'users'), limit(80)));
-    const candidates = snapshot.docs
-      .filter((document) => document.id !== currentUserId)
-      .filter((document) => {
-        const user = document.data();
-        if (user.deletedAt != null || user.disabled === true || user.isPrivate === true || accountLifecycleVisibilityService.isHidden(user)) return false;
-        if (readString(user.accountPrivacy) === 'private' || readString(user.visibility) === 'private') return false;
-        const searchable = [
-          readString(user.firstName),
-          readString(user.lastName),
-          readString(user.userName),
-          readString(user.displayName),
-        ].join(' ').toLowerCase();
-        return searchable.includes(normalizedQuery);
-      })
-      .slice(0, Math.min(20, Math.max(1, maxResults)));
+    const [currentUser, candidateDocuments] = await Promise.all([
+      currentUserId ? getDoc(doc(db, 'users', currentUserId)).catch(() => null) : Promise.resolve(null),
+      this.findCandidates(searchQuery.replace(/^@/, ''), resultLimit),
+    ]);
+    const currentBlockList = readStringList(currentUser?.data()?.blockList);
+    const candidates = candidateDocuments.filter((document) => {
+      if (document.id === currentUserId || currentBlockList.includes(document.id)) return false;
+      const user = document.data();
+      return !accountLifecycleVisibilityService.isHidden(user)
+        && !(currentUserId && readStringList(user.blockList).includes(currentUserId))
+        && readString(user.accountPrivacy) !== 'private'
+        && user.isPrivate !== true;
+    });
     const visibilityResults = await Promise.allSettled(
       candidates.map(async (candidateDocument) => ({
         candidateDocument,
@@ -88,13 +54,27 @@ export class SearchService {
     );
     const visibleCandidates = visibilityResults.flatMap((result) => (
       result.status === 'fulfilled' && result.value.visible ? [result.value.candidateDocument] : []
-    ));
+    )).slice(0, resultLimit);
     const profileResults = await Promise.allSettled(
       visibleCandidates.map((candidateDocument) => this.authService.getUserProfile(candidateDocument.id)),
     );
     return profileResults.flatMap((result): UserProfile[] => (
       result.status === 'fulfilled' && result.value ? [result.value] : []
     ));
+  }
+
+  private async findCandidates(searchQuery: string, resultLimit: number): Promise<QueryDocumentSnapshot[]> {
+    const normalized = searchQuery.trim().replace(/\s+/g, ' ');
+    const titleCase = normalized.replace(/\b\p{L}/gu, (character) => character.toLocaleUpperCase());
+    const variants = [...new Set([normalized, normalized.toLocaleLowerCase(), titleCase])];
+    const fields = ['userName', 'firstName', 'lastName'] as const;
+    const snapshots = await Promise.all(fields.flatMap((field) => variants.map((variant) => getDocs(query(
+      collection(db, 'users'),
+      where(field, '>=', variant),
+      where(field, '<=', `${variant}\uf8ff`),
+      limit(resultLimit * QUERY_OVERSCAN_MULTIPLIER),
+    )))));
+    return [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((document) => [document.id, document] as const)).values()];
   }
 
   private async isSearchVisible(userId: string): Promise<boolean> {

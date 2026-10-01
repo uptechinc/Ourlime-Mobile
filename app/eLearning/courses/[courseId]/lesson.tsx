@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Modal,
   ScrollView,
   StyleSheet,
@@ -8,6 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import CustomModal from '@/components/ui/CustomModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -22,6 +22,7 @@ import {
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
+import { LessonScreenSkeleton } from '@/components/ui/Skeleton';
 import { courseService } from '@/lib/services/CourseService';
 import type { Course, CourseModule, CourseLesson, Enrollment } from '@/lib/types/course';
 
@@ -38,6 +39,20 @@ export default function LessonScreen() {
   const [currentLessonIndex, setCurrentLessonIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showDrawer, setShowDrawer] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [savingCompletion, setSavingCompletion] = useState(false);
+  const [dialogState, setDialogState] = useState<{
+    visible: boolean;
+    type: 'error' | 'warning' | 'info' | 'success';
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    type: 'info',
+    title: '',
+    message: '',
+  });
+  const loadGenerationRef = useRef(0);
 
   const allLessons = useMemo(() => {
     const list: CourseLesson[] = [];
@@ -51,26 +66,42 @@ export default function LessonScreen() {
 
   const loadData = useCallback(async () => {
     if (!id) return;
+    const loadGeneration = ++loadGenerationRef.current;
     setLoading(true);
+    setLoadError(null);
     try {
-      const [courseData, modulesData, enrollData] = await Promise.all([
+      const [courseData, enrollData] = await Promise.all([
         courseService.getCourse(id),
-        courseService.getCourseCurriculum(id),
         activeUserId ? courseService.getEnrollmentStatus(activeUserId, id) : null,
       ]);
+      if (!enrollData) {
+        if (loadGeneration !== loadGenerationRef.current) return;
+        setCourse(courseData);
+        setCurriculum([]);
+        setEnrollment(null);
+        setLoadError('Enroll in this course before opening its lessons.');
+        return;
+      }
+      const modulesData = await courseService.getCourseCurriculum(id, 'enrolled');
 
+      if (loadGeneration !== loadGenerationRef.current) return;
       setCourse(courseData);
       setCurriculum(modulesData);
       setEnrollment(enrollData);
     } catch (err) {
       console.error('[LessonScreen] Error:', err);
+      if (loadGeneration !== loadGenerationRef.current) return;
+      setLoadError('Lesson content could not be loaded. Check your connection and try again.');
     } finally {
-      setLoading(false);
+      if (loadGeneration === loadGenerationRef.current) setLoading(false);
     }
   }, [id, activeUserId]);
 
   useEffect(() => {
     void loadData();
+    return () => {
+      loadGenerationRef.current += 1;
+    };
   }, [loadData]);
 
   const isCompleted = Boolean(
@@ -78,10 +109,23 @@ export default function LessonScreen() {
   );
 
   const handleToggleComplete = async () => {
-    if (!enrollment || !currentLesson) return;
-    await courseService.markLessonCompleted(enrollment.id, currentLesson.id, allLessons.length);
-    const updated = await courseService.getEnrollmentStatus(enrollment.userId, id);
-    setEnrollment(updated);
+    if (!enrollment || !currentLesson || isCompleted || savingCompletion) return;
+    setSavingCompletion(true);
+    try {
+      await courseService.markLessonCompleted(enrollment.id, currentLesson.id, allLessons.length);
+      const updated = await courseService.getEnrollmentStatus(enrollment.userId, id);
+      setEnrollment(updated);
+    } catch (error) {
+      console.error('[LessonScreen] Completion failed:', error);
+      setDialogState({
+        visible: true,
+        type: 'error',
+        title: 'Progress not saved',
+        message: 'Your lesson progress could not be confirmed. Please try again.',
+      });
+    } finally {
+      setSavingCompletion(false);
+    }
   };
 
   const handleNext = () => {
@@ -112,13 +156,17 @@ export default function LessonScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#10b981" />
-          <Text style={[styles.loadingText, { color: colors.mutedText }]}>Loading lesson content...</Text>
-        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <LessonScreenSkeleton />
+        </ScrollView>
       ) : !currentLesson ? (
         <View style={styles.centerContainer}>
-          <Text style={[styles.errorText, { color: colors.text }]}>No lesson content found.</Text>
+          <Text style={[styles.errorText, { color: colors.text }]}>{loadError ?? 'This course does not have published lessons yet.'}</Text>
+          {loadError ? (
+            <TouchableOpacity onPress={() => void loadData()} style={styles.retryButton} accessibilityRole="button">
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -127,18 +175,18 @@ export default function LessonScreen() {
             {currentLesson.type === 'video' ? (
               <View style={styles.videoPlaceholder}>
                 <PlayCircle size={56} color="#10b981" />
-                <Text style={styles.videoPlaceholderText}>Interactive Video Lecture</Text>
-                <Text style={styles.videoDuration}>{currentLesson.duration || 15} minutes</Text>
+                <Text style={styles.videoPlaceholderText}>Video lesson</Text>
+                {currentLesson.duration ? <Text style={styles.videoDuration}>{currentLesson.duration} minutes</Text> : null}
               </View>
             ) : currentLesson.type === 'quiz' ? (
               <View style={styles.videoPlaceholder}>
                 <HelpCircle size={56} color="#f59e0b" />
-                <Text style={styles.videoPlaceholderText}>Knowledge Assessment Quiz</Text>
+                <Text style={styles.videoPlaceholderText}>Quiz</Text>
               </View>
             ) : (
               <View style={styles.videoPlaceholder}>
                 <FileText size={56} color="#3b82f6" />
-                <Text style={styles.videoPlaceholderText}>Lecture Reading Material</Text>
+                <Text style={styles.videoPlaceholderText}>Lesson material</Text>
               </View>
             )}
           </View>
@@ -152,6 +200,7 @@ export default function LessonScreen() {
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={handleToggleComplete}
+                disabled={isCompleted || savingCompletion}
                 style={[
                   styles.completeToggleBtn,
                   isCompleted
@@ -166,7 +215,7 @@ export default function LessonScreen() {
                     { color: isCompleted ? '#ffffff' : colors.text },
                   ]}
                 >
-                  {isCompleted ? 'Completed' : 'Mark as Done'}
+                  {isCompleted ? 'Completed' : savingCompletion ? 'Saving…' : 'Mark as Done'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -176,7 +225,7 @@ export default function LessonScreen() {
             {/* Content Text */}
             <View style={[styles.contentCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Text style={[styles.contentText, { color: colors.text }]}>
-                {currentLesson.content || 'Follow along with the lecture resources and key takeaways.'}
+                {currentLesson.content || 'No text content was provided for this lesson.'}
               </Text>
             </View>
           </View>
@@ -261,6 +310,14 @@ export default function LessonScreen() {
           </View>
         </View>
       </Modal>
+
+      <CustomModal
+        visible={dialogState.visible}
+        type={dialogState.type}
+        title={dialogState.title}
+        message={dialogState.message}
+        onClose={() => setDialogState((prev) => ({ ...prev, visible: false }))}
+      />
     </SafeAreaView>
   );
 }
@@ -299,6 +356,19 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
+    textAlign: 'center',
+  },
+  retryButton: {
+    minHeight: 44,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#10b981',
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontWeight: '800',
   },
   scrollContent: {
     paddingBottom: 90,

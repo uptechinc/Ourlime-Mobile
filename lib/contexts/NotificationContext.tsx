@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import type { NotificationData } from '@/lib/types/notification';
 import { AuthService } from '@/lib/services/AuthService';
 import { NotificationService } from '@/lib/services/NotificationService';
+import { inAppNotificationService } from '@/lib/services/InAppNotificationService';
+import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
 
 type NotificationContextValue = {
   notifications: NotificationData[];
@@ -105,11 +107,25 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     if (!userId) return;
     return notificationService.subscribeToInvalidation(
       userId,
-      () => {
+      (arrived) => {
         if (!didReceiveInitialInvalidationRef.current) {
           didReceiveInitialInvalidationRef.current = true;
           return;
         }
+        // Drop-down banner for each new notification (likes, comments, friend requests, ...).
+        arrived.filter((notification) => !notification.isRead).forEach((notification) => {
+          const metadata = notification.metadata ?? {};
+          const avatarUrl = typeof metadata.sourceProfileImage === 'string' ? metadata.sourceProfileImage
+            : typeof notification.userDetails?.profileImage === 'string' ? notification.userDetails.profileImage : null;
+          inAppNotificationService.showNotification({
+            id: `notification:${notification.id}`,
+            kind: 'notification',
+            title: notification.title || 'Ourlime',
+            body: notification.message,
+            avatarUrl,
+            destination: notificationDestinationRegistry.normalize({ ...metadata, type: notification.type, notificationId: notification.id }),
+          });
+        });
         void refreshNotifications();
       },
       (error) => console.warn('[NotificationContext.subscribe]', error.message)
