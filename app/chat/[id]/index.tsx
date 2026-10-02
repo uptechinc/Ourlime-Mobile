@@ -48,6 +48,8 @@ import { ChatConversationSkeleton } from '@/components/ui/Skeleton';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { presenceService, type PresenceState } from '@/lib/services/PresenceService';
 import { useCallCoordinator } from '@/lib/contexts/CallContext';
+import { useCallStore } from '@/lib/store/useCallStore';
+import { useCallElsewhereNotice } from '@/lib/hooks/useCallElsewhereNotice';
 import { simpleChatMessageService } from '@/lib/services/SimpleChatMessageService';
 import { conversationResourceService } from '@/lib/services/ConversationResourceService';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
@@ -829,6 +831,10 @@ export default function ChatPage() {
 
     // Start a call
     const callCoordinator = useCallCoordinator();
+    // Same account already calling / on a call with this friend from another device: show a pill and block calling.
+    const thisDeviceCallId = useCallStore((state) => state.session?.id ?? null);
+    const callElsewhereNotice = useCallElsewhereNotice(currentUserId, friendId, friend?.firstName || friend?.userName || 'them', thisDeviceCallId);
+    const isCallingBlocked = isBlocked || callElsewhereNotice !== null;
     const handleStartCall = useCallback(async (type: 'audio' | 'video') => {
         if (!friendId || !currentUserId || isBlocked) return;
         await callCoordinator.startCall(friendId, type === 'audio' ? 'voice' : 'video');
@@ -986,10 +992,10 @@ export default function ChatPage() {
                     <View style={{ flex: 1 }} />
                 )}
 
-                <TouchableOpacity onPress={() => handleStartCall('audio')} disabled={isBlocked} style={{ padding: 8, opacity: isBlocked ? 0.35 : 1 }}>
+                <TouchableOpacity onPress={() => handleStartCall('audio')} disabled={isCallingBlocked} style={{ padding: 8, opacity: isCallingBlocked ? 0.35 : 1 }}>
                     <Icon name="phone" size={20} color="#10b981" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleStartCall('video')} disabled={isBlocked} style={{ padding: 8, opacity: isBlocked ? 0.35 : 1 }}>
+                <TouchableOpacity onPress={() => handleStartCall('video')} disabled={isCallingBlocked} style={{ padding: 8, opacity: isCallingBlocked ? 0.35 : 1 }}>
                     <Icon name="video" size={20} color="#10b981" />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setShowSettings(true)} style={{ padding: 8 }}>
@@ -1030,6 +1036,15 @@ export default function ChatPage() {
                         contentContainerStyle={messageListContentStyle}
                         showsVerticalScrollIndicator={false}
                         renderItem={renderMessage}
+                        // Inverted list: the header sits at the bottom, under the newest message.
+                        ListHeaderComponent={callElsewhereNotice ? (
+                            <View accessibilityRole="text" accessibilityLiveRegion="polite" style={{ alignItems: 'center', marginVertical: 10, paddingHorizontal: 12 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(100,116,139,0.1)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, gap: 6 }}>
+                                    <Icon name="phone-call" size={12} color="#10b981" />
+                                    <Text style={{ fontSize: 12, color: colors.mutedText, fontWeight: '500' }}>{callElsewhereNotice}</Text>
+                                </View>
+                            </View>
+                        ) : null}
                     />
                     ) : isLoading ? (
                         <ChatConversationSkeleton />

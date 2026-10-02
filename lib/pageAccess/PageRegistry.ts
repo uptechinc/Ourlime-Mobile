@@ -346,6 +346,11 @@ const BADGE_TEXT: Record<PageAccessSetting['status'], string> = {
 	disabled: 'Unavailable',
 };
 
+/** Short status label shown on page badges and the preview notice. */
+export function getPageAccessBadgeText(status: PageAccessSetting['status']): string {
+	return BADGE_TEXT[status];
+}
+
 export function getDefaultMobilePageSettings(): PageAccessSetting[] {
 	return MOBILE_PAGE_REGISTRY.map((entry, order) => ({
 		id: entry.id,

@@ -29,6 +29,9 @@ import VideoThumbnailPicker from '@/components/media/VideoThumbnailPicker';
 import { CoverFramePreview, CoverFrameScrubber } from '@/components/media/CoverFrameScrubber';
 import VideoTrimModal, { type TrimmedVideoResult } from '@/components/media/VideoTrimModal';
 import { videoTrimService } from '@/lib/services/VideoTrimService';
+import DraftsSheet from '@/components/drafts/DraftsSheet';
+import DraftDiscardSheet from '@/components/drafts/DraftDiscardSheet';
+import { creationDraftService, DraftLimitError, MAX_DRAFTS_PER_KIND, type CreationDraft } from '@/lib/services/CreationDraftService';
 const authService = AuthService.getInstance();
 const searchService = SearchService.getInstance();
 const MAX_LIME_VIDEO_DURATION_SECONDS = 30;
@@ -63,6 +66,8 @@ type CreateLimeModalProps = {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** Open on the drafts list (tapping a draft reminder). */
+  initialShowDrafts?: boolean;
 };
 
 /** Playable preview of the chosen Lime on the compose screen. */
@@ -252,7 +257,7 @@ function LimeVideoConfirmationModal({
   );
 }
 
-export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLimeModalProps) {
+export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialShowDrafts = false }: CreateLimeModalProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useAppTheme();
   const [visibility, setVisibility] = useState<'public' | 'friends' | 'private'>('public');
@@ -271,7 +276,145 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
   const [, setMentionQuery] = useState('');
 
-  const swipeDismiss = useSwipeDismiss({ visible: isOpen, onDismiss: onClose, disabled: isUploading });
+  // ── Lime drafts (shared with the website): up to 5, each deleted 7 days after it was created ──
+  const [drafts, setDrafts] = useState<CreationDraft[]>([]);
+  const [isDraftsLoading, setIsDraftsLoading] = useState(false);
+  const [isDraftsSheetVisible, setIsDraftsSheetVisible] = useState(false);
+  const [draftsNotice, setDraftsNotice] = useState<string | null>(null);
+  const [openingDraftId, setOpeningDraftId] = useState<string | null>(null);
+  const [openedDraftId, setOpenedDraftId] = useState<string | null>(null);
+  const [isDraftBusy, setIsDraftBusy] = useState(false);
+  const [isLeaveSheetVisible, setIsLeaveSheetVisible] = useState(false);
+  const hasLimeContent = Boolean(selectedAsset) || caption.trim().length > 0;
+  const currentUserId = authService.getCurrentUser()?.uid;
+
+  const refreshDrafts = async (): Promise<void> => {
+    if (!currentUserId) return;
+    setIsDraftsLoading(true);
+    try {
+      setDrafts(await creationDraftService.list(currentUserId, 'lime'));
+    } catch (error: unknown) {
+      console.warn('[CreateLimeModal.refreshDrafts]', error instanceof Error ? error.message : 'Could not load drafts');
+    } finally {
+      setIsDraftsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void refreshDrafts();
+    if (initialShowDrafts) setIsDraftsSheetVisible(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload whenever the composer opens
+  }, [isOpen, initialShowDrafts]);
+
+  const resetLimeForm = (): void => {
+    setSelectedAsset(null);
+    setPendingAsset(null);
+    setSelectedThumbnailUri('');
+    setCaption('');
+    setCategory('For You');
+    setVisibility('public');
+    setOpenedDraftId(null);
+  };
+
+  const saveLimeDraft = async (): Promise<boolean> => {
+    if (!currentUserId || !hasLimeContent || isDraftBusy) return false;
+    setIsDraftBusy(true);
+    try {
+      const durationSeconds = typeof selectedAsset?.duration === 'number' ? selectedAsset.duration / 1000 : 0;
+      const draftId = await creationDraftService.save(currentUserId, 'lime', {
+        caption,
+        visibility,
+        hashtags: [],
+        media: selectedAsset ? [{
+          uri: selectedAsset.uri,
+          type: 'video',
+          fileName: selectedAsset.fileName ?? 'lime.mp4',
+          mimeType: selectedAsset.mimeType ?? 'video/mp4',
+          width: selectedAsset.width,
+          height: selectedAsset.height,
+          fileSize: selectedAsset.fileSize,
+          durationSeconds,
+          thumbnailUri: selectedThumbnailUri || undefined,
+        }] : [],
+        lime: { category, privacy: visibility, durationSeconds },
+      }, openedDraftId ?? undefined);
+      setOpenedDraftId(draftId);
+      void refreshDrafts();
+      return true;
+    } catch (error: unknown) {
+      if (error instanceof DraftLimitError) {
+        setIsLeaveSheetVisible(false);
+        setDraftsNotice(error.message);
+        setIsDraftsSheetVisible(true);
+        void refreshDrafts();
+        return false;
+      }
+      setDialogState({ visible: true, type: 'error', title: 'Draft not saved', message: error instanceof Error ? error.message : 'Please check your connection and try again.' });
+      return false;
+    } finally {
+      setIsDraftBusy(false);
+    }
+  };
+
+  const openLimeDraft = async (draft: CreationDraft): Promise<void> => {
+    if (openingDraftId) return;
+    setOpeningDraftId(draft.id);
+    try {
+      const opened = await creationDraftService.open(draft);
+      const video = opened.content.media[0];
+      setCaption(opened.content.caption);
+      const privacy = draft.lime?.privacy;
+      setVisibility(privacy === 'friends' || privacy === 'private' ? privacy : 'public');
+      setCategory(draft.lime?.category || 'For You');
+      if (video) {
+        setSelectedAsset({
+          uri: video.uri,
+          width: video.width ?? 1080,
+          height: video.height ?? 1920,
+          type: 'video',
+          fileName: video.fileName,
+          mimeType: video.mimeType,
+          fileSize: video.fileSize,
+          duration: Math.round((video.durationSeconds ?? draft.lime?.durationSeconds ?? 0) * 1000),
+        });
+        setSelectedThumbnailUri(video.thumbnailUri ?? '');
+      } else {
+        setSelectedAsset(null);
+        setSelectedThumbnailUri('');
+      }
+      setOpenedDraftId(draft.id);
+      setIsDraftsSheetVisible(false);
+      setDraftsNotice(null);
+      if (opened.failedMedia > 0) {
+        setDialogState({ visible: true, type: 'warning', title: 'Video missing', message: 'The draft opened without its video. Choose it again.' });
+      }
+    } catch (error: unknown) {
+      setDialogState({ visible: true, type: 'error', title: 'Draft not opened', message: error instanceof Error ? error.message : 'Please try again.' });
+    } finally {
+      setOpeningDraftId(null);
+    }
+  };
+
+  const deleteLimeDraft = async (draft: CreationDraft): Promise<void> => {
+    if (!currentUserId) return;
+    try {
+      await creationDraftService.remove(currentUserId, draft.id);
+      if (openedDraftId === draft.id) setOpenedDraftId(null);
+      setDrafts((current) => current.filter((item) => item.id !== draft.id));
+      setDraftsNotice(null);
+    } catch (error: unknown) {
+      setDialogState({ visible: true, type: 'error', title: 'Draft not deleted', message: error instanceof Error ? error.message : 'Please try again.' });
+    }
+  };
+
+  /** Closing with something unsaved asks first (X, Cancel, swipe down, Android back). */
+  const shouldDismissLime = (): boolean => {
+    if (isUploading || !hasLimeContent) return true;
+    setIsLeaveSheetVisible(true);
+    return false;
+  };
+  const swipeDismiss = useSwipeDismiss({ visible: isOpen, onDismiss: onClose, disabled: isUploading, shouldDismiss: shouldDismissLime });
 
   /* ── Mention Search Handler ── */
   const handleCaptionChange = async (text: string) => {
@@ -529,6 +672,11 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
 
       setUploadProgress(100);
       setIsUploading(false);
+      if (openedDraftId) {
+        const publishedDraftId = openedDraftId;
+        setOpenedDraftId(null);
+        void creationDraftService.remove(user.uid, publishedDraftId).then(() => refreshDrafts()).catch(() => undefined);
+      }
       void interactionFeedbackService.play('success');
       setShowSuccessModal(true);
     } catch (error: unknown) {
@@ -570,9 +718,19 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
               <Film size={22} color="#10b981" />
               <Text style={[styles.modalTitle, { color: colors.text }]}>Create a Lime</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: colors.control }]} disabled={isUploading}>
-              <X size={20} color={colors.icon} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <TouchableOpacity onPress={() => { setDraftsNotice(null); setIsDraftsSheetVisible(true); void refreshDrafts(); }} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 12, backgroundColor: colors.control }} accessibilityLabel="View Lime drafts">
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12 }}>Drafts ({drafts.length}/{MAX_DRAFTS_PER_KIND})</Text>
+              </TouchableOpacity>
+              {hasLimeContent ? (
+                <TouchableOpacity onPress={() => void saveLimeDraft().then((saved) => { if (saved) setDialogState({ visible: true, type: 'success', title: 'Draft saved', message: 'Drafts are kept for 7 days. You can finish this Lime here or on the website.' }); })} disabled={isDraftBusy || isUploading} style={{ paddingHorizontal: 8, paddingVertical: 7 }} accessibilityLabel="Save Lime draft">
+                  {isDraftBusy ? <ActivityIndicator size="small" color={colors.accent} /> : <Text style={{ color: colors.accentText, fontWeight: '800', fontSize: 12 }}>Save draft</Text>}
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity onPress={swipeDismiss.dismissWithAnimation} style={[styles.closeBtn, { backgroundColor: colors.control }]} disabled={isUploading} accessibilityLabel="Close Lime creation">
+                <X size={20} color={colors.icon} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -717,7 +875,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
 
           {/* Action Buttons */}
           <View style={[styles.footerRow, { borderTopColor: colors.border }]}>
-            <TouchableOpacity onPress={onClose} style={[styles.cancelBtn, { backgroundColor: colors.control, borderColor: colors.border }]} disabled={isUploading}>
+            <TouchableOpacity onPress={swipeDismiss.dismissWithAnimation} style={[styles.cancelBtn, { backgroundColor: colors.control, borderColor: colors.border }]} disabled={isUploading}>
               <Text style={[styles.cancelBtnText, { color: colors.secondaryText }]}>Cancel</Text>
             </TouchableOpacity>
 
@@ -781,6 +939,26 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess }: CreateLi
         onError={handleTrimLimeError}
       />
     ) : null}
+    <DraftsSheet
+      visible={isDraftsSheetVisible}
+      kind="lime"
+      drafts={drafts}
+      loading={isDraftsLoading}
+      notice={draftsNotice}
+      openingDraftId={openingDraftId}
+      onOpenDraft={(draft) => void openLimeDraft(draft)}
+      onDeleteDraft={deleteLimeDraft}
+      onClose={() => { setIsDraftsSheetVisible(false); setDraftsNotice(null); }}
+    />
+    <DraftDiscardSheet
+      visible={isLeaveSheetVisible}
+      title="Leave your Lime?"
+      message="Save it as a draft to finish later (drafts are kept for 7 days), or discard it."
+      isSaving={isDraftBusy}
+      onSaveDraft={() => void saveLimeDraft().then((saved) => { if (saved) { setIsLeaveSheetVisible(false); resetLimeForm(); onClose(); } })}
+      onDiscard={() => { setIsLeaveSheetVisible(false); resetLimeForm(); onClose(); }}
+      onContinue={() => setIsLeaveSheetVisible(false)}
+    />
     <LimeVideoConfirmationModal
       asset={pendingAsset}
       selectedThumbnailUri={selectedThumbnailUri}

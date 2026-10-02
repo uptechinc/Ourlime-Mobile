@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { draftExpiryService } from '@/lib/services/DraftExpiryService';
 import { Text, View } from "react-native";
 import { FeedSkeleton } from "@/components/ui/Skeleton";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -34,6 +36,22 @@ export default function FeedsScreen() {
   useEffect(() => {
     void SplashScreen.hideAsync().catch(() => undefined);
   }, []);
+
+  // Drafts expire 7 days after creation: checked here (no Cloud Function) each time the app's feed opens.
+  useEffect(() => {
+    if (currentUser?.uid) void draftExpiryService.runOnFeedOpen(currentUser.uid);
+  }, [currentUser?.uid]);
+
+  // Tapping a draft reminder lands here with ?drafts=post: open the composer on its drafts list.
+  const router = useRouter();
+  const { drafts: draftsParam } = useLocalSearchParams<{ drafts?: string }>();
+  const [openComposerOnDrafts, setOpenComposerOnDrafts] = useState(false);
+  useEffect(() => {
+    if (draftsParam !== 'post' || !userProfile) return;
+    setOpenComposerOnDrafts(true);
+    setIsCreatePostModalOpen(true);
+    router.setParams({ drafts: undefined });
+  }, [draftsParam, router, userProfile]);
 
   const handleCreatePost = () => {
     if (!postAuthorizationService.canCreatePost(userProfile)) {
@@ -86,7 +104,11 @@ export default function FeedsScreen() {
 
       {isCreatePostModalOpen && (
         <CreatePostModal
-          setTogglePostForm={setIsCreatePostModalOpen}
+          setTogglePostForm={(open) => {
+            setIsCreatePostModalOpen(open);
+            if (!open) setOpenComposerOnDrafts(false);
+          }}
+          initialShowDrafts={openComposerOnDrafts}
           userProfile={userProfile}
         />
       )}

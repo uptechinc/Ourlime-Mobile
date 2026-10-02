@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +21,7 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import ShareContentSheet from '@/components/sharing/ShareContentSheet';
+import { toast } from 'sonner-native';
 
 type PostCardSectionProps = {
   post: PostItem;
@@ -58,8 +59,11 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
   const [shareCount, setShareCount] = useState(post.stats.shares);
   const [hasShared, setHasShared] = useState(false);
   const [isReposted, setIsReposted] = useState(post.repostedByViewer === true);
-  const [removeRepostVisible, setRemoveRepostVisible] = useState(false);
-  const [repostBusy, setRepostBusy] = useState(false);
+  // Instagram-style repost: the UI flips instantly; the server catches up in the background. Quick repeated taps
+  // collapse to the final choice (desired vs. confirmed state), and a failure flips the card back.
+  const desiredRepostRef = useRef(post.repostedByViewer === true);
+  const confirmedRepostRef = useRef(post.repostedByViewer === true);
+  const repostSyncingRef = useRef(false);
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [likesVisible, setLikesVisible] = useState(false);
@@ -69,7 +73,10 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
   const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(null);
 
   useEffect(() => {
+    if (repostSyncingRef.current) return;
     setIsReposted(post.repostedByViewer === true);
+    desiredRepostRef.current = post.repostedByViewer === true;
+    confirmedRepostRef.current = post.repostedByViewer === true;
   }, [post.repostedByViewer]);
 
   useEffect(() => {
@@ -153,65 +160,59 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
     }
   };
 
-  const handleCreateRepost = async () => {
-    if (repostBusy) return;
-    if (!currentUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to repost.' });
-    setRepostBusy(true);
-    try {
-      await postService.repost(post.id);
-      const nextCount = shareCount + 1;
-      const nextRepostedByUserIds = currentUserId
+  /** The post as it looks with (or without) my repost, for the feed caches. */
+  const withViewerRepost = (reposted: boolean, shares: number): PostItem => ({
+    ...post,
+    repostedByViewer: reposted,
+    repostedByUserIds: currentUserId
+      ? reposted
         ? Array.from(new Set([...(post.repostedByUserIds ?? []), currentUserId]))
-        : post.repostedByUserIds;
-      setIsReposted(true);
-      setShareCount(nextCount);
-      onPostUpdate({ ...post, repostedByViewer: true, repostedByUserIds: nextRepostedByUserIds, stats: { ...post.stats, shares: nextCount } });
+        : post.repostedByUserIds?.filter((reposterUserId) => reposterUserId !== currentUserId)
+      : post.repostedByUserIds,
+    reposters: reposted ? post.reposters : post.reposters?.filter((reposter) => reposter.id !== currentUserId),
+    stats: { ...post.stats, shares },
+  });
+
+  /** Sends the latest choice to the server, one request at a time, until it matches what's on screen. */
+  const syncRepost = async (): Promise<void> => {
+    if (repostSyncingRef.current) return;
+    repostSyncingRef.current = true;
+    try {
+      while (confirmedRepostRef.current !== desiredRepostRef.current) {
+        const target = desiredRepostRef.current;
+        if (target) await postService.repost(post.id);
+        else await postService.removeRepost(post.id);
+        confirmedRepostRef.current = target;
+        if (!target && desiredRepostRef.current === false && onRepostRemoved) {
+          onRepostRemoved(post.id, withViewerRepost(false, Math.max(0, post.stats.shares - (post.repostedByViewer ? 1 : 0))));
+        }
+      }
     } catch (error: unknown) {
+      // Put the card back the way the server has it.
+      const confirmed = confirmedRepostRef.current;
+      desiredRepostRef.current = confirmed;
+      setIsReposted(confirmed);
+      setShareCount((count) => Math.max(0, count + (confirmed ? 1 : -1)));
+      onPostUpdate(withViewerRepost(confirmed, post.stats.shares));
       setFeedback({ title: 'Repost not updated', message: error instanceof Error ? error.message : 'Please try again' });
     } finally {
-      setRepostBusy(false);
+      repostSyncingRef.current = false;
     }
   };
 
   const handleRepostPress = () => {
-    if (repostBusy) return;
     if (!currentUserId) {
       setFeedback({ title: 'Sign in required', message: 'Sign in to repost.' });
       return;
     }
-    if (isReposted) {
-      setRemoveRepostVisible(true);
-      return;
-    }
-    void handleCreateRepost();
-  };
-
-  const handleConfirmRemoveRepost = async () => {
-    if (repostBusy) return;
-    setRepostBusy(true);
-    try {
-      await postService.removeRepost(post.id);
-      const nextCount = Math.max(0, shareCount - 1);
-      const updatedPost = {
-        ...post,
-        repostedByViewer: false,
-        reposters: post.reposters?.filter((reposter) => reposter.id !== currentUserId),
-        repostedByUserIds: currentUserId
-          ? post.repostedByUserIds?.filter((reposterUserId) => reposterUserId !== currentUserId)
-          : post.repostedByUserIds,
-        stats: { ...post.stats, shares: nextCount },
-      };
-      setIsReposted(false);
-      setShareCount(nextCount);
-      setRemoveRepostVisible(false);
-      if (onRepostRemoved) onRepostRemoved(post.id, updatedPost);
-      else onPostUpdate(updatedPost);
-    } catch (error: unknown) {
-      setRemoveRepostVisible(false);
-      setFeedback({ title: 'Repost not removed', message: error instanceof Error ? error.message : 'Please try again' });
-    } finally {
-      setRepostBusy(false);
-    }
+    const next = !isReposted;
+    const nextCount = Math.max(0, shareCount + (next ? 1 : -1));
+    desiredRepostRef.current = next;
+    setIsReposted(next);
+    setShareCount(nextCount);
+    onPostUpdate(withViewerRepost(next, nextCount));
+    toast.success(next ? 'Reposted' : 'Repost removed');
+    void syncRepost();
   };
 
   return (
@@ -378,7 +379,7 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
               <Icon name="share-2" size={22} color={colors.icon} />
               <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text>
             </AnimatedActionButton>
-            {!post.communityId ? <AnimatedActionButton disabled={repostBusy} onPress={handleRepostPress} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, opacity: repostBusy ? 0.6 : 1 }} accessibilityLabel={repostBusy ? 'Updating repost' : isReposted ? 'Remove repost' : 'Repost'}>{repostBusy ? <ActivityIndicator size="small" color={colors.icon} /> : <Icon name="repeat" size={22} color={isReposted ? '#10b981' : colors.icon} />}</AnimatedActionButton> : null}
+            {!post.communityId ? <AnimatedActionButton onPress={handleRepostPress} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }} accessibilityLabel={isReposted ? 'Remove repost' : 'Repost'}><Icon name="repeat" size={22} color={isReposted ? '#10b981' : colors.icon} /></AnimatedActionButton> : null}
           </View>
 
           {/* Liked Users Display on the right */}
@@ -423,19 +424,6 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
       <EditPostModal visible={editModalVisible} post={post} currentUserId={currentUserId ?? ''} onClose={() => setEditModalVisible(false)} onSaved={(updatedPost) => { onPostUpdate(updatedPost); setEditModalVisible(false); }} />
       <LikesModal visible={likesVisible} postId={post.id} origin={post.origin} onClose={() => setLikesVisible(false)} />
     </View>
-    <CustomModal
-      visible={removeRepostVisible}
-      type="warning"
-      title="Remove this repost?"
-      message="This post will disappear from your profile. The original post will remain available to its author and audience."
-      confirmText="Remove repost"
-      cancelText="Keep it"
-      isLoading={repostBusy}
-      onConfirm={() => void handleConfirmRemoveRepost()}
-      onClose={() => {
-        if (!repostBusy) setRemoveRepostVisible(false);
-      }}
-    />
     <CustomModal visible={feedback !== null} type="danger" title={feedback?.title ?? ''} message={feedback?.message ?? ''} onClose={() => setFeedback(null)} />
     <ShareContentSheet
       visible={shareVisible}

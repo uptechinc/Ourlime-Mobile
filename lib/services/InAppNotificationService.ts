@@ -14,6 +14,8 @@ export type InAppNotificationPayload = {
   peerId?: string;
   /** Where tapping the banner goes (same shape as push notification data). */
   destination: NotificationDestinationInput;
+  /** Colour accent: amber for warnings (e.g. a draft expiring soon), red for urgent (its last day). */
+  tone?: 'default' | 'warning' | 'danger';
 };
 
 type Listener = (payload: InAppNotificationPayload) => void;

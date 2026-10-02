@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import * as DocumentPicker from 'expo-document-picker';
@@ -7,8 +7,12 @@ import { jobApplicationService, type JobApplicationAnswers, type ResumeAsset } f
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
+import { useLocalFormDraft } from '@/lib/hooks/useLocalFormDraft';
+import { auth } from '@/lib/firebaseConfig';
 
 type Question = { id: string; question?: string; type?: string; options?: string[] };
+/** What's kept as an on-device draft per job (like the website's per-job application draft). */
+type ApplicationDraftForm = { coverLetter: string; portfolioLink: string; answers: JobApplicationAnswers; resume: ResumeAsset | null };
 type JobApplicationModalProps = {
   isOpen: boolean;
   onClose: () => void;
@@ -23,6 +27,29 @@ export default function JobApplicationModal({ isOpen, onClose, onApplied, job, j
   const [coverLetter, setCoverLetter] = useState(''); const [resume, setResume] = useState<ResumeAsset | null>(null); const [portfolioLink, setPortfolioLink] = useState('');
   const [answers, setAnswers] = useState<JobApplicationAnswers>({}); const [accepted, setAccepted] = useState(false); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState(''); const [success, setSuccess] = useState(false);
   const isQuickTask = jobType === 'quicktasks' || jobType === 'quickTask';
+
+  // Per-job on-device draft: auto-saved while typing and restored automatically next time (like the website).
+  const [wasDraftRestored, setWasDraftRestored] = useState(false);
+  const hasFormContent = coverLetter.trim().length > 0 || portfolioLink.trim().length > 0 || Object.keys(answers).length > 0 || Boolean(resume);
+  const draft = useLocalFormDraft<ApplicationDraftForm>({
+    ownerId: auth.currentUser?.uid,
+    kind: 'jobApplication',
+    scopeId: job.id,
+    data: { coverLetter, portfolioLink, answers, resume },
+    hasContent: hasFormContent,
+    enabled: isOpen && !success,
+  });
+  const { savedDraft, restore: restoreDraft } = draft;
+  useEffect(() => {
+    if (!savedDraft) return;
+    const restored = restoreDraft();
+    if (!restored) return;
+    setCoverLetter(restored.coverLetter);
+    setPortfolioLink(restored.portfolioLink);
+    setAnswers(restored.answers ?? {});
+    setResume(restored.resume ?? null);
+    setWasDraftRestored(true);
+  }, [restoreDraft, savedDraft]);
 
   const handleFilePick = async () => {
     const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], copyToCacheDirectory: true, multiple: false });
@@ -41,6 +68,8 @@ export default function JobApplicationModal({ isOpen, onClose, onApplied, job, j
     try {
       await jobApplicationService.createApplication({ jobId: job.id, jobType: isQuickTask ? 'quickTask' : 'professional', coverLetter, resume: resume ?? undefined, portfolioLink, answers });
       setSuccess(true);
+      void draft.clear();
+      setWasDraftRestored(false);
       onApplied?.();
     } catch (submitError: unknown) { setError(submitError instanceof Error ? submitError.message : 'Your application could not be submitted.'); }
     finally { setSubmitting(false); }
@@ -53,6 +82,7 @@ export default function JobApplicationModal({ isOpen, onClose, onApplied, job, j
     <View style={styles.header}><View style={styles.headerCopy}><Text style={styles.title}>{success ? 'Application sent' : `Apply for ${job.basic_info.title}`}</Text><Text style={styles.subtitle}>{job.category_specific.name || (isQuickTask ? 'Quick Task' : 'Professional Job')}</Text></View><TouchableOpacity onPress={swipeDismiss.dismissWithAnimation}><X size={22} color={colors.icon} /></TouchableOpacity></View>
     {success ? <View style={styles.success}><View style={styles.successIcon}><Check size={32} color="#ffffff" /></View><Text style={styles.successTitle}>Application submitted</Text><Text style={styles.hint}>The employer can now review your application from their Jobs workspace.</Text><TouchableOpacity onPress={handleClose} style={styles.submit}><Text style={styles.submitText}>Done</Text></TouchableOpacity></View> : <>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {wasDraftRestored ? <Text style={[styles.hint, { color: colors.accentText, marginBottom: 8 }]}>Draft restored. Your answers are saved on this device as you type.</Text> : null}
         {!isQuickTask ? <><Text style={styles.label}>Cover letter</Text><TextInput value={coverLetter} onChangeText={setCoverLetter} placeholder="Explain why you're a strong fit…" placeholderTextColor={colors.mutedText} multiline style={[styles.input, styles.textArea]} /><Text style={styles.hint}>{coverLetter.trim().length}/100 minimum characters</Text>
         <Text style={styles.label}>Resume</Text><TouchableOpacity onPress={() => void handleFilePick()} style={styles.upload}><FileText size={27} color={resume ? colors.accent : colors.icon} /><Text style={styles.uploadText}>{resume?.name || 'Choose PDF, DOC, or DOCX'}</Text></TouchableOpacity>
         <Text style={styles.label}>Portfolio link (optional)</Text><TextInput value={portfolioLink} onChangeText={setPortfolioLink} autoCapitalize="none" keyboardType="url" placeholder="https://…" placeholderTextColor={colors.mutedText} style={styles.input} /></> : <Text style={styles.hint}>Quick tasks use a short application. Answer the questions below, if any, and submit.</Text>}

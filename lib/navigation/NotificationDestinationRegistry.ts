@@ -200,6 +200,15 @@ export class NotificationDestinationRegistry {
 		const type = data.type ?? '';
 		const peerId = data.chatId || data.senderId || data.sourceUserId;
 
+		if (type === 'draft_reminder') {
+			return this.navigate(
+				data.contentType === 'lime'
+					? { pathname: '/(tabs)/Limes', params: { drafts: '1' } }
+					: { pathname: '/(tabs)', params: { drafts: 'post' } },
+				fallbackRoute,
+				data
+			);
+		}
 		if (
 			(type === 'incoming_call' || data.destinationKind === 'call') &&
 			data.callId

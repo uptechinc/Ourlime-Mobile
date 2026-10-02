@@ -12,12 +12,15 @@ import {
 import Animated from 'react-native-reanimated';
 import { Save, Send, X, XCircle, Plus } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import Toast from 'react-native-toast-message';
+import { toast } from 'sonner-native';
 import { AuthService } from '@/lib/services/AuthService';
 import { EventService } from '@/lib/services/EventService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
+import { useLocalFormDraft } from '@/lib/hooks/useLocalFormDraft';
+import SavedDraftBanner from '@/components/drafts/SavedDraftBanner';
+import DraftDiscardSheet from '@/components/drafts/DraftDiscardSheet';
 
 const authService = AuthService.getInstance();
 const eventService = EventService.getInstance();
@@ -77,7 +80,28 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
     recurrence: 'none',
     category: '',
   });
-  const swipeDismiss = useSwipeDismiss({ visible, onDismiss: onClose, disabled: isSubmitting });
+  // On-device draft (like the website): auto-saves the form, offers Restore next time.
+  const hasFormContent = Boolean(formData.title.trim() || formData.summary.trim() || formData.location.trim() || formData.date
+    || formData.coverMedia || formData.tags.length > 0 || formData.additionalMedia.length > 0 || formData.category.trim());
+  const draft = useLocalFormDraft<CreateEventForm>({
+    ownerId: authService.getCurrentUser()?.uid,
+    kind: 'event',
+    data: formData,
+    hasContent: hasFormContent,
+    enabled: visible,
+  });
+  const [isDiscardSheetVisible, setIsDiscardSheetVisible] = useState(false);
+  const shouldDismissForm = (): boolean => {
+    if (isSubmitting || !hasFormContent) return true;
+    setIsDiscardSheetVisible(true);
+    return false;
+  };
+  const swipeDismiss = useSwipeDismiss({ visible, onDismiss: onClose, disabled: isSubmitting, shouldDismiss: shouldDismissForm });
+
+  const handleSaveProgress = async () => {
+    await draft.saveNow();
+    toast.success('Draft saved on this device');
+  };
 
   /* ───────── File handling ───────── */
   const pickCoverImage = async () => {
@@ -89,7 +113,7 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
     if (!res.canceled && res.assets[0]) {
       const f = res.assets[0];
       if (f.fileSize && f.fileSize > 5 * 1024 * 1024) {
-        Toast.show({ type: 'error', text1: 'File > 5 MB – pick a smaller one' });
+        toast.error('File > 5 MB – pick a smaller one');
         return;
       }
       setFormData(p => ({ ...p, coverMedia: f.uri }));
@@ -130,7 +154,7 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
 
   const handleSubmit = async () => {
     if (!isValid) {
-      Toast.show({ type: 'error', text1: 'Fill required fields first' });
+      toast.error('Fill required fields first');
       return;
     }
     try {
@@ -159,11 +183,12 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
         },
       });
       onCreated?.();
-      Toast.show({ type: 'success', text1: 'Event created!' });
+      toast.success('Event created!');
+      void draft.clear();
       resetForm();
       onClose();
     } catch (error: unknown) {
-      Toast.show({ type: 'error', text1: error instanceof Error ? error.message : 'Failed to create event' });
+      toast.error(error instanceof Error ? error.message : 'Failed to create event');
     } finally {
       setIsSubmitting(false);
     }
@@ -229,13 +254,23 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
                 Host a gathering, workshop, or celebration
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose} hitSlop={12}>
+            <TouchableOpacity onPress={swipeDismiss.dismissWithAnimation} hitSlop={12} accessibilityLabel="Close event creation">
               <XCircle size={22} color={colors.icon} />
             </TouchableOpacity>
           </View>
 
           {/* Body */}
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
+            {draft.savedDraft ? (
+              <SavedDraftBanner
+                savedAt={draft.savedAt}
+                onRestore={() => {
+                  const restored = draft.restore();
+                  if (restored) setFormData(restored);
+                }}
+                onDiscard={() => void draft.discard()}
+              />
+            ) : null}
             {/* Title */}
             <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
               Title <Text style={{ color: '#ef4444' }}>*</Text>
@@ -583,11 +618,21 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
             }}
           >
             <TouchableOpacity
-              onPress={onClose}
+              onPress={swipeDismiss.dismissWithAnimation}
               disabled={isSubmitting}
               style={{ paddingVertical: 10, paddingHorizontal: 16 }}
             >
               <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '500' }}>Cancel</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => void handleSaveProgress()}
+              disabled={isSubmitting || !hasFormContent}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, opacity: hasFormContent ? 1 : 0.5 }}
+              accessibilityLabel="Save progress"
+            >
+              <Save size={16} color={colors.icon} />
+              <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>Save progress</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -612,6 +657,24 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
           </View>
         </Animated.View>
       </View>
+      <DraftDiscardSheet
+        visible={isDiscardSheetVisible}
+        title="Leave event?"
+        message="Save a draft on this device to finish it later, or discard what you've entered."
+        onSaveDraft={() => {
+          void draft.saveNow().then(() => {
+            setIsDiscardSheetVisible(false);
+            onClose();
+          });
+        }}
+        onDiscard={() => {
+          setIsDiscardSheetVisible(false);
+          void draft.clear();
+          resetForm();
+          onClose();
+        }}
+        onContinue={() => setIsDiscardSheetVisible(false)}
+      />
     </Modal>
   );
 }

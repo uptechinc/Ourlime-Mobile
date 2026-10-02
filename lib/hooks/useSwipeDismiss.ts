@@ -32,6 +32,8 @@ type UseSwipeDismissOptions = {
   onDismiss: () => void;
   disabled?: boolean;
   animateOnOpen?: boolean;
+  /** Return false to keep the surface open (e.g. unsaved changes → show a discard prompt); it springs back. */
+  shouldDismiss?: () => boolean;
 };
 
 type SwipeDismissResult = {
@@ -42,10 +44,12 @@ type SwipeDismissResult = {
   dismissWithAnimation: () => void;
 };
 
-export function useSwipeDismiss({ visible, onDismiss, disabled = false, animateOnOpen = true }: UseSwipeDismissOptions): SwipeDismissResult {
+export function useSwipeDismiss({ visible, onDismiss, disabled = false, animateOnOpen = true, shouldDismiss }: UseSwipeDismissOptions): SwipeDismissResult {
   const translateY = useSharedValue(0);
   const onDismissRef = useRef(onDismiss);
   const disabledRef = useRef(disabled);
+  const shouldDismissRef = useRef(shouldDismiss);
+  shouldDismissRef.current = shouldDismiss;
 
   useEffect(() => {
     onDismissRef.current = onDismiss;
@@ -73,6 +77,21 @@ export function useSwipeDismiss({ visible, onDismiss, disabled = false, animateO
   const handleDismissFeedback = useCallback(() => {
     void interactionFeedbackService.play('selection');
   }, []);
+
+  /** Animates out and closes, unless shouldDismiss() says to stay (then springs back). */
+  const requestDismiss = useCallback(() => {
+    if (shouldDismissRef.current && !shouldDismissRef.current()) {
+      translateY.value = withSpring(0, SPRING_CONFIG);
+      return;
+    }
+    translateY.value = withTiming(CLOSE_DISTANCE, {
+      duration: CLOSE_DURATION_MS,
+      easing: Easing.out(Easing.cubic),
+      reduceMotion: ReduceMotion.System,
+    }, (finished) => {
+      if (finished) runOnJS(handleDismissed)();
+    });
+  }, [handleDismissed, translateY]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: interpolate(translateY.value, [0, CLOSE_DISTANCE], [1, 0.88], 'clamp'),
@@ -106,13 +125,7 @@ export function useSwipeDismiss({ visible, onDismiss, disabled = false, animateO
       .onEnd((event) => {
         if (event.translationY >= DISMISS_DISTANCE || event.velocityY >= DISMISS_VELOCITY) {
           runOnJS(handleDismissFeedback)();
-          translateY.value = withTiming(CLOSE_DISTANCE, {
-            duration: CLOSE_DURATION_MS,
-            easing: Easing.out(Easing.cubic),
-            reduceMotion: ReduceMotion.System,
-          }, (finished) => {
-            if (finished) runOnJS(handleDismissed)();
-          });
+          runOnJS(requestDismiss)();
           return;
         }
         translateY.value = withSpring(0, SPRING_CONFIG);
@@ -120,7 +133,7 @@ export function useSwipeDismiss({ visible, onDismiss, disabled = false, animateO
       .onFinalize((_event, succeeded) => {
         if (!succeeded) translateY.value = withSpring(0, SPRING_CONFIG);
       }),
-    [disabled, handleDismissFeedback, handleDismissed, translateY],
+    [disabled, handleDismissFeedback, requestDismiss, translateY],
   );
 
   const dismissWithAnimation = useCallback(() => {
@@ -130,14 +143,8 @@ export function useSwipeDismiss({ visible, onDismiss, disabled = false, animateO
     }
     cancelAnimation(translateY);
     void interactionFeedbackService.play('selection');
-    translateY.value = withTiming(CLOSE_DISTANCE, {
-      duration: CLOSE_DURATION_MS,
-      easing: Easing.out(Easing.cubic),
-      reduceMotion: ReduceMotion.System,
-    }, (finished) => {
-      if (finished) runOnJS(handleDismissed)();
-    });
-  }, [handleDismissed, translateY]);
+    requestDismiss();
+  }, [requestDismiss, translateY]);
 
   return { animatedStyle, backdropAnimatedStyle, handleAnimatedStyle, gesture, dismissWithAnimation };
 }

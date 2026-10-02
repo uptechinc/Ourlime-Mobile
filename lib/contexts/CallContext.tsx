@@ -11,6 +11,7 @@ import { pictureInPictureService } from '@/lib/services/PictureInPictureService'
 import { AppServerError } from '@/lib/services/AppServerService';
 import { DiagnosticLogService } from '@/lib/services/DiagnosticLogService';
 import { useCallStore } from '@/lib/store/useCallStore';
+import { toast } from 'sonner-native';
 import type { CallAction, CallPushPayload, CallSession, CallType } from '@/lib/types/call';
 
 type CallContextValue = {
@@ -315,7 +316,11 @@ export function CallProvider({ children }: CallProviderProps) {
       if (current?.id === created.id && current.state === 'ringing') void agoraCallService.startRingback();
     } catch (error: unknown) {
       logger.error('CallCoordinator', 'start', error, { stack: error instanceof Error ? error.stack ?? null : null });
-      useCallStore.getState().setError(error instanceof Error ? error.message : 'The call could not be started.');
+      const message = error instanceof Error ? error.message : 'The call could not be started.';
+      useCallStore.getState().setError(message);
+      // Refused before any call existed (e.g. already calling them on another device): the call screen never
+      // opens, so say why here.
+      if (!useCallStore.getState().session) toast.error(message);
     }
   }), [joinRtc, logger, runExclusive, subscribeToCall]);
 

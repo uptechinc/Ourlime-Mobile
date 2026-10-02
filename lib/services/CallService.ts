@@ -76,6 +76,33 @@ export class CallService {
     });
   }
 
+  /**
+   * Follows the latest call between two people (any device, any direction) through the server's pair lock
+   * (callPairs/{sorted ids}, written by the createCall function). Emits null when there is none.
+   */
+  public subscribeToPairCall(userId: string, friendId: string, onChange: (session: CallSession | null) => void): Unsubscribe {
+    let unsubscribeCall: Unsubscribe | null = null;
+    let followedCallId: string | null = null;
+    const pairKey = [userId, friendId].sort().join('_');
+    const unsubscribeLock = onSnapshot(doc(db, 'callPairs', pairKey), (snapshot) => {
+      const lockedCallId: unknown = snapshot.data()?.callId;
+      const callId = typeof lockedCallId === 'string' ? lockedCallId : null;
+      if (callId === followedCallId) return;
+      unsubscribeCall?.();
+      unsubscribeCall = null;
+      followedCallId = callId;
+      if (!callId) {
+        onChange(null);
+        return;
+      }
+      unsubscribeCall = this.subscribe(callId, onChange, () => onChange(null));
+    }, () => onChange(null));
+    return () => {
+      unsubscribeLock();
+      unsubscribeCall?.();
+    };
+  }
+
   public subscribeToIncomingCalls(userId: string, onIncomingCall: (session: CallSession) => void, onError: (message: string) => void): Unsubscribe {
     const incomingQuery = query(
       collection(db, 'calls'),

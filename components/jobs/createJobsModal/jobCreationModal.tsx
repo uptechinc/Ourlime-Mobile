@@ -7,9 +7,17 @@ import { JobsService } from '@/lib/job/JobsService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
+import { useLocalFormDraft } from '@/lib/hooks/useLocalFormDraft';
+import SavedDraftBanner from '@/components/drafts/SavedDraftBanner';
+import DraftDiscardSheet from '@/components/drafts/DraftDiscardSheet';
 
 type JobCreationModalProps = { isOpen: boolean; onClose: () => void; onCreated?: () => void };
 type CreateJobType = 'professional' | 'quickTask';
+/** Everything typed in the form, kept as an on-device draft. */
+type JobDraftForm = {
+  jobType: CreateJobType; title: string; description: string; category: string; priceFrom: string; priceTo: string;
+  skills: string; companyName: string; industry: string; duration: string;
+};
 const jobsService = JobsService.getInstance();
 
 export default function JobCreationModal({ isOpen, onClose, onCreated }: JobCreationModalProps) {
@@ -20,23 +28,47 @@ export default function JobCreationModal({ isOpen, onClose, onCreated }: JobCrea
   const [priceFrom, setPriceFrom] = useState(''); const [priceTo, setPriceTo] = useState(''); const [skills, setSkills] = useState('');
   const [companyName, setCompanyName] = useState(''); const [industry, setIndustry] = useState(''); const [duration, setDuration] = useState('');
   const [submitting, setSubmitting] = useState(false); const [error, setError] = useState('');
-  const swipeDismiss = useSwipeDismiss({ visible: isOpen, onDismiss: onClose, disabled: submitting });
+  const [isDiscardSheetVisible, setIsDiscardSheetVisible] = useState(false);
 
-  const handleSubmit = async () => {
+  // On-device draft (like the website): auto-saves what's typed and offers Restore next time.
+  const formData: JobDraftForm = { jobType, title, description, category, priceFrom, priceTo, skills, companyName, industry, duration };
+  const hasFormContent = [title, description, category, priceFrom, priceTo, skills, companyName, industry, duration].some((value) => value.trim().length > 0);
+  const draft = useLocalFormDraft<JobDraftForm>({ ownerId: auth.currentUser?.uid, kind: 'job', data: formData, hasContent: hasFormContent, enabled: isOpen });
+  const applyForm = (form: JobDraftForm): void => {
+    setJobType(form.jobType); setTitle(form.title); setDescription(form.description); setCategory(form.category);
+    setPriceFrom(form.priceFrom); setPriceTo(form.priceTo); setSkills(form.skills); setCompanyName(form.companyName);
+    setIndustry(form.industry); setDuration(form.duration);
+  };
+  const resetForm = (): void => applyForm({ jobType: 'professional', title: '', description: '', category: '', priceFrom: '', priceTo: '', skills: '', companyName: '', industry: '', duration: '' });
+
+  const shouldDismissForm = (): boolean => {
+    if (submitting || !hasFormContent) return true;
+    setIsDiscardSheetVisible(true);
+    return false;
+  };
+  const swipeDismiss = useSwipeDismiss({ visible: isOpen, onDismiss: onClose, disabled: submitting, shouldDismiss: shouldDismissForm });
+
+  /** Publish, or save as a draft listing (like the website's "Save Draft": only a title is needed). */
+  const handleSubmit = async (publicationStatus: 'published' | 'draft' = 'published') => {
     const userId = auth.currentUser?.uid;
     if (!userId) { setError('You must be signed in to create a job.'); return; }
-    if (!title.trim() || !description.trim() || !category.trim()) { setError('Title, description, and category are required.'); return; }
-    const from = Number(priceFrom); const to = Number(priceTo);
-    if (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to < from) { setError('Enter a valid price range.'); return; }
+    const isDraft = publicationStatus === 'draft';
+    if (isDraft ? !title.trim() : (!title.trim() || !description.trim() || !category.trim())) {
+      setError(isDraft ? 'Add a title to save a draft.' : 'Title, description, and category are required.');
+      return;
+    }
+    const from = Number(priceFrom || 0); const to = Number(priceTo || priceFrom || 0);
+    if (!isDraft && (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to < from)) { setError('Enter a valid price range.'); return; }
     setSubmitting(true); setError('');
     try {
       await jobsService.createJob({
         jobTitle: title, jobDescription: description, jobCategory: jobType, category, userId,
-        priceRange: { from, to }, location: { type: 'remote' }, skills: skills.split(',').map((skill) => skill.trim()).filter(Boolean),
-        publicationStatus: 'published',
+        priceRange: { from: Number.isFinite(from) ? from : 0, to: Number.isFinite(to) ? to : 0 }, location: { type: 'remote' }, skills: skills.split(',').map((skill) => skill.trim()).filter(Boolean),
+        publicationStatus,
         category_specific: jobType === 'professional' ? { name: companyName.trim(), industry: industry.trim() } : { urgency: 'medium', duration: duration.trim(), complexity: 'moderate' },
       });
-      setTitle(''); setDescription(''); setCategory(''); setPriceFrom(''); setPriceTo(''); setSkills(''); setCompanyName(''); setIndustry(''); setDuration('');
+      void draft.clear();
+      resetForm();
       onClose(); onCreated?.();
     } catch (submitError: unknown) { setError(submitError instanceof Error ? submitError.message : 'The job could not be created.'); }
     finally { setSubmitting(false); }
@@ -44,8 +76,9 @@ export default function JobCreationModal({ isOpen, onClose, onCreated }: JobCrea
 
   return <Modal visible={isOpen} transparent animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}><View style={styles.backdrop}><Animated.View style={[styles.sheet, swipeDismiss.animatedStyle]}>
     <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close job creation" />
-    <View style={styles.header}><Text style={styles.title}>Create an Opportunity</Text><TouchableOpacity onPress={onClose} style={styles.close}><X size={22} color={colors.icon} /></TouchableOpacity></View>
+    <View style={styles.header}><Text style={styles.title}>Create an Opportunity</Text><TouchableOpacity onPress={swipeDismiss.dismissWithAnimation} style={styles.close} accessibilityLabel="Close job creation"><X size={22} color={colors.icon} /></TouchableOpacity></View>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {draft.savedDraft ? <SavedDraftBanner savedAt={draft.savedAt} onRestore={() => { const restored = draft.restore(); if (restored) applyForm(restored); }} onDiscard={() => void draft.discard()} /> : null}
       <Text style={styles.label}>Opportunity type</Text><View style={styles.typeRow}>{([{ id: 'professional', label: 'Professional Job' }, { id: 'quickTask', label: 'Quick Task' }] as const).map(({ id, label }) => <TouchableOpacity key={id} onPress={() => setJobType(id)} style={[styles.typeButton, jobType === id && styles.typeButtonActive]}><Text style={[styles.typeText, jobType === id && styles.typeTextActive]}>{label}</Text></TouchableOpacity>)}</View>
       <Field label="Title" value={title} onChangeText={setTitle} placeholder="Role or task title" />
       <Field label="Description" value={description} onChangeText={setDescription} placeholder="Describe the work and expectations" multiline />
@@ -55,8 +88,17 @@ export default function JobCreationModal({ isOpen, onClose, onCreated }: JobCrea
       <View style={styles.priceRow}><View style={styles.priceField}><Field label="Budget from" value={priceFrom} onChangeText={setPriceFrom} placeholder="0" keyboardType="decimal-pad" /></View><View style={styles.priceField}><Field label="Budget to" value={priceTo} onChangeText={setPriceTo} placeholder="0" keyboardType="decimal-pad" /></View></View>
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
     </ScrollView>
-    <View style={styles.footer}><TouchableOpacity onPress={onClose} style={styles.cancel}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity><TouchableOpacity disabled={submitting} onPress={() => void handleSubmit()} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.submitText}>Publish</Text>}</TouchableOpacity></View>
-  </Animated.View></View></Modal>;
+    <View style={styles.footer}><TouchableOpacity onPress={swipeDismiss.dismissWithAnimation} style={styles.cancel}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity><TouchableOpacity disabled={submitting} onPress={() => void handleSubmit('draft')} style={[styles.cancel, submitting && styles.disabled]} accessibilityLabel="Save as draft"><Text style={[styles.cancelText, { color: colors.accentText }]}>Save as draft</Text></TouchableOpacity><TouchableOpacity disabled={submitting} onPress={() => void handleSubmit()} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.submitText}>Publish</Text>}</TouchableOpacity></View>
+  </Animated.View></View>
+    <DraftDiscardSheet
+      visible={isDiscardSheetVisible}
+      title="Leave this opportunity?"
+      message="Save a draft on this device to finish it later, or discard what you've entered."
+      onSaveDraft={() => { void draft.saveNow().then(() => { setIsDiscardSheetVisible(false); onClose(); }); }}
+      onDiscard={() => { setIsDiscardSheetVisible(false); void draft.clear(); resetForm(); onClose(); }}
+      onContinue={() => setIsDiscardSheetVisible(false)}
+    />
+  </Modal>;
 }
 
 type FieldProps = { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; multiline?: boolean; keyboardType?: 'default' | 'decimal-pad' };

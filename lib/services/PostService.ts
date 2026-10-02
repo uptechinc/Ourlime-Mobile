@@ -541,7 +541,10 @@ export class PostService {
         repostAuthorsByPost.set(original.id, reposters);
       }
     }
-    const visibleDocuments = [...originalsById.values()];
+    // Order by each post's own date, not by when it was reposted: reposting must not move a post to the top of the
+    // feed (Instagram-style), it only adds "You reposted" to it in place.
+    const visibleDocuments = [...originalsById.values()]
+      .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
     const postIds = visibleDocuments.map((document) => document.id);
     const [mediaDocuments, countDocuments, likeDocuments, viewerRepostedPostIds, currentRepostMarkers, legacyRepostMarkers] = await Promise.all([
       this.getDocumentsByField('feedsPostSummary', 'feedsPostId', postIds),

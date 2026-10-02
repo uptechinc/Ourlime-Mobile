@@ -142,8 +142,8 @@ export default function InAppNotificationBanner() {
             style={[
               styles.card,
               {
-                backgroundColor: cardBg,
-                borderColor: cardBorder,
+                backgroundColor: activeBanner.tone === 'danger' ? (isDark ? '#3b0d12' : '#fef2f2') : activeBanner.tone === 'warning' ? (isDark ? '#3a2a07' : '#fffbeb') : cardBg,
+                borderColor: activeBanner.tone === 'danger' ? '#ef4444' : activeBanner.tone === 'warning' ? '#f59e0b' : cardBorder,
                 opacity: opacityAnim,
                 transform: [{ translateY: slideAnim }],
               },
@@ -161,8 +161,8 @@ export default function InAppNotificationBanner() {
               {/* Top meta row: App tag & time */}
               <View style={styles.topMetaRow}>
                 <View style={styles.appTag}>
-                  <View style={styles.appIconCircle}>
-                    <Ionicons name={activeBanner.kind === 'message' ? 'chatbubble-ellipses' : 'notifications'} size={11} color="#ffffff" />
+                  <View style={[styles.appIconCircle, activeBanner.tone === 'danger' ? { backgroundColor: '#ef4444' } : activeBanner.tone === 'warning' ? { backgroundColor: '#f59e0b' } : null]}>
+                    <Ionicons name={activeBanner.kind === 'message' ? 'chatbubble-ellipses' : activeBanner.destination.type === 'draft_reminder' ? 'document-text' : 'notifications'} size={11} color="#ffffff" />
                   </View>
                   <Text style={styles.appNameText}>Ourlime</Text>
                 </View>
@@ -183,10 +183,10 @@ export default function InAppNotificationBanner() {
                 />
 
                 <View style={styles.textContainer}>
-                  <Text style={[styles.senderName, { color: colors.text }]} numberOfLines={1}>
+                  <Text style={[styles.senderName, { color: activeBanner.tone === 'danger' ? '#ef4444' : colors.text }]} numberOfLines={1}>
                     {activeBanner.title || 'Ourlime'}
                   </Text>
-                  <Text style={[styles.messagePreview, { color: isDark ? '#94a3b8' : '#475569' }]} numberOfLines={2}>
+                  <Text style={[styles.messagePreview, { color: isDark ? '#94a3b8' : '#475569' }]} numberOfLines={activeBanner.destination.type === 'draft_reminder' ? 6 : 2}>
                     {activeBanner.body}
                   </Text>
                 </View>

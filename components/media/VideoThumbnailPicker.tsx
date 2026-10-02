@@ -27,6 +27,8 @@ type VideoThumbnailPickerProps = {
   onThumbnailChange: (thumbnailUri: string) => void;
   aspectRatio?: '9:16' | '16:9' | '1:1' | '4:5';
   openEditorOnMount?: boolean;
+  /** Card title: "Lime cover" for Limes, "Video cover" for posts. */
+  title?: string;
 };
 
 type ExtractionState =
@@ -48,6 +50,7 @@ export default function VideoThumbnailPicker({
   selectedThumbnailUri,
   onThumbnailChange,
   openEditorOnMount = false,
+  title = 'Lime cover',
 }: VideoThumbnailPickerProps) {
   const { colors } = useAppTheme();
   const [frames, setFrames] = useState<LimeCoverFrame[]>([]);
@@ -151,11 +154,11 @@ export default function VideoThumbnailPicker({
       <View style={[styles.coverCard, { borderColor: colors.border, backgroundColor: colors.control }]}>
         <View style={styles.coverCardHeader}>
           <View>
-            <Text style={[styles.coverCardTitle, { color: colors.text }]}>Lime cover</Text>
+            <Text style={[styles.coverCardTitle, { color: colors.text }]}>{title}</Text>
             <Text style={[styles.coverCardSubtitle, { color: colors.mutedText }]}>Choose the frame people see before playback.</Text>
           </View>
           {selection?.previewUri ? (
-            <TouchableOpacity onPress={() => setEditorVisible(true)} accessibilityRole="button" accessibilityLabel="Edit Lime cover from timeline" style={[styles.coverCardAction, { borderColor: colors.border }]}>
+            <TouchableOpacity onPress={() => setEditorVisible(true)} accessibilityRole="button" accessibilityLabel={`Edit ${title.toLowerCase()} from timeline`} style={[styles.coverCardAction, { borderColor: colors.border }]}>
               <Text style={{ color: colors.accentText, fontWeight: '900' }}>Edit</Text>
             </TouchableOpacity>
           ) : null}
@@ -167,7 +170,7 @@ export default function VideoThumbnailPicker({
             </View>
           )}
           {selection?.previewUri ? (
-            <TouchableOpacity onPress={() => setEditorVisible(true)} style={styles.editCoverButton} accessibilityRole="button" accessibilityLabel="Edit Lime cover">
+            <TouchableOpacity onPress={() => setEditorVisible(true)} style={styles.editCoverButton} accessibilityRole="button" accessibilityLabel={`Edit ${title.toLowerCase()}`}>
               <Text style={styles.editCoverText}>Edit cover</Text>
             </TouchableOpacity>
           ) : null}

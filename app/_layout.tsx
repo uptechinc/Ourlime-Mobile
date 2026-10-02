@@ -10,6 +10,7 @@ import './globals.css';
 import { NotificationProvider } from '@/lib/contexts/NotificationContext';
 import { PageAccessProvider } from '@/lib/contexts/PageAccessContext';
 import PageAccessOverlay from '@/components/pageAccess/PageAccessOverlay';
+import PagePreviewNotice from '@/components/pageAccess/PagePreviewNotice';
 import { AppDataProvider } from '@/lib/contexts/AppDataContext';
 import { AppErrorBoundary } from '@/components/ui/AppErrorBoundary';
 import { errorLogService } from '@/lib/services/ErrorLogService';
@@ -19,6 +20,7 @@ import { AppDrawerProvider } from '@/lib/contexts/AppDrawerContext';
 import { CallProvider } from '@/lib/contexts/CallContext';
 import GlobalCallOverlay from '@/components/calls/GlobalCallOverlay';
 import InAppNotificationBanner from '@/components/ui/InAppNotificationBanner';
+import AppToastHost from '@/components/ui/AppToastHost';
 import { crashReportingService } from '@/lib/services/CrashReportingService';
 import { memoryPressureService } from '@/lib/services/MemoryPressureService';
 import NotificationNavigationCoordinator from '@/components/providers/NotificationNavigationCoordinator';
@@ -81,9 +83,12 @@ function AppRouteTree() {
           </Stack>
           <NotificationNavigationCoordinator userId={user?.uid ?? null} />
           <PageAccessOverlay />
+          <PagePreviewNotice />
           <GlobalCallOverlay />
           <InAppNotificationBanner />
           <RegionalAccessRestrictedModal />
+          {/* Host for sonner-native toast() calls (repost / event / draft confirmations). */}
+          <AppToastHost />
         </NotificationProvider>
         </AppDrawerProvider>
         </CallProvider>

@@ -38,6 +38,9 @@ import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { postSubmissionService } from '@/lib/services/PostSubmissionService';
 import VideoThumbnailPicker from '@/components/media/VideoThumbnailPicker';
+import DraftDiscardSheet from '@/components/drafts/DraftDiscardSheet';
+import DraftsSheet from '@/components/drafts/DraftsSheet';
+import { creationDraftService, DraftLimitError, MAX_DRAFTS_PER_KIND, type CreationDraft, type CreationDraftContent } from '@/lib/services/CreationDraftService';
 import { diagnosticLogService } from '@/lib/services/DiagnosticLogService';
 import {
   POST_VERIFICATION_REQUIRED_MESSAGE,
@@ -54,6 +57,8 @@ type CreatePostModalProps = {
   userProfile: UserProfile;
   communityId?: string;
   communityName?: string;
+  /** Open on the drafts list (tapping a draft reminder). */
+  initialShowDrafts?: boolean;
 };
 
 const mediaService = PostMediaService.getInstance();
@@ -74,7 +79,7 @@ const pollDurations: PollDurationChoice[] = [
 
 const normalizeHashtag = (value: string): string => value.trim().replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '').toLowerCase();
 
-export default function CreatePostModal({ setTogglePostForm, userProfile, communityId, communityName }: CreatePostModalProps) {
+export default function CreatePostModal({ setTogglePostForm, userProfile, communityId, communityName, initialShowDrafts = false }: CreatePostModalProps) {
   const { colors } = useAppTheme();
   const captionInputRef = useRef<TextInput>(null);
   const [postType, setPostType] = useState<PostType>('regular');
@@ -214,8 +219,129 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
     ? !eventTitle.trim() && !hasNonMentionContent
     : !hasNonMentionContent && media.length === 0);
 
+  // ── Drafts (shared with the website): up to 5 post drafts, each deleted 7 days after it was created.
+  //    Community posts skip drafts, like the website. ──
+  const canUseDrafts = !communityId;
+  const [drafts, setDrafts] = useState<CreationDraft[]>([]);
+  const [isDraftsLoading, setIsDraftsLoading] = useState(false);
+  const [isDraftsSheetVisible, setIsDraftsSheetVisible] = useState(canUseDrafts && initialShowDrafts);
+  const [draftsNotice, setDraftsNotice] = useState<string | null>(null);
+  const [openingDraftId, setOpeningDraftId] = useState<string | null>(null);
+  const [openedDraftId, setOpenedDraftId] = useState<string | null>(null);
+  const [isDraftBusy, setIsDraftBusy] = useState(false);
+  const [isDiscardSheetVisible, setIsDiscardSheetVisible] = useState(false);
+  const draftSignature = (content: Pick<CreationDraftContent, 'caption' | 'visibility' | 'location' | 'hashtags' | 'media'>): string => JSON.stringify([
+    content.caption.trim(), content.visibility, content.location ?? null, content.hashtags,
+    content.media.map((item) => `${item.uri}|${item.thumbnailUri ?? ''}`),
+  ]);
+  const baselineSignatureRef = useRef(draftSignature({ caption: '', visibility: 'public', location: undefined, hashtags: [], media: [] }));
+  const currentSignature = draftSignature({ caption, visibility, location, hashtags, media });
+  const hasUnsavedChanges = currentSignature !== baselineSignatureRef.current
+    || (postType === 'poll' && pollOptions.some((option) => option.text.trim().length > 0))
+    || (postType === 'event' && eventTitle.trim().length > 0);
+  const canSaveDraft = canUseDrafts && postType === 'regular';
+
+  const refreshDrafts = async (): Promise<void> => {
+    if (!canUseDrafts) return;
+    setIsDraftsLoading(true);
+    try {
+      setDrafts(await creationDraftService.list(userProfile.uid, 'post'));
+    } catch (error: unknown) {
+      console.warn('[CreatePostModal.refreshDrafts]', error instanceof Error ? error.message : 'Could not load drafts');
+    } finally {
+      setIsDraftsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshDrafts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load once when the composer opens
+  }, [canUseDrafts, userProfile.uid]);
+
+  /** Saves the composer as a draft: updates the open draft, or creates a new one (max 5). */
+  const persistDraft = async (): Promise<boolean> => {
+    setIsDraftBusy(true);
+    try {
+      const draftId = await creationDraftService.save(userProfile.uid, 'post', { caption, visibility, location, hashtags, media }, openedDraftId ?? undefined);
+      setOpenedDraftId(draftId);
+      baselineSignatureRef.current = currentSignature;
+      void refreshDrafts();
+      return true;
+    } catch (error: unknown) {
+      if (error instanceof DraftLimitError) {
+        setIsDiscardSheetVisible(false);
+        setDraftsNotice(error.message);
+        setIsDraftsSheetVisible(true);
+        void refreshDrafts();
+        return false;
+      }
+      diagnosticLogService.error('CreatePostModal', 'saveDraft', error, { mediaCount: media.length });
+      setComposerFeedback({ title: 'Draft not saved', message: error instanceof Error ? error.message : 'Please check your connection and try again.' });
+      return false;
+    } finally {
+      setIsDraftBusy(false);
+    }
+  };
+
+  const handleSaveDraft = async (closeAfter = false) => {
+    if (!canSaveDraft || isDraftBusy) return;
+    const saved = await persistDraft();
+    if (!saved) return;
+    if (closeAfter) {
+      setIsDiscardSheetVisible(false);
+      setTogglePostForm(false);
+    } else {
+      setComposerFeedback({ title: 'Draft saved', message: 'Drafts are kept for 7 days. You can finish this one here or on the website.' });
+    }
+  };
+
+  /** Loads a draft into the composer to edit and post. */
+  const handleOpenDraft = async (draft: CreationDraft) => {
+    if (openingDraftId) return;
+    setOpeningDraftId(draft.id);
+    try {
+      const opened = await creationDraftService.open(draft);
+      setPostType('regular');
+      setCaption(opened.content.caption);
+      setVisibility(opened.content.visibility);
+      setLocation(opened.content.location);
+      setHashtags(opened.content.hashtags);
+      setMedia(opened.content.media);
+      baselineSignatureRef.current = draftSignature(opened.content);
+      setOpenedDraftId(draft.id);
+      setIsDraftsSheetVisible(false);
+      setDraftsNotice(null);
+      if (opened.failedMedia > 0) {
+        setComposerFeedback({ title: 'Some media missing', message: `${opened.failedMedia} file${opened.failedMedia === 1 ? '' : 's'} could not be opened.` });
+      }
+    } catch (error: unknown) {
+      diagnosticLogService.error('CreatePostModal', 'openDraft', error, {});
+      setComposerFeedback({ title: 'Draft not opened', message: error instanceof Error ? error.message : 'Please try again.' });
+    } finally {
+      setOpeningDraftId(null);
+    }
+  };
+
+  const handleDeleteDraft = async (draft: CreationDraft) => {
+    try {
+      await creationDraftService.remove(userProfile.uid, draft.id);
+      if (openedDraftId === draft.id) setOpenedDraftId(null);
+      setDrafts((current) => current.filter((item) => item.id !== draft.id));
+      setDraftsNotice(null);
+    } catch (error: unknown) {
+      setComposerFeedback({ title: 'Draft not deleted', message: error instanceof Error ? error.message : 'Please try again.' });
+    }
+  };
+
   const handleClose = () => {
     if (!isSubmitting) setTogglePostForm(false);
+  };
+
+  /** Closing with unsaved changes asks first (X, swipe down and Android back all come through here). */
+  const shouldDismissComposer = (): boolean => {
+    if (isSubmitting || !hasUnsavedChanges) return true;
+    setIsDiscardSheetVisible(true);
+    return false;
   };
 
   const handlePickMedia = async () => {
@@ -282,7 +408,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
     });
   };
 
-  const swipeDismiss = useSwipeDismiss({ visible: true, onDismiss: handleClose, disabled: isSubmitting });
+  const swipeDismiss = useSwipeDismiss({ visible: true, onDismiss: handleClose, disabled: isSubmitting, shouldDismiss: shouldDismissComposer });
 
   const getPollDurationHours = (): number => {
     if (pollDurationChoice !== 'custom') return pollDurationChoice;
@@ -344,6 +470,11 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
         communityName,
         },
       });
+      if (canUseDrafts && openedDraftId) {
+        void creationDraftService.remove(userProfile.uid, openedDraftId).catch((error: unknown) => {
+          console.warn('[CreatePostModal.removeDraft]', error instanceof Error ? error.message : 'Could not delete the draft');
+        });
+      }
       setTogglePostForm(false);
     } catch (error: unknown) {
       diagnosticLogService.error('CreatePostModal', 'submit', error, { postType, mediaCount: media.length });
@@ -359,8 +490,13 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={['top', 'left', 'right']}>
         <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close post composer" />
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-          <TouchableOpacity onPress={handleClose} disabled={isSubmitting} style={{ padding: 8 }}><Icon name="x" size={24} color={colors.icon} /></TouchableOpacity>
+          <TouchableOpacity onPress={swipeDismiss.dismissWithAnimation} disabled={isSubmitting} style={{ padding: 8 }} accessibilityLabel="Close post composer"><Icon name="x" size={24} color={colors.icon} /></TouchableOpacity>
           <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: colors.text }}>{postType === 'poll' ? 'Create poll' : 'Create post'}</Text>
+          {canSaveDraft && hasUnsavedChanges ? (
+            <TouchableOpacity onPress={() => void handleSaveDraft()} disabled={isDraftBusy || isSubmitting} style={{ paddingHorizontal: 10, paddingVertical: 8, marginRight: 6 }} accessibilityRole="button" accessibilityLabel="Save draft">
+              {isDraftBusy ? <ActivityIndicator size="small" color={colors.accent} /> : <Text style={{ color: colors.accentText, fontWeight: '800' }}>Save draft</Text>}
+            </TouchableOpacity>
+          ) : null}
           <AnimatedActionButton feedback="post" accessibilityLabel="Publish post" onPress={() => void handleSubmit()} disabled={isPostDisabled} style={{ minWidth: 68, alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 18, backgroundColor: isPostDisabled ? colors.disabled : colors.accent }}>
             {isSubmitting ? <ActivityIndicator size="small" color={colors.onAccent} /> : <Text style={{ color: isPostDisabled ? colors.disabledText : colors.onAccent, fontWeight: '800' }}>Post</Text>}
           </AnimatedActionButton>
@@ -368,6 +504,20 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
+            {canUseDrafts ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <TouchableOpacity
+                  onPress={() => { setDraftsNotice(null); setIsDraftsSheetVisible(true); void refreshDrafts(); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 14, backgroundColor: colors.control }}
+                  accessibilityRole="button"
+                  accessibilityLabel="View drafts"
+                >
+                  <Icon name="file-text" size={15} color={colors.icon} />
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>Drafts ({drafts.length}/{MAX_DRAFTS_PER_KIND})</Text>
+                </TouchableOpacity>
+                {openedDraftId ? <Text style={{ color: colors.mutedText, fontSize: 12 }}>Editing a draft</Text> : null}
+              </View>
+            ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 18 }}>
               <UserAvatar profileImage={userProfile.profilePicture} firstName={userProfile.firstName || userProfile.email} size={52} />
               <View style={{ flex: 1, marginLeft: 12 }}>
@@ -585,6 +735,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
                   if (!firstVideo) return null;
                   return (
                     <VideoThumbnailPicker
+                      title="Video cover"
                       videoUri={firstVideo.uri}
                       durationSeconds={firstVideo.durationSeconds ?? 10}
                       selectedThumbnailUri={firstVideo.thumbnailUri}
@@ -661,6 +812,28 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
       {cropQueue[0] ? <MediaCropModal pending={cropQueue[0]} queueLength={cropQueue.length} onCancel={() => setCropQueue((current) => current.slice(1))} onComplete={handleCroppedMedia} /> : null}
       {trimQueue[0] ? <VideoTrimModal pending={trimQueue[0]} queueLength={trimQueue.length} onCancel={() => setTrimQueue((current) => current.slice(1))} onComplete={handleTrimmedVideo} onError={(message) => setComposerFeedback({ title: 'Video trimming', message })} /> : null}
       {showLocationPicker ? <LocationPickerModal initialLocation={location} onClose={() => setShowLocationPicker(false)} onSelect={(selectedLocation) => { setLocation(selectedLocation); setShowLocationPicker(false); }} /> : null}
+      <DraftDiscardSheet
+        visible={isDiscardSheetVisible}
+        canSaveDraft={canSaveDraft}
+        isSaving={isDraftBusy}
+        onSaveDraft={() => void handleSaveDraft(true)}
+        onDiscard={() => {
+          setIsDiscardSheetVisible(false);
+          setTogglePostForm(false);
+        }}
+        onContinue={() => setIsDiscardSheetVisible(false)}
+      />
+      <DraftsSheet
+        visible={isDraftsSheetVisible}
+        kind="post"
+        drafts={drafts}
+        loading={isDraftsLoading}
+        notice={draftsNotice}
+        openingDraftId={openingDraftId}
+        onOpenDraft={(draft) => void handleOpenDraft(draft)}
+        onDeleteDraft={handleDeleteDraft}
+        onClose={() => { setIsDraftsSheetVisible(false); setDraftsNotice(null); }}
+      />
       <CustomModal visible={Boolean(composerFeedback)} title={composerFeedback?.title ?? 'Create post'} message={composerFeedback?.message ?? ''} type="error" onClose={() => setComposerFeedback(null)} />
       </Animated.View>
     </Modal>

@@ -58,6 +58,7 @@ import type { Reel } from '@/types/userTypes';
 import type { PostItem } from '@/lib/services/PostService';
 import { limeService } from '@/lib/services/LimeService';
 import { AuthService } from '@/lib/services/AuthService';
+import type { UserProfile } from '@/lib/services/AuthService';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
 import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
 import { LimeResourceService } from '@/lib/services/LimeResourceService';
@@ -66,6 +67,7 @@ import { LimeVisualPlaceholder } from '@/components/limes/LimeVisualPlaceholder'
 import { useLimeFeedResource } from '@/lib/hooks/useLimeFeedResource';
 import { ensureMediaUrl } from '@/lib/helpers/mediaUrl';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import Animated, { Easing, interpolate, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components/ui/PlayfulFloatingHeart';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
@@ -81,6 +83,32 @@ type ReportTarget = {
 };
 
 type LimeReposter = NonNullable<Reel['repostedBy']>[number];
+
+/** Adds (from the signed-in account) or removes the viewer in a Lime's 'Reposted by' list. */
+const withViewerReposter = (reposters: LimeReposter[], viewerId: string, reposted: boolean): LimeReposter[] => {
+  if (!reposted) return reposters.filter((reposter) => reposter.userId !== viewerId);
+  if (reposters.some((reposter) => reposter.userId === viewerId)) return reposters;
+  const authUser = authService.getCurrentUser();
+  const [firstName = 'You', ...lastNameParts] = (authUser?.displayName ?? '').split(' ').filter(Boolean);
+  return [{
+    userId: viewerId,
+    userName: 'you',
+    firstName,
+    lastName: lastNameParts.join(' '),
+    profileImage: authUser?.photoURL || undefined,
+  }, ...reposters];
+};
+
+/** Fills the viewer's entry with their full profile (real photo and username). */
+const withViewerProfile = (reposters: LimeReposter[], viewerId: string, profile: UserProfile): LimeReposter[] => reposters.map((reposter) => (
+  reposter.userId === viewerId ? {
+    ...reposter,
+    userName: profile.userName || reposter.userName,
+    firstName: profile.firstName || reposter.firstName,
+    lastName: profile.lastName || reposter.lastName,
+    profileImage: profile.profilePicture || reposter.profileImage,
+  } : reposter
+));
 
 export function reelToPostItem(reel: Reel): PostItem {
   const createdAtMs = reel.createdAt instanceof Date
@@ -131,19 +159,50 @@ type ReposterAvatarProps = {
   visibleReposterCount: number;
 };
 
+// Same path as the web's lime-reposter-bubble-float keyframes (0/25/50/75/100%).
+const FLOAT_STOPS = [0, 0.25, 0.5, 0.75, 1];
+const FLOAT_X = [0, 4, -3, 2, 0];
+const FLOAT_Y = [0, -5, 2, 5, 0];
+const FLOAT_SCALE = [1, 1.025, 0.99, 1.015, 1];
+
+/** Hook giving a reposter bubble the web's gentle floating motion. */
+function useFloatingBubbleStyle(durationMs: number, delayFraction: number, reverse: boolean) {
+  const reduceMotion = useReducedMotion();
+  const progress = useSharedValue(delayFraction);
+  useEffect(() => {
+    if (reduceMotion) return;
+    progress.value = delayFraction;
+    progress.value = withSequence(
+      withTiming(1, { duration: durationMs * (1 - delayFraction), easing: Easing.linear }),
+      withRepeat(withSequence(withTiming(0, { duration: 0 }), withTiming(1, { duration: durationMs, easing: Easing.linear })), -1),
+    );
+  }, [delayFraction, durationMs, progress, reduceMotion]);
+  return useAnimatedStyle(() => {
+    const point = reverse ? 1 - progress.value : progress.value;
+    return {
+      transform: [
+        { translateX: interpolate(point, FLOAT_STOPS, FLOAT_X) },
+        { translateY: interpolate(point, FLOAT_STOPS, FLOAT_Y) },
+        { scale: interpolate(point, FLOAT_STOPS, FLOAT_SCALE) },
+      ],
+    };
+  });
+}
+
 function ReposterAvatar({
   reposter,
   reposterIndex,
   visibleReposterCount,
 }: ReposterAvatarProps) {
+  const durationMs = 3600 + reposterIndex * 350;
+  // Web uses animation-delay: index * -0.55s; as a fraction of this bubble's cycle.
+  const floatStyle = useFloatingBubbleStyle(durationMs, ((reposterIndex * 550) % durationMs) / durationMs, reposterIndex % 2 === 1);
   return (
-    <View
+    <Animated.View
       style={[
         styles.reposterBubbleShell,
-        {
-          marginLeft: reposterIndex === 0 ? 0 : -12,
-          zIndex: visibleReposterCount - reposterIndex,
-        },
+        { marginLeft: reposterIndex === 0 ? 0 : -12, zIndex: visibleReposterCount - reposterIndex },
+        floatStyle,
       ]}
     >
       <Image
@@ -152,7 +211,26 @@ function ReposterAvatar({
         contentFit="cover"
         cachePolicy="memory-disk"
       />
-    </View>
+      {reposterIndex === 0 ? (
+        <View style={styles.reposterBadge}>
+          <Repeat2 size={10} color="#ffffff" strokeWidth={3} />
+        </View>
+      ) : null}
+    </Animated.View>
+  );
+}
+
+type ReposterOverflowBubbleProps = {
+  hiddenCount: number;
+};
+
+/** The +N circle after the first three reposters (floats in reverse like the web). */
+function ReposterOverflowBubble({ hiddenCount }: ReposterOverflowBubbleProps) {
+  const floatStyle = useFloatingBubbleStyle(3600, 1200 / 3600, true);
+  return (
+    <Animated.View style={[styles.reposterOverflowBubble, floatStyle]}>
+      <Text style={styles.reposterCountText}>+{hiddenCount}</Text>
+    </Animated.View>
   );
 }
 
@@ -161,7 +239,7 @@ export default function LimesScreen() {
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
   const [seeking, setSeeking] = useState(false);
   const router = useRouter();
-  const { limeId, viewer } = useLocalSearchParams<{ limeId?: string; viewer?: string }>();
+  const { limeId, viewer, drafts: draftsParam } = useLocalSearchParams<{ limeId?: string; viewer?: string; drafts?: string }>();
   const isScreenFocused = useIsFocused();
   const isSharedViewer = viewer === '1';
 
@@ -170,6 +248,13 @@ export default function LimesScreen() {
   const [categorySheetVisible, setCategorySheetVisible] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  // From a draft reminder: open the Lime composer on its drafts list.
+  const [openLimeComposerOnDrafts, setOpenLimeComposerOnDrafts] = useState(false);
+  useEffect(() => {
+    if (draftsParam !== '1') return;
+    setOpenLimeComposerOnDrafts(true);
+    setIsCreateModalOpen(true);
+  }, [draftsParam]);
   const [commentReelId, setCommentReelId] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
@@ -620,6 +705,7 @@ export default function LimesScreen() {
               void limeResourceService.patchRepostMarker(query, reelId, reposted);
               void limeResourceService.patchReel(query, reelId, (reel) => ({
                 ...reel,
+                repostedBy: currentUserId ? withViewerReposter(reel.repostedBy ?? [], currentUserId, reposted) : reel.repostedBy,
                 stats: {
                   likes: reel.stats?.likes ?? 0,
                   comments: reel.stats?.comments ?? 0,
@@ -629,6 +715,17 @@ export default function LimesScreen() {
                     : Math.max(0, (reel.stats?.reposts ?? 0) - 1),
                 },
               }));
+              if (reposted && currentUserId) {
+                void authService.getUserProfileIfAvailable(currentUserId).then((profile) => {
+                  if (!profile) return;
+                  void limeResourceService.patchReel(query, reelId, (reel) => ({
+                    ...reel,
+                    repostedBy: withViewerProfile(reel.repostedBy ?? [], currentUserId, profile),
+                  }));
+                }).catch((error: unknown) => {
+                  console.error('[onToggleRepost] Error:', error);
+                });
+              }
             }}
             onFollowToggle={handleFollowToggle}
             onProfilePress={(userName) => {
@@ -657,7 +754,11 @@ export default function LimesScreen() {
       {isCreateModalOpen ? (
         <CreateLimeModal
           isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
+          initialShowDrafts={openLimeComposerOnDrafts}
+          onClose={() => {
+            setIsCreateModalOpen(false);
+            setOpenLimeComposerOnDrafts(false);
+          }}
           onSuccess={() => {
             setIsCreateModalOpen(false);
             void refresh(true);
@@ -1243,17 +1344,24 @@ export function ReelItem({
   const viewerReposted = isReposted
     || reel.repostedByViewer === true
     || Boolean(currentUserId && reel.repostedBy?.some((reposter) => reposter.userId === currentUserId));
+  // Local copy so the viewer's own bubble appears/disappears the moment they tap repost (like Instagram).
+  const [reposterList, setReposterList] = useState<LimeReposter[]>(reel.repostedBy ?? []);
+  useEffect(() => {
+    setReposterList(reel.repostedBy ?? []);
+  }, [reel.repostedBy]);
   const orderedReposters = useMemo(() => {
-    const reposters = [...(reel.repostedBy ?? [])];
+    const reposters = [...reposterList];
     if (!currentUserId) return reposters;
     return reposters.sort((firstReposter, secondReposter) => {
       if (firstReposter.userId === currentUserId) return -1;
       if (secondReposter.userId === currentUserId) return 1;
       return 0;
     });
-  }, [currentUserId, reel.repostedBy]);
+  }, [currentUserId, reposterList]);
   const visibleReposters = orderedReposters.slice(0, 3);
-  const hiddenReposterCount = Math.max(0, repostCount - visibleReposters.length);
+  // With no profiles to show, the count bubble already carries the number, so no extra +N.
+  // Like the web: bubbles for up to three reposters, then +N for the rest of the list.
+  const hiddenReposterCount = Math.max(0, orderedReposters.length - visibleReposters.length);
   const reposterAccessibilityLabel = viewerReposted
     ? `You reposted this Lime.${repostCount > 1 ? ` ${repostCount - 1} other ${repostCount === 2 ? 'person' : 'people'} reposted it.` : ''}`
     : `${repostCount} ${repostCount === 1 ? 'person' : 'people'} reposted this Lime.`;
@@ -1299,11 +1407,24 @@ export function ReelItem({
     if (nextLiked) heartRef.current?.trigger();
   }, [isLiked, reel.id, currentUserId, onLikeUpdate]);
 
+  /** Adds or removes the viewer's profile bubble in the 'Reposted by' row. */
+  const updateViewerReposter = useCallback((reposted: boolean) => {
+    if (!currentUserId) return;
+    setReposterList((list) => withViewerReposter(list, currentUserId, reposted));
+    if (!reposted) return;
+    void authService.getUserProfileIfAvailable(currentUserId).then((profile) => {
+      if (profile) setReposterList((list) => withViewerProfile(list, currentUserId, profile));
+    }).catch((error: unknown) => {
+      console.error('[updateViewerReposter] Error:', error);
+    });
+  }, [currentUserId]);
+
   const toggleRepostButton = useCallback(async () => {
     if (!currentUserId) return;
     const nextReposted = !isReposted;
     setIsReposted(nextReposted);
     setRepostCount((c) => Math.max(0, c + (nextReposted ? 1 : -1)));
+    updateViewerReposter(nextReposted);
     onToggleRepost(reel.id, nextReposted);
     try {
       if (nextReposted) {
@@ -1316,9 +1437,10 @@ export function ReelItem({
       // Rollback
       setIsReposted(!nextReposted);
       setRepostCount((c) => Math.max(0, c + (!nextReposted ? 1 : -1)));
+      updateViewerReposter(!nextReposted);
       onToggleRepost(reel.id, !nextReposted);
     }
-  }, [isReposted, reel.id, currentUserId, onToggleRepost]);
+  }, [isReposted, reel.id, currentUserId, onToggleRepost, updateViewerReposter]);
 
   /* Tap handler: double tap likes & animates heart; single tap toggles pause */
   const handleDoubleTapZoneTap = useCallback(() => {
@@ -1567,39 +1689,23 @@ export function ReelItem({
 
       {/* 6. Bottom overlay (creator info + caption) */}
       <View style={styles.bottomOverlay} pointerEvents="box-none">
-        {repostCount > 0 ? (
+        {orderedReposters.length > 0 ? (
           <TouchableOpacity
-            onPress={() => {
-              if (orderedReposters.length > 0) setShowReposters(true);
-            }}
+            onPress={() => setShowReposters(true)}
             accessibilityRole="button"
             accessibilityLabel={reposterAccessibilityLabel}
             activeOpacity={0.82}
             style={styles.reposterBubbleAnchor}
           >
-            <Repeat2 size={15} color="#ffffff" strokeWidth={2.7} />
-            <Text style={styles.reposterLabel}>Reposted by</Text>
-            <View style={styles.reposterBubbleCluster}>
-              {visibleReposters.map((reposter, reposterIndex) => (
-                <ReposterAvatar
-                  key={reposter.userId}
-                  reposter={reposter}
-                  reposterIndex={reposterIndex}
-                  visibleReposterCount={visibleReposters.length}
-                />
-              ))}
-              {visibleReposters.length === 0 ? (
-                <View style={[styles.reposterBubbleShell, styles.reposterCountBubble]}>
-                  <Repeat2 size={17} color="#ffffff" />
-                  <Text style={styles.reposterCountText}>{repostCount}</Text>
-                </View>
-              ) : null}
-              {hiddenReposterCount > 0 ? (
-                <View style={[styles.reposterBubbleShell, styles.reposterCountBubble, { marginLeft: -10, zIndex: 0 }]}>
-                  <Text style={styles.reposterCountText}>+{hiddenReposterCount}</Text>
-                </View>
-              ) : null}
-            </View>
+            {visibleReposters.map((reposter, reposterIndex) => (
+              <ReposterAvatar
+                key={reposter.userId}
+                reposter={reposter}
+                reposterIndex={reposterIndex}
+                visibleReposterCount={visibleReposters.length}
+              />
+            ))}
+            {hiddenReposterCount > 0 ? <ReposterOverflowBubble hiddenCount={hiddenReposterCount} /> : null}
           </TouchableOpacity>
         ) : null}
 
@@ -2041,36 +2147,48 @@ export const styles = StyleSheet.create({
     bottom: '100%',
     marginBottom: 12,
     zIndex: 40,
-    minHeight: 44,
-    maxWidth: 248,
-    paddingLeft: 12,
-    paddingRight: 7,
-    borderRadius: 22,
+    minHeight: 48,
+    paddingRight: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    backgroundColor: 'rgba(2,6,23,0.76)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
   },
-  reposterLabel: { color: '#ffffff', fontSize: 12, fontWeight: '800' },
-  reposterBubbleCluster: { minWidth: 32, minHeight: 32, flexDirection: 'row', alignItems: 'center' },
   reposterBubbleShell: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.82)',
-    padding: 0,
-    backgroundColor: 'rgba(2,6,23,0.72)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#020617',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
+    shadowOpacity: 0.45,
     shadowRadius: 8,
-    elevation: 12,
+    elevation: 10,
   },
-  reposterBubbleAvatar: { width: '100%', height: '100%', borderRadius: 15 },
-  reposterCountBubble: { alignItems: 'center', justifyContent: 'center', borderColor: 'rgba(255,255,255,0.8)', flexDirection: 'row', gap: 2 },
+  reposterBubbleAvatar: { width: '100%', height: '100%', borderRadius: 22 },
+  reposterBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#020617',
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reposterOverflowBubble: {
+    width: 40,
+    height: 40,
+    marginLeft: -10,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: '#020617',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 10,
+  },
   reposterCountText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
   reposterSheetBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.58)' },
   reposterSheet: {
