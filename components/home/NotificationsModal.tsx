@@ -71,7 +71,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
-  const [showReadNotifs, setShowReadNotifs] = useState(false);
+  const [readSectionChoice, setReadSectionChoice] = useState<boolean | null>(null);
   const [isUnreadExpanded, setIsUnreadExpanded] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -140,7 +140,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
     if (!showReadNotifs && readItems.length === 0 && hasMore) {
       await handleLoadMore(false);
     }
-    setShowReadNotifs((prev) => !prev);
+    setReadSectionChoice(!showReadNotifs);
   };
 
   const closeDialog = () => setDialogState((prev) => ({ ...prev, visible: false }));
@@ -182,6 +182,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
   // Unread vs Read items
   const unreadItems = useMemo(() => sortedNotifications.filter((n) => !isItemRead(n)), [sortedNotifications]);
   const readItems = useMemo(() => sortedNotifications.filter((n) => isItemRead(n)), [sortedNotifications]);
+  const showReadNotifs = readSectionChoice ?? unreadItems.length === 0;
 
   const displayReadCount = useMemo(() => {
     if (activeFilter === 'all' || activeFilter === 'unread') {
