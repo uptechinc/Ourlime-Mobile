@@ -23,6 +23,7 @@ import PollCardSection from './MiddleSectionComponent/PostCardSection/PollCardSe
 import PostCardSection from './MiddleSectionComponent/PostCardSection/PostCardSection';
 import SuggestedUsersSection from '@/components/home/SuggestedUsersSection';
 import ActivityCard from '@/components/home/ActivityCard';
+import GamesFeedCard from '@/components/home/GamesFeedCard';
 import { SkeletonPostCard } from '@/components/home/SkeletonLoaders';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppDrawer } from '@/lib/contexts/AppDrawerContext';
@@ -193,6 +194,8 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
           const rows: FeedRow[] = [{ kind: 'post', post, index }];
           if (index === 1) rows.push({ kind: 'promoted' });
           if (index === 2) rows.push({ kind: 'activity' });
+          // Website left-column Games card, shown in the feed on mobile.
+          if (index === 5) rows.push({ kind: 'games' });
           if (index === suggestedIndexRef.current) rows.push({ kind: 'suggested' });
           return rows;
         })),
@@ -374,7 +377,7 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
           return <View style={{ marginHorizontal: 16 }}><SuggestedUsersSection /></View>;
 
         case 'games':
-          return null;
+          return <View style={{ marginHorizontal: 16, marginBottom: 14 }}><GamesFeedCard /></View>;
 
         case 'footer':
           return loadingMore ? (

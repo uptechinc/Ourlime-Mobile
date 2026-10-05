@@ -22,7 +22,6 @@ import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { limeThumbnailService, type LimeCoverFrame } from '@/lib/services/LimeThumbnailService';
 import VideoThumbnailPicker from '@/components/media/VideoThumbnailPicker';
@@ -32,6 +31,7 @@ import { videoTrimService } from '@/lib/services/VideoTrimService';
 import DraftsSheet from '@/components/drafts/DraftsSheet';
 import DraftDiscardSheet from '@/components/drafts/DraftDiscardSheet';
 import { creationDraftService, DraftLimitError, MAX_DRAFTS_PER_KIND, type CreationDraft } from '@/lib/services/CreationDraftService';
+import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
 const authService = AuthService.getInstance();
 const searchService = SearchService.getInstance();
 const MAX_LIME_VIDEO_DURATION_SECONDS = 30;
@@ -72,20 +72,10 @@ type CreateLimeModalProps = {
 
 /** Playable preview of the chosen Lime on the compose screen. */
 function SelectedVideoPreview({ uri }: { uri: string }) {
-  const player = useVideoPlayer(uri, (videoPlayer) => {
-    videoPlayer.loop = true;
-    videoPlayer.muted = true;
-    videoPlayer.pause();
-  });
-
   return (
-    <VideoView
-      player={player}
-      style={styles.selectedVideoPreview}
-      nativeControls
-      contentFit="contain"
-      fullscreenOptions={{ enable: true }}
-    />
+    <View style={styles.selectedVideoPreview}>
+      <CustomVideoPlayer url={uri} autoPlay={false} startMuted loop />
+    </View>
   );
 }
 

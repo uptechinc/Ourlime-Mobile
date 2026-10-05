@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { creationDraftService, draftDaysLeft, DRAFT_REMINDER_DAYS, type CreationDraft } from './CreationDraftService';
 import { inAppNotificationService } from './InAppNotificationService';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { serverClockService } from './ServerClockService';
 
 type ExpiringDraft = { draft: CreationDraft; daysLeft: number };
 
@@ -34,8 +35,7 @@ export class DraftExpiryService {
     if (this.lastRunUserId === uid) return;
     this.lastRunUserId = uid;
     try {
-      const now = Date.now();
-      const drafts = await creationDraftService.list(uid);
+      const [now, drafts] = await Promise.all([serverClockService.now(), creationDraftService.list(uid)]);
       const deleted: CreationDraft[] = [];
       const expiring: ExpiringDraft[] = [];
       for (const draft of drafts) {

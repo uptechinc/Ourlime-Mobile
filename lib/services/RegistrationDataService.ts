@@ -1,6 +1,7 @@
 import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { sha256Hex } from '@/lib/helpers/sha256';
+import { usernameService } from './UsernameService';
 
 export type RegistrationMode = 'open' | 'invite_only' | 'closed';
 export type InvitationCheck =
@@ -66,8 +67,7 @@ export class RegistrationDataService {
   }
 
   public async isUsernameAvailable(userName: string): Promise<boolean> {
-    const users = await getDocs(query(collection(db, 'users'), where('userName', '==', userName.trim()), limit(1)));
-    return users.empty;
+    return usernameService.isAvailable(userName);
   }
 }
 

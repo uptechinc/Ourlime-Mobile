@@ -1,11 +1,14 @@
-import { addDoc, collection, doc, getCountFromServer, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, where, writeBatch } from 'firebase/firestore';
+import { addDoc, collection, doc, getCountFromServer, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, startAfter, where, writeBatch, type DocumentReference } from 'firebase/firestore';
 import { db, auth } from '../firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { LocalCacheService } from './LocalCacheService';
 import type { NotificationData, NotificationPage } from '@/lib/types/notification';
+import { usernameService } from './UsernameService';
 
 type NotificationAction = 'read' | 'unread' | 'read-all' | 'delete';
 
+// Firestore allows 500 writes per batch.
+const WRITE_BATCH_SIZE = 450;
 const CACHE_NAMESPACE = 'notifications';
 const CACHE_KEY = 'latest';
 const CACHE_RETENTION_MS = 48 * 60 * 60 * 1000;
@@ -95,8 +98,11 @@ export class NotificationService {
           return page;
         }
 
-        // Paginated page with cursor
-        const q = query(parentRef, orderBy('createdAt', 'desc'), limit(pageLimit + 1));
+        // Paginated page with cursor (the cursor is the last notification already shown).
+        const cursorSnap = await getDoc(doc(parentRef, cursor));
+        const q = cursorSnap.exists()
+          ? query(parentRef, orderBy('createdAt', 'desc'), startAfter(cursorSnap), limit(pageLimit + 1))
+          : query(parentRef, orderBy('createdAt', 'desc'), limit(pageLimit + 1));
         const snapshot = await getDocs(q);
         const notifications = snapshot.docs.slice(0, pageLimit).map(parseDoc);
         const unreadCount = notifications.filter((n) => !n.isRead).length;
@@ -160,29 +166,30 @@ export class NotificationService {
   public async mutate(action: NotificationAction, notificationIds: string[] = []): Promise<void> {
     const uniqueIds = [...new Set(notificationIds.filter(Boolean))];
     const currentUid = auth.currentUser?.uid;
-    if (!currentUid) return;
+    if (!currentUid) throw new Error('Please sign in again.');
     const parentRef = collection(doc(db, 'userNotifications', currentUid), 'items');
 
     if (action === 'read-all') {
       const unreadSnap = await getDocs(query(parentRef, where('isRead', '==', false)));
-      const batch = writeBatch(db);
-      unreadSnap.docs.forEach((d) => batch.update(d.ref, { isRead: true, read: true }));
-      await batch.commit();
+      await this.commitInChunks(unreadSnap.docs.map((d) => d.ref), (batch, ref) => batch.update(ref, { isRead: true, read: true }));
       return;
     }
 
-    const batch = writeBatch(db);
-    for (const id of uniqueIds) {
-      const itemDoc = doc(parentRef, id);
-      if (action === 'delete') {
-        batch.delete(itemDoc);
-      } else if (action === 'read') {
-        batch.update(itemDoc, { isRead: true, read: true });
-      } else if (action === 'unread') {
-        batch.update(itemDoc, { isRead: false, read: false });
-      }
+    const refs = uniqueIds.map((id) => doc(parentRef, id));
+    if (action === 'delete') {
+      await this.commitInChunks(refs, (batch, ref) => batch.delete(ref));
+    } else {
+      const isRead = action === 'read';
+      await this.commitInChunks(refs, (batch, ref) => batch.update(ref, { isRead, read: isRead }));
     }
-    await batch.commit();
+  }
+
+  private async commitInChunks(refs: DocumentReference[], apply: (batch: ReturnType<typeof writeBatch>, ref: DocumentReference) => void): Promise<void> {
+    for (let index = 0; index < refs.length; index += WRITE_BATCH_SIZE) {
+      const batch = writeBatch(db);
+      refs.slice(index, index + WRITE_BATCH_SIZE).forEach((ref) => apply(batch, ref));
+      await batch.commit();
+    }
   }
 
   public markAsRead(notificationId: string): Promise<void> { return this.mutate('read', [notificationId]); }
@@ -209,10 +216,8 @@ export class NotificationService {
 
     try {
       for (const userName of uniqueMentions) {
-        const userQuery = query(collection(db, 'users'), where('userName', '==', userName));
-        const userSnap = await getDocs(userQuery);
-        if (!userSnap.empty) {
-          const targetUserId = userSnap.docs[0].id;
+        const targetUserId = await usernameService.findUserId(userName);
+        if (targetUserId) {
           if (targetUserId !== actorUserId) {
             await addDoc(collection(db, `users/${targetUserId}/notifications`), {
               type: 'mention',

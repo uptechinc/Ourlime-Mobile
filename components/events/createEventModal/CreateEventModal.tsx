@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { toast } from 'sonner-native';
 import { AuthService } from '@/lib/services/AuthService';
 import { EventService } from '@/lib/services/EventService';
+import DateTimeField from '@/components/ui/DateTimeField';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
@@ -48,17 +49,23 @@ type CreateEventForm = {
   category: string;
 };
 
-type DateField = { label: string; key: 'date' | 'time' | 'endDate' | 'endTime'; ph: string };
+const DEFAULT_EVENT_LENGTH_MS = 2 * 60 * 60 * 1000;
+const padTwo = (value: number): string => String(value).padStart(2, '0');
 
-const START_FIELDS: DateField[] = [
-  { label: 'Start Date', key: 'date', ph: 'YYYY-MM-DD' },
-  { label: 'Start Time', key: 'time', ph: 'HH:MM' },
-];
+/** The form keeps local 'YYYY-MM-DD' + 'HH:MM' strings (what eventService and saved drafts expect). */
+function joinDateTime(date: string, time: string): Date | null {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
+  if (!dateMatch) return null;
+  const timeMatch = /^(\d{1,2}):(\d{2})/.exec(time.trim());
+  return new Date(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]), timeMatch ? Number(timeMatch[1]) : 0, timeMatch ? Number(timeMatch[2]) : 0);
+}
 
-const END_FIELDS: DateField[] = [
-  { label: 'End Date', key: 'endDate', ph: 'YYYY-MM-DD' },
-  { label: 'End Time', key: 'endTime', ph: 'HH:MM' },
-];
+function splitDateTime(value: Date): { date: string; time: string } {
+  return {
+    date: `${value.getFullYear()}-${padTwo(value.getMonth() + 1)}-${padTwo(value.getDate())}`,
+    time: `${padTwo(value.getHours())}:${padTwo(value.getMinutes())}`,
+  };
+}
 
 /* ─────────── Component ─────────── */
 export default function CreateEventModal({ visible, onClose, onCreated }: CreateEventModalProps) {
@@ -155,6 +162,12 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
   const handleSubmit = async () => {
     if (!isValid) {
       toast.error('Fill required fields first');
+      return;
+    }
+    const startsAt = joinDateTime(formData.date, formData.time);
+    const endsAt = joinDateTime(formData.endDate, formData.endTime);
+    if (startsAt && endsAt && endsAt <= startsAt) {
+      toast.error('The end must be after the start');
       return;
     }
     try {
@@ -293,55 +306,36 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
               }}
             />
 
-            {/* Dates & Times */}
-            {START_FIELDS.map(field => (
-              <View key={field.key} style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
-                  {field.label} <Text style={{ color: '#ef4444' }}>*</Text>
-                </Text>
-                <TextInput
-                  placeholder={field.ph}
-                  value={formData[field.key]}
-                  onChangeText={v => setFormData(p => ({ ...p, [field.key]: v }))}
-                  placeholderTextColor={colors.mutedText}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    backgroundColor: colors.input,
-                    color: colors.text,
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
-                    fontSize: 14,
-                  }}
-                />
-              </View>
-            ))}
-
-            {/* End date/time */}
-            {END_FIELDS.map(field => (
-              <View key={field.key} style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
-                  {field.label} <Text style={{ color: '#ef4444' }}>*</Text>
-                </Text>
-                <TextInput
-                  placeholder={field.ph}
-                  value={formData[field.key]}
-                  onChangeText={v => setFormData(p => ({ ...p, [field.key]: v }))}
-                  placeholderTextColor={colors.mutedText}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    backgroundColor: colors.input,
-                    color: colors.text,
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
-                    fontSize: 14,
-                  }}
-                />
-              </View>
-            ))}
+            {/* Dates & Times: native pickers (stored as local date + time strings) */}
+            <View style={{ gap: 12, marginBottom: 12 }}>
+              <DateTimeField
+                label="Starts"
+                required
+                mode="datetime"
+                placeholder="Pick a start date and time"
+                value={joinDateTime(formData.date, formData.time)}
+                minimumDate={new Date()}
+                onChange={(start) => setFormData((previous) => {
+                  const end = joinDateTime(previous.endDate, previous.endTime);
+                  const nextEnd = !end || end <= start ? new Date(start.getTime() + DEFAULT_EVENT_LENGTH_MS) : end;
+                  const startParts = splitDateTime(start);
+                  const endParts = splitDateTime(nextEnd);
+                  return { ...previous, date: startParts.date, time: startParts.time, endDate: endParts.date, endTime: endParts.time };
+                })}
+              />
+              <DateTimeField
+                label="Ends"
+                required
+                mode="datetime"
+                placeholder="Pick an end date and time"
+                value={joinDateTime(formData.endDate, formData.endTime)}
+                minimumDate={joinDateTime(formData.date, formData.time) ?? new Date()}
+                onChange={(end) => setFormData((previous) => {
+                  const endParts = splitDateTime(end);
+                  return { ...previous, endDate: endParts.date, endTime: endParts.time };
+                })}
+              />
+            </View>
 
             {/* Recurrence */}
             <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>

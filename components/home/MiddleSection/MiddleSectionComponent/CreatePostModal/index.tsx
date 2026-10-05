@@ -37,6 +37,7 @@ import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { postSubmissionService } from '@/lib/services/PostSubmissionService';
+import { usePostSubmissionStore } from '@/lib/store/usePostSubmissionStore';
 import VideoThumbnailPicker from '@/components/media/VideoThumbnailPicker';
 import DraftDiscardSheet from '@/components/drafts/DraftDiscardSheet';
 import DraftsSheet from '@/components/drafts/DraftsSheet';
@@ -213,7 +214,8 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
 
   const validPollOptions = pollOptions.filter((option) => option.text.trim());
   const hasNonMentionContent = caption.replace(/@[\w.-]+/g, '').trim().length > 0 || eventTitle.trim().length > 0;
-  const isPostDisabled = isSubmitting || cropQueue.length > 0 || trimQueue.length > 0 || (postType === 'poll'
+  const isAnotherUploadRunning = usePostSubmissionStore((state) => state.submission?.status === 'running');
+  const isPostDisabled = isSubmitting || isAnotherUploadRunning || cropQueue.length > 0 || trimQueue.length > 0 || (postType === 'poll'
     ? validPollOptions.length < 2 || !hasNonMentionContent
     : postType === 'event'
     ? !eventTitle.trim() && !hasNonMentionContent
@@ -504,6 +506,12 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
+            {isAnotherUploadRunning && !isSubmitting ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, marginBottom: 14, borderRadius: 14, backgroundColor: colors.control }}>
+                <ActivityIndicator size="small" color={colors.accent} />
+                <Text style={{ flex: 1, color: colors.text, fontSize: 13 }}>Another post is still uploading. You can keep writing; Post unlocks when it finishes.</Text>
+              </View>
+            ) : null}
             {canUseDrafts ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                 <TouchableOpacity
@@ -523,7 +531,8 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{userProfile.firstName} {userProfile.lastName}</Text>
                 <View style={{ flexDirection: 'row', marginTop: 6 }}>
-                  {(['public', 'friends', 'private'] as const).map((option) => (
+                  {communityId ? <Text style={{ color: colors.mutedText, fontSize: 12 }}>Posting to {communityName || 'this community'}</Text> : null}
+                  {(communityId ? [] : (['public', 'friends', 'private'] as const)).map((option) => (
                     <TouchableOpacity
                       key={option}
                       activeOpacity={1}

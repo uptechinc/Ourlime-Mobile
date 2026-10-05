@@ -1,7 +1,8 @@
-import { collection, doc, getDoc, getDocs, limit, query, where, type DocumentData, type DocumentSnapshot } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where, type DocumentData, type DocumentSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import type { UserProfile } from './AuthService';
 import { communityDataService } from './CommunityDataService';
+import { usernameService } from './UsernameService';
 
 const readString = (value: unknown): string => typeof value === 'string' ? value : '';
 const readNumber = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -43,7 +44,7 @@ export class ProfileService {
       const isBlockedByOther = readStringList(user.blockList).includes(viewerId);
       if (isBlockedByMe || isBlockedByOther) {
         return {
-          profile: { ...this.toProfile(userId, user, {}, 0, 0), bio: '', location: '', coverPhoto: undefined, coverImage: '', profilePicture: null },
+          profile: { ...this.toProfile(userId, user, {}, 0, 0, false), bio: '', location: '', coverPhoto: undefined, coverImage: '', profilePicture: null },
           isBlockedByMe,
           isBlockedByOther,
           friends: [],
@@ -86,13 +87,13 @@ export class ProfileService {
 
   /** Website order: username first, then a direct user id. */
   private async findUser(identifier: string): Promise<DocumentSnapshot<DocumentData> | null> {
-    const byUserName = await getDocs(query(collection(db, 'users'), where('userName', '==', identifier), limit(1)));
-    if (!byUserName.empty) return byUserName.docs[0];
+    const byUserName = await usernameService.findUserDocument(identifier);
+    if (byUserName?.exists()) return byUserName;
     const byId = await getDoc(doc(db, 'users', identifier));
     return byId.exists() ? byId : null;
   }
 
-  private toProfile(userId: string, user: DocumentData, profileImages: Record<string, string>, followersCount: number, friendsCount: number): UserProfile {
+  private toProfile(userId: string, user: DocumentData, profileImages: Record<string, string>, followersCount: number, friendsCount: number, liveCounts = true): UserProfile {
     return {
       uid: userId,
       firstName: readString(user.firstName),
@@ -106,8 +107,8 @@ export class ProfileService {
       coverImage: readString(user.coverImage),
       profilePicture: profileImages.profile || readString(user.profilePicture) || readString(user.profileImage) || null,
       visibility: 'public',
-      followersCount: followersCount || readNumber(user.followersCount),
-      friendsCount: friendsCount || readNumber(user.friendsCount),
+      followersCount: liveCounts ? followersCount : readNumber(user.followersCount),
+      friendsCount: liveCounts ? friendsCount : readNumber(user.friendsCount),
       isAdmin: user.isAdmin === true,
     };
   }

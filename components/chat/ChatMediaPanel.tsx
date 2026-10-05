@@ -9,7 +9,8 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import type { FullMessage, Attachment } from '@/lib/messaging/MessagingService';
-import { DocumentPreviewModal } from './DocumentPreviewModal';
+import { DocumentPreviewModal, formatFileSize, getAttachmentPreviewKind } from './DocumentPreviewModal';
+import { ChatVideoThumbnail } from './ChatVideoViewer';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useDeepLinkNavigation } from '@/lib/hooks/useDeepLinkNavigation';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
@@ -40,7 +41,7 @@ export function ChatMediaPanel({
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
 
   const { mediaList, docList, linkList } = useMemo(() => {
-    const media: { id: string; url: string; isVideo?: boolean; isSticker?: boolean }[] = [];
+    const media: { id: string; url: string; isVideo?: boolean; isSticker?: boolean; attachment?: Attachment }[] = [];
     const docs: { id: string; attachment: Attachment }[] = [];
     const links: { id: string; url: string; label: string }[] = [];
 
@@ -49,10 +50,11 @@ export function ChatMediaPanel({
 
       // Attachment media / document
       if (msg.attachment) {
-        const isImage = msg.attachment.fileType.startsWith('image/');
-        const isVideo = msg.attachment.fileType.startsWith('video/');
+        const kind = getAttachmentPreviewKind(msg.attachment);
+        const isImage = kind === 'image';
+        const isVideo = kind === 'video';
         if (isImage || isVideo) {
-          media.push({ id: `${msgId}-media`, url: msg.attachment.url, isVideo });
+          media.push({ id: `${msgId}-media`, url: msg.attachment.url, isVideo, attachment: msg.attachment });
         } else {
           docs.push({ id: `${msgId}-doc`, attachment: msg.attachment });
         }
@@ -71,8 +73,8 @@ export function ChatMediaPanel({
           id: `${msgId}-vn`,
           attachment: {
             url: audioUrl,
-            fileName: 'Voice Note.webm',
-            fileType: 'audio/webm',
+            fileName: /\.webm(\?|$)/i.test(decodeURIComponent(audioUrl)) ? 'Voice note.webm' : 'Voice note.m4a',
+            fileType: /\.webm(\?|$)/i.test(decodeURIComponent(audioUrl)) ? 'audio/webm' : 'audio/mp4',
             fileSize: 0,
           },
         });
@@ -157,10 +159,10 @@ export function ChatMediaPanel({
                 {mediaList.map((item) => (
                   <TouchableOpacity
                     key={item.id}
-                    onPress={() => onImagePress(item.url)}
-                    style={{ width: '31.5%', aspectRatio: 1, borderRadius: 10, overflow: 'hidden', backgroundColor: '#e2e8f0' }}
+                    onPress={() => (item.isVideo && item.attachment ? setPreviewAttachment(item.attachment) : onImagePress(item.url))}
+                    style={{ width: '31.5%', aspectRatio: 1, borderRadius: 10, overflow: 'hidden', backgroundColor: item.isVideo ? '#0f172a' : '#e2e8f0' }}
                   >
-                    <Image source={{ uri: item.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                    {item.isVideo ? <ChatVideoThumbnail url={item.url} width={140} height={140} /> : <Image source={{ uri: item.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />}
                     {item.isVideo && (
                       <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.3)' }}>
                         <Icon name="play-circle" size={24} color="#ffffff" />
@@ -200,7 +202,7 @@ export function ChatMediaPanel({
                     </Text>
                     {attachment.fileSize > 0 && (
                       <Text style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-                        {(attachment.fileSize / 1024).toFixed(1)} KB
+                        {formatFileSize(attachment.fileSize)}
                       </Text>
                     )}
                   </View>

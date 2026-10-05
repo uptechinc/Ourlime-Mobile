@@ -9,6 +9,7 @@ import { ProfileResourceService } from './ProfileResourceService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { dispatchMentionNotifications } from './dispatchMentionNotifications';
 import { usePostSubmissionStore } from '@/lib/store/usePostSubmissionStore';
+import { creationDraftService } from './CreationDraftService';
 import type { PostSubmissionDraft, PostSubmissionSnapshot } from '@/lib/types/postSubmission';
 
 type SubmissionTask = {
@@ -19,6 +20,8 @@ type SubmissionTask = {
   lastProgressAt: number;
   publishAttempted: boolean;
   eventCreated: boolean;
+  /** Draft saved after a failed upload, so the post survives the app being closed. */
+  savedDraftId?: string;
 };
 
 export class PostSubmissionService {
@@ -95,7 +98,7 @@ export class PostSubmissionService {
 
   public describe(snapshot: PostSubmissionSnapshot): string {
     if (snapshot.status === 'completed') return 'Your post is ready in the feed.';
-    if (snapshot.status !== 'running') return snapshot.canRetry ? 'Your draft is kept for retry while this app stays open.' : 'You can dismiss this message.';
+    if (snapshot.status !== 'running') return snapshot.canRetry ? 'Retry now, or open it later from Drafts.' : 'You can dismiss this message.';
     const minutes = Math.floor(snapshot.elapsedSeconds / 60);
     const elapsed = minutes ? `${minutes}m ${snapshot.elapsedSeconds % 60}s` : `${snapshot.elapsedSeconds}s`;
     const bytes = snapshot.totalBytes > 0 ? `${(snapshot.completedBytes / 1048576).toFixed(1)} / ${(snapshot.totalBytes / 1048576).toFixed(1)} MB` : '';
@@ -155,6 +158,10 @@ export class PostSubmissionService {
       this.stopTimer();
       this.logger.success('PostSubmissionService', 'published', { submissionId: task.id, postId: post.id });
       await this.reconcile(task, post).catch((error: unknown) => this.logger.error('PostSubmissionService', 'reconcile', error, { submissionId: task.id, postId: post.id }));
+      if (task.savedDraftId) {
+        void creationDraftService.remove(task.draft.post.userId, task.savedDraftId).catch((error: unknown) => this.logger.warn('PostSubmissionService', 'delete-saved-draft', { error: error instanceof Error ? error.message : String(error) }));
+        task.savedDraftId = undefined;
+      }
       this.scheduleCompletedDismissal(task);
     } catch (error: unknown) {
       if (this.task !== task) return;
@@ -163,6 +170,7 @@ export class PostSubmissionService {
         ? 'Could not confirm publication. You can retry, or check your feed first.'
         : error instanceof Error ? error.message : 'Upload failed. Please try again.';
       this.patch(task, { status: cancelled ? 'cancelled' : 'failed', message, canCancel: false, canRetry: !cancelled, isSlow: false });
+      if (!cancelled && !task.publishAttempted) void this.saveFailedAsDraft(task);
       if (cancelled) {
         this.logger.info('PostSubmissionService', 'cancelled', { submissionId: task.id, publishAttempted: task.publishAttempted });
       } else {
@@ -170,6 +178,20 @@ export class PostSubmissionService {
       }
     } finally {
       if (this.task === task) this.stopTimer();
+    }
+  }
+
+  /** Keeps a failed regular post in Drafts (same store as the website), so retry survives an app restart. */
+  private async saveFailedAsDraft(task: SubmissionTask): Promise<void> {
+    const post = task.draft.post;
+    if (post.communityId || task.draft.event || post.type === 'poll') return;
+    try {
+      task.savedDraftId = await creationDraftService.save(post.userId, 'post', {
+        caption: post.caption, visibility: post.visibility, location: post.location, hashtags: post.hashtags, media: post.media,
+      }, task.savedDraftId);
+      this.patch(task, { message: `${usePostSubmissionStore.getState().submission?.message ?? 'Upload failed.'} Saved to your drafts.` });
+    } catch (error: unknown) {
+      this.logger.warn('PostSubmissionService', 'save-failed-draft', { submissionId: task.id, error: error instanceof Error ? error.message : String(error) });
     }
   }
 

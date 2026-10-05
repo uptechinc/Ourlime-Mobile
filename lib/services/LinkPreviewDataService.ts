@@ -11,6 +11,7 @@ import type {
   SharedPostPrimaryMedia,
   SharedPostYouTube,
 } from './OpenGraphService';
+import { usernameService } from './UsernameService';
 
 type ShareDestination =
   | { kind: 'profile'; id: string }
@@ -130,7 +131,7 @@ export class LinkPreviewDataService {
     const normalized = username.replace(/^@/, '').trim();
     if (!normalized) return null;
     let userDocument: DocumentSnapshot | null = await getDoc(doc(db, 'users', normalized));
-    if (!userDocument.exists()) userDocument = (await getDocs(query(collection(db, 'users'), where('userName', '==', normalized), limit(1)))).docs[0] ?? null;
+    if (!userDocument.exists()) userDocument = await usernameService.findUserDocument(normalized);
     if (!userDocument?.exists()) return null;
     const profile = userDocument.data() ?? {};
     if (profile.isDeleted === true || profile.deletedAt) return null;

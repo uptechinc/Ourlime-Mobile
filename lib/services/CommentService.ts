@@ -83,12 +83,6 @@ type PaginatedApiResponse<TItem> = {
   pagination?: { hasMore?: boolean; nextCursor?: number | null };
 };
 
-type ItemApiResponse<TItem> = {
-  success: boolean;
-  data?: TItem;
-  error?: string;
-};
-
 export class CommentService {
   private static instance: CommentService;
   private readonly logger = DiagnosticLogService.getInstance();

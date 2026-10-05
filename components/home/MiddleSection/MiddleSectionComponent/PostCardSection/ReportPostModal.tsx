@@ -41,6 +41,8 @@ export type ReportTarget = {
 	routePath: string;
 	previewText: string;
 	label: string;
+	/** Chat reports (website passes the chat id the same way). */
+	chatId?: string;
 };
 
 type ReportSubject = ReportTarget & { communityId?: string; contentUrl?: string };
@@ -169,6 +171,7 @@ export default function ReportPostModal({
 					targetId: subject.targetId,
 					reportedUserId: subject.reportedUserId,
 					parentContentId: subject.parentContentId,
+					chatId: subject.chatId,
 					routePath: subject.routePath,
 					reasonCategory: category,
 					reason,

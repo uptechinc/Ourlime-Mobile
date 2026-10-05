@@ -1,9 +1,9 @@
 import { auth, db, storage } from '@/lib/firebaseConfig';
-import { doc, getDoc, setDoc, Timestamp, onSnapshot } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { readAsStringAsync, EncodingType, getInfoAsync } from 'expo-file-system/legacy';
+import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, Timestamp, onSnapshot, where } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL, type UploadTask } from 'firebase/storage';
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import type { CallEventMessage } from '@/lib/types/call';
-import type { MessageData, ChatRoom, ReplyReference } from '@/lib/types/message';
+import type { MessageData, ReplyReference } from '@/lib/types/message';
 import type { UserProfile } from '@/lib/services/AuthService';
 import { chatDataService } from '@/lib/services/ChatDataService';
 
@@ -41,6 +41,20 @@ export type VoiceNoteData = {
     audioUrl: string;
     audioDuration: number;
 };
+
+export type ChatUploadOptions = {
+    /** 0-100 while bytes are uploading. */
+    onProgress?: (percentage: number) => void;
+    /** Aborting cancels the upload. */
+    signal?: AbortSignal;
+};
+
+export class ChatUploadCancelledError extends Error {
+    public constructor() {
+        super('Upload cancelled');
+        this.name = 'ChatUploadCancelledError';
+    }
+}
 
 export type FullMessage = MessageData & {
     id?: string;
@@ -156,63 +170,63 @@ export class MessagingService {
     }
 
     /**
-     * Uploads a local file to Firebase Storage.
-     * Uses XMLHttpRequest to safely convert the local file URI into a native RN Blob,
-     * avoiding fetch() 404s and Hermes base64/ArrayBuffer Blob construction bugs.
+     * Uploads a local chat file to Firebase Storage with progress and cancel.
+     * Uses XMLHttpRequest to turn the local URI into a native RN Blob (falls back to base64 when that fails).
      */
     public async uploadFile(
         uri: string,
         fileName: string,
         mimeType: string,
-        userId: string
+        userId: string,
+        options: ChatUploadOptions = {}
     ): Promise<Attachment> {
-        const timestamp = Date.now();
-        const storagePath = `chats/${userId}/${timestamp}_${fileName}`;
+        const safeName = fileName.replace(/[\\/#?]+/g, '_');
+        const storagePath = `chats/${userId}/${Date.now()}_${safeName}`;
+        const { url, sizeBytes } = await this.uploadToStorage(uri, storagePath, mimeType, options);
+        return { url, fileName, fileType: mimeType, fileSize: sizeBytes };
+    }
+
+    /**
+     * Uploads a recorded voice note to voiceNotes/{uid}/ (same place and fields as the website).
+     * AAC .m4a is used because it plays on iOS, Android and every browser.
+     */
+    public async uploadVoiceNote(uri: string, userId: string, durationSeconds: number, options: ChatUploadOptions = {}): Promise<VoiceNoteData> {
+        const storagePath = `voiceNotes/${userId}/${Date.now()}_voice.m4a`;
+        const { url } = await this.uploadToStorage(uri, storagePath, 'audio/mp4', options);
+        return { type: 'voiceNote', audioUrl: url, audioDuration: Math.max(1, Math.round(durationSeconds)) };
+    }
+
+    private async uploadToStorage(uri: string, storagePath: string, contentType: string, options: ChatUploadOptions): Promise<{ url: string; sizeBytes: number }> {
+        if (options.signal?.aborted) throw new ChatUploadCancelledError();
         const storageRef = ref(storage, storagePath);
-
-        console.log('[uploadFile] START', { uri, fileName, mimeType, userId, storagePath });
-
-        let blob: Blob | null = null;
-        let fileSize = 0;
-
+        let data: Blob | Uint8Array;
         try {
-            console.log('[uploadFile] Converting URI to native Blob via XHR...');
-            blob = await this.uriToBlob(uri);
-            fileSize = blob.size;
-            console.log('[uploadFile] Native Blob created', { size: blob.size, type: blob.type });
-
-            console.log('[uploadFile] Uploading to Firebase Storage via uploadBytes...');
-            await uploadBytes(storageRef, blob, { contentType: mimeType });
-            console.log('[uploadFile] uploadBytes completed successfully');
-        } catch (xhrError) {
-            console.warn('[uploadFile] XHR Blob upload failed, attempting fallback to base64 Uint8Array:', xhrError);
-            // Fallback: Read base64 via FileSystem and convert to Uint8Array
-            const base64 = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
-            const uint8Array = base64ToUint8Array(base64);
-            fileSize = uint8Array.byteLength;
-            await uploadBytes(storageRef, uint8Array, { contentType: mimeType });
+            data = await this.uriToBlob(uri);
+        } catch (blobError: unknown) {
+            console.warn('[MessagingService.uploadToStorage] Blob read failed, using base64:', blobError instanceof Error ? blobError.message : String(blobError));
+            data = base64ToUint8Array(await readAsStringAsync(uri, { encoding: EncodingType.Base64 }));
+        }
+        const sizeBytes = data instanceof Uint8Array ? data.byteLength : data.size;
+        let task: UploadTask | null = null;
+        const handleAbort = () => task?.cancel();
+        options.signal?.addEventListener('abort', handleAbort);
+        try {
+            task = uploadBytesResumable(storageRef, data, { contentType });
+            await new Promise<void>((resolve, reject) => {
+                task?.on('state_changed', (snapshot) => {
+                    if (snapshot.totalBytes > 0) options.onProgress?.(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+                }, (error) => {
+                    reject(options.signal?.aborted || (error as { code?: string }).code === 'storage/canceled' ? new ChatUploadCancelledError() : error);
+                }, () => resolve());
+            });
         } finally {
-            // Clean up native Blob memory if close() method exists
-            const closeableBlob = blob as Blob & { close?: () => void };
+            options.signal?.removeEventListener('abort', handleAbort);
+            const closeableBlob = data as Blob & { close?: () => void };
             if (typeof closeableBlob.close === 'function') {
-                try {
-                    closeableBlob.close();
-                } catch {}
+                try { closeableBlob.close(); } catch { /* already released */ }
             }
         }
-
-        console.log('[uploadFile] Getting download URL...');
-        const url = await getDownloadURL(storageRef);
-        console.log('[uploadFile] Download URL obtained:', url);
-
-        const attachment: Attachment = {
-            url,
-            fileName,
-            fileType: mimeType,
-            fileSize,
-        };
-        console.log('[uploadFile] SUCCESS', attachment);
-        return attachment;
+        return { url: await getDownloadURL(storageRef), sizeBytes };
     }
 
     /**
@@ -345,6 +359,24 @@ export class MessagingService {
             console.error('[MessagingService.deleteMessage]', error);
             return false;
         }
+    }
+
+    /** Edits your own text message (the server enforces the 20-minute window and sender check). */
+    public async editMessage(receiverId: string, senderId: string, messageTimestamp: number, nextText: string): Promise<void> {
+        const chatRoomId = this.getChatRoomId(senderId, receiverId);
+        await this.chatData.applyMessageAction({ action: 'edit', chatId: chatRoomId, timestampSeconds: messageTimestamp, message: nextText });
+    }
+
+    /** Starred messages live at users/{uid}/starredMessages/{friendId}_{messageId} (same as the website). */
+    public async getStarredMessageIds(currentUserId: string, friendId: string): Promise<Set<string>> {
+        const snapshot = await getDocs(query(collection(db, 'users', currentUserId, 'starredMessages'), where('friendId', '==', friendId)));
+        return new Set(snapshot.docs.map((document) => String(document.data().messageId ?? '')).filter(Boolean));
+    }
+
+    public async setMessageStarred(currentUserId: string, friendId: string, messageId: string, starred: boolean): Promise<void> {
+        const starReference = doc(db, 'users', currentUserId, 'starredMessages', `${friendId}_${encodeURIComponent(messageId)}`);
+        if (starred) await setDoc(starReference, { friendId, messageId, starredAt: serverTimestamp() });
+        else await deleteDoc(starReference);
     }
 
     /**

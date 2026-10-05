@@ -11,7 +11,7 @@ export type InlineToken = {
 export type ParsedHtmlBlock =
   | { type: 'heading'; level: 1 | 2 | 3 | 4 | 5 | 6; tokens: InlineToken[] }
   | { type: 'paragraph'; tokens: InlineToken[] }
-  | { type: 'list'; ordered: boolean; items: Array<{ tokens: InlineToken[] }> }
+  | { type: 'list'; ordered: boolean; items: { tokens: InlineToken[] }[] }
   | { type: 'blockquote'; tokens: InlineToken[]; author?: string }
   | { type: 'code'; code: string }
   | { type: 'image'; src: string; alt?: string; caption?: string }
@@ -230,7 +230,7 @@ export function parseHtmlToBlocks(html: string): ParsedHtmlBlock[] {
     } else if (tagName === 'ul' || tagName === 'ol') {
       const ordered = tagName === 'ol';
       const itemRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
-      const items: Array<{ tokens: InlineToken[] }> = [];
+      const items: { tokens: InlineToken[] }[] = [];
       let itemMatch: RegExpExecArray | null;
       while ((itemMatch = itemRegex.exec(innerContent)) !== null) {
         const itemHtml = itemMatch[1];

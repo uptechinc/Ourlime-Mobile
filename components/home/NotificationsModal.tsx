@@ -95,6 +95,15 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
 
   const currentUserId = authService.getCurrentUser()?.uid;
 
+  // Success message shown inside the sheet: app-wide toasts render behind this sheet (a separate window on Android).
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showFeedback = (message: string): void => {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    setFeedback(message);
+    feedbackTimerRef.current = setTimeout(() => setFeedback(null), 2600);
+  };
+
   const onRefresh = async () => {
     const generation = ++loadGenerationRef.current;
     paginationArmedRef.current = false;
@@ -271,11 +280,14 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
         if (!currentUserId) return;
         setBulkLoadingAction('delete');
         try {
+          const count = selectedIds.size;
           await deleteNotifications(Array.from(selectedIds));
           setSelectedIds(new Set());
           setSelectionMode(false);
           closeDialog();
+          showFeedback(`Deleted ${count} notification${count === 1 ? '' : 's'}`);
         } catch (error: unknown) {
+          console.error('[NotificationsModal.bulkDelete] Error:', error);
           closeDialog();
           setDialogState({ visible: true, type: 'error', title: 'Notifications not deleted', message: error instanceof Error ? error.message : 'The selected notifications could not be deleted.', confirmText: 'OK' });
         } finally {
@@ -299,7 +311,9 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
         if (!currentUserId) return;
         try {
           await deleteNotifications([id]);
+          showFeedback('Notification deleted');
         } catch (error: unknown) {
+          console.error('[NotificationsModal.singleDelete] Error:', error);
           setDialogState({ visible: true, type: 'error', title: 'Notification not deleted', message: error instanceof Error ? error.message : 'The notification could not be deleted.', confirmText: 'OK' });
         }
       },
@@ -315,6 +329,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
       await markManyAsRead(unreadIds);
       setSelectedIds(new Set());
       setSelectionMode(false);
+      showFeedback(`Marked ${unreadIds.length} as read`);
     } catch (error: unknown) {
       setDialogState({ visible: true, type: 'error', title: 'Notifications not updated', message: error instanceof Error ? error.message : 'The selected notifications could not be marked as read.', confirmText: 'OK' });
     } finally {
@@ -331,6 +346,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
       await markManyAsUnread(readIds);
       setSelectedIds(new Set());
       setSelectionMode(false);
+      showFeedback(`Marked ${readIds.length} as unread`);
     } catch (error: unknown) {
       setDialogState({ visible: true, type: 'error', title: 'Notifications not updated', message: error instanceof Error ? error.message : 'The selected notifications could not be marked as unread.', confirmText: 'OK' });
     } finally {
@@ -344,7 +360,8 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
       return;
     }
     if (item.id && !isItemRead(item)) {
-      await markAsRead(item.id);
+      // Opening the notification shouldn't wait on (or be blocked by) marking it read.
+      void markAsRead(item.id).catch((error: unknown) => console.warn('[NotificationsModal.handleItemPress] Error:', error instanceof Error ? error.message : String(error)));
     }
     const username = item.userDetails?.userName || item.metadata?.sourceUserName;
     const destinationData = {
@@ -375,6 +392,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
     setMarkingAllRead(true);
     try {
       await markAllAsRead();
+      showFeedback('All notifications marked as read');
     } catch (error: unknown) {
       setDialogState({
         visible: true,
@@ -847,6 +865,14 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
           )}
           ListFooterComponent={loadingMore ? <ActivityIndicator color="#10b981" style={{ marginVertical: 16 }} /> : null}
         />
+        {feedback ? (
+          <View pointerEvents="none" accessibilityLiveRegion="polite" style={{ position: 'absolute', left: 16, right: 16, bottom: 28, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22, backgroundColor: '#0f172a', shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 8, elevation: 8 }}>
+              <Icon name="check-circle" size={16} color="#10b981" />
+              <Text style={{ color: '#ffffff', fontWeight: '700' }}>{feedback}</Text>
+            </View>
+          </View>
+        ) : null}
       </SafeAreaView>
       </Animated.View>
   );

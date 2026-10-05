@@ -70,6 +70,7 @@ import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import Animated, { Easing, interpolate, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components/ui/PlayfulFloatingHeart';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import { useResourceStore } from '@/lib/store/useResourceStore';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const authService = AuthService.getInstance();
@@ -88,14 +89,15 @@ type LimeReposter = NonNullable<Reel['repostedBy']>[number];
 const withViewerReposter = (reposters: LimeReposter[], viewerId: string, reposted: boolean): LimeReposter[] => {
   if (!reposted) return reposters.filter((reposter) => reposter.userId !== viewerId);
   if (reposters.some((reposter) => reposter.userId === viewerId)) return reposters;
+  const cachedProfile = useResourceStore.getState().ownProfiles[viewerId]?.data?.profile;
   const authUser = authService.getCurrentUser();
   const [firstName = 'You', ...lastNameParts] = (authUser?.displayName ?? '').split(' ').filter(Boolean);
   return [{
     userId: viewerId,
-    userName: 'you',
-    firstName,
-    lastName: lastNameParts.join(' '),
-    profileImage: authUser?.photoURL || undefined,
+    userName: cachedProfile?.userName || 'you',
+    firstName: cachedProfile?.firstName || firstName,
+    lastName: cachedProfile?.lastName ?? lastNameParts.join(' '),
+    profileImage: cachedProfile?.profilePicture || authUser?.photoURL || undefined,
   }, ...reposters];
 };
 
@@ -1361,7 +1363,7 @@ export function ReelItem({
   const visibleReposters = orderedReposters.slice(0, 3);
   // With no profiles to show, the count bubble already carries the number, so no extra +N.
   // Like the web: bubbles for up to three reposters, then +N for the rest of the list.
-  const hiddenReposterCount = Math.max(0, orderedReposters.length - visibleReposters.length);
+  const hiddenReposterCount = visibleReposters.length > 0 ? Math.max(0, Math.max(repostCount, orderedReposters.length) - visibleReposters.length) : 0;
   const reposterAccessibilityLabel = viewerReposted
     ? `You reposted this Lime.${repostCount > 1 ? ` ${repostCount - 1} other ${repostCount === 2 ? 'person' : 'people'} reposted it.` : ''}`
     : `${repostCount} ${repostCount === 1 ? 'person' : 'people'} reposted this Lime.`;

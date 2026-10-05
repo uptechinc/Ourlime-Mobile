@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useEffectEvent, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -54,6 +54,7 @@ type FormData = {
   phone: string;
   city: string;
   profilePicture: string | null;
+  coverPhoto: string | null;
   selectedInterests: string[];
   verificationType: RegistrationVerificationType;
   idSubType: 'national_id' | 'passport' | null;
@@ -119,6 +120,9 @@ export default function Register() {
   const [usernameExistsError, setUsernameExistsError] = useState('');
   const emailDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest value being checked; replies for older values are ignored.
+  const latestEmailCheckRef = useRef('');
+  const latestUsernameCheckRef = useRef('');
 
   // Password Visibility
   const [showPassword, setShowPassword] = useState(false);
@@ -144,6 +148,7 @@ export default function Register() {
     phone: '',
     city: '',
     profilePicture: null,
+    coverPhoto: null,
     selectedInterests: [],
     verificationType: 'skipped',
     idSubType: null,
@@ -156,8 +161,8 @@ export default function Register() {
   // Age calculation
   const calculatedAge = useMemo(() => {
     if (!formData.dateOfBirth.trim()) return null;
-    const dob = new Date(formData.dateOfBirth);
-    if (Number.isNaN(dob.getTime())) return null;
+    const dob = dateOfBirthService.parse(formData.dateOfBirth);
+    if (!dob || Number.isNaN(dob.getTime())) return null;
     const today = new Date();
     let a = today.getFullYear() - dob.getFullYear();
     const m = today.getMonth() - dob.getMonth();
@@ -168,6 +173,8 @@ export default function Register() {
   }, [formData.dateOfBirth]);
 
   // ── Beta Registration Access Check ───────────────────────────────────────
+  // Effect events read the latest form helpers without re-running the effects that call them.
+  const applyInviteEmail = useEffectEvent((email: string) => updateField('email', email));
   useEffect(() => {
     let cancelled = false;
 
@@ -199,7 +206,7 @@ export default function Register() {
           return;
         }
         if (tokenRes.email) {
-          updateField('email', tokenRes.email);
+          applyInviteEmail(tokenRes.email);
         }
         setRegistrationAccess('allowed');
       } catch {
@@ -221,17 +228,19 @@ export default function Register() {
     setEmailExistsError('');
     if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current);
     const trimmed = val.trim();
+    latestEmailCheckRef.current = trimmed;
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       setIsCheckingEmail(true);
       emailDebounceRef.current = setTimeout(async () => {
         try {
-          if (!await registrationDataService.isEmailAvailable(trimmed)) {
+          const available = await registrationDataService.isEmailAvailable(trimmed);
+          if (latestEmailCheckRef.current === trimmed && !available) {
             setEmailExistsError('This email is already registered.');
           }
         } catch {
           // Ignore network failures gracefully
         } finally {
-          setIsCheckingEmail(false);
+          if (latestEmailCheckRef.current === trimmed) setIsCheckingEmail(false);
         }
       }, 500);
     } else {
@@ -244,17 +253,19 @@ export default function Register() {
     setUsernameExistsError('');
     if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current);
     const trimmed = val.trim();
+    latestUsernameCheckRef.current = trimmed;
     if (trimmed.length >= 3) {
       setIsCheckingUsername(true);
       usernameDebounceRef.current = setTimeout(async () => {
         try {
-          if (!await registrationDataService.isUsernameAvailable(trimmed)) {
+          const available = await registrationDataService.isUsernameAvailable(trimmed);
+          if (latestUsernameCheckRef.current === trimmed && !available) {
             setUsernameExistsError('Username is already taken.');
           }
         } catch {
           // Ignore network failures gracefully
         } finally {
-          setIsCheckingUsername(false);
+          if (latestUsernameCheckRef.current === trimmed) setIsCheckingUsername(false);
         }
       }, 500);
     } else {
@@ -274,7 +285,7 @@ export default function Register() {
 
   const [cities, setCities] = useState<string[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
-  const [states, setStates] = useState<Array<{ name: string; state_code: string }>>([]);
+  const [states, setStates] = useState<{ name: string; state_code: string }[]>([]);
   const [statesLoading, setStatesLoading] = useState(false);
   const cityAbortRef = useRef<AbortController | null>(null);
   const stateAbortRef = useRef<AbortController | null>(null);
@@ -365,22 +376,24 @@ export default function Register() {
     };
   }, []);
 
-  useEffect(() => {
-    if (formData.country) {
-      if (isCaribbean) {
-        setStates([]);
-        updateField('state', '');
-        fetchCities(formData.country);
+  // Reload states/cities when the country changes (the selected state is read, not watched).
+  const loadLocationsForCountry = useEffectEvent((country: string) => {
+    if (isCaribbean) {
+      setStates([]);
+      updateField('state', '');
+      fetchCities(country);
+    } else {
+      fetchStates(country);
+      if (formData.state) {
+        fetchCitiesForState(country, formData.state);
       } else {
-        fetchStates(formData.country);
-        if (formData.state) {
-          fetchCitiesForState(formData.country, formData.state);
-        } else {
-          fetchCities(formData.country);
-        }
+        fetchCities(country);
       }
     }
-  }, [formData.country, isCaribbean, fetchCities, fetchStates, fetchCitiesForState]);
+  });
+  useEffect(() => {
+    if (formData.country) loadLocationsForCountry(formData.country);
+  }, [formData.country, isCaribbean]);
 
   const handleCountrySelect = (item: LocationPickerItem) => {
     updateField('country', item.label);
@@ -536,6 +549,14 @@ export default function Register() {
     if (!res.canceled && res.assets[0]?.uri) {
       updateField('profilePicture', res.assets[0].uri);
     }
+  };
+
+  /** Optional cover photo (the website's "Upload Your Own Pictures" step also offers one). */
+  const pickCover = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [3, 1], quality: 0.8 });
+    if (!res.canceled && res.assets[0]?.uri) updateField('coverPhoto', res.assets[0].uri);
   };
 
   const toggleInterest = (interest: string) => {
@@ -1054,6 +1075,26 @@ export default function Register() {
                   <Ionicons name="camera-outline" size={20} color={GREEN_DARK} />
                   <Text style={{ color: '#ffffff', fontWeight: '600', fontSize: 14 }}>Upload Custom Photo</Text>
                 </TouchableOpacity>
+
+                {/* Optional cover photo */}
+                {formData.coverPhoto ? (
+                  <View style={{ marginBottom: 20 }}>
+                    <Image source={{ uri: formData.coverPhoto }} style={{ width: '100%', height: 110, borderRadius: 14 }} resizeMode="cover" />
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+                      <TouchableOpacity onPress={pickCover} style={{ flex: 1, alignItems: 'center', padding: 10, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)' }}>
+                        <Text style={{ color: '#ffffff', fontWeight: '600' }}>Change cover</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => updateField('coverPhoto', null)} style={{ flex: 1, alignItems: 'center', padding: 10, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)' }}>
+                        <Text style={{ color: '#fca5a5', fontWeight: '600' }}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity onPress={pickCover} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.2)', marginBottom: 20 }}>
+                    <Ionicons name="image-outline" size={20} color={GREEN_DARK} />
+                    <Text style={{ color: '#ffffff', fontWeight: '600', fontSize: 14 }}>Add a cover photo (optional)</Text>
+                  </TouchableOpacity>
+                )}
 
                 {errors.profilePicture ? <Text style={styles.fieldError}>{errors.profilePicture}</Text> : null}
 

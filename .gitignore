@@ -49,4 +49,7 @@ evidence/
 /*.log
 /*.txt
 /*.mp4
-.tmp*
+.tmp*
+# Local build outputs (too large for GitHub)
+*.apk
+*.aab

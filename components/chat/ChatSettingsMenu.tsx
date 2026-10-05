@@ -52,6 +52,7 @@ type ChatSettingsMenuProps = {
   currentUserId: string;
   onDeleteChat: () => void;
   onOpenChatMedia?: () => void;
+  onOpenStarred?: () => void;
   onUploadWallpaper?: (wallpaperUri: string) => void;
   onResetWallpaper?: () => void;
   hasCustomWallpaper?: boolean;
@@ -65,6 +66,7 @@ export function ChatSettingsMenu({
   currentUserId,
   onDeleteChat,
   onOpenChatMedia,
+  onOpenStarred,
   onUploadWallpaper,
   onResetWallpaper,
   hasCustomWallpaper,
@@ -391,6 +393,18 @@ export function ChatSettingsMenu({
                   router.push({ pathname: '/profile/[username]', params: { username: userName } });
                 }}
               />
+
+              {/* Starred messages (website settings menu item) */}
+              {onOpenStarred && (
+                <MenuItem
+                  icon="star"
+                  label="Starred messages"
+                  onPress={() => {
+                    onClose();
+                    onOpenStarred();
+                  }}
+                />
+              )}
 
               {/* Chat media */}
               {onOpenChatMedia && (

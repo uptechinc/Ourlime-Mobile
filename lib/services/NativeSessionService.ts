@@ -7,6 +7,8 @@ export type NativeSessionStatus = 'idle' | 'bridging' | 'ready' | 'signed_out' |
 export type NativeSessionSnapshot = { uid: string | null; generation: number; status: NativeSessionStatus; error: string | null };
 type NativeSessionListener = (snapshot: NativeSessionSnapshot) => void;
 
+const NATIVE_FIREBASE_MISSING_MESSAGE = 'This version of the app is missing a required component. Install the latest Ourlime update.';
+
 /** Bridges the existing JS session into native Firebase without persisting credentials. */
 export class NativeSessionService {
   private static instance: NativeSessionService;
@@ -20,6 +22,8 @@ export class NativeSessionService {
   private accountId: string | null = null;
   private snapshot: NativeSessionSnapshot = { uid: null, generation: 0, status: 'idle', error: null };
   private readonly listeners = new Set<NativeSessionListener>();
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private failureCount = 0;
 
   public static getInstance(): NativeSessionService {
     return this.instance ??= new NativeSessionService();
@@ -36,6 +40,7 @@ export class NativeSessionService {
   }
 
   private schedule(user: User | null): void {
+    this.clearRetry();
     this.lastAttemptAt = Date.now();
     const generation = ++this.generation;
     this.publish({ uid: user?.uid ?? null, generation, status: user ? 'bridging' : 'signed_out', error: null });
@@ -46,20 +51,42 @@ export class NativeSessionService {
   }
 
   private async bridge(user: User | null, generation: number): Promise<void> {
-    await nativeFirebaseEmulatorService.connect();
-    const { getAuth, signOut, signInWithCustomToken } = await import('@react-native-firebase/auth');
-    const nativeAuth = getAuth();
-    if (generation !== this.generation) return;
-    if (!user || !user.emailVerified) {
-      await signOut(nativeAuth);
-      if (generation === this.generation) this.publish({ uid: null, generation, status: 'signed_out', error: null });
-      return;
-    }
-    if (nativeAuth.currentUser?.uid !== user.uid) await signOut(nativeAuth);
     const controller = new AbortController();
     this.controller = controller;
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    // An installed build without the native Firebase modules (an older dev client) can't bridge at all. Report it
+    // instead of crashing the app with an uncaught "RNFBAppModule not found"; retrying won't help until it's rebuilt.
+    let nativeFirebase: typeof import('@react-native-firebase/auth');
+    let nativeAuth: ReturnType<typeof nativeFirebase.getAuth>;
     try {
+      nativeFirebase = await import('@react-native-firebase/auth');
+      nativeAuth = nativeFirebase.getAuth();
+    } catch (error: unknown) {
+      // Handled (the status explains it), so a warning rather than a red error overlay in development.
+      console.warn('[NativeSessionService.bridge] Error: native Firebase unavailable:', error instanceof Error ? error.message : String(error));
+      if (generation === this.generation) {
+        this.publish({ uid: user?.uid ?? null, generation, status: user ? 'retryable_failure' : 'signed_out', error: NATIVE_FIREBASE_MISSING_MESSAGE });
+      }
+      return;
+    }
+    const { signOut, signInWithCustomToken } = nativeFirebase;
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    // Native signOut() rejects with auth/no-current-user when nobody is signed in (every fresh install), which used to
+    // leave the session stuck on 'bridging' forever. Only sign out a real user, and never fail the bridge over it.
+    const signOutNative = async (): Promise<void> => {
+      if (!nativeAuth.currentUser) return;
+      try { await signOut(nativeAuth); } catch (error: unknown) {
+        console.warn('[NativeSessionService.signOutNative] Error:', error instanceof Error ? error.message : 'sign-out failed');
+      }
+    };
+    try {
+      await nativeFirebaseEmulatorService.connect();
+      if (generation !== this.generation) return;
+      if (!user || !user.emailVerified) {
+        await signOutNative();
+        if (generation === this.generation) this.publish({ uid: null, generation, status: 'signed_out', error: null });
+        return;
+      }
+      if (nativeAuth.currentUser && nativeAuth.currentUser.uid !== user.uid) await signOutNative();
       const token = await user.getIdToken();
       const projectId = auth.app.options.projectId;
       if (!projectId || !/^[a-z0-9-]+$/.test(projectId)) throw new Error('Firebase project configuration is missing.');
@@ -75,17 +102,37 @@ export class NativeSessionService {
       if (nativeAuth.currentUser?.uid !== user.uid) throw new Error('Your native session could not be verified. Please retry.');
 
       if (generation !== this.generation || auth.currentUser?.uid !== user.uid) {
-        await signOut(nativeAuth);
+        await signOutNative();
       } else {
+        this.failureCount = 0;
         this.publish({ uid: user.uid, generation, status: 'ready', error: null });
       }
     } catch (error: unknown) {
-      await signOut(nativeAuth).catch(() => undefined);
-      if (generation === this.generation && auth.currentUser?.uid === user.uid) {
+      await signOutNative();
+      if (generation === this.generation && user && auth.currentUser?.uid === user.uid) {
         this.publish({ uid: user.uid, generation, status: 'retryable_failure', error: this.message(error) });
+        this.scheduleRetry(user.uid);
       }
       throw error;
     } finally { clearTimeout(timeout); }
+  }
+
+  /** Tries again on its own after a failure (2 s, 5 s, 15 s, then every 30 s) so features unlock without a manual retry. */
+  private scheduleRetry(uid: string): void {
+    this.clearRetry();
+    const delays = [2000, 5000, 15000];
+    const delay = delays[this.failureCount] ?? 30000;
+    this.failureCount += 1;
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      if (auth.currentUser?.uid !== uid || this.snapshot.status !== 'retryable_failure') return;
+      this.schedule(auth.currentUser);
+    }, delay);
+  }
+
+  private clearRetry(): void {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
   }
 
   public async ensure(ownerId: string): Promise<void> {

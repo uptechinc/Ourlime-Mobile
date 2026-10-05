@@ -206,15 +206,15 @@ export class CommunityService {
   }
 
   public async joinOrRequestAccess(community: CommunitySummary): Promise<CommunityMutationResult> {
-    return this.updateMembership(community.id, community.isPrivate ? 'request' : 'join');
+    return this.updateMembership(community.id, community.isPrivate ? 'request' : 'join', community.memberCount);
   }
 
-  public async cancelRequest(communityId: string): Promise<CommunityMutationResult> {
-    return this.updateMembership(communityId, 'cancel-request');
+  public async cancelRequest(communityId: string, currentMemberCount = 0): Promise<CommunityMutationResult> {
+    return this.updateMembership(communityId, 'cancel-request', currentMemberCount);
   }
 
-  public async leaveCommunity(communityId: string): Promise<CommunityMutationResult> {
-    return this.updateMembership(communityId, 'leave');
+  public async leaveCommunity(communityId: string, currentMemberCount = 0): Promise<CommunityMutationResult> {
+    return this.updateMembership(communityId, 'leave', currentMemberCount);
   }
 
   public async toggleCommunityLike(communityId: string, desiredLiked: boolean): Promise<CommunityReactionResult> {
@@ -265,13 +265,16 @@ export class CommunityService {
     await this.data.reportContent(input);
   }
 
-  private async updateMembership(communityId: string, action: CommunityMembershipAction): Promise<CommunityMutationResult> {
+  /**
+   * Returns as soon as the membership write lands (the button stops saying "Updating…"); the new member count is
+   * worked out from the current one. Screens re-fetch the community in the background to correct any drift.
+   */
+  private async updateMembership(communityId: string, action: CommunityMembershipAction, currentMemberCount: number): Promise<CommunityMutationResult> {
     const result = await this.data.updateMembership(communityId, action);
-    const community = await this.fetchCommunity(communityId).catch(() => null);
-    const membershipState: CommunityMutationResult['membershipState'] = community?.membershipState
-      ?? (result === 'joined' ? 'member' : result === 'requested' ? 'pending' : 'none');
+    const membershipState: CommunityMutationResult['membershipState'] = result === 'joined' ? 'member' : result === 'requested' ? 'pending' : 'none';
+    const delta = result === 'joined' ? 1 : result === 'left' ? -1 : 0;
     this.logger.success('CommunityService', 'updateMembership', { communityId, action, result });
-    return { communityId, membershipState, memberCount: community?.memberCount ?? 0 };
+    return { communityId, membershipState, memberCount: Math.max(0, currentMemberCount + delta) };
   }
 
   private normalizeCommunity(value: unknown): CommunitySummary {

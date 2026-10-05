@@ -16,7 +16,6 @@ import type { Course, CourseAnnouncement, CourseCategory, CourseModule, CourseLe
 
 type Data = DocumentData;
 type QueryDocument = QueryDocumentSnapshot<Data>;
-type QuerySnapshot = { docs: QueryDocument[]; size: number; empty: boolean };
 export type LearningOverview = { courses: Course[]; announcements: CourseAnnouncement[]; instructors: InstructorProfile[]; categories: CourseCategory[] };
 type MutationResponse = { id: string };
 
@@ -61,7 +60,7 @@ export class CourseService {
     const q = query(collection(this.database, 'courseModules'), where('courseId', '==', courseId), limit(100));
     const snapshot = await getDocs(q);
     const sortedDocs = [...snapshot.docs].sort((a, b) => this.integer(a.data().order) - this.integer(b.data().order));
-    const values: Array<CourseModule | null> = await Promise.all(sortedDocs.map(async (moduleDocument): Promise<CourseModule | null> => {
+    const values: (CourseModule | null)[] = await Promise.all(sortedDocs.map(async (moduleDocument): Promise<CourseModule | null> => {
       let lessonDocuments: QueryDocument[] = [];
       if (access === 'enrolled') {
         const lessonsSnap = await getDocs(query(collection(this.database, 'courseLessons'), where('courseId', '==', courseId), where('moduleId', '==', moduleDocument.id), limit(200)));

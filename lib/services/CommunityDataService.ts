@@ -8,9 +8,12 @@ import {
   getDoc,
   getDocs,
   increment,
+  documentId,
   limit,
+  orderBy,
   query,
   runTransaction,
+  startAfter,
   serverTimestamp,
   setDoc,
   Timestamp,
@@ -20,6 +23,7 @@ import {
   type DocumentData,
   type DocumentReference,
   type QueryDocumentSnapshot,
+  type QuerySnapshot,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
 import { notificationHelpers } from '@/lib/helpers/notificationHelpers';
@@ -75,7 +79,11 @@ export type CommunityEventInput = {
 };
 
 const FIRESTORE_IN_LIMIT = 30;
-const MAX_SOURCE_COMMUNITIES = 250;
+// Communities are read in pages of this size until all are loaded (the directory used to stop at the first 250).
+const SOURCE_PAGE_SIZE = 250;
+const MAX_SOURCE_PAGES = 20;
+// Discover and the Communities page ask for the directory at the same time; one build is shared for a short while.
+const DIRECTORY_CACHE_MS = 20_000;
 const WRITE_BATCH_LIMIT = 450;
 
 const readString = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
@@ -92,6 +100,8 @@ const toIsoString = (value: unknown): string | null => {
   const millis = readTimestampMs(value);
   return millis > 0 ? new Date(millis).toISOString() : null;
 };
+type DirectoryCards = { cards: CommunityCardModel[]; communityOfTheWeek: CommunityCardModel | null };
+
 const chunk = <TValue>(values: TValue[], size = FIRESTORE_IN_LIMIT): TValue[][] => {
   const chunks: TValue[][] = [];
   for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
@@ -114,6 +124,7 @@ const personName = (user: DocumentData | undefined, fallback: string): string =>
  */
 export class CommunityDataService {
   private static instance: CommunityDataService;
+  private readonly directoryCache = new Map<string, { createdAt: number; request: Promise<DirectoryCards> }>();
 
   private constructor() {}
 
@@ -190,12 +201,75 @@ export class CommunityDataService {
 
   public async getDirectoryPage(directoryQuery: CommunityDirectoryQuery & { identifier?: string }): Promise<CommunityDirectoryPage> {
     const viewerId = this.viewerId();
-    const source = await getDocs(query(collection(db, 'communityVariant'), limit(MAX_SOURCE_COMMUNITIES)));
-    const sourceDocuments = source.docs.filter((document) => {
-      const data = document.data();
+    const { cards: hydrated, communityOfTheWeek } = await this.loadDirectoryCards(directoryQuery.identifier);
+    if (hydrated.length === 0) return { items: [], communityOfTheWeek: null, nextCursor: null, hasMore: false, totalCount: 0 };
+
+    const search = directoryQuery.search.trim().toLowerCase();
+    const filtered = hydrated.filter((card) => {
+      if (directoryQuery.identifier && card.id !== directoryQuery.identifier && card.slug !== directoryQuery.identifier) return false;
+      if (directoryQuery.scope === 'joined' && card.membershipState !== 'member' && card.membershipState !== 'owner') return false;
+      if (directoryQuery.scope === 'friends' && card.friendMemberCount === 0) return false;
+      if (directoryQuery.scope === 'created' && card.creatorId !== viewerId) return false;
+      if (directoryQuery.visibility === 'public' && card.isPrivate) return false;
+      if (directoryQuery.visibility === 'private' && !card.isPrivate) return false;
+      if (directoryQuery.categoryId && card.categoryId !== directoryQuery.categoryId) return false;
+      return !search || `${card.title} ${card.description} ${card.categoryName}`.toLowerCase().includes(search);
+    }).sort((first, second) => {
+      if (directoryQuery.scope === 'new' || directoryQuery.sort === 'newest') return second.createdAtMs - first.createdAtMs;
+      if (directoryQuery.sort === 'active') return second.postCount - first.postCount || second.updatedAtMs - first.updatedAtMs;
+      if (directoryQuery.sort === 'trending') return (second.likeCount * 2 + second.memberCount + second.postCount * 3) - (first.likeCount * 2 + first.memberCount + first.postCount * 3);
+      return second.memberCount - first.memberCount || second.likeCount - first.likeCount;
+    });
+    const offset = decodeCursor(directoryQuery.cursor);
+    const items = filtered.slice(offset, offset + directoryQuery.limit);
+    const nextOffset = offset + items.length;
+    return { items, communityOfTheWeek, nextCursor: nextOffset < filtered.length ? encodeCursor(nextOffset) : null, hasMore: nextOffset < filtered.length, totalCount: filtered.length };
+  }
+
+
+  /** Clears the shared directory build (call after anything that changes membership, counts or communities). */
+  public invalidateDirectory(): void {
+    this.directoryCache.clear();
+  }
+
+  private loadDirectoryCards(identifier?: string): Promise<DirectoryCards> {
+    // A single community page (identifier = resolved doc id) only needs that one community, not the whole directory.
+    if (identifier) return this.buildDirectoryCards(identifier);
+    const key = this.viewerId() ?? 'guest';
+    const cached = this.directoryCache.get(key);
+    if (cached && Date.now() - cached.createdAt < DIRECTORY_CACHE_MS) return cached.request;
+    const request = this.buildDirectoryCards();
+    const entry = { createdAt: Date.now(), request };
+    this.directoryCache.set(key, entry);
+    request.catch(() => { if (this.directoryCache.get(key) === entry) this.directoryCache.delete(key); });
+    return request;
+  }
+
+  private async loadAllCommunityDocuments(): Promise<QueryDocumentSnapshot[]> {
+    const documents: QueryDocumentSnapshot[] = [];
+    let last: QueryDocumentSnapshot | null = null;
+    for (let page = 0; page < MAX_SOURCE_PAGES; page += 1) {
+      const snapshot: QuerySnapshot = await getDocs(last
+        ? query(collection(db, 'communityVariant'), orderBy(documentId()), startAfter(last), limit(SOURCE_PAGE_SIZE))
+        : query(collection(db, 'communityVariant'), orderBy(documentId()), limit(SOURCE_PAGE_SIZE)));
+      documents.push(...snapshot.docs);
+      if (snapshot.docs.length < SOURCE_PAGE_SIZE) break;
+      last = snapshot.docs[snapshot.docs.length - 1];
+    }
+    return documents;
+  }
+
+  private async buildDirectoryCards(identifier?: string): Promise<DirectoryCards> {
+    const viewerId = this.viewerId();
+    // A single community page (identifier = resolved doc id) only needs that one community, not the whole directory.
+    const sourceDocs = identifier
+      ? await getDoc(doc(db, 'communityVariant', identifier)).then((single) => (single.exists() ? [single] : []))
+      : await this.loadAllCommunityDocuments();
+    const sourceDocuments = sourceDocs.filter((document) => {
+      const data = document.data() ?? {};
       return data.isDeleted !== true && readString(data.status) !== 'deleted' && !data.accountLifecycleHiddenAt;
     });
-    if (sourceDocuments.length === 0) return { items: [], communityOfTheWeek: null, nextCursor: null, hasMore: false, totalCount: 0 };
+    if (sourceDocuments.length === 0) return { cards: [], communityOfTheWeek: null };
     const communityIds = sourceDocuments.map((document) => document.id);
 
     const [countDocuments, memberships, friendIds, requests, bans, viewerDocument] = await Promise.all([
@@ -216,16 +290,25 @@ export class CommunityDataService {
     const bannedIds = new Set((bans?.docs ?? []).map((document) => readString(document.data().communityVariantId)).filter(Boolean));
     const countByCommunity = new Map(countDocuments.map((document) => [document.id, document.data()]));
     const creatorIds = sourceDocuments.map((document) => readString(document.data().userId)).filter(Boolean);
-    const memberUserIds = memberships.filter((membership) => membership.isMember === true).map((membership) => readString(membership.userId)).filter(Boolean);
+    const memberUserIds = [...membershipsByCommunity.values()].flatMap((communityMemberships) => {
+      const activeIds = [...new Set(communityMemberships.filter((membership) => membership.isMember === true).map((membership) => readString(membership.userId)).filter(Boolean))];
+      return [...activeIds.slice(0, 3), ...activeIds.filter((userId) => friendIds.has(userId)).slice(0, 3)];
+    });
     const userIds = [...new Set([...creatorIds, ...memberUserIds])];
     const [users, pictures] = await Promise.all([this.loadUsers(userIds), this.loadProfilePictures(userIds)]);
     const viewerData = viewerDocument?.data();
     const viewerVerified = viewerData?.isVerified === true || viewerData?.identityVerified === true || readString(viewerData?.verificationStatus).toLowerCase() === 'verified';
 
-    const missingPostCounts = sourceDocuments.filter((document) => readNonNegativeNumber(countByCommunity.get(document.id)?.postCount) === null).map((document) => document.id);
+    // Stored counts default to 0 and older app versions never incremented them, so a 0 (or missing) count is
+    // re-counted from the posts themselves and the stored number is corrected for next time.
+    const missingPostCounts = sourceDocuments.filter((document) => !readNonNegativeNumber(countByCommunity.get(document.id)?.postCount)).map((document) => document.id);
     const postCounts = new Map<string, number>(await Promise.all(missingPostCounts.map(async (communityId): Promise<[string, number]> => {
       const counted = await getCountFromServer(query(collection(db, 'communityVariantDetails'), where('communityVariantId', '==', communityId))).catch(() => null);
-      return [communityId, counted?.data().count ?? 0];
+      const total = counted?.data().count ?? 0;
+      if (total > 0) {
+        void setDoc(doc(db, 'communityVariantMembershipAndLikeCount', communityId), { communityVariantId: communityId, postCount: total }, { merge: true }).catch(() => undefined);
+      }
+      return [communityId, total];
     })));
 
     const cards = sourceDocuments.map((document): CommunityCardModel => {
@@ -272,7 +355,7 @@ export class CommunityDataService {
         updatedAtMs: readTimestampMs(data.updatedAt) || readTimestampMs(data.createdAt),
         memberCount,
         likeCount: readNonNegativeNumber(countData?.membershipLikes) ?? 0,
-        postCount: readNonNegativeNumber(countData?.postCount) ?? postCounts.get(document.id) ?? 0,
+        postCount: postCounts.get(document.id) ?? readNonNegativeNumber(countData?.postCount) ?? 0,
         topMembers: topMemberIds.map((userId) => this.personPreview(userId, users, pictures)),
         friendMembers: friendMemberIds.slice(0, 3).map((userId) => this.personPreview(userId, users, pictures)),
         friendMemberCount: friendMemberIds.length,
@@ -293,34 +376,15 @@ export class CommunityDataService {
     const hydrated = cards.map((card) => ({ ...card, categoryName: card.categoryId ? categoryNames.get(card.categoryId) ?? '' : '' }));
     const weekScore = (card: CommunityCardModel) => card.likeCount * 3 + card.memberCount * 2 + card.postCount * 5;
     const communityOfTheWeek = [...hydrated].sort((first, second) => weekScore(second) - weekScore(first))[0] ?? null;
-
-    const search = directoryQuery.search.trim().toLowerCase();
-    const filtered = hydrated.filter((card) => {
-      if (directoryQuery.identifier && card.id !== directoryQuery.identifier && card.slug !== directoryQuery.identifier) return false;
-      if (directoryQuery.scope === 'joined' && card.membershipState !== 'member' && card.membershipState !== 'owner') return false;
-      if (directoryQuery.scope === 'friends' && card.friendMemberCount === 0) return false;
-      if (directoryQuery.scope === 'created' && card.creatorId !== viewerId) return false;
-      if (directoryQuery.visibility === 'public' && card.isPrivate) return false;
-      if (directoryQuery.visibility === 'private' && !card.isPrivate) return false;
-      if (directoryQuery.categoryId && card.categoryId !== directoryQuery.categoryId) return false;
-      return !search || `${card.title} ${card.description} ${card.categoryName}`.toLowerCase().includes(search);
-    }).sort((first, second) => {
-      if (directoryQuery.scope === 'new' || directoryQuery.sort === 'newest') return second.createdAtMs - first.createdAtMs;
-      if (directoryQuery.sort === 'active') return second.postCount - first.postCount || second.updatedAtMs - first.updatedAtMs;
-      if (directoryQuery.sort === 'trending') return (second.likeCount * 2 + second.memberCount + second.postCount * 3) - (first.likeCount * 2 + first.memberCount + first.postCount * 3);
-      return second.memberCount - first.memberCount || second.likeCount - first.likeCount;
-    });
-    const offset = decodeCursor(directoryQuery.cursor);
-    const items = filtered.slice(offset, offset + directoryQuery.limit);
-    const nextOffset = offset + items.length;
-    return { items, communityOfTheWeek, nextCursor: nextOffset < filtered.length ? encodeCursor(nextOffset) : null, hasMore: nextOffset < filtered.length, totalCount: filtered.length };
+    return { cards: hydrated, communityOfTheWeek };
   }
 
   /** Web fetch?type=community: the card (redacted when the viewer has no access) plus rules. */
   public async getCommunityDetail(identifier: string): Promise<{ card: CommunityCardModel; rules: string[]; isBanned: boolean } | null> {
-    const access = await this.resolveAccess(identifier);
+    const singleQuery = (communityId: string) => this.getDirectoryPage({ scope: 'all', visibility: 'all', categoryId: null, search: '', sort: 'popular', cursor: null, limit: 1, identifier: communityId });
+    const [access, firstPage] = await Promise.all([this.resolveAccess(identifier), singleQuery(identifier)]);
     if (!access) return null;
-    const page = await this.getDirectoryPage({ scope: 'all', visibility: 'all', categoryId: null, search: '', sort: 'popular', cursor: null, limit: 1, identifier: access.communityId });
+    const page = firstPage.items[0]?.id === access.communityId ? firstPage : await singleQuery(access.communityId);
     const card = page.items[0];
     if (!card) return null;
     const rules = access.hasAccess && Array.isArray(access.communityData.rules)
@@ -442,6 +506,7 @@ export class CommunityDataService {
 
   /** Web POST /api/communities. */
   public async createCommunity(input: CreateCommunityInput, isKnownCategory: (categoryId: string) => boolean): Promise<{ id: string; slug: string }> {
+    this.invalidateDirectory();
     const viewerId = this.requireViewerId();
     const title = input.title.trim();
     const description = input.description.trim();
@@ -481,6 +546,7 @@ export class CommunityDataService {
 
   /** Web POST /api/communities/edit (owner only). */
   public async updateCommunity(communityId: string, updates: UpdateCommunityInput): Promise<void> {
+    this.invalidateDirectory();
     const access = await this.requireAccess(communityId);
     if (!access.viewerId || !access.isOwner) throw new Error('Community owner access required.');
     const title = updates.title === undefined ? null : updates.title.trim();
@@ -507,6 +573,7 @@ export class CommunityDataService {
 
   /** Web POST /api/communities/delete + CommunityDeletionService cascade (owner only). */
   public async deleteCommunity(communityId: string): Promise<number> {
+    this.invalidateDirectory();
     const access = await this.requireAccess(communityId);
     if (!access.viewerId || !access.isOwner) throw new Error('Community owner access required.');
     const id = access.communityId;
@@ -544,6 +611,7 @@ export class CommunityDataService {
   // ── Membership (web /membership, /requests, /update-role, /remove-user, /ban-user) ──
 
   public async updateMembership(communityId: string, action: CommunityMembershipAction): Promise<CommunityMembershipResult> {
+    this.invalidateDirectory();
     const viewerId = this.requireViewerId();
     const communitySnap = await getDoc(doc(db, 'communityVariant', communityId));
     if (!communitySnap.exists()) throw new Error('Community not found.');
@@ -553,8 +621,12 @@ export class CommunityDataService {
 
     if (action === 'request') {
       if (!isPrivate) throw new Error('This community does not require approval.');
-      const existing = await getDocs(query(collection(db, 'communityRequests'), where('userId', '==', viewerId), where('communityVariantId', '==', communityId), limit(1)));
-      const requestRef = existing.docs[0]?.ref ?? doc(collection(db, 'communityRequests'));
+      const [existing, activeMembership] = await Promise.all([
+        getDocs(query(collection(db, 'communityRequests'), where('userId', '==', viewerId), where('communityVariantId', '==', communityId), limit(1))),
+        getDocs(query(collection(db, 'communityVariantMembership'), where('userId', '==', viewerId), where('communityVariantId', '==', communityId), where('isMember', '==', true), limit(1))),
+      ]);
+      if (!activeMembership.empty) return 'joined';
+      const requestRef = existing.docs[0]?.ref ?? doc(db, 'communityRequests', `${communityId}_${viewerId}`);
       const wasPending = existing.docs[0]?.data().status === 'pending';
       await setDoc(requestRef, { userId: viewerId, communityVariantId: communityId, status: 'pending', requestedAt: serverTimestamp(), declinedAt: deleteField() }, { merge: true });
       if (!wasPending && readString(community.userId)) {
@@ -594,10 +666,13 @@ export class CommunityDataService {
     if (action === 'join') {
       if (isPrivate) throw new Error('Request access to join this private community.');
       if (memberships.empty) {
-        const batch = writeBatch(db);
-        batch.set(doc(collection(db, 'communityVariantMembership')), { userId: viewerId, communityVariantId: communityId, isMember: true, role: 'member', isAdmin: false, from: serverTimestamp(), to: null });
-        batch.set(countRef, { communityVariantId: communityId, membershipCount: increment(1) }, { merge: true });
-        await batch.commit();
+        const canonicalRef = doc(db, 'communityVariantMembership', `${communityId}_${viewerId}`);
+        await runTransaction(db, async (transaction) => {
+          const current = await transaction.get(canonicalRef);
+          if (current.exists() && current.data().isMember === true) return;
+          transaction.set(canonicalRef, { userId: viewerId, communityVariantId: communityId, isMember: true, role: 'member', isAdmin: false, from: serverTimestamp(), to: null });
+          transaction.set(countRef, { communityVariantId: communityId, membershipCount: increment(1) }, { merge: true });
+        });
       }
       return 'joined';
     }
@@ -626,9 +701,11 @@ export class CommunityDataService {
 
   /** Web reviewJoinRequestTransactional + notification (no email from the app). */
   public async reviewJoinRequest(requestId: string, action: 'approve' | 'decline'): Promise<number> {
+    this.invalidateDirectory();
     const requestRef = doc(db, 'communityRequests', requestId);
     const requestSnap = await getDoc(requestRef);
-    if (!requestSnap.exists()) throw new Error('Join request not found.');
+    if (!requestSnap.exists()) throw new Error('This join request was cancelled.');
+    if (readString(requestSnap.data().status) && readString(requestSnap.data().status) !== 'pending') throw new Error('This join request was already handled.');
     const communityId = readString(requestSnap.data().communityVariantId);
     const userId = readString(requestSnap.data().userId);
     if (!communityId || !userId) throw new Error('Join request is invalid.');
@@ -683,6 +760,7 @@ export class CommunityDataService {
 
   /** Web removeCommunityMemberTransactional (+ ban record when banning) and the removal notification. */
   public async removeMember(communityId: string, userId: string, ban: boolean): Promise<number> {
+    this.invalidateDirectory();
     const access = await this.requireAccess(communityId);
     if (ban ? !access.canModerate : !access.canManageMembers) throw new Error(ban ? 'Community moderation access required.' : 'Community member-management access required.');
     if (!access.viewerId) throw new Error('You must be signed in.');
@@ -718,6 +796,7 @@ export class CommunityDataService {
   // ── Likes, members, reports ──
 
   public async toggleCommunityLike(communityId: string, desiredLiked: boolean): Promise<CommunityReactionResult> {
+    this.invalidateDirectory();
     const viewerId = this.requireViewerId();
     const communityRef = doc(db, 'communityVariant', communityId);
     const countRef = doc(db, 'communityVariantMembershipAndLikeCount', communityId);

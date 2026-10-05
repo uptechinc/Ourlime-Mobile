@@ -1,5 +1,6 @@
 import * as ReactNative from 'react-native';
 import { MessagingService, type ConversationEntry } from '@/lib/messaging/MessagingService';
+import { useResourceStore } from '@/lib/store/useResourceStore';
 
 export type ExternalShareInput = {
   title: string;
@@ -31,7 +32,8 @@ export class ContentShareService {
     return ContentShareService.instance;
   }
 
-  public getCachedRecipients(currentUserId: string): ConversationEntry[] | null {
+  /** This service's own recent recipient list (not the Chat tab fallback). */
+  private getFreshRecipients(currentUserId: string): ConversationEntry[] | null {
     if (
       this.cachedRecipients &&
       this.cachedRecipients.userId === currentUserId &&
@@ -42,11 +44,20 @@ export class ContentShareService {
     return null;
   }
 
+  public getCachedRecipients(currentUserId: string): ConversationEntry[] | null {
+    const fresh = this.getFreshRecipients(currentUserId);
+    if (fresh) return fresh;
+    // First share of the session: reuse the Chat tab's already-loaded conversation list (cleared on sign-out)
+    // so the sheet opens with chats instead of a spinner; loadRecipients() still refreshes it in the background.
+    const conversations = useResourceStore.getState().conversations.data;
+    return conversations && conversations.length > 0 ? conversations : null;
+  }
+
   public async loadRecipients(currentUserId: string, forceRefresh = false): Promise<ConversationEntry[]> {
     if (!currentUserId) return [];
 
     if (!forceRefresh) {
-      const cached = this.getCachedRecipients(currentUserId);
+      const cached = this.getFreshRecipients(currentUserId);
       if (cached) return cached;
     }
 

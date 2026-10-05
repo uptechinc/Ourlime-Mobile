@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { ProfileResourceService, type ProfileResourceIdentifier } from '@/lib/services/ProfileResourceService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import { createIdleResource } from '@/lib/types/resourceState';
@@ -17,7 +17,15 @@ export function useProfileResource(identifier: { kind: 'public'; viewerId: strin
   resource: ReturnType<typeof createIdleResource<PublicProfileResult>>;
   refresh: (force?: boolean) => Promise<void>;
 };
-export function useProfileResource(identifier: ProfileResourceIdentifier) {
+export function useProfileResource(requestedIdentifier: ProfileResourceIdentifier) {
+  // Callers pass a new object each render; rebuild it only when its values change.
+  const ownUserId = requestedIdentifier.kind === 'own' ? requestedIdentifier.userId : '';
+  const viewerId = requestedIdentifier.kind === 'public' ? requestedIdentifier.viewerId : '';
+  const username = requestedIdentifier.kind === 'public' ? requestedIdentifier.username : '';
+  const identifier = useMemo<ProfileResourceIdentifier>(
+    () => (requestedIdentifier.kind === 'own' ? { kind: 'own', userId: ownUserId } : { kind: 'public', viewerId, username }),
+    [requestedIdentifier.kind, ownUserId, viewerId, username],
+  );
   const key = profileResourceService.getKey(identifier);
   const ownResource = useResourceStore((state) => identifier.kind === 'own' ? state.ownProfiles[identifier.userId] : undefined);
   const publicResource = useResourceStore((state) => identifier.kind === 'public' ? state.publicProfiles[key] : undefined);
@@ -25,10 +33,10 @@ export function useProfileResource(identifier: ProfileResourceIdentifier) {
 
   useEffect(() => {
     void profileResourceService.hydrate(identifier).then(() => profileResourceService.refresh(identifier));
-  }, [key]);
+  }, [identifier]);
 
   return {
     resource,
-    refresh: useCallback((force?: boolean) => profileResourceService.refresh(identifier, force), [key]),
+    refresh: useCallback((force?: boolean) => profileResourceService.refresh(identifier, force), [identifier]),
   };
 }

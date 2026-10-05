@@ -144,7 +144,7 @@ export class SecurityAccessGateService {
       }
 
       // Check known Trinidad & Caribbean subnets to correct any third-party database misattribution
-      const CARIBBEAN_SUBNETS: Array<{ subnet: string; code: string }> = [
+      const CARIBBEAN_SUBNETS: { subnet: string; code: string }[] = [
         { subnet: '190.58.0.0/15', code: 'TT' },
         { subnet: '190.213.0.0/16', code: 'TT' },
         { subnet: '200.108.0.0/16', code: 'TT' },

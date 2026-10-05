@@ -41,9 +41,6 @@ export function CallProvider({ children }: CallProviderProps) {
   const operationRef = useRef<Promise<void> | null>(null);
   const postCallNavigationIdsRef = useRef(new Set<string>());
   const session = useCallStore((state) => state.session);
-  const isMuted = useCallStore((state) => state.isMuted);
-  const isVideoMuted = useCallStore((state) => state.isVideoMuted);
-  const isSpeakerEnabled = useCallStore((state) => state.isSpeakerEnabled);
   const connectionStatus = useCallStore((state) => state.connectionStatus);
 
   const scheduleAnsweredCallChat = useCallback((completedSession: CallSession) => {

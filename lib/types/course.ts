@@ -108,12 +108,12 @@ export type CxcSubject = {
   iconName?: string;
   topicsCount: number;
   pastPapersCount: number;
-  papers: Array<{
+  papers: {
     year: number;
     paperNumber: number;
     title: string;
     url?: string;
-  }>;
+  }[];
 };
 
 export type CourseAnnouncement = { id: string; courseId: string; title: string; body: string; authorName: string; authorAvatar?: string; important: boolean; createdAt?: string };

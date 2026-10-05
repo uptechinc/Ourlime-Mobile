@@ -1,7 +1,6 @@
-import { collection, getDocs, getDoc, doc, updateDoc, where, query, limit, orderBy, Timestamp, addDoc, increment, setDoc, arrayUnion, deleteDoc } from 'firebase/firestore';
-import { db, auth, storage } from './firebaseConfig';
-import { Reel, Post, Comment } from '@/types/userTypes';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { collection, getDocs, where, query, orderBy } from 'firebase/firestore';
+import { db } from './firebaseConfig';
+import { Reel } from '@/types/userTypes';
 
 // Fetch all limes/reels
 export async function getLimes(): Promise<Reel[]> {

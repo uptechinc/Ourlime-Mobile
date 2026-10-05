@@ -161,7 +161,7 @@ export default function CommunitiesScreen() {
 		try {
 			let result: CommunityMutationResult;
 			if (community.membershipState === 'pending') {
-				result = await communityService.cancelRequest(community.id);
+				result = await communityService.cancelRequest(community.id, community.memberCount);
 				setFeedback('Your join request was canceled.');
 			} else {
 				result = await communityService.joinOrRequestAccess(community);
@@ -186,7 +186,9 @@ export default function CommunitiesScreen() {
 				},
 			};
 			await patchCommunity(updated);
-			await reconcileCommunity(community.id);
+			void reconcileCommunity(community.id).catch((error: unknown) => {
+				console.warn('[CommunitiesScreen.reconcileCommunity] Error:', error instanceof Error ? error.message : 'refresh failed');
+			});
 		} catch (error: unknown) {
 			setFeedback(
 				error instanceof Error
@@ -204,7 +206,7 @@ export default function CommunitiesScreen() {
 		if (!community || !action || busyCommunityId) return;
 		setBusyCommunityId(community.id);
 		try {
-			const result = await communityService.leaveCommunity(community.id);
+			const result = await communityService.leaveCommunity(community.id, community.memberCount);
 			const updated: CommunityCardModel = {
 				...community,
 				membershipState: 'none',
@@ -219,7 +221,9 @@ export default function CommunitiesScreen() {
 				},
 			};
 			await patchCommunity(updated);
-			await reconcileCommunity(community.id);
+			void reconcileCommunity(community.id).catch((error: unknown) => {
+				console.warn('[CommunitiesScreen.reconcileCommunity] Error:', error instanceof Error ? error.message : 'refresh failed');
+			});
 			setFeedback(`You left ${community.title}.`);
 		} catch (error: unknown) {
 			setFeedback(

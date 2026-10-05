@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import Icon from 'react-native-vector-icons/Feather';
 import CachedImage from '@/components/ui/CachedImage';
 import AdminDeletionModal from '@/components/moderation/AdminDeletionModal';
@@ -21,6 +20,7 @@ import type {
   AdminContentMediaPreview,
 } from '@/lib/types/adminContent';
 import type { ModerationDeliveryResult } from '@/lib/types/moderationDelivery';
+import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
 
 type AdminUserContentWorkspaceProps = {
   userId: string;
@@ -54,17 +54,7 @@ type AdminVideoViewerProps = {
 };
 
 function AdminVideoViewer({ url }: AdminVideoViewerProps) {
-  const player = useVideoPlayer(url, (videoPlayer) => {
-    videoPlayer.loop = false;
-  });
-  return (
-    <VideoView
-      player={player}
-      nativeControls
-      contentFit="contain"
-      style={{ width: '100%', height: '100%' }}
-    />
-  );
+  return <CustomVideoPlayer url={url} autoPlay={false} />;
 }
 
 export default function AdminUserContentWorkspace({

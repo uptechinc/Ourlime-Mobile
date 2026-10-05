@@ -205,7 +205,7 @@ export class CommunitiesResourceService {
   }
 
   private matchesQueryKey(queryKey: string, community: CommunityCardModel, userId: string): boolean {
-    const [scopeValue, visibilityValue, categoryValue, _sortValue, searchValue] = queryKey.split(':').map((value) => decodeURIComponent(value));
+    const [scopeValue, visibilityValue, categoryValue, , searchValue] = queryKey.split(':').map((value) => decodeURIComponent(value));
     if (scopeValue === 'joined' && community.membershipState !== 'member' && community.membershipState !== 'owner') return false;
     if (scopeValue === 'friends' && community.friendMemberCount === 0) return false;
     if (scopeValue === 'created' && community.creatorId !== userId) return false;

@@ -1,5 +1,5 @@
 import { db } from '@/lib/firebaseConfig';
-import { collection, query, where, getDocs, addDoc, updateDoc, doc, deleteDoc, orderBy } from 'firebase/firestore';
+import { collection, query, getDocs, addDoc, updateDoc, doc, deleteDoc, orderBy } from 'firebase/firestore';
 
 export class WorkExperienceServices {
     private static instance: WorkExperienceServices;
@@ -26,7 +26,7 @@ export class WorkExperienceServices {
                 id: doc.id,
                 ...doc.data()
             }));
-        } catch (error) {
+        } catch {
             throw new Error('Failed to fetch work experience');
         }
     }
@@ -52,7 +52,7 @@ export class WorkExperienceServices {
                 id: docRef.id,
                 ...workData
             };
-        } catch (error) {
+        } catch {
             throw new Error('Failed to add work experience');
         }
     }
@@ -76,7 +76,7 @@ export class WorkExperienceServices {
                 id,
                 ...workData
             };
-        } catch (error) {
+        } catch {
             throw new Error('Failed to update work experience');
         }
     }
@@ -86,7 +86,7 @@ export class WorkExperienceServices {
             const docRef = doc(this.db, 'users', userId, 'workExperience', id);
             await deleteDoc(docRef);
             return true;
-        } catch (error) {
+        } catch {
             throw new Error('Failed to delete work experience');
         }
     }

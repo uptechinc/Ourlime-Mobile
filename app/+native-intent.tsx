@@ -28,7 +28,7 @@ export async function redirectSystemPath({ path }: RedirectSystemPathOptions): P
   const resolution = deepLinkService.resolve(path);
   if (resolution.kind === 'invalid') return '/__not_found__';
   if (resolution.kind === 'external') return resolution.url;
-  if (authService.getVerifiedCurrentUser()) return resolution.route;
+  if (await authService.waitForVerifiedCurrentUser()) return resolution.route;
   await deepLinkService.rememberPendingResolution(resolution);
   return '/(auth)/login';
 }

@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
+import { toast } from 'sonner-native';
 
 type ForwardMessageModalProps = {
   visible: boolean;
@@ -59,22 +60,37 @@ export function ForwardMessageModal({
     if (!messageToForward || !currentUserId) return;
     setSendingToId(friend.uid);
 
+    // Saved messages keep sticker and voice note fields flat (stickerUrl, audioUrl…), not nested, so rebuild them.
+    const source = messageToForward;
+    const stickerUrl = source.stickerData?.stickerUrl ?? source.stickerUrl;
+    const stickerData = source.stickerData ?? (stickerUrl ? {
+      type: 'sticker' as const,
+      stickerId: source.stickerId ?? '',
+      stickerUrl,
+      packId: source.packId ?? '',
+      stickerWidth: source.stickerWidth ?? 160,
+      stickerHeight: source.stickerHeight ?? 160,
+    } : undefined);
+    const audioUrl = source.voiceNoteData?.audioUrl ?? source.audioUrl;
+    const voiceNoteData = source.voiceNoteData ?? (audioUrl ? { type: 'voiceNote' as const, audioUrl, audioDuration: source.audioDuration ?? 0 } : undefined);
+
     try {
       await messagingService.sendMessage(
         friend.uid,
-        messageToForward.message ?? '',
+        source.message ?? '',
         currentUserId,
         undefined,
-        messageToForward.attachment,
-        messageToForward.stickerData,
-        messageToForward.voiceNoteData,
+        source.attachment,
+        stickerData,
+        voiceNoteData,
         true // isForwarded = true
       );
       void interactionFeedbackService.play('success');
       onForwardSuccess(`${friend.firstName} ${friend.lastName}`);
       onClose();
     } catch (e) {
-      console.error('[ForwardMessageModal] Error forwarding message:', e);
+      console.error('[ForwardMessageModal.handleForwardTo] Error:', e);
+      toast.error('The message could not be forwarded.');
     } finally {
       setSendingToId(null);
     }

@@ -55,6 +55,9 @@ export default function UserAvatar({
 
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', backgroundColor, alignItems: 'center', justifyContent: 'center' }}>
+      {resolution.kind !== 'initial' ? (
+        <Text style={{ position: 'absolute', color: '#ffffff', fontSize: Math.max(14, size * 0.4), fontWeight: '800' }}>{initial}</Text>
+      ) : null}
       {resolution.kind === 'preset' ? (
         <Image
           source={presetAvatarImages[resolution.name]}

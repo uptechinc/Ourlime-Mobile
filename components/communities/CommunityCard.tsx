@@ -1,8 +1,11 @@
 import { Heart, Lock, MoreHorizontal, ShieldCheck, Users } from 'lucide-react-native';
+import { useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { ensureMediaUrl } from '@/lib/helpers/mediaUrl';
 import type { CommunityCardModel, CommunityDirectoryViewMode } from '@/lib/types/community';
+import { failedMediaUrls } from '@/lib/helpers/failedMediaUrls';
 
 type CommunityCardProps = {
   community: CommunityCardModel;
@@ -31,6 +34,10 @@ const getRoleLabel = (community: CommunityCardModel): string | null => {
 
 export default function CommunityCard({ community, viewMode, busy, onOpen, onMembershipAction, onLeave, onReport }: CommunityCardProps) {
   const { colors } = useAppTheme();
+  // A cover that fails to load falls back to the icon instead of an empty block.
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+  const coverUrl = ensureMediaUrl(community.imageUrl);
+  const showCover = Boolean(coverUrl) && failedImageUrl !== coverUrl && !failedMediaUrls.has(coverUrl);
   const isJoined = community.membershipState === 'member' || community.membershipState === 'owner';
   const isBanned = community.membershipState === 'banned';
   const isDisabled = busy || isBanned;
@@ -48,7 +55,7 @@ export default function CommunityCard({ community, viewMode, busy, onOpen, onMem
       style={{ flex: 1, flexDirection: viewMode === 'list' ? 'row' : 'column', backgroundColor: colors.surface, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}
     >
       <View style={{ width: viewMode === 'list' ? 128 : '100%', height: viewMode === 'list' ? 190 : 142, backgroundColor: colors.control }}>
-        {community.imageUrl ? <CachedImage uri={community.imageUrl} recyclingKey={`community-card-${community.id}-${community.imageUrl}`} style={{ width: '100%', height: '100%' }} contentFit="cover" /> : <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.successSurface }}><Users size={42} color={colors.accent} /></View>}
+        {showCover ? <CachedImage uri={coverUrl} recyclingKey={`community-card-${community.id}-${coverUrl}`} style={{ width: '100%', height: '100%' }} contentFit="cover" onError={() => { failedMediaUrls.add(coverUrl); setFailedImageUrl(coverUrl); }} /> : <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.successSurface }}><Users size={42} color={colors.accent} /></View>}
         <View style={{ position: 'absolute', top: 9, left: 9, flexDirection: 'row', gap: 5 }}>
           {community.categoryName ? <View style={{ borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: 'rgba(255,255,255,0.92)' }}><Text style={{ color: '#334155', fontSize: 9, fontWeight: '900', textTransform: 'uppercase' }}>{community.categoryName}</Text></View> : null}
           <View style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 999, paddingHorizontal: 7, paddingVertical: 4, backgroundColor: community.isPrivate ? '#fffbeb' : '#ecfdf5' }}><Lock size={9} color={community.isPrivate ? '#92400e' : '#047857'} /><Text style={{ marginLeft: 3, color: community.isPrivate ? '#92400e' : '#047857', fontSize: 9, fontWeight: '900' }}>{community.isPrivate ? 'Private' : 'Public'}</Text></View>

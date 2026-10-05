@@ -1,6 +1,6 @@
 import { db } from '@/lib/firebaseConfig';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc, Timestamp, updateDoc } from 'firebase/firestore';
-import { Address, AddressFormData } from '@/types/addressTypes';
+import { AddressFormData } from '@/types/addressTypes';
 
 export class AddressService {
     private static instance: AddressService;

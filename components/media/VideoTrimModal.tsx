@@ -5,6 +5,7 @@ import {
   Image,
   Modal,
   PanResponder,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -141,7 +142,7 @@ export default function VideoTrimModal({
       if (isDraggingRef.current) return;
       const currentStart = startSecondsRef.current;
       const currentEnd = endSecondsRef.current;
-      if (event.currentTime >= currentEnd || event.currentTime < currentStart) {
+      if (event.currentTime >= currentEnd - 0.05 || event.currentTime < currentStart) {
         try {
           player.currentTime = currentStart;
           player.play();
@@ -153,9 +154,19 @@ export default function VideoTrimModal({
     const playingSub = player.addListener('playingChange', (event) => {
       setIsPlaying(event.isPlaying);
     });
+    const endSub = player.addListener('playToEnd', () => {
+      if (isDraggingRef.current) return;
+      try {
+        player.currentTime = startSecondsRef.current;
+        player.play();
+      } catch {
+        // Released player.
+      }
+    });
     return () => {
       timeSub.remove();
       playingSub.remove();
+      endSub.remove();
     };
   }, [player]);
 
@@ -343,10 +354,15 @@ export default function VideoTrimModal({
 
   const togglePlayPause = () => {
     try {
-      if (isPlaying) player.pause();
-      else player.play();
-    } catch {
-      // ignore
+      if (player.playing) {
+        player.pause();
+        return;
+      }
+      const atEnd = player.currentTime >= endSecondsRef.current - 0.1 || (player.duration > 0 && player.currentTime >= player.duration - 0.1);
+      if (atEnd || player.currentTime < startSecondsRef.current) player.currentTime = startSecondsRef.current;
+      player.play();
+    } catch (error: unknown) {
+      console.warn('[VideoTrimModal.togglePlayPause] Error:', error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -548,11 +564,7 @@ export default function VideoTrimModal({
 
           {/* Video Preview in Center */}
           <View style={styles.previewContainer}>
-            <TouchableOpacity
-              activeOpacity={1}
-              onPress={togglePlayPause}
-              style={styles.videoTouchWrapper}
-            >
+            <View style={styles.videoTouchWrapper}>
               <VideoView
                 player={player}
                 style={styles.videoView}
@@ -560,14 +572,19 @@ export default function VideoTrimModal({
                 surfaceType="textureView"
                 nativeControls={false}
               />
-              {!isPlaying ? (
-                <View style={styles.playIconOverlay} pointerEvents="none">
+              <Pressable
+                onPress={togglePlayPause}
+                accessibilityRole="button"
+                accessibilityLabel={isPlaying ? 'Pause preview' : 'Play preview'}
+                style={styles.playIconOverlay}
+              >
+                {!isPlaying ? (
                   <View style={styles.playIconCircle}>
                     <Icon name="play" size={32} color="#ffffff" style={{ marginLeft: 3 }} />
                   </View>
-                </View>
-              ) : null}
-            </TouchableOpacity>
+                ) : null}
+              </Pressable>
+            </View>
 
             {/* WhatsApp-style Floating Toast Banner */}
             {showToast ? (

@@ -1,5 +1,5 @@
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
-import ContentDraftModal from '@/components/drafts/ContentDraftModal';
+import CreateTaskSheet from '@/components/projectManagement/CreateTaskSheet';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,11 +21,13 @@ import Icon from 'react-native-vector-icons/Feather';
 import PageHeader from '@/components/ui/PageHeader';
 import { ProjectBoardSkeleton } from '@/components/ui/Skeleton';
 import CustomModal from '@/components/ui/CustomModal';
+import ProjectBoardSidebar from '@/components/projectManagement/ProjectBoardSidebar';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { projectService } from '@/lib/services/ProjectService';
 import { useAppData } from '@/lib/contexts/AppDataContext';
+import SessionRetryBanner from '@/components/projectManagement/SessionRetryBanner';
 import ProjectFriendPickerModal from '@/components/projectManagement/ProjectFriendPickerModal';
 import type {
   Priority,
@@ -39,9 +41,23 @@ import type {
   TeamMember,
 } from '@/lib/types/project';
 
+/** Runs an action unless the same action key is already running (double-tap guard). */
+async function runOnce(busyActions: Set<string>, actionKey: string, action: () => Promise<void>): Promise<void> {
+  if (busyActions.has(actionKey)) return;
+  busyActions.add(actionKey);
+  try { await action(); } finally { busyActions.delete(actionKey); }
+}
+
+// Due dates are calendar dates (YYYY-MM-DD); read them as local dates, never as UTC midnight.
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function formatLocalDueDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  return match ? `${MONTH_NAMES[Number(match[2]) - 1] ?? match[2]} ${Number(match[3])}, ${match[1]}` : value;
+}
+
 export default function ProjectBoardScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, invite } = useLocalSearchParams<{ id: string; invite?: string }>();
   const projectId = id as string;
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -69,6 +85,14 @@ export default function ProjectBoardScreen() {
   // Filters & Views
   const [searchQuery, setSearchQuery] = useState('');
   const [filterPriority, setFilterPriority] = useState<Priority | 'all'>('all');
+  // Website board filter: tasks assigned to one member.
+  const [filterAssignee, setFilterAssignee] = useState<string>('all');
+  // Start/Complete is locked while that task's change saves (a fast second tap used to skip a column).
+  const [statusBusyTaskId, setStatusBusyTaskId] = useState<string | null>(null);
+  const inviteOpenedRef = useRef(false);
+  // Per-action double-tap guard (subtask toggle, time log, delete).
+  const [busyActions] = useState(() => new Set<string>());
+
   const [activeTabStatus, setActiveTabStatus] = useState<Status>('todo');
 
   // Modals
@@ -172,10 +196,15 @@ export default function ProjectBoardScreen() {
   }, [projectId, sessionReady]);
 
   const handleUpdateStatus = async (task: Task, nextStatus: Status) => {
+    if (!writeCapability.allowed) { setFeedback({ title: 'Task update unavailable', message: writeCapability.reason, type: 'warning' }); return; }
+    if (statusBusyTaskId) return;
+    setStatusBusyTaskId(task.id);
     try {
       await projectService.updateTaskStatus(projectId, task.id, nextStatus);
     } catch (error: unknown) {
       setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not update status', type: 'danger' });
+    } finally {
+      setStatusBusyTaskId(null);
     }
   };
 
@@ -195,12 +224,16 @@ export default function ProjectBoardScreen() {
   };
 
   const handleToggleSubtask = async (subtaskId: string) => {
+    if (!writeCapability.allowed) { setFeedback({ title: 'Subtask unavailable', message: writeCapability.reason, type: 'warning' }); return; }
     if (!activeTask) return;
-    try {
-      await projectService.toggleSubTask(projectId, activeTask.id, subtaskId);
-    } catch (error: unknown) {
-      setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not toggle subtask', type: 'danger' });
-    }
+    const taskId = activeTask.id;
+    await runOnce(busyActions, `subtask:${subtaskId}`, async () => {
+      try {
+        await projectService.toggleSubTask(projectId, taskId, subtaskId);
+      } catch (error: unknown) {
+        setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not toggle subtask', type: 'danger' });
+      }
+    });
   };
 
   const handleAddComment = async () => {
@@ -219,27 +252,37 @@ export default function ProjectBoardScreen() {
   };
 
   const handleAddTimeEntry = async () => {
+    if (!writeCapability.allowed) { setFeedback({ title: 'Time log unavailable', message: writeCapability.reason, type: 'warning' }); return; }
     if (!activeTask || !timeSpentMinutes.trim()) return;
     const sent = timeSpentMinutes;
     const minutes = Number(sent);
-    if (!Number.isSafeInteger(minutes) || minutes <= 0) return;
-    try {
-      await projectService.addTimeEntry(projectId, activeTask.id, minutes);
-      setTimeSpentMinutes((current) => current === sent ? '' : current);
-      setFeedback({ title: 'Time Logged', message: `Logged ${minutes} minutes.`, type: 'success' });
-    } catch (error: unknown) {
-      setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not log time', type: 'danger' });
+    if (!Number.isSafeInteger(minutes) || minutes <= 0) {
+      setFeedback({ title: 'Minutes required', message: 'Enter a whole number of minutes greater than 0.', type: 'warning' });
+      return;
     }
+    const taskId = activeTask.id;
+    await runOnce(busyActions, `time:${taskId}`, async () => {
+      try {
+        await projectService.addTimeEntry(projectId, taskId, minutes);
+        setTimeSpentMinutes((current) => current === sent ? '' : current);
+        setFeedback({ title: 'Time Logged', message: `Logged ${minutes} minutes.`, type: 'success' });
+      } catch (error: unknown) {
+        setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not log time', type: 'danger' });
+      }
+    });
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    try {
-      await projectService.deleteTask(projectId, taskId);
-      setActiveTask(null);
-      setFeedback({ title: 'Task Deleted', message: 'The task has been removed.', type: 'info' });
-    } catch (error: unknown) {
-      setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not delete task', type: 'danger' });
-    }
+    if (!writeCapability.allowed) { setFeedback({ title: 'Delete unavailable', message: writeCapability.reason, type: 'warning' }); return; }
+    await runOnce(busyActions, `delete:${taskId}`, async () => {
+      try {
+        await projectService.deleteTask(projectId, taskId);
+        setActiveTask(null);
+        setFeedback({ title: 'Task Deleted', message: 'The task has been removed.', type: 'info' });
+      } catch (error: unknown) {
+        setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not delete task', type: 'danger' });
+      }
+    });
   };
 
   const handleSendInvite = async () => {
@@ -331,9 +374,10 @@ export default function ProjectBoardScreen() {
     return tasks.filter((t) => {
       const matchesSearch = !searchQuery || t.title.toLowerCase().includes(searchQuery.toLowerCase()) || t.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesPriority = filterPriority === 'all' || t.priority === filterPriority;
-      return matchesSearch && matchesPriority;
+      const matchesAssignee = filterAssignee === 'all' || t.assignee === filterAssignee || (t.assignees ?? []).includes(filterAssignee) || t.assignedToAll === true;
+      return matchesSearch && matchesPriority && matchesAssignee;
     });
-  }, [tasks, searchQuery, filterPriority]);
+  }, [tasks, searchQuery, filterPriority, filterAssignee]);
 
   const tasksByStatus = useMemo(() => {
     return {
@@ -344,6 +388,14 @@ export default function ProjectBoardScreen() {
   }, [filteredTasks]);
 
   const canManage = inviteCapability.allowed;
+
+  // A project created from the list arrives with ?invite=1: open the invite picker once, like the website's
+  // "Initial Members" step.
+  useEffect(() => {
+    if (invite !== '1' || inviteOpenedRef.current || !project || !canManage) return;
+    inviteOpenedRef.current = true;
+    setFriendPickerOpen(true);
+  }, [canManage, invite, project]);
 
   if (!activeUserId) {
     return (
@@ -433,6 +485,8 @@ export default function ProjectBoardScreen() {
             </View>
           </View>
 
+          <SessionRetryBanner />
+
           {/* Action Row */}
           <View style={styles.heroActions}>
             <TouchableOpacity onPress={() => handleCapabilityAction(writeCapability, 'New task unavailable', () => setCreateTaskOpen(true))} style={[styles.actionBtn, !canWrite && { opacity: 0.58 }]}>
@@ -484,6 +538,15 @@ export default function ProjectBoardScreen() {
               </TouchableOpacity>
             ))}
           </ScrollView>
+          {teamMembers.length > 1 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.priorityFilterRow}>
+              {[{ id: 'all', name: 'All members' }, ...teamMembers.filter((member) => member.isOwner || member.membershipStatus !== 'pending').map((member) => ({ id: member.id, name: member.id === currentUserId ? 'Me' : member.name }))].map((option) => (
+                <TouchableOpacity key={option.id} onPress={() => setFilterAssignee(option.id)} style={[styles.filterPill, filterAssignee === option.id && styles.filterPillActive]}>
+                  <Text numberOfLines={1} style={[styles.filterPillText, filterAssignee === option.id && styles.filterPillTextActive]}>{option.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : null}
         </View>
 
         {/* View Mode Switcher: Kanban status tabs */}
@@ -532,7 +595,8 @@ export default function ProjectBoardScreen() {
                     </View>
                     <TouchableOpacity
                       onPress={() => handleUpdateStatus(task, isDone ? 'todo' : isInProgress ? 'done' : 'in-progress')}
-                      style={[styles.quickStatusBtn, isDone && { backgroundColor: '#10b981' }]}
+                      disabled={statusBusyTaskId !== null}
+                      style={[styles.quickStatusBtn, isDone && { backgroundColor: '#10b981' }, statusBusyTaskId === task.id && { opacity: 0.5 }]}
                     >
                       <Icon name={isDone ? 'check' : 'arrow-right'} size={14} color={isDone ? '#ffffff' : colors.text} />
                       <Text style={[styles.quickStatusText, isDone && { color: '#ffffff' }]}>
@@ -566,7 +630,7 @@ export default function ProjectBoardScreen() {
                       {task.dueDate ? (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                           <Icon name="calendar" size={13} color={colors.mutedText} />
-                          <Text style={styles.metaSmallText}>{task.dueDate}</Text>
+                          <Text style={styles.metaSmallText}>{formatLocalDueDate(task.dueDate)}</Text>
                         </View>
                       ) : null}
                     </View>
@@ -577,9 +641,21 @@ export default function ProjectBoardScreen() {
             })
           )}
         </View>
+
+        {/* Website sidebar: Team Members + Recent Activity */}
+        <ProjectBoardSidebar
+          tasks={tasks}
+          teamMembers={teamMembers}
+          currentUserId={currentUserId}
+          isOwner={project?.isOwner === true}
+          onChangeRole={async (member, role) => { await projectService.changeMemberRole(projectId, member.id, role); await loadProject(); setFeedback({ title: 'Role updated', message: `${member.name} is now ${role === 'admin' ? 'an' : 'a'} ${role}.`, type: 'success' }); }}
+          onRemove={async (member) => { await projectService.removeMember(projectId, member.id); await loadProject(); setFeedback({ title: 'Member removed', message: `${member.name} was removed from the project.`, type: 'info' }); }}
+          onTransfer={async (member) => { await projectService.transferOwnership(projectId, member.id); await loadProject(); setFeedback({ title: 'Ownership transferred', message: `${member.name} is now the project owner.`, type: 'success' }); }}
+        />
       </ScrollView>
 
-      {createTaskOpen && currentUserId ? <ContentDraftModal key={`${currentUserId}:${projectId}`} ownerId={currentUserId} kind="task" projectId={projectId} teamMembers={teamMembers} onClose={() => setCreateTaskOpen(false)} onPublished={() => void loadProject()} /> : null}
+      {/* Simple one-step task form (replaces the old "Task drafts" screen). */}
+      {currentUserId ? <CreateTaskSheet visible={createTaskOpen} projectId={projectId} currentUserId={currentUserId} teamMembers={teamMembers} onClose={() => setCreateTaskOpen(false)} onCreated={() => void loadProject()} /> : null}
 
       {/* 2. Task Detail Modal */}
       <Modal visible={activeTask !== null} transparent animationType="none" onRequestClose={detailSwipeDismiss.dismissWithAnimation}>

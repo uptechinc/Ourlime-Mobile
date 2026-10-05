@@ -1,4 +1,4 @@
-import { collection, query, orderBy, where, getDocs, addDoc, doc, getDoc, deleteDoc, Timestamp, DocumentData } from 'firebase/firestore';
+import { collection, query, orderBy, where, getDocs, addDoc, doc, getDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '@/lib/firebaseConfig';
 import { Moment } from '@/types/momentTypes';

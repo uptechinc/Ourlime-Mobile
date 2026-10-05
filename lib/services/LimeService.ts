@@ -35,6 +35,10 @@ export type LimeFeedCursor = QueryDocumentSnapshot;
 
 export type LimeFeedScope = 'forYou' | 'following';
 
+// Pages read per feed request while looking for Limes this viewer may see.
+const LIME_FEED_MAX_SCAN_ROUNDS = 5;
+const MAX_REPOSTER_PROFILES = 20;
+
 export type LimeEditPayload = {
   caption?: string;
   category?: string;
@@ -66,6 +70,7 @@ export class LimeService {
   private static instance: LimeService;
   private readonly authService = AuthService.getInstance();
   private readonly relationshipService = RelationshipService.getInstance();
+  private socialGraph: { userId: string; following: Set<string>; friends: Set<string> } | null = null;
 
   private constructor() {}
 
@@ -82,10 +87,11 @@ export class LimeService {
     commentPreviewLimit = 0,
     scope: LimeFeedScope = 'forYou',
   ): Promise<LimeFeedResult> {
-    const followingUserSet = new Set<string>();
-    const friendUserSet = new Set<string>();
+    const cachedGraph = cursor && this.socialGraph?.userId === currentUserId ? this.socialGraph : null;
+    const followingUserSet = new Set<string>(cachedGraph?.following ?? []);
+    const friendUserSet = new Set<string>(cachedGraph?.friends ?? []);
 
-    // Only build the social graph on the first page load (no cursor)
+    // Build the social graph on the first page load (no cursor); later pages reuse it.
     if (currentUserId && !cursor) {
       try {
         const [friends, followersSnap, friendshipSnap1, friendshipSnap2, friendshipsSnap] = await Promise.all([
@@ -136,6 +142,7 @@ export class LimeService {
       } catch {
         // ignore — feed still loads without social graph
       }
+      this.socialGraph = { userId: currentUserId, following: new Set(followingUserSet), friends: new Set(friendUserSet) };
     }
 
     // Build query constraints
@@ -147,15 +154,24 @@ export class LimeService {
       constraints.push(where('category', '==', category));
     }
     constraints.push(orderBy('createdAt', 'desc'));
-    if (cursor) constraints.push(startAfter(cursor));
-    const requestedPageSize = scope === 'following' ? 50 : pageSize;
-    constraints.push(limit(requestedPageSize));
+    const batchSize = scope === 'following' ? 50 : pageSize;
 
-    const snapshot = await getDocs(query(collection(db, 'reels'), ...constraints));
-    const visibleDocuments = snapshot.docs.filter((reelDocument) => !isDeletedReelRecord(recordOf(reelDocument.data())));
-    const feedDocuments = scope === 'following'
-      ? visibleDocuments.filter((reelDocument) => followingUserSet.has(stringOf(reelDocument.data().userId)))
-      : visibleDocuments;
+    // Keep reading until there's a page worth showing: private/friends-only/deleted Limes are skipped here (never
+    // handed to the screen or the local cache), and "Following" scans further back than the newest 50.
+    const feedDocuments: QueryDocumentSnapshot[] = [];
+    let pageCursor: QueryDocumentSnapshot | null = cursor ?? null;
+    let reachedEnd = false;
+    for (let round = 0; round < LIME_FEED_MAX_SCAN_ROUNDS && feedDocuments.length < pageSize; round += 1) {
+      const snapshot = await getDocs(query(collection(db, 'reels'), ...constraints, ...(pageCursor ? [startAfter(pageCursor)] : []), limit(batchSize)));
+      feedDocuments.push(...snapshot.docs.filter((reelDocument) => {
+        const data = recordOf(reelDocument.data());
+        if (isDeletedReelRecord(data)) return false;
+        if (scope === 'following' && !followingUserSet.has(stringOf(data.userId))) return false;
+        return this.canViewerSee(data, currentUserId, friendUserSet);
+      }));
+      if (snapshot.docs.length > 0) pageCursor = snapshot.docs[snapshot.docs.length - 1];
+      if (snapshot.size < batchSize) { reachedEnd = true; break; }
+    }
     const commentsByReel: Record<string, LimeComment[]> = {};
     const reels = await Promise.all(feedDocuments.map(async (entry): Promise<Reel | null> => {
       let reelDocument: Awaited<ReturnType<typeof getDoc>> = entry;
@@ -180,6 +196,8 @@ export class LimeService {
       }
       const data = recordOf(reelDocument.data());
       if (isDeletedReelRecord(data)) return null;
+      // A repost can point at an original that isn't visible to this viewer.
+      if (!this.canViewerSee(data, currentUserId, friendUserSet)) return null;
       const creatorId = stringOf(data.userId);
       const profile = creatorId ? await this.authService.getUserProfileIfAvailable(creatorId) : null;
       const comments = commentPreviewLimit > 0
@@ -269,15 +287,23 @@ export class LimeService {
       originals.set(reel.id, { ...reel, repostedBy: [...reposters.values()] });
     }
     const enrichedReels = await this.attachReposters([...originals.values()], currentUserId, friendUserSet);
-    const lastDoc = scope === 'following' ? null : snapshot.docs.at(-1) ?? null;
     return {
       reels: enrichedReels,
       followingUserIds: Array.from(followingUserSet),
       friendUserIds: Array.from(friendUserSet),
       commentsByReel,
-      lastDoc,
-      hasMore: scope === 'forYou' && snapshot.size >= pageSize,
+      lastDoc: reachedEnd ? null : pageCursor,
+      hasMore: !reachedEnd,
     };
+  }
+
+  /** Website visibility rules: private/only-me for the owner, friends-only for the owner's friends. */
+  private canViewerSee(data: Record<string, unknown>, viewerId: string, friendIds: Set<string>): boolean {
+    const visibility = stringOf(data.visibility, 'public');
+    const ownerId = stringOf(data.userId);
+    if (visibility === 'private' || visibility === 'only_me') return Boolean(viewerId && ownerId === viewerId);
+    if (visibility === 'friends') return Boolean(viewerId && (ownerId === viewerId || friendIds.has(ownerId)));
+    return true;
   }
 
 
@@ -733,8 +759,17 @@ export class LimeService {
         canonicalMarkers?.docs.forEach((markerDocument) => markerDocuments.push(markerDocument));
         legacyMarkers?.docs.forEach((markerDocument) => markerDocuments.push(markerDocument));
       }
+      const perReel = new Map<string, number>();
       const uniqueMarkers = Array.from(new Map(markerDocuments.map((markerDocument) => [markerDocument.id, markerDocument])).values())
-        .filter((marker) => !friendUserIds || stringOf(marker.data().userId) === currentUserId || friendUserIds.has(stringOf(marker.data().userId)));
+        .filter((marker) => !friendUserIds || stringOf(marker.data().userId) === currentUserId || friendUserIds.has(stringOf(marker.data().userId)))
+        // The viewer's own marker first, then up to MAX_REPOSTER_PROFILES per Lime.
+        .sort((first, second) => Number(stringOf(second.data().userId) === currentUserId) - Number(stringOf(first.data().userId) === currentUserId))
+        .filter((marker) => {
+          const reelId = stringOf(marker.data().reelId) || stringOf(marker.data().originalReelId);
+          const seen = perReel.get(reelId) ?? 0;
+          perReel.set(reelId, seen + 1);
+          return seen < MAX_REPOSTER_PROFILES;
+        });
       const userIds = Array.from(new Set(uniqueMarkers.map((markerDocument) => stringOf(markerDocument.data().userId)).filter(Boolean)));
       const profiles = await Promise.all(userIds.map(async (userId) => [userId, await this.authService.getUserProfileIfAvailable(userId)] as const));
       const profileById = new Map(profiles);

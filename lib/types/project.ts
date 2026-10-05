@@ -50,6 +50,15 @@ export type TimeEntry = {
   date: string;
 };
 
+/** One entry of a task's history (same shape the website writes to tasks/{id}.auditLog). */
+export type TaskAuditLogEntry = {
+  id: string;
+  action: string;
+  detail: string;
+  userId: string;
+  timestamp: string;
+};
+
 export type Task = {
   id: string;
   title: string;
@@ -72,6 +81,7 @@ export type Task = {
   tags: string[];
   progress: number; // 0-100
   archived?: boolean;
+  auditLog?: TaskAuditLogEntry[];
 };
 
 export type TeamMember = {
@@ -109,13 +119,33 @@ export type ProjectRecord = {
   progress: number;
   color: string;
   updatedAt: Date;
+  createdAt: Date;
+  dueDate: string | null;
+  visibility: ProjectVisibility;
+  tags: string[];
   isOwner?: boolean;
   memberUids?: string[];
+};
+
+export type ProjectVisibility = 'public' | 'private';
+
+/** Fields the website's project form edits beyond name and description. */
+export type ProjectSettingsUpdate = {
+  name?: string;
+  description?: string;
+  status?: ProjectStatus;
+  dueDate?: string | null;
+  visibility?: ProjectVisibility;
+  tags?: string[];
 };
 
 export type CreateProjectInput = {
   name: string;
   description: string;
+  dueDate?: string | null;
+  status?: ProjectStatus;
+  visibility?: ProjectVisibility;
+  tags?: string[];
 };
 
 export type CreateTaskInput = {

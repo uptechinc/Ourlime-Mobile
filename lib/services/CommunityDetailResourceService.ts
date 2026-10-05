@@ -52,6 +52,16 @@ export class CommunityDetailResourceService {
     }, () => useResourceStore.getState().setCommunityDetail(identifier, this.withState(null, { status: 'idle' })), (error) => useResourceStore.getState().setCommunityDetail(identifier, { ...this.withState(null, { status: 'error' }), error }));
   }
 
+  /** Moves the cached "Posts" count right away (every cache key for this community: id and slug). */
+  public adjustPostCount(communityId: string, delta: number): void {
+    const store = useResourceStore.getState();
+    Object.entries(store.communityDetails).forEach(([key, resource]) => {
+      const community = resource.data?.community;
+      if (!resource.data || !community || community.id !== communityId) return;
+      store.setCommunityDetail(key, { ...resource, data: { ...resource.data, community: { ...community, postCount: Math.max(0, community.postCount + delta) } } });
+    });
+  }
+
   public async refreshDetail(userId: string, identifier: string, force = false): Promise<void> {
     const requestKey = `detail:${identifier}`;
     const existing = this.inFlight.get(requestKey);
@@ -59,7 +69,8 @@ export class CommunityDetailResourceService {
     const current = useResourceStore.getState().communityDetails[identifier];
     if (!force && current?.data && current.updatedAt && Date.now() - current.updatedAt < STALE_MS) return;
     useResourceStore.getState().setCommunityDetail(identifier, this.withState(current, { status: current?.data ? 'refreshing' : 'hydrating', error: null }));
-    const request = (async () => {
+    let request: Promise<void> | null = null;
+    request = (async () => {
       try {
         const data = await this.communityService.fetchCommunityDetail(identifier);
         const updatedAt = Date.now();
@@ -80,7 +91,7 @@ export class CommunityDetailResourceService {
         const latest = useResourceStore.getState().communityDetails[identifier];
         useResourceStore.getState().setCommunityDetail(identifier, { ...this.withState(latest, { status: latest?.data ? 'ready' : 'error' }), isStale: true, error: this.errorService.normalize(error, 'Community could not be loaded.') });
       } finally {
-        this.inFlight.delete(requestKey);
+        if (this.inFlight.get(requestKey) === request) this.inFlight.delete(requestKey);
       }
     })();
     this.inFlight.set(requestKey, request);
@@ -90,13 +101,19 @@ export class CommunityDetailResourceService {
   public async loadWorkspace(userId: string, communityId: string, workspace: CommunityWorkspace, force = false): Promise<void> {
     const requestKey = `${workspace}:${communityId}`;
     const existing = this.inFlight.get(requestKey);
-    if (existing) return existing;
+    if (existing) {
+      // A forced reload (e.g. right after creating an event or poll) must not reuse a request that started before
+      // the change: let it finish, then fetch again.
+      if (!force) return existing;
+      await existing.catch(() => undefined);
+    }
     const current = this.getWorkspaceResource(communityId, workspace);
     if (!force && current?.data && current.updatedAt && Date.now() - current.updatedAt < STALE_MS) return;
     if (!current?.data) await this.hydrateWorkspace(userId, communityId, workspace);
     const hydrated = this.getWorkspaceResource(communityId, workspace);
     this.setWorkspaceResource(communityId, workspace, { ...this.baseWorkspaceState(hydrated), status: hydrated?.data ? 'refreshing' : 'hydrating', error: null });
-    const request = (async () => {
+    let request: Promise<void> | null = null;
+    request = (async () => {
       try {
         const data = await this.fetchWorkspace(communityId, workspace);
         const updatedAt = Date.now();
@@ -106,7 +123,7 @@ export class CommunityDetailResourceService {
         const latest = this.getWorkspaceResource(communityId, workspace);
         this.setWorkspaceResource(communityId, workspace, { ...this.baseWorkspaceState(latest), status: latest?.data ? 'ready' : 'error', isStale: true, error: this.errorService.normalize(error, `Community ${workspace} could not be loaded.`) });
       } finally {
-        this.inFlight.delete(requestKey);
+        if (this.inFlight.get(requestKey) === request) this.inFlight.delete(requestKey);
       }
     })();
     this.inFlight.set(requestKey, request);

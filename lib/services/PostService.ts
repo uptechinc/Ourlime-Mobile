@@ -3,7 +3,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  documentId,
   getDoc,
   getCountFromServer,
   getDocs,
@@ -11,8 +10,9 @@ import {
   limit,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
-  Timestamp,
+  setDoc,
   updateDoc,
   where,
   writeBatch,
@@ -21,10 +21,10 @@ import { auth, db } from '../firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { AvatarService } from './AvatarService';
 import { communityDataService } from './CommunityDataService';
+import { CommunityDetailResourceService } from './CommunityDetailResourceService';
 import { DeepLinkService } from './DeepLinkService';
 import { PostMediaService, isCancellationError, type MediaUploadProgress, type PostUploadStage } from './PostMediaService';
 import type { PageResult } from '@/lib/types/serviceResults';
-import { buildFeedQuery } from '@/lib/posts/FeedQuery';
 import { postAuthorizationService } from '@/lib/services/PostAuthorizationService';
 import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
 
@@ -161,7 +161,7 @@ export type CreatePostInput = {
   media: PostMediaDraft[];
   mentions: string[];
   friendReferences: string[];
-  pollOptions?: Array<{ id: string; text: string }>;
+  pollOptions?: { id: string; text: string }[];
   pollDuration?: number;
   location?: PostLocation;
   signal?: AbortSignal;
@@ -174,15 +174,6 @@ export type CreatePostInput = {
 type UnknownRecord = Record<string, unknown>;
 type DataDocument = { id: string; data: UnknownRecord };
 type RelationshipSets = { friends: Set<string>; following: Set<string>; blockedUsers: Set<string> };
-type FeedApiResponse = {
-  success: boolean;
-  data?: unknown[];
-  error?: string;
-  pagination?: {
-    nextCursor?: string | null;
-    hasMore?: boolean;
-  };
-};
 
 const isRecord = (value: unknown): value is UnknownRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -226,6 +217,13 @@ export class PostService {
 
   public async fetchPosts(fetchLimit = 20): Promise<PostItem[]> {
     return (await this.fetchFeedPage({ limit: fetchLimit })).posts;
+  }
+
+  /** Saves a freshly counted post total on the user (the stored counter drifts with website/admin changes). */
+  public async syncAuthorPostCount(userId: string, postsCount: number): Promise<void> {
+    await updateDoc(doc(db, 'users', userId), { postsCount: Math.max(0, postsCount) }).catch((error: unknown) => {
+      this.logger.warn('PostService', 'syncAuthorPostCount', { error: error instanceof Error ? error.message : String(error) });
+    });
   }
 
   public async getAuthorPostCount(userId: string): Promise<number> {
@@ -741,6 +739,7 @@ export class PostService {
           });
           return { ...mediaItem, id: summary.id };
         }));
+        await this.adjustCommunityPostCount(input.communityId, 1);
         return {
           id: communityPost.id,
           origin: 'community',
@@ -811,7 +810,7 @@ export class PostService {
     pollOptions?: { id: string; text: string; votes: number }[]
   ): Promise<PostItem> {
     const postRef = doc(collection(db, 'feedPosts'));
-    const countRef = doc(collection(db, 'likesCount'));
+    const countRef = doc(db, 'likesCount', postRef.id);
     const basePostData: Record<string, unknown> = {
       userId: input.userId,
       caption: input.caption.trim(),
@@ -1019,54 +1018,57 @@ export class PostService {
       if (!postSnap.exists()) throw new Error('Post not found.');
       const access = await communityDataService.resolveAccess(readString(postSnap.data().communityVariantId));
       if (!access?.hasAccess) throw new Error('Community access required.');
-      const existingLikes = await getDocs(query(collection(db, 'communityVariantDetailsLikes'), where('postId', '==', post.id), where('userId', '==', userId)));
-      const isAlreadyLiked = !existingLikes.empty;
+      // Older likes were saved under random IDs; they still count as "liked" and are removed on unlike.
+      const legacyLikes = await getDocs(query(collection(db, 'communityVariantDetailsLikes'), where('postId', '==', post.id), where('userId', '==', userId)));
+      const likeRef = doc(db, 'communityVariantDetailsLikes', `${post.id}_${userId}`);
       const counterRef = doc(db, 'communityVariantDetailsCounter', post.id);
-      const batch = writeBatch(db);
-      if (shouldLike && !isAlreadyLiked) {
-        batch.set(doc(collection(db, 'communityVariantDetailsLikes')), { postId: post.id, userId, timestamp: serverTimestamp() });
-        batch.set(counterRef, { likeCount: increment(1) }, { merge: true });
-      } else if (!shouldLike && isAlreadyLiked) {
-        existingLikes.docs.forEach((like) => batch.delete(like.ref));
-        batch.set(counterRef, { likeCount: increment(-1) }, { merge: true });
-      }
-      await batch.commit();
+      await runTransaction(db, async (transaction) => {
+        const likeSnap = await transaction.get(likeRef);
+        const otherLikes = legacyLikes.docs.filter((like) => like.id !== likeRef.id);
+        const isAlreadyLiked = likeSnap.exists() || otherLikes.length > 0;
+        if (shouldLike && !isAlreadyLiked) {
+          transaction.set(likeRef, { postId: post.id, userId, timestamp: serverTimestamp() });
+          transaction.set(counterRef, { likeCount: increment(1) }, { merge: true });
+        } else if (!shouldLike && isAlreadyLiked) {
+          if (likeSnap.exists()) transaction.delete(likeRef);
+          otherLikes.forEach((like) => transaction.delete(like.ref));
+          transaction.set(counterRef, { likeCount: increment(-1) }, { merge: true });
+        }
+      });
       const baseCount = post.stats?.likes ?? 0;
       const likeCount = Math.max(0, baseCount + (shouldLike && !wasLiked ? 1 : !shouldLike && wasLiked ? -1 : 0));
       return { liked: shouldLike, likeCount };
     }
 
     const likeRef = doc(db, 'feedsPostLikeCount', `${post.id}_${userId}`);
-    const [likeSnap, countSnap] = await Promise.all([
-      getDoc(likeRef),
-      getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', post.id), limit(1))),
-    ]);
-    const isAlreadyLiked = likeSnap.exists() && (likeSnap.data() as UnknownRecord)?.likes === true;
-    const shouldLike = desiredLiked !== undefined ? desiredLiked : !isAlreadyLiked;
-    const countDoc = !countSnap.empty ? countSnap.docs[0] : null;
-    const currentCount = countDoc ? Number((countDoc.data() as UnknownRecord)?.likeCount || 0) : 0;
-    const nextCount = shouldLike ? currentCount + (isAlreadyLiked ? 0 : 1) : Math.max(0, currentCount - (isAlreadyLiked ? 1 : 0));
-
-    const batch = writeBatch(db);
-    if (shouldLike) {
-      batch.set(likeRef, { feedsPostId: post.id, userId, likes: true, timestamp: serverTimestamp() });
-    } else {
-      batch.delete(likeRef);
-    }
-    if (countDoc) {
-      batch.set(countDoc.ref, { likeCount: nextCount, updatedAt: serverTimestamp() }, { merge: true });
-    } else {
-      const newCountRef = doc(collection(db, 'likesCount'));
-      batch.set(newCountRef, {
-        feedsPostId: post.id,
-        likeCount: nextCount,
-        commentCount: 0,
-        shareCount: 0,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
-    await batch.commit();
+    const countSnap = await getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', post.id), limit(1)));
+    // Existing posts keep their counter doc; posts without one get the fixed-ID doc (so two first likes share it).
+    const countRef = !countSnap.empty ? countSnap.docs[0].ref : doc(db, 'likesCount', post.id);
+    const { isAlreadyLiked, shouldLike, nextCount } = await runTransaction(db, async (transaction) => {
+      const [likeSnap, counterSnap] = await Promise.all([transaction.get(likeRef), transaction.get(countRef)]);
+      const alreadyLiked = likeSnap.exists() && (likeSnap.data() as UnknownRecord)?.likes === true;
+      const like = desiredLiked !== undefined ? desiredLiked : !alreadyLiked;
+      const currentCount = counterSnap.exists() ? Number((counterSnap.data() as UnknownRecord)?.likeCount || 0) : 0;
+      const delta = like && !alreadyLiked ? 1 : !like && alreadyLiked ? -1 : 0;
+      if (like) {
+        transaction.set(likeRef, { feedsPostId: post.id, userId, likes: true, timestamp: serverTimestamp() });
+      } else if (likeSnap.exists()) {
+        transaction.delete(likeRef);
+      }
+      if (counterSnap.exists()) {
+        if (delta !== 0) transaction.update(countRef, { likeCount: increment(delta), updatedAt: serverTimestamp() });
+      } else {
+        transaction.set(countRef, {
+          feedsPostId: post.id,
+          likeCount: Math.max(0, delta),
+          commentCount: 0,
+          shareCount: 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      return { isAlreadyLiked: alreadyLiked, shouldLike: like, nextCount: Math.max(0, currentCount + delta) };
+    });
 
     if (shouldLike && !isAlreadyLiked) {
       void this.fetchPost(post.id).then((p) => {
@@ -1325,9 +1327,10 @@ export class PostService {
     const postRef = doc(db, 'feedPosts', postId);
     const postSnap = await getDoc(postRef);
     if (postSnap.exists()) {
+      const authorId = readString(postSnap.data().userId) || currentUserId;
       await deleteDoc(postRef);
-      if (currentUserId) {
-        await updateDoc(doc(db, 'users', currentUserId), { postsCount: increment(-1) }).catch(() => {});
+      if (authorId) {
+        await updateDoc(doc(db, 'users', authorId), { postsCount: increment(-1) }).catch(() => {});
       }
       return;
     }
@@ -1335,6 +1338,7 @@ export class PostService {
     const commSnap = await getDoc(commRef);
     if (commSnap.exists()) {
       await deleteDoc(commRef);
+      await this.adjustCommunityPostCount(readString(commSnap.data().communityVariantId), -1);
       return;
     }
     throw new Error('The post could not be deleted.');
@@ -1387,6 +1391,21 @@ export class PostService {
       references.slice(index, index + 450).forEach((reference) => batch.delete(reference));
       await batch.commit();
     }
+    await this.adjustCommunityPostCount(readString(postSnap.data().communityVariantId), -1);
+  }
+
+  /**
+   * Keeps the community header's "Posts" number right (communityVariantMembershipAndLikeCount/{id}.postCount).
+   * Best effort: a failed counter write never fails the post itself.
+   */
+  private async adjustCommunityPostCount(communityId: string, delta: 1 | -1): Promise<void> {
+    if (!communityId) return;
+    try {
+      await setDoc(doc(db, 'communityVariantMembershipAndLikeCount', communityId), { communityVariantId: communityId, postCount: increment(delta) }, { merge: true });
+    } catch (error: unknown) {
+      console.warn('[PostService.adjustCommunityPostCount] Error:', error instanceof Error ? error.message : 'counter update failed');
+    }
+    CommunityDetailResourceService.getInstance().adjustPostCount(communityId, delta);
   }
 
   private async loadUserCards(userIds: string[]): Promise<Map<string, PostUser>> {

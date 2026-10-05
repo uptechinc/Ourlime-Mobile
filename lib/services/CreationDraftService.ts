@@ -217,7 +217,8 @@ export class CreationDraftService {
 
   private toDraft(id: string, data: StoredDraftRecord): CreationDraft {
     const kind: CreationDraftKind = data.kind === 'lime' ? 'lime' : 'post';
-    const createdAtMs = typeof data.createdAtMs === 'number' ? data.createdAtMs : data.createdAt?.toMillis?.() ?? Date.now();
+    const serverCreatedAtMs = data.createdAt?.toMillis?.();
+    const createdAtMs = typeof serverCreatedAtMs === 'number' ? serverCreatedAtMs : typeof data.createdAtMs === 'number' ? data.createdAtMs : Date.now();
     return {
       id,
       kind,
@@ -230,7 +231,7 @@ export class CreationDraftService {
       media: Array.isArray(data.media) ? data.media : [],
       lime: data.lime,
       createdAtMs,
-      expiresAtMs: typeof data.expiresAtMs === 'number' ? data.expiresAtMs : createdAtMs + DRAFT_LIFETIME_MS,
+      expiresAtMs: typeof serverCreatedAtMs === 'number' || typeof data.expiresAtMs !== 'number' ? createdAtMs + DRAFT_LIFETIME_MS : data.expiresAtMs,
       updatedAtMs: typeof data.updatedAtMs === 'number' ? data.updatedAtMs : data.updatedAt?.toMillis?.() ?? createdAtMs,
     };
   }

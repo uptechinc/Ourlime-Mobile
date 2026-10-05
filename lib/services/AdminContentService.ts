@@ -9,7 +9,6 @@ import type {
   SubmitAppealRequest,
   ContentAppealRecord,
   UserDeletedPostRecord,
-  PredefinedDeletionCategory,
   AdminUserContentFilter,
   AdminUserContentPage,
   AdminUserContentRecord,

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ActivityIndicator, Image, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { PostMediaService, type CropPreset, type PendingImageCrop } from '@/lib/services/PostMediaService';
@@ -89,9 +90,12 @@ export default function MediaCropModal({ pending, queueLength, onCancel, onCompl
             borderWidth: 2,
             borderColor: '#10b981',
           }}>
+            {/* expo-image decodes a downscaled copy off the main thread, so switching ratios stays instant even for
+                full-resolution camera photos (the built-in Image re-decoded the whole bitmap on every change). */}
             <Image
               source={{ uri: pending.asset.uri }}
-              resizeMode={preset === 'fit' ? 'contain' : 'cover'}
+              contentFit={preset === 'fit' ? 'contain' : 'cover'}
+              transition={0}
               style={{ width: '100%', height: '100%', transform: [{ scale: zoom }] }}
             />
           </View>

@@ -9,12 +9,15 @@ import {
   limit,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   startAfter,
   Timestamp,
+  updateDoc,
   where,
   writeBatch,
   type DocumentData,
+  type DocumentReference,
   type DocumentSnapshot,
   type QueryConstraint,
 } from 'firebase/firestore';
@@ -22,6 +25,7 @@ import { auth, db } from '@/lib/firebaseConfig';
 import { communityDataService } from './CommunityDataService';
 import { sharedContentMessageService } from './SharedContentMessageService';
 import { appServerService } from './AppServerService';
+import { serverClockService } from './ServerClockService';
 
 export type ChatFriendRecord = {
   id: string;
@@ -58,6 +62,10 @@ export type OutgoingMessage = {
   voiceNoteData?: Record<string, unknown>;
   isForwarded?: boolean;
 };
+
+// Mark-as-read updates at most this many messages per batch (Firestore allows 500 writes per batch).
+const READ_BATCH_SIZE = 400;
+const READ_MAX_BATCHES = 25;
 
 export type ConversationAction = 'read' | 'unread' | 'archive' | 'unarchive' | 'pin' | 'unpin' | 'mute' | 'unmute';
 
@@ -111,6 +119,8 @@ const createMessageId = (): string => {
  */
 export class ChatDataService {
   private static instance: ChatDataService;
+  /** Message ID per failed send (by content), reused when the same message is sent again. */
+  private readonly pendingSendIds = new Map<string, string>();
 
   private constructor() {}
 
@@ -358,8 +368,10 @@ export class ChatDataService {
     }
 
     const chatId = this.getChatId(senderId, receiverId);
-    const messageId = createMessageId();
-    const timestamp = Timestamp.now();
+    const sendKey = JSON.stringify([senderId, receiverId, text, payload.attachment ?? null, payload.stickerData ?? null, payload.voiceNoteData ?? null]);
+    const messageId = this.pendingSendIds.get(sendKey) ?? createMessageId();
+    this.pendingSendIds.set(sendKey, messageId);
+    const timestamp = Timestamp.fromMillis(serverClockService.nowSync());
     const preview = this.previewFor(payload, text);
     const messageRecord: DocumentData = {
       id: messageId,
@@ -374,10 +386,20 @@ export class ChatDataService {
       ...(payload.voiceNoteData ? { ...payload.voiceNoteData, type: 'voiceNote' } : {}),
       ...(payload.isForwarded ? { isForwarded: true } : {}),
     };
-    const batch = writeBatch(db);
-    batch.set(doc(db, 'chats', chatId, 'messages', messageId), messageRecord);
-    batch.set(doc(db, 'chats', chatId), { participants: [senderId, receiverId], lastMessageTime: timestamp, lastMessage: preview.preview, lastMessageSenderId: senderId, unreadCount: increment(1), updatedAt: serverTimestamp() }, { merge: true });
-    await batch.commit();
+    const messageRef = doc(db, 'chats', chatId, 'messages', messageId);
+    const alreadySent = await runTransaction(db, async (transaction) => {
+      const existing = await transaction.get(messageRef);
+      if (existing.exists()) return true;
+      transaction.set(messageRef, messageRecord);
+      // 7.4: unread counts are per person (the old single unreadCount was shared by both people).
+      transaction.set(doc(db, 'chats', chatId), { participants: [senderId, receiverId], lastMessageTime: timestamp, lastMessage: preview.preview, lastMessageSenderId: senderId, unreadCounts: { [receiverId]: increment(1) }, updatedAt: serverTimestamp() }, { merge: true });
+      return false;
+    });
+    this.pendingSendIds.delete(sendKey);
+    if (alreadySent) {
+      const existing = await getDoc(messageRef);
+      return { ...(existing.data() ?? messageRecord), id: messageId };
+    }
     await this.updateConversationSummaries(chatId, senderId, sender.data() ?? {}, receiverId, receiver.data(), preview.preview, preview.type, timestamp);
     // The receiver's device notification is sent by the app's server; a failed push never fails the send.
     if (preview.type !== 'system') {
@@ -450,18 +472,31 @@ export class ChatDataService {
     if (action === 'unmute') return setSummary({ mutedUntil: null });
 
     const chatRef = doc(db, 'chats', this.getChatId(viewerId, peerId));
-    const [received, chat] = await Promise.all([
-      getDocs(query(collection(chatRef, 'messages'), where('receiverId', '==', viewerId), limit(100))),
-      getDoc(chatRef),
-    ]);
+    await this.markReceivedMessagesRead(chatRef, viewerId);
+    const chat = await getDoc(chatRef);
     const batch = writeBatch(db);
-    received.docs.filter((message) => message.data().status !== 'read').forEach((message) => batch.update(message.ref, { status: 'read', readAt: serverTimestamp() }));
-    if (chat.exists()) {
-      const messages = Array.isArray(chat.data().messages) ? chat.data().messages.filter(isRecord) : [];
-      batch.set(chatRef, { unreadCount: 0, messages: messages.map((message: Record<string, unknown>) => (message.receiverId === viewerId ? { ...message, status: 'read' } : message)), updatedAt: serverTimestamp() }, { merge: true });
-    }
+    if (chat.exists()) batch.set(chatRef, { unreadCount: 0, unreadCounts: { [viewerId]: 0 }, updatedAt: serverTimestamp() }, { merge: true });
     batch.set(summaryRef, { unreadCount: 0, updatedAt: serverTimestamp() }, { merge: true });
     await batch.commit();
+    const legacyMessages = chat.exists() && Array.isArray(chat.data().messages) ? chat.data().messages.filter(isRecord) as Record<string, unknown>[] : [];
+    if (legacyMessages.some((message) => message.receiverId === viewerId && message.status !== 'read')) {
+      await updateDoc(chatRef, { messages: legacyMessages.map((message) => (message.receiverId === viewerId ? { ...message, status: 'read' } : message)) })
+        .catch((error: unknown) => console.warn('[ChatDataService.updateConversation] Error:', error instanceof Error ? error.message : 'legacy read state not saved'));
+    }
+  }
+
+  /** Marks all of the viewer's unread received messages as read, in batches, until none are left. */
+  private async markReceivedMessagesRead(chatRef: DocumentReference, viewerId: string): Promise<void> {
+    const messages = collection(chatRef, 'messages');
+    for (let round = 0; round < READ_MAX_BATCHES; round += 1) {
+      // Equality-only filters, so no composite index is needed.
+      const unread = await getDocs(query(messages, where('receiverId', '==', viewerId), where('status', 'in', ['sent', 'delivered']), limit(READ_BATCH_SIZE)));
+      if (unread.empty) return;
+      const batch = writeBatch(db);
+      unread.docs.forEach((message) => batch.update(message.ref, { status: 'read', readAt: serverTimestamp() }));
+      await batch.commit();
+      if (unread.size < READ_BATCH_SIZE) return;
+    }
   }
 
   // ── Message actions (web POST /api/messaging/actions) ──
@@ -522,7 +557,7 @@ export class ChatDataService {
       nextTarget = { ...target, reactions };
     } else if (payload.action === 'edit') {
       const createdAt = target.timestamp instanceof Timestamp ? target.timestamp.toMillis() : 0;
-      if (!createdAt || Date.now() - createdAt > EDIT_WINDOW_MS || target.isDeletedForEveryone === true) throw new Error('This message can no longer be edited');
+      if (!createdAt || serverClockService.nowSync() - createdAt > EDIT_WINDOW_MS || target.isDeletedForEveryone === true) throw new Error('This message can no longer be edited');
       const message = payload.message.trim();
       if (!message) throw new Error('Message is required');
       nextTarget = { ...target, message, isEdited: true, editedAt: Timestamp.now() };

@@ -1,4 +1,4 @@
-import { PostService, type FeedFilter, type FeedPage, type FeedScope, type PostItem } from './PostService';
+import { PostService, type FeedFilter, type FeedScope, type PostItem } from './PostService';
 import { LocalCacheService, type CachedRecord } from './LocalCacheService';
 import { ResourceErrorService } from './ResourceErrorService';
 import { RequestTimeoutService } from './RequestTimeoutService';
@@ -8,6 +8,8 @@ import { communityFeedResourceService } from './CommunityFeedResourceService';
 
 const FEED_NAMESPACE = 'feeds-friend-reposts-v3';
 const FEED_STALE_MS = 60_000;
+// Upper bound on posts kept in memory while scrolling (was 60, which silently stopped "load more").
+const FEED_MAX_LOADED_POSTS = 300;
 const FEED_RETENTION_MS = 48 * 60 * 60 * 1000;
 const SCROLL_PERSIST_DELAY_MS = 750;
 
@@ -93,7 +95,7 @@ export class FeedResourceService {
           this.postService.fetchFeedPage({ limit: 20, cursor: current.data!.nextCursor, filter: query.filter, scope: query.scope, authorId: query.authorId }),
           'Feed pagination request',
         );
-        const posts = this.dedupe([...current.data!.posts, ...page.posts]).slice(0, 60);
+        const posts = this.dedupe([...current.data!.posts, ...page.posts]).slice(0, FEED_MAX_LOADED_POSTS);
         await this.commit(query, { ...current.data!, posts, nextCursor: page.nextCursor, hasMore: page.hasMore }, 'network');
       } catch (error: unknown) {
         useResourceStore.getState().setFeed(key, { ...current, status: 'ready', isStale: true, error: this.errorService.normalize(error, 'Could not load more posts.') });

@@ -90,7 +90,7 @@ export class ProfileResourceService {
     const current = this.getResource(identifier) as ResourceState<OwnProfileResource> | undefined;
     if (!current?.data) return;
     const stats = { ...current.data.stats };
-    for (const key of Object.keys(changes) as Array<keyof typeof stats>) stats[key] = Math.max(0, stats[key] + (changes[key] ?? 0));
+    for (const key of Object.keys(changes) as (keyof typeof stats)[]) stats[key] = Math.max(0, stats[key] + (changes[key] ?? 0));
     await this.commit(identifier, { ...current.data, stats }, 'memory');
   }
 
@@ -134,6 +134,10 @@ export class ProfileResourceService {
           const posts = postsResult.status === 'fulfilled'
             ? postsResult.value
             : initialStats.posts;
+          // 5.3: the live count is the truth; fix the stored counter when it has drifted.
+          if (postsResult.status === 'fulfilled' && posts !== (profile.postsCount ?? 0)) {
+            void this.postService.syncAuthorPostCount(identifier.userId, posts);
+          }
 
           await this.commit(identifier, { profile, stats: { posts, ...networkStats } }, 'network');
         } catch {

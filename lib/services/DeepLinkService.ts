@@ -149,7 +149,8 @@ export class DeepLinkService {
       return { kind: 'profile', username: this.normalizeUsername(segments[2]) };
     }
     if (first === 'profile' && segments[1]) return { kind: 'profile', username: this.normalizeUsername(segments[1]) };
-    if (first === 'communities' && segments[1]) return { kind: 'community', identifier: segments[1] };
+    // /communities alone is the directory (it used to fall through to the 404 page).
+    if (first === 'communities') return segments[1] ? { kind: 'community', identifier: segments[1] } : { kind: 'communities' };
     if (first === 'blogs') return segments[1] ? { kind: 'blog', blogId: segments[1] } : { kind: 'blogs' };
     if ((first === 'limes' || first === 'lime') && segments[1]) return { kind: 'lime', limeId: segments[1] };
     if (first === 'events') return { kind: 'event', eventId: segments[1] ?? url.searchParams.get('targetId') };
@@ -178,6 +179,7 @@ export class DeepLinkService {
       case 'post': return sharedContentMessageService.getWebPath('post', destination.postId);
       case 'profile': return `/profile/${encodeURIComponent(this.normalizeUsername(destination.username))}`;
       case 'community': return sharedContentMessageService.getWebPath('community', destination.identifier);
+      case 'communities': return '/communities';
       case 'blogs': return '/blogs';
       case 'blog': return `/blogs/${encodeURIComponent(destination.blogId)}`;
       case 'lime': return `/limes/${encodeURIComponent(destination.limeId)}`;
@@ -199,6 +201,7 @@ export class DeepLinkService {
       case 'post': return sharedContentMessageService.getMobileRoute('post', destination.postId);
       case 'profile': return `/profile/${encodeURIComponent(this.normalizeUsername(destination.username))}`;
       case 'community': return sharedContentMessageService.getMobileRoute('community', destination.identifier);
+      case 'communities': return '/communities';
       case 'blogs': return '/blogs';
       case 'blog': return `/blogs/${encodeURIComponent(destination.blogId)}`;
       case 'lime': return sharedContentMessageService.getMobileRoute('lime', destination.limeId);

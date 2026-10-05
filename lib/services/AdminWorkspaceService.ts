@@ -216,7 +216,7 @@ export class AdminWorkspaceService {
 
   public async fetchAnalytics(): Promise<AdminAnalyticsSnapshot> {
     await adminAccessService.requireAdmin();
-    const definitions: ReadonlyArray<{ id: string; label: string; collectionName: string; domain: AdminAnalyticsMetric['domain'] }> = [
+    const definitions: readonly { id: string; label: string; collectionName: string; domain: AdminAnalyticsMetric['domain'] }[] = [
       { id: 'members', label: 'Members', collectionName: 'users', domain: 'audience' },
       { id: 'connections', label: 'Connections', collectionName: 'friendship', domain: 'audience' },
       { id: 'followers', label: 'Follows', collectionName: 'followers', domain: 'audience' },

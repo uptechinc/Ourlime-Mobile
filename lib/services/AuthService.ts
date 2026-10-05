@@ -12,12 +12,12 @@ import {
   Unsubscribe,
 } from 'firebase/auth';
 import {
+  addDoc,
   collection,
   doc,
   setDoc,
   getDoc,
   getDocs,
-  limit,
   query,
   serverTimestamp,
   where,
@@ -39,6 +39,7 @@ import { presenceService } from './PresenceService';
 import { nativeCallService } from './NativeCallService';
 import { AppServerError, appServerService } from './AppServerService';
 import { qrLoginService, QRLoginService } from './QRLoginService';
+import { usernameService } from './UsernameService';
 export { AuthServiceError, getAuthErrorCode } from '@/lib/auth/AuthErrors';
 export type { AuthServiceErrorCode } from '@/lib/auth/AuthErrors';
 
@@ -104,6 +105,8 @@ export type RegistrationInput = {
   city?: string;
   phone?: string;
   profilePicture?: string | null;
+  /** Optional cover photo (local file), like the website's "Upload Your Own Pictures" step. */
+  coverPhoto?: string | null;
   selectedInterests?: string[];
   verificationType?: RegistrationVerificationType;
   idSubType?: 'national_id' | 'passport' | null;
@@ -187,6 +190,10 @@ export class AuthService {
       const accountDocument = await getDoc(doc(db, 'users', credential.user.uid));
       const account = accountDocument.data();
       await this.assertAccountCanSignIn(account);
+      if (account?.registrationStatus === 'incomplete') {
+        await setDoc(doc(db, 'users', credential.user.uid), { registrationStatus: 'complete', currentStep: 8, updatedAt: serverTimestamp() }, { merge: true })
+          .catch((error: unknown) => this.logger.warn('AuthService', 'login:finish-registration', { error: error instanceof Error ? error.message : String(error) }));
+      }
       if (!credential.user.emailVerified) {
         await sendEmailVerification(credential.user).catch(() => undefined);
         await signOut(auth);
@@ -259,8 +266,14 @@ export class AuthService {
     try {
       // Create user profile in Firestore
       const profilePicture = formData.profilePicture && /^(file:|content:)/i.test(formData.profilePicture)
-        ? await this.mediaService.uploadProfileImage({ userId: user.uid, uri: formData.profilePicture })
+        ? await this.mediaService.uploadProfileImage({ userId: user.uid, uri: formData.profilePicture }).catch((error: unknown) => {
+          this.logger.warn('AuthService', 'register:profile-picture', { error: error instanceof Error ? error.message : String(error) });
+          return null;
+        })
         : formData.profilePicture || null;
+      const coverPhoto = formData.coverPhoto && /^(file:|content:)/i.test(formData.coverPhoto)
+        ? await this.saveRegistrationCover(user.uid, formData.coverPhoto)
+        : null;
       const userProfile: UserProfile = {
       uid: user.uid,
       firstName: formData.firstName.trim(),
@@ -275,20 +288,23 @@ export class AuthService {
       city: formData.city || '',
       phone: formData.phone || '',
       profilePicture,
+      ...(coverPhoto ? { coverPhoto } : {}),
       selectedInterests: formData.selectedInterests || [],
       createdAt: serverTimestamp(),
     };
 
       // Handle Verification Documents Upload if provided
       const docs = formData.verificationDocuments;
-      const hasVerificationDocs = Boolean(
+      const wantsVerificationDocs = Boolean(
         formData.verificationType &&
         formData.verificationType !== 'skipped' &&
         docs?.faceUri &&
         docs?.frontUri
       );
+      let hasVerificationDocs = false;
 
-      if (hasVerificationDocs && docs) {
+      if (wantsVerificationDocs && docs) {
+        try {
         const authDocsCollection = collection(db, 'users', user.uid, 'authenticationDocuments');
 
         // Face doc
@@ -343,6 +359,11 @@ export class AuthService {
         await appServerService.call('notifyAdminIdSubmitted').catch((error: unknown) => {
           this.logger.warn('AuthService', 'register:admin-notification', { error: error instanceof Error ? error.message : String(error) });
         });
+          hasVerificationDocs = true;
+        } catch (error: unknown) {
+          // Failed ID upload: the account is still created and marked 'documents_required' so they can resubmit.
+          this.logger.warn('AuthService', 'register:verification-documents', { error: error instanceof Error ? error.message : String(error) });
+        }
       }
 
       const verificationType = formData.verificationType || 'skipped';
@@ -374,6 +395,10 @@ export class AuthService {
         updatedAt: serverTimestamp(),
       }, { merge: true });
 
+      await usernameService.claim(user.uid, formData.userName).catch((error: unknown) => {
+        this.logger.warn('AuthService', 'register:reserve-username', { error: error instanceof Error ? error.message : String(error) });
+      });
+
       if (verificationType === 'guardian' && formData.guardianEmail?.trim()) {
         await appServerService.call('notifyGuardian').catch((error: unknown) => {
           this.logger.warn('AuthService', 'register:guardian-notification', { error: error instanceof Error ? error.message : String(error) });
@@ -389,6 +414,27 @@ export class AuthService {
       return { user, verificationEmailSent };
     } finally {
       await signOut(auth).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Saves a sign-up cover photo the way the website / profile header do: a profileImages doc
+   * (typeOfImage 'coverProfile') selected by a profileImageSetAs 'coverProfile' assignment.
+   * A failed cover never blocks sign-up; the user can add one later from their profile.
+   */
+  private async saveRegistrationCover(userId: string, uri: string): Promise<string | null> {
+    try {
+      const imageURL = await this.mediaService.uploadProfileCover({ userId, uri });
+      const coverImage = await addDoc(collection(db, 'profileImages'), {
+        userId, imageURL, typeOfImage: 'coverProfile', createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      });
+      await addDoc(collection(db, 'profileImageSetAs'), {
+        userId, setAs: 'coverProfile', profileImageId: [{ id: coverImage.id, displayorder: 1 }], createdAt: serverTimestamp(),
+      });
+      return imageURL;
+    } catch (error: unknown) {
+      this.logger.warn('AuthService', 'register:cover-photo', { error: error instanceof Error ? error.message : String(error) });
+      return null;
     }
   }
 
@@ -607,11 +653,9 @@ export class AuthService {
    */
   public async getUserProfileByUsername(userName: string): Promise<UserProfile | null> {
     try {
-      const q = query(collection(db, 'users'), where('userName', '==', userName.trim()), limit(1));
-      const snap = await getDocs(q);
-      if (snap.empty) return null;
-      const userDoc = snap.docs[0];
-      return this.getUserProfile(userDoc.id);
+      const userId = await usernameService.findUserId(userName);
+      if (!userId) return null;
+      return this.getUserProfile(userId);
     } catch (error: unknown) {
       this.logger.error('AuthService', 'getUserProfileByUsername', error, { userName });
       return null;
@@ -648,6 +692,23 @@ export class AuthService {
     return auth.currentUser;
   }
 
+  /** Waits (briefly) for Firebase to restore a saved session, so cold-start links don't flash the login screen. */
+  public async waitForVerifiedCurrentUser(timeoutMs = 2500): Promise<FirebaseUser | null> {
+    if (auth.currentUser) return this.getVerifiedCurrentUser();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      await Promise.race([
+        auth.authStateReady(),
+        new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs); }),
+      ]);
+    } catch (error: unknown) {
+      this.logger.warn('AuthService', 'waitForVerifiedCurrentUser', { error: error instanceof Error ? error.message : String(error) });
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    return this.getVerifiedCurrentUser();
+  }
+
   public getVerifiedCurrentUser(): FirebaseUser | null {
     const currentUser = auth.currentUser;
     return currentUser?.emailVerified === true ? currentUser : null;
@@ -658,6 +719,12 @@ export class AuthService {
   }
 
   public async updateUserProfile(userId: string, updates: Pick<UserProfile, 'firstName' | 'lastName' | 'userName' | 'bio' | 'location' | 'profilePicture' | 'coverPhoto'>): Promise<void> {
+    // A changed username is reserved first (fails with "Username is already taken." if someone has it).
+    const current = await getDoc(doc(db, 'users', userId));
+    const currentUserName = typeof current.data()?.userName === 'string' ? String(current.data()?.userName) : '';
+    if (updates.userName && updates.userName.trim() !== currentUserName) {
+      await usernameService.claim(userId, updates.userName);
+    }
     await updateDoc(doc(db, 'users', userId), {
       ...updates,
       coverImage: updates.coverPhoto ?? null,

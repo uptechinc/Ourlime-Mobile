@@ -105,7 +105,8 @@ if (fs.existsSync(appBuildGradlePath)) {
 
 // Step 2: Run Gradle assembleRelease
 const isWindows = process.platform === 'win32';
-const gradlewCmd = isWindows ? 'gradlew.bat' : './gradlew';
+// Explicit relative path: Windows may be set not to run programs from the current folder by bare name.
+const gradlewCmd = isWindows ? '.\\gradlew.bat' : './gradlew';
 
 // Stop any stale daemon using old JDK
 try {

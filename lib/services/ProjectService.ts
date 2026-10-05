@@ -31,10 +31,12 @@ import type {
   ProjectMutationCapability,
   ProjectRecord,
   ProjectRole,
+  ProjectSettingsUpdate,
   ProjectStatus,
   Status,
   SubTask,
   Task,
+  TaskAuditLogEntry,
   TeamMember,
   TimeEntry,
 } from '@/lib/types/project';
@@ -51,6 +53,10 @@ type ProjectDocument = {
   completedTasks?: unknown;
   color?: unknown;
   updatedAt?: unknown;
+  createdAt?: unknown;
+  dueDate?: unknown;
+  visibility?: unknown;
+  tags?: unknown;
   teamMembers?: Record<string, { role?: unknown; membershipStatus?: unknown; invitedByName?: unknown }>;
   memberUids?: string[];
 };
@@ -178,21 +184,41 @@ export class ProjectService {
     if (existing) return await existing;
 
     const operation = (async () => {
+      let pendingProjectId: string | null = null;
       try {
-        return await this.createProjectPending(ownerId, input, identity);
+        return await this.createProjectPending(ownerId, input, identity, (projectId) => { pendingProjectId = projectId; });
       } catch (mutationError: unknown) {
+        if (pendingProjectId) {
+          const alreadyCreated = await getDoc(doc(this.database, 'projects', pendingProjectId)).catch(() => null);
+          if (alreadyCreated?.exists()) return pendingProjectId;
+        }
         console.warn('[ProjectService.createProject] Cloud mutation failed; executing direct Firestore project creation:', mutationError);
-        return await this.createProjectDirect(ownerId, fields);
+        return await this.createProjectDirect(ownerId, fields, pendingProjectId);
+      } finally {
+        this.projectCreations.delete(identity);
       }
-    })().finally(() => this.projectCreations.delete(identity));
+    })();
 
     this.projectCreations.set(identity, operation);
-    return await operation;
+    const projectId = await operation;
+    const extras: ProjectSettingsUpdate = {
+      ...(input.dueDate ? { dueDate: input.dueDate } : {}),
+      ...(input.status && input.status !== 'active' ? { status: input.status } : {}),
+      ...(input.visibility ? { visibility: input.visibility } : {}),
+      ...(input.tags && input.tags.length > 0 ? { tags: input.tags } : {}),
+    };
+    if (Object.keys(extras).length > 0) {
+      // Best effort: the project exists either way; these are the extra fields the website's form also sets.
+      await this.updateProjectSettings(projectId, extras).catch((error: unknown) => {
+        console.warn('[ProjectService.createProject] Error:', error instanceof Error ? error.message : 'extra fields not saved');
+      });
+    }
+    return projectId;
   }
 
-  private async createProjectDirect(ownerId: string, fields: { name: string; description: string }): Promise<string> {
+  private async createProjectDirect(ownerId: string, fields: { name: string; description: string }, projectId: string | null = null): Promise<string> {
     const projectsCollection = collection(this.database, 'projects');
-    const projectRef = doc(projectsCollection);
+    const projectRef = projectId ? doc(projectsCollection, projectId) : doc(projectsCollection);
     const now = new Date().toISOString();
     await setDoc(projectRef, {
       name: fields.name,
@@ -217,7 +243,7 @@ export class ProjectService {
     return projectRef.id;
   }
 
-  private async createProjectPending(ownerId: string, input: CreateProjectInput, identity: string): Promise<string> {
+  private async createProjectPending(ownerId: string, input: CreateProjectInput, identity: string, onProjectId: (projectId: string) => void): Promise<string> {
     pageAccessService.assertMutation('/projectManagement');
     await nativeSessionService.ensure(ownerId);
     const fields = { name: input.name.trim(), description: input.description.trim() };
@@ -229,6 +255,7 @@ export class ProjectService {
       return { projectId: record.projectId };
     });
     const projectId = previous?.value.projectId ?? await contentDraftService.newId();
+    onProjectId(projectId);
     const revision = previous?.revision ?? await durableWorkService.write(ownerId, 'mutation', key, { projectId }, 0);
     nativeSessionService.assertOwner(ownerId);
     await this.membershipMutation({ action: 'create', projectId, fields });
@@ -236,7 +263,7 @@ export class ProjectService {
     return projectId;
   }
 
-  public async updateProjectSettings(projectId: string, updates: { name?: string; description?: string; status?: ProjectStatus }): Promise<void> {
+  public async updateProjectSettings(projectId: string, updates: ProjectSettingsUpdate): Promise<void> {
     await nativeSessionService.ensure(this.requireUserId());
     pageAccessService.assertMutation('/projectManagement');
     const projectReference = doc(this.database, 'projects', projectId);
@@ -376,6 +403,13 @@ export class ProjectService {
       tags: Array.isArray(data.tags) ? data.tags.map((tag) => this.readString(tag)).filter(Boolean) : [],
       progress: this.readNumber(data.progress, 0),
       archived: data.archived === true,
+      auditLog: Array.isArray(data.auditLog) ? data.auditLog.flatMap((entry): TaskAuditLogEntry[] => {
+        if (!entry || typeof entry !== 'object') return [];
+        const record = entry as Record<string, unknown>;
+        const timestamp = this.readString(record.timestamp);
+        if (!timestamp) return [];
+        return [{ id: this.readString(record.id) || timestamp, action: this.readString(record.action), detail: this.readString(record.detail), userId: this.readString(record.userId), timestamp }];
+      }) : [],
     };
   }
 
@@ -408,6 +442,10 @@ export class ProjectService {
       progress: this.readNumber(data.progress),
       color: this.readString(data.color) || 'bg-emerald-500',
       updatedAt: this.readDate(data.updatedAt),
+      createdAt: this.readDate(data.createdAt ?? data.updatedAt),
+      dueDate: this.readString(data.dueDate) || null,
+      visibility: data.visibility === 'public' ? 'public' : 'private',
+      tags: Array.isArray(data.tags) ? data.tags.map((tag) => this.readString(tag)).filter(Boolean) : [],
       memberUids: data.memberUids ?? [],
     };
   }

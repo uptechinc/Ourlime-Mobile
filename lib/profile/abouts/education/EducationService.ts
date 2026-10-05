@@ -1,5 +1,5 @@
 import { db } from '@/lib/firebaseConfig';
-import { collection, query, where, getDocs, addDoc, updateDoc, doc, deleteDoc, orderBy } from 'firebase/firestore';
+import { collection, query, getDocs, addDoc, updateDoc, doc, deleteDoc, orderBy } from 'firebase/firestore';
 
 export class EducationService {
     private static instance: EducationService;
@@ -26,7 +26,7 @@ export class EducationService {
                 id: doc.id,
                 ...doc.data()
             }));
-        } catch (error) {
+        } catch {
             throw new Error('Failed to fetch education');
         }
     }
@@ -52,7 +52,7 @@ export class EducationService {
                 id: docRef.id,
                 ...educationData
             };
-        } catch (error) {
+        } catch {
             throw new Error('Failed to add education');
         }
     }
@@ -76,7 +76,7 @@ export class EducationService {
                 id,
                 ...educationData
             };
-        } catch (error) {
+        } catch {
             throw new Error('Failed to update education');
         }
     }
@@ -86,7 +86,7 @@ export class EducationService {
             const docRef = doc(this.db, 'users', userId, 'education', id);
             await deleteDoc(docRef);
             return true;
-        } catch (error) {
+        } catch {
             throw new Error('Failed to delete education');
         }
     }

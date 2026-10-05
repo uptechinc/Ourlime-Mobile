@@ -13,6 +13,7 @@ export type DeepLinkDestination =
   | { kind: 'post'; postId: string }
   | { kind: 'profile'; username: string }
   | { kind: 'community'; identifier: string }
+  | { kind: 'communities' }
   | { kind: 'blogs' }
   | { kind: 'blog'; blogId: string }
   | { kind: 'lime'; limeId: string }

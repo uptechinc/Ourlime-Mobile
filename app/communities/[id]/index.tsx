@@ -228,7 +228,7 @@ export default function CommunityDetailScreen() {
 		try {
 			let result: CommunityMutationResult;
 			if (community.membershipState === 'pending') {
-				result = await communityService.cancelRequest(community.id);
+				result = await communityService.cancelRequest(community.id, community.memberCount);
 				setFeedback('Your membership request was canceled.');
 			} else {
 				result = await communityService.joinOrRequestAccess(community);
@@ -267,7 +267,9 @@ export default function CommunityDetailScreen() {
 			if (community.slug && community.slug !== identifier)
 				useResourceStore.getState().setCommunityDetail(community.slug, state);
 			await directoryService.patchCommunity(viewerId, updated);
-			await reconcileCommunity();
+			void reconcileCommunity().catch((error: unknown) => {
+				console.warn('[CommunityDetail.reconcileCommunity] Error:', error instanceof Error ? error.message : 'refresh failed');
+			});
 		} catch (error: unknown) {
 			setFeedback(
 				error instanceof Error
@@ -466,7 +468,9 @@ export default function CommunityDetailScreen() {
 				updates
 			);
 			await directoryService.patchCommunity(viewerId, updated);
-			await reconcileCommunity();
+			void reconcileCommunity().catch((error: unknown) => {
+				console.warn('[CommunityDetail.reconcileCommunity] Error:', error instanceof Error ? error.message : 'refresh failed');
+			});
 			setFeedback('Community settings updated successfully.');
 		} catch (error) {
 			const message =
@@ -544,7 +548,7 @@ export default function CommunityDetailScreen() {
 		setBusy(true);
 		try {
 			if (confirmation.action === 'leave') {
-				const result = await communityService.leaveCommunity(community.id);
+				const result = await communityService.leaveCommunity(community.id, community.memberCount);
 				const updated: CommunityCardModel = {
 					...community,
 					membershipState: 'none',
@@ -573,7 +577,9 @@ export default function CommunityDetailScreen() {
 				if (community.slug && community.slug !== identifier)
 					useResourceStore.getState().setCommunityDetail(community.slug, state);
 				await directoryService.patchCommunity(viewerId, updated);
-				await reconcileCommunity();
+				void reconcileCommunity().catch((error: unknown) => {
+					console.warn('[CommunityDetail.reconcileCommunity] Error:', error instanceof Error ? error.message : 'refresh failed');
+				});
 				setFeedback('You left the community.');
 			} else if (confirmation.action === 'delete') {
 				await communityService.deleteCommunity(community.id);

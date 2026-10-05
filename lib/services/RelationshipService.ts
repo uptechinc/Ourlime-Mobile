@@ -209,7 +209,7 @@ export class RelationshipService {
     await this.deleteRelationshipNotifications(currentUserId, targetUserId, ['friend_request']);
   }
 
-  private async deleteRelationshipNotifications(actorUserId: string, targetUserId: string, types: Array<'follow' | 'friend_request'>): Promise<void> {
+  private async deleteRelationshipNotifications(actorUserId: string, targetUserId: string, types: ('follow' | 'friend_request')[]): Promise<void> {
     const mappedNotifications = await notificationHelpers.getUserNotifications(targetUserId, 200);
     const matchingMappedNotifications = mappedNotifications.filter((notification) => {
       if (!types.includes(notification.type as 'follow' | 'friend_request')) return false;

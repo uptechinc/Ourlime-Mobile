@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Platform, Text, TouchableOpacity, View } from 'react-native';
 import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,7 +34,8 @@ export default function PagePreviewNotice() {
   return (
     <View
       pointerEvents="box-none"
-      style={{ position: 'absolute', top: insets.top + 58, left: 0, right: 0, alignItems: 'center', zIndex: 9990, elevation: 9990 }}
+      // Above the tab bar (and above where toasts appear) so it never covers page titles or headers.
+      style={{ position: 'absolute', bottom: 56 + Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 20) + 72, left: 0, right: 0, alignItems: 'center', zIndex: 9990, elevation: 9990 }}
     >
       <View
         accessibilityRole="text"

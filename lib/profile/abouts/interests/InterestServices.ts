@@ -39,7 +39,7 @@ export class InterestServices {
             }));
 
             return { interests, skills };
-        } catch (error) {
+        } catch {
             throw new Error('Failed to fetch interests and skills');
         }
     }
@@ -56,7 +56,7 @@ export class InterestServices {
                 id: docRef.id,
                 value
             };
-        } catch (error) {
+        } catch {
             throw new Error(`Failed to add ${type}`);
         }
     }
@@ -73,7 +73,7 @@ export class InterestServices {
                 id,
                 value
             };
-        } catch (error) {
+        } catch {
             throw new Error('Failed to update item');
         }
     }
@@ -83,7 +83,7 @@ export class InterestServices {
             const docRef = doc(this.db, 'users', userId, 'about', id);
             await deleteDoc(docRef);
             return true;
-        } catch (error) {
+        } catch {
             throw new Error('Failed to delete item');
         }
     }

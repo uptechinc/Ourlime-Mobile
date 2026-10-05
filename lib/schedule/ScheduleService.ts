@@ -1,6 +1,6 @@
 // lib/services/ScheduleService.ts
 import { db } from '@/lib/firebaseConfig';
-import { collection, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 type Schedule = {
     id: string;

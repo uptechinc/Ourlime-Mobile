@@ -1,7 +1,8 @@
 // lib/profile/abouts/basicInformation/BasicInformationService.ts
 
 import { db } from '@/lib/firebaseConfig';
-import { doc, updateDoc, query, collection, where, getDocs, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { usernameService } from '@/lib/services/UsernameService';
 
 type UpdateBasicInfoData = {
     firstName: string;
@@ -26,16 +27,15 @@ export class BasicInformationService {
     }
 
     async checkUsernameAvailability(userName: string, currentUserId: string): Promise<boolean> {
-        const usersRef = collection(this.db, 'users');
-        const q = query(usersRef, where('userName', '==', userName));
-        const querySnapshot = await getDocs(q);
-        
-        return querySnapshot.empty || querySnapshot.docs[0].id === currentUserId;
+        // Any case counts as taken ("Ron" = "ron"), and reserved former names stay with their owner.
+        return usernameService.isAvailable(userName, currentUserId);
     }
 
     async updateBasicInfo(userId: string, data: UpdateBasicInfoData) {
+        // Reserves the username in a transaction, so two people can't take the same name at once.
+        await usernameService.claim(userId, data.userName);
+
         const userRef = doc(this.db, 'users', userId);
-        
         await updateDoc(userRef, {
             ...data,
             updatedAt: Timestamp.now()

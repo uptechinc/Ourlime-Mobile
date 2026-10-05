@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, where, query, getDocs, limit, addDoc } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, collection, where, query, getDocs, limit, addDoc } from 'firebase/firestore';
 import { BusinessProfile } from '@/types/businessTypes';
 import { db } from '../firebaseConfig';
 

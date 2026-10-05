@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -48,6 +48,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [canResendVerification, setCanResendVerification] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -94,6 +95,8 @@ export default function LoginScreen() {
 
   // ── Validation + Submit ────────────────────────────────────────────────────
   const handleLogin = async () => {
+    // Ref guard: two taps in the same frame would both start sign-in.
+    if (submittingRef.current) return;
     setErrorMsg('');
     setCanResendVerification(false);
     setEmailError('');
@@ -113,13 +116,14 @@ export default function LoginScreen() {
       }
     }
 
-    if (password.length < 8) {
-      setPasswordError('Password should be at least 8 characters.');
+    if (!password) {
+      setPasswordError('Password is required.');
       valid = false;
     }
 
     if (!valid) return;
 
+    submittingRef.current = true;
     setIsSubmitting(true);
 
     try {
@@ -131,6 +135,7 @@ export default function LoginScreen() {
       setCanResendVerification(code === 'EMAIL_NOT_VERIFIED');
       setErrorMsg(getLoginErrorMessage(code, fallbackMsg));
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -139,7 +144,7 @@ export default function LoginScreen() {
     if (!email.trim() || !password || isResendingVerification) return;
     setIsResendingVerification(true);
     try {
-      await authService.resendEmailVerification(email, password);
+      await authService.resendEmailVerification(email.trim(), password);
       setErrorMsg('Verification email sent. Check your inbox and spam folder, then sign in again.');
       setCanResendVerification(false);
     } catch (error: unknown) {

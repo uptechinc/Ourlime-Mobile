@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { NotificationData } from '@/lib/types/notification';
 import { AuthService } from '@/lib/services/AuthService';
 import { NotificationService } from '@/lib/services/NotificationService';
@@ -28,6 +28,28 @@ const NotificationContext = createContext<NotificationContextValue | undefined>(
 const authService = AuthService.getInstance();
 const notificationService = NotificationService.getInstance();
 
+/**
+ * Runs refreshes one at a time. A refresh that started before a change (e.g. the live listener firing the moment a
+ * delete is queued) reads the old list, so a request made while one is running gets a fresh run afterwards instead
+ * of that stale result.
+ */
+function createRefreshQueue(run: () => Promise<void>): () => Promise<void> {
+  let current: Promise<void> | null = null;
+  let followUp: Promise<void> | null = null;
+  const request = (): Promise<void> => {
+    if (current) {
+      followUp ??= current.then(() => {
+        followUp = null;
+        return request();
+      });
+      return followUp;
+    }
+    current = run().then(() => { current = null; }, () => { current = null; });
+    return current;
+  };
+  return request;
+}
+
 export const NotificationProvider = ({ children }: NotificationProviderProps) => {
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,12 +60,9 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
   const [hasMore, setHasMore] = useState(false);
   const [userId, setUserId] = useState<string | null>(authService.getVerifiedCurrentUser()?.uid ?? null);
   const hasDataRef = useRef(false);
-  const refreshPromiseRef = useRef<Promise<void> | null>(null);
   const didReceiveInitialInvalidationRef = useRef(false);
 
-  const refreshNotifications = useCallback((): Promise<void> => {
-    if (refreshPromiseRef.current) return refreshPromiseRef.current;
-    const operation = (async () => {
+  const [refreshNotifications] = useState(() => createRefreshQueue(async () => {
       const user = authService.getVerifiedCurrentUser();
       if (!user) {
         setNotifications([]);
@@ -63,16 +82,12 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
         setTotalCount(page.totalCount ?? (page.unreadCount + (page.readCount ?? 0)));
         setNextCursor(page.nextCursor);
         setHasMore(page.hasMore);
-      } catch {
-        // Handled silently
+      } catch (error: unknown) {
+        console.warn('[NotificationContext.refreshNotifications] Error:', error instanceof Error ? error.message : String(error));
       } finally {
         setIsLoading(false);
-        refreshPromiseRef.current = null;
       }
-    })();
-    refreshPromiseRef.current = operation;
-    return operation;
-  }, []);
+  }));
 
   useEffect(() => authService.subscribeToVerifiedAuthState((user) => {
     setUserId(user?.uid ?? null);
@@ -132,10 +147,35 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     );
   }, [refreshNotifications, userId]);
 
+  /** Applies a confirmed change to the list straight away (the follow-up refresh then syncs with the server). */
+  const applyLocalChange = (change: { removeIds?: string[]; readIds?: string[]; unreadIds?: string[]; allRead?: boolean }): void => {
+    const removeIds = new Set(change.removeIds ?? []);
+    const readIds = new Set(change.readIds ?? []);
+    const unreadIds = new Set(change.unreadIds ?? []);
+    setNotifications((current) => {
+      const next = current
+        .filter((notification) => !notification.id || !removeIds.has(notification.id))
+        .map((notification) => {
+          if (change.allRead || (notification.id && readIds.has(notification.id))) return { ...notification, isRead: true };
+          if (notification.id && unreadIds.has(notification.id)) return { ...notification, isRead: false };
+          return notification;
+        });
+      const removedUnread = current.filter((notification) => notification.id && removeIds.has(notification.id) && !notification.isRead).length;
+      const removedRead = current.filter((notification) => notification.id && removeIds.has(notification.id) && notification.isRead).length;
+      const nowRead = change.allRead ? current.filter((notification) => !notification.isRead).length : current.filter((notification) => notification.id && readIds.has(notification.id) && !notification.isRead).length;
+      const nowUnread = current.filter((notification) => notification.id && unreadIds.has(notification.id) && notification.isRead).length;
+      setUnreadCount((count) => change.allRead ? 0 : Math.max(0, count - removedUnread - nowRead + nowUnread));
+      setReadCount((count) => Math.max(0, count - removedRead + nowRead - nowUnread));
+      setTotalCount((count) => Math.max(0, count - removedUnread - removedRead));
+      return next;
+    });
+  };
+
   const markAsRead = async (notificationId: string) => {
     const user = authService.getVerifiedCurrentUser();
     if (!user) return;
     await notificationService.markAsRead(notificationId);
+    applyLocalChange({ readIds: [notificationId] });
     await refreshNotifications();
   };
 
@@ -143,6 +183,7 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     const user = authService.getVerifiedCurrentUser();
     if (!user) return;
     await notificationService.markAsUnread(notificationId);
+    applyLocalChange({ unreadIds: [notificationId] });
     await refreshNotifications();
   };
 
@@ -150,6 +191,7 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     const user = authService.getVerifiedCurrentUser();
     if (!user) return;
     await notificationService.markAllAsRead();
+    applyLocalChange({ allRead: true });
     await refreshNotifications();
   };
 
@@ -157,6 +199,7 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     const user = authService.getVerifiedCurrentUser();
     if (!user || notificationIds.length === 0) return;
     await notificationService.markManyAsRead(notificationIds);
+    applyLocalChange({ readIds: notificationIds });
     await refreshNotifications();
   };
 
@@ -164,6 +207,7 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     const user = authService.getVerifiedCurrentUser();
     if (!user || notificationIds.length === 0) return;
     await notificationService.markManyAsUnread(notificationIds);
+    applyLocalChange({ unreadIds: notificationIds });
     await refreshNotifications();
   };
 
@@ -181,6 +225,7 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
 
   const deleteNotifications = async (notificationIds: string[]) => {
     await notificationService.delete(notificationIds);
+    applyLocalChange({ removeIds: notificationIds });
     await refreshNotifications();
   };
 

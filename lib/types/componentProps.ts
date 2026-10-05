@@ -1,3 +1,6 @@
+import type { Href } from 'expo-router';
+import type { ReactNode } from 'react';
+import type { AppNavigationSection } from '@/lib/navigation/AppNavigation';
 export type ChatButtonState = {
     isMobile: boolean;
 };
@@ -46,6 +49,3 @@ export type PageHeaderProps = {
 
 // Message-related types
 export * from './message';
-import type { Href } from 'expo-router';
-import type { ReactNode } from 'react';
-import type { AppNavigationSection } from '@/lib/navigation/AppNavigation';

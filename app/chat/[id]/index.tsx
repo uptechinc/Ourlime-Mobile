@@ -11,11 +11,13 @@ import {
     ActivityIndicator,
     Modal,
     Pressable,
-    Linking,
     Keyboard,
     FlatList,
+    Clipboard,
     type ImageSourcePropType,
 } from 'react-native';
+import { toast } from 'sonner-native';
+import ReportPostModal from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ReportPostModal';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,7 +25,15 @@ import * as DocumentPicker from 'expo-document-picker';
 import Icon from 'react-native-vector-icons/Feather';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthService, type UserProfile } from '@/lib/services/AuthService';
-import { messagingService, type FullMessage, type Attachment } from '@/lib/messaging/MessagingService';
+import { messagingService, ChatUploadCancelledError, type FullMessage, type Attachment } from '@/lib/messaging/MessagingService';
+import { checkChatAttachment, maxVideoSecondsForLimit, readFileSize, resolveChatMimeType, CHAT_IMAGE_MAX_DIMENSION, MAX_CHAT_FILE_BYTES, formatMegabytes } from '@/lib/messaging/ChatAttachmentPolicy';
+import ChatVideoViewer from '@/components/chat/ChatVideoViewer';
+import { ChatImageBubble, ChatVideoBubble } from '@/components/chat/ChatMediaBubbles';
+import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
+import VoiceNoteRecorder from '@/components/chat/VoiceNoteRecorder';
+import VideoTrimModal, { type TrimmedVideoResult, type VideoTrimSource } from '@/components/media/VideoTrimModal';
+import { chatFileShareService } from '@/lib/services/ChatFileShareService';
+import { voiceNotePlaybackService } from '@/lib/services/VoiceNotePlaybackService';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { StickerService, normalizeStickerUrl } from '@/lib/sticker/StickerService';
 import { getLocalStickerSource, getRandomLocalStickerSource } from '@/assets/images/stickers/stickerMap';
@@ -33,7 +43,7 @@ import { ChatSettingsMenu } from '@/components/chat/ChatSettingsMenu';
 import { ChatMediaPanel } from '@/components/chat/ChatMediaPanel';
 import { ForwardMessageModal } from '@/components/chat/ForwardMessageModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { DocumentPreviewModal } from '@/components/chat/DocumentPreviewModal';
+import { DocumentPreviewModal, formatFileSize, getAttachmentPreviewKind } from '@/components/chat/DocumentPreviewModal';
 import { LinkPreviewMessage, LinkInputBanner } from '@/components/chat/LinkPreviewMessage';
 import { findFirstUrl } from '@/lib/services/OpenGraphService';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -242,18 +252,34 @@ type MessageBubbleProps = {
     onForward: (msg: FullMessage) => void;
     onImagePress: (url: string) => void;
     onPreviewDoc: (attachment: Attachment) => void;
+    onOpenVideo: (attachment: Attachment) => void;
+    isStarred: boolean;
+    onToggleStar: (msg: FullMessage) => void;
+    onEdit: (msg: FullMessage) => void;
+    onReport: (msg: FullMessage) => void;
 };
 
-function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact, onForward, onImagePress, onPreviewDoc }: MessageBubbleProps) {
+// Same edit window the server enforces (ChatDataService EDIT_WINDOW_MS).
+const MESSAGE_EDIT_WINDOW_MS = 20 * 60 * 1000;
+
+/** Tells the user why a tap did nothing while something is still uploading or sending (instead of a silent no-op). */
+function notifyBusy(message: string): void {
+    toast(message, { id: 'chat-busy' });
+    void interactionFeedbackService.play('warning');
+}
+
+function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact, onForward, onImagePress, onPreviewDoc, onOpenVideo, isStarred, onToggleStar, onEdit, onReport }: MessageBubbleProps) {
     const { colors, isDark } = useAppTheme();
     const [showActions, setShowActions] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     if (!friend) return null;
     const isOwn = msg.senderId === currentUserId;
 
-    const isImage = msg.attachment?.fileType?.startsWith('image/');
-    const isVideo = msg.attachment?.fileType?.startsWith('video/');
-    const isDoc = msg.attachment && !isImage && !isVideo;
+    const attachmentKind = msg.attachment ? getAttachmentPreviewKind(msg.attachment) : null;
+    const isImage = attachmentKind === 'image';
+    const isVideo = attachmentKind === 'video';
+    const isAudioFile = attachmentKind === 'audio';
+    const isDoc = Boolean(msg.attachment) && !isImage && !isVideo && !isAudioFile;
     const hasText = msg.message?.trim().length > 0;
     const stickerUrl = normalizeStickerUrl(msg.stickerUrl ?? msg.stickerData?.stickerUrl);
     const isSticker = msg.type === 'sticker' || !!stickerUrl;
@@ -352,23 +378,17 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                         ) : (
                             <>
                                 {isImage && msg.attachment && (
-                                    <TouchableOpacity onPress={() => onImagePress(msg.attachment!.url)}>
-                                        <Image
-                                            source={{ uri: msg.attachment.url }}
-                                            style={{ width: 220, height: 160, borderRadius: 12, marginBottom: hasText ? 8 : 0 }}
-                                            resizeMode="cover"
-                                        />
-                                    </TouchableOpacity>
+                                    <ChatImageBubble url={msg.attachment.url} spacingBelow={hasText ? 8 : 0} onPress={() => onImagePress(msg.attachment!.url)} />
                                 )}
 
                                 {isVideo && msg.attachment && (
-                                    <TouchableOpacity
-                                        onPress={() => Linking.openURL(msg.attachment!.url)}
-                                        style={{ width: 220, height: 140, borderRadius: 12, backgroundColor: '#0f172a', alignItems: 'center', justifyContent: 'center', marginBottom: hasText ? 8 : 0 }}
-                                    >
-                                        <Icon name="play-circle" size={40} color="#ffffff" />
-                                        <Text style={{ color: '#ffffff', fontSize: 12, marginTop: 6 }}>Tap to play</Text>
-                                    </TouchableOpacity>
+                                    <ChatVideoBubble url={msg.attachment.url} sizeLabel={formatFileSize(msg.attachment.fileSize)} spacingBelow={hasText ? 8 : 0} onPress={() => onOpenVideo(msg.attachment!)} />
+                                )}
+
+                                {isAudioFile && msg.attachment && (
+                                    <View style={{ marginBottom: hasText ? 8 : 0 }}>
+                                        <VoiceNotePlayer audioUrl={msg.attachment.url} duration={0} isSentByMe={isOwn} fileName={msg.attachment.fileName} playbackId={`file:${getMsgId(msg)}`} />
+                                    </View>
                                 )}
 
                                 {isDoc && msg.attachment && (
@@ -390,7 +410,7 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                                                     {msg.attachment.fileName}
                                                 </Text>
                                                 <Text style={{ fontSize: 11, color: isOwn ? 'rgba(255,255,255,0.7)' : colors.mutedText }}>
-                                                    {(msg.attachment.fileSize / 1024).toFixed(1)} KB
+                                                    {formatFileSize(msg.attachment.fileSize)}
                                                 </Text>
                                             </View>
                                         </View>
@@ -415,7 +435,13 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                                             </TouchableOpacity>
 
                                             <TouchableOpacity
-                                                onPress={() => Linking.openURL(msg.attachment!.url)}
+                                                onPress={() => {
+                                                    const file = msg.attachment!;
+                                                    void chatFileShareService.share(file.url, file.fileName, file.fileType).catch((error: unknown) => {
+                                                        console.error('[MessageBubble.saveFile] Error:', error);
+                                                        toast.error('The file could not be saved.');
+                                                    });
+                                                }}
                                                 style={{
                                                     flex: 1,
                                                     flexDirection: 'row',
@@ -439,6 +465,7 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                                         audioUrl={audioUrl}
                                         duration={audioDuration}
                                         isSentByMe={isOwn}
+                                        playbackId={`vn:${getMsgId(msg)}`}
                                     />
                                 )}
 
@@ -523,6 +550,12 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                         {!isDeleted && [
                             { icon: 'corner-up-left', label: 'Reply', action: () => { onReply(msg); setShowActions(false); } },
                             { icon: 'corner-up-right', label: 'Forward', action: () => { onForward(msg); setShowActions(false); } },
+                            { icon: 'star', label: isStarred ? 'Unstar' : 'Star', action: () => { onToggleStar(msg); setShowActions(false); } },
+                            ...(isOwn && hasText && !isSticker && !isVoiceNote && !msg.attachment && Date.now() - msg.timestamp.seconds * 1000 < MESSAGE_EDIT_WINDOW_MS
+                                ? [{ icon: 'edit-2', label: 'Edit', action: () => { onEdit(msg); setShowActions(false); } }]
+                                : []),
+                            ...(hasText ? [{ icon: 'copy', label: 'Copy Text', action: () => { Clipboard.setString(msg.message); toast.success('Copied'); setShowActions(false); } }] : []),
+                            ...(!isOwn ? [{ icon: 'flag', label: 'Report', action: () => { onReport(msg); setShowActions(false); } }] : []),
                         ].map(({ icon, label, action }) => (
                             <AnimatedActionButton key={label} onPress={action} accessibilityLabel={label} pressScale={0.97} playful={false} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 }}>
                                 <Icon name={icon} size={17} color={colors.icon} />
@@ -617,6 +650,11 @@ export default function ChatPage() {
     const [messageText, setMessageText] = useState('');
     const [replyTo, setReplyTo] = useState<FullMessage | null>(null);
     const [isSending, setIsSending] = useState(false);
+    // Website parity: starred messages, editing your own messages, reporting a message.
+    const [starredMessageIds, setStarredMessageIds] = useState<Set<string>>(new Set());
+    const [editingMessage, setEditingMessage] = useState<FullMessage | null>(null);
+    const [reportMessage, setReportMessage] = useState<FullMessage | null>(null);
+    const [showStarred, setShowStarred] = useState(false);
     const [keyboardState, setKeyboardState] = useState<{ visible: boolean; tab: 'emojis' | 'stickers' }>({ visible: false, tab: 'emojis' });
     const [composerStickerIcon, setComposerStickerIcon] = useState<ImageSourcePropType>(() => getRandomLocalStickerSource());
 
@@ -628,7 +666,15 @@ export default function ChatPage() {
     const [showSettings, setShowSettings] = useState(false);
     const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
     const [showAttachModal, setShowAttachModal] = useState(false);
-    const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; fileName: string; mimeType: string; type: 'image' | 'video' | 'document' } | null>(null);
+    const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; fileName: string; mimeType: string; type: 'image' | 'video' | 'document'; sizeBytes: number; durationSeconds: number | null } | null>(null);
+    // Upload progress (0-100) of the attachment being sent; null when idle.
+    const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+    const uploadAbortRef = useRef<AbortController | null>(null);
+    const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+    const [voiceNoteUpload, setVoiceNoteUpload] = useState<number | null>(null);
+    const [trimCandidate, setTrimCandidate] = useState<(VideoTrimSource & { fileName: string; mimeType: string }) | null>(null);
+    const [preparingAttachment, setPreparingAttachment] = useState(false);
+    const [videoViewer, setVideoViewer] = useState<Attachment | null>(null);
     const [wallpaperUri, setWallpaperUri] = useState<string | null>(null);
     const [randomStickerBg, setRandomStickerBg] = useState<string | null>(null);
     const [isBlocked, setIsBlocked] = useState(false);
@@ -663,6 +709,8 @@ export default function ChatPage() {
     useEffect(() => {
         return () => {
             sharedPostPresentationService.deactivateAllPlayers();
+            voiceNotePlaybackService.stop();
+            uploadAbortRef.current?.abort();
             if (friendId && currentUserId) {
                 void simpleChatMessageService.markRead(friendId);
                 void conversationResourceService.patchConversation(currentUserId, friendId, { unreadCount: 0 });
@@ -766,9 +814,41 @@ export default function ChatPage() {
         });
     }, [cachedFriend, friendId]);
 
+    const busyMessage = uploadProgress !== null
+        ? `Your file is still uploading (${uploadProgress}%). Please wait or tap ✕ to cancel.`
+        : voiceNoteUpload !== null
+            ? 'Your voice note is still sending…'
+            : preparingAttachment
+                ? 'Still preparing your file…'
+                : isSending
+                    ? 'Still sending your message…'
+                    : null;
+
     // Send message
     const handleSend = useCallback(async () => {
+        if (busyMessage) { notifyBusy(busyMessage); return; }
         if ((!messageText.trim() && !pendingAttachment) || !friendId || !currentUserId || isSending || isBlocked) return;
+        if (editingMessage) {
+            const target = editingMessage;
+            const nextText = messageText.trim();
+            if (!nextText || nextText === target.message) { setEditingMessage(null); setMessageText(''); return; }
+            setIsSending(true);
+            setEditingMessage(null);
+            setMessageText('');
+            try {
+                await messagingService.editMessage(friendId, currentUserId, target.timestamp.seconds, nextText);
+                await reloadMessages();
+                toast.success('Message edited');
+            } catch (error: unknown) {
+                console.error('[ChatScreen.editMessage] Error:', error);
+                setMessageText(nextText);
+                setEditingMessage(target);
+                toast.error(error instanceof Error ? error.message : 'Messages can only be edited within 20 minutes');
+            } finally {
+                setIsSending(false);
+            }
+            return;
+        }
         const text = messageText.trim();
         setMessageText('');
         setDismissedInputUrl(null);
@@ -790,8 +870,23 @@ export default function ChatPage() {
         let attachment: Attachment | undefined;
         if (pendingAttachment) {
             try {
-                attachment = await messagingService.uploadFile(pendingAttachment.uri, pendingAttachment.fileName, pendingAttachment.mimeType, currentUserId);
+                const controller = new AbortController();
+                uploadAbortRef.current = controller;
+                setUploadProgress(0);
+                attachment = await messagingService.uploadFile(pendingAttachment.uri, pendingAttachment.fileName, pendingAttachment.mimeType, currentUserId, {
+                    signal: controller.signal,
+                    onProgress: setUploadProgress,
+                });
             } catch (err) {
+                uploadAbortRef.current = null;
+                setUploadProgress(null);
+                if (err instanceof ChatUploadCancelledError) {
+                    setMessageText(text);
+                    setIsSending(false);
+                    toast('Upload cancelled');
+                    return;
+                }
+                setMessageText(text);
                 setChatModal({
                     visible: true,
                     type: 'error',
@@ -802,6 +897,8 @@ export default function ChatPage() {
                 setIsSending(false);
                 return;
             }
+            uploadAbortRef.current = null;
+            setUploadProgress(null);
             setPendingAttachment(null);
         }
 
@@ -827,7 +924,7 @@ export default function ChatPage() {
         } finally {
             setIsSending(false);
         }
-    }, [addMessage, messageText, friendId, currentUserId, isSending, replyTo, pendingAttachment, isBlocked]);
+    }, [addMessage, busyMessage, messageText, friendId, currentUserId, isSending, replyTo, pendingAttachment, isBlocked, editingMessage, reloadMessages]);
 
     // Start a call
     const callCoordinator = useCallCoordinator();
@@ -840,30 +937,110 @@ export default function ChatPage() {
         await callCoordinator.startCall(friendId, type === 'audio' ? 'voice' : 'video');
     }, [callCoordinator, friendId, currentUserId, isBlocked]);
 
+    /**
+     * Checks a picked file before it's attached: allowed type and the 25 MB Storage limit. Photos are resized to
+     * 1600px like the website; videos over the limit open the trimmer.
+     */
+    const stageAttachment = useCallback(async (picked: { uri: string; fileName: string; mimeType?: string | null; sizeBytes?: number | null; durationSeconds?: number | null; kind: 'image' | 'video' | 'document' }) => {
+        setPreparingAttachment(true);
+        try {
+            let { uri, fileName } = picked;
+            let mimeType = resolveChatMimeType(fileName, picked.mimeType, picked.kind);
+            const kind: 'image' | 'video' | 'document' = mimeType.startsWith('image/') ? 'image' : mimeType.startsWith('video/') ? 'video' : 'document';
+            let sizeBytes = await readFileSize(uri, picked.sizeBytes);
+
+            if (kind === 'image' && !/gif|svg/i.test(mimeType)) {
+                try {
+                    const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
+                    const resized = await manipulateAsync(uri, [{ resize: { width: CHAT_IMAGE_MAX_DIMENSION } }], { compress: 0.82, format: SaveFormat.JPEG });
+                    uri = resized.uri;
+                    mimeType = 'image/jpeg';
+                    fileName = fileName.replace(/\.[^.]+$/, '') + '.jpg';
+                    sizeBytes = await readFileSize(uri);
+                } catch (resizeError: unknown) {
+                    console.warn('[ChatScreen.stageAttachment] Error: image resize failed, sending original', resizeError instanceof Error ? resizeError.message : String(resizeError));
+                }
+            }
+
+            if (kind === 'video' && sizeBytes > MAX_CHAT_FILE_BYTES) {
+                const durationSeconds = picked.durationSeconds ?? 0;
+                if (durationSeconds > 1) {
+                    setTrimCandidate({ uri, durationSeconds, fileSize: sizeBytes, fileName, mimeType });
+                    toast(`This video is ${formatMegabytes(sizeBytes)}. Trim it to fit the 25 MB limit.`);
+                    return;
+                }
+            }
+
+            const check = checkChatAttachment(fileName, mimeType, sizeBytes);
+            if (!check.ok) {
+                setChatModal({ visible: true, type: 'warning', title: check.reason === 'size' ? 'File too large' : 'File type not supported', message: check.message, confirmText: 'OK' });
+                return;
+            }
+            setPendingAttachment({ uri, fileName, mimeType, type: kind, sizeBytes, durationSeconds: picked.durationSeconds ?? null });
+        } finally {
+            setPreparingAttachment(false);
+        }
+    }, []);
+
+    const handleTrimmedVideo = useCallback((result: TrimmedVideoResult) => {
+        const candidate = trimCandidate;
+        setTrimCandidate(null);
+        if (!candidate) return;
+        void stageAttachment({ uri: result.uri, fileName: candidate.fileName.replace(/\.[^.]+$/, '') + '.mp4', mimeType: 'video/mp4', sizeBytes: result.fileSize, durationSeconds: result.durationSeconds, kind: 'video' })
+            .then(() => undefined);
+    }, [stageAttachment, trimCandidate]);
+
     const handleAttachImage = useCallback(async () => {
         setShowAttachModal(false);
         const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.8 });
         if (result.canceled || !result.assets[0]) return;
         const asset = result.assets[0];
         const isVideo = asset.type === 'video' || (asset.mimeType?.startsWith('video/') ?? false);
-        const mimeType = asset.mimeType ?? (isVideo ? 'video/mp4' : 'image/jpeg');
-        const fileName = asset.fileName ?? (isVideo ? `video_${Date.now()}.mp4` : `media_${Date.now()}.jpg`);
-        setPendingAttachment({ uri: asset.uri, fileName, mimeType, type: isVideo ? 'video' : 'image' });
-    }, []);
+        await stageAttachment({
+            uri: asset.uri,
+            fileName: asset.fileName ?? (isVideo ? `video_${Date.now()}.mp4` : `media_${Date.now()}.jpg`),
+            mimeType: asset.mimeType,
+            sizeBytes: asset.fileSize,
+            durationSeconds: typeof asset.duration === 'number' ? asset.duration / 1000 : null,
+            kind: isVideo ? 'video' : 'image',
+        });
+    }, [stageAttachment]);
 
     const handleAttachDoc = useCallback(async () => {
         setShowAttachModal(false);
         const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
-        if (result.canceled) return;
+        if (result.canceled || !result.assets[0]) return;
         const asset = result.assets[0];
-        const mimeType = asset.mimeType ?? 'application/octet-stream';
-        const isVideo = mimeType.startsWith('video/');
-        const isImage = mimeType.startsWith('image/');
-        const type = isVideo ? 'video' : isImage ? 'image' : 'document';
-        setPendingAttachment({ uri: asset.uri, fileName: asset.name, mimeType, type });
-    }, []);
+        await stageAttachment({ uri: asset.uri, fileName: asset.name, mimeType: asset.mimeType, sizeBytes: asset.size, kind: 'document' });
+    }, [stageAttachment]);
+
+    /** Uploads a recorded voice note (voiceNotes/{uid}/…m4a) and sends it like the website does. */
+    const handleSendVoiceNote = useCallback(async (uri: string, durationSeconds: number) => {
+        setIsRecordingVoice(false);
+        if (voiceNoteUpload !== null) { notifyBusy('Your previous voice note is still sending…'); return; }
+        if (!friendId || !currentUserId || isBlocked) return;
+        setVoiceNoteUpload(0);
+        try {
+            const voiceNoteData = await messagingService.uploadVoiceNote(uri, currentUserId, durationSeconds, { onProgress: setVoiceNoteUpload });
+            const serverMessage = await messagingService.sendMessage(friendId, '', currentUserId, undefined, undefined, undefined, voiceNoteData);
+            addMessage(serverMessage);
+            void conversationResourceService.patchConversation(currentUserId, friendId, {
+                lastMessage: 'Voice note',
+                lastMessageTime: serverMessage.timestamp,
+                lastMessageSenderId: currentUserId,
+                unreadCount: 0,
+            });
+            void interactionFeedbackService.play('success');
+        } catch (error: unknown) {
+            console.error('[ChatScreen.handleSendVoiceNote] Error:', error);
+            toast.error('Voice note could not be sent. Check your connection and try again.');
+        } finally {
+            setVoiceNoteUpload(null);
+        }
+    }, [addMessage, currentUserId, friendId, isBlocked, voiceNoteUpload]);
 
     const handleStickerSelect = useCallback(async (sticker: Sticker) => {
+        if (busyMessage) { notifyBusy(busyMessage); return; }
         if (!friendId || !currentUserId || isBlocked) return;
         const stickerData = {
             type: 'sticker' as const,
@@ -892,7 +1069,7 @@ export default function ChatPage() {
                 confirmText: 'OK',
             });
         }
-    }, [addMessage, friendId, currentUserId, isBlocked]);
+    }, [addMessage, busyMessage, friendId, currentUserId, isBlocked]);
 
     const handleDelete = useCallback(async (msg: FullMessage, deleteForEveryone: boolean) => {
         if (!friendId || !currentUserId) return;
@@ -908,6 +1085,33 @@ export default function ChatPage() {
 
     const handleForward = useCallback((msg: FullMessage) => {
         setForwardMessage(msg);
+    }, []);
+
+    useEffect(() => {
+        if (!currentUserId || !friendId) return;
+        messagingService.getStarredMessageIds(currentUserId, friendId)
+            .then(setStarredMessageIds)
+            .catch((error: unknown) => console.warn('[ChatScreen.loadStarred] Error:', error instanceof Error ? error.message : 'unavailable'));
+    }, [currentUserId, friendId]);
+
+    const handleToggleStar = useCallback((msg: FullMessage) => {
+        if (!currentUserId || !friendId) return;
+        const messageId = getMsgId(msg);
+        const wasStarred = starredMessageIds.has(messageId);
+        setStarredMessageIds((current) => { const next = new Set(current); if (wasStarred) next.delete(messageId); else next.add(messageId); return next; });
+        messagingService.setMessageStarred(currentUserId, friendId, messageId, !wasStarred)
+            .then(() => toast.success(wasStarred ? 'Message unstarred' : 'Message starred'))
+            .catch((error: unknown) => {
+                console.error('[ChatScreen.toggleStar] Error:', error);
+                setStarredMessageIds((current) => { const next = new Set(current); if (wasStarred) next.add(messageId); else next.delete(messageId); return next; });
+                toast.error('Could not update starred message');
+            });
+    }, [currentUserId, friendId, starredMessageIds]);
+
+    const handleEditRequest = useCallback((msg: FullMessage) => {
+        setReplyTo(null);
+        setEditingMessage(msg);
+        setMessageText(msg.message);
     }, []);
 
     const handleDeleteChat = useCallback(async () => {
@@ -943,9 +1147,14 @@ export default function ChatPage() {
                 onForward={handleForward}
                 onImagePress={setLightboxUrl}
                 onPreviewDoc={setPreviewDocAttachment}
+                onOpenVideo={setVideoViewer}
+                isStarred={starredMessageIds.has(getMsgId(message))}
+                onToggleStar={handleToggleStar}
+                onEdit={handleEditRequest}
+                onReport={setReportMessage}
             />
         );
-    }, [currentUserId, friend, getCallActiveForMessage, handleDelete, handleForward, handleReact, handleStartCall]);
+    }, [currentUserId, friend, getCallActiveForMessage, handleDelete, handleForward, handleReact, handleStartCall, starredMessageIds, handleToggleStar, handleEditRequest]);
 
     const activeBg = wallpaperUri ?? randomStickerBg;
 
@@ -1084,6 +1293,17 @@ export default function ChatPage() {
                     </View>
                 ) : (
                     <>
+                        {/* Pending photo / video preview */}
+                        {pendingAttachment && (pendingAttachment.type === 'video' || pendingAttachment.type === 'image') ? (
+                            <View style={{ height: 220, backgroundColor: '#000000', borderTopWidth: 2, borderTopColor: '#10b981' }}>
+                                {pendingAttachment.type === 'video' ? (
+                                    <CustomVideoPlayer key={pendingAttachment.uri} url={pendingAttachment.uri} autoPlay={false} showSpeed={false} />
+                                ) : (
+                                    <Image source={{ uri: pendingAttachment.uri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+                                )}
+                            </View>
+                        ) : null}
+
                         {/* Pending Attachment Preview Banner */}
                         {pendingAttachment && (
                             <View style={{
@@ -1111,19 +1331,56 @@ export default function ChatPage() {
                                         {pendingAttachment.fileName}
                                     </Text>
                                     <Text style={{ fontSize: 11, color: '#10b981', fontWeight: '600' }}>
-                                        {pendingAttachment.type === 'video' ? 'Video ready to send — tap Send to upload' : 'Ready to send — tap Send to upload'}
+                                        {uploadProgress !== null
+                                            ? `Uploading… ${uploadProgress}%`
+                                            : `${formatFileSize(pendingAttachment.sizeBytes)} · ${pendingAttachment.type === 'video' ? 'Video ready' : 'Ready'} — tap Send to upload`}
                                     </Text>
+                                    {uploadProgress !== null ? (
+                                        <View style={{ height: 3, borderRadius: 2, backgroundColor: colors.border, marginTop: 4, overflow: 'hidden' }}>
+                                            <View style={{ width: `${uploadProgress}%`, height: 3, backgroundColor: '#10b981' }} />
+                                        </View>
+                                    ) : null}
                                 </View>
+                                {pendingAttachment.type === 'video' && uploadProgress === null ? (
+                                    <TouchableOpacity
+                                        accessibilityLabel="Trim video"
+                                        accessibilityRole="button"
+                                        onPress={() => {
+                                            if (busyMessage) { notifyBusy(busyMessage); return; }
+                                            const durationSeconds = pendingAttachment.durationSeconds ?? 0;
+                                            if (durationSeconds <= 1) { toast('This video is too short to trim.'); return; }
+                                            setTrimCandidate({ uri: pendingAttachment.uri, durationSeconds, fileSize: pendingAttachment.sizeBytes, fileName: pendingAttachment.fileName, mimeType: pendingAttachment.mimeType });
+                                        }}
+                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: colors.control, marginRight: 4 }}
+                                    >
+                                        <Icon name="scissors" size={14} color="#10b981" />
+                                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#10b981' }}>Trim</Text>
+                                    </TouchableOpacity>
+                                ) : null}
                                 <TouchableOpacity
-                                    accessibilityLabel={`Remove ${pendingAttachment.fileName}`}
+                                    accessibilityLabel={uploadProgress !== null ? 'Cancel upload' : `Remove ${pendingAttachment.fileName}`}
                                     accessibilityRole="button"
-                                    onPress={() => setPendingAttachment(null)}
+                                    onPress={() => { if (uploadProgress !== null) uploadAbortRef.current?.abort(); else setPendingAttachment(null); }}
                                     style={{ padding: 6 }}
                                 >
                                     <Icon name="x" size={18} color="#94a3b8" />
                                 </TouchableOpacity>
                             </View>
                         )}
+
+                        {/* Editing banner */}
+                        {editingMessage ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.successSurface, borderTopWidth: 2, borderTopColor: '#10b981', paddingHorizontal: 14, paddingVertical: 9 }}>
+                                <Icon name="edit-2" size={14} color="#10b981" />
+                                <View style={{ flex: 1, marginLeft: 10 }}>
+                                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#10b981' }}>Editing message</Text>
+                                    <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText }}>{editingMessage.message}</Text>
+                                </View>
+                                <TouchableOpacity accessibilityLabel="Cancel editing" onPress={() => { setEditingMessage(null); setMessageText(''); }} style={{ padding: 4 }}>
+                                    <Icon name="x" size={18} color="#94a3b8" />
+                                </TouchableOpacity>
+                            </View>
+                        ) : null}
 
                         {/* Reply Banner */}
                         {replyTo && (
@@ -1156,6 +1413,15 @@ export default function ChatPage() {
                             <LinkInputBanner url={inputUrl} onDismiss={() => setDismissedInputUrl(inputUrl)} />
                         )}
 
+                        {preparingAttachment || voiceNoteUpload !== null ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.successSurface, paddingHorizontal: 14, paddingVertical: 9 }}>
+                                <ActivityIndicator size="small" color="#10b981" />
+                                <Text style={{ flex: 1, fontSize: 12, fontWeight: '700', color: '#10b981' }}>
+                                    {voiceNoteUpload !== null ? `Sending voice note… ${voiceNoteUpload}%` : 'Preparing file…'}
+                                </Text>
+                            </View>
+                        ) : null}
+
                         {/* Modernized Web-Parity Input Bar */}
                         <View style={{
                             flexDirection: 'row',
@@ -1168,6 +1434,16 @@ export default function ChatPage() {
                             borderTopColor: colors.border,
                             gap: 8,
                         }}>
+                            {isRecordingVoice ? (
+                                <View style={{ flex: 1 }}>
+                                    <VoiceNoteRecorder
+                                        onCancel={() => setIsRecordingVoice(false)}
+                                        onSend={(uri, seconds) => void handleSendVoiceNote(uri, seconds)}
+                                        onError={(message) => { setIsRecordingVoice(false); toast.error(message); }}
+                                    />
+                                </View>
+                            ) : null}
+                            {!isRecordingVoice ? (<>
                             {/* WhatsApp / Web Long White Pill Container */}
                             <View style={{
                                 flex: 1,
@@ -1249,8 +1525,9 @@ export default function ChatPage() {
 
                                 {/* Paperclip Attachment Icon */}
                                 <TouchableOpacity
-                                    onPress={() => setShowAttachModal(true)}
-                                    style={{ padding: 6 }}
+                                    onPress={() => (busyMessage ? notifyBusy(busyMessage) : setShowAttachModal(true))}
+                                    accessibilityLabel="Attach file"
+                                    style={{ padding: 6, opacity: busyMessage ? 0.5 : 1 }}
                                     activeOpacity={0.7}
                                 >
                                     <Icon name="paperclip" size={20} color="#64748b" />
@@ -1263,7 +1540,6 @@ export default function ChatPage() {
                                     feedback="message"
                                     accessibilityLabel="Send message"
                                     onPress={handleSend}
-                                    disabled={isSending}
                                     style={{
                                         width: 44,
                                         height: 44,
@@ -1284,7 +1560,31 @@ export default function ChatPage() {
                                         <Icon name="send" size={18} color="#ffffff" style={{ marginLeft: 2 }} />
                                     )}
                                 </AnimatedActionButton>
-                            ) : null}
+                            ) : (
+                                <TouchableOpacity
+                                    accessibilityLabel="Record voice note"
+                                    accessibilityRole="button"
+                                    onPress={() => {
+                                        if (busyMessage) { notifyBusy(busyMessage); return; }
+                                        if (editingMessage) { notifyBusy('Finish or cancel editing your message first.'); return; }
+                                        Keyboard.dismiss();
+                                        setKeyboardState({ visible: false, tab: 'emojis' });
+                                        setIsRecordingVoice(true);
+                                    }}
+                                    style={{
+                                        width: 44,
+                                        height: 44,
+                                        borderRadius: 22,
+                                        backgroundColor: '#10b981',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        opacity: editingMessage !== null || busyMessage ? 0.5 : 1,
+                                    }}
+                                >
+                                    <Icon name="mic" size={20} color="#ffffff" />
+                                </TouchableOpacity>
+                            )}
+                            </>) : null}
                         </View>
                     </>
                 )}
@@ -1362,11 +1662,52 @@ export default function ChatPage() {
                     currentUserId={currentUserId}
                     onDeleteChat={handleDeleteChat}
                     onOpenChatMedia={() => setShowMediaPanel(true)}
+                    onOpenStarred={() => setShowStarred(true)}
                     onUploadWallpaper={handleUploadWallpaper}
                     onResetWallpaper={handleResetWallpaper}
                     hasCustomWallpaper={Boolean(wallpaperUri)}
                 />
             )}
+
+            {/* ── Starred messages (website settings menu) ─────────────── */}
+            <Modal visible={showStarred} transparent animationType="slide" onRequestClose={() => setShowStarred(false)}>
+                <Pressable onPress={() => setShowStarred(false)} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: colors.modalScrim }}>
+                    <Pressable style={{ maxHeight: '75%', backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 16, paddingBottom: 32 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                            <Icon name="star" size={18} color="#f59e0b" />
+                            <Text style={{ flex: 1, marginLeft: 8, color: colors.text, fontSize: 17, fontWeight: '900' }}>Starred messages</Text>
+                            <TouchableOpacity accessibilityLabel="Close starred messages" onPress={() => setShowStarred(false)} style={{ padding: 4 }}><Icon name="x" size={20} color={colors.mutedText} /></TouchableOpacity>
+                        </View>
+                        <FlatList
+                            data={messages.filter((message) => starredMessageIds.has(getMsgId(message)))}
+                            keyExtractor={getMsgId}
+                            ListEmptyComponent={<Text style={{ color: colors.mutedText, paddingVertical: 24, textAlign: 'center' }}>No starred messages yet. Long-press a message and tap Star.</Text>}
+                            renderItem={({ item }) => (
+                                <View style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                                    <Text style={{ color: colors.accentText, fontSize: 12, fontWeight: '800' }}>{item.senderId === currentUserId ? 'You' : friend?.firstName ?? 'Friend'} · {new Date(item.timestamp.seconds * 1000).toLocaleString()}</Text>
+                                    <Text style={{ color: colors.text, marginTop: 3 }}>{item.message || (item.attachment ? 'Attachment' : item.stickerUrl || item.stickerData ? 'Sticker' : item.audioUrl || item.voiceNoteData ? 'Voice message' : 'Message')}</Text>
+                                </View>
+                            )}
+                        />
+                    </Pressable>
+                </Pressable>
+            </Modal>
+
+            {reportMessage ? (
+                <ReportPostModal
+                    visible
+                    onClose={() => setReportMessage(null)}
+                    target={{
+                        contentType: 'message',
+                        targetId: getMsgId(reportMessage),
+                        reportedUserId: reportMessage.senderId,
+                        chatId: chatRoomId,
+                        routePath: `/chat/${friendId ?? ''}`,
+                        previewText: reportMessage.message || 'Attachment',
+                        label: 'message',
+                    }}
+                />
+            ) : null}
 
             {/* ── Chat Media Panel ──────────────────────────────────────── */}
             {friend && (
@@ -1398,6 +1739,31 @@ export default function ChatPage() {
                     });
                 }}
             />
+
+            <ChatVideoViewer
+                url={videoViewer?.url ?? null}
+                title={videoViewer?.fileName}
+                onClose={() => setVideoViewer(null)}
+                onSave={() => {
+                    if (!videoViewer) return;
+                    void chatFileShareService.share(videoViewer.url, videoViewer.fileName, videoViewer.fileType).catch((error: unknown) => {
+                        console.error('[ChatScreen.saveVideo] Error:', error);
+                        toast.error('The video could not be saved.');
+                    });
+                }}
+            />
+
+            {trimCandidate ? (
+                <VideoTrimModal
+                    source={{ uri: trimCandidate.uri, durationSeconds: trimCandidate.durationSeconds, fileSize: trimCandidate.fileSize }}
+                    maxDurationSeconds={Math.min(Math.ceil(trimCandidate.durationSeconds), maxVideoSecondsForLimit(trimCandidate.durationSeconds, trimCandidate.fileSize))}
+                    title={trimCandidate.fileSize > MAX_CHAT_FILE_BYTES ? 'Trim video to send (25 MB max)' : 'Trim video'}
+                    requireCut
+                    onCancel={() => setTrimCandidate(null)}
+                    onComplete={handleTrimmedVideo}
+                    onError={(message) => { setTrimCandidate(null); toast.error(message); }}
+                />
+            ) : null}
 
             {/* ── Image Lightbox ────────────────────────────────────────── */}
             {lightboxUrl && (

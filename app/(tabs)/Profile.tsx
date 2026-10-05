@@ -21,6 +21,7 @@ import GalleryTab from '@/components/profile/GalleryTab';
 import FriendsTab from '@/components/profile/FriendsTab';
 import AdminTab from '@/components/profile/AdminTab';
 import EditProfileModal from '@/components/profile/EditProfileModal';
+import ProfileCustomizationSheet from '@/components/profile/ProfileCustomizationSheet';
 import ProfileSkeleton from '@/components/profile/ProfileSkeleton';
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -52,6 +53,8 @@ export default function ProfileScreen() {
   const refreshing = resource.status === 'refreshing';
   const [activeTab, setActiveTab] = useState<ProfileTab>('timeline');
   const [editModalOpen, setEditModalOpen] = useState(false);
+  // Website "Profile Customization": choose which uploaded image is used where.
+  const [customizeOpen, setCustomizeOpen] = useState(false);
   const stats = resource.data?.stats ?? { posts: 0, friends: 0, followers: 0, following: 0 };
   const error = resource.error?.message ?? null;
 
@@ -122,6 +125,7 @@ export default function ProfileScreen() {
             friendsCount={stats.friends}
             followingCount={stats.following}
             onEditProfile={() => setEditModalOpen(true)}
+            onCustomize={() => setCustomizeOpen(true)}
             onFriendsPress={() => setActiveTab('friends')}
           />
           {error ? <TouchableOpacity onPress={() => void refresh()} style={{ marginHorizontal: 16, marginTop: 10, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 14, backgroundColor: colors.warningSurface }}><Text style={{ color: colors.warningText, textAlign: 'center', fontSize: 12, fontWeight: '700' }}>Showing saved profile · Tap to retry</Text></TouchableOpacity> : null}
@@ -130,6 +134,12 @@ export default function ProfileScreen() {
             profile={profile}
             onClose={() => setEditModalOpen(false)}
             onProfileUpdated={() => void refresh()}
+          />
+          <ProfileCustomizationSheet
+            visible={customizeOpen}
+            userId={profile.uid}
+            onClose={() => setCustomizeOpen(false)}
+            onSaved={() => void refresh()}
           />
 
           {/* ── Tab Selector Row ── */}

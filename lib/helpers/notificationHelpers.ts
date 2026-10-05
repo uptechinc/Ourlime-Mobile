@@ -1,14 +1,11 @@
 import { db } from '@/lib/firebaseConfig';
 import { 
-  collection, 
   doc, 
   updateDoc, 
   Timestamp, 
   getDoc,
-  serverTimestamp,
   increment,
   setDoc,
-  deleteDoc,
   deleteField
 } from 'firebase/firestore';
 import { NotificationData, NotificationType } from '@/lib/types/notification';

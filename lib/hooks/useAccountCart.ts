@@ -4,6 +4,8 @@ import { cartSyncService } from '@/lib/services/CartSyncService';
 import { useMarketplaceStore } from '@/lib/store/useMarketplaceStore';
 import type { MarketProduct, MarketVariant } from '@/lib/types/reliability';
 
+type CartLineToRemove = Parameters<typeof cartSyncService.remove>[1];
+
 export function useAccountCart(ownerId: string | null) {
   const state = useMarketplaceStore();
   const flush = useCallback(async () => {
@@ -42,11 +44,13 @@ export function useAccountCart(ownerId: string | null) {
     useMarketplaceStore.getState().setCart(ownerId, cart, 'saved_on_device');
     void flush();
   }, [flush, ownerId]);
-  const remove = useCallback(async (line: Parameters<typeof cartSyncService.remove>[1]) => {
+  const remove = useCallback(async (line: CartLineToRemove) => {
     if (!ownerId) throw new Error('Sign in to update a cart.');
-    const nextCart = await cartSyncService.remove(ownerId, line);
-    useMarketplaceStore.getState().setCart(ownerId, nextCart, 'saved_on_device');
-    void flush();
+    try {
+      const nextCart = await cartSyncService.remove(ownerId, line);
+      useMarketplaceStore.getState().setCart(ownerId, nextCart, 'saved_on_device');
+      void flush();
+    } catch (error: unknown) { useMarketplaceStore.getState().fail(ownerId, error instanceof Error ? error.message : 'Cart update failed.'); throw error; }
   }, [flush, ownerId]);
   return { ...state, setQuantity, remove, flush, resolve };
 }

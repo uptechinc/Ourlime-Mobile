@@ -1,3 +1,4 @@
+import { ensureMediaUrl } from '@/lib/helpers/mediaUrl';
 import { OURLIME_SITE_URL } from '@/lib/constants/site';
 
 export type PresetAvatarName =
@@ -44,7 +45,7 @@ export class AvatarService {
       : normalizedValue;
     if (decodedValue.includes('.svg')) return { kind: 'remote-svg', uri: resolvedUri };
     if (/^(https?:|file:|content:|data:image)/i.test(normalizedValue)) {
-      return { kind: 'remote-raster', uri: resolvedUri };
+      return { kind: 'remote-raster', uri: ensureMediaUrl(resolvedUri) || resolvedUri };
     }
     if (normalizedValue.startsWith('/')) return { kind: 'remote-raster', uri: resolvedUri };
     return { kind: 'initial' };

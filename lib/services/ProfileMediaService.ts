@@ -1,5 +1,7 @@
 import { collection, doc, getDocs, query, serverTimestamp, writeBatch, where } from 'firebase/firestore';
+import type { Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
+import { ensureMediaUrl } from '@/lib/helpers/mediaUrl';
 import { PostMediaService } from './PostMediaService';
 
 export type ProfileMediaKind = 'avatar' | 'cover';
@@ -8,6 +10,11 @@ export type ProfileMediaUploadResult = {
   imageUrl: string;
   imageDocumentId: string;
 };
+
+/** How an uploaded image is used (same values as the website's Profile Customization). */
+export type ProfileImageUse = 'profile' | 'coverProfile' | 'jobProfile' | 'postProfile';
+
+export type ProfileImageItem = { id: string; imageUrl: string; typeOfImage: string; createdAtMs: number };
 
 export class ProfileMediaService {
   private static instance: ProfileMediaService;
@@ -74,6 +81,39 @@ export class ProfileMediaService {
 
     await batch.commit();
     return { imageUrl, imageDocumentId: imageReference.id };
+  }
+
+  /** Every image the user has uploaded (profileImages), newest first. */
+  public async listImages(userId: string): Promise<ProfileImageItem[]> {
+    const snapshot = await getDocs(query(collection(db, 'profileImages'), where('userId', '==', userId)));
+    return snapshot.docs.flatMap((document): ProfileImageItem[] => {
+      const data = document.data();
+      const imageUrl = ensureMediaUrl(typeof data.imageURL === 'string' ? data.imageURL : typeof data.imageUrl === 'string' ? data.imageUrl : '');
+      if (!imageUrl) return [];
+      const created = data.createdAt as Timestamp | Date | undefined;
+      const createdAtMs = created instanceof Date ? created.getTime() : typeof created?.toMillis === 'function' ? created.toMillis() : 0;
+      return [{ id: document.id, imageUrl, typeOfImage: typeof data.typeOfImage === 'string' ? data.typeOfImage : '', createdAtMs }];
+    }).sort((first, second) => second.createdAtMs - first.createdAtMs);
+  }
+
+  /**
+   * Uses an already-uploaded image for one purpose, like the website's Profile Customization. Covers keep the
+   * ordered-list format the cover gallery uses; the others store the plain image id.
+   */
+  public async assignExisting(userId: string, image: ProfileImageItem, use: ProfileImageUse): Promise<void> {
+    const imageId = image.id;
+    const assignments = await getDocs(query(collection(db, 'profileImageSetAs'), where('userId', '==', userId), where('setAs', '==', use)));
+    const profileImageId = use === 'coverProfile' ? [{ id: imageId, displayorder: 1 }] : imageId;
+    const batch = writeBatch(db);
+    if (assignments.empty) {
+      batch.set(doc(collection(db, 'profileImageSetAs')), { userId, setAs: use, profileImageId, gradient: null, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    } else {
+      assignments.docs.forEach((assignment) => batch.set(assignment.ref, { userId, setAs: use, profileImageId, gradient: null, updatedAt: serverTimestamp() }, { merge: true }));
+    }
+    // Keep the user doc's quick-read fields in step (same as uploading a new picture or cover).
+    if (use === 'profile') batch.set(doc(db, 'users', userId), { profilePicture: image.imageUrl, updatedAt: serverTimestamp() }, { merge: true });
+    if (use === 'coverProfile') batch.set(doc(db, 'users', userId), { coverPhoto: image.imageUrl, updatedAt: serverTimestamp() }, { merge: true });
+    await batch.commit();
   }
 }
 

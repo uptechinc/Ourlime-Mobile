@@ -48,7 +48,7 @@ export class FollowService {
                 success: true,
                 data: follow
             };
-        } catch (error) {
+        } catch {
             return {
                 success: false,
                 error: 'Failed to get follow status'
@@ -77,7 +77,7 @@ export class FollowService {
                 success: true,
                 data: { id: docRef.id, ...followData } as Follow
             };
-        } catch (error) {
+        } catch {
             return {
                 success: false,
                 error: 'Failed to follow user'
@@ -109,7 +109,7 @@ export class FollowService {
             return {
                 success: true
             };
-        } catch (error) {
+        } catch {
             return {
                 success: false,
                 error: 'Failed to unfollow user'
@@ -132,7 +132,7 @@ export class FollowService {
                 success: true,
                 data: followers
             };
-        } catch (error) {
+        } catch {
             return {
                 success: false,
                 error: 'Failed to get followers'
@@ -155,7 +155,7 @@ export class FollowService {
                 success: true,
                 data: following
             };
-        } catch (error) {
+        } catch {
             return {
                 success: false,
                 error: 'Failed to get following list'
@@ -174,7 +174,7 @@ export class FollowService {
             const following = (followingResponse.data as Follow[])?.length || 0;
 
             return { followers, following };
-        } catch (error) {
+        } catch {
             return { followers: 0, following: 0 };
         }
     }
