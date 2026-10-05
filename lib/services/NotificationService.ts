@@ -192,6 +192,16 @@ export class NotificationService {
     }
   }
 
+  /**
+   * Every notification (newest first, up to 500) so filters and "Newest first" cover the whole history rather than
+   * only the pages loaded so far.
+   */
+  public async fetchAll(userId: string, maxItems = 500): Promise<NotificationData[]> {
+    const parentRef = collection(doc(db, 'userNotifications', userId), 'items');
+    const snapshot = await getDocs(query(parentRef, orderBy('createdAt', 'desc'), limit(maxItems)));
+    return snapshot.docs.map((docSnap) => this.toNotification(docSnap, userId));
+  }
+
   public markAsRead(notificationId: string): Promise<void> { return this.mutate('read', [notificationId]); }
   public markAsUnread(notificationId: string): Promise<void> { return this.mutate('unread', [notificationId]); }
   public markManyAsRead(notificationIds: string[]): Promise<void> { return this.mutate('read', notificationIds); }

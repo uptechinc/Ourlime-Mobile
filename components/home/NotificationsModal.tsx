@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   View,
@@ -23,10 +23,12 @@ import { RelationshipService } from '@/lib/services/RelationshipService';
 import { AuthService } from '@/lib/services/AuthService';
 import { SkeletonNotificationRow } from './SkeletonLoaders';
 import type { NotificationData } from '@/lib/types/notification';
+import { NotificationService } from '@/lib/services/NotificationService';
 import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
+const notificationService = NotificationService.getInstance();
 
 type NotificationsModalProps = {
   visible?: boolean;
@@ -69,6 +71,10 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
 
   const [sortMode, setSortMode] = useState<SortMode>('unread_first');
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
+  // Type filters and "Newest first" work on the complete history (the default view pages through it).
+  const needsCompleteList = (activeFilter !== 'all' && activeFilter !== 'unread') || sortMode === 'newest_first';
+  const [completeList, setCompleteList] = useState<NotificationData[] | null>(null);
+  const [loadingCompleteList, setLoadingCompleteList] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [readSectionChoice, setReadSectionChoice] = useState<boolean | null>(null);
@@ -116,7 +122,22 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
     }
   };
 
+  useEffect(() => {
+    if (!needsCompleteList || !currentUserId) {
+      setCompleteList(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingCompleteList(true);
+    notificationService.fetchAll(currentUserId)
+      .then((all) => { if (!cancelled) setCompleteList(all); })
+      .catch((error: unknown) => console.warn('[NotificationsModal.loadCompleteList] Error:', error instanceof Error ? error.message : String(error)))
+      .then(() => { if (!cancelled) setLoadingCompleteList(false); });
+    return () => { cancelled = true; };
+  }, [needsCompleteList, currentUserId, notifications]);
+
   const handleLoadMore = async (requiresUserGesture = true) => {
+    if (needsCompleteList) return; // the complete list is already loaded
     const paginationKey = `${activeFilter}:${notifications.length}`;
     if (
       !hasMore
@@ -150,7 +171,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
 
   // Filter list
   const filteredNotifications = useMemo(() => {
-    let list = notifications;
+    let list = needsCompleteList && completeList ? completeList : notifications;
     if (activeFilter === 'unread') {
       list = list.filter((n) => !isItemRead(n));
     } else if (activeFilter === 'friend_request') {
@@ -161,7 +182,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
       list = list.filter((n) => n.type === activeFilter);
     }
     return list;
-  }, [notifications, activeFilter]);
+  }, [notifications, activeFilter, needsCompleteList, completeList]);
 
   // Sort list
   const sortedNotifications = useMemo(() => {
@@ -864,7 +885,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
               </Text>
             </View>
           )}
-          ListFooterComponent={loadingMore ? <ActivityIndicator color="#10b981" style={{ marginVertical: 16 }} /> : null}
+          ListFooterComponent={loadingMore || (loadingCompleteList && !completeList) ? <ActivityIndicator color="#10b981" style={{ marginVertical: 16 }} /> : null}
         />
         {feedback ? (
           <View pointerEvents="none" accessibilityLiveRegion="polite" style={{ position: 'absolute', left: 16, right: 16, bottom: 28, alignItems: 'center' }}>
