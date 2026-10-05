@@ -52,6 +52,9 @@ function createRefreshQueue(run: () => Promise<void>): () => Promise<void> {
 
 export const NotificationProvider = ({ children }: NotificationProviderProps) => {
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
+  // Latest list for local changes, so counts are computed once outside a state updater.
+  const notificationsRef = useRef<NotificationData[]>([]);
+  useEffect(() => { notificationsRef.current = notifications; }, [notifications]);
   const [isLoading, setIsLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
   const [readCount, setReadCount] = useState(0);
@@ -152,7 +155,8 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
     const removeIds = new Set(change.removeIds ?? []);
     const readIds = new Set(change.readIds ?? []);
     const unreadIds = new Set(change.unreadIds ?? []);
-    setNotifications((current) => {
+    const current = notificationsRef.current;
+    {
       const next = current
         .filter((notification) => !notification.id || !removeIds.has(notification.id))
         .map((notification) => {
@@ -167,8 +171,9 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
       setUnreadCount((count) => change.allRead ? 0 : Math.max(0, count - removedUnread - nowRead + nowUnread));
       setReadCount((count) => Math.max(0, count - removedRead + nowRead - nowUnread));
       setTotalCount((count) => Math.max(0, count - removedUnread - removedRead));
-      return next;
-    });
+      notificationsRef.current = next;
+      setNotifications(next);
+    }
   };
 
   const markAsRead = async (notificationId: string) => {
