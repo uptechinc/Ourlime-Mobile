@@ -372,20 +372,23 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                         accessibilityLabel="Go to the original message"
                         onPress={() => { if (msg.replyTo) onPressReply(msg.replyTo); }}
                         onLongPress={() => setShowActions(true)}
-                        style={({ pressed }) => ({
-                            backgroundColor: isOwn ? 'rgba(255,255,255,0.18)' : colors.control,
+                        // The quote sits above the bubble (on the chat background), so it uses surface colours on both sides.
+                        style={{
+                            backgroundColor: colors.elevated,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            alignSelf: isOwn ? 'flex-end' : 'flex-start',
                             borderLeftWidth: 3,
                             borderLeftColor: '#10b981',
                             borderRadius: 8,
                             padding: 7,
                             marginBottom: 4,
-                            opacity: pressed ? 0.7 : 1,
-                        })}
+                        }}
                     >
                         <Text style={{ fontSize: 11, fontWeight: '700', color: '#10b981', marginBottom: 2 }}>
                             {msg.replyTo.originalSenderId === currentUserId ? 'You' : friend.firstName}
                         </Text>
-                        <Text style={{ fontSize: 12, color: isOwn ? 'rgba(255,255,255,0.82)' : colors.mutedText }} numberOfLines={1}>
+                        <Text style={{ fontSize: 12, color: colors.secondaryText }} numberOfLines={1}>
                             {replyPreview ?? msg.replyTo.originalMessage}
                         </Text>
                     </Pressable>
