@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+// React's own JSX factory: NativeWind's Babel plugin rewrites JSX and createElement, but not direct calls to this.
+import { jsx as createNativeElement } from 'react/jsx-runtime';
 import {
     View,
     Text,
@@ -13,8 +15,12 @@ import {
     Pressable,
     Keyboard,
     FlatList,
+    ScrollView,
     Clipboard,
     type ImageSourcePropType,
+    type NativeScrollEvent,
+    type NativeSyntheticEvent,
+    type ScrollViewProps,
 } from 'react-native';
 import { toast } from 'sonner-native';
 import ReportPostModal from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ReportPostModal';
@@ -98,6 +104,37 @@ function formatMessageTime(ts: Timestamp | { seconds: number; nanoseconds: numbe
 
 function getMsgId(message: FullMessage): string {
     return messagingService.getMessageIdentity(message);
+}
+
+/** Reply timestamps are Firestore Timestamps from the app and plain {seconds, nanoseconds} maps from the website. */
+function readReplySeconds(value: unknown): number | undefined {
+    if (typeof value !== 'object' || value === null) return undefined;
+    if ('seconds' in value && typeof value.seconds === 'number') return value.seconds;
+    if ('_seconds' in value && typeof value._seconds === 'number') return value._seconds;
+    return undefined;
+}
+
+/** Index of a reply's original among the loaded messages (by id, else by send time and sender), or -1. */
+function findReplyTarget(messages: FullMessage[], reply: ReplyReference): number {
+    const byId = messages.findIndex((message) => getMsgId(message) === reply.messageId);
+    if (byId >= 0) return byId;
+    const seconds = readReplySeconds(reply.originalTimestamp);
+    if (seconds === undefined) return -1;
+    const sameSecond = (message: FullMessage) => message.timestamp.seconds === seconds;
+    const bySender = messages.findIndex((message) => sameSecond(message) && message.senderId === reply.originalSenderId);
+    return bySender >= 0 ? bySender : messages.findIndex(sameSecond);
+}
+
+// How far from the newest message the reader must scroll before "jump to latest" appears.
+const JUMP_TO_LATEST_DISTANCE = 600;
+
+/**
+ * The message list's scroll view, created outside NativeWind: its wrapper drops the `ref` of React Native
+ * 0.86's function-component ScrollView, which left the list unable to scroll programmatically (jumping to a reply
+ * or to the latest message silently did nothing).
+ */
+function renderMessageScrollView(props: ScrollViewProps): ReactElement<ScrollViewProps> {
+    return createNativeElement(ScrollView, props) as ReactElement<ScrollViewProps>;
 }
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥'];
@@ -256,6 +293,11 @@ type MessageBubbleProps = {
     onOpenVideo: (attachment: Attachment) => void;
     /** Quoted text for this message's reply box (voice notes / files have no text of their own). */
     replyPreview: string | null;
+    onPressReply: (reply: ReplyReference) => void;
+    /** Briefly tinted after jumping to this message from a reply. */
+    isHighlighted: boolean;
+    /** Only the newest message animates in; older pages and jump windows appear without motion. */
+    animateEntry: boolean;
     isStarred: boolean;
     onToggleStar: (msg: FullMessage) => void;
     onEdit: (msg: FullMessage) => void;
@@ -271,7 +313,7 @@ function notifyBusy(message: string): void {
     void interactionFeedbackService.play('warning');
 }
 
-function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact, onForward, onImagePress, onPreviewDoc, onOpenVideo, replyPreview, isStarred, onToggleStar, onEdit, onReport }: MessageBubbleProps) {
+function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact, onForward, onImagePress, onPreviewDoc, onOpenVideo, replyPreview, onPressReply, isHighlighted, animateEntry, isStarred, onToggleStar, onEdit, onReport }: MessageBubbleProps) {
     const { colors, isDark } = useAppTheme();
     const [showActions, setShowActions] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -304,7 +346,10 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
     }));
 
     return (
-        <Animated.View entering={FadeInUp.springify().damping(18).stiffness(220)}>
+        <Animated.View
+            entering={animateEntry ? FadeInUp.springify().damping(18).stiffness(220) : undefined}
+            style={{ backgroundColor: isHighlighted ? 'rgba(16,185,129,0.18)' : 'transparent' }}
+        >
         <Pressable
             onLongPress={() => setShowActions(true)}
             style={{
@@ -322,21 +367,28 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
 
             <View style={{ maxWidth: '78%' }}>
                 {msg.replyTo && (
-                    <View style={{
-                        backgroundColor: isOwn ? 'rgba(255,255,255,0.18)' : colors.control,
-                        borderLeftWidth: 3,
-                        borderLeftColor: '#10b981',
-                        borderRadius: 8,
-                        padding: 7,
-                        marginBottom: 4,
-                    }}>
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Go to the original message"
+                        onPress={() => { if (msg.replyTo) onPressReply(msg.replyTo); }}
+                        onLongPress={() => setShowActions(true)}
+                        style={({ pressed }) => ({
+                            backgroundColor: isOwn ? 'rgba(255,255,255,0.18)' : colors.control,
+                            borderLeftWidth: 3,
+                            borderLeftColor: '#10b981',
+                            borderRadius: 8,
+                            padding: 7,
+                            marginBottom: 4,
+                            opacity: pressed ? 0.7 : 1,
+                        })}
+                    >
                         <Text style={{ fontSize: 11, fontWeight: '700', color: '#10b981', marginBottom: 2 }}>
                             {msg.replyTo.originalSenderId === currentUserId ? 'You' : friend.firstName}
                         </Text>
                         <Text style={{ fontSize: 12, color: isOwn ? 'rgba(255,255,255,0.82)' : colors.mutedText }} numberOfLines={1}>
                             {replyPreview ?? msg.replyTo.originalMessage}
                         </Text>
-                    </View>
+                    </Pressable>
                 )}
 
                 {msg.isForwarded && !isDeleted && (
@@ -643,6 +695,18 @@ export default function ChatPage() {
         loading: isLoading,
         errorMessage: messageError,
         reload: reloadMessages,
+        mode: timelineMode,
+        windowKey,
+        windowTargetId,
+        hasOlder,
+        hasNewer,
+        loadingOlder,
+        loadingNewer,
+        newWhileDetached,
+        loadOlder,
+        loadNewer,
+        jumpToMessage,
+        refreshMessage,
         addMessage,
         clearMessages,
     } = useSimpleChatMessages(friendId ?? '', chatRoomId);
@@ -650,6 +714,17 @@ export default function ChatPage() {
         () => loadedMessages.filter((message) => !(message.deletedFor ?? []).includes(currentUserId)),
         [currentUserId, loadedMessages],
     );
+    const listRef = useRef<FlatList<FullMessage>>(null);
+    // Newest first for the inverted list, so the newest message sits at the bottom.
+    const listMessages = useMemo(() => [...messages].reverse(), [messages]);
+    const [highlightedId, setHighlightedId] = useState<string | null>(null);
+    const [isAwayFromLatest, setIsAwayFromLatest] = useState(false);
+    // After a jump loads a new window, the jumped-to message is centered once its rows are laid out.
+    const [pendingCenter, setPendingCenter] = useState<{ windowKey: number; id: string | null }>({ windowKey: 0, id: null });
+    if (pendingCenter.windowKey !== windowKey) {
+        setPendingCenter({ windowKey, id: windowTargetId });
+        setIsAwayFromLatest(false);
+    }
     const [messageText, setMessageText] = useState('');
     const [replyTo, setReplyTo] = useState<FullMessage | null>(null);
     const [isSending, setIsSending] = useState(false);
@@ -737,7 +812,7 @@ export default function ChatPage() {
     }, [friendId, currentUserId, messages.length]);
 
     useEffect(() => {
-        const latest = messages[0];
+        const latest = timelineMode === 'live' ? messages.at(-1) : undefined;
         if (!latest || latest.senderId !== friendId) return;
         const messageId = getMsgId(latest);
         if (latest.message === '[SYS:CALL_ENDED]') return;
@@ -746,7 +821,7 @@ export default function ChatPage() {
         if (Date.now() - latest.timestamp.toMillis() > 45_000) return;
         handledCallMessageRef.current = messageId;
         // Legacy call records remain visible, but current call signaling is handled globally.
-    }, [friendId, messages]);
+    }, [friendId, messages, timelineMode]);
 
     // Load wallpaper or random sticker background on entry
     useEffect(() => {
@@ -799,11 +874,12 @@ export default function ChatPage() {
     }, [friendId, currentUserId]);
 
     const getCallActiveForMessage = useCallback((index: number): boolean => {
-        for (let newerIndex = index - 1; newerIndex >= 0; newerIndex -= 1) {
+        for (let newerIndex = index + 1; newerIndex < messages.length; newerIndex += 1) {
             if (messages[newerIndex].message === '[SYS:CALL_ENDED]') return false;
         }
-        return true;
-    }, [messages]);
+        // In a jumped-to window the newer messages aren't loaded, so an old invite can't be shown as joinable.
+        return timelineMode === 'live';
+    }, [messages, timelineMode]);
 
     // Load friend profile
     useEffect(() => {
@@ -840,7 +916,7 @@ export default function ChatPage() {
             setMessageText('');
             try {
                 await messagingService.editMessage(friendId, currentUserId, target.timestamp.seconds, nextText, target.id);
-                await reloadMessages();
+                await refreshMessage(target);
                 toast.success('Message edited');
             } catch (error: unknown) {
                 console.error('[ChatScreen.editMessage] Error:', error);
@@ -927,7 +1003,7 @@ export default function ChatPage() {
         } finally {
             setIsSending(false);
         }
-    }, [addMessage, busyMessage, messageText, friendId, currentUserId, isSending, replyTo, pendingAttachment, isBlocked, editingMessage, reloadMessages]);
+    }, [addMessage, busyMessage, messageText, friendId, currentUserId, isSending, replyTo, pendingAttachment, isBlocked, editingMessage, refreshMessage]);
 
     // Start a call
     const callCoordinator = useCallCoordinator();
@@ -1078,24 +1154,24 @@ export default function ChatPage() {
         if (!friendId || !currentUserId) return;
         try {
             await messagingService.deleteMessage(friendId, currentUserId, msg.timestamp.seconds, deleteForEveryone, msg.id);
-            await reloadMessages();
+            await refreshMessage(msg);
             toast.success(deleteForEveryone ? 'Deleted for everyone' : 'Deleted for you');
         } catch (error: unknown) {
             console.error('[ChatScreen.handleDelete] Error:', error);
             toast.error(error instanceof Error ? error.message : 'The message could not be deleted.');
         }
-    }, [friendId, currentUserId, reloadMessages]);
+    }, [friendId, currentUserId, refreshMessage]);
 
     const handleReact = useCallback(async (msg: FullMessage, emoji: string) => {
         if (!currentUserId || isBlocked) return;
         try {
             await messagingService.toggleReaction(chatRoomId, msg.timestamp.seconds, emoji, currentUserId, msg.id);
-            await reloadMessages();
+            await refreshMessage(msg);
         } catch (error: unknown) {
             console.error('[ChatScreen.handleReact] Error:', error);
             toast.error('The reaction could not be saved.');
         }
-    }, [chatRoomId, currentUserId, isBlocked, reloadMessages]);
+    }, [chatRoomId, currentUserId, isBlocked, refreshMessage]);
 
     const handleForward = useCallback((msg: FullMessage) => {
         setForwardMessage(msg);
@@ -1134,6 +1210,91 @@ export default function ChatPage() {
         clearMessages();
     }, [chatRoomId, clearMessages]);
 
+    useEffect(() => {
+        if (!highlightedId) return;
+        const timer = setTimeout(() => setHighlightedId(null), 2500);
+        return () => clearTimeout(timer);
+    }, [highlightedId]);
+
+    // `index` is the message's position oldest-first; the inverted list counts from the newest.
+    const scrollToLoadedMessage = useCallback((index: number) => {
+        setHighlightedId(getMsgId(messages[index]));
+        listRef.current?.scrollToIndex({ index: messages.length - 1 - index, animated: true, viewPosition: 0.5 });
+    }, [messages]);
+
+    // WhatsApp-style: tapping a reply's quote goes to the original. If it isn't loaded, only the messages around
+    // it are loaded (not everything in between); scrolling then pages older/newer from there.
+    const handleJumpToReply = useCallback(async (reply: ReplyReference) => {
+        const loadedIndex = findReplyTarget(messages, reply);
+        if (loadedIndex >= 0) {
+            scrollToLoadedMessage(loadedIndex);
+            return;
+        }
+        try {
+            const targetId = await jumpToMessage({
+                messageId: reply.messageId,
+                timestampSeconds: readReplySeconds(reply.originalTimestamp),
+                senderId: reply.originalSenderId,
+            });
+            if (!targetId) {
+                toast('The original message is no longer available');
+                return;
+            }
+            setHighlightedId(targetId);
+        } catch (error: unknown) {
+            console.error('[ChatScreen.handleJumpToReply] Error:', error);
+            toast.error('The original message could not be loaded.');
+        }
+    }, [jumpToMessage, messages, scrollToLoadedMessage]);
+
+    const handleJumpToStarred = useCallback((message: FullMessage) => {
+        setShowStarred(false);
+        const index = messages.findIndex((candidate) => getMsgId(candidate) === getMsgId(message));
+        if (index >= 0) scrollToLoadedMessage(index);
+    }, [messages, scrollToLoadedMessage]);
+
+    const handleJumpToLatest = useCallback(() => {
+        setIsAwayFromLatest(false);
+        if (timelineMode === 'detached') {
+            void reloadMessages();
+            return;
+        }
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }, [reloadMessages, timelineMode]);
+
+    // Fired once the rows of a freshly loaded window are laid out (all of them render on the first pass).
+    const handleListContentSizeChange = useCallback(() => {
+        if (!pendingCenter.id) return;
+        const index = listMessages.findIndex((message) => getMsgId(message) === pendingCenter.id);
+        setPendingCenter((current) => ({ ...current, id: null }));
+        if (index >= 0) listRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0.5 });
+    }, [listMessages, pendingCenter.id]);
+
+    // A loaded message far off-screen hasn't been laid out yet: load the window around it instead of guessing.
+    const handleScrollToIndexFailed = useCallback(({ index }: { index: number }) => {
+        const target = listMessages[index];
+        if (!target) return;
+        void jumpToMessage({ messageId: getMsgId(target), timestampSeconds: target.timestamp.seconds, senderId: target.senderId })
+            .then((targetId) => { if (targetId) setHighlightedId(targetId); })
+            .catch((error: unknown) => console.error('[ChatScreen.handleScrollToIndexFailed] Error:', error));
+    }, [jumpToMessage, listMessages]);
+
+    // Inverted list: offset 0 is the newest message.
+    const handleListScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const away = event.nativeEvent.contentOffset.y > JUMP_TO_LATEST_DISTANCE;
+        setIsAwayFromLatest((current) => (current === away ? current : away));
+    }, []);
+
+    const handleReachedOldest = useCallback(() => {
+        void loadOlder();
+    }, [loadOlder]);
+
+    const handleReachedNewest = useCallback(() => {
+        void loadNewer();
+    }, [loadNewer]);
+
+    const showJumpToLatest = timelineMode === 'detached' || isAwayFromLatest;
+
     // Lets reply boxes show what they replied to when the stored quote is empty (voice notes, files, stickers).
     const messagesById = useMemo(() => new Map(messages.map((message) => [getMsgId(message), message])), [messages]);
 
@@ -1148,7 +1309,7 @@ export default function ChatPage() {
                     currentUserId={currentUserId}
                     friendFirstName={friend?.firstName ?? 'Friend'}
                     onJoinCall={handleStartCall}
-                    callActive={isCallInvite ? getCallActiveForMessage(index) : false}
+                    callActive={isCallInvite ? getCallActiveForMessage(messages.length - 1 - index) : false}
                 />
             );
         }
@@ -1166,13 +1327,16 @@ export default function ChatPage() {
                 onPreviewDoc={setPreviewDocAttachment}
                 onOpenVideo={setVideoViewer}
                 replyPreview={message.replyTo ? replyPreviewText(message.replyTo.originalMessage, messagesById.get(message.replyTo.messageId)) : null}
+                onPressReply={handleJumpToReply}
+                isHighlighted={highlightedId === getMsgId(message)}
+                animateEntry={timelineMode === 'live' && index === 0}
                 isStarred={starredMessageIds.has(getMsgId(message))}
                 onToggleStar={handleToggleStar}
                 onEdit={handleEditRequest}
                 onReport={setReportMessage}
             />
         );
-    }, [currentUserId, friend, getCallActiveForMessage, handleDelete, handleForward, handleReact, handleStartCall, messagesById, starredMessageIds, handleToggleStar, handleEditRequest]);
+    }, [currentUserId, friend, getCallActiveForMessage, handleDelete, handleForward, handleJumpToReply, handleReact, handleStartCall, highlightedId, messages.length, messagesById, starredMessageIds, handleToggleStar, handleEditRequest, timelineMode]);
 
     const activeBg = wallpaperUri ?? randomStickerBg;
 
@@ -1255,24 +1419,71 @@ export default function ChatPage() {
                     ) : null}
 
                     {messages.length > 0 ? (
+                    <View style={{ flex: 1 }}>
                     <FlatList
-                        data={messages}
+                        // A new window (jump to a reply, or back to the latest) re-anchors the list from scratch.
+                        key={`chat-window-${windowKey}`}
+                        ref={listRef}
+                        data={listMessages}
                         inverted
+                        extraData={highlightedId}
                         keyExtractor={getMsgId}
                         style={{ flex: 1, backgroundColor: activeBg ? 'transparent' : colors.canvas }}
                         contentContainerStyle={messageListContentStyle}
                         showsVerticalScrollIndicator={false}
                         renderItem={renderMessage}
-                        // Inverted list: the header sits at the bottom, under the newest message.
-                        ListHeaderComponent={callElsewhereNotice ? (
-                            <View accessibilityRole="text" accessibilityLiveRegion="polite" style={{ alignItems: 'center', marginVertical: 10, paddingHorizontal: 12 }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(100,116,139,0.1)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, gap: 6 }}>
-                                    <Icon name="phone-call" size={12} color="#10b981" />
-                                    <Text style={{ fontSize: 12, color: colors.mutedText, fontWeight: '500' }}>{callElsewhereNotice}</Text>
-                                </View>
-                            </View>
+                        renderScrollComponent={renderMessageScrollView}
+                        // A jump window is small (~40 rows): render it all so the target can be centered exactly.
+                        initialNumToRender={pendingCenter.id ? listMessages.length : undefined}
+                        onContentSizeChange={handleListContentSizeChange}
+                        onScrollToIndexFailed={handleScrollToIndexFailed}
+                        // Keeps the reader's place when newer messages are added below; follows new messages only
+                        // while at the newest message (not in a jumped-to window).
+                        maintainVisibleContentPosition={{
+                            minIndexForVisible: 0,
+                            autoscrollToTopThreshold: timelineMode === 'live' ? 80 : undefined,
+                        }}
+                        // Inverted: the end is the top (older messages), the start is the bottom (newer ones).
+                        onEndReached={hasOlder ? handleReachedOldest : undefined}
+                        onEndReachedThreshold={0.5}
+                        onStartReached={timelineMode === 'detached' && hasNewer ? handleReachedNewest : undefined}
+                        onStartReachedThreshold={0.5}
+                        onScroll={handleListScroll}
+                        scrollEventThrottle={64}
+                        ListFooterComponent={loadingOlder ? (
+                            <ActivityIndicator style={{ marginVertical: 10 }} color={colors.accent} />
                         ) : null}
+                        // Inverted list: the header sits at the bottom, under the newest message.
+                        ListHeaderComponent={(
+                            <>
+                                {loadingNewer ? <ActivityIndicator style={{ marginVertical: 10 }} color={colors.accent} /> : null}
+                                {callElsewhereNotice ? (
+                                    <View accessibilityRole="text" accessibilityLiveRegion="polite" style={{ alignItems: 'center', marginVertical: 10, paddingHorizontal: 12 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(100,116,139,0.1)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, gap: 6 }}>
+                                            <Icon name="phone-call" size={12} color="#10b981" />
+                                            <Text style={{ fontSize: 12, color: colors.mutedText, fontWeight: '500' }}>{callElsewhereNotice}</Text>
+                                        </View>
+                                    </View>
+                                ) : null}
+                            </>
+                        )}
                     />
+                    {showJumpToLatest ? (
+                        <TouchableOpacity
+                            accessibilityRole="button"
+                            accessibilityLabel={newWhileDetached > 0 ? `Jump to latest, ${newWhileDetached} new` : 'Jump to latest message'}
+                            onPress={handleJumpToLatest}
+                            style={{ position: 'absolute', right: 14, bottom: 14, width: 42, height: 42, borderRadius: 21, backgroundColor: colors.elevated, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }}
+                        >
+                            <Icon name="chevrons-down" size={20} color={colors.text} />
+                            {newWhileDetached > 0 ? (
+                                <View style={{ position: 'absolute', top: -6, right: -4, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: '#10b981', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Text style={{ color: '#ffffff', fontSize: 11, fontWeight: '800' }}>{newWhileDetached > 99 ? '99+' : newWhileDetached}</Text>
+                                </View>
+                            ) : null}
+                        </TouchableOpacity>
+                    ) : null}
+                    </View>
                     ) : isLoading ? (
                         <ChatConversationSkeleton />
                     ) : (
@@ -1701,10 +1912,15 @@ export default function ChatPage() {
                             keyExtractor={getMsgId}
                             ListEmptyComponent={<Text style={{ color: colors.mutedText, paddingVertical: 24, textAlign: 'center' }}>No starred messages yet. Long-press a message and tap Star.</Text>}
                             renderItem={({ item }) => (
-                                <View style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                                <TouchableOpacity
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Go to this message"
+                                    onPress={() => handleJumpToStarred(item)}
+                                    style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                                >
                                     <Text style={{ color: colors.accentText, fontSize: 12, fontWeight: '800' }}>{item.senderId === currentUserId ? 'You' : friend?.firstName ?? 'Friend'} · {new Date(item.timestamp.seconds * 1000).toLocaleString()}</Text>
                                     <Text style={{ color: colors.text, marginTop: 3 }}>{item.message || (item.attachment ? 'Attachment' : item.stickerUrl || item.stickerData ? 'Sticker' : item.audioUrl || item.voiceNoteData ? 'Voice message' : 'Message')}</Text>
-                                </View>
+                                </TouchableOpacity>
                             )}
                         />
                     </Pressable>

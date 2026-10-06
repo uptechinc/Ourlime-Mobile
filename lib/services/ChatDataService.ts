@@ -12,10 +12,12 @@ import {
   runTransaction,
   serverTimestamp,
   startAfter,
+  startAt,
   Timestamp,
   updateDoc,
   where,
   writeBatch,
+  type CollectionReference,
   type DocumentData,
   type DocumentReference,
   type DocumentSnapshot,
@@ -52,6 +54,35 @@ export type ChatMessagePage = {
   hasMore: boolean;
   clearedAt: number | null;
 };
+
+/** Messages around one message (for jumping to a reply's original), oldest first. */
+export type ChatMessageWindow = {
+  items: DocumentData[];
+  targetIndex: number;
+  olderCursor: string | null;
+  hasOlder: boolean;
+  newerCursor: string | null;
+  hasNewer: boolean;
+  clearedAt: number | null;
+};
+
+export type MessageWindowTarget = {
+  messageId?: string;
+  timestampSeconds?: number;
+  senderId?: string;
+};
+
+type MessagePageContext = {
+  clearedAt: Timestamp | null;
+  clearedAtMillis: number | null;
+  allLegacyMessages: DocumentData[];
+  messagesCollection: CollectionReference;
+};
+
+/** Messages loaded on each side of a jump target. */
+const MESSAGE_WINDOW_HALF = 20;
+/** Newer-page cursor meaning "the oldest messages in the messages subcollection" (after the old array ran out). */
+const NEWER_HEAD_CURSOR = 'head:';
 
 export type OutgoingMessage = {
   receiverId: string;
@@ -298,29 +329,12 @@ export class ChatDataService {
   // ── Message pages (web GET /api/messaging) ──
 
   public async getMessagePage(peerId: string, requestedLimit = 30, cursor: string | null = null): Promise<ChatMessagePage> {
-    const viewerId = this.requireViewerId();
-    if (!peerId) throw new Error('peerId is required');
-    const pageLimit = Number.isFinite(requestedLimit) ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 50) : 30;
-    const chatId = this.getChatId(viewerId, peerId);
-    const chat = await getDoc(doc(db, 'chats', chatId));
-    if (chat.exists() && !readStringList(chat.data().participants).includes(viewerId)) throw new Error('Conversation access denied');
-
-    const chatData = chat.data() ?? {};
-    const clearedAtValue = isRecord(chatData.clearedAt) ? chatData.clearedAt[viewerId] : null;
-    const clearedAt = clearedAtValue instanceof Timestamp ? clearedAtValue : null;
-    const clearedAtMillis = clearedAt?.toMillis() ?? null;
-    const migrationComplete = isRecord(chatData.legacyMessageMigration) && chatData.legacyMessageMigration.completed === true;
-    const allLegacyMessages = !migrationComplete && Array.isArray(chatData.messages)
-      ? chatData.messages.filter(isRecord)
-        .filter((message) => !clearedAt || !(message.timestamp instanceof Timestamp) || message.timestamp.toMillis() > clearedAt.toMillis())
-        .sort(compareNewestFirst)
-      : [];
-    const messagesCollection = collection(db, 'chats', chatId, 'messages');
+    const pageLimit = this.clampPageLimit(requestedLimit);
+    const context = await this.loadMessageContext(peerId);
+    const { clearedAtMillis, allLegacyMessages, messagesCollection } = context;
 
     if (cursor?.startsWith('legacy:')) {
-      const migratedHead = await getDocs(query(messagesCollection, orderBy('timestamp', 'desc'), limit(100)));
-      const migratedIds = new Set(migratedHead.docs.map((document) => document.id));
-      const legacyMessages = allLegacyMessages.filter((message) => typeof message.id !== 'string' || !migratedIds.has(message.id));
+      const legacyMessages = await this.legacyMessagesOutsideHead(context);
       const start = Number(cursor.slice(7));
       const items = legacyMessages.slice(start, start + pageLimit);
       const nextOffset = start + items.length;
@@ -328,7 +342,7 @@ export class ChatDataService {
       return { items, nextCursor: hasMore ? `legacy:${nextOffset}` : null, hasMore, clearedAt: clearedAtMillis };
     }
 
-    const constraints: QueryConstraint[] = clearedAt ? [where('timestamp', '>', clearedAt), orderBy('timestamp', 'desc')] : [orderBy('timestamp', 'desc')];
+    const constraints = this.orderedConstraints(context, 'desc');
     if (cursor) {
       const cursorDocument = await getDoc(doc(messagesCollection, cursor));
       if (cursorDocument.exists()) constraints.push(startAfter(cursorDocument));
@@ -349,6 +363,152 @@ export class ChatDataService {
     const items = allLegacyMessages.slice(0, pageLimit);
     const hasMore = items.length < allLegacyMessages.length;
     return { items, nextCursor: hasMore ? `legacy:${items.length}` : null, hasMore, clearedAt: clearedAtMillis };
+  }
+
+  /** Messages sent after the cursor message, oldest first (scrolling down from a jumped-to message). */
+  public async getNewerPage(peerId: string, cursor: string, requestedLimit = 30): Promise<ChatMessagePage> {
+    const pageLimit = this.clampPageLimit(requestedLimit);
+    const context = await this.loadMessageContext(peerId);
+    const { clearedAtMillis, messagesCollection } = context;
+
+    if (cursor.startsWith('legacynewer:')) {
+      const legacyMessages = await this.legacyMessagesOutsideHead(context);
+      const end = Math.min(Math.max(Number(cursor.slice(12)) || 0, 0), legacyMessages.length);
+      const start = Math.max(0, end - pageLimit);
+      const items = legacyMessages.slice(start, end).reverse();
+      // Once the old array runs out, continue with the oldest messages in the subcollection.
+      return { items, nextCursor: start > 0 ? `legacynewer:${start}` : NEWER_HEAD_CURSOR, hasMore: true, clearedAt: clearedAtMillis };
+    }
+
+    const constraints = this.orderedConstraints(context, 'asc');
+    if (cursor !== NEWER_HEAD_CURSOR) {
+      const cursorDocument = await getDoc(doc(messagesCollection, cursor));
+      if (!cursorDocument.exists()) return { items: [], nextCursor: null, hasMore: false, clearedAt: clearedAtMillis };
+      constraints.push(startAfter(cursorDocument));
+    }
+    const messageSnapshot = await getDocs(query(messagesCollection, ...constraints, limit(pageLimit + 1)));
+    const documents = messageSnapshot.docs.slice(0, pageLimit);
+    const hasMore = messageSnapshot.docs.length > pageLimit;
+    return {
+      items: documents.map((document) => ({ ...document.data(), id: document.id })),
+      nextCursor: hasMore ? documents.at(-1)?.id ?? null : null,
+      hasMore,
+      clearedAt: clearedAtMillis,
+    };
+  }
+
+  /**
+   * A small window of messages around one message, so a reply can jump to its original without loading the
+   * whole history in between. Returns null when the message no longer exists (deleted or cleared).
+   */
+  public async getMessageWindow(peerId: string, target: MessageWindowTarget): Promise<ChatMessageWindow | null> {
+    const context = await this.loadMessageContext(peerId);
+    const { clearedAt, clearedAtMillis, messagesCollection } = context;
+
+    let targetDocument: DocumentSnapshot | null = null;
+    if (target.messageId && !target.messageId.startsWith('legacy:') && !target.messageId.includes('/')) {
+      const byId = await getDoc(doc(messagesCollection, target.messageId));
+      if (byId.exists()) targetDocument = byId;
+    }
+    if (!targetDocument && target.timestampSeconds) {
+      const seconds = target.timestampSeconds;
+      const sameSecond = await getDocs(query(
+        messagesCollection,
+        where('timestamp', '>=', new Timestamp(seconds, 0)),
+        where('timestamp', '<', new Timestamp(seconds + 1, 0)),
+        limit(10),
+      ));
+      targetDocument = sameSecond.docs.find((candidate) => candidate.data().senderId === target.senderId) ?? sameSecond.docs[0] ?? null;
+    }
+
+    if (targetDocument) {
+      const targetTime: unknown = targetDocument.data()?.timestamp;
+      if (clearedAt && targetTime instanceof Timestamp && targetTime.toMillis() <= clearedAt.toMillis()) return null;
+      const [olderSnapshot, newerSnapshot] = await Promise.all([
+        getDocs(query(messagesCollection, ...this.orderedConstraints(context, 'desc'), startAt(targetDocument), limit(MESSAGE_WINDOW_HALF + 2))),
+        getDocs(query(messagesCollection, ...this.orderedConstraints(context, 'asc'), startAfter(targetDocument), limit(MESSAGE_WINDOW_HALF + 1))),
+      ]);
+      // Newest first, starting with the target itself.
+      const olderDocuments = olderSnapshot.docs.slice(0, MESSAGE_WINDOW_HALF + 1);
+      const newerDocuments = newerSnapshot.docs.slice(0, MESSAGE_WINDOW_HALF);
+      const moreOlderInSubcollection = olderSnapshot.docs.length > MESSAGE_WINDOW_HALF + 1;
+      // Unmigrated chats keep their oldest messages in the chat document's array.
+      const hasLegacyOlder = !moreOlderInSubcollection && context.allLegacyMessages.length > 0;
+      const hasNewer = newerSnapshot.docs.length > MESSAGE_WINDOW_HALF;
+      const older = olderDocuments.map((document) => ({ ...document.data(), id: document.id })).reverse();
+      return {
+        items: [...older, ...newerDocuments.map((document) => ({ ...document.data(), id: document.id }))],
+        targetIndex: older.length - 1,
+        olderCursor: moreOlderInSubcollection ? olderDocuments.at(-1)?.id ?? null : hasLegacyOlder ? 'legacy:0' : null,
+        hasOlder: moreOlderInSubcollection || hasLegacyOlder,
+        newerCursor: hasNewer ? newerDocuments.at(-1)?.id ?? null : null,
+        hasNewer,
+        clearedAt: clearedAtMillis,
+      };
+    }
+
+    const legacyMessages = await this.legacyMessagesOutsideHead(context);
+    let index = target.messageId ? legacyMessages.findIndex((message) => message.id === target.messageId) : -1;
+    if (index < 0 && target.timestampSeconds) {
+      const sameSecond = (message: DocumentData) => readSeconds(message.timestamp) === target.timestampSeconds;
+      index = legacyMessages.findIndex((message) => sameSecond(message) && message.senderId === target.senderId);
+      if (index < 0) index = legacyMessages.findIndex(sameSecond);
+    }
+    if (index < 0) return null;
+    const olderEnd = index + MESSAGE_WINDOW_HALF + 1;
+    const newerStart = Math.max(0, index - MESSAGE_WINDOW_HALF);
+    const older = legacyMessages.slice(index, olderEnd).reverse();
+    return {
+      items: [...older, ...legacyMessages.slice(newerStart, index).reverse()],
+      targetIndex: older.length - 1,
+      olderCursor: olderEnd < legacyMessages.length ? `legacy:${olderEnd}` : null,
+      hasOlder: olderEnd < legacyMessages.length,
+      newerCursor: newerStart > 0 ? `legacynewer:${newerStart}` : NEWER_HEAD_CURSOR,
+      hasNewer: true,
+      clearedAt: clearedAtMillis,
+    };
+  }
+
+  private clampPageLimit(requestedLimit: number): number {
+    return Number.isFinite(requestedLimit) ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 50) : 30;
+  }
+
+  private async loadMessageContext(peerId: string): Promise<MessagePageContext> {
+    const viewerId = this.requireViewerId();
+    if (!peerId) throw new Error('peerId is required');
+    const chatId = this.getChatId(viewerId, peerId);
+    const chat = await getDoc(doc(db, 'chats', chatId));
+    if (chat.exists() && !readStringList(chat.data().participants).includes(viewerId)) throw new Error('Conversation access denied');
+
+    const chatData = chat.data() ?? {};
+    const clearedAtValue = isRecord(chatData.clearedAt) ? chatData.clearedAt[viewerId] : null;
+    const clearedAt = clearedAtValue instanceof Timestamp ? clearedAtValue : null;
+    const migrationComplete = isRecord(chatData.legacyMessageMigration) && chatData.legacyMessageMigration.completed === true;
+    const allLegacyMessages = !migrationComplete && Array.isArray(chatData.messages)
+      ? chatData.messages.filter(isRecord)
+        .filter((message) => !clearedAt || !(message.timestamp instanceof Timestamp) || message.timestamp.toMillis() > clearedAt.toMillis())
+        .sort(compareNewestFirst)
+      : [];
+    return {
+      clearedAt,
+      clearedAtMillis: clearedAt?.toMillis() ?? null,
+      allLegacyMessages,
+      messagesCollection: collection(db, 'chats', chatId, 'messages'),
+    };
+  }
+
+  /** Old-array messages that haven't been copied into the newest part of the messages subcollection. */
+  private async legacyMessagesOutsideHead(context: MessagePageContext): Promise<DocumentData[]> {
+    if (context.allLegacyMessages.length === 0) return [];
+    const migratedHead = await getDocs(query(context.messagesCollection, orderBy('timestamp', 'desc'), limit(100)));
+    const migratedIds = new Set(migratedHead.docs.map((document) => document.id));
+    return context.allLegacyMessages.filter((message) => typeof message.id !== 'string' || !migratedIds.has(message.id));
+  }
+
+  private orderedConstraints(context: MessagePageContext, direction: 'asc' | 'desc'): QueryConstraint[] {
+    return context.clearedAt
+      ? [where('timestamp', '>', context.clearedAt), orderBy('timestamp', direction)]
+      : [orderBy('timestamp', direction)];
   }
 
   // ── Sending (web POST /api/messaging) ──
