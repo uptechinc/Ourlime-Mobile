@@ -325,9 +325,10 @@ export class MessagingService {
         chatRoomId: string,
         messageTimestamp: number,
         emoji: string,
-        userId: string
+        userId: string,
+        messageId?: string
     ): Promise<void> {
-        await this.chatData.applyMessageAction({ action: 'react', chatId: chatRoomId, timestampSeconds: messageTimestamp, emoji });
+        await this.chatData.applyMessageAction({ action: 'react', chatId: chatRoomId, messageId, timestampSeconds: messageTimestamp, emoji });
     }
 
     /**
@@ -349,22 +350,17 @@ export class MessagingService {
         receiverId: string,
         senderId: string,
         messageTimestamp: number,
-        deleteForEveryone: boolean
-    ): Promise<boolean> {
-        try {
-            const chatRoomId = this.getChatRoomId(senderId, receiverId);
-            await this.chatData.applyMessageAction({ action: 'delete', chatId: chatRoomId, timestampSeconds: messageTimestamp, deleteForEveryone });
-            return true;
-        } catch (error) {
-            console.error('[MessagingService.deleteMessage]', error);
-            return false;
-        }
+        deleteForEveryone: boolean,
+        messageId?: string
+    ): Promise<void> {
+        const chatRoomId = this.getChatRoomId(senderId, receiverId);
+        await this.chatData.applyMessageAction({ action: 'delete', chatId: chatRoomId, messageId, timestampSeconds: messageTimestamp, deleteForEveryone });
     }
 
     /** Edits your own text message (the server enforces the 20-minute window and sender check). */
-    public async editMessage(receiverId: string, senderId: string, messageTimestamp: number, nextText: string): Promise<void> {
+    public async editMessage(receiverId: string, senderId: string, messageTimestamp: number, nextText: string, messageId?: string): Promise<void> {
         const chatRoomId = this.getChatRoomId(senderId, receiverId);
-        await this.chatData.applyMessageAction({ action: 'edit', chatId: chatRoomId, timestampSeconds: messageTimestamp, message: nextText });
+        await this.chatData.applyMessageAction({ action: 'edit', chatId: chatRoomId, messageId, timestampSeconds: messageTimestamp, message: nextText });
     }
 
     /** Starred messages live at users/{uid}/starredMessages/{friendId}_{messageId} (same as the website). */

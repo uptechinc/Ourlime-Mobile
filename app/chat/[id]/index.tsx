@@ -26,6 +26,7 @@ import Icon from 'react-native-vector-icons/Feather';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthService, type UserProfile } from '@/lib/services/AuthService';
 import { messagingService, ChatUploadCancelledError, type FullMessage, type Attachment } from '@/lib/messaging/MessagingService';
+import { describeMessageForReply, replyPreviewText } from '@/lib/messaging/replyPreview';
 import { checkChatAttachment, maxVideoSecondsForLimit, readFileSize, resolveChatMimeType, CHAT_IMAGE_MAX_DIMENSION, MAX_CHAT_FILE_BYTES, formatMegabytes } from '@/lib/messaging/ChatAttachmentPolicy';
 import ChatVideoViewer from '@/components/chat/ChatVideoViewer';
 import { ChatImageBubble, ChatVideoBubble } from '@/components/chat/ChatMediaBubbles';
@@ -253,6 +254,8 @@ type MessageBubbleProps = {
     onImagePress: (url: string) => void;
     onPreviewDoc: (attachment: Attachment) => void;
     onOpenVideo: (attachment: Attachment) => void;
+    /** Quoted text for this message's reply box (voice notes / files have no text of their own). */
+    replyPreview: string | null;
     isStarred: boolean;
     onToggleStar: (msg: FullMessage) => void;
     onEdit: (msg: FullMessage) => void;
@@ -268,7 +271,7 @@ function notifyBusy(message: string): void {
     void interactionFeedbackService.play('warning');
 }
 
-function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact, onForward, onImagePress, onPreviewDoc, onOpenVideo, isStarred, onToggleStar, onEdit, onReport }: MessageBubbleProps) {
+function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact, onForward, onImagePress, onPreviewDoc, onOpenVideo, replyPreview, isStarred, onToggleStar, onEdit, onReport }: MessageBubbleProps) {
     const { colors, isDark } = useAppTheme();
     const [showActions, setShowActions] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -331,7 +334,7 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                             {msg.replyTo.originalSenderId === currentUserId ? 'You' : friend.firstName}
                         </Text>
                         <Text style={{ fontSize: 12, color: isOwn ? 'rgba(255,255,255,0.82)' : colors.mutedText }} numberOfLines={1}>
-                            {msg.replyTo.originalMessage}
+                            {replyPreview ?? msg.replyTo.originalMessage}
                         </Text>
                     </View>
                 )}
@@ -836,7 +839,7 @@ export default function ChatPage() {
             setEditingMessage(null);
             setMessageText('');
             try {
-                await messagingService.editMessage(friendId, currentUserId, target.timestamp.seconds, nextText);
+                await messagingService.editMessage(friendId, currentUserId, target.timestamp.seconds, nextText, target.id);
                 await reloadMessages();
                 toast.success('Message edited');
             } catch (error: unknown) {
@@ -860,7 +863,7 @@ export default function ChatPage() {
         if (replyTo) {
             replyRef = {
                 messageId: getMsgId(replyTo),
-                originalMessage: replyTo.message,
+                originalMessage: describeMessageForReply(replyTo),
                 originalSenderId: replyTo.senderId,
                 originalTimestamp: replyTo.timestamp,
             };
@@ -1073,14 +1076,25 @@ export default function ChatPage() {
 
     const handleDelete = useCallback(async (msg: FullMessage, deleteForEveryone: boolean) => {
         if (!friendId || !currentUserId) return;
-        await messagingService.deleteMessage(friendId, currentUserId, msg.timestamp.seconds, deleteForEveryone);
-        await reloadMessages();
+        try {
+            await messagingService.deleteMessage(friendId, currentUserId, msg.timestamp.seconds, deleteForEveryone, msg.id);
+            await reloadMessages();
+            toast.success(deleteForEveryone ? 'Deleted for everyone' : 'Deleted for you');
+        } catch (error: unknown) {
+            console.error('[ChatScreen.handleDelete] Error:', error);
+            toast.error(error instanceof Error ? error.message : 'The message could not be deleted.');
+        }
     }, [friendId, currentUserId, reloadMessages]);
 
     const handleReact = useCallback(async (msg: FullMessage, emoji: string) => {
         if (!currentUserId || isBlocked) return;
-        await messagingService.toggleReaction(chatRoomId, msg.timestamp.seconds, emoji, currentUserId);
-        await reloadMessages();
+        try {
+            await messagingService.toggleReaction(chatRoomId, msg.timestamp.seconds, emoji, currentUserId, msg.id);
+            await reloadMessages();
+        } catch (error: unknown) {
+            console.error('[ChatScreen.handleReact] Error:', error);
+            toast.error('The reaction could not be saved.');
+        }
     }, [chatRoomId, currentUserId, isBlocked, reloadMessages]);
 
     const handleForward = useCallback((msg: FullMessage) => {
@@ -1120,6 +1134,9 @@ export default function ChatPage() {
         clearMessages();
     }, [chatRoomId, clearMessages]);
 
+    // Lets reply boxes show what they replied to when the stored quote is empty (voice notes, files, stickers).
+    const messagesById = useMemo(() => new Map(messages.map((message) => [getMsgId(message), message])), [messages]);
+
     const renderMessage = useCallback(({ item: message, index }: { item: FullMessage; index: number }) => {
         const isCallEnded = message.message === '[SYS:CALL_ENDED]';
         const isCallInvite = message.message === '[SYS:VIDEO_CALL_INVITE]' || message.message === '[SYS:VOICE_CALL_INVITE]';
@@ -1148,13 +1165,14 @@ export default function ChatPage() {
                 onImagePress={setLightboxUrl}
                 onPreviewDoc={setPreviewDocAttachment}
                 onOpenVideo={setVideoViewer}
+                replyPreview={message.replyTo ? replyPreviewText(message.replyTo.originalMessage, messagesById.get(message.replyTo.messageId)) : null}
                 isStarred={starredMessageIds.has(getMsgId(message))}
                 onToggleStar={handleToggleStar}
                 onEdit={handleEditRequest}
                 onReport={setReportMessage}
             />
         );
-    }, [currentUserId, friend, getCallActiveForMessage, handleDelete, handleForward, handleReact, handleStartCall, starredMessageIds, handleToggleStar, handleEditRequest]);
+    }, [currentUserId, friend, getCallActiveForMessage, handleDelete, handleForward, handleReact, handleStartCall, messagesById, starredMessageIds, handleToggleStar, handleEditRequest]);
 
     const activeBg = wallpaperUri ?? randomStickerBg;
 
@@ -1399,7 +1417,7 @@ export default function ChatPage() {
                                         Replying to {replyTo.senderId === currentUserId ? 'yourself' : friend?.firstName}
                                     </Text>
                                     <Text style={{ fontSize: 12, color: '#475569' }} numberOfLines={1}>
-                                        {replyTo.message || (replyTo.stickerData ? '🎨 Sticker' : replyTo.voiceNoteData ? '🎤 Voice note' : 'Attachment')}
+                                        {describeMessageForReply(replyTo)}
                                     </Text>
                                 </View>
                                 <TouchableOpacity onPress={() => setReplyTo(null)}>

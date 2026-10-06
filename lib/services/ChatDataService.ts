@@ -537,8 +537,19 @@ export class ChatDataService {
       return Boolean(payload.timestampSeconds) && readSeconds(message.timestamp) === payload.timestampSeconds;
     };
     const legacyMessages = Array.isArray(chat.data().messages) ? chat.data().messages.filter(isRecord) as Record<string, unknown>[] : [];
-    const messageDocument = payload.messageId ? await getDoc(doc(chatRef, 'messages', payload.messageId)) : null;
+    let messageDocument: DocumentSnapshot | null = payload.messageId ? await getDoc(doc(chatRef, 'messages', payload.messageId)) : null;
     const legacyTarget = legacyMessages.find(matches);
+    // Messages saved in the messages subcollection can't be matched by the old array; find them by their send time.
+    if (!messageDocument?.exists() && !legacyTarget && payload.timestampSeconds) {
+      const seconds = payload.timestampSeconds;
+      const sameSecond = await getDocs(query(
+        collection(chatRef, 'messages'),
+        where('timestamp', '>=', new Timestamp(seconds, 0)),
+        where('timestamp', '<', new Timestamp(seconds + 1, 0)),
+        limit(10),
+      ));
+      messageDocument = sameSecond.docs.find((candidate) => candidate.data().senderId === viewerId) ?? sameSecond.docs[0] ?? null;
+    }
     const target: Record<string, unknown> | undefined = messageDocument?.exists() ? { id: messageDocument.id, ...messageDocument.data() } : legacyTarget;
     if (!target) throw new Error('Message not found');
     if ((payload.action === 'delete' && payload.deleteForEveryone) || payload.action === 'edit') {
