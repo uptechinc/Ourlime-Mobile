@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { draftExpiryService } from '@/lib/services/DraftExpiryService';
-import { Text, View } from "react-native";
+import { AppState, Text, View } from "react-native";
 import { FeedSkeleton } from "@/components/ui/Skeleton";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as SplashScreen from 'expo-splash-screen';
@@ -37,9 +37,16 @@ export default function FeedsScreen() {
     void SplashScreen.hideAsync().catch(() => undefined);
   }, []);
 
-  // Drafts expire 7 days after creation: checked here (no Cloud Function) each time the app's feed opens.
+  // Drafts expire 7 days after creation: checked here (no Cloud Function) when the feed opens and whenever the app
+  // returns to the foreground (the service runs it at most once a day).
   useEffect(() => {
-    if (currentUser?.uid) void draftExpiryService.runOnFeedOpen(currentUser.uid);
+    const uid = currentUser?.uid;
+    if (!uid) return;
+    void draftExpiryService.runOnFeedOpen(uid);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void draftExpiryService.runOnFeedOpen(uid);
+    });
+    return () => subscription.remove();
   }, [currentUser?.uid]);
 
   // Tapping a draft reminder lands here with ?drafts=post: open the composer on its drafts list.

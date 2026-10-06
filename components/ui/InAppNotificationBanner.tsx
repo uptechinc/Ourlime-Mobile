@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  Animated,
   Modal,
   PanResponder,
   Pressable,
@@ -10,6 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { usePathname, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -19,6 +19,15 @@ import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDe
 
 type BannerData = InAppNotificationPayload;
 
+const MAX_QUEUED_BANNERS = 4;
+
+/** Draft reminders carry a longer message and an action, so they stay up longer (same as the website). */
+function displayDurationMs(banner: BannerData): number {
+  if (banner.tone === 'danger') return 12_000;
+  if (banner.tone === 'warning' || banner.destination.type === 'draft_reminder') return 8_000;
+  return 4_500;
+}
+
 export default function InAppNotificationBanner() {
   const router = useRouter();
   const pathname = usePathname();
@@ -26,55 +35,44 @@ export default function InAppNotificationBanner() {
   const { isDark, colors } = useAppTheme();
 
   const [activeBanner, setActiveBanner] = useState<BannerData | null>(null);
-  const slideAnim = useRef(new Animated.Value(-160)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Banners that arrive while one is showing wait their turn instead of replacing it (a draft reminder used to be
+  // wiped by a message banner arriving at the same moment).
+  const queueRef = useRef<BannerData[]>([]);
+  const isShowingRef = useRef(false);
+  const presentRef = useRef<(banner: BannerData) => void>(() => undefined);
 
   const dismiss = useCallback(() => {
     if (dismissTimerRef.current) {
       clearTimeout(dismissTimerRef.current);
       dismissTimerRef.current = null;
     }
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: -160,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setActiveBanner(null);
-    });
-  }, [slideAnim, opacityAnim]);
+    isShowingRef.current = false;
+    const next = queueRef.current.shift();
+    if (next) presentRef.current(next);
+    else setActiveBanner(null);
+  }, []);
 
-  const showBanner = useCallback((banner: BannerData) => {
+  const present = useCallback((banner: BannerData) => {
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    isShowingRef.current = true;
     setActiveBanner(banner);
-    slideAnim.setValue(-160);
-    opacityAnim.setValue(0);
-
-    Animated.parallel([
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        tension: 70,
-        friction: 10,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 1,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
     dismissTimerRef.current = setTimeout(() => {
       dismiss();
-    }, 4500);
-  }, [dismiss, slideAnim, opacityAnim]);
+    }, displayDurationMs(banner));
+  }, [dismiss]);
+
+  useEffect(() => {
+    presentRef.current = present;
+  }, [present]);
+
+  const showBanner = useCallback((banner: BannerData) => {
+    if (!isShowingRef.current) {
+      present(banner);
+      return;
+    }
+    queueRef.current = [...queueRef.current.filter((queued) => queued.id !== banner.id), banner].slice(-MAX_QUEUED_BANNERS);
+  }, [present]);
 
   useEffect(() => {
     const unsub = inAppNotificationService.subscribe((payload) => {
@@ -137,15 +135,17 @@ export default function InAppNotificationBanner() {
             },
           ]}
         >
+          {/* Reanimated entering animation: the old Animated slide/fade never reached the view in this app, so every
+              banner stayed transparent above the screen. Keyed by banner so each one slides in. */}
           <Animated.View
+            key={activeBanner.id}
+            entering={FadeInDown.springify().damping(16)}
             {...panResponder.panHandlers}
             style={[
               styles.card,
               {
                 backgroundColor: activeBanner.tone === 'danger' ? (isDark ? '#3b0d12' : '#fef2f2') : activeBanner.tone === 'warning' ? (isDark ? '#3a2a07' : '#fffbeb') : cardBg,
                 borderColor: activeBanner.tone === 'danger' ? '#ef4444' : activeBanner.tone === 'warning' ? '#f59e0b' : cardBorder,
-                opacity: opacityAnim,
-                transform: [{ translateY: slideAnim }],
               },
             ]}
           >

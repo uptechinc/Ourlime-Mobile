@@ -21,12 +21,15 @@ export type InAppNotificationPayload = {
 type Listener = (payload: InAppNotificationPayload) => void;
 
 const DEDUPE_WINDOW_MS = 60_000;
+/** Banners raised before the banner host is listening (e.g. right at app start) wait here, newest kept. */
+const MAX_PENDING = 5;
 
 /** Event bus for the in-app drop-down banner (components/ui/InAppNotificationBanner.tsx). */
 export class InAppNotificationService {
   private static instance: InAppNotificationService;
   private readonly listeners = new Set<Listener>();
   private readonly recentlyShown = new Map<string, number>();
+  private pending: InAppNotificationPayload[] = [];
 
   private constructor() {}
 
@@ -39,6 +42,9 @@ export class InAppNotificationService {
 
   public subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
+    const waiting = this.pending;
+    this.pending = [];
+    waiting.forEach((payload) => listener(payload));
     return () => {
       this.listeners.delete(listener);
     };
@@ -49,6 +55,10 @@ export class InAppNotificationService {
     this.recentlyShown.forEach((shownAt, id) => { if (now - shownAt > DEDUPE_WINDOW_MS) this.recentlyShown.delete(id); });
     if (this.recentlyShown.has(payload.id)) return;
     this.recentlyShown.set(payload.id, now);
+    if (this.listeners.size === 0) {
+      this.pending = [...this.pending, payload].slice(-MAX_PENDING);
+      return;
+    }
     this.listeners.forEach((listener) => {
       try {
         listener(payload);

@@ -7,7 +7,6 @@ import { serverClockService } from './ServerClockService';
 type ExpiringDraft = { draft: CreationDraft; daysLeft: number };
 
 const REMINDER_KEY_PREFIX = 'ourlime:draft-reminder:';
-const SECOND_BANNER_DELAY_MS = 6500;
 
 function todayKey(): string {
   const now = new Date();
@@ -21,7 +20,9 @@ function todayKey(): string {
 export class DraftExpiryService {
   private static instance: DraftExpiryService;
   private readonly logger = DiagnosticLogService.getInstance();
-  private lastRunUserId: string | null = null;
+  /** `uid:day` of the last completed check, so it runs again on a new day even if the app stayed open. */
+  private lastRunKey: string | null = null;
+  private running = false;
 
   private constructor() {}
 
@@ -30,10 +31,14 @@ export class DraftExpiryService {
     return DraftExpiryService.instance;
   }
 
-  /** Runs once per app session per signed-in user. */
+  /**
+   * Runs when the feed opens and when the app comes back to the foreground, at most once a day per signed-in user
+   * (Android keeps the app alive for days, so "once per app session" could skip whole days of reminders).
+   */
   public async runOnFeedOpen(uid: string): Promise<void> {
-    if (this.lastRunUserId === uid) return;
-    this.lastRunUserId = uid;
+    const runKey = `${uid}:${todayKey()}`;
+    if (this.running || this.lastRunKey === runKey) return;
+    this.running = true;
     try {
       const [now, drafts] = await Promise.all([serverClockService.now(), creationDraftService.list(uid)]);
       const deleted: CreationDraft[] = [];
@@ -49,18 +54,21 @@ export class DraftExpiryService {
           continue;
         }
         const daysLeft = draftDaysLeft(draft.expiresAtMs, now);
-        if (daysLeft <= DRAFT_REMINDER_DAYS && await this.claimTodaysReminder(draft.id)) expiring.push({ draft, daysLeft });
+        if (daysLeft <= DRAFT_REMINDER_DAYS && !(await this.wasRemindedToday(draft.id))) expiring.push({ draft, daysLeft });
       }
       this.logger.info('DraftExpiryService', 'run', { total: drafts.length, deleted: deleted.length, expiring: expiring.length });
       if (deleted.length > 0) this.showDeleted(deleted);
+      // The banner host queues banners, so the reminder follows the "deleted" notice instead of replacing it.
       if (expiring.length > 0) {
-        const show = (): void => this.showExpiring(expiring);
-        if (deleted.length > 0) setTimeout(show, SECOND_BANNER_DELAY_MS);
-        else show();
+        this.showExpiring(expiring);
+        // Marked only once it has been handed to the banner, so a failed run doesn't use up today's reminder.
+        await Promise.all(expiring.map(({ draft }) => this.markRemindedToday(draft.id)));
       }
+      this.lastRunKey = runKey;
     } catch (error: unknown) {
-      this.lastRunUserId = null;
       this.logger.warn('DraftExpiryService', 'run:failed', { error: error instanceof Error ? error.message : String(error) });
+    } finally {
+      this.running = false;
     }
   }
 
@@ -93,15 +101,20 @@ export class DraftExpiryService {
     });
   }
 
-  /** True the first time it's asked today for this draft (each reminder shows once a day). */
-  private async claimTodaysReminder(draftId: string): Promise<boolean> {
+  /** Each draft's reminder shows once a day. */
+  private async wasRemindedToday(draftId: string): Promise<boolean> {
     try {
-      const key = `${REMINDER_KEY_PREFIX}${draftId}`;
-      if ((await AsyncStorage.getItem(key)) === todayKey()) return false;
-      await AsyncStorage.setItem(key, todayKey());
-      return true;
+      return (await AsyncStorage.getItem(`${REMINDER_KEY_PREFIX}${draftId}`)) === todayKey();
     } catch {
-      return true;
+      return false;
+    }
+  }
+
+  private async markRemindedToday(draftId: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem(`${REMINDER_KEY_PREFIX}${draftId}`, todayKey());
+    } catch {
+      // Non-fatal: the reminder may show again today.
     }
   }
 }
