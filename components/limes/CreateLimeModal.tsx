@@ -293,9 +293,8 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
   useEffect(() => {
     if (!isOpen) return;
     void refreshDrafts();
-    if (initialShowDrafts) setIsDraftsSheetVisible(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload whenever the composer opens
-  }, [isOpen, initialShowDrafts]);
+  }, [isOpen]);
 
   const resetLimeForm = (): void => {
     setSelectedAsset(null);
@@ -695,7 +694,14 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
 
   return (
     <>
-    <Modal visible={isOpen} animationType="none" transparent onRequestClose={swipeDismiss.dismissWithAnimation}>
+    <Modal
+      visible={isOpen}
+      animationType="none"
+      transparent
+      onRequestClose={swipeDismiss.dismissWithAnimation}
+      // From a draft reminder: open the drafts list once the composer is on screen, so it is presented above it.
+      onShow={() => { if (initialShowDrafts) setIsDraftsSheetVisible(true); }}
+    >
       <View style={[styles.overlay, { backgroundColor: colors.modalScrim }]}>
         <Animated.View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border, paddingBottom: Math.max(24, insets.bottom) }, swipeDismiss.animatedStyle]}>
           

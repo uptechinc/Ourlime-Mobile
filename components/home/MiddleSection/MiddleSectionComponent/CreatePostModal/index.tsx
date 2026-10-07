@@ -226,7 +226,9 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
   const canUseDrafts = !communityId;
   const [drafts, setDrafts] = useState<CreationDraft[]>([]);
   const [isDraftsLoading, setIsDraftsLoading] = useState(false);
-  const [isDraftsSheetVisible, setIsDraftsSheetVisible] = useState(canUseDrafts && initialShowDrafts);
+  // Opened from a draft reminder: shown once the composer is on screen (see onShow). Visible from the first render,
+  // Android presented it before the composer's own modal, which then covered it.
+  const [isDraftsSheetVisible, setIsDraftsSheetVisible] = useState(false);
   const [draftsNotice, setDraftsNotice] = useState<string | null>(null);
   const [openingDraftId, setOpeningDraftId] = useState<string | null>(null);
   const [openedDraftId, setOpenedDraftId] = useState<string | null>(null);
@@ -487,7 +489,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
   };
 
   return (
-    <Modal visible transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
+    <Modal visible transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation} onShow={() => { if (canUseDrafts && initialShowDrafts) setIsDraftsSheetVisible(true); }}>
       <Animated.View style={[{ flex: 1 }, swipeDismiss.animatedStyle]}>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={['top', 'left', 'right']}>
         <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close post composer" />

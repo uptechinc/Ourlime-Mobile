@@ -256,7 +256,9 @@ export default function LimesScreen() {
     if (draftsParam !== '1') return;
     setOpenLimeComposerOnDrafts(true);
     setIsCreateModalOpen(true);
-  }, [draftsParam]);
+    // Cleared so tapping another reminder later opens the drafts again.
+    router.setParams({ drafts: undefined });
+  }, [draftsParam, router]);
   const [commentReelId, setCommentReelId] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
