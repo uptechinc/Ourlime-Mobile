@@ -765,6 +765,7 @@ export default function LimesScreen() {
           }}
           onSuccess={() => {
             setIsCreateModalOpen(false);
+            setOpenLimeComposerOnDrafts(false);
             void refresh(true);
           }}
         />
