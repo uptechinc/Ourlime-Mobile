@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import { deleteObject, getDownloadURL, listAll, ref, uploadBytes } from 'firebase/storage';
 import { cacheDirectory, downloadAsync } from 'expo-file-system/legacy';
 import { db, storage } from '@/lib/firebaseConfig';
@@ -41,6 +41,8 @@ export type CreationDraft = {
   createdAtMs: number;
   expiresAtMs: number;
   updatedAtMs: number;
+  /** Day (`Y-M-D`, local) the expiry warning was last shown on any device, so the app and website show it once a day. */
+  reminderShownOn?: string;
 };
 
 /** What a composer saves and gets back when it opens a draft. */
@@ -209,6 +211,14 @@ export class CreationDraftService {
   }
 
   /** Deletes the draft and its files. */
+  /** Marks the expiry warning as shown today for these drafts (read by the website too). */
+  public async markReminded(uid: string, draftIds: string[], day: string): Promise<void> {
+    if (draftIds.length === 0) return;
+    const batch = writeBatch(db);
+    draftIds.forEach((draftId) => batch.update(doc(db, 'postDrafts', uid, 'items', draftId), { reminderShownOn: day }));
+    await batch.commit();
+  }
+
   public async remove(uid: string, draftId: string): Promise<void> {
     await deleteDoc(doc(db, 'postDrafts', uid, 'items', draftId));
     await this.deleteFilesExcept(`postDrafts/${uid}/${draftId}`, new Set());
@@ -233,6 +243,7 @@ export class CreationDraftService {
       createdAtMs,
       expiresAtMs: typeof serverCreatedAtMs === 'number' || typeof data.expiresAtMs !== 'number' ? createdAtMs + DRAFT_LIFETIME_MS : data.expiresAtMs,
       updatedAtMs: typeof data.updatedAtMs === 'number' ? data.updatedAtMs : data.updatedAt?.toMillis?.() ?? createdAtMs,
+      ...(typeof data.reminderShownOn === 'string' ? { reminderShownOn: data.reminderShownOn } : {}),
     };
   }
 

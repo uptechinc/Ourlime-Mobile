@@ -54,7 +54,7 @@ export class DraftExpiryService {
           continue;
         }
         const daysLeft = draftDaysLeft(draft.expiresAtMs, now);
-        if (daysLeft <= DRAFT_REMINDER_DAYS && !(await this.wasRemindedToday(draft.id))) expiring.push({ draft, daysLeft });
+        if (daysLeft <= DRAFT_REMINDER_DAYS && !(await this.wasRemindedToday(draft))) expiring.push({ draft, daysLeft });
       }
       this.logger.info('DraftExpiryService', 'run', { total: drafts.length, deleted: deleted.length, expiring: expiring.length });
       if (deleted.length > 0) this.showDeleted(deleted);
@@ -62,7 +62,7 @@ export class DraftExpiryService {
       if (expiring.length > 0) {
         this.showExpiring(expiring);
         // Marked only once it has been handed to the banner, so a failed run doesn't use up today's reminder.
-        await Promise.all(expiring.map(({ draft }) => this.markRemindedToday(draft.id)));
+        await this.markRemindedToday(uid, expiring.map(({ draft }) => draft.id));
       }
       this.lastRunKey = runKey;
     } catch (error: unknown) {
@@ -101,20 +101,32 @@ export class DraftExpiryService {
     });
   }
 
-  /** Each draft's reminder shows once a day. */
-  private async wasRemindedToday(draftId: string): Promise<boolean> {
+  /**
+   * Each draft's warning shows once a day across the app and the website: the day it was shown is saved on the draft
+   * (reminderShownOn, same `Y-M-D` format as the website), with this device's storage as a fallback.
+   */
+  private async wasRemindedToday(draft: CreationDraft): Promise<boolean> {
+    if (draft.reminderShownOn === todayKey()) return true;
     try {
-      return (await AsyncStorage.getItem(`${REMINDER_KEY_PREFIX}${draftId}`)) === todayKey();
+      return (await AsyncStorage.getItem(`${REMINDER_KEY_PREFIX}${draft.id}`)) === todayKey();
     } catch {
       return false;
     }
   }
 
-  private async markRemindedToday(draftId: string): Promise<void> {
+  private async markRemindedToday(uid: string, draftIds: string[]): Promise<void> {
+    const today = todayKey();
+    await Promise.all(draftIds.map(async (draftId) => {
+      try {
+        await AsyncStorage.setItem(`${REMINDER_KEY_PREFIX}${draftId}`, today);
+      } catch {
+        // Storage unavailable: the shared mark below still applies.
+      }
+    }));
     try {
-      await AsyncStorage.setItem(`${REMINDER_KEY_PREFIX}${draftId}`, todayKey());
-    } catch {
-      // Non-fatal: the reminder may show again today.
+      await creationDraftService.markReminded(uid, draftIds, today);
+    } catch (error: unknown) {
+      this.logger.warn('DraftExpiryService', 'mark:failed', { error: error instanceof Error ? error.message : String(error) });
     }
   }
 }
