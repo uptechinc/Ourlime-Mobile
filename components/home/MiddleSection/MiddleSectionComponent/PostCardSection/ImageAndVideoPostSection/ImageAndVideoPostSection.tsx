@@ -57,6 +57,9 @@ function ImagePostItem({
     if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
       heartRef.current?.trigger();
       onLike?.();
+      // A third quick tap starts a new double-tap instead of counting as another one.
+      lastTapRef.current = 0;
+      return;
     }
     lastTapRef.current = now;
   };
@@ -207,6 +210,9 @@ function VideoPostItem({
       }
       heartRef.current?.trigger();
       onLike?.();
+      // A third quick tap starts a new double-tap instead of counting as another one.
+      lastTapRef.current = 0;
+      return;
     } else {
       // Potential single tap
       singleTapTimerRef.current = setTimeout(() => {

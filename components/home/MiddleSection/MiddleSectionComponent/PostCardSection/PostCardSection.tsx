@@ -21,7 +21,8 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import ShareContentSheet from '@/components/sharing/ShareContentSheet';
-import { toast } from 'sonner-native';
+import { useLikeSync } from '@/lib/hooks/useLikeSync';
+import { screenToastService } from '@/lib/services/ScreenToastService';
 
 type PostCardSectionProps = {
   post: PostItem;
@@ -54,8 +55,6 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
   const { colors, isDark } = useAppTheme();
   const { activeUserId: currentUserId } = useAppData();
   const postUrl = findFirstUrl(`${post.caption} ${post.description}`);
-  const [isLiked, setIsLiked] = useState(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
-  const [likeCount, setLikeCount] = useState(post.stats.likes);
   const [shareCount, setShareCount] = useState(post.stats.shares);
   const [hasShared, setHasShared] = useState(false);
   const [isReposted, setIsReposted] = useState(post.repostedByViewer === true);
@@ -79,13 +78,20 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
     confirmedRepostRef.current = post.repostedByViewer === true;
   }, [post.repostedByViewer]);
 
-  useEffect(() => {
-    setIsLiked(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
-  }, [currentUserId, post.likedUserIds]);
-
-  useEffect(() => {
-    setLikeCount(post.stats.likes);
-  }, [post.stats.likes]);
+  // Rapid taps stay consistent: one request at a time, the feed caches update once it settles (not on every tap).
+  const { liked: isLiked, count: likeCount, toggle: toggleLike, like: likeFromDoubleTap } = useLikeSync({
+    liked: Boolean(currentUserId && post.likedUserIds.includes(currentUserId)),
+    count: post.stats.likes,
+    send: (liked) => postService.toggleLike(post, currentUserId ?? '', liked),
+    onSettled: ({ liked, count }) => {
+      if (!currentUserId) return;
+      const likedUserIds = liked
+        ? Array.from(new Set([...post.likedUserIds, currentUserId]))
+        : post.likedUserIds.filter((userId) => userId !== currentUserId);
+      onPostUpdate({ ...post, stats: { ...post.stats, likes: count }, likedUserIds });
+    },
+    onError: (error) => console.warn('[PostCardSection.handleLike]', error instanceof Error ? error.message : error),
+  });
 
   const handleNavigateProfile = (userName?: string) => {
     const targetUser = userName || post.user.userName;
@@ -125,27 +131,14 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
     }
   };
 
-  const handleLike = async () => {
+  /** Heart button toggles; double-tap on the media only ever likes (like Instagram). */
+  const handleLike = (source: 'button' | 'doubleTap') => {
     if (!currentUserId) {
       setFeedback({ title: 'Sign in required', message: 'Sign in to like posts.' });
       return;
     }
-    const previousLiked = isLiked;
-    setIsLiked(!previousLiked);
-    setLikeCount((count) => Math.max(0, count + (previousLiked ? -1 : 1)));
-    try {
-      const result = await postService.toggleLike(post, currentUserId, !previousLiked);
-      setIsLiked(result.liked);
-      setLikeCount(result.likeCount);
-      const likedUserIds = result.liked
-        ? Array.from(new Set([...post.likedUserIds, currentUserId]))
-        : post.likedUserIds.filter((userId) => userId !== currentUserId);
-      onPostUpdate({ ...post, stats: { ...post.stats, likes: result.likeCount }, likedUserIds });
-    } catch (error: unknown) {
-      setIsLiked(previousLiked);
-      setLikeCount((count) => Math.max(0, count + (previousLiked ? 1 : -1)));
-      console.warn('[PostCardSection.handleLike]', error instanceof Error ? error.message : error);
-    }
+    if (source === 'doubleTap') likeFromDoubleTap();
+    else toggleLike();
   };
 
   const handleShared = async (): Promise<void> => {
@@ -183,6 +176,9 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
         if (target) await postService.repost(post.id);
         else await postService.removeRepost(post.id);
         confirmedRepostRef.current = target;
+        if (confirmedRepostRef.current === desiredRepostRef.current) {
+          screenToastService.success(`repost-${post.id}`, target ? 'Reposted' : 'Repost removed');
+        }
         if (!target && desiredRepostRef.current === false && onRepostRemoved) {
           onRepostRemoved(post.id, withViewerRepost(false, Math.max(0, post.stats.shares - (post.repostedByViewer ? 1 : 0))));
         }
@@ -211,7 +207,6 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
     setIsReposted(next);
     setShareCount(nextCount);
     onPostUpdate(withViewerRepost(next, nextCount));
-    toast.success(next ? 'Reposted' : 'Repost removed');
     void syncRepost();
   };
 
@@ -332,7 +327,7 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
       </View>
 
       {/* 3. Media (Images & Videos) — 100% Edge-to-Edge */}
-      {post.media.length > 0 ? <View style={{ marginTop: 12 }}><ImageAndVideoPostSection media={post.media} isParentVisible={isVisible} shouldLoadVideo={shouldLoadVideo} onLike={() => void handleLike()} /></View> : null}
+      {post.media.length > 0 ? <View style={{ marginTop: 12 }}><ImageAndVideoPostSection media={post.media} isParentVisible={isVisible} shouldLoadVideo={shouldLoadVideo} onLike={() => handleLike('doubleTap')} /></View> : null}
 
       {/* 4. Footer & Actions */}
       <View style={{ paddingHorizontal: 16 }}>
@@ -359,7 +354,7 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike post' : 'Like post'} onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
+            <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike post' : 'Like post'} onPress={() => handleLike('button')} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
               <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} />
             </AnimatedActionButton>
             <TouchableOpacity

@@ -20,6 +20,7 @@ import RichTextContent from '@/components/ui/RichTextContent';
 import { linkPresentationService } from '@/lib/services/LinkPresentationService';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import ShareContentSheet from '@/components/sharing/ShareContentSheet';
+import { useLikeSync } from '@/lib/hooks/useLikeSync';
 
 type PollCardSectionProps = {
   post: PostItem;
@@ -64,8 +65,20 @@ export default function PollCardSection({ post, isVisible = false, shouldLoadVid
     () => post.location ? linkPresentationService.presentLocation(post.location.name, post.location.address) : null,
     [post.location],
   );
-  const [isLiked, setIsLiked] = useState(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
-  const [likeCount, setLikeCount] = useState(post.stats.likes);
+  // Rapid taps stay consistent: one request at a time, the feed caches update once it settles.
+  const { liked: isLiked, count: likeCount, toggle: toggleLike, like: likeFromDoubleTap } = useLikeSync({
+    liked: Boolean(currentUserId && post.likedUserIds.includes(currentUserId)),
+    count: post.stats.likes,
+    send: (liked) => postService.toggleLike(post, currentUserId ?? '', liked),
+    onSettled: ({ liked, count }) => {
+      if (!currentUserId) return;
+      const likedUserIds = liked
+        ? Array.from(new Set([...post.likedUserIds, currentUserId]))
+        : post.likedUserIds.filter((userId) => userId !== currentUserId);
+      onPostUpdate({ ...post, stats: { ...post.stats, likes: count }, likedUserIds });
+    },
+    onError: (error) => console.error('[PollCardSection.handleLike]', error),
+  });
   const [shareCount, setShareCount] = useState(post.stats.shares);
   const [hasShared, setHasShared] = useState(false);
   const [optionsVisible, setOptionsVisible] = useState(false);
@@ -80,13 +93,8 @@ export default function PollCardSection({ post, isVisible = false, shouldLoadVid
   const nowMs = useCountdownTicker(isVisible);
 
   useEffect(() => {
-    setIsLiked(Boolean(currentUserId && post.likedUserIds.includes(currentUserId)));
     setSelectedOptionId(currentUserId ? post.pollVotes?.[currentUserId] : undefined);
-  }, [currentUserId, post.likedUserIds, post.pollVotes]);
-
-  useEffect(() => {
-    setLikeCount(post.stats.likes);
-  }, [post.stats.likes]);
+  }, [currentUserId, post.pollVotes]);
 
   const timeRemaining = useMemo(
     () => getTimeRemaining(nowMs, post.pollEndTime, post.createdAt, post.pollDuration),
@@ -101,24 +109,11 @@ export default function PollCardSection({ post, isVisible = false, shouldLoadVid
     }
   };
 
-  const handleLike = async () => {
+  /** Heart button toggles; double-tap on the media only ever likes. */
+  const handleLike = (source: 'button' | 'doubleTap') => {
     if (!currentUserId) return setFeedback({ title: 'Sign in required', message: 'Sign in to like posts.' });
-    const previousLiked = isLiked;
-    setIsLiked(!previousLiked);
-    setLikeCount((count) => Math.max(0, count + (previousLiked ? -1 : 1)));
-    try {
-      const result = await postService.toggleLike(post, currentUserId, !previousLiked);
-      setIsLiked(result.liked);
-      setLikeCount(result.likeCount);
-      const likedUserIds = result.liked
-        ? Array.from(new Set([...post.likedUserIds, currentUserId]))
-        : post.likedUserIds.filter((userId) => userId !== currentUserId);
-      onPostUpdate({ ...post, stats: { ...post.stats, likes: result.likeCount }, likedUserIds });
-    } catch (error: unknown) {
-      setIsLiked(previousLiked);
-      setLikeCount((count) => Math.max(0, count + (previousLiked ? 1 : -1)));
-      console.error('[PollCardSection.handleLike]', error);
-    }
+    if (source === 'doubleTap') likeFromDoubleTap();
+    else toggleLike();
   };
 
   const handleVote = async (optionId: string) => {
@@ -194,7 +189,7 @@ export default function PollCardSection({ post, isVisible = false, shouldLoadVid
 
       {post.media && post.media.length > 0 ? (
         <View style={{ marginTop: 12 }}>
-          <ImageAndVideoPostSection media={post.media} isParentVisible={isVisible} shouldLoadVideo={shouldLoadVideo} onLike={() => void handleLike()} />
+          <ImageAndVideoPostSection media={post.media} isParentVisible={isVisible} shouldLoadVideo={shouldLoadVideo} onLike={() => handleLike('doubleTap')} />
         </View>
       ) : null}
 
@@ -223,7 +218,7 @@ export default function PollCardSection({ post, isVisible = false, shouldLoadVid
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, paddingTop: 13, borderTopWidth: 1, borderTopColor: colors.border }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike poll' : 'Like poll'} onPress={() => void handleLike()} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} /></AnimatedActionButton>
+            <AnimatedActionButton feedback="like" accessibilityLabel={isLiked ? 'Unlike poll' : 'Like poll'} onPress={() => handleLike('button')} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}><Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={23} color={isLiked ? '#ef4444' : colors.icon} /></AnimatedActionButton>
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel={`View ${likeCount} ${likeCount === 1 ? 'like' : 'likes'}`}

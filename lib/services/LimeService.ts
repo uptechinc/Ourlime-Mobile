@@ -263,7 +263,7 @@ export class LimeService {
         createdAt: this.toDate(data.createdAt),
         user,
         stats: {
-          likes: numberOf(stats.likes) || stringArrayOf(data.likes).length,
+          likes: Array.isArray(data.likes) ? stringArrayOf(data.likes).length : numberOf(stats.likes),
           comments: numberOf(stats.comments) || numberOf(data.commentCount) || comments.items.length,
           shares: numberOf(data.shares) || numberOf(stats.shares),
           reposts: numberOf(stats.reposts) || stringArrayOf(data.reposts).length,
@@ -377,7 +377,7 @@ export class LimeService {
         caption: stringOf(data.caption),
         createdAt: this.toDate(data.createdAt),
         user: { firstName: profile?.firstName || 'Lime', lastName: profile?.lastName || 'Creator', userName: profile?.userName || 'user', profileImage: profile?.profilePicture || undefined },
-        stats: { likes: numberOf(stats.likes) || stringArrayOf(data.likes).length, comments: numberOf(stats.comments), shares: numberOf(data.shares) || numberOf(stats.shares) },
+        stats: { likes: Array.isArray(data.likes) ? stringArrayOf(data.likes).length : numberOf(stats.likes), comments: numberOf(stats.comments), shares: numberOf(data.shares) || numberOf(stats.shares) },
         likes: stringArrayOf(data.likes),
         status: stringOf(data.status),
         isDeleted: data.isDeleted === true,
@@ -445,7 +445,7 @@ export class LimeService {
       createdAt: this.toDate(data.createdAt),
       user,
       stats: {
-        likes: numberOf(stats.likes) || stringArrayOf(data.likes).length,
+        likes: Array.isArray(data.likes) ? stringArrayOf(data.likes).length : numberOf(stats.likes),
         comments: numberOf(stats.comments) || numberOf(data.commentCount) || comments.items.length,
         shares: numberOf(data.shares) || numberOf(stats.shares),
         reposts: numberOf(stats.reposts) || stringArrayOf(data.reposts).length,

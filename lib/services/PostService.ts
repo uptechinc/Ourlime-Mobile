@@ -16,6 +16,7 @@ import {
   updateDoc,
   where,
   writeBatch,
+  type DocumentReference,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
@@ -178,6 +179,14 @@ type RelationshipSets = { friends: Set<string>; following: Set<string>; blockedU
 const isRecord = (value: unknown): value is UnknownRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 const readString = (value: unknown, fallback = ''): string => typeof value === 'string' ? value : fallback;
+/**
+ * Some posts have more than one likesCount doc (older code created extras). Every read and write uses the same one —
+ * the doc whose id is the post id, else the lowest id — so the count shown never flips between two numbers.
+ */
+const pickLikeCounter = <T extends { id: string }>(documents: T[], postId: string): T | null =>
+  documents.find((document) => document.id === postId)
+    ?? [...documents].sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))[0]
+    ?? null;
 const readNumber = (value: unknown, fallback = 0): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 const readStringArray = (value: unknown): string[] =>
@@ -466,9 +475,11 @@ export class PostService {
 
       const pageDocuments = filteredDocuments.slice(0, fetchLimit);
       const usersMap = await this.loadUserCards(pageDocuments.map((document) => readString(document.data.userId)));
-      const posts = pageDocuments.map((document, index) => {
+      // Counters were fetched for every raw post; look them up by post id (the page is filtered, so indexes differ).
+      const countersByPost = new Map(counters.filter((counterSnap) => counterSnap.exists()).map((counterSnap) => [counterSnap.id, counterSnap.data() as UnknownRecord]));
+      const posts = pageDocuments.map((document) => {
         const userId = readString(document.data.userId);
-        const counter = counters[index]?.data() ?? {};
+        const counter = countersByPost.get(document.id) ?? {};
         const cId = readString(document.data.communityVariantId) || readString(document.data.communityId);
         const community = communityMap.get(cId) ?? {};
         const basePost = this.mapPost(
@@ -579,7 +590,11 @@ export class PostService {
       });
       mediaByPost.set(postId, mediaItems);
     });
-    const countsByPost = new Map(countDocuments.map((document) => [readString(document.data.feedsPostId), document.data]));
+    const countsByPost = new Map<string, UnknownRecord>();
+    postIds.forEach((postId) => {
+      const counter = pickLikeCounter(countDocuments.filter((document) => readString(document.data.feedsPostId) === postId), postId);
+      if (counter) countsByPost.set(postId, counter.data);
+    });
     const likedUsersByPost = new Map<string, string[]>();
     likeDocuments.forEach((document) => {
       if (document.data.likes !== true) return;
@@ -954,7 +969,7 @@ export class PostService {
           trimEndSeconds: typeof d.data.trimEndSeconds === 'number' ? d.data.trimEndSeconds : undefined,
           durationSeconds: typeof d.data.durationSeconds === 'number' ? d.data.durationSeconds : undefined,
         }));
-        const counter = countDocs[0]?.data ?? data;
+        const counter = (isCommunity ? countDocs[0] : pickLikeCounter(countDocs, postId))?.data ?? data;
         const likedUserIds = likeDocs.filter((d) => d.data.likes === true).map((d) => readString(d.data.userId)).filter(Boolean);
         return this.mapPost(postDoc, userCard, mediaItems, counter, likedUserIds);
       }
@@ -1041,9 +1056,8 @@ export class PostService {
     }
 
     const likeRef = doc(db, 'feedsPostLikeCount', `${post.id}_${userId}`);
-    const countSnap = await getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', post.id), limit(1)));
-    // Existing posts keep their counter doc; posts without one get the fixed-ID doc (so two first likes share it).
-    const countRef = !countSnap.empty ? countSnap.docs[0].ref : doc(db, 'likesCount', post.id);
+    // The same counter the feed shows (some posts have several); posts without one get the fixed-ID doc.
+    const countRef = (await this.findLikeCounterRef(post.id)) ?? doc(db, 'likesCount', post.id);
     const { isAlreadyLiked, shouldLike, nextCount } = await runTransaction(db, async (transaction) => {
       const [likeSnap, counterSnap] = await Promise.all([transaction.get(likeRef), transaction.get(countRef)]);
       const alreadyLiked = likeSnap.exists() && (likeSnap.data() as UnknownRecord)?.likes === true;
@@ -1165,21 +1179,22 @@ export class PostService {
   }
 
   public async recordShare(postId: string): Promise<{ path: string; shareCount: number }> {
-    const countSnap = await getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', postId), limit(1))).catch(() => null);
+    const counterRef = await this.findLikeCounterRef(postId).catch(() => null);
     let shareCount = 1;
-    if (countSnap && !countSnap.empty) {
-      const countDoc = countSnap.docs[0];
-      shareCount = (Number((countDoc.data() as UnknownRecord)?.shareCount) || 0) + 1;
-      await updateDoc(countDoc.ref, { shareCount: increment(1), updatedAt: serverTimestamp() }).catch(() => {});
+    if (counterRef) {
+      const counterSnap = await getDoc(counterRef).catch(() => null);
+      shareCount = (Number((counterSnap?.data() as UnknownRecord | undefined)?.shareCount) || 0) + 1;
+      await updateDoc(counterRef, { shareCount: increment(1), updatedAt: serverTimestamp() }).catch(() => {});
     } else {
-      await addDoc(collection(db, 'likesCount'), {
+      // Fixed ID (not a random one), so a post never gets a second counter with a different like count.
+      await setDoc(doc(db, 'likesCount', postId), {
         feedsPostId: postId,
         likeCount: 0,
         commentCount: 0,
         shareCount: 1,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      }).catch(() => {});
+      }, { merge: true }).catch(() => {});
     }
     return { path: `/post/${encodeURIComponent(postId)}`, shareCount };
   }
@@ -1231,7 +1246,7 @@ export class PostService {
     const [markerSnap, authorsMap, origCountSnap] = await Promise.all([
       getDoc(repostMarkerRef),
       this.loadUserCards([originalAuthorId]),
-      getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', postId), limit(1))),
+      this.findLikeCounterRef(postId),
     ]);
     if (markerSnap.exists()) {
       throw new Error('You already reposted this post');
@@ -1265,8 +1280,8 @@ export class PostService {
       createdAt: serverTimestamp(),
     });
 
-    if (!origCountSnap.empty) {
-      batch.update(origCountSnap.docs[0].ref, { shareCount: increment(1), updatedAt: serverTimestamp() });
+    if (origCountSnap) {
+      batch.update(origCountSnap, { shareCount: increment(1), updatedAt: serverTimestamp() });
     }
 
     if (originalAuthorId && originalAuthorId !== currentUserId) {
@@ -1308,9 +1323,9 @@ export class PostService {
     if (snap) {
       await Promise.all(snap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
     }
-    const countSnap = await getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', postId), limit(1))).catch(() => null);
-    if (countSnap && !countSnap.empty) {
-      await updateDoc(countSnap.docs[0].ref, { shareCount: increment(-1), updatedAt: serverTimestamp() }).catch(() => {});
+    const counterRef = await this.findLikeCounterRef(postId).catch(() => null);
+    if (counterRef) {
+      await updateDoc(counterRef, { shareCount: increment(-1), updatedAt: serverTimestamp() }).catch(() => {});
     }
   }
 
@@ -1342,6 +1357,13 @@ export class PostService {
       return;
     }
     throw new Error('The post could not be deleted.');
+  }
+
+  /** The post's like counter (likesCount), picked by the same rule everywhere it's read or written. */
+  private async findLikeCounterRef(postId: string): Promise<DocumentReference | null> {
+    const snapshot = await getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', postId)));
+    const picked = pickLikeCounter(snapshot.docs.map((document) => ({ id: document.id, data: document.data() })), postId);
+    return picked ? doc(db, 'likesCount', picked.id) : null;
   }
 
   private async getDocumentsByField(collectionName: string, field: string, values: string[]): Promise<DataDocument[]> {

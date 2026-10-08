@@ -1,7 +1,10 @@
+import { useEffect } from 'react';
 import { Platform } from 'react-native';
+import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Toaster } from 'sonner-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { screenToastService } from '@/lib/services/ScreenToastService';
 
 const TOAST_VISIBLE_MS = 3000;
 
@@ -9,6 +12,11 @@ const TOAST_VISIBLE_MS = 3000;
 const AppToastHost = () => {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useAppTheme();
+  const pathname = usePathname();
+  // Screen-scoped toasts (e.g. "Repost removed") don't follow the user to another screen.
+  useEffect(() => {
+    screenToastService.dismissAll();
+  }, [pathname]);
   // Mirrors the tab bar height in app/(tabs)/_layout.tsx so toasts never cover it.
   const tabBarHeight = 56 + Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 20);
   return (

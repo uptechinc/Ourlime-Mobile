@@ -57,6 +57,7 @@ import CustomModal from '@/components/ui/CustomModal';
 import type { Reel } from '@/types/userTypes';
 import type { PostItem } from '@/lib/services/PostService';
 import { limeService } from '@/lib/services/LimeService';
+import { useLikeSync } from '@/lib/hooks/useLikeSync';
 import { AuthService } from '@/lib/services/AuthService';
 import type { UserProfile } from '@/lib/services/AuthService';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
@@ -689,16 +690,14 @@ export default function LimesScreen() {
             onToggleMute={() => setMuted((prev) => !prev)}
             onCommentPress={() => setCommentReelId(item.id)}
             currentUserId={currentUserId}
-            onLikeUpdate={(reelId, liked) => {
+            onLikeUpdate={(reelId, liked, count) => {
               void limeResourceService.patchReel(query, reelId, (reel) => ({
                 ...reel,
                 likes: liked
                   ? Array.from(new Set([...(reel.likes || []), currentUserId]))
                   : (reel.likes || []).filter((userId) => userId !== currentUserId),
                 stats: {
-                  likes: liked
-                    ? (reel.stats?.likes ?? 0) + 1
-                    : Math.max(0, (reel.stats?.likes ?? 0) - 1),
+                  likes: count,
                   comments: reel.stats?.comments ?? 0,
                   shares: reel.stats?.shares ?? 0,
                   reposts: reel.stats?.reposts ?? 0,
@@ -1282,7 +1281,8 @@ export type ReelItemProps = {
   isOwnAuthor: boolean;
   onToggleMute: () => void;
   onCommentPress: () => void;
-  onLikeUpdate: (reelId: string, liked: boolean) => void;
+  /** Called once a like change is confirmed, with the settled count. */
+  onLikeUpdate: (reelId: string, liked: boolean, count: number) => void;
   onToggleRepost: (reelId: string, reposted: boolean) => void;
   onFollowToggle: (userId: string, currentlyFollowing: boolean) => void;
   onProfilePress: (userName: string) => void;
@@ -1319,8 +1319,18 @@ export function ReelItem({
 }: ReelItemProps) {
   const [paused, setPaused] = useState(false);
   const likedByMe = Array.isArray(reel.likes) && currentUserId ? reel.likes.includes(currentUserId) : false;
-  const [isLiked, setIsLiked] = useState(likedByMe);
-  const [likeCount, setLikeCount] = useState(reel.stats?.likes ?? 0);
+  // Rapid taps stay consistent: one request at a time; the cached Lime is updated once it settles.
+  const { liked: isLiked, count: likeCount, toggle: toggleLike, like: likeOnce } = useLikeSync({
+    liked: likedByMe,
+    count: reel.stats?.likes ?? 0,
+    send: async (liked) => {
+      if (currentUserId) await limeService.toggleLike(reel.id, currentUserId, liked);
+      return { liked, likeCount: null };
+    },
+    onSettled: ({ liked, count }) => onLikeUpdate(reel.id, liked, count),
+    onError: (error) => console.error('[Limes.toggleLike] Error:', error),
+  });
+  const repostInFlightRef = useRef(false);
   const [isReposted, setIsReposted] = useState(isRepostedInitial);
   const [repostCount, setRepostCount] = useState(reel.stats?.reposts ?? reel.repostedBy?.length ?? (reel.reposts?.length ?? 0));
   const [shareCount, setShareCount] = useState(reel.stats?.shares ?? 0);
@@ -1389,28 +1399,17 @@ export function ReelItem({
   const lastTapRef = useRef<number | null>(null);
   const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /** Double-tap only ever likes. */
   const triggerLike = useCallback(() => {
-    if (!isLiked) {
-      setIsLiked(true);
-      setLikeCount((c) => c + 1);
-      onLikeUpdate(reel.id, true);
-      if (currentUserId) {
-        limeService.toggleLike(reel.id, currentUserId, true).catch(() => {});
-      }
-    }
+    if (currentUserId) likeOnce();
     heartRef.current?.trigger();
-  }, [isLiked, reel.id, currentUserId, onLikeUpdate]);
+  }, [currentUserId, likeOnce]);
 
   const toggleLikeButton = useCallback(() => {
-    const nextLiked = !isLiked;
-    setIsLiked(nextLiked);
-    setLikeCount((c) => Math.max(0, c + (nextLiked ? 1 : -1)));
-    onLikeUpdate(reel.id, nextLiked);
-    if (currentUserId) {
-      limeService.toggleLike(reel.id, currentUserId, nextLiked).catch(() => {});
-    }
-    if (nextLiked) heartRef.current?.trigger();
-  }, [isLiked, reel.id, currentUserId, onLikeUpdate]);
+    if (!currentUserId) return;
+    if (!isLiked) heartRef.current?.trigger();
+    toggleLike();
+  }, [currentUserId, isLiked, toggleLike]);
 
   /** Adds or removes the viewer's profile bubble in the 'Reposted by' row. */
   const updateViewerReposter = useCallback((reposted: boolean) => {
@@ -1425,7 +1424,9 @@ export function ReelItem({
   }, [currentUserId]);
 
   const toggleRepostButton = useCallback(async () => {
-    if (!currentUserId) return;
+    // One repost change at a time: a second tap mid-request used to fail ("already reposted") and flip the card back.
+    if (!currentUserId || repostInFlightRef.current) return;
+    repostInFlightRef.current = true;
     const nextReposted = !isReposted;
     setIsReposted(nextReposted);
     setRepostCount((c) => Math.max(0, c + (nextReposted ? 1 : -1)));
@@ -1444,6 +1445,8 @@ export function ReelItem({
       setRepostCount((c) => Math.max(0, c + (!nextReposted ? 1 : -1)));
       updateViewerReposter(!nextReposted);
       onToggleRepost(reel.id, !nextReposted);
+    } finally {
+      repostInFlightRef.current = false;
     }
   }, [isReposted, reel.id, currentUserId, onToggleRepost, updateViewerReposter]);
 
