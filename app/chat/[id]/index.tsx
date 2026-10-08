@@ -60,6 +60,8 @@ import type { ReplyReference } from '@/lib/types/message';
 import type { Sticker } from '@/lib/types/sticker';
 import type { Timestamp } from 'firebase/firestore';
 import { useSimpleChatMessages } from '@/lib/hooks/useSimpleChatMessages';
+import { useTypingIndicator } from '@/lib/hooks/useTypingIndicator';
+import TypingIndicator from '@/components/chat/TypingIndicator';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import { ChatConversationSkeleton } from '@/components/ui/Skeleton';
 import { useAppData } from '@/lib/contexts/AppDataContext';
@@ -729,6 +731,7 @@ export default function ChatPage() {
         setIsAwayFromLatest(false);
     }
     const [messageText, setMessageText] = useState('');
+    const { isPeerTyping, notifyTyping, stopTyping } = useTypingIndicator(chatRoomId, friendId ?? '');
     const [replyTo, setReplyTo] = useState<FullMessage | null>(null);
     const [isSending, setIsSending] = useState(false);
     // Website parity: starred messages, editing your own messages, reporting a message.
@@ -905,6 +908,15 @@ export default function ChatPage() {
                 : isSending
                     ? 'Still sending your message…'
                     : null;
+
+    const handleMessageTextChange = useCallback((text: string) => {
+        setMessageText(text);
+        if (!editingMessage) notifyTyping(text);
+    }, [editingMessage, notifyTyping]);
+
+    useEffect(() => {
+        if (!messageText.trim()) stopTyping();
+    }, [messageText, stopTyping]);
 
     // Send message
     const handleSend = useCallback(async () => {
@@ -1377,8 +1389,8 @@ export default function ChatPage() {
                             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }} numberOfLines={1}>
                                 {friend.firstName} {friend.lastName}
                             </Text>
-                            <Text style={{ fontSize: 12, color: friendPresence?.status === 'online' ? '#10b981' : colors.mutedText }}>
-                                {friendPresence?.status === 'online' ? 'Online' : `@${friend.userName}`}
+                            <Text style={{ fontSize: 12, color: isPeerTyping || friendPresence?.status === 'online' ? '#10b981' : colors.mutedText, fontStyle: isPeerTyping ? 'italic' : 'normal' }}>
+                                {isPeerTyping ? 'typing…' : friendPresence?.status === 'online' ? 'Online' : `@${friend.userName}`}
                             </Text>
                         </View>
                     </TouchableOpacity>
@@ -1459,6 +1471,10 @@ export default function ChatPage() {
                         // Inverted list: the header sits at the bottom, under the newest message.
                         ListHeaderComponent={(
                             <>
+                                {/* Right under the newest message; not inside a jumped-to window of older messages. */}
+                                {isPeerTyping && timelineMode === 'live' && friend ? (
+                                    <TypingIndicator profileImage={friend.profilePicture} firstName={friend.firstName ?? 'Friend'} />
+                                ) : null}
                                 {loadingNewer ? <ActivityIndicator style={{ marginVertical: 10 }} color={colors.accent} /> : null}
                                 {callElsewhereNotice ? (
                                     <View accessibilityRole="text" accessibilityLiveRegion="polite" style={{ alignItems: 'center', marginVertical: 10, paddingHorizontal: 12 }}>
@@ -1749,7 +1765,7 @@ export default function ChatPage() {
                                     placeholder={`Message ${friend?.firstName ?? ''}...`}
                                     placeholderTextColor={colors.mutedText}
                                     value={messageText}
-                                    onChangeText={setMessageText}
+                                    onChangeText={handleMessageTextChange}
                                     multiline
                                     autoCapitalize="sentences"
                                     onFocus={() => setKeyboardState((s) => ({ ...s, visible: false }))}
