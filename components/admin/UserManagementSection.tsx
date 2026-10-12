@@ -29,6 +29,8 @@ import { relationshipResourceService } from '@/lib/services/RelationshipResource
 import { relationshipRequestResourceService } from '@/lib/services/RelationshipRequestResourceService';
 import { conversationResourceService } from '@/lib/services/ConversationResourceService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
+import FilterBar from '@/components/ui/FilterBar';
 
 const adminUserService = AdminUserService.getInstance();
 const ROLES: readonly AdminUserRole[] = [
@@ -69,6 +71,7 @@ export default function UserManagementSection() {
 	const [accountFilter, setAccountFilter] = useState<
 		'all' | 'regular' | 'student'
 	>('all');
+	const [filtersOpen, setFiltersOpen] = useState(false);
 	const [page, setPage] = useState(1);
 	const [selectedUser, setSelectedUser] = useState<AdminUserRecord | null>(
 		null
@@ -326,6 +329,26 @@ export default function UserManagementSection() {
 				</Text>
 			</View>
 		);
+	const capitalize = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
+	const filterGroups: FilterGroup[] = [
+		{ key: 'status', label: 'Status', options: STATUSES.map((status) => ({ value: status, label: status === 'all' ? 'Any status' : capitalize(status) })), value: statusFilter, defaultValue: 'all' },
+		{ key: 'role', label: 'Role', options: [{ value: 'all', label: 'Any role' }, ...ROLES.map((role) => ({ value: role, label: capitalize(role) }))], value: roleFilter, defaultValue: 'all' },
+		{ key: 'account', label: 'Account type', options: [{ value: 'all', label: 'Any account' }, { value: 'regular', label: 'Regular' }, { value: 'student', label: 'Student' }], value: accountFilter, defaultValue: 'all' },
+	];
+	const handleApplyFilters = (values: FilterValues): void => {
+		const nextStatus = STATUSES.find((status) => status === readSingleFilter(values, 'status'));
+		setStatusFilter(nextStatus ?? 'all');
+		const nextRole = ROLES.find((role) => role === readSingleFilter(values, 'role'));
+		setRoleFilter(nextRole ?? 'all');
+		const nextAccount = readSingleFilter(values, 'account');
+		setAccountFilter(nextAccount === 'regular' || nextAccount === 'student' ? nextAccount : 'all');
+	};
+	const handleClearFilter = (groupKey: string): void => {
+		if (groupKey === 'status') setStatusFilter('all');
+		if (groupKey === 'role') setRoleFilter('all');
+		if (groupKey === 'account') setAccountFilter('all');
+	};
+
 	return (
 		<>
 			<View style={{ flexDirection: 'row', marginBottom: 10 }}>
@@ -383,112 +406,8 @@ export default function UserManagementSection() {
 					<Icon name="upload" size={19} color={colors.icon} />
 				</TouchableOpacity>
 			</View>
-			<Text
-				style={{
-					marginBottom: 5,
-					color: colors.text,
-					fontSize: 11,
-					fontWeight: '900',
-				}}
-			>
-				STATUS
-			</Text>
-			<ScrollView horizontal showsHorizontalScrollIndicator={false}>
-				{STATUSES.map((status) => (
-					<TouchableOpacity
-						key={status}
-						onPress={() => setStatusFilter(status)}
-						style={{
-							marginRight: 7,
-							borderRadius: 999,
-							paddingHorizontal: 11,
-							paddingVertical: 7,
-							backgroundColor:
-								statusFilter === status ? '#10b981' : colors.control,
-							borderWidth: 1,
-							borderColor: statusFilter === status ? '#10b981' : colors.border,
-						}}
-					>
-						<Text
-							style={{
-								textTransform: 'capitalize',
-								color: statusFilter === status ? '#ffffff' : colors.text,
-								fontSize: 11,
-								fontWeight: '800',
-							}}
-						>
-							{status}
-						</Text>
-					</TouchableOpacity>
-				))}
-			</ScrollView>
-			<Text
-				style={{
-					marginTop: 11,
-					marginBottom: 5,
-					color: colors.text,
-					fontSize: 11,
-					fontWeight: '900',
-				}}
-			>
-				ROLE & ACCOUNT
-			</Text>
-			<ScrollView horizontal showsHorizontalScrollIndicator={false}>
-				{(['all', ...ROLES] as const).map((role) => (
-					<TouchableOpacity
-						key={role}
-						onPress={() => setRoleFilter(role)}
-						style={{
-							marginRight: 7,
-							borderRadius: 999,
-							paddingHorizontal: 11,
-							paddingVertical: 7,
-							backgroundColor: roleFilter === role ? '#10b981' : colors.control,
-							borderWidth: 1,
-							borderColor: roleFilter === role ? '#10b981' : colors.border,
-						}}
-					>
-						<Text
-							style={{
-								textTransform: 'capitalize',
-								color: roleFilter === role ? '#ffffff' : colors.text,
-								fontSize: 11,
-								fontWeight: '800',
-							}}
-						>
-							{role}
-						</Text>
-					</TouchableOpacity>
-				))}
-				{(['all', 'regular', 'student'] as const).map((accountType) => (
-					<TouchableOpacity
-						key={`account-${accountType}`}
-						onPress={() => setAccountFilter(accountType)}
-						style={{
-							marginRight: 7,
-							borderRadius: 999,
-							paddingHorizontal: 11,
-							paddingVertical: 7,
-							backgroundColor:
-								accountFilter === accountType ? '#2563eb' : colors.control,
-							borderWidth: 1,
-							borderColor:
-								accountFilter === accountType ? '#2563eb' : colors.border,
-						}}
-					>
-						<Text
-							style={{
-								textTransform: 'capitalize',
-								color: accountFilter === accountType ? '#ffffff' : colors.text,
-								fontSize: 11,
-								fontWeight: '800',
-							}}
-						>
-							{accountType}
-						</Text>
-					</TouchableOpacity>
-				))}
-			</ScrollView>
+			<FilterBar groups={filterGroups} onOpen={() => setFiltersOpen(true)} onClear={handleClearFilter} />
+			<FilterSheet visible={filtersOpen} title="Filter users" groups={filterGroups} applyLabel="Show users" onApply={handleApplyFilters} onClose={() => setFiltersOpen(false)} />
 			<Text
 				style={{ marginVertical: 10, color: colors.mutedText, fontSize: 12 }}
 			>

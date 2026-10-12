@@ -241,7 +241,8 @@ export function JobManagementAuditSheet({
 							: 'Activity could not be loaded.'
 					);
 			})
-			.finally(() => {
+			// No .finally: the runtime Promise can lack it (see lib/shims/promiseFinally.ts).
+			.then(() => {
 				if (active) setLoading(false);
 			});
 		return () => {

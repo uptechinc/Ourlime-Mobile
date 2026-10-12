@@ -1,12 +1,14 @@
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Activity, Archive, ArchiveRestore, ArrowDownUp, ArrowRight, Briefcase, CalendarDays, Check, CheckCircle2, CheckSquare, Clock, Crown, FolderOpen, MoreHorizontal, Pencil, Plus, Search, Trash2, UserRound, Users, X } from 'lucide-react-native';
+import { Activity, Archive, ArchiveRestore, ArrowRight, Briefcase, CalendarDays, Check, CheckCircle2, CheckSquare, Clock, Crown, FolderOpen, MoreHorizontal, Pencil, Plus, Search, Trash2, UserRound, Users, X } from 'lucide-react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
 import PageHeader from '@/components/ui/PageHeader';
 import CustomModal from '@/components/ui/CustomModal';
+import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
+import FilterBar from '@/components/ui/FilterBar';
 import ProjectFormSheet, { type ProjectFormValues } from '@/components/projectManagement/ProjectFormSheet';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { projectService } from '@/lib/services/ProjectService';
@@ -20,14 +22,20 @@ type SortKey = 'activity' | 'name' | 'progress' | 'created';
 type FormTarget = { mode: 'create' } | { mode: 'edit'; project: ProjectRecord } | null;
 
 const STATUS_FILTERS: { value: ProjectStatus | 'all'; label: string }[] = [
-  { value: 'all', label: 'All Status' }, { value: 'active', label: 'Active' }, { value: 'completed', label: 'Completed' }, { value: 'on-hold', label: 'On Hold' }, { value: 'archived', label: 'Archived' },
+  { value: 'all', label: 'Any status' }, { value: 'active', label: 'Active' }, { value: 'completed', label: 'Completed' }, { value: 'on-hold', label: 'On Hold' }, { value: 'archived', label: 'Archived' },
 ];
 const ROLE_FILTERS: { value: ProjectRole | 'all'; label: string }[] = [
-  { value: 'all', label: 'All Roles' }, { value: 'owner', label: 'Owner' }, { value: 'admin', label: 'Admin' }, { value: 'member', label: 'Member' }, { value: 'viewer', label: 'Viewer' },
+  { value: 'all', label: 'Any role' }, { value: 'owner', label: 'Owner' }, { value: 'admin', label: 'Admin' }, { value: 'member', label: 'Member' }, { value: 'viewer', label: 'Viewer' },
 ];
-const SORTS: { value: SortKey; label: string }[] = [
-  { value: 'activity', label: 'Activity' }, { value: 'name', label: 'Name' }, { value: 'progress', label: 'Progress' }, { value: 'created', label: 'Created Date' },
+type SortChoice = `${SortKey}-${'asc' | 'desc'}`;
+const SORTS: { value: SortChoice; label: string }[] = [
+  { value: 'activity-desc', label: 'Recent activity' }, { value: 'activity-asc', label: 'Oldest activity' },
+  { value: 'created-desc', label: 'Newest' }, { value: 'created-asc', label: 'Oldest' },
+  { value: 'name-asc', label: 'Name A–Z' }, { value: 'name-desc', label: 'Name Z–A' },
+  { value: 'progress-desc', label: 'Most progress' }, { value: 'progress-asc', label: 'Least progress' },
 ];
+const DEFAULT_SORT: SortChoice = 'activity-desc';
+const isSortChoice = (value: string | undefined): value is SortChoice => SORTS.some((sort) => sort.value === value);
 
 /** Cached records can come back from disk with dates as strings; always read them as Date. */
 const toTime = (value: Date | string | undefined): number => (value ? new Date(value).getTime() || 0 : 0);
@@ -71,8 +79,9 @@ export default function ProjectManagementScreen() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
   const [roleFilter, setRoleFilter] = useState<ProjectRole | 'all'>('all');
-  const [sortBy, setSortBy] = useState<SortKey>('activity');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [sortChoice, setSortChoice] = useState<SortChoice>(DEFAULT_SORT);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortBy, sortDir] = sortChoice.split('-') as [SortKey, 'asc' | 'desc'];
   const sessionReady = Boolean(activeUserId);
   const mutationReady = Boolean(activeUserId && nativeSession.status === 'ready' && nativeSession.uid === activeUserId);
   const { resource: projectResource, refresh: refreshProjects } = useProjectsResource(activeUserId ?? '', mutationReady);
@@ -193,15 +202,24 @@ export default function ProjectManagementScreen() {
   const heroTasks = visibleProjects.reduce((sum, project) => sum + project.totalTasks, 0);
   const menuCanEdit = Boolean(menuProject && (menuProject.isOwner || menuProject.role === 'admin'));
 
-  const renderFilterRow = <T extends string>(options: { value: T; label: string }[], selected: T, onSelect: (value: T) => void) => (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-      {options.map((option) => (
-        <TouchableOpacity key={option.value} onPress={() => onSelect(option.value)} style={[styles.chip, selected === option.value && styles.chipSelected]}>
-          <Text style={[styles.chipText, selected === option.value && styles.chipTextSelected]}>{option.label}</Text>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  );
+  const filterGroups: FilterGroup[] = [
+    { key: 'sort', label: 'Sort by', options: SORTS, value: sortChoice, defaultValue: DEFAULT_SORT },
+    { key: 'status', label: 'Status', options: STATUS_FILTERS, value: statusFilter, defaultValue: 'all' },
+    { key: 'role', label: 'Your role', options: ROLE_FILTERS, value: roleFilter, defaultValue: 'all' },
+  ];
+  const handleApplyFilters = (values: FilterValues): void => {
+    const nextSort = readSingleFilter(values, 'sort');
+    if (isSortChoice(nextSort)) setSortChoice(nextSort);
+    const nextStatus = STATUS_FILTERS.find((option) => option.value === readSingleFilter(values, 'status'));
+    if (nextStatus) setStatusFilter(nextStatus.value);
+    const nextRole = ROLE_FILTERS.find((option) => option.value === readSingleFilter(values, 'role'));
+    if (nextRole) setRoleFilter(nextRole.value);
+  };
+  const handleClearFilter = (groupKey: string): void => {
+    if (groupKey === 'sort') setSortChoice(DEFAULT_SORT);
+    if (groupKey === 'status') setStatusFilter('all');
+    if (groupKey === 'role') setRoleFilter('all');
+  };
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
@@ -257,14 +275,7 @@ export default function ProjectManagementScreen() {
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Create project" onPress={() => { if (ensureCanChange()) setFormTarget({ mode: 'create' }); }} style={[styles.createButton, !createCapability.allowed && styles.disabled]}><Plus size={20} color="#ffffff" /></TouchableOpacity>
           </View>
           <View style={styles.searchBox}><Search size={17} color={colors.mutedText} /><TextInput value={searchTerm} onChangeText={setSearchTerm} placeholder="Search projects..." placeholderTextColor={colors.mutedText} style={styles.searchInput} /></View>
-          {renderFilterRow(STATUS_FILTERS, statusFilter, setStatusFilter)}
-          {renderFilterRow(ROLE_FILTERS, roleFilter, setRoleFilter)}
-          <View style={styles.sortRow}>
-            <View style={styles.flex}>{renderFilterRow(SORTS, sortBy, setSortBy)}</View>
-            <TouchableOpacity accessibilityLabel={sortDir === 'desc' ? 'Sort descending' : 'Sort ascending'} onPress={() => setSortDir((dir) => (dir === 'desc' ? 'asc' : 'desc'))} style={styles.sortDir}>
-              <ArrowDownUp size={16} color={colors.text} /><Text style={styles.chipText}>{sortDir === 'desc' ? 'Desc' : 'Asc'}</Text>
-            </TouchableOpacity>
-          </View>
+          <FilterBar groups={filterGroups} onOpen={() => setFiltersOpen(true)} onClear={handleClearFilter} />
 
           {visibleProjects.length === 0 ? <View style={styles.empty}><FolderOpen size={38} color={colors.mutedText} /><Text style={styles.emptyTitle}>{acceptedProjects.length === 0 ? 'No projects yet' : 'No matching projects'}</Text><Text style={styles.cardText}>{acceptedProjects.length === 0 ? 'Create your first project or accept a team invitation.' : 'Try a different search or filter.'}</Text></View> : visibleProjects.map((project) => {
             const dueLabel = formatDueDate(project.dueDate);
@@ -325,6 +336,7 @@ export default function ProjectManagementScreen() {
         </Pressable>
       </Modal>
 
+      <FilterSheet visible={filtersOpen} title="Filter projects" groups={filterGroups} applyLabel="Show projects" onApply={handleApplyFilters} onClose={() => setFiltersOpen(false)} />
       <ProjectFormSheet
         visible={formTarget !== null}
         project={formTarget?.mode === 'edit' ? formTarget.project : null}
@@ -355,8 +367,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, statCard: { width: '48%', flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, statLabel: { color: colors.mutedText, fontSize: 12 }, statValue: { color: colors.text, fontSize: 22, fontWeight: '900' }, statSub: { color: colors.mutedText, fontSize: 11 }, statIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   section: { gap: 12 }, sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '900' }, createButton: { width: 42, height: 42, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input }, searchInput: { flex: 1, minHeight: 44, color: colors.text },
-  chipRow: { gap: 8, paddingRight: 8 }, chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control }, chipSelected: { backgroundColor: colors.accent, borderColor: colors.accent }, chipText: { color: colors.secondaryText, fontSize: 12, fontWeight: '800' }, chipTextSelected: { color: colors.onAccent },
-  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, sortDir: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control },
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 16, gap: 9 }, inviteCard: { borderColor: '#6ee7b7' }, cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }, cardTitle: { flex: 1, color: colors.text, fontSize: 17, fontWeight: '800' }, cardText: { color: colors.mutedText, fontSize: 14, lineHeight: 20 }, inviter: { color: colors.text, fontSize: 13, fontWeight: '700' },
   menuButton: { padding: 4, borderRadius: 999 }, badges: { flexDirection: 'row', gap: 6 }, badge: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 3, fontSize: 11, fontWeight: '800', textTransform: 'capitalize', overflow: 'hidden' }, statusBadge: { color: colors.successText, backgroundColor: colors.successSurface }, mutedBadge: { color: colors.mutedText, backgroundColor: colors.control }, warningBadge: { color: colors.warningText, backgroundColor: colors.warningSurface }, roleBadge: { color: '#6d28d9', backgroundColor: '#ede9fe' },
   focusedCard: { borderColor: colors.accent, borderWidth: 2 }, openingCard: { opacity: 0.72 },

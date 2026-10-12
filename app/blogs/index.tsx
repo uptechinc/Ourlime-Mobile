@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,13 +12,14 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Check, ChevronLeft, PenSquare, Search, SlidersHorizontal, X } from 'lucide-react-native';
+import { ChevronLeft, PenSquare, Search, SlidersHorizontal, X } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import CreateBlogModal from '@/components/blogs/CreateBlogModal';
 import BlogListCard from '@/components/blog/BlogListCard';
 import IdentityVerificationModal from '@/components/jobs/IdentityVerificationModal';
 import CustomModal from '@/components/ui/CustomModal';
+import FilterSheet, { readMultiFilter, readSingleFilter, type AnyFilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
 import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 import { BlogCatalogSkeleton } from '@/components/ui/Skeleton';
 import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesService';
@@ -39,7 +39,7 @@ const SORT_OPTIONS: { value: BlogSortOption; label: string }[] = [
   { value: 'trending', label: 'Trending' },
 ];
 const TYPE_OPTIONS: { value: BlogTypeFilter; label: string }[] = [
-  { value: 'all', label: 'All' },
+  { value: 'all', label: 'Blogs & articles' },
   { value: 'blog', label: 'Blogs' },
   { value: 'article', label: 'Articles' },
 ];
@@ -118,6 +118,18 @@ export default function BlogsScreen() {
 
   const toggleTag = (tag: string) => {
     updateQuery({ tags: query.tags.includes(tag) ? query.tags.filter((existing) => existing !== tag) : [...query.tags, tag] });
+  };
+
+  const sheetFilterCount = (query.type !== 'all' ? 1 : 0) + (query.sort !== 'newest' ? 1 : 0) + query.tags.length;
+  const filterGroups: AnyFilterGroup[] = [
+    { key: 'sort', label: 'Sort by', options: SORT_OPTIONS, value: query.sort, defaultValue: 'newest' },
+    { key: 'type', label: 'Show', options: TYPE_OPTIONS, value: query.type, defaultValue: 'all' },
+    { kind: 'multiple', key: 'tags', label: 'Tags', options: availableTags.map((tag) => ({ value: tag, label: `#${tag}` })), values: query.tags },
+  ];
+  const handleApplyFilters = (values: FilterValues) => {
+    const nextSort = SORT_OPTIONS.find((option) => option.value === readSingleFilter(values, 'sort'));
+    const nextType = TYPE_OPTIONS.find((option) => option.value === readSingleFilter(values, 'type'));
+    updateQuery({ sort: nextSort?.value ?? 'newest', type: nextType?.value ?? 'all', tags: readMultiFilter(values, 'tags') });
   };
 
   const clearAllFilters = () => {
@@ -221,10 +233,11 @@ export default function BlogsScreen() {
         </View>
         <TouchableOpacity
           onPress={() => setIsFilterSheetOpen(true)}
-          style={[styles.filterIconButton, { backgroundColor: query.sort !== 'newest' || query.type !== 'all' ? (isDark ? 'rgba(16,185,129,0.2)' : '#ecfdf5') : chipIdle.backgroundColor, borderColor: query.sort !== 'newest' || query.type !== 'all' ? '#10b981' : colors.border }]}
-          accessibilityLabel="Sort and filter"
+          style={[styles.filterIconButton, { backgroundColor: sheetFilterCount ? (isDark ? 'rgba(16,185,129,0.2)' : '#ecfdf5') : chipIdle.backgroundColor, borderColor: sheetFilterCount ? '#10b981' : colors.border }]}
+          accessibilityLabel={sheetFilterCount ? `Sort and filter, ${sheetFilterCount} active` : 'Sort and filter'}
         >
-          <SlidersHorizontal size={18} color={query.sort !== 'newest' || query.type !== 'all' ? '#10b981' : colors.secondaryText} />
+          <SlidersHorizontal size={18} color={sheetFilterCount ? '#10b981' : colors.secondaryText} />
+          {sheetFilterCount ? <View style={styles.filterBadge}><Text style={styles.filterBadgeText}>{sheetFilterCount}</Text></View> : null}
         </TouchableOpacity>
       </View>
 
@@ -235,18 +248,6 @@ export default function BlogsScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={catalog.status === 'refreshing' && Boolean(catalog.data)} onRefresh={() => void catalog.refresh()} tintColor="#10b981" colors={['#10b981']} />}
       >
-        {/* Content type */}
-        <View style={[styles.segmented, { backgroundColor: chipIdle.backgroundColor, borderColor: colors.border }]}>
-          {TYPE_OPTIONS.map((option) => {
-            const isSelected = query.type === option.value;
-            return (
-              <Pressable key={option.value} onPress={() => updateQuery({ type: option.value })} style={[styles.segment, isSelected && styles.segmentActive]}>
-                <Text style={[styles.segmentText, { color: isSelected ? '#ffffff' : colors.secondaryText }]}>{option.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
         {/* Categories */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
           {CATEGORIES.map((category) => {
@@ -254,18 +255,6 @@ export default function BlogsScreen() {
             return (
               <Pressable key={category} onPress={() => handleSelectCategory(category)} style={[styles.chip, isSelected ? styles.chipActive : chipIdle]}>
                 <Text style={[styles.chipText, { color: isSelected ? '#ffffff' : colors.secondaryText }]}>{category}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        {/* Popular tags (multi-select, AND) */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {availableTags.map((tag) => {
-            const isSelected = query.tags.includes(tag);
-            return (
-              <Pressable key={tag} onPress={() => toggleTag(tag)} style={[styles.tagChip, isSelected ? styles.chipActive : chipIdle]}>
-                <Text style={[styles.tagChipText, { color: isSelected ? '#ffffff' : colors.secondaryText }]}>#{tag}</Text>
               </Pressable>
             );
           })}
@@ -323,30 +312,7 @@ export default function BlogsScreen() {
         )}
       </ScrollView>
 
-      {/* Sort & type sheet */}
-      <Modal visible={isFilterSheetOpen} transparent animationType="fade" onRequestClose={() => setIsFilterSheetOpen(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setIsFilterSheetOpen(false)}>
-          <Pressable style={[styles.filterSheet, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => undefined}>
-            <View style={styles.filterSheetHeader}>
-              <Text style={[styles.filterSheetTitle, { color: colors.text }]}>Sort & Filter</Text>
-              <TouchableOpacity onPress={() => setIsFilterSheetOpen(false)} hitSlop={8}><X size={20} color={colors.secondaryText} /></TouchableOpacity>
-            </View>
-            <Text style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>Sort By</Text>
-            {SORT_OPTIONS.map((option) => {
-              const isSelected = query.sort === option.value;
-              return (
-                <TouchableOpacity key={option.value} onPress={() => updateQuery({ sort: option.value })} style={[styles.sortRow, isSelected && { backgroundColor: isDark ? 'rgba(16,185,129,0.15)' : '#ecfdf5' }]}>
-                  <Text style={[styles.sortRowText, { color: isSelected ? '#10b981' : colors.text, fontWeight: isSelected ? '700' : '500' }]}>{option.label}</Text>
-                  {isSelected ? <Check size={18} color="#10b981" /> : null}
-                </TouchableOpacity>
-              );
-            })}
-            <TouchableOpacity onPress={() => setIsFilterSheetOpen(false)} style={[styles.primaryButton, { marginTop: 18 }]}>
-              <Text style={styles.primaryButtonText}>Show Blogs</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <FilterSheet visible={isFilterSheetOpen} title="Sort & filter" groups={filterGroups} applyLabel="Show blogs" onApply={handleApplyFilters} onClose={() => setIsFilterSheetOpen(false)} />
 
       <CreateBlogModal
         isOpen={isCreateModalOpen}
@@ -408,17 +374,13 @@ const styles = StyleSheet.create({
   searchBar: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, height: 40, borderRadius: 12, borderWidth: 1 },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
   filterIconButton: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  filterBadge: { position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#10b981' },
+  filterBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
   scrollContent: { paddingBottom: 100, paddingTop: 12 },
-  segmented: { flexDirection: 'row', marginHorizontal: 16, borderRadius: 12, borderWidth: 1, padding: 3 },
-  segment: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 9 },
-  segmentActive: { backgroundColor: '#10b981' },
-  segmentText: { fontSize: 13, fontWeight: '700' },
-  chipRow: { paddingHorizontal: 16, paddingTop: 10, gap: 8 },
+  chipRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 8 },
   chip: { paddingHorizontal: 15, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
   chipActive: { backgroundColor: '#10b981', borderColor: '#10b981' },
   chipText: { fontSize: 13, fontWeight: '600' },
-  tagChip: { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14, borderWidth: 1 },
-  tagChipText: { fontSize: 12, fontWeight: '600' },
   activeFilters: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
   activeChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#d1fae5', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
   activeChipText: { color: '#047857', fontSize: 12, fontWeight: '700' },
@@ -432,11 +394,4 @@ const styles = StyleSheet.create({
   emptySubtitle: { fontSize: 13, textAlign: 'center' },
   primaryButton: { backgroundColor: '#10b981', paddingHorizontal: 18, paddingVertical: 11, borderRadius: 12, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
-  filterSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderBottomWidth: 0, paddingHorizontal: 20, paddingTop: 18, paddingBottom: 36 },
-  filterSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  filterSheetTitle: { fontSize: 18, fontWeight: '800' },
-  filterSectionLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
-  sortRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10 },
-  sortRowText: { fontSize: 14 },
 });
