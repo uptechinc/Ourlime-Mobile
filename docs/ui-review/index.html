@@ -1,0 +1,211 @@
+<title>Ourlime UI Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a single reading column of findings; each finding pairs phone screenshots before → after. */
+:root {
+  --bg: #f6f8f5;
+  --surface: #ffffff;
+  --ink: #17211b;
+  --muted: #5d6b62;
+  --line: #dde5df;
+  --lime: #0f9a63;
+  --lime-soft: #e3f5eb;
+  --before: #8a5a14;
+  --before-soft: #fbf1df;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1411; --surface: #16201b; --ink: #e6efe9; --muted: #9aaba1; --line: #26332c;
+    --lime: #3dd598; --lime-soft: #143326; --before: #e6b56a; --before-soft: #33281a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1411; --surface: #16201b; --ink: #e6efe9; --muted: #9aaba1; --line: #26332c;
+  --lime: #3dd598; --lime-soft: #143326; --before: #e6b56a; --before-soft: #33281a; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 80px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: 1.6rem; font-weight: 800; margin-top: 56px; padding-top: 24px; border-top: 2px solid var(--ink); }
+h3 { font-size: 1.2rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--muted); font-size: 1.1rem; margin-top: 12px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 20px; font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+.meta b { color: var(--ink); font-weight: 500; }
+.toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.toc a { font-size: 0.9rem; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none; }
+.toc a:hover, .toc a:focus-visible { border-color: var(--lime); outline: none; }
+.finding { display: grid; gap: 14px; margin-top: 36px; }
+.finding .why { color: var(--muted); }
+.finding .why strong { color: var(--ink); }
+.pairs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 16px; align-items: start; }
+.web .pairs { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+figure { margin: 0; display: grid; gap: 8px; min-width: 0; }
+figure img { width: 100%; max-width: 100%; height: auto; display: block; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); }
+figcaption { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
+.tag { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; }
+.tag.before { background: var(--before-soft); color: var(--before); }
+.tag.after { background: var(--lime-soft); color: var(--lime); }
+ul.plain { margin: 12px 0 0; padding-left: 20px; display: grid; gap: 8px; max-width: 72ch; }
+ul.plain li::marker { color: var(--lime); }
+.note { margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-size: 0.95rem; }
+code { font-family: var(--mono); font-size: 0.85em; background: var(--lime-soft); color: var(--ink); padding: 1px 5px; border-radius: 4px; }
+</style>
+
+<div class="wrap">
+  <h1>Ourlime UI Review</h1>
+  <p class="lede">Bug fixes from tester reports and a cleanup of crowded filter screens, shown as before-and-after screenshots from the Android app and the website at phone width.</p>
+  <div class="meta">
+    <span>App branch <b>ui-cleanup-and-bug-fixes</b> vs <b>New-Main</b></span>
+    <span>Website branch <b>ui-cleanup-and-bug-fixes</b> vs <b>Main</b></span>
+    <span>Captured <b>12 Oct 2026</b> · Pixel 6 emulator · 375px browser</span>
+  </div>
+  <nav class="toc" aria-label="Sections">
+    <a href="#app">Mobile app</a>
+    <a href="#web">Website</a>
+    <a href="#unseen">Fixes without a screen</a>
+    <a href="#open">Still open</a>
+  </nav>
+
+  <h2 id="app">Mobile app</h2>
+
+  <section class="finding">
+    <h3>E-Projects: three rows of chips become one Filters button</h3>
+    <p class="why">Status, role and sort each had a full chip row, plus an Asc/Desc toggle. They now sit in a bottom sheet, with a count on the button and a removable chip for each active filter. Sort and direction merged into plain choices such as <strong>Name A–Z</strong>. The empty band above the header is also gone: the page was adding the status-bar inset twice.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m01-projects-top.png" alt="E-Projects before, with a tall empty gap above the header" loading="lazy"><figcaption><span class="tag before">Before</span>Gap above the header</figcaption></figure>
+      <figure><img src="app/after/m01-projects-top.png" alt="E-Projects after, header sits under the status bar" loading="lazy"><figcaption><span class="tag after">After</span>Header in place</figcaption></figure>
+      <figure><img src="app/before/m02-projects-filters.png" alt="Three rows of filter chips" loading="lazy"><figcaption><span class="tag before">Before</span>Three chip rows</figcaption></figure>
+      <figure><img src="app/after/m02b-projects-filter-sheet.png" alt="Filter projects bottom sheet" loading="lazy"><figcaption><span class="tag after">After</span>One button, one sheet</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Task details: typing stays visible above the keyboard</h3>
+    <p class="why">Raushawn could not see what he typed. On Android the keyboard covered the comment and log-time fields inside the sheet. The sheet now lifts above the keyboard.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m06-task-keyboard.png" alt="Keyboard covering the log time field" loading="lazy"><figcaption><span class="tag before">Before</span>Field hidden behind keyboard</figcaption></figure>
+      <figure><img src="app/after/m06-task-keyboard.png" alt="Log time field visible with 45 typed above the keyboard" loading="lazy"><figcaption><span class="tag after">After</span>“45” visible while typing</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Project settings: delete button stays inside the sheet</h3>
+    <p class="why"><strong>Delete Entire Project</strong> spilled out below the sheet. The sheet now scrolls and keeps every control inside it.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m07-project-settings.png" alt="Delete button overflowing below the settings sheet" loading="lazy"><figcaption><span class="tag before">Before</span>Delete hangs off the sheet</figcaption></figure>
+      <figure><img src="app/after/m07-project-settings.png" alt="Settings sheet containing the delete button" loading="lazy"><figcaption><span class="tag after">After</span>Contained</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Project activity reads as plain English</h3>
+    <p class="why">Recent Activity showed internal keys like <code>add_subtask</code> and <code>time</code>, twice per entry. It now reads “added a subtask”, “commented”, “logged time”.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m04-board-activity.png" alt="Activity list with raw action keys" loading="lazy"><figcaption><span class="tag before">Before</span>Raw keys</figcaption></figure>
+      <figure><img src="app/after/m04-board-activity.png" alt="Activity list in plain English" loading="lazy"><figcaption><span class="tag after">After</span>Readable</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Community posts: comment and share counts survive a refresh</h3>
+    <p class="why">Chris reported counts disappearing. The app saved community comment and share counts in the wrong place and read them from a field nothing writes, and the card kept whatever number it first loaded. Counts now come from the same counter the website uses, comments are counted directly, and the card follows the refreshed number. This post has one comment and one share.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m09-community-post.png" alt="Community post showing 0 comments" loading="lazy"><figcaption><span class="tag before">Before</span>0 comments shown</figcaption></figure>
+      <figure><img src="app/after/m09-community-post.png" alt="Community post showing 1 comment and 1 share" loading="lazy"><figcaption><span class="tag after">After</span>1 comment, 1 share</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Hosting an event: crop the cover, add a poll</h3>
+    <p class="why">Picking a cover only showed a file name, with no preview and no way to crop. The photo now opens the crop screen, then shows as a preview with Crop, Replace and Remove. Chris’s suggestion is in too: a Yes/No <strong>Add a poll?</strong> toggle that creates a community poll closing when the event starts.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m10-event-form.png" alt="Event form showing only a filename" loading="lazy"><figcaption><span class="tag before">Before</span>Just a file name</figcaption></figure>
+      <figure><img src="app/after/m10a-event-crop.png" alt="Crop photo screen with aspect presets" loading="lazy"><figcaption><span class="tag after">After</span>Crop screen</figcaption></figure>
+      <figure><img src="app/after/m10-event-form.png" alt="Cover preview with Crop, Replace and Remove" loading="lazy"><figcaption><span class="tag after">After</span>Preview and actions</figcaption></figure>
+      <figure><img src="app/after/m10b-event-poll.png" alt="Poll question with Yes, No, Maybe options" loading="lazy"><figcaption><span class="tag after">After</span>Optional poll</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Blogs: one row of categories</h3>
+    <p class="why">The page stacked a type toggle, categories and a long tag row before any content. Categories stay on the page; type, sort and tags (pick several) moved into the existing filter button, which now shows a count.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m08-blogs.png" alt="Blogs with three stacked filter rows" loading="lazy"><figcaption><span class="tag before">Before</span>Three filter rows</figcaption></figure>
+      <figure><img src="app/after/m08-blogs.png" alt="Blogs with one category row" loading="lazy"><figcaption><span class="tag after">After</span>One row</figcaption></figure>
+      <figure><img src="app/after/m08b-blogs-filter-sheet.png" alt="Blogs sort and filter sheet" loading="lazy"><figcaption><span class="tag after">After</span>Sort, type and tags</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Admin: Users and Reports</h3>
+    <p class="why">Two labelled chip rows on each screen became one Filters button. Labels such as <code>under_review</code> now read “Under review”.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m11-admin-users.png" alt="Admin users with status and role chip rows" loading="lazy"><figcaption><span class="tag before">Before</span>Users</figcaption></figure>
+      <figure><img src="app/after/m11-admin-users.png" alt="Admin users with a single Filters button" loading="lazy"><figcaption><span class="tag after">After</span>Users</figcaption></figure>
+      <figure><img src="app/before/m12-admin-reports.png" alt="Admin reports with status and severity chip rows" loading="lazy"><figcaption><span class="tag before">Before</span>Reports</figcaption></figure>
+      <figure><img src="app/after/m12-admin-reports.png" alt="Admin reports with a single Filters button" loading="lazy"><figcaption><span class="tag after">After</span>Reports</figcaption></figure>
+    </div>
+  </section>
+
+  <h2 id="web">Website at phone width</h2>
+  <p class="lede">Desktop and tablet layouts are unchanged. Below 640px the same controls move into a bottom sheet behind one Filters button.</p>
+
+  <section class="finding web">
+    <h3>E-Projects</h3>
+    <p class="why">Three full-width dropdowns and a direction button took five rows before the first project.</p>
+    <div class="pairs">
+      <figure><img src="web/before/w01-projects.png" alt="Website E-Projects with stacked dropdowns" loading="lazy"><figcaption><span class="tag before">Before</span>Five rows of controls</figcaption></figure>
+      <figure><img src="web/after/w01-projects.png" alt="Website E-Projects with one Filters row" loading="lazy"><figcaption><span class="tag after">After</span>One row</figcaption></figure>
+      <figure><img src="web/after/w01b-projects-sheet.png" alt="Website filter projects sheet" loading="lazy"><figcaption><span class="tag after">After</span>Sheet</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding web">
+    <h3>Blogs</h3>
+    <p class="why">Type, sort and all popular tags sat above the posts, and the page said <strong>No blogs found</strong> while it was still loading. It now says “Loading blogs…”, and a blank tag pill is gone.</p>
+    <div class="pairs">
+      <figure><img src="web/before/w02-blogs.png" alt="Website blogs with tags and a premature no blogs message" loading="lazy"><figcaption><span class="tag before">Before</span>“No blogs found” while loading</figcaption></figure>
+      <figure><img src="web/after/w02-blogs.png" alt="Website blogs with one Filters row and loading text" loading="lazy"><figcaption><span class="tag after">After</span>“Loading blogs…”</figcaption></figure>
+      <figure><img src="web/after/w02b-blogs-sheet.png" alt="Website blogs sort and filter sheet" loading="lazy"><figcaption><span class="tag after">After</span>Sheet</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding web">
+    <h3>Admin pages</h3>
+    <p class="why">Users had four wrapping dropdown buttons. Reports had three labelled dropdowns, and its tab row broke words mid-way (“Repo / rts”). Activity Logs had two fixed-width dropdowns over three rows.</p>
+    <div class="pairs">
+      <figure><img src="web/before/w03-admin-users.png" alt="Admin users with four filter buttons" loading="lazy"><figcaption><span class="tag before">Before</span>Users</figcaption></figure>
+      <figure><img src="web/after/w03-admin-users.png" alt="Admin users with one Filters button" loading="lazy"><figcaption><span class="tag after">After</span>Users</figcaption></figure>
+      <figure><img src="web/before/w04-admin-reports.png" alt="Reports with broken tab labels" loading="lazy"><figcaption><span class="tag before">Before</span>Reports, broken tabs</figcaption></figure>
+      <figure><img src="web/after/w04-admin-reports.png" alt="Reports with scrolling tabs and one Filters button" loading="lazy"><figcaption><span class="tag after">After</span>Reports</figcaption></figure>
+      <figure><img src="web/before/w05-activity-logs.png" alt="Activity logs with stacked dropdowns" loading="lazy"><figcaption><span class="tag before">Before</span>Activity Logs</figcaption></figure>
+      <figure><img src="web/after/w05-activity-logs.png" alt="Activity logs with one Filters button" loading="lazy"><figcaption><span class="tag after">After</span>Activity Logs</figcaption></figure>
+    </div>
+  </section>
+
+  <h2 id="unseen">Fixes without a screen</h2>
+  <ul class="plain">
+    <li><strong>Chat archive.</strong> Unarchiving from inside a chat now takes it out of Archived, and it stays out after a restart. The list used to rebuild from a stale local copy.</li>
+    <li><strong>Manage Jobs crash.</strong> The screen crashed on open because the app’s runtime lacks <code>Promise.finally</code>. All 16 uses across the app were replaced.</li>
+    <li><strong>Status bar.</strong> After visiting Limes, the clock and battery icons turned white on light screens such as Communities. Limes now sets its dark status bar only while it is open.</li>
+    <li><strong>Event poll toggle.</strong> The selected Yes/No option no longer stays faded after tapping.</li>
+    <li><strong>Members count.</strong> The project stat now counts accepted members only, matching Team Members.</li>
+    <li><strong>Roles and permissions guide.</strong> A rule file for AI agents in both repos explains that “Administrator Access Required” pages, such as a shared Lime, are an admin choice and not a bug.</li>
+  </ul>
+
+  <h2 id="open">Still open</h2>
+  <ul class="plain">
+    <li><strong>“Unknown Author” on 4 blogs.</strong> Those posts have an empty author in the database, so there is no name to show. It needs a data fix.</li>
+    <li><strong>Limes tab is not gated.</strong> The Limes setting is admin-only, but the tab ignores it while a shared Lime respects it. Gating the tab would hide Limes from every non-admin, so that is a product call.</li>
+    <li><strong>Website comment counts</strong> on community posts read the same unset field the app used to. The app is fixed; the website is not yet.</li>
+    <li><strong>Slow loads</strong> on Communities and some project actions, seen on the emulator and in Raushawn’s video.</li>
+  </ul>
+  <p class="note">The round “N” badge in the website screenshots is the Next.js development indicator and does not appear in production.</p>
+</div>
