@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { AuthService, type UserProfile } from '@/lib/services/AuthService';
 import { SkeletonChatRow } from '@/components/home/SkeletonLoaders';
@@ -62,8 +62,6 @@ export default function ChatTabScreen() {
   const [composeVisible, setComposeVisible] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'unread' | 'archived'>('all');
   const [selectedUids, setSelectedUids] = useState<Set<string>>(new Set());
-  const [pinnedUids, setPinnedUids] = useState<Set<string>>(new Set());
-  const [archivedUids, setArchivedUids] = useState<Set<string>>(new Set());
   const [mutedUids, setMutedUids] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -75,69 +73,33 @@ export default function ChatTabScreen() {
   const loadError = resource.error?.message ?? null;
 
   const isSelectionMode = selectedUids.size > 0;
-  const pinnedKey = `ourlime_pinned_chats_${currentUserId}`;
   const archivedKey = `ourlime_archived_chats_${currentUserId}`;
   const mutedKey = `ourlime_muted_chats_${currentUserId}`;
 
-  // Load pinned, archived, and muted lists from storage
-  useEffect(() => {
+  // Pinned and archived come only from the conversation summaries, so an
+  // unarchive/unpin made anywhere (chat settings, another device) takes effect here.
+  const pinnedUids = useMemo(() => new Set(conversations.filter((c) => c.isPinned).map((c) => c.uid)), [conversations]);
+  const archivedUids = useMemo(() => new Set(conversations.filter((c) => c.isArchived).map((c) => c.uid)), [conversations]);
+
+  // Mute lives in chatMuteSettings, mirrored to storage. Reload on focus so a
+  // change made inside a chat is reflected when returning to this tab.
+  useFocusEffect(useCallback(() => {
     if (!currentUserId) return;
-    AsyncStorage.getItem(pinnedKey).then((val) => {
-      if (val) {
-        try {
-          setPinnedUids(new Set(JSON.parse(val) as string[]));
-        } catch {
-          // ignore
-        }
-      }
-    }).catch(() => {});
-
-    AsyncStorage.getItem(archivedKey).then((val) => {
-      if (val) {
-        try {
-          setArchivedUids(new Set(JSON.parse(val) as string[]));
-        } catch {
-          // ignore
-        }
-      }
-    }).catch(() => {});
-
     AsyncStorage.getItem(mutedKey).then((val) => {
-      if (val) {
-        try {
-          setMutedUids(new Set(JSON.parse(val) as string[]));
-        } catch {
-          // ignore
-        }
+      try {
+        const stored = val ? new Set(JSON.parse(val) as string[]) : new Set<string>();
+        setMutedUids(stored);
+      } catch {
+        // ignore
       }
     }).catch(() => {});
-  }, [currentUserId, pinnedKey, archivedKey, mutedKey]);
+  }, [currentUserId, mutedKey]));
 
-  // Sync firestore flags to local state sets
+  // Keep the storage mirror used by push suppression in step with Firestore.
   useEffect(() => {
-    if (conversations.length === 0) return;
-    setPinnedUids((prev) => {
-      const next = new Set(prev);
-      conversations.forEach((c) => {
-        if (c.isPinned) next.add(c.uid);
-      });
-      return next;
-    });
-    setArchivedUids((prev) => {
-      const next = new Set(prev);
-      conversations.forEach((c) => {
-        if (c.isArchived) next.add(c.uid);
-      });
-      return next;
-    });
-    setMutedUids((prev) => {
-      const next = new Set(prev);
-      conversations.forEach((c) => {
-        if (c.isMuted) next.add(c.uid);
-      });
-      return next;
-    });
-  }, [conversations]);
+    if (!currentUserId || resource.data === null) return;
+    void AsyncStorage.setItem(archivedKey, JSON.stringify(Array.from(archivedUids))).catch(() => {});
+  }, [archivedKey, archivedUids, currentUserId, resource.data]);
 
   const onRefresh = useCallback(() => {
     void refresh();
@@ -240,14 +202,7 @@ export default function ChatTabScreen() {
 
   const handleTogglePinSelected = async () => {
     const uids = Array.from(selectedUids);
-    const nextPinned = new Set(pinnedUids);
-    const allPinned = uids.every((uid) => nextPinned.has(uid));
-    uids.forEach((uid) => {
-      if (allPinned) nextPinned.delete(uid);
-      else nextPinned.add(uid);
-    });
-    setPinnedUids(nextPinned);
-    await AsyncStorage.setItem(pinnedKey, JSON.stringify(Array.from(nextPinned))).catch(() => {});
+    const allPinned = uids.every((uid) => pinnedUids.has(uid));
     for (const uid of uids) {
       void simpleChatMessageService.setPinStatus(uid, !allPinned);
       void conversationResourceService.patchConversation(currentUserId, uid, { isPinned: !allPinned });
@@ -257,14 +212,7 @@ export default function ChatTabScreen() {
 
   const handleToggleArchiveSelected = async () => {
     const uids = Array.from(selectedUids);
-    const nextArchived = new Set(archivedUids);
-    const allArchived = uids.every((uid) => nextArchived.has(uid));
-    uids.forEach((uid) => {
-      if (allArchived) nextArchived.delete(uid);
-      else nextArchived.add(uid);
-    });
-    setArchivedUids(nextArchived);
-    await AsyncStorage.setItem(archivedKey, JSON.stringify(Array.from(nextArchived))).catch(() => {});
+    const allArchived = uids.every((uid) => archivedUids.has(uid));
     for (const uid of uids) {
       void simpleChatMessageService.setArchiveStatus(uid, !allArchived);
       void conversationResourceService.patchConversation(currentUserId, uid, { isArchived: !allArchived });
