@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CalendarDays, Crop, Edit3, Flag, ImagePlus, MapPin, Plus, Repeat2, Trash2, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
@@ -143,7 +143,7 @@ function EventPollFields({ enabled, poll, disabled, onToggle, onChange }: EventP
   const addOption = (): void => onChange({ ...poll, options: [...poll.options, ''] });
   return <View style={{ marginTop: 6 }}>
     <Text style={{ marginBottom: 6, color: colors.mutedText, fontSize: 11, fontWeight: '800' }}>Add a poll?</Text>
-    <View style={{ flexDirection: 'row', gap: 6 }}>{([false, true] as const).map((value) => <TouchableOpacity key={String(value)} disabled={disabled} onPress={() => onToggle(value)} accessibilityRole="button" accessibilityState={{ selected: enabled === value }} style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: enabled === value ? colors.selectedControl : colors.control }}><Text style={{ color: enabled === value ? colors.selectedText : colors.secondaryText, fontWeight: '800', fontSize: 11 }}>{value ? 'Yes' : 'No'}</Text></TouchableOpacity>)}</View>
+    <View style={{ flexDirection: 'row', gap: 6 }}>{([false, true] as const).map((value) => <Pressable key={String(value)} disabled={disabled} onPress={() => onToggle(value)} accessibilityRole="button" accessibilityState={{ selected: enabled === value }} style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: enabled === value ? colors.selectedControl : colors.control }}><Text style={{ color: enabled === value ? colors.selectedText : colors.secondaryText, fontWeight: '800', fontSize: 11 }}>{value ? 'Yes' : 'No'}</Text></Pressable>)}</View>
     {enabled ? <View style={{ marginTop: 10, gap: 8 }}>
       <TextInput value={poll.question} onChangeText={(question) => onChange({ ...poll, question })} editable={!disabled} placeholder="Ask members something about this event" placeholderTextColor={colors.mutedText} maxLength={200} style={inputStyle} />
       {poll.options.map((option, index) => <View key={index} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
