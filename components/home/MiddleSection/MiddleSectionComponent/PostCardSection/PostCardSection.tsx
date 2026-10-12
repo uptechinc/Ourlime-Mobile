@@ -71,6 +71,12 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
   const [eventAttendanceLoading, setEventAttendanceLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(null);
 
+  // Follow refreshed counts from the feed (the card can mount from an older cached copy).
+  useEffect(() => {
+    if (repostSyncingRef.current) return;
+    setShareCount(post.stats.shares);
+  }, [post.stats.shares]);
+
   useEffect(() => {
     if (repostSyncingRef.current) return;
     setIsReposted(post.repostedByViewer === true);
