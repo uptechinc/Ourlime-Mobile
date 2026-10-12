@@ -464,7 +464,8 @@ export default function LimesScreen() {
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: '#000000' }}>
-        <StatusBar barStyle="light-content" backgroundColor="#000000" />
+        {/* Only while this tab is focused: tabs stay mounted, and a mounted StatusBar overrides every other screen. */}
+        {isScreenFocused ? <StatusBar barStyle="light-content" backgroundColor="#000000" /> : null}
         <LimesSkeleton />
       </View>
     );
@@ -519,7 +520,7 @@ export default function LimesScreen() {
 
   return (
     <View style={styles.container} onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+      {isScreenFocused ? <StatusBar barStyle="light-content" backgroundColor="#000000" /> : null}
 
       {/* Top Header Overlay */}
       <SafeAreaView style={styles.topHeader} edges={['top', 'left', 'right']}>
