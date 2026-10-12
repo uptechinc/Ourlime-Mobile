@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ourlime Roles & Permissions"
+  short_description: "User roles, page access statuses, staff preview, feature roles and Firestore rules across web and mobile"
+  default_prompt: "Use $roles-and-permissions before touching access overlays, page registries or role checks. Treat admin_only / coming_soon / beta_only / disabled pages as intentional admin decisions; never bypass a gate or edit pageAccessSettings to make one go away."
