@@ -28,6 +28,7 @@ import { PostMediaService, isCancellationError, type MediaUploadProgress, type P
 import type { PageResult } from '@/lib/types/serviceResults';
 import { postAuthorizationService } from '@/lib/services/PostAuthorizationService';
 import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
+import { postCounterService } from './PostCounterService';
 
 export type PostMediaType = 'image' | 'video';
 export type PostType = 'regular' | 'poll' | 'event';
@@ -266,11 +267,13 @@ export class PostService {
       .filter((document) => document.data.hidden !== true)
       .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
     const postIds = documents.map((document) => document.id);
-    const [mediaDocuments, viewerLikes, counters, users] = await Promise.all([
+    const [mediaDocuments, viewerLikes, counters, users, legacyCounts, commentCounts] = await Promise.all([
       this.getDocumentsByField('communityVariantDetailsSummary', 'communityVariantDetailsId', postIds),
       viewerId ? getDocs(query(collection(db, 'communityVariantDetailsLikes'), where('userId', '==', viewerId))) : Promise.resolve(null),
       Promise.all(postIds.map((postId) => getDoc(doc(db, 'communityVariantDetailsCounter', postId)).catch(() => null))),
       this.loadUserCards(documents.map((document) => readString(document.data.userId))),
+      postCounterService.loadLegacyCommunityCounts(postIds),
+      postCounterService.countComments(postIds),
     ]);
     const mediaByPost = new Map<string, PostMedia[]>();
     mediaDocuments.forEach((document) => {
@@ -289,11 +292,12 @@ export class PostService {
     const posts = documents.map((document, index) => {
       const userId = readString(document.data.userId);
       const likeCount = Math.max(0, Number(counters[index]?.data()?.likeCount) || 0);
+      const { commentCount, shareCount } = postCounterService.mergeCommunityCounts(counters[index]?.data(), legacyCounts.get(document.id), commentCounts.get(document.id));
       return this.mapPost(
         { id: document.id, data: { ...document.data, communityId: access.communityId, communityName: readString(access.communityData.title) } },
         users.get(userId) ?? this.emptyUser(userId),
         mediaByPost.get(document.id) ?? [],
-        { likeCount, commentCount: document.data.commentCount, shareCount: document.data.shareCount },
+        { likeCount, commentCount, shareCount },
         viewerId && likedPostIds.has(document.id) ? [viewerId] : [],
       );
     });
@@ -418,11 +422,13 @@ export class PostService {
 
       const postIds = rawDocuments.map((d) => d.id);
       const uniqueCommunityIds = [...new Set(rawDocuments.map((d) => readString(d.data.communityVariantId) || readString(d.data.communityId)).filter(Boolean))];
-      const [mediaDocuments, likeDocuments, counters, communityDocuments] = await Promise.all([
+      const [mediaDocuments, likeDocuments, counters, communityDocuments, legacyCounts, commentCounts] = await Promise.all([
         this.getDocumentsByField('communityVariantDetailsSummary', 'communityVariantDetailsId', postIds),
         viewerId ? this.getDocumentsByField('communityVariantDetailsLikes', 'postId', postIds) : Promise.resolve([]),
         Promise.all(postIds.map((postId) => getDoc(doc(db, 'communityVariantDetailsCounter', postId)))),
         Promise.all(uniqueCommunityIds.map((cId) => getDoc(doc(db, 'communityVariant', cId)))),
+        postCounterService.loadLegacyCommunityCounts(postIds),
+        postCounterService.countComments(postIds),
       ]);
 
       const communityMap = new Map<string, UnknownRecord>();
@@ -486,7 +492,7 @@ export class PostService {
           document,
           usersMap.get(userId) ?? this.emptyUser(userId),
           mediaByPost.get(document.id) ?? [],
-          { ...document.data, ...counter },
+          { ...document.data, ...counter, ...postCounterService.mergeCommunityCounts(counter, legacyCounts.get(document.id), commentCounts.get(document.id)) },
           likedUsersByPost.get(document.id) ?? [],
         );
         return {
@@ -969,7 +975,10 @@ export class PostService {
           trimEndSeconds: typeof d.data.trimEndSeconds === 'number' ? d.data.trimEndSeconds : undefined,
           durationSeconds: typeof d.data.durationSeconds === 'number' ? d.data.durationSeconds : undefined,
         }));
-        const counter = (isCommunity ? countDocs[0] : pickLikeCounter(countDocs, postId))?.data ?? data;
+        const pickedCounter = (isCommunity ? countDocs[0] : pickLikeCounter(countDocs, postId))?.data ?? data;
+        const counter = isCommunity
+          ? { ...pickedCounter, ...postCounterService.mergeCommunityCounts(countDocs[0]?.data, (await postCounterService.loadLegacyCommunityCounts([postId])).get(postId), (await postCounterService.countComments([postId])).get(postId)) }
+          : pickedCounter;
         const likedUserIds = likeDocs.filter((d) => d.data.likes === true).map((d) => readString(d.data.userId)).filter(Boolean);
         return this.mapPost(postDoc, userCard, mediaItems, counter, likedUserIds);
       }
@@ -1179,24 +1188,8 @@ export class PostService {
   }
 
   public async recordShare(postId: string): Promise<{ path: string; shareCount: number }> {
-    const counterRef = await this.findLikeCounterRef(postId).catch(() => null);
-    let shareCount = 1;
-    if (counterRef) {
-      const counterSnap = await getDoc(counterRef).catch(() => null);
-      shareCount = (Number((counterSnap?.data() as UnknownRecord | undefined)?.shareCount) || 0) + 1;
-      await updateDoc(counterRef, { shareCount: increment(1), updatedAt: serverTimestamp() }).catch(() => {});
-    } else {
-      // Fixed ID (not a random one), so a post never gets a second counter with a different like count.
-      await setDoc(doc(db, 'likesCount', postId), {
-        feedsPostId: postId,
-        likeCount: 0,
-        commentCount: 0,
-        shareCount: 1,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }, { merge: true }).catch(() => {});
-    }
-    return { path: `/post/${encodeURIComponent(postId)}`, shareCount };
+    const shareCount = await postCounterService.adjust(postId, 'shareCount', 1);
+    return { path: `/post/${encodeURIComponent(postId)}`, shareCount: shareCount ?? 1 };
   }
 
   public getPostUrl(postId: string): string {
