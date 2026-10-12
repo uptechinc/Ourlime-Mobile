@@ -215,7 +215,7 @@ export default function ManageJobsScreen() {
 
   if (loading && jobs.length === 0) {
     return (
-      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
         <PageHeader title="Manage Jobs" onBackPress={() => router.back()} />
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <JobManagementSkeleton />
@@ -223,9 +223,9 @@ export default function ManageJobsScreen() {
       </SafeAreaView>
     );
   }
-  if (!loading && jobs.length === 0) return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}><PageHeader title="Manage Jobs" onBackPress={() => router.back()} /><View style={styles.center}><Briefcase size={42} color={colors.mutedText} /><Text style={styles.jobTitle}>No jobs published</Text><Text style={styles.meta}>Create an opportunity from the Jobs screen.</Text></View></SafeAreaView>;
+  if (!loading && jobs.length === 0) return <SafeAreaView edges={['left', 'right']} style={styles.safeArea}><PageHeader title="Manage Jobs" onBackPress={() => router.back()} /><View style={styles.center}><Briefcase size={42} color={colors.mutedText} /><Text style={styles.jobTitle}>No jobs published</Text><Text style={styles.meta}>Create an opportunity from the Jobs screen.</Text></View></SafeAreaView>;
 
-  return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+  return <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
     <PageHeader title="Manage Jobs" onBackPress={() => router.back()} />
     <FlatList
       data={visibleApplications}

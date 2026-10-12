@@ -22,6 +22,9 @@ const AUDIT_LABELS: Record<string, string> = {
   task_created: 'Task created', task_updated: 'Task updated', status_changed: 'Status changed', subtask_added: 'Subtask added',
   subtask_updated: 'Subtask updated', comment_added: 'Comment added', time_entry_added: 'Time entry added',
   attachment_added: 'Attachment added', attachment_deleted: 'Attachment deleted',
+  // Short keys written by the native task service.
+  add_subtask: 'Added a subtask', toggle_subtask: 'Updated a subtask', comment: 'Commented', time: 'Logged time',
+  update: 'Updated', create: 'Created', delete: 'Deleted',
 };
 const ROLES: ProjectRole[] = ['admin', 'member', 'viewer'];
 
@@ -105,7 +108,7 @@ export default function ProjectBoardSidebar({ tasks, teamMembers, currentUserId,
             <Text style={{ color: colors.secondaryText, fontSize: 13 }}>
               <Text style={{ fontWeight: '800', color: colors.text }}>{nameFor(entry.userId)}</Text> {(AUDIT_LABELS[entry.action] ?? entry.action.replace(/_/g, ' ')).toLowerCase()} · <Text style={{ fontWeight: '700' }}>{entry.taskTitle}</Text>
             </Text>
-            <Text style={{ color: colors.mutedText, fontSize: 11 }}>{entry.detail ? `${entry.detail} · ` : ''}{timeAgo(entry.timestamp)}</Text>
+            <Text style={{ color: colors.mutedText, fontSize: 11 }}>{entry.detail && entry.detail !== entry.action ? `${entry.detail} · ` : ''}{timeAgo(entry.timestamp)}</Text>
           </View>
         ))}
       </View>

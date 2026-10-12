@@ -57,7 +57,7 @@ export default function JobsPage() {
     });
   }, [activeTab, jobs, search, selectedCategory]);
 
-  return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+  return <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
     <PageHeader title="Jobs" onBackPress={() => router.back()} />
     <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void loadJobs(); }} tintColor="#10b981" />}>
       <View style={styles.hero}><Briefcase size={30} color="#052e16" /><View style={styles.heroCopy}><Text style={styles.heroTitle}>Find your next opportunity</Text><Text style={styles.heroText}>{jobs.length} live professional jobs and quick tasks</Text></View></View>

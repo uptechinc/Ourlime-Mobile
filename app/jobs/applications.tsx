@@ -75,7 +75,7 @@ export default function MyJobApplicationsScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+    <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="My Applications" onBackPress={() => router.back()} />
       <ScrollView
         contentContainerStyle={styles.content}

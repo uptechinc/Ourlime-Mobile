@@ -401,7 +401,7 @@ export default function ProjectBoardScreen() {
 
   if (!activeUserId) {
     return (
-      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
         <PageHeader title="E-Projects" onBackPress={() => router.back()} />
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Sign in to view this project.</Text>
@@ -412,7 +412,7 @@ export default function ProjectBoardScreen() {
 
   if (loading || !sessionReady) {
     return (
-      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
         <PageHeader title="Project Details" onBackPress={() => router.back()} />
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
           <ProjectBoardSkeleton />
@@ -423,7 +423,7 @@ export default function ProjectBoardScreen() {
 
   if (!project) {
     return (
-      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
         <PageHeader title="Project Details" onBackPress={() => router.back()} />
         <View style={styles.emptyContainer}>
           <Icon name="folder" size={48} color={colors.mutedText} />
@@ -437,7 +437,7 @@ export default function ProjectBoardScreen() {
   }
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+    <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title={project.name} onBackPress={() => router.back()} />
 
       <ScrollView

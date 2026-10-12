@@ -222,7 +222,7 @@ export default function ProjectManagementScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+    <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="E-Projects" onBackPress={() => router.back()} />
       <SessionRetryBanner />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={projectResource.status === 'refreshing'} onRefresh={() => void refreshProjects()} tintColor="#10b981" />}>
