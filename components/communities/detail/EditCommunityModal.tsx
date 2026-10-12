@@ -99,7 +99,7 @@ export default function EditCommunityModal({
 				.checkAvailability(title, slug, community.id)
 				.then(setAvailability)
 				.catch(() => setAvailability(null))
-				.finally(() => setCheckingAvailability(false));
+				.then(() => setCheckingAvailability(false));
 		}, 400);
 		return () => clearTimeout(timeout);
 	}, [community.id, community.slug, community.title, slug, title, visible]);

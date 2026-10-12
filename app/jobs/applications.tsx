@@ -59,7 +59,7 @@ export default function MyJobApplicationsScreen() {
               .catch((withdrawError: unknown) => {
                 setError(withdrawError instanceof Error ? withdrawError.message : 'The application could not be withdrawn.');
               })
-              .finally(() => setWorkingId(null));
+              .then(() => setWorkingId(null));
           },
         },
       ],

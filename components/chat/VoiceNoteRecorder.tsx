@@ -67,7 +67,7 @@ export default function VoiceNoteRecorder({ onCancel, onSend, onError }: VoiceNo
       cancelled = true;
       if (!finishedRef.current) {
         finishedRef.current = true;
-        void recorder.stop().catch(() => undefined).finally(() => void restoreAudioMode());
+        void recorder.stop().catch(() => undefined).then(() => void restoreAudioMode());
       }
     };
     // recorder is stable for the component's lifetime

@@ -33,7 +33,7 @@ export default function ContentDraftModal({ ownerId, kind, projectId, teamMember
     setError('');
     void createDraftRef.current().catch((failure: unknown) => {
       setError(failure instanceof Error ? failure.message : 'Task draft could not be created.');
-    }).finally(() => setBusy(false));
+    }).then(() => setBusy(false));
   }, [kind]);
   return <MarketFormModal visible busy={busy} title={kind === 'blog' ? 'Blog drafts' : 'Task drafts'} onClose={() => void action(async () => { await editor.flush(); onClose(); })}>
     <Text style={{ color: colors.secondaryText }}>{editor.status.replaceAll('_', ' ')}{draft ? ` · ${draft.lastSavedAt}` : ''}</Text>

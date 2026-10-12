@@ -6,6 +6,7 @@ import { nativeSessionService } from './NativeSessionService';
 import { pageAccessService } from './PageAccessService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { BlogDraftPayload, ContentDraft, PublicationReceipt, TaskDraftPayload } from '@/lib/types/reliability';
+import { withCleanup } from '@/lib/utils/withCleanup';
 
 export class ContentDraftService {
   private static instance: ContentDraftService;
@@ -66,7 +67,7 @@ export class ContentDraftService {
   public async sync(ownerId: string): Promise<{ conflicts: number; pending: number }> {
     const existing = this.synchronizations.get(ownerId);
     if (existing) return existing;
-    const synchronization = this.synchronize(ownerId).finally(() => { this.synchronizations.delete(ownerId); });
+    const synchronization = withCleanup(this.synchronize(ownerId), () => { this.synchronizations.delete(ownerId); });
     this.synchronizations.set(ownerId, synchronization);
     return synchronization;
   }

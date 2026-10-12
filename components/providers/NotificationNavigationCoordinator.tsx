@@ -6,6 +6,7 @@ import { notificationService } from '@/lib/services/NotificationService';
 import { pushNotificationService } from '@/lib/services/PushNotificationService';
 import { platformEnvironmentService } from '@/lib/services/PlatformEnvironmentService';
 import { DiagnosticLogService } from '@/lib/services/DiagnosticLogService';
+import { withCleanup } from '@/lib/utils/withCleanup';
 
 type NotificationNavigationCoordinatorProps = {
   userId: string | null;
@@ -85,9 +86,9 @@ export default function NotificationNavigationCoordinator({ userId }: Notificati
           response.actionIdentifier,
           response.notification.request.content.data,
         );
-        void handleResponse(pending).finally(() => {
+        void withCleanup(handleResponse(pending), () => {
           void Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
-        });
+        }).catch(() => undefined);
       };
       subscription = Notifications.addNotificationResponseReceivedListener(receiveResponse);
       void Notifications.getLastNotificationResponseAsync().then((response) => {

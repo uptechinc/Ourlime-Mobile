@@ -244,7 +244,7 @@ export default function CommunityPollsWorkspace({
 															: 'Vote could not be saved.'
 													)
 												)
-												.finally(() => setBusy(false));
+												.then(() => setBusy(false));
 										}}
 										style={{
 											minHeight: 52,

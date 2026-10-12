@@ -34,7 +34,7 @@ export default function CxcStudyCenterScreen() {
       setSubjects(items);
       setSelectedSubject(items[0] ?? null);
     }).catch(() => { if (active) setError('CXC resources could not be loaded.'); })
-      .finally(() => { if (active) setLoading(false); });
+      .then(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
