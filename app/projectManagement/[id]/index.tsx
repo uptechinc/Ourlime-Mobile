@@ -40,6 +40,7 @@ import type {
   Task,
   TeamMember,
 } from '@/lib/types/project';
+import { useAndroidKeyboardInset } from '@/lib/hooks/useKeyboardHeight';
 
 /** Runs an action unless the same action key is already running (double-tap guard). */
 async function runOnce(busyActions: Set<string>, actionKey: string, action: () => Promise<void>): Promise<void> {
@@ -60,6 +61,7 @@ export default function ProjectBoardScreen() {
   const { id, invite } = useLocalSearchParams<{ id: string; invite?: string }>();
   const projectId = id as string;
   const { colors, isDark } = useAppTheme();
+  const keyboardInset = useAndroidKeyboardInset();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { activeUserId, nativeSession } = useAppData();
   const currentUserId = activeUserId ?? '';
@@ -480,7 +482,7 @@ export default function ProjectBoardScreen() {
               <Text style={styles.metricLabel}>Completed</Text>
             </View>
             <View style={styles.metricItem}>
-              <Text style={styles.metricNumber}>{teamMembers.length}</Text>
+              <Text style={styles.metricNumber}>{teamMembers.filter((member) => member.membershipStatus !== 'pending').length}</Text>
               <Text style={styles.metricLabel}>Members</Text>
             </View>
           </View>
@@ -659,7 +661,7 @@ export default function ProjectBoardScreen() {
 
       {/* 2. Task Detail Modal */}
       <Modal visible={activeTask !== null} transparent animationType="none" onRequestClose={detailSwipeDismiss.dismissWithAnimation}>
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { paddingBottom: keyboardInset }]}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', maxHeight: '90%' }}>
             <Animated.View style={[styles.modalSheet, detailSwipeDismiss.animatedStyle, { maxHeight: '100%' }]}>
               <SwipeDismissHandle gesture={detailSwipeDismiss.gesture} color={colors.border} animatedStyle={detailSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close task details" />
@@ -773,7 +775,7 @@ export default function ProjectBoardScreen() {
 
       {/* 3. Invite User Modal */}
       <Modal visible={inviteOpen} transparent animationType="none" onRequestClose={inviteSwipeDismiss.dismissWithAnimation}>
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { paddingBottom: keyboardInset }]}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', maxHeight: '90%' }}>
             <Animated.View style={[styles.modalSheet, inviteSwipeDismiss.animatedStyle, { maxHeight: '100%' }]}>
               <SwipeDismissHandle gesture={inviteSwipeDismiss.gesture} color={colors.border} animatedStyle={inviteSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close invite modal" />
@@ -895,10 +897,11 @@ export default function ProjectBoardScreen() {
 
       {/* 4. Project Settings Modal */}
       <Modal visible={settingsOpen} transparent animationType="none" onRequestClose={settingsSwipeDismiss.dismissWithAnimation}>
-        <View style={styles.modalBackdrop}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
-            <Animated.View style={[styles.modalSheet, settingsSwipeDismiss.animatedStyle]}>
+        <View style={[styles.modalBackdrop, { paddingBottom: keyboardInset }]}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', maxHeight: '90%' }}>
+            <Animated.View style={[styles.modalSheet, settingsSwipeDismiss.animatedStyle, { maxHeight: '100%' }]}>
               <SwipeDismissHandle gesture={settingsSwipeDismiss.gesture} color={colors.border} animatedStyle={settingsSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close settings modal" />
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
               <Text style={styles.modalHeading}>Project Settings</Text>
 
               <Text style={styles.inputLabel}>Project Name</Text>
@@ -944,6 +947,7 @@ export default function ProjectBoardScreen() {
                 <Icon name="trash-2" size={16} color="#ef4444" />
                 <Text style={styles.dangerButtonText}>Delete Entire Project</Text>
               </TouchableOpacity>
+              </ScrollView>
             </Animated.View>
           </KeyboardAvoidingView>
         </View>

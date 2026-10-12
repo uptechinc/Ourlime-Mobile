@@ -8,6 +8,7 @@ import { projectService } from '@/lib/services/ProjectService';
 import DateTimeField from '@/components/ui/DateTimeField';
 import UserAvatar from '@/components/ui/UserAvatar';
 import type { Priority, Status, TeamMember } from '@/lib/types/project';
+import { useAndroidKeyboardInset } from '@/lib/hooks/useKeyboardHeight';
 
 type CreateTaskSheetProps = {
   visible: boolean;
@@ -40,6 +41,7 @@ function toDueDateString(date: Date): string {
 /** Simple "New task" form for a project board: fill in and create in one tap (no drafts screen). */
 export default function CreateTaskSheet({ visible, projectId, currentUserId, teamMembers, onClose, onCreated }: CreateTaskSheetProps) {
   const { colors } = useAppTheme();
+  const keyboardInset = useAndroidKeyboardInset();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
@@ -131,7 +133,7 @@ export default function CreateTaskSheet({ visible, projectId, currentUserId, tea
           </TouchableOpacity>
         </View>
 
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1, paddingBottom: keyboardInset }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: 40 }}>
             {error ? <Text accessibilityRole="alert" style={{ color: colors.destructiveText, fontWeight: '700' }}>{error}</Text> : null}
 
