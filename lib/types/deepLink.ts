@@ -24,7 +24,9 @@ export type DeepLinkDestination =
   | { kind: 'ehub' }
   | { kind: 'elearning'; path?: string }
   | { kind: 'projects'; projectId?: string }
-  | { kind: 'register'; referralToken?: string };
+  | { kind: 'register'; referralToken?: string }
+  /** A screen that exists on both the website and the app, opened as-is (web path and app route). */
+  | { kind: 'screen'; webPath: string; appRoute: string };
 
 export type DeepLinkResolution =
   | {

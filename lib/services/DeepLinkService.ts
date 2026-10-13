@@ -10,6 +10,31 @@ const CANONICAL_WEB_BASE_URL = 'https://ourlime.com';
 const PENDING_DEEP_LINK_KEY = 'ourlime.pending-deep-link';
 const PENDING_DEEP_LINK_RETENTION_MS = 24 * 60 * 60 * 1000;
 
+/** App screens a link may open directly, keyed by the link's first path segment (lowercase). */
+const SCREEN_ROUTES: { [firstSegment: string]: string } = {
+  help: '/help',
+  policies: '/policies',
+  'privacy-policy': '/privacy-policy',
+  'terms-and-conditions': '/terms-and-conditions',
+  'child-safety-standards': '/child-safety-standards',
+  'delete-account': '/delete-account',
+  notifications: '/notifications',
+  saved: '/saved',
+  games: '/games',
+  'wordle-game': '/wordle-game',
+  trinigeoguesser: '/triniGeoGuesser',
+  ewallet: '/eWallet',
+  ads: '/ads',
+  chat: '/chat',
+  messages: '/chat',
+  settings: '/settings',
+};
+/** Website /profile/... pages that are app screens rather than a username. */
+const PROFILE_SCREEN_ROUTES: { [secondSegment: string]: string } = {
+  settings: '/settings',
+  admin: '/admin',
+};
+
 export class DeepLinkService {
   private static instance: DeepLinkService;
   private readonly webBaseUrl = (
@@ -145,6 +170,12 @@ export class DeepLinkService {
     if (!first) return null;
 
     if (first === 'post' && segments[1]) return { kind: 'post', postId: segments[1] };
+    const profileScreen = first === 'profile' ? PROFILE_SCREEN_ROUTES[segments[1]?.toLowerCase() ?? ''] : undefined;
+    if (profileScreen) {
+      // /profile/admin/<page> on the website is /admin/<page> in the app.
+      const rest = profileScreen === '/admin' ? segments.slice(2) : [];
+      return this.screen(`/${segments.join('/')}`, [profileScreen, ...rest].join('/'));
+    }
     if (first === 'profile' && segments[1]?.toLowerCase() === 'viewotherprofile' && segments[2]) {
       return { kind: 'profile', username: this.normalizeUsername(segments[2]) };
     }
@@ -166,7 +197,15 @@ export class DeepLinkService {
       const referralToken = url.searchParams.get('referralToken') || undefined;
       return { kind: 'register', referralToken };
     }
+    const screenRoute = SCREEN_ROUTES[first];
+    if (screenRoute) return this.screen(`/${segments.join('/')}`, [screenRoute, ...segments.slice(1)].join('/'));
+    if (first === 'admin') return this.screen(`/${segments.join('/')}`, `/${segments.join('/')}`);
     return null;
+  }
+
+  private screen(webPath: string, appRoute: string): DeepLinkDestination {
+    const encode = (path: string) => path.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+    return { kind: 'screen', webPath: encode(webPath), appRoute: encode(appRoute) };
   }
 
   private getSegments(url: URL): string[] {
@@ -191,6 +230,7 @@ export class DeepLinkService {
       case 'elearning': return destination.path ? `/eLearning/${destination.path}` : '/eLearning';
       case 'projects': return destination.projectId ? `/projectManagement/${encodeURIComponent(destination.projectId)}` : '/projectManagement';
       case 'register': return destination.referralToken ? `/register?referralToken=${encodeURIComponent(destination.referralToken)}` : '/register';
+      case 'screen': return destination.webPath;
     }
     const exhaustiveDestination: never = destination;
     return exhaustiveDestination;
@@ -213,6 +253,7 @@ export class DeepLinkService {
       case 'elearning': return destination.path ? `/eLearning/${destination.path}` : '/eLearning';
       case 'projects': return destination.projectId ? `/projectManagement/${encodeURIComponent(destination.projectId)}` : '/projectManagement';
       case 'register': return destination.referralToken ? `/(auth)/register?referralToken=${encodeURIComponent(destination.referralToken)}` : '/(auth)/register';
+      case 'screen': return destination.appRoute;
     }
     const exhaustiveDestination: never = destination;
     return exhaustiveDestination;
