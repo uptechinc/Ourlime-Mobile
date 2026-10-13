@@ -1,5 +1,6 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 
 export const POST_VERIFICATION_REQUIRED_MESSAGE = 'You must verify your account before you can create a post.';
 
@@ -38,7 +39,7 @@ export class PostAuthorizationService {
       throw new Error('Please sign in again before posting.');
     }
 
-    const userSnapshot = await getDoc(doc(db, 'users', userId));
+    const userSnapshot = await sharedDocumentReader.read(doc(db, 'users', userId));
     if (!userSnapshot.exists() || !this.canCreatePost({ uid: userId, ...userSnapshot.data() })) {
       throw new Error(POST_VERIFICATION_REQUIRED_MESSAGE);
     }

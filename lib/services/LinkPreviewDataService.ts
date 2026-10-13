@@ -1,5 +1,6 @@
 import { collection, doc, getDoc, getDocs, limit, query, where, type DocumentData, type DocumentSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
 import type {
   LinkPreviewData,
@@ -189,7 +190,7 @@ export class LinkPreviewDataService {
     if (viewerId === ownerId || viewerId === readString(community.userId)) return true;
     const [membership, viewer] = await Promise.all([
       getDocs(query(collection(db, 'communityVariantMembership'), where('communityVariantId', '==', communityId), where('userId', '==', viewerId), where('isMember', '==', true), limit(1))),
-      getDoc(doc(db, 'users', viewerId)),
+      sharedDocumentReader.read(doc(db, 'users', viewerId)),
     ]);
     const viewerData = viewer.data() ?? {};
     return !membership.empty || viewerData.isAdmin === true || viewerData.role === 'admin' || viewerData.accountType === 'admin';

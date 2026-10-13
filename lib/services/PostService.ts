@@ -20,6 +20,7 @@ import {
   type DocumentReference,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { AvatarService } from './AvatarService';
 import { communityDataService } from './CommunityDataService';
@@ -1540,7 +1541,7 @@ export class PostService {
         getDocs(query(collection(db, 'friendship'), where('userId1', '==', viewerId))),
         getDocs(query(collection(db, 'friendship'), where('userId2', '==', viewerId))),
         getDocs(query(collection(db, 'followers'), where('followerId', '==', viewerId))),
-        getDoc(doc(db, 'users', viewerId)),
+        sharedDocumentReader.read(doc(db, 'users', viewerId)),
       ]);
       const friends = new Set<string>();
       asFirst.docs.forEach((item) => {

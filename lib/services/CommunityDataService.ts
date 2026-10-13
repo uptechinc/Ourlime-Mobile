@@ -26,6 +26,7 @@ import {
   type QuerySnapshot,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 import { notificationHelpers } from '@/lib/helpers/notificationHelpers';
 import { appServerService } from './AppServerService';
 import type {
@@ -166,7 +167,7 @@ export class CommunityDataService {
       const [bans, memberships, viewer] = await Promise.all([
         getDocs(query(collection(db, 'bannedCommunityMembers'), where('communityVariantId', '==', communityId), where('userId', '==', viewerId), limit(1))),
         getDocs(query(collection(db, 'communityVariantMembership'), where('communityVariantId', '==', communityId), where('userId', '==', viewerId), where('isMember', '==', true), limit(1))),
-        getDoc(doc(db, 'users', viewerId)),
+        sharedDocumentReader.read(doc(db, 'users', viewerId)),
       ]);
       isBanned = !bans.empty;
       const membership = memberships.docs[0]?.data();
@@ -280,7 +281,7 @@ export class CommunityDataService {
       this.loadFriendIds(viewerId),
       viewerId ? getDocs(query(collection(db, 'communityRequests'), where('userId', '==', viewerId))) : Promise.resolve(null),
       viewerId ? getDocs(query(collection(db, 'bannedCommunityMembers'), where('userId', '==', viewerId))) : Promise.resolve(null),
-      viewerId ? getDoc(doc(db, 'users', viewerId)) : Promise.resolve(null),
+      viewerId ? sharedDocumentReader.read(doc(db, 'users', viewerId)) : Promise.resolve(null),
       Promise.all(categoryIds.map((categoryId) => getDoc(doc(db, 'communityCategories', categoryId)).catch(() => null))),
     ]);
     const membershipsByCommunity = new Map<string, DocumentData[]>();
@@ -521,7 +522,7 @@ export class CommunityDataService {
     const [slugMatch, titleMatch, creator] = await Promise.all([
       getDocs(query(collection(db, 'communityVariant'), where('uniqueName', '==', slug), limit(1))),
       getDocs(query(collection(db, 'communityVariant'), where('titleLower', '==', title.toLowerCase()), limit(1))),
-      getDoc(doc(db, 'users', viewerId)),
+      sharedDocumentReader.read(doc(db, 'users', viewerId)),
     ]);
     if (!slugMatch.empty) throw new Error('That community URL is already in use.');
     if (!titleMatch.empty) throw new Error('A community already uses that name.');

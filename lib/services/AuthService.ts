@@ -28,6 +28,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { pushNotificationService } from './PushNotificationService';
 import { localCacheService } from './LocalCacheService';
@@ -533,7 +534,7 @@ export class AuthService {
   private async fetchUserProfileInternal(uid: string, warnIfMissing = true): Promise<UserProfile | null> {
     this.logger.info('AuthService', 'profile:user-document:start', { uid, collection: 'users' });
     try {
-      const snap = await getDoc(doc(db, 'users', uid));
+      const snap = await sharedDocumentReader.read(doc(db, 'users', uid));
       this.logger.success('AuthService', 'profile:user-document', { uid, exists: snap.exists() });
       if (!snap.exists()) {
         if (warnIfMissing) {
@@ -731,6 +732,7 @@ export class AuthService {
       coverPicture: updates.coverPhoto ?? null,
       updatedAt: serverTimestamp(),
     });
+    sharedDocumentReader.invalidate(`users/${userId}`);
   }
 
   /**
@@ -802,6 +804,7 @@ export class AuthService {
       verificationStatus: 'pending',
       updatedAt: serverTimestamp(),
     });
+    sharedDocumentReader.invalidate(`users/${currentUser.uid}`);
 
     this.invalidateUserProfile(currentUser.uid);
 

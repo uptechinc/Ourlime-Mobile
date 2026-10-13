@@ -1,5 +1,6 @@
 import { arrayRemove, doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
+import { sharedDocumentReader } from '@/lib/services/SharedDocumentReader';
 import { AuthService } from '@/lib/services/AuthService';
 
 export type SettingsVisibility = 'public' | 'friends' | 'private';
@@ -183,6 +184,8 @@ export class SettingsService {
         updatedAt: serverTimestamp(),
       }, { merge: true }),
     ]);
+    sharedDocumentReader.invalidate(`users/${userId}`);
+    sharedDocumentReader.invalidate(`users/${userId}/userSettings/account`);
   }
 
   public async updateTheme(userId: string, theme: SettingsTheme): Promise<void> {

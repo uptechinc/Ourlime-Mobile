@@ -1,5 +1,6 @@
 import { collection, doc, getDoc, getDocs, query, where, type DocumentData, type DocumentSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 import type { UserProfile } from './AuthService';
 import { communityDataService } from './CommunityDataService';
 import { usernameService } from './UsernameService';
@@ -39,7 +40,7 @@ export class ProfileService {
     const viewerId = auth.currentUser?.uid ?? null;
 
     if (viewerId && viewerId !== userId) {
-      const viewer = await getDoc(doc(db, 'users', viewerId)).catch(() => null);
+      const viewer = await sharedDocumentReader.read(doc(db, 'users', viewerId)).catch(() => null);
       const isBlockedByMe = readStringList(viewer?.data()?.blockList).includes(userId);
       const isBlockedByOther = readStringList(user.blockList).includes(viewerId);
       if (isBlockedByMe || isBlockedByOther) {
@@ -59,7 +60,7 @@ export class ProfileService {
       getDocs(query(collection(db, 'friendship'), where('userId2', '==', userId), where('friendshipStatus', '==', 'accepted'))),
       getDocs(query(collection(db, 'communityVariantMembership'), where('userId', '==', userId))),
       getDocs(query(collection(db, 'followers'), where('followeeId', '==', userId))),
-      getDoc(doc(db, 'users', userId, 'userSettings', 'account')).catch(() => null),
+      sharedDocumentReader.read(doc(db, 'users', userId, 'userSettings', 'account')).catch(() => null),
     ]);
 
     const friendIds = [

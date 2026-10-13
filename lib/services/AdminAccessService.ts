@@ -1,5 +1,6 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 
 export type AdminAccessIdentity = {
   userId: string;
@@ -41,7 +42,7 @@ export class AdminAccessService {
   private async resolveIdentity(): Promise<AdminAccessIdentity> {
     const currentUser = auth.currentUser;
     if (!currentUser || !currentUser.emailVerified) throw new Error('Verified authentication required');
-    const snapshot = await getDoc(doc(db, 'users', currentUser.uid));
+    const snapshot = await sharedDocumentReader.read(doc(db, 'users', currentUser.uid));
     if (!snapshot.exists()) throw new Error('User profile was not found');
     const profile = snapshot.data();
     const role = (typeof profile.role === 'string' ? profile.role : typeof profile.accountType === 'string' ? profile.accountType : typeof profile.userType === 'string' ? profile.userType : 'user').toLowerCase().replace('-', '_');

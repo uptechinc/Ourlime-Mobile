@@ -78,7 +78,7 @@ export class SharedContentMessageService {
       case 'profile': return `/profile/${encodedId}`;
       case 'event': return `/events?targetId=${encodedId}`;
       case 'blog': return `/blogs/${encodedId}`;
-      case 'job': return `/jobs?apply=${encodedId}`;
+      case 'job': return `/jobs/${encodedId}`;
       case 'market-product': return `/market?product=${encodedId}`;
     }
     const exhaustiveKind: never = kind;
