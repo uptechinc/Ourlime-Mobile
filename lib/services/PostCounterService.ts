@@ -16,6 +16,19 @@ import {
 import { db } from '../firebaseConfig';
 
 export type PostCounterField = 'commentCount' | 'shareCount';
+
+/**
+ * Where community post comment totals come from. Must match COMMUNITY_COMMENT_COUNTS_STORED on the website
+ * (lib/posts/communityCommentCounts.ts).
+ *
+ * false: count feedsPostComments for every post on every feed load (one count query per post).
+ * true:  read communityVariantDetailsCounter/{postId}.commentCount, which the countCommunityComment* Cloud Functions
+ *        keep in step with every comment create and delete.
+ *
+ * Turn on only after both functions are deployed and the website repo's
+ * functions/scripts/backfill-community-comment-counts.cjs has run with --apply. Turning it off goes back to counting.
+ */
+export const COMMUNITY_COMMENT_COUNTS_STORED = false;
 export type LegacyCommunityCounts = { commentCount: number; shareCount: number };
 
 const readCount = (value: unknown): number => {
@@ -26,7 +39,8 @@ const readCount = (value: unknown): number => {
 /**
  * Owns where a post's comment/share counters live.
  * Community posts keep every counter in communityVariantDetailsCounter/{postId} (same as the web);
- * home feed posts use the likesCount collection.
+ * home feed posts use the likesCount collection. A community post's commentCount is written only by the
+ * countCommunityComment* Cloud Functions, so the app never adjusts it.
  */
 export class PostCounterService {
   private static instance: PostCounterService;
@@ -53,6 +67,7 @@ export class PostCounterService {
     if (!postId || delta === 0) return null;
     try {
       if (await this.isCommunityPost(postId)) {
+        if (field === 'commentCount') return null;
         const counterRef = doc(db, 'communityVariantDetailsCounter', postId);
         await setDoc(counterRef, { [field]: increment(delta), updatedAt: serverTimestamp() }, { merge: true });
         return this.readField(counterRef, field);
@@ -104,10 +119,11 @@ export class PostCounterService {
   }
 
   /**
-   * Live comment totals for community posts. Their stored commentCount was never kept
-   * reliably, so the comment documents themselves are the source of truth.
+   * Live comment totals for community posts, one count query per post. Empty when
+   * COMMUNITY_COMMENT_COUNTS_STORED is on: mergeCommunityCounts then uses the counter document.
    */
   public async countComments(postIds: string[]): Promise<Map<string, number>> {
+    if (COMMUNITY_COMMENT_COUNTS_STORED) return new Map();
     const uniqueIds = [...new Set(postIds.filter(Boolean))];
     const counts = await Promise.all(uniqueIds.map(async (postId) => {
       const snapshot = await getCountFromServer(query(collection(db, 'feedsPostComments'), where('feedsPostId', '==', postId))).catch(() => null);
@@ -118,9 +134,12 @@ export class PostCounterService {
     return result;
   }
 
+  /** Legacy likesCount comment totals are left out once counts are stored: the backfill already counted those comments. */
   public mergeCommunityCounts(counter: Record<string, unknown> | undefined, legacy: LegacyCommunityCounts | undefined, liveCommentCount?: number): { commentCount: number; shareCount: number } {
     return {
-      commentCount: liveCommentCount ?? readCount(counter?.commentCount) + (legacy?.commentCount ?? 0),
+      commentCount: COMMUNITY_COMMENT_COUNTS_STORED
+        ? Math.floor(readCount(counter?.commentCount))
+        : liveCommentCount ?? readCount(counter?.commentCount) + (legacy?.commentCount ?? 0),
       shareCount: readCount(counter?.shareCount) + (legacy?.shareCount ?? 0),
     };
   }
