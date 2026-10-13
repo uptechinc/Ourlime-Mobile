@@ -13,6 +13,7 @@ import {
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app, auth, db } from '@/lib/firebaseConfig';
 import type { CourseDiscussion, CourseDiscussionReply, DiscussionCursor, DiscussionPage } from '@/lib/types/course';
+import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import { nativeSessionService } from './NativeSessionService';
 
 type Data = DocumentData;
@@ -28,11 +29,13 @@ export class CourseInteractionService {
   public async getDiscussions(courseId: string, cursor: DiscussionCursor | null = null): Promise<DiscussionPage> {
     const userId = this.requireUserId();
     await nativeSessionService.ensure(userId);
+    // Deleted posts are filtered after the read: posts written by the website before discussions moved to
+    // callables have no `deleted` field, so a `deleted == false` filter would hide them.
     const snapshot: QuerySnapshot = cursor
-      ? await getDocs(query(collection(this.database, 'courseDiscussions'), where('courseId', '==', courseId), where('deleted', '==', false), orderBy('createdAt', 'desc'), orderBy(documentId(), 'desc'), startAfter(new Date(cursor.createdAt), cursor.id), limit(30)))
-      : await getDocs(query(collection(this.database, 'courseDiscussions'), where('courseId', '==', courseId), where('deleted', '==', false), orderBy('createdAt', 'desc'), orderBy(documentId(), 'desc'), limit(30)));
+      ? await getDocs(query(collection(this.database, 'courseDiscussions'), where('courseId', '==', courseId), orderBy('createdAt', 'desc'), orderBy(documentId(), 'desc'), startAfter(new Date(cursor.createdAt), cursor.id), limit(30)))
+      : await getDocs(query(collection(this.database, 'courseDiscussions'), where('courseId', '==', courseId), orderBy('createdAt', 'desc'), orderBy(documentId(), 'desc'), limit(30)));
     nativeSessionService.assertOwner(userId);
-    const items = snapshot.docs.map((item) => this.discussion(item.id, item.data())).filter((item): item is CourseDiscussion => item !== null);
+    const items = await this.withAuthorNames(snapshot.docs.map((item) => this.discussion(item.id, item.data())).filter((item): item is CourseDiscussion => item !== null));
     const lastItem = items.at(-1);
     return { items, cursor: snapshot.size === 30 && lastItem?.createdAt ? { createdAt: lastItem.createdAt, id: lastItem.id } : null };
   }
@@ -42,7 +45,7 @@ export class CourseInteractionService {
     await nativeSessionService.ensure(userId);
     const snapshot: QuerySnapshot = await getDocs(query(collection(this.database, 'courseDiscussionReplies'), where('discussionId', '==', discussionId), where('deleted', '==', false), orderBy('createdAt', 'asc'), limit(100)));
     nativeSessionService.assertOwner(userId);
-    return snapshot.docs.map((item) => this.reply(item.id, item.data())).filter((item): item is CourseDiscussionReply => item !== null);
+    return this.withAuthorNames(snapshot.docs.map((item) => this.reply(item.id, item.data())).filter((item): item is CourseDiscussionReply => item !== null));
   }
 
   public async createDiscussion(courseId: string, body: string, operationId: string): Promise<string> {
@@ -61,14 +64,34 @@ export class CourseInteractionService {
     return result.data.id;
   }
 
+  // Posts written by the website before discussions moved to callables use userId/userName and a title.
   private discussion(id: string, data: Data): CourseDiscussion | null {
-    if (!this.text(data.courseId) || !this.text(data.authorId) || !this.text(data.body) || data.deleted === true) return null;
-    return { id, courseId: this.text(data.courseId), authorId: this.text(data.authorId), authorName: this.optionalText(data.authorName), body: this.text(data.body), replyCount: this.integer(data.replyCount), createdAt: this.timestamp(data.createdAt) };
+    const authorId = this.text(data.authorId) || this.text(data.userId);
+    if (!this.text(data.courseId) || !authorId || !this.text(data.body) || data.deleted === true) return null;
+    return { id, courseId: this.text(data.courseId), authorId, authorName: this.optionalText(data.authorName) ?? (this.text(data.userName).includes('@') ? undefined : this.optionalText(data.userName)), title: this.optionalText(data.title), body: this.text(data.body), replyCount: this.integer(data.replyCount), createdAt: this.timestamp(data.createdAt) };
   }
 
   private reply(id: string, data: Data): CourseDiscussionReply | null {
     if (!this.text(data.discussionId) || !this.text(data.courseId) || !this.text(data.authorId) || !this.text(data.body) || data.deleted === true) return null;
     return { id, discussionId: this.text(data.discussionId), courseId: this.text(data.courseId), authorId: this.text(data.authorId), authorName: this.optionalText(data.authorName), body: this.text(data.body), createdAt: this.timestamp(data.createdAt) };
+  }
+
+  private async withAuthorNames<T extends { authorId: string; authorName?: string }>(items: T[]): Promise<T[]> {
+    const missingIds = [...new Set(items.filter((item) => !item.authorName).map((item) => item.authorId))];
+    if (missingIds.length === 0) return items;
+    try {
+      const profiles = await firestoreBatchReadService.getDocumentsByIds('users', missingIds);
+      return items.map((item) => item.authorName ? item : { ...item, authorName: this.profileName(profiles.get(item.authorId)) });
+    } catch (error) {
+      console.error('[CourseInteractionService.withAuthorNames] Error:', error);
+      return items;
+    }
+  }
+
+  private profileName(profile: Data | undefined): string | undefined {
+    if (!profile) return undefined;
+    const fullName = [this.text(profile.firstName), this.text(profile.lastName)].filter(Boolean).join(' ');
+    return this.optionalText(profile.displayName) ?? (fullName || this.optionalText(profile.userName));
   }
 
   private requireUserId(): string { const userId = auth.currentUser?.uid; if (!userId) throw new Error('You must be signed in to join course discussions.'); return userId; }
