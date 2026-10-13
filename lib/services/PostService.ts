@@ -3,6 +3,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  documentId,
   getDoc,
   getCountFromServer,
   getDocs,
@@ -540,13 +541,8 @@ export class PostService {
     // A repost is distribution of the original, never a second authored post.
     const repostAuthorsByPost = new Map<string, Set<string>>();
     const originalsById = new Map<string, DataDocument>();
-    const resolvedEntries: { entry: DataDocument; original: DataDocument | null }[] = [];
-    for (let offset = 0; offset < eligibleDocuments.length; offset += 4) {
-      resolvedEntries.push(...await Promise.all(eligibleDocuments.slice(offset, offset + 4).map(async (entry) => ({
-        entry,
-        original: await this.resolveOriginalPost(entry),
-      }))));
-    }
+    const originalsByEntry = await this.resolveOriginalPosts(eligibleDocuments, rawDocuments);
+    const resolvedEntries = eligibleDocuments.map((entry) => ({ entry, original: originalsByEntry.get(entry.id) ?? null }));
     for (const { entry, original } of resolvedEntries) {
       if (!original || !this.canViewPost(original.data, viewerId, relationships)) continue;
       originalsById.set(original.id, original);
@@ -664,6 +660,55 @@ export class PostService {
       nextCursor: null,
       hasMore: false,
     };
+  }
+
+  /**
+   * Original post for each feed entry (the entry itself unless it is a repost). Posts already loaded are used
+   * directly and the remaining originals are fetched in batches, instead of one read per repost.
+   */
+  private async resolveOriginalPosts(entries: DataDocument[], loaded: DataDocument[]): Promise<Map<string, DataDocument | null>> {
+    const known = new Map<string, DataDocument | null>(loaded.map((document) => [document.id, document]));
+    entries.forEach((entry) => known.set(entry.id, entry));
+    const originalIdOf = (document: DataDocument): string => {
+      const source = isRecord(document.data.repostedFrom) ? document.data.repostedFrom : null;
+      return source ? readString(source.postId) : '';
+    };
+    // Follows the repost chain through known posts; returns the next id to fetch when the chain leaves them.
+    const walk = (entry: DataDocument): { original: DataDocument | null } | { missingId: string } => {
+      let current = entry;
+      const visited = new Set<string>();
+      for (let depth = 0; depth < 10; depth += 1) {
+        if (visited.has(current.id)) return { original: null };
+        visited.add(current.id);
+        const originalId = originalIdOf(current);
+        if (!originalId) return { original: current.data.isRepost === true ? null : current };
+        if (!known.has(originalId)) return { missingId: originalId };
+        const next = known.get(originalId);
+        if (!next) return { original: null };
+        current = next;
+      }
+      return { original: null };
+    };
+
+    for (let round = 0; round < 10; round += 1) {
+      const missing = [...new Set(entries.flatMap((entry) => {
+        const step = walk(entry);
+        return 'missingId' in step ? [step.missingId] : [];
+      }))];
+      if (missing.length === 0) break;
+      const chunks = Array.from({ length: Math.ceil(missing.length / 30) }, (_, index) => missing.slice(index * 30, index * 30 + 30));
+      const snapshots = await Promise.all(chunks.map((chunk) => getDocs(query(collection(db, 'feedPosts'), where(documentId(), 'in', chunk)))));
+      missing.forEach((postId) => known.set(postId, null));
+      snapshots.forEach((snapshot) => snapshot.docs.forEach((document) => {
+        const data = document.data();
+        known.set(document.id, { id: document.id, data: isRecord(data) ? data : {} });
+      }));
+    }
+
+    return new Map(entries.map((entry) => {
+      const step = walk(entry);
+      return [entry.id, 'original' in step ? step.original : null] as const;
+    }));
   }
 
   private async resolveOriginalPost(entry: DataDocument): Promise<DataDocument | null> {
@@ -926,7 +971,8 @@ export class PostService {
       if (original.id !== postId) return this.fetchPost(original.id);
     }
     try {
-      let snap = await getDoc(doc(db, 'feedPosts', postId));
+      // Reuse the read above; a second read of the same post cost another round trip on every post open.
+      let snap = reference;
       let isCommunity = false;
       if (!snap.exists()) {
         snap = await getDoc(doc(db, 'communityVariantDetails', postId));
