@@ -15,7 +15,9 @@ import {
   addDoc,
   limit,
   serverTimestamp,
+  type DocumentData,
 } from 'firebase/firestore';
+import { firestoreBatchReadService } from './FirestoreBatchReadService';
 
 export type RelationshipUser = { id: string; firstName: string; lastName: string; userName: string; profileImage?: string };
 export type RelationshipSuggestion = RelationshipUser & { reason?: string };
@@ -145,19 +147,34 @@ export class RelationshipService {
       })
       .slice(0, maxResults);
 
-    return Promise.all(candidates.map(async (document): Promise<RelationshipSuggestion> => {
-      const user = document.data();
-      const imageSelections = await getDocs(
-        query(collection(db, 'profileImageSetAs'), where('userId', '==', document.id)),
-      ).catch(() => null);
-      const preferredSelection = imageSelections?.docs.find((selection) => selection.data().setAs === 'profile')
-        ?? imageSelections?.docs.find((selection) => selection.data().setAs === 'postProfile');
+    // Image selections and images for every candidate in two batched reads instead of two reads per person.
+    const imageSelections = await firestoreBatchReadService
+      .getDocumentsByField('profileImageSetAs', 'userId', candidates.map((document) => document.id))
+      .catch((error: unknown) => {
+        console.error('[RelationshipService.getSuggestionsFromFirestore] Error: profile image selections', error);
+        return [];
+      });
+    const imageIdByUser = new Map<string, string>();
+    candidates.forEach((document) => {
+      const selections = imageSelections.filter((selection) => selection.data().userId === document.id);
+      const preferredSelection = selections.find((selection) => selection.data().setAs === 'profile')
+        ?? selections.find((selection) => selection.data().setAs === 'postProfile');
       const imageId = preferredSelection ? readString(preferredSelection.data().profileImageId) : '';
-      const imageDocument = imageId
-        ? await getDoc(doc(db, 'profileImages', imageId)).catch(() => null)
-        : null;
-      const profileImage = readString(imageDocument?.data()?.imageURL)
-        || readString(imageDocument?.data()?.imageUrl)
+      if (imageId) imageIdByUser.set(document.id, imageId);
+    });
+    const imagesById = await firestoreBatchReadService
+      .getDocumentsByIds('profileImages', [...imageIdByUser.values()])
+      .catch((error: unknown) => {
+        console.error('[RelationshipService.getSuggestionsFromFirestore] Error: profile images', error);
+        return new Map<string, DocumentData>();
+      });
+
+    return candidates.map((document): RelationshipSuggestion => {
+      const user = document.data();
+      const imageId = imageIdByUser.get(document.id);
+      const imageData = imageId ? imagesById.get(imageId) : undefined;
+      const profileImage = readString(imageData?.imageURL)
+        || readString(imageData?.imageUrl)
         || readString(user.profilePicture)
         || readString(user.profileImage);
       const sameCountry = Boolean(viewerCountry && viewerCountry === readString(user.country));
@@ -169,7 +186,7 @@ export class RelationshipService {
         profileImage: profileImage || undefined,
         reason: sameCountry ? 'People near you' : 'Suggested for you',
       };
-    }));
+    });
   }
 
   public async blockUser(userIdToBlock: string): Promise<void> {

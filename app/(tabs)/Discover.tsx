@@ -20,7 +20,7 @@ import { RelationshipService, type RelationshipSuggestion } from '@/lib/services
 import { SearchService } from '@/lib/services/SearchService';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { useDiscoverResource } from '@/lib/hooks/useDiscoverResource';
-import type { DiscoverEvent } from '@/lib/types/discoverResources';
+import type { DiscoverEvent, DiscoverResourceData } from '@/lib/types/discoverResources';
 import {
   SkeletonUserCard,
   SkeletonCommunityCard,
@@ -38,6 +38,21 @@ const relationshipService = RelationshipService.getInstance();
 const searchService = SearchService.getInstance();
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
+type DiscoverSection = keyof DiscoverResourceData['sectionStatus'];
+type SectionDisplayState = 'loading' | 'error' | 'ready';
+type SectionLoadErrorProps = { message: string; onRetry: () => void; textColor: string; inset?: boolean };
+
+function SectionLoadError({ message, onRetry, textColor, inset = false }: SectionLoadErrorProps) {
+  return (
+    <View accessibilityRole="alert" style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: inset ? 16 : 0 }}>
+      <Text style={{ color: textColor, fontSize: 13 }}>{message} · </Text>
+      <TouchableOpacity onPress={onRetry} hitSlop={10} accessibilityRole="button" accessibilityLabel="Retry">
+        <Text style={{ color: '#10b981', fontSize: 13, fontWeight: '700' }}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function DiscoverScreen() {
   const { isDark, colors } = useAppTheme();
   const router = useRouter();
@@ -50,12 +65,21 @@ export default function DiscoverScreen() {
   const [discoverQuery, setDiscoverQuery] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<RelationshipSuggestion[]>([]);
   const [isSearchingQuery, setIsSearchingQuery] = useState(false);
+  const [hasSearchError, setHasSearchError] = useState(false);
+  const [searchAttempt, setSearchAttempt] = useState(0);
   const [friendSentIds, setFriendSentIds] = useState<Set<string>>(new Set());
   const [eventToShare, setEventToShare] = useState<DiscoverEvent | null>(null);
-  const isLoadingPeople = suggestedPeople.length === 0 && (!resource.data || resource.data.sectionStatus.people === 'loading');
-  const isLoadingCommunities = communities.length === 0 && (!resource.data || resource.data.sectionStatus.communities === 'loading');
-  const isLoadingEvents = events.length === 0 && (!resource.data || resource.data.sectionStatus.events === 'loading');
-  const isLoadingJobs = jobs.length === 0 && (!resource.data || resource.data.sectionStatus.jobs === 'loading');
+  // Cards on hand are always shown; otherwise a section is loading or failed, including when the whole load failed with nothing cached.
+  const sectionDisplayState = (section: DiscoverSection, itemCount: number): SectionDisplayState => {
+    if (itemCount > 0) return 'ready';
+    if (!resource.data) return resource.status === 'error' ? 'error' : 'loading';
+    const status = resource.data.sectionStatus[section];
+    return status === 'loading' ? 'loading' : status === 'error' ? 'error' : 'ready';
+  };
+  const peopleState = sectionDisplayState('people', suggestedPeople.length);
+  const communitiesState = sectionDisplayState('communities', communities.length);
+  const eventsState = sectionDisplayState('events', events.length);
+  const jobsState = sectionDisplayState('jobs', jobs.length);
 
   const handleQueryChange = (text: string) => {
     setDiscoverQuery(text);
@@ -66,10 +90,12 @@ export default function DiscoverScreen() {
     if (!query) {
       setUserSearchResults([]);
       setIsSearchingQuery(false);
+      setHasSearchError(false);
       return;
     }
     let isCurrent = true;
     setIsSearchingQuery(true);
+    setHasSearchError(false);
     const timer = setTimeout(() => {
       void (async () => {
         try {
@@ -83,8 +109,12 @@ export default function DiscoverScreen() {
             profileImage: profile.profilePicture ?? undefined,
             reason: 'Search result',
           })));
-        } catch {
-          if (isCurrent) setUserSearchResults([]);
+        } catch (error: unknown) {
+          console.error('[DiscoverScreen.searchUsers] Error:', error);
+          if (isCurrent) {
+            setUserSearchResults([]);
+            setHasSearchError(true);
+          }
         } finally {
           if (isCurrent) setIsSearchingQuery(false);
         }
@@ -94,7 +124,9 @@ export default function DiscoverScreen() {
       isCurrent = false;
       clearTimeout(timer);
     };
-  }, [discoverQuery]);
+  }, [discoverQuery, searchAttempt]);
+
+  const handleRetrySearch = useCallback(() => setSearchAttempt((attempt) => attempt + 1), []);
 
   const onRefresh = useCallback(() => {
     void refresh();
@@ -216,7 +248,12 @@ export default function DiscoverScreen() {
                 </View>
               </View>
 
-              {isLoadingPeople || (isSearchingQuery && filteredPeople.length === 0) ? (
+              {normalizedQuery && hasSearchError && filteredPeople.length > 0 ? (
+                <View style={{ marginBottom: 10 }}>
+                  <SectionLoadError message="Couldn't search people" onRetry={handleRetrySearch} textColor={colors.destructiveText} inset />
+                </View>
+              ) : null}
+              {peopleState === 'loading' || (isSearchingQuery && filteredPeople.length === 0) ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
                   {[0, 1, 2].map((item) => <SkeletonUserCard key={`person-skeleton-${item}`} />)}
                 </ScrollView>
@@ -273,6 +310,10 @@ export default function DiscoverScreen() {
                   );
                 })}
                 </ScrollView>
+              ) : normalizedQuery && hasSearchError ? (
+                <SectionLoadError message="Couldn't search people" onRetry={handleRetrySearch} textColor={colors.destructiveText} inset />
+              ) : peopleState === 'error' && !normalizedQuery ? (
+                <SectionLoadError message="Couldn't load suggestions" onRetry={onRefresh} textColor={colors.destructiveText} inset />
               ) : (
                 <Text style={{ paddingHorizontal: 16, color: colors.mutedText, fontSize: 13 }}>
                   {normalizedQuery ? 'No people match your search.' : 'No friend suggestions are available yet.'}
@@ -292,7 +333,7 @@ export default function DiscoverScreen() {
                 </TouchableOpacity>
               </View>
 
-              {isLoadingCommunities ? (
+              {communitiesState === 'loading' ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
                   {[0, 1].map((item) => <SkeletonCommunityCard key={`community-skeleton-${item}`} />)}
                 </ScrollView>
@@ -321,6 +362,8 @@ export default function DiscoverScreen() {
                   </TouchableOpacity>
                   ))}
                 </ScrollView>
+              ) : communitiesState === 'error' ? (
+                <SectionLoadError message="Couldn't load communities" onRetry={onRefresh} textColor={colors.destructiveText} inset />
               ) : (
                 <Text style={{ paddingHorizontal: 16, color: colors.mutedText, fontSize: 13 }}>
                   {normalizedQuery ? 'No communities match your search.' : 'No featured communities are available yet.'}
@@ -340,7 +383,7 @@ export default function DiscoverScreen() {
                 </TouchableOpacity>
               </View>
 
-              {isLoadingEvents ? (
+              {eventsState === 'loading' ? (
                 <>
                   <SkeletonEventCard />
                   <SkeletonEventCard />
@@ -381,7 +424,9 @@ export default function DiscoverScreen() {
                     <PostLocationMap location={{ name: evt.title, address: evt.location }} />
                   ) : null}
                 </View>;
-              }) : (
+              }) : eventsState === 'error' ? (
+                <SectionLoadError message="Couldn't load events" onRetry={onRefresh} textColor={colors.destructiveText} />
+              ) : (
                 <Text style={{ color: colors.mutedText, fontSize: 13 }}>
                   {normalizedQuery ? 'No events match your search.' : 'No upcoming events are available yet.'}
                 </Text>
@@ -400,7 +445,7 @@ export default function DiscoverScreen() {
                 </TouchableOpacity>
               </View>
 
-              {isLoadingJobs ? (
+              {jobsState === 'loading' ? (
                 <>
                   <SkeletonJobCard />
                   <SkeletonJobCard />
@@ -433,7 +478,9 @@ export default function DiscoverScreen() {
                     </View>
                   </View>
                 </TouchableOpacity>
-              )) : (
+              )) : jobsState === 'error' ? (
+                <SectionLoadError message="Couldn't load jobs" onRetry={onRefresh} textColor={colors.destructiveText} />
+              ) : (
                 <Text style={{ color: colors.mutedText, fontSize: 13 }}>
                   {normalizedQuery ? 'No jobs match your search.' : 'No featured jobs are available yet.'}
                 </Text>

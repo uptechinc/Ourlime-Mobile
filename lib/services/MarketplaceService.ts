@@ -2,6 +2,7 @@ import { ALL_COUNTRIES } from '@/lib/constants/countries';
 import { nativeSessionService } from './NativeSessionService';
 import { reliabilityDecoder as decode } from './ReliabilityDecoderService';
 import { db } from '@/lib/firebaseConfig';
+import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import {
   collection,
   doc,
@@ -82,8 +83,10 @@ export class MarketplaceService {
       if (search && !normalizedTitle.startsWith(search)) return false;
       return !category || decode.string(data.category) === category;
     }).slice(0, 30);
+    // Every listing's gallery images in one batched read, shared by the per-product decoding below.
+    const subImagesByProduct = this.loadSubImageNames(visibleDocuments.map((document) => document.id));
     for (let offset = 0; offset < visibleDocuments.length; offset += 4) {
-      decodedProducts.push(...await Promise.all(visibleDocuments.slice(offset, offset + 4).map((document: QueryDocumentSnapshot<DocumentData>) => this.decodeProduct(document.id, document.data()))));
+      decodedProducts.push(...await Promise.all(visibleDocuments.slice(offset, offset + 4).map((document: QueryDocumentSnapshot<DocumentData>) => this.decodeProduct(document.id, document.data(), subImagesByProduct))));
     }
     const last = visibleDocuments[visibleDocuments.length - 1];
     return {
@@ -112,15 +115,31 @@ export class MarketplaceService {
     return product;
   }
 
-  private async decodeProduct(id: string, value: unknown): Promise<MarketProduct> {
+  /** subImages for many products, grouped by product and capped at 100 each like the single-product query. */
+  private async loadSubImageNames(productIds: string[]): Promise<Map<string, unknown[]>> {
+    const documents = await firestoreBatchReadService.getDocumentsByField('subImages', 'productId', productIds, 100);
+    const namesByProduct = new Map<string, unknown[]>();
+    documents.forEach((document) => {
+      const productId = document.data().productId;
+      if (typeof productId !== 'string') return;
+      const names = namesByProduct.get(productId) ?? [];
+      if (names.length < 100) names.push(document.data().imageName);
+      namesByProduct.set(productId, names);
+    });
+    return namesByProduct;
+  }
+
+  private async decodeProduct(id: string, value: unknown, subImagesByProduct?: Promise<Map<string, unknown[]>>): Promise<MarketProduct> {
     const product = decode.object(value);
     const directSellerId = typeof product.sellerId === 'string' ? product.sellerId : '';
-    const [publishedVariantsSnapshot, ownershipSnapshot, colorSnapshot, sizeSnapshot, subImageSnapshot] = await Promise.all([
+    const [publishedVariantsSnapshot, ownershipSnapshot, colorSnapshot, sizeSnapshot, subImageNames] = await Promise.all([
       getDocs(query(collection(db, 'variants'), where('productId', '==', id), where('publicationState', '==', 'published'), limit(401))),
       getDocs(query(collection(db, 'ownership'), where('productId', '==', id), limit(2))),
       getDocs(query(collection(db, 'colorVariants'), where('productId', '==', id), limit(200))),
       getDocs(query(collection(db, 'sizeVariants'), where('productId', '==', id), limit(200))),
-      getDocs(query(collection(db, 'subImages'), where('productId', '==', id), limit(100))),
+      subImagesByProduct
+        ? subImagesByProduct.then((namesByProduct) => namesByProduct.get(id) ?? [])
+        : getDocs(query(collection(db, 'subImages'), where('productId', '==', id), limit(100))).then((snapshot) => snapshot.docs.map((document) => document.data().imageName)),
     ]);
     const variantsSnapshot = publishedVariantsSnapshot.empty
       ? await getDocs(query(collection(db, 'variants'), where('productId', '==', id), limit(401)))
@@ -170,7 +189,7 @@ export class MarketplaceService {
       images: [
         product.thumbnailImage,
         ...(Array.isArray(product.images) ? product.images : []),
-        ...subImageSnapshot.docs.map((document) => document.data().imageName),
+        ...subImageNames,
       ].filter((image, index, images): image is string => typeof image === 'string' && /^https:\/\//.test(image) && images.indexOf(image) === index),
       available,
       unavailableReason: available ? null : 'This listing is unavailable.',

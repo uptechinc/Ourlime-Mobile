@@ -29,6 +29,7 @@ import { auth, db } from '@/lib/firebaseConfig';
 import { sharedDocumentReader } from './SharedDocumentReader';
 import { notificationHelpers } from '@/lib/helpers/notificationHelpers';
 import { appServerService } from './AppServerService';
+import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import type {
   CommunityCardModel,
   CommunityDashboardData,
@@ -275,14 +276,17 @@ export class CommunityDataService {
 
     // Categories only depend on the community list, so they load alongside everything else.
     const categoryIds = [...new Set(sourceDocuments.map((document) => readString(document.data().categoryId)).filter(Boolean))];
-    const [countDocuments, memberships, friendIds, requests, bans, viewerDocument, categoryDocuments] = await Promise.all([
-      Promise.all(communityIds.map((communityId) => getDoc(doc(db, 'communityVariantMembershipAndLikeCount', communityId)))),
+    const [countByCommunity, memberships, friendIds, requests, bans, viewerDocument, categoryDocuments] = await Promise.all([
+      firestoreBatchReadService.getDocumentsByIds('communityVariantMembershipAndLikeCount', communityIds),
       this.loadMemberships(communityIds),
       this.loadFriendIds(viewerId),
       viewerId ? getDocs(query(collection(db, 'communityRequests'), where('userId', '==', viewerId))) : Promise.resolve(null),
       viewerId ? getDocs(query(collection(db, 'bannedCommunityMembers'), where('userId', '==', viewerId))) : Promise.resolve(null),
       viewerId ? sharedDocumentReader.read(doc(db, 'users', viewerId)) : Promise.resolve(null),
-      Promise.all(categoryIds.map((categoryId) => getDoc(doc(db, 'communityCategories', categoryId)).catch(() => null))),
+      firestoreBatchReadService.getDocumentsByIds('communityCategories', categoryIds).catch((error: unknown) => {
+        console.error('[CommunityDataService.buildDirectoryCards] Error: categories', error);
+        return new Map<string, DocumentData>();
+      }),
     ]);
     const membershipsByCommunity = new Map<string, DocumentData[]>();
     memberships.forEach((membership) => {
@@ -292,7 +296,6 @@ export class CommunityDataService {
     const requestStatus = new Map<string, string>();
     requests?.docs.forEach((document) => requestStatus.set(readString(document.data().communityVariantId), readString(document.data().status)));
     const bannedIds = new Set((bans?.docs ?? []).map((document) => readString(document.data().communityVariantId)).filter(Boolean));
-    const countByCommunity = new Map(countDocuments.map((document) => [document.id, document.data()]));
     const creatorIds = sourceDocuments.map((document) => readString(document.data().userId)).filter(Boolean);
     const memberUserIds = [...membershipsByCommunity.values()].flatMap((communityMemberships) => {
       const activeIds = [...new Set(communityMemberships.filter((membership) => membership.isMember === true).map((membership) => readString(membership.userId)).filter(Boolean))];
@@ -376,7 +379,7 @@ export class CommunityDataService {
       };
     });
 
-    const categoryNames = new Map(categoryDocuments.flatMap((document) => (document ? [[document.id, readString(document.data()?.name) || readString(document.data()?.type)] as [string, string]] : [])));
+    const categoryNames = new Map([...categoryDocuments].map(([categoryId, category]) => [categoryId, readString(category.name) || readString(category.type)] as [string, string]));
     const hydrated = cards.map((card) => ({ ...card, categoryName: card.categoryId ? categoryNames.get(card.categoryId) ?? '' : '' }));
     const weekScore = (card: CommunityCardModel) => card.likeCount * 3 + card.memberCount * 2 + card.postCount * 5;
     const communityOfTheWeek = [...hydrated].sort((first, second) => weekScore(second) - weekScore(first))[0] ?? null;
@@ -454,8 +457,10 @@ export class CommunityDataService {
   }
 
   private async loadUsers(userIds: string[]): Promise<Map<string, DocumentData>> {
-    const snapshots = await Promise.all(userIds.map((userId) => getDoc(doc(db, 'users', userId)).catch(() => null)));
-    return new Map(snapshots.flatMap((snapshot) => (snapshot?.exists() ? [[snapshot.id, snapshot.data()] as [string, DocumentData]] : [])));
+    return firestoreBatchReadService.getDocumentsByIds('users', userIds).catch((error: unknown) => {
+      console.error('[CommunityDataService.loadUsers] Error:', error);
+      return new Map<string, DocumentData>();
+    });
   }
 
   /** Web loadCommunityProfilePictures: the selected profile image per user. */
@@ -468,11 +473,14 @@ export class CommunityDataService {
       const userId = readString(document.data().userId);
       if (imageId && userId) ownerByImage.set(imageId, userId);
     }));
-    const images = await Promise.all([...ownerByImage.keys()].map((imageId) => getDoc(doc(db, 'profileImages', imageId)).catch(() => null)));
+    const images = await firestoreBatchReadService.getDocumentsByIds('profileImages', [...ownerByImage.keys()]).catch((error: unknown) => {
+      console.error('[CommunityDataService.loadProfilePictures] Error:', error);
+      return new Map<string, DocumentData>();
+    });
     const pictures = new Map<string, string>();
-    images.forEach((image) => {
-      const userId = image ? ownerByImage.get(image.id) : undefined;
-      const url = readString(image?.data()?.imageURL);
+    images.forEach((image, imageId) => {
+      const userId = ownerByImage.get(imageId);
+      const url = readString(image.imageURL);
       if (userId && url) pictures.set(userId, url);
     });
     return pictures;

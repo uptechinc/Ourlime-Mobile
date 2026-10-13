@@ -12,8 +12,10 @@ import {
     orderBy,
     Firestore,
     limit,
-    Timestamp
+    Timestamp,
+    type DocumentData
 } from 'firebase/firestore';
+import { firestoreBatchReadService } from '@/lib/services/FirestoreBatchReadService';
 
 export type JobRecord = {
     id: string;
@@ -186,48 +188,18 @@ export class JobsService {
             const jobsSnapshot = orderedJobsSnapshot && !orderedJobsSnapshot.empty
                 ? orderedJobsSnapshot
                 : await getDocs(query(jobsCollection, resultLimit));
-            const jobs = await Promise.all(jobsSnapshot.docs.map(async (docSnapshot) => {
+            const creatorIds = jobsSnapshot.docs.map((docSnapshot) => {
+                const basicInfo = docSnapshot.data().basic_info;
+                return basicInfo && typeof basicInfo === 'object' && typeof basicInfo.userId === 'string' ? basicInfo.userId : '';
+            });
+            const creators = await this.fetchCreators(creatorIds);
+            const jobs = jobsSnapshot.docs.map((docSnapshot) => {
                 const data = docSnapshot.data();
                 const basicInfo = data.basic_info && typeof data.basic_info === 'object' ? data.basic_info : {};
                 const userId = typeof basicInfo.userId === 'string' ? basicInfo.userId : '';
-                const userDoc = userId ? await getDoc(doc(this.db, 'users', userId)).catch(() => null) : null;
-                const userData = userDoc?.data();
-    
-                // Fetch questions from subcollection
-                const questionsSnapshot = await getDocs(collection(docSnapshot.ref, 'questions')).catch(() => null);
-                const questions = (questionsSnapshot?.docs ?? []).map(qDoc => ({
-                    id: qDoc.id,
-                    ...qDoc.data()
-                }));
-    
-                // Fetch profile images
-                const profileImagesQuery = query(
-                    collection(this.db, 'profileImages'),
-                    where('userId', '==', userId)
-                );
-                const profileSetAsQuery = query(
-                    collection(this.db, 'profileImageSetAs'),
-                    where('userId', '==', userId)
-                );
-    
-                const [profileImagesSnapshot, setAsSnapshot] = await Promise.all([
-                    getDocs(profileImagesQuery),
-                    getDocs(profileSetAsQuery)
-                ]).catch(() => [null, null] as const);
-    
-                // Get profile image URL with priority
-                let profileImageUrl = '';
-                const jobProfileSetAs = setAsSnapshot?.docs.find(doc => doc.data().setAs === 'jobProfile');
-                const regularProfileSetAs = setAsSnapshot?.docs.find(doc => doc.data().setAs === 'profile');
-    
-                if (jobProfileSetAs) {
-                    const matchingImage = profileImagesSnapshot?.docs.find(img => img.id === jobProfileSetAs.data().profileImageId);
-                    profileImageUrl = matchingImage?.data()?.imageURL || profileImageUrl;
-                } else if (regularProfileSetAs) {
-                    const matchingImage = profileImagesSnapshot?.docs.find(img => img.id === regularProfileSetAs.data().profileImageId);
-                    profileImageUrl = matchingImage?.data()?.imageURL || profileImageUrl;
-                }
-    
+                const userData = creators.users.get(userId);
+                const profileImageUrl = creators.profileImages.get(userId) ?? '';
+
                 return {
                     id: docSnapshot.id,
                     basic_info: {
@@ -250,7 +222,7 @@ export class JobsService {
                         ? { ...data.details, skills: Array.isArray(data.details.skills) ? data.details.skills : [] }
                         : { skills: [] },
                     category_specific: data.category_specific && typeof data.category_specific === 'object' ? data.category_specific : {},
-                    questions,
+                    // Screening questions are only needed by the application form, which loads them with fetchQuestions.
                     creator: {
                         name: userData ? `${userData.firstName} ${userData.lastName}` : 'Anonymous',
                         username: userData?.userName || 'anonymous',
@@ -258,13 +230,55 @@ export class JobsService {
                         email: userData?.email
                     }
                 } as JobRecord;
-            }));
+            });
     
             return jobs.filter((job) => job.basic_info.status === 'published' || job.basic_info.status === 'active');
         } catch (error) {
             console.error('Error in fetchJobs:', error);
             throw new Error('Failed to fetch jobs');
         }
+    }
+
+    /** A job's screening questions, read when the application form opens rather than for every job in a list. */
+    public async fetchQuestions(jobId: string): Promise<NonNullable<JobRecord['questions']>> {
+        const questionsSnapshot = await getDocs(collection(this.db, 'jobs', jobId, 'questions'));
+        return questionsSnapshot.docs.map((questionDocument) => ({ id: questionDocument.id, ...questionDocument.data() }));
+    }
+
+    /**
+     * Creator user docs and job profile pictures for every job in one set of batched reads.
+     * The picture is the creator's 'jobProfile' selection, else their 'profile' selection, as the web jobs list picks it.
+     */
+    private async fetchCreators(creatorIds: string[]): Promise<{ users: Map<string, DocumentData>; profileImages: Map<string, string> }> {
+        const [users, selections] = await Promise.all([
+            firestoreBatchReadService.getDocumentsByIds('users', creatorIds).catch((error: unknown) => {
+                console.error('[JobsService.fetchCreators] Error: users', error);
+                return new Map<string, DocumentData>();
+            }),
+            firestoreBatchReadService.getDocumentsByField('profileImageSetAs', 'userId', creatorIds).catch((error: unknown) => {
+                console.error('[JobsService.fetchCreators] Error: profile image selections', error);
+                return [];
+            }),
+        ]);
+        const imageIdByCreator = new Map<string, string>();
+        new Set(creatorIds.filter(Boolean)).forEach((creatorId) => {
+            const creatorSelections = selections.filter((selection) => selection.data().userId === creatorId);
+            const selection = creatorSelections.find((entry) => entry.data().setAs === 'jobProfile')
+                ?? creatorSelections.find((entry) => entry.data().setAs === 'profile');
+            const imageId = selection?.data().profileImageId;
+            if (typeof imageId === 'string' && imageId) imageIdByCreator.set(creatorId, imageId);
+        });
+        const images = await firestoreBatchReadService.getDocumentsByIds('profileImages', [...imageIdByCreator.values()]).catch((error: unknown) => {
+            console.error('[JobsService.fetchCreators] Error: profile images', error);
+            return new Map<string, DocumentData>();
+        });
+        const profileImages = new Map<string, string>();
+        imageIdByCreator.forEach((imageId, creatorId) => {
+            const image = images.get(imageId);
+            // Only the creator's own image counts, as when images were queried by the creator's userId.
+            if (image?.userId === creatorId && typeof image.imageURL === 'string' && image.imageURL) profileImages.set(creatorId, image.imageURL);
+        });
+        return { users, profileImages };
     }
     
     public async updateJob(jobId: string, jobData: UpdateJobInput): Promise<boolean> {
