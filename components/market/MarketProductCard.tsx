@@ -3,6 +3,7 @@ import { Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent } 
 import { Heart, ImageIcon, MapPin, ShoppingBag, Star, Truck } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import type { MarketProduct } from '@/lib/types/reliability';
+import { formatMarketPrice } from '@/lib/utils/formatMarketPrice';
 
 type MarketProductCardProps = {
   product: MarketProduct;
@@ -13,13 +14,13 @@ type MarketProductCardProps = {
 };
 
 function priceLabel(product: MarketProduct): string {
-  const available = product.variants.filter((variant) => variant.available && variant.currency);
+  const available = product.variants.filter((variant) => variant.available);
   if (!available.length) return 'Price unavailable';
   const currencies = [...new Set(available.map((variant) => variant.currency))];
   if (currencies.length !== 1) return 'Multiple currencies';
   const minimum = Math.min(...available.map((variant) => variant.price));
   const prefix = available.some((variant) => variant.price !== minimum) ? 'From ' : '';
-  return `${prefix}${currencies[0]} ${minimum.toFixed(2)}`;
+  return `${prefix}${formatMarketPrice(currencies[0], minimum)}`;
 }
 
 export default function MarketProductCard({ product, favorite, onOpen, onToggleFavorite, onQuickAdd }: MarketProductCardProps) {

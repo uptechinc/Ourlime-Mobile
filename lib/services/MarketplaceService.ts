@@ -2,6 +2,7 @@ import { ALL_COUNTRIES } from '@/lib/constants/countries';
 import { nativeSessionService } from './NativeSessionService';
 import { reliabilityDecoder as decode } from './ReliabilityDecoderService';
 import { db } from '@/lib/firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import {
   collection,
@@ -166,7 +167,7 @@ export class MarketplaceService {
         price: priceValid ? Number(variant.price) : 0,
         currency,
         stock,
-        available: available && priceValid && Boolean(currency) && stock > 0 && variant.status !== 'inactive' && variant.status !== 'archived',
+        available: available && priceValid && stock > 0 && variant.status !== 'inactive' && variant.status !== 'archived',
         image: typeof variant.image === 'string' ? variant.image : null,
         colorName,
         colorCode: typeof color?.colorCode === 'string' ? color.colorCode : null,
@@ -175,6 +176,12 @@ export class MarketplaceService {
       };
     });
     const condition: MarketProductCondition = ['new', 'like_new', 'good', 'fair', 'refurbished'].includes(String(product.condition)) ? product.condition as MarketProductCondition : null;
+    const storeName = typeof (store as { storeName?: string } | null)?.storeName === 'string' ? (store as { storeName: string }).storeName : null;
+    const listedName = storeName ?? (typeof ownership?.userName === 'string' ? ownership.userName : typeof product.sellerName === 'string' ? product.sellerName : null);
+    // Older listings carry no seller name; the website shows the seller's profile name, so read it the same way.
+    const sellerProfile = !listedName && sellerId ? (await sharedDocumentReader.read(doc(db, 'users', sellerId)).catch(() => null))?.data() : undefined;
+    const profileName = [sellerProfile?.firstName, sellerProfile?.lastName].filter((part): part is string => typeof part === 'string' && Boolean(part.trim())).join(' ')
+      || (typeof sellerProfile?.userName === 'string' ? sellerProfile.userName : '');
     const finiteNumber = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null;
     const text = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim() : null;
     return {
@@ -184,7 +191,7 @@ export class MarketplaceService {
       description: typeof product.longDescription === 'string' ? product.longDescription : typeof product.shortDescription === 'string' ? product.shortDescription : '',
       category: typeof product.category === 'string' ? product.category : '',
       sellerId,
-      sellerName: typeof (store as { storeName?: string } | null)?.storeName === 'string' ? (store as { storeName: string }).storeName : typeof ownership?.userName === 'string' ? ownership.userName : typeof product.sellerName === 'string' ? product.sellerName : 'Seller information unavailable',
+      sellerName: listedName ?? (profileName || 'Seller information unavailable'),
       sellerVerified: (store as { verificationStatus?: string } | null)?.verificationStatus === 'approved',
       images: [
         product.thumbnailImage,
