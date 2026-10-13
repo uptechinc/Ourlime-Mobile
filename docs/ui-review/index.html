@@ -69,6 +69,8 @@ code { font-family: var(--mono); font-size: 0.85em; background: var(--lime-soft)
   <nav class="toc" aria-label="Sections">
     <a href="#app">Mobile app</a>
     <a href="#web">Website</a>
+    <a href="#access">Who can see what</a>
+    <a href="#community">Communities</a>
     <a href="#unseen">Fixes without a screen</a>
     <a href="#open">Still open</a>
   </nav>
@@ -190,6 +192,40 @@ code { font-family: var(--mono); font-size: 0.85em; background: var(--lime-soft)
     </div>
   </section>
 
+  <h2 id="access">Who can see what</h2>
+  <p class="lede">Each page’s availability is set by admins in Page Access. Restricted pages were only half enforced: the app’s tab bar ignored the settings, and both the app and the website drew restricted pages behind a see-through overlay while linking to them from every menu. Now a page someone can’t open is neither listed nor rendered for them. The screenshots below were taken with this admin account temporarily treated as a regular user.</p>
+
+  <section class="finding">
+    <h3>App: tabs and menu only list what the account can open</h3>
+    <p class="why">The Limes tab matched no setting because tab paths are capitalised (<code>/Limes</code>), so admin-only Limes stayed open to everyone. The same mismatch hid the website’s <code>/messages</code> and <code>/profile/settings</code> settings from the app. Restricted tabs and menu items are now removed, the blocking screen is fully opaque, and Limes videos never play behind it.</p>
+    <div class="pairs">
+      <figure><img src="app/after/m13-user-tabs.png" alt="Regular user home with no Limes tab" loading="lazy"><figcaption><span class="tag after">Regular user</span>No Limes tab</figcaption></figure>
+      <figure><img src="app/after/m15-user-menu.png" alt="Side menu listing only open pages" loading="lazy"><figcaption><span class="tag after">Regular user</span>Menu without Events, Jobs, Market, Admin</figcaption></figure>
+      <figure><img src="app/after/m14-user-limes-blocked.png" alt="Opaque Administrator Access Required screen over a shared Lime" loading="lazy"><figcaption><span class="tag after">Regular user</span>Shared Lime: nothing shows through</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding web">
+    <h3>Website: restricted pages are never rendered or linked</h3>
+    <p class="why">The overlay was 50% black with blur, so the restricted page still rendered and loaded its data underneath, and greyed-out links stayed in the top bar, feed tabs, profile menu, bottom bar and Games card (which offered admin-only Trini Wordle). Restricted pages are now withheld until access is confirmed, every nav hides them, and the last known settings are cached so this check doesn’t slow the first paint.</p>
+    <div class="pairs">
+      <figure><img src="web/after/w06-user-home.png" alt="Website home for a regular user without Limes, Events, Jobs, Market links and without Wordle" loading="lazy"><figcaption><span class="tag after">Regular user</span>Only open pages and games</figcaption></figure>
+    </div>
+  </section>
+
+  <h2 id="community">Communities</h2>
+  <section class="finding web">
+    <h3>Comment counts agree everywhere, and posts load faster</h3>
+    <p class="why">The website increased one field when someone commented and displayed a different one, while the app wrote a third. Both now count the comments themselves, so the app, the website and the database agree. The website’s community posts were built with about five database reads per post; they now use a handful of batched reads, and a second call that re-read every post and every like counter in all communities was cut down to this community only. Moderated (hidden) community posts were also still shown on the website because the hidden flag was dropped; they are now filtered.</p>
+    <div class="pairs">
+      <figure><img src="web/after/w07-community-comments.png" alt="Website community post showing Comment (1)" loading="lazy"><figcaption><span class="tag after">After</span>“Comment (1)” on the website</figcaption></figure>
+    </div>
+    <ul class="plain">
+      <li><strong>App directory:</strong> the Communities list made six database round trips one after another. Independent ones now run together (13.5 s → 10.8 s on the emulator), and the list is now warmed in the background at startup like the feed, so it opens filled.</li>
+      <li><strong>Website community page:</strong> posts arrive in about 3 s on the local development server after the first compile.</li>
+    </ul>
+  </section>
+
   <h2 id="unseen">Fixes without a screen</h2>
   <ul class="plain">
     <li><strong>Chat archive.</strong> Unarchiving from inside a chat now takes it out of Archived, and it stays out after a restart. The list used to rebuild from a stale local copy.</li>
@@ -202,10 +238,9 @@ code { font-family: var(--mono); font-size: 0.85em; background: var(--lime-soft)
 
   <h2 id="open">Still open</h2>
   <ul class="plain">
-    <li><strong>“Unknown Author” on 4 blogs.</strong> Those posts have an empty author in the database, so there is no name to show. It needs a data fix.</li>
-    <li><strong>Limes tab is not gated.</strong> The Limes setting is admin-only, but the tab ignores it while a shared Lime respects it. Gating the tab would hide Limes from every non-admin, so that is a product call.</li>
-    <li><strong>Website comment counts</strong> on community posts read the same unset field the app used to. The app is fixed; the website is not yet.</li>
-    <li><strong>Slow loads</strong> on Communities and some project actions, seen on the emulator and in Raushawn’s video.</li>
+    <li><strong>Blogs with no author.</strong> Traced in the database: “Rishi’s Lily Farm” belongs to Rishi Kowlessar (viewed and liked 24 seconds after it was posted, name in the title) and “The Future of E-Project” to Chris Walker (opened on the website 34 seconds after it was posted from the app). “The End of the Chatbot Era” copy is a word-for-word duplicate of Krishna’s post, and “Test 3” is filler. The fix (assign two, delete two with a backup) is ready but changes live data, so it is waiting for approval.</li>
+    <li><strong>Limes page description</strong> in Page Access reads “Social posts and conversations”. An admin can change it there.</li>
+    <li><strong>Firestore connection on the app.</strong> Every read uses forced long-polling, which costs seconds per round trip on slow networks. Automatic detection was slower in testing, so it stays for now.</li>
   </ul>
   <p class="note">The round “N” badge in the website screenshots is the Next.js development indicator and does not appear in production.</p>
 </div>
