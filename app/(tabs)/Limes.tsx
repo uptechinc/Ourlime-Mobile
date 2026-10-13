@@ -72,6 +72,7 @@ import Animated, { Easing, interpolate, useAnimatedStyle, useReducedMotion, useS
 import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components/ui/PlayfulFloatingHeart';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import { useResourceStore } from '@/lib/store/useResourceStore';
+import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const authService = AuthService.getInstance();
@@ -244,6 +245,9 @@ export default function LimesScreen() {
   const router = useRouter();
   const { limeId, viewer, drafts: draftsParam } = useLocalSearchParams<{ limeId?: string; viewer?: string; drafts?: string }>();
   const isScreenFocused = useIsFocused();
+  // Videos never play (or make sound) behind the access overlay when this account can't open Limes.
+  const { getDecision: getPageDecision } = usePageAccess();
+  const canViewLimes = getPageDecision('/limes').canRead;
   const isSharedViewer = viewer === '1';
 
   const [feedTab, setFeedTab] = useState<'forYou' | 'following'>('forYou');
@@ -309,6 +313,7 @@ export default function LimesScreen() {
   const loading = Boolean(currentUserId) && !resourceData && resource?.status !== 'error';
   const isLoadingMore = resourceData?.isLoadingMore ?? false;
   const playbackAllowed = isScreenFocused
+    && canViewLimes
     && appState === 'active'
     && !isCreateModalOpen
     && !commentReelId

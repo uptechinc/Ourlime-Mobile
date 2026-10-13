@@ -9,12 +9,16 @@ import { useResourceStore } from '@/lib/store/useResourceStore';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import PlayfulTabIcon from '@/components/navigation/PlayfulTabIcon';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
+import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 
 const authService = AuthService.getInstance();
 const conversationResourceService = ConversationResourceService.getInstance();
 
 const TabLayout = () => {
   const { colors } = useAppTheme();
+  const { getDecision, loading: accessLoading } = usePageAccess();
+  // A tab whose page this account can't open is removed from the bar, not just covered by the overlay.
+  const tabHref = (route: string): null | undefined => (!accessLoading && !getDecision(route).canRead ? null : undefined);
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 20);
   const tabBarHeight = 56 + bottomInset;
@@ -93,6 +97,7 @@ const TabLayout = () => {
       <Tabs.Screen
         name="Discover"
         options={{
+          href: tabHref('/discover'),
           title: "Discover",
           tabBarIcon: ({ color, size, focused }) => (
             <PlayfulTabIcon focused={focused}>
@@ -109,6 +114,7 @@ const TabLayout = () => {
       <Tabs.Screen
         name="Limes"
         options={{
+          href: tabHref('/limes'),
           title: "Limes",
           tabBarStyle: {
             backgroundColor: colors.navigation,
@@ -139,6 +145,7 @@ const TabLayout = () => {
       <Tabs.Screen
         name="Chat"
         options={{
+          href: tabHref('/chat'),
           title: "Chat",
           tabBarBadge: unreadChatCount > 0 ? (unreadChatCount > 99 ? '99+' : unreadChatCount) : undefined,
           tabBarBadgeStyle: {
@@ -166,6 +173,7 @@ const TabLayout = () => {
       <Tabs.Screen
         name="Profile"
         options={{
+          href: tabHref('/profile'),
           title: "Profile",
           tabBarIcon: ({ color, size, focused }) => (
             <PlayfulTabIcon focused={focused}>
