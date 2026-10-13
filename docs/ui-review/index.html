@@ -85,6 +85,7 @@ h3.sub { margin-top: 28px; }
     <a href="#perf">Performance audit</a>
     <a href="#optimizations">Optimizations</a>
     <a href="#recommendations">Follow-up round</a>
+    <a href="#testpass">Full test pass</a>
     <a href="#open">Still open</a>
   </nav>
 
@@ -425,6 +426,38 @@ h3.sub { margin-top: 28px; }
     <figure><img src="polish/app/after/v-event-link.png" alt="Events list with the linked event first and outlined" loading="lazy"><figcaption><span class="tag after">After</span>Linked event first</figcaption></figure>
     <figure><img src="polish/app/after/v-job-link.png" alt="Job detail page opened from a shared link with Apply Now" loading="lazy"><figcaption><span class="tag after">After</span>Shared job opens its page</figcaption></figure>
   </div>
+
+  <h2 id="testpass">Full test pass</h2>
+  <p class="lede">Every website route (140) was loaded signed in on a production build, checking for failed requests, console errors and unexpected redirects. Every app screen (62) was opened by deep link on the production bundle. Each bug below was fixed, confirmed in development mode, rebuilt for production and retested before moving on.</p>
+
+  <h3 class="sub">Website fixes</h3>
+  <ul class="plain">
+    <li><strong>You were signed out while browsing.</strong> Two causes: re-syncing a session rewrote its start time, so the duplicate-session cleanup deleted the live one; and opening /login while signed in (which the product edit page did while auth was still restoring) ended the session. Both fixed, and the security log no longer gains a login entry per page view.</li>
+    <li><strong>Ads pages could not tell who you are.</strong> Eight ads API routes checked the browser-only Firebase user on the server, which is always empty. They now read the session cookie or a sign-in token. My Bookings shows its empty state instead of an error.</li>
+    <li><strong>My Offers asked for <code>hostId=undefined</code></strong> and got a server error. It now looks up your host profile by your account.</li>
+    <li><strong>Project invites failed with 503.</strong> The shared server code used a second copy of the admin SDK that was never started; it is now started on demand.</li>
+    <li><strong>Page Access showed “Unauthorized”</strong> on load because it read the admin’s ID before the profile had loaded.</li>
+    <li><strong>A missing support ticket returned a server error (500)</strong> instead of not found (404). Blog cards without a cover requested an image that doesn’t exist; they now use a default cover. The instructor access page no longer redirects you away after 3 seconds. The Discover friends list waits for sign-in before loading.</li>
+    <li><strong>Missing database indexes</strong> broke course discussions, seller orders, ad offers and the host list. Seven composite indexes were created and added to <code>firestore.indexes.json</code>.</li>
+  </ul>
+
+  <h3 class="sub">App fixes</h3>
+  <ul class="plain">
+    <li><strong>Website links open the right screen.</strong> Help, Policies, Privacy, Terms, Settings, Saved, Games, Wallet, Ads, Chat and admin links used to fall through to the home feed.</li>
+    <li><strong>Market prices and sellers.</strong> Items without a stored currency showed no price and counted as unavailable; they now show “$700.00”. Seller names fall back to the seller’s profile name.</li>
+    <li><strong>Admin Stickers</strong>: the Packs/Stickers tabs sit under the header, and search reads “Search sticker packs”. Help hides the sign-in hint once you are signed in.</li>
+    <li><strong>Type check failed</strong> after the route list grew: notification routing now picks its fallback in a way the compiler can handle. All 22 routing tests pass.</li>
+  </ul>
+
+  <h3 class="sub">Worth improving</h3>
+  <ul class="plain">
+    <li><strong>Course discussions are two separate systems.</strong> The website and app store posts with different fields, so posts made on one don’t appear on the other.</li>
+    <li><strong>Ads routes still use the browser Firebase SDK on the server.</strong> Reads work, but writes may be rejected by security rules once ads go live.</li>
+    <li><strong>Delete Account in the app</strong> embeds the website page, website header included.</li>
+    <li><strong>Admin lists wait for the startup preload.</strong> On a cold start on a slow device, Sticker Packs showed its loading state for about 80 seconds while feeds preloaded.</li>
+    <li><strong>Heavy media pages</strong> (/lime/&lt;id&gt;, /notifications) take 48–53 s to finish loading all media, although the server answers in under 0.3 s.</li>
+  </ul>
+  <p class="note">Expected, not bugs: the ads host dashboard and verification pages send non-hosts home, and My Offers and Become a Host show a 404 from the host lookup when you aren’t a host yet. A development-client-only crash (“App react context shouldn’t be created before”) appeared when the test script closed the app’s last screen and then reopened it; release builds don’t include that code.</p>
 
   <h2 id="open">Still open</h2>
   <ul class="plain">
