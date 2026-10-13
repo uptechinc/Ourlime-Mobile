@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
 	Image,
 	Modal,
@@ -25,6 +25,8 @@ type AdminCollectionWorkspaceProps = {
 	kind: AdminWorkspaceKind;
 	title: string;
 	subtitle: string;
+	/** Controls shown under the workspace header (e.g. tabs that switch between collections). */
+	accessory?: ReactNode;
 };
 
 const workspaceService = AdminWorkspaceService.getInstance();
@@ -42,6 +44,7 @@ export default function AdminCollectionWorkspace({
 	kind,
 	title,
 	subtitle,
+	accessory,
 }: AdminCollectionWorkspaceProps) {
 	const { colors } = useAppTheme();
 	const [items, setItems] = useState<AdminWorkspaceItem[]>([]);
@@ -159,6 +162,7 @@ export default function AdminCollectionWorkspace({
 			error={error}
 			onRefresh={() => void load(true)}
 		>
+			{accessory}
 			<View
 				style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 }}
 			>
@@ -181,7 +185,7 @@ export default function AdminCollectionWorkspace({
 					<TextInput
 						value={query}
 						onChangeText={setQuery}
-						placeholder={`Search ${kind}`}
+						placeholder={`Search ${kind.replace('_', ' ')}`}
 						placeholderTextColor={colors.mutedText}
 						style={{ flex: 1, padding: 11, color: colors.text }}
 					/>

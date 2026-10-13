@@ -130,12 +130,14 @@ export default function HelpRoute() {
 						Find community rules, reporting guidance, policies, and the
 						confidential child-safety reporting channel.
 					</Text>
-					<View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center' }}>
-						<Ionicons name="lock-closed" size={14} color={colors.accent} />
-						<Text style={{ flex: 1, marginLeft: 7, color: colors.accentText, fontSize: 12, fontWeight: '800' }}>
-							Help resources are public. Sign in to open or manage reports.
-						</Text>
-					</View>
+					{!isSignedIn ? (
+						<View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center' }}>
+							<Ionicons name="lock-closed" size={14} color={colors.accent} />
+							<Text style={{ flex: 1, marginLeft: 7, color: colors.accentText, fontSize: 12, fontWeight: '800' }}>
+								Help resources are public. Sign in to open or manage reports.
+							</Text>
+						</View>
+					) : null}
 				</View>
 				<View style={{ marginTop: 15, gap: 14 }}>
 					<HelpGroup
