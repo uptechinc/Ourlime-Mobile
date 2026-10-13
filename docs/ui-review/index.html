@@ -428,11 +428,10 @@ h3.sub { margin-top: 28px; }
 
   <h2 id="open">Still open</h2>
   <ul class="plain">
-    <li><strong>Comment counters are built but not live.</strong> Cloud Function triggers keep each community post’s comment total in its existing counter document, with a dry-run-first backfill and a switch on web and app (off). All 12 unit tests pass; nothing is deployed. One choice before deploying: current app builds also add to that counter, so either recount exactly on each comment (one extra read per comment, recommended) or re-run the backfill after most people update.</li>
+    <li><strong>Comment counters are ready to deploy.</strong> Cloud Function triggers recount each community post’s comments on every new or deleted comment and store the exact total in its existing counter document, so counts from older app builds correct themselves. A dry-run-first backfill and a switch on web and app (off until deployed) are included; all 13 unit tests pass. The deploy is the one step left, because production deploys need your confirmation.</li>
     <li><strong>App connection mode stays as is.</strong> Auto-detected long-polling was retested on the production bundle against the current forced mode: feed data 16.7–17.8 s vs 16.9 s and median query 1.2–1.5 s vs 1.5 s, the same within noise. A real gain would need the native Firestore SDK, a larger migration.</li>
-    <li><strong>Functions build only from the main checkout.</strong> <code>functions/.gitignore</code> ignores <code>lib/</code>, which also hides <code>functions/src/web/lib/</code>; a one-line fix.</li>
-    <li><strong>Limes page description</strong> in Page Access reads “Social posts and conversations”. An admin can change it there.</li>
+
   </ul>
-  <p class="note">Also checked this round: standalone admin pages (/admin/*) now use the standard header. The “promotions loaded twice” seen earlier was the browser pane recording one request twice, not a real duplicate.</p>
+  <p class="note">Also checked this round: standalone admin pages (/admin/*) now use the standard header. The “promotions loaded twice” seen earlier was the browser pane recording one request twice, not a real duplicate. The hand-written <code>functions/src/web/lib</code> sources were never in git (a too-broad ignore rule); they are tracked now. The Limes description in Page Access now matches the app: “Short-form social video”.</p>
   <p class="note">The round “N” badge in the earlier website screenshots is the Next.js development indicator and does not appear in production.</p>
 </div>
