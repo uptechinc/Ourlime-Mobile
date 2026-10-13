@@ -2,12 +2,14 @@ import { FeedResourceService } from './FeedResourceService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { LimeMediaPreloadService } from './LimeMediaPreloadService';
 import { ProjectResourceService } from './ProjectResourceService';
+import { CommunitiesResourceService } from './CommunitiesResourceService';
 
 export class AppPreloadService {
   private static instance: AppPreloadService;
   private readonly feedService = FeedResourceService.getInstance();
   private readonly limeMediaService = LimeMediaPreloadService.getInstance();
   private readonly projectResourceService = ProjectResourceService.getInstance();
+  private readonly communitiesResourceService = CommunitiesResourceService.getInstance();
   private readonly logger = DiagnosticLogService.getInstance();
   private generation = 0;
   private activeRun: { generation: number; userId: string; promise: Promise<void> } | null = null;
@@ -65,6 +67,15 @@ export class AppPreloadService {
     await this.feedService.seedDerivedFilters(userId, 'communities');
     this.logger.success('AppPreloadService', 'communities-feed:complete', { userId });
     if (generation !== this.generation) return;
+
+    // The Communities directory takes several round trips to build; warm it so the screen opens filled.
+    await this.communitiesResourceService.hydrate(userId);
+    if (generation !== this.generation) return;
+    await this.communitiesResourceService.refresh(userId, undefined, false, 'background').catch((error: unknown) => {
+      this.logger.warn('AppPreloadService', 'community-directory:failed', { error: error instanceof Error ? error.message : String(error) });
+    });
+    if (generation !== this.generation) return;
+    this.logger.success('AppPreloadService', 'community-directory:complete', { userId });
 
     await this.projectResourceService.hydrate(userId);
     if (generation !== this.generation) return;

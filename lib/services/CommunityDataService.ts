@@ -272,13 +272,16 @@ export class CommunityDataService {
     if (sourceDocuments.length === 0) return { cards: [], communityOfTheWeek: null };
     const communityIds = sourceDocuments.map((document) => document.id);
 
-    const [countDocuments, memberships, friendIds, requests, bans, viewerDocument] = await Promise.all([
+    // Categories only depend on the community list, so they load alongside everything else.
+    const categoryIds = [...new Set(sourceDocuments.map((document) => readString(document.data().categoryId)).filter(Boolean))];
+    const [countDocuments, memberships, friendIds, requests, bans, viewerDocument, categoryDocuments] = await Promise.all([
       Promise.all(communityIds.map((communityId) => getDoc(doc(db, 'communityVariantMembershipAndLikeCount', communityId)))),
       this.loadMemberships(communityIds),
       this.loadFriendIds(viewerId),
       viewerId ? getDocs(query(collection(db, 'communityRequests'), where('userId', '==', viewerId))) : Promise.resolve(null),
       viewerId ? getDocs(query(collection(db, 'bannedCommunityMembers'), where('userId', '==', viewerId))) : Promise.resolve(null),
       viewerId ? getDoc(doc(db, 'users', viewerId)) : Promise.resolve(null),
+      Promise.all(categoryIds.map((categoryId) => getDoc(doc(db, 'communityCategories', categoryId)).catch(() => null))),
     ]);
     const membershipsByCommunity = new Map<string, DocumentData[]>();
     memberships.forEach((membership) => {
@@ -295,21 +298,23 @@ export class CommunityDataService {
       return [...activeIds.slice(0, 3), ...activeIds.filter((userId) => friendIds.has(userId)).slice(0, 3)];
     });
     const userIds = [...new Set([...creatorIds, ...memberUserIds])];
-    const [users, pictures] = await Promise.all([this.loadUsers(userIds), this.loadProfilePictures(userIds)]);
     const viewerData = viewerDocument?.data();
     const viewerVerified = viewerData?.isVerified === true || viewerData?.identityVerified === true || readString(viewerData?.verificationStatus).toLowerCase() === 'verified';
 
     // Stored counts default to 0 and older app versions never incremented them, so a 0 (or missing) count is
     // re-counted from the posts themselves and the stored number is corrected for next time.
     const missingPostCounts = sourceDocuments.filter((document) => !readNonNegativeNumber(countByCommunity.get(document.id)?.postCount)).map((document) => document.id);
-    const postCounts = new Map<string, number>(await Promise.all(missingPostCounts.map(async (communityId): Promise<[string, number]> => {
+    const countMissingPosts = Promise.all(missingPostCounts.map(async (communityId): Promise<[string, number]> => {
       const counted = await getCountFromServer(query(collection(db, 'communityVariantDetails'), where('communityVariantId', '==', communityId))).catch(() => null);
       const total = counted?.data().count ?? 0;
       if (total > 0) {
         void setDoc(doc(db, 'communityVariantMembershipAndLikeCount', communityId), { communityVariantId: communityId, postCount: total }, { merge: true }).catch(() => undefined);
       }
       return [communityId, total];
-    })));
+    }));
+    // Member previews and post re-counts don't depend on each other, so they run together.
+    const [users, pictures, recounted] = await Promise.all([this.loadUsers(userIds), this.loadProfilePictures(userIds), countMissingPosts]);
+    const postCounts = new Map<string, number>(recounted);
 
     const cards = sourceDocuments.map((document): CommunityCardModel => {
       const data = document.data();
@@ -370,8 +375,6 @@ export class CommunityDataService {
       };
     });
 
-    const categoryIds = [...new Set(cards.map((card) => card.categoryId).filter((categoryId): categoryId is string => Boolean(categoryId)))];
-    const categoryDocuments = await Promise.all(categoryIds.map((categoryId) => getDoc(doc(db, 'communityCategories', categoryId)).catch(() => null)));
     const categoryNames = new Map(categoryDocuments.flatMap((document) => (document ? [[document.id, readString(document.data()?.name) || readString(document.data()?.type)] as [string, string]] : [])));
     const hydrated = cards.map((card) => ({ ...card, categoryName: card.categoryId ? categoryNames.get(card.categoryId) ?? '' : '' }));
     const weekScore = (card: CommunityCardModel) => card.likeCount * 3 + card.memberCount * 2 + card.postCount * 5;
