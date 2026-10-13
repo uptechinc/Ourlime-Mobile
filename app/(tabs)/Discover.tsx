@@ -194,7 +194,7 @@ export default function DiscoverScreen() {
             autoCapitalize="none"
           />
           {discoverQuery.length > 0 && (
-            <TouchableOpacity onPress={() => handleQueryChange('')}>
+            <TouchableOpacity onPress={() => handleQueryChange('')} hitSlop={12} accessibilityRole="button" accessibilityLabel="Clear search">
               <Icon name="x-circle" size={18} color={colors.mutedText} />
             </TouchableOpacity>
           )}
@@ -258,14 +258,14 @@ export default function DiscoverScreen() {
                           paddingHorizontal: 14,
                           paddingVertical: 7,
                           borderRadius: 14,
-                          backgroundColor: isSent ? '#fef3c7' : '#10b981',
+                          backgroundColor: isSent ? colors.warningSurface : '#10b981',
                           borderWidth: isSent ? 1 : 0,
-                          borderColor: '#f59e0b',
+                          borderColor: colors.warningText,
                           width: '100%',
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: isSent ? '#b45309' : '#ffffff' }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: isSent ? colors.warningText : '#ffffff' }}>
                           {isSent ? 'Cancel Request' : 'Add Friend'}
                         </Text>
                       </TouchableOpacity>
@@ -312,11 +312,11 @@ export default function DiscoverScreen() {
                       marginRight: 14,
                     }}
                   >
-                    {community.imageUrl ? <Image source={{ uri: community.imageUrl }} style={{ width: '100%', height: 110 }} /> : <View style={{ width: '100%', height: 110, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}><Icon name="users" size={30} color="#10b981" /></View>}
+                    {community.imageUrl ? <Image source={{ uri: community.imageUrl }} style={{ width: '100%', height: 110 }} /> : <View style={{ width: '100%', height: 110, backgroundColor: colors.successSurface,alignItems: 'center', justifyContent: 'center' }}><Icon name="users" size={30} color="#10b981" /></View>}
                     <View style={{ padding: 14 }}>
                       <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{community.title}</Text>
-                      <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 4 }}>{community.membershipCount.toLocaleString()} members</Text>
-                      <Text style={{ marginTop: 12, fontSize: 12, fontWeight: '700', color: '#047857' }}>View community</Text>
+                      <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 4 }}>{community.membershipCount.toLocaleString()} {community.membershipCount === 1 ? 'member' : 'members'}</Text>
+                      <Text style={{ marginTop: 12, fontSize: 12, fontWeight: '700', color: colors.accentText }}>View community</Text>
                     </View>
                   </TouchableOpacity>
                   ))}
@@ -362,7 +362,7 @@ export default function DiscoverScreen() {
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    {evt.image ? <Image source={{ uri: evt.image }} style={{ width: 64, height: 64, borderRadius: 16 }} /> : <View style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}><Icon name="calendar" size={24} color="#10b981" /></View>}
+                    {evt.image ? <Image source={{ uri: evt.image }} style={{ width: 64, height: 64, borderRadius: 16 }} /> : <View style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: colors.successSurface,alignItems: 'center', justifyContent: 'center' }}><Icon name="calendar" size={24} color="#10b981" /></View>}
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={{ fontSize: 11, fontWeight: '800', color: '#10b981', textTransform: 'uppercase' }}>{evt.date}</Text>
                       <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginTop: 2 }}>{evt.title}</Text>
@@ -371,7 +371,7 @@ export default function DiscoverScreen() {
                         <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, fontSize: 12, color: colors.mutedText, marginLeft: 4 }}>{locationLabel}</Text>
                       </View>
                     </View>
-                    <TouchableOpacity onPress={() => setEventToShare(evt)} style={{ padding: 8 }}>
+                    <TouchableOpacity onPress={() => setEventToShare(evt)} style={{ padding: 8 }} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Share ${evt.title}`}>
                       <Icon name="share-2" size={18} color={colors.icon} />
                     </TouchableOpacity>
                   </View>
@@ -420,10 +420,10 @@ export default function DiscoverScreen() {
                     alignItems: 'center',
                   }}
                 >
-                  {job.image ? <Image source={{ uri: job.image }} style={{ width: 44, height: 44, borderRadius: 14 }} /> : <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}><Icon name="briefcase" size={20} color="#10b981" /></View>}
+                  {job.image ? <Image source={{ uri: job.image }} style={{ width: 44, height: 44, borderRadius: 14 }} /> : <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.successSurface,alignItems: 'center', justifyContent: 'center' }}><Icon name="briefcase" size={20} color="#10b981" /></View>}
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{job.role}</Text>
-                    <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 2 }}>{job.company} · <Text style={{ color: '#10b981', fontWeight: '600' }}>{job.type}</Text></Text>
+                    <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 2 }}>{job.company} · <Text style={{ color: '#10b981', fontWeight: '600' }}>{job.type === 'quickTask' ? 'Quick task' : 'Professional'}</Text></Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>{job.salary}</Text>

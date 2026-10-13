@@ -52,6 +52,9 @@ export default function PageHeader({
               style={{
                 padding: 8,
               }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
               activeOpacity={0.7}
             >
               <ArrowLeft size={24} color={colors.icon} />

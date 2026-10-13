@@ -10,6 +10,8 @@ import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 
 type LearningTab = 'courses' | 'resources' | 'tutors';
 
+const pluralize = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
+
 export default function ELearningScreen() {
   const router = useRouter();
   const { colors, isDark } = useAppTheme();
@@ -101,9 +103,9 @@ export default function ELearningScreen() {
               </TouchableOpacity>
             )) : <EmptyCard title="No published courses" detail="Published courses will appear here when instructors add them." styles={styles} />)}
 
-            {tab === 'resources' && ((data?.categories.length ?? 0) ? data?.categories.map((category) => <View key={category.id} style={styles.card}><Text style={styles.cardTitle}>{category.name}</Text><Text style={styles.muted}>{category.description ?? 'Course category'}</Text><Text style={styles.meta}>{category.courseCount} courses</Text></View>) : <EmptyCard title="No learning resources" detail="Course categories and CXC resources will appear when published." styles={styles} />)}
+            {tab === 'resources' && ((data?.categories.length ?? 0) ? data?.categories.map((category) => <View key={category.id} style={styles.card}><Text style={styles.cardTitle}>{category.name}</Text><Text style={styles.muted}>{category.description ?? 'Course category'}</Text><Text style={styles.meta}>{pluralize(category.courseCount, 'course', 'courses')}</Text></View>) : <EmptyCard title="No learning resources" detail="Course categories and CXC resources will appear when published." styles={styles} />)}
 
-            {tab === 'tutors' && ((data?.instructors.length ?? 0) ? data?.instructors.map((instructor) => <View key={instructor.id} style={styles.tutorCard}>{instructor.avatar ? <Image source={{ uri: instructor.avatar }} style={styles.avatar} /> : <View style={[styles.avatar, styles.imageFallback]}><Users size={24} color={colors.mutedText} /></View>}<View style={styles.courseCopy}><Text style={styles.cardTitle}>{instructor.name}</Text><Text style={styles.muted}>{instructor.specialties.join(' · ') || 'Instructor'}</Text><Text style={styles.meta}>{instructor.totalCourses} courses · {instructor.totalStudents} learners</Text></View></View>) : <EmptyCard title="No verified tutors" detail="Verified instructor profiles will appear here." styles={styles} />)}
+            {tab === 'tutors' && ((data?.instructors.length ?? 0) ? data?.instructors.map((instructor) => <View key={instructor.id} style={styles.tutorCard}>{instructor.avatar ? <Image source={{ uri: instructor.avatar }} style={styles.avatar} /> : <View style={[styles.avatar, styles.imageFallback]}><Users size={24} color={colors.mutedText} /></View>}<View style={styles.courseCopy}><Text style={styles.cardTitle}>{instructor.name}</Text><Text style={styles.muted}>{instructor.specialties.join(' · ') || 'Instructor'}</Text><Text style={styles.meta}>{pluralize(instructor.totalCourses, 'course', 'courses')} · {pluralize(instructor.totalStudents, 'learner', 'learners')}</Text></View></View>) : <EmptyCard title="No verified tutors" detail="Verified instructor profiles will appear here." styles={styles} />)}
           </>
         ) : null}
         <Text style={styles.themeNote}>Theme: {isDark ? 'Dark' : 'Light'} · Payments are unavailable in this release.</Text>

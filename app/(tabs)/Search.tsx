@@ -77,6 +77,7 @@ export default function SearchScreen() {
 
   const handleQueryChange = (text: string) => {
     setSearchQuery(text);
+    if (text.trim()) setIsSearching(true);
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
       void performSearch(text);

@@ -8,6 +8,7 @@ import { LocationService, type LocationSearchResult } from '@/lib/services/Locat
 import type { PostLocation } from '@/lib/services/PostService';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type LocationPickerModalProps = {
   visible?: boolean;
@@ -21,6 +22,7 @@ const DEFAULT_LNG = -61.5199;
 const locationService = LocationService.getInstance();
 
 export default function LocationPickerModal({ visible = true, initialLocation, onClose, onSelect }: LocationPickerModalProps) {
+  const { colors } = useAppTheme();
   const [selected, setSelected] = useState<PostLocation | undefined>(initialLocation);
   const [currentCoords, setCurrentCoords] = useState({
     lat: initialLocation?.lat ?? DEFAULT_LAT,
@@ -131,33 +133,33 @@ export default function LocationPickerModal({ visible = true, initialLocation, o
   return (
     <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent presentationStyle="overFullScreen" animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
       <Animated.View style={[{ flex: 1 }, swipeDismiss.animatedStyle]}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }} edges={['top', 'left', 'right']}>
-        <SwipeDismissHandle gesture={swipeDismiss.gesture} color="#d1d5db" animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close location picker" />
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }} edges={['top', 'left', 'right']}>
+        <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close location picker" />
         
         {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }}>
-          <TouchableOpacity onPress={onClose} style={{ padding: 8 }}><Icon name="x" size={24} color="#374151" /></TouchableOpacity>
-          <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '800', color: '#111827' }}>Add location</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <TouchableOpacity onPress={onClose} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel="Close location picker"><Icon name="x" size={24} color={colors.icon} /></TouchableOpacity>
+          <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '800', color: colors.text }}>Add location</Text>
           <TouchableOpacity onPress={() => selected && onSelect(selected)} disabled={!selected || busy} style={{ padding: 8 }}>
-            <Text style={{ color: selected ? '#10b981' : '#9ca3af', fontWeight: '800' }}>Attach</Text>
+            <Text style={{ color: selected ? '#10b981' : colors.disabledText, fontWeight: '800' }}>Attach</Text>
           </TouchableOpacity>
         </View>
 
         <View style={{ flex: 1, position: 'relative' }}>
           {/* Debounced Search Bar Container */}
           <View style={{ marginHorizontal: 14, marginTop: 12, marginBottom: 8, zIndex: 1000 }}>
-            <View style={{ flexDirection: 'row', borderWidth: 1, borderColor: '#d1d5db', borderRadius: 14, alignItems: 'center', paddingHorizontal: 12, backgroundColor: '#ffffff', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 }}>
-              <Icon name="search" size={18} color="#6b7280" />
+            <View style={{ flexDirection: 'row', borderWidth: 1, borderColor: colors.border, borderRadius: 14, alignItems: 'center', paddingHorizontal: 12, backgroundColor: colors.input, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 }}>
+              <Icon name="search" size={18} color={colors.mutedText} />
               <TextInput
                 value={query}
                 onChangeText={setQuery}
                 placeholder="Search address or landmark..."
-                placeholderTextColor="#9ca3af"
-                style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 8, color: '#111827', fontSize: 14 }}
+                placeholderTextColor={colors.mutedText}
+                style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 8, color: colors.text, fontSize: 14 }}
               />
               {busy ? <ActivityIndicator size="small" color="#10b981" /> : query.length > 0 ? (
-                <TouchableOpacity onPress={() => { setQuery(''); setResults([]); }}>
-                  <Icon name="x-circle" size={16} color="#9ca3af" />
+                <TouchableOpacity onPress={() => { setQuery(''); setResults([]); }} hitSlop={12} accessibilityRole="button" accessibilityLabel="Clear search">
+                  <Icon name="x-circle" size={16} color={colors.mutedText} />
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -172,9 +174,9 @@ export default function LocationPickerModal({ visible = true, initialLocation, o
                   right: 0,
                   maxHeight: 220,
                   borderWidth: 1,
-                  borderColor: '#e2e8f0',
+                  borderColor: colors.border,
                   borderRadius: 14,
-                  backgroundColor: '#ffffff',
+                  backgroundColor: colors.elevated,
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 6 },
                   shadowOpacity: 0.18,
@@ -188,10 +190,10 @@ export default function LocationPickerModal({ visible = true, initialLocation, o
                   <TouchableOpacity
                     key={`${result.lat}-${result.lng}`}
                     onPress={() => handleResult(result)}
-                    style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}
+                    style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}
                   >
                     <Icon name="map-pin" size={16} color="#10b981" />
-                    <Text style={{ flex: 1, marginLeft: 10, color: '#334155', fontSize: 13, fontWeight: '600' }}>
+                    <Text style={{ flex: 1, marginLeft: 10, color: colors.secondaryText, fontSize: 13, fontWeight: '600' }}>
                       {result.displayName}
                     </Text>
                   </TouchableOpacity>
@@ -218,20 +220,20 @@ export default function LocationPickerModal({ visible = true, initialLocation, o
               style={{ width: '100%', height: '100%' }}
             />
 
-            <TouchableOpacity onPress={() => void handleLocate()} style={{ position: 'absolute', right: 14, top: 14, width: 44, height: 44, borderRadius: 12, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4 }}>
+            <TouchableOpacity onPress={() => void handleLocate()} style={{ position: 'absolute', right: 14, top: 14, width: 44, height: 44, borderRadius: 12, backgroundColor: colors.elevated, alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4 }}>
               <Icon name="crosshair" size={21} color="#10b981" />
             </TouchableOpacity>
           </View>
 
           {/* Bottom Selected Location Banner */}
           {selected && (
-            <View style={{ marginHorizontal: 14, marginBottom: 16, padding: 14, borderRadius: 16, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#ecfdf5', alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ marginHorizontal: 14, marginBottom: 16, padding: 14, borderRadius: 16, backgroundColor: colors.control, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.successSurface, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name="map-pin" size={18} color="#10b981" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: '#0f172a' }}>{selected.name}</Text>
-                {selected.address ? <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{selected.address}</Text> : null}
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{selected.name}</Text>
+                {selected.address ? <Text style={{ fontSize: 11, color: colors.mutedText, marginTop: 2 }}>{selected.address}</Text> : null}
               </View>
             </View>
           )}

@@ -811,7 +811,8 @@ export function JobManagementEditSheet({
 						</View>
 						{job?.applications.length ? (
 							<Text style={styles.notice}>
-								This job has {job.applications.length} application(s), so its
+								This job has {job.applications.length}{' '}
+								{job.applications.length === 1 ? 'application' : 'applications'}, so its
 								opportunity type remains locked.
 							</Text>
 						) : null}

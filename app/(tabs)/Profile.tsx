@@ -96,7 +96,7 @@ export default function ProfileScreen() {
           <Ionicons name="menu-outline" size={26} color={colors.icon} />
         </TouchableOpacity>
         <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Profile</Text>
-        <TouchableOpacity onPress={() => router.push('/settings' as Href)} style={{ padding: 6 }}>
+        <TouchableOpacity onPress={() => router.push('/settings' as Href)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Settings" style={{ padding: 6 }}>
           <Ionicons name="settings-outline" size={22} color={colors.icon} />
         </TouchableOpacity>
       </View>

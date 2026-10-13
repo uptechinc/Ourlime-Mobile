@@ -50,6 +50,7 @@ async function runOnce(busyActions: Set<string>, actionKey: string, action: () =
 }
 
 // Due dates are calendar dates (YYYY-MM-DD); read them as local dates, never as UTC midnight.
+const formatProjectStatus = (status: string): string => status === 'on-hold' ? 'On hold' : status;
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function formatLocalDueDate(value: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
@@ -452,7 +453,7 @@ export default function ProjectBoardScreen() {
               <Text style={styles.projectDesc}>{project.description || 'No description provided.'}</Text>
             </View>
             <View style={styles.statusBadge}>
-              <Text style={styles.statusText}>{project.status}</Text>
+              <Text style={styles.statusText}>{formatProjectStatus(project.status)}</Text>
             </View>
           </View>
 

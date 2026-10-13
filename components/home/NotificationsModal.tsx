@@ -531,8 +531,8 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
             <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
               {item.title || notificationHelpers.formatNotificationTitle(item.type)}
             </Text>
-            <TouchableOpacity onPress={() => handlePromptSingleDelete(item.id)} style={{ padding: 4 }}>
-              <Icon name="trash-2" size={14} color="#94a3b8" />
+            <TouchableOpacity onPress={() => handlePromptSingleDelete(item.id)} style={{ padding: 4 }} hitSlop={12} accessibilityRole="button" accessibilityLabel="Delete notification">
+              <Icon name="trash-2" size={14} color={colors.mutedText} />
             </TouchableOpacity>
           </View>
 

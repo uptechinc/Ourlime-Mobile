@@ -223,10 +223,6 @@ export default function SettingsScreen() {
               <Text style={styles.label}>First Name</Text>
               <TextInput value={firstName} onChangeText={setFirstName} style={styles.input} />
             </View>
-            <Text style={styles.sectionTitle}>Policies and account controls</Text>
-            <TouchableOpacity onPress={() => router.push('/policies')} style={styles.policyButton}><Icon name="file-text" size={18} color="#047857" /><Text style={styles.policyButtonText}>All Ourlime policies</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/child-safety-standards')} style={styles.policyButton}><Icon name="shield" size={18} color="#047857" /><Text style={styles.policyButtonText}>Child Safety Standards</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/delete-account')} style={styles.policyButton}><Icon name="info" size={18} color="#047857" /><Text style={styles.policyButtonText}>Account deletion information</Text></TouchableOpacity>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Last Name</Text>
               <TextInput value={lastName} onChangeText={setLastName} style={styles.input} />
@@ -239,6 +235,10 @@ export default function SettingsScreen() {
               <Text style={styles.label}>Bio</Text>
               <TextInput value={bio} onChangeText={setBio} multiline numberOfLines={3} style={[styles.input, { height: 80, textAlignVertical: 'top' }]} />
             </View>
+            <Text style={styles.sectionTitle}>Policies and account controls</Text>
+            <TouchableOpacity onPress={() => router.push('/policies')} style={styles.policyButton}><Icon name="file-text" size={18} color="#047857" /><Text style={styles.policyButtonText}>All Ourlime policies</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/child-safety-standards')} style={styles.policyButton}><Icon name="shield" size={18} color="#047857" /><Text style={styles.policyButtonText}>Child Safety Standards</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/delete-account')} style={styles.policyButton}><Icon name="info" size={18} color="#047857" /><Text style={styles.policyButtonText}>Account deletion information</Text></TouchableOpacity>
           </View>
         )}
 
@@ -410,19 +410,19 @@ const createStyles = (isDark: boolean) => StyleSheet.create({
   label: { fontSize: 13, fontWeight: '700', color: isDark ? '#cbd5e1' : '#334155' },
   input: { borderWidth: 1, borderColor: isDark ? '#334155' : '#cbd5e1', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, color: isDark ? '#f8fafc' : '#0f172a', backgroundColor: isDark ? '#0f172a' : '#ffffff' },
   visibilityOption: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: isDark ? '#334155' : '#cbd5e1', backgroundColor: isDark ? '#0f172a' : '#ffffff' },
-  visibilityOptionActive: { backgroundColor: '#d1fae5', borderColor: '#10b981' },
+  visibilityOptionActive: { backgroundColor: isDark ? '#052e2b' : '#d1fae5', borderColor: '#10b981' },
   visibilityText: { fontSize: 13, fontWeight: '700', color: '#64748b', textTransform: 'capitalize' },
-  visibilityTextActive: { color: '#047857' },
+  visibilityTextActive: { color: isDark ? '#6ee7b7' : '#047857' },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#f1f5f9' },
   switchLabel: { fontSize: 14, fontWeight: '700', color: isDark ? '#f8fafc' : '#0f172a' },
   switchSubtext: { fontSize: 12, color: isDark ? '#94a3b8' : '#64748b', marginTop: 2 },
   emptyText: { color: isDark ? '#94a3b8' : '#64748b', fontSize: 14, fontStyle: 'italic' },
   blockedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#f1f5f9' },
   blockedName: { fontSize: 15, fontWeight: '700', color: isDark ? '#f8fafc' : '#0f172a' },
-  unblockBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, backgroundColor: '#fee2e2' },
-  unblockText: { color: '#ef4444', fontSize: 13, fontWeight: '700' },
-  signOutBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, backgroundColor: '#fee2e2', marginTop: 12 },
-  signOutText: { color: '#ef4444', fontSize: 15, fontWeight: '800' },
+  unblockBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, backgroundColor: isDark ? '#3f161d' : '#fee2e2' },
+  unblockText: { color: isDark ? '#fca5a5' : '#ef4444', fontSize: 13, fontWeight: '700' },
+  signOutBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, backgroundColor: isDark ? '#3f161d' : '#fee2e2', marginTop: 12 },
+  signOutText: { color: isDark ? '#fca5a5' : '#ef4444', fontSize: 15, fontWeight: '800' },
   policyButton: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 13, backgroundColor: isDark ? '#052e2b' : '#ecfdf5' },
   policyButtonText: { color: isDark ? '#6ee7b7' : '#047857', fontWeight: '800', fontSize: 14 },
   dangerZone: { gap: 10, padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#fecaca', backgroundColor: isDark ? '#450a0a' : '#fff7f7', marginTop: 10 },

@@ -30,7 +30,9 @@ const applicationSorts: { value: ApplicationSort; label: string }[] = [
   { value: 'newest', label: 'Newest' }, { value: 'oldest', label: 'Oldest' }, { value: 'name', label: 'Name A–Z' },
 ];
 
-const getAllowedApplicationStatuses = (status: ApplicationStatus): ApplicationStatus[] => {
+const formatApplicationStatus = (status: ApplicationStatus): string => status === 'job_withdrawn' ? 'Job withdrawn' : status.charAt(0).toUpperCase() + status.slice(1);
+
+const getAllowedApplicationStatuses =(status: ApplicationStatus): ApplicationStatus[] => {
   if (status === 'pending') return ['reviewing', 'rejected'];
   if (status === 'reviewing') return ['interviewing', 'accepted', 'rejected'];
   if (status === 'interviewing' || status === 'offer') return ['accepted', 'rejected'];
@@ -90,6 +92,7 @@ export default function ManageJobsScreen() {
   }, [applyJobs, load]);
 
   const selectedJob = useMemo(() => jobs.find((job) => job.id === selectedJobId) ?? null, [jobs, selectedJobId]);
+  const questionTextById = useMemo(() => new Map((selectedJob?.questions ?? []).map((question) => [question.id, question.question])), [selectedJob]);
 
   useEffect(() => {
     setSelectedApplicationIds(new Set());
@@ -236,6 +239,7 @@ export default function ManageJobsScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#10b981" />}
       renderItem={({ item: application }) => <ApplicationCard
         application={application}
+        questionTextById={questionTextById}
         selected={selectedApplicationIds.has(application.id)}
         expanded={expandedApplicationId === application.id}
         working={workingId === application.id}
@@ -261,6 +265,7 @@ export default function ManageJobsScreen() {
 
 type ApplicationCardProps = {
   application: ManagedJobApplication;
+  questionTextById: Map<string, string>;
   selected: boolean;
   expanded: boolean;
   working: boolean;
@@ -272,7 +277,7 @@ type ApplicationCardProps = {
   onOpenLink: (url: string) => void;
 };
 
-function ApplicationCard({ application, selected, expanded, working, onToggleSelected, onToggleExpanded, onStatus, onNotes, onInterview, onOpenLink }: ApplicationCardProps) {
+function ApplicationCard({ application, questionTextById, selected, expanded, working, onToggleSelected, onToggleExpanded, onStatus, onNotes, onInterview, onOpenLink }: ApplicationCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const answers = Object.entries(application.answers);
@@ -280,14 +285,14 @@ function ApplicationCard({ application, selected, expanded, working, onToggleSel
   const canScheduleInterview = application.status === 'reviewing';
   return <View style={[styles.applicationCard, selected && styles.applicationSelected]}>
     <View style={styles.applicationHeader}><TouchableOpacity onPress={onToggleSelected} hitSlop={8}>{selected ? <CheckSquare size={22} color={colors.accent} /> : <Square size={22} color={colors.mutedText} />}</TouchableOpacity><TouchableOpacity style={styles.flex} onPress={onToggleExpanded}><Text style={styles.applicantName}>{application.applicant.name}</Text><Text style={styles.meta}>{application.applicant.email || 'No public email'} · Applied {formatDate(application.createdAtMs)}</Text></TouchableOpacity><TouchableOpacity onPress={onToggleExpanded}>{expanded ? <ChevronUp size={21} color={colors.icon} /> : <ChevronDown size={21} color={colors.icon} />}</TouchableOpacity></View>
-    <View style={styles.applicationToolbar}><View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{application.status}</Text></View><TouchableOpacity onPress={onNotes} style={styles.smallAction}><StickyNote size={15} color={colors.warningText} /><Text style={styles.noteActionText}>Notes</Text></TouchableOpacity><TouchableOpacity disabled={!canScheduleInterview} onPress={onInterview} style={[styles.smallAction, !canScheduleInterview && styles.disabled]}><CalendarClock size={15} color={colors.accentText} /><Text style={styles.interviewActionText}>Interview</Text></TouchableOpacity></View>
+    <View style={styles.applicationToolbar}><View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{formatApplicationStatus(application.status)}</Text></View><TouchableOpacity onPress={onNotes} style={styles.smallAction}><StickyNote size={15} color={colors.warningText} /><Text style={styles.noteActionText}>Notes</Text></TouchableOpacity><TouchableOpacity disabled={!canScheduleInterview} onPress={onInterview} style={[styles.smallAction, !canScheduleInterview && styles.disabled]}><CalendarClock size={15} color={colors.accentText} /><Text style={styles.interviewActionText}>Interview</Text></TouchableOpacity></View>
     {expanded ? <View style={styles.applicationDetails}>
       <Text style={styles.detailLabel}>Cover letter</Text><Text style={styles.detailBody}>{application.coverLetter || 'No cover letter provided.'}</Text>
-      {answers.length ? <><Text style={styles.detailLabel}>Application answers</Text>{answers.map(([questionId, answer]) => <View key={questionId} style={styles.answerRow}><Text style={styles.answerQuestion}>{questionId}</Text><Text style={styles.detailBody}>{Array.isArray(answer) ? answer.join(', ') : answer}</Text></View>)}</> : null}
+      {answers.length ? <><Text style={styles.detailLabel}>Application answers</Text>{answers.map(([questionId, answer]) => <View key={questionId} style={styles.answerRow}><Text style={styles.answerQuestion}>{questionTextById.get(questionId) || 'Question'}</Text><Text style={styles.detailBody}>{Array.isArray(answer) ? answer.join(', ') : answer}</Text></View>)}</> : null}
       {application.applicant.workExperience.length ? <><Text style={styles.detailLabel}>Experience</Text>{application.applicant.workExperience.slice(0, 4).map((experience) => <Text key={experience.id} style={styles.detailBody}>{experience.role || 'Role'} · {experience.company || 'Company'}</Text>)}</> : null}
       {application.applicant.education.length ? <><Text style={styles.detailLabel}>Education</Text>{application.applicant.education.slice(0, 4).map((education) => <Text key={education.id} style={styles.detailBody}>{education.degree || 'Study'} · {education.school || 'School'}</Text>)}</> : null}
       <View style={styles.linkRow}>{application.resumeUrl ? <LinkButton label="Resume" onPress={() => onOpenLink(application.resumeUrl)} /> : null}{application.portfolioLink ? <LinkButton label="Portfolio" onPress={() => onOpenLink(application.portfolioLink)} /> : null}</View>
-      {allowedStatuses.length > 0 ? <><Text style={styles.detailLabel}>Update status</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statuses}>{allowedStatuses.map((status) => <TouchableOpacity key={status} disabled={working} onPress={() => onStatus(status)} style={styles.statusChip}><Text style={styles.statusText}>{status}</Text></TouchableOpacity>)}</ScrollView></> : <Text style={styles.terminalStatus}>This application is in a final state.</Text>}
+      {allowedStatuses.length > 0 ? <><Text style={styles.detailLabel}>Update status</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statuses}>{allowedStatuses.map((status) => <TouchableOpacity key={status} disabled={working} onPress={() => onStatus(status)} style={styles.statusChip}><Text style={styles.statusText}>{formatApplicationStatus(status)}</Text></TouchableOpacity>)}</ScrollView></> : <Text style={styles.terminalStatus}>This application is in a final state.</Text>}
     </View> : null}
   </View>;
 }

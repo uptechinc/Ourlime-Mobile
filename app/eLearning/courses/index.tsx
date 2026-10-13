@@ -108,7 +108,7 @@ export default function CoursesCatalogScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.categoryPills}
         >
-          {['All', ...categories.map((category) => category.name)].map((cat) => (
+          {['All', ...new Set(categories.map((category) => category.name))].map((cat) => (
             <TouchableOpacity
               key={cat}
               onPress={() => setSelectedCategory(cat)}

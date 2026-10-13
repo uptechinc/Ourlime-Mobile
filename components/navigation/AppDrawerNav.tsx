@@ -26,7 +26,7 @@ const authService = AuthService.getInstance();
 
 export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawerNavProps) {
   const { authorization, getDecision, triggerOverlay } = usePageAccess();
-  const { isDark } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
   const router = useRouter();
   const themeStyles = createThemeStyles(isDark);
   const navigateTo = (item: AppNavigationItem) => {
@@ -86,12 +86,12 @@ export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawer
                 pressScale={0.96}
                 playful={false}
               >
-                <View style={styles.iconCircle}>
+                <View style={[styles.iconCircle, { backgroundColor: colors.successSurface }]}>
                   <Icon name={item.featherIcon} size={18} color="#10b981" />
                 </View>
                 <Text style={[styles.menuText, themeStyles.primaryText]}>{item.label}</Text>
                 {item.status && item.status !== 'enabled' && item.status !== 'admin_only' ? (
-                  <View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{item.badge || 'Soon'}</Text></View>
+                  <View style={[styles.statusBadge, { backgroundColor: colors.successSurface }]}><Text style={[styles.statusBadgeText, { color: colors.successText }]}>{item.badge || 'Soon'}</Text></View>
                 ) : null}
                 <Icon name="chevron-right" size={16} color={isDark ? '#cbd5e1' : '#94a3b8'} />
               </AnimatedActionButton>

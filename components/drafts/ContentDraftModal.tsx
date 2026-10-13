@@ -8,7 +8,9 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesService';
 
-type ContentDraftModalProps = { ownerId: string; kind: 'blog' | 'task'; projectId?: string; teamMembers?: TeamMember[]; onClose: () => void; onPublished?: () => void };
+const TASK_STATUS_LABELS: Record<'todo' | 'in-progress' | 'done', string> = { todo: 'To do', 'in-progress': 'In progress', done: 'Done' };
+
+type ContentDraftModalProps ={ ownerId: string; kind: 'blog' | 'task'; projectId?: string; teamMembers?: TeamMember[]; onClose: () => void; onPublished?: () => void };
 export default function ContentDraftModal({ ownerId, kind, projectId, teamMembers = [], onClose, onPublished }: ContentDraftModalProps) {
   const editor = useContentDrafts(ownerId, kind, projectId);
   const { colors } = useAppTheme();
@@ -62,8 +64,8 @@ export default function ContentDraftModal({ ownerId, kind, projectId, teamMember
         <MarketButton label="Add source" onPress={() => editor.update({ ...draft, payload: { ...draft.payload, sources: [...draft.payload.sources, { title: '', url: '', author: '', publishDate: '', type: 'website', citation: '', isVerified: false }] } })} />
       </> : <>
         <MarketField label="Description" multiline value={draft.payload.description} onChangeText={(description) => editor.update({ ...draft, payload: { ...draft.payload, description } })} />
-        {(['todo', 'in-progress', 'done'] as const).map((status) => <MarketButton key={status} label={`${draft.payload.status === status ? 'Selected: ' : ''}${status}`} onPress={() => editor.update({ ...draft, payload: { ...draft.payload, status } })} />)}
-        {(['low', 'medium', 'high', 'urgent'] as const).map((priority) => <MarketButton key={priority} label={`${draft.payload.priority === priority ? 'Selected: ' : ''}${priority}`} onPress={() => editor.update({ ...draft, payload: { ...draft.payload, priority } })} />)}
+        {(['todo', 'in-progress', 'done'] as const).map((status) => <MarketButton key={status} label={`${draft.payload.status === status ? 'Selected: ' : ''}${TASK_STATUS_LABELS[status]}`} onPress={() => editor.update({ ...draft, payload: { ...draft.payload, status } })} />)}
+        {(['low', 'medium', 'high', 'urgent'] as const).map((priority) => <MarketButton key={priority} label={`${draft.payload.priority === priority ? 'Selected: ' : ''}${priority.charAt(0).toUpperCase() + priority.slice(1)}`} onPress={() => editor.update({ ...draft, payload: { ...draft.payload, priority } })} />)}
         <Text style={{ color: colors.text }}>Assign to project members</Text>
         {teamMembers.filter((member) => member.isOwner || member.membershipStatus === 'accepted').map((member) => <MarketButton key={member.id} label={`${draft.payload.assignees.includes(member.id) ? 'Selected: ' : ''}${member.name}`} onPress={() => {
           const assignees = draft.payload.assignees.includes(member.id) ? draft.payload.assignees.filter((id) => id !== member.id) : [...draft.payload.assignees, member.id];

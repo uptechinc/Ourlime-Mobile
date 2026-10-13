@@ -40,9 +40,11 @@ export default function LimesTab({ userId, refreshKey }: LimesTabProps) {
 
   const [limes, setLimes] = useState<Reel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [createModalVisible, setCreateModalVisible] = useState(false);
 
   const loadLimes = useCallback(async () => {
+    setLoadError(null);
     try {
       let data = await limeService.fetchUserReels(userId);
       const missing = data.filter((r) => !r.thumbnailUrl && !r.media?.thumbnailUrl);
@@ -74,6 +76,7 @@ export default function LimesTab({ userId, refreshKey }: LimesTabProps) {
       setLimes(data);
     } catch (err) {
       console.error('[LimesTab] Error loading limes:', err);
+      setLoadError(err instanceof Error ? err.message : 'Limes could not be loaded.');
     } finally {
       setIsLoading(false);
     }
@@ -120,7 +123,32 @@ export default function LimesTab({ userId, refreshKey }: LimesTabProps) {
         </View>
       )}
 
-      {limes.length === 0 ? (
+      {limes.length === 0 && loadError ? (
+        <View
+          style={{
+            padding: 20,
+            alignItems: 'center',
+            backgroundColor: colors.surface,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Ionicons name="alert-circle-outline" size={36} color={colors.destructiveText} />
+          <Text style={{ marginTop: 10, color: colors.text, fontSize: 15, fontWeight: '800' }}>
+            Limes unavailable
+          </Text>
+          <Text style={{ marginTop: 4, color: colors.secondaryText, fontSize: 13, textAlign: 'center' }}>
+            {loadError}
+          </Text>
+          <TouchableOpacity
+            onPress={() => void loadLimes()}
+            style={{ marginTop: 14, borderRadius: 18, backgroundColor: colors.accent, paddingHorizontal: 16, paddingVertical: 9 }}
+          >
+            <Text style={{ color: colors.onAccent, fontWeight: '800' }}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : limes.length === 0 ? (
         <View
           style={{
             paddingVertical: 44,

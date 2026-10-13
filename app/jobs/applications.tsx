@@ -90,7 +90,7 @@ export default function MyJobApplicationsScreen() {
         </View>
         {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
         {loading ? <ApplicationsSkeleton /> : null}
-        {!loading && applications.length === 0 ? (
+        {!loading && !error && applications.length === 0 ? (
           <View style={styles.empty}>
             <FileText size={42} color={colors.mutedText} />
             <Text style={styles.emptyTitle}>No applications yet</Text>

@@ -40,6 +40,7 @@ const isSortChoice = (value: string | undefined): value is SortChoice => SORTS.s
 /** Cached records can come back from disk with dates as strings; always read them as Date. */
 const toTime = (value: Date | string | undefined): number => (value ? new Date(value).getTime() || 0 : 0);
 const plural = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
+const formatProjectStatus = (status: string): string => status === 'on-hold' ? 'On hold' : status;
 
 function formatLastActivity(value: Date | string | undefined): string {
   const time = toTime(value);
@@ -87,6 +88,7 @@ export default function ProjectManagementScreen() {
   const { resource: projectResource, refresh: refreshProjects } = useProjectsResource(activeUserId ?? '', mutationReady);
   const projects = useMemo(() => projectResource.data ?? [], [projectResource.data]);
   const loading = projectResource.data === null && (projectResource.status === 'idle' || projectResource.status === 'hydrating');
+  const hasBlockingError = Boolean(projectResource.error && !projectResource.data);
   const createCapability = projectService.getMutationCapability('create_project', null, { signedIn: Boolean(activeUserId), sessionReady: mutationReady, pageCanMutate: canMutate });
 
   useFocusEffect(useCallback(() => {
@@ -243,7 +245,7 @@ export default function ProjectManagementScreen() {
         {projectResource.error && !projectResource.data ? <View style={styles.stateCard}><Text accessibilityRole="alert" style={styles.error}>{projectResource.error.message}</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry projects" onPress={() => void refreshProjects()} style={styles.retryButton}><Text style={styles.acceptText}>Retry</Text></TouchableOpacity></View> : null}
         {loading ? <ProjectManagementSkeleton /> : null}
 
-        {sessionReady && !loading ? <View style={styles.statsGrid}>
+        {sessionReady && !loading && !hasBlockingError ? <View style={styles.statsGrid}>
           {[
             { label: stats.active === 1 ? 'Active Project' : 'Active Projects', value: String(stats.active), Icon: Activity, tint: colors.successSurface, iconColor: colors.accent },
             { label: stats.completed === 1 ? 'Completed Project' : 'Completed Projects', value: String(stats.completed), Icon: CheckCircle2, tint: '#dbeafe', iconColor: '#3b82f6' },
@@ -257,7 +259,7 @@ export default function ProjectManagementScreen() {
           ))}
         </View> : null}
 
-        {sessionReady && !loading && invitations.length > 0 ? <View style={styles.section}>
+        {sessionReady && !loading && !hasBlockingError && invitations.length > 0 ?<View style={styles.section}>
           <Text style={styles.sectionTitle}>Project Invitations ({invitations.length})</Text>
           {invitations.map((project) => <View key={project.id} style={[styles.card, styles.inviteCard, project.id === projectId && styles.focusedCard]}>
             <Text style={styles.cardTitle}>{project.name}</Text><Text style={styles.cardText}>{project.description || 'You have been invited to collaborate on this project.'}</Text>
@@ -269,7 +271,7 @@ export default function ProjectManagementScreen() {
           </View>)}
         </View> : null}
 
-        {sessionReady && !loading ? <View style={styles.section}>
+        {sessionReady && !loading && !hasBlockingError ? <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Your Projects ({visibleProjects.length})</Text>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Create project" onPress={() => { if (ensureCanChange()) setFormTarget({ mode: 'create' }); }} style={[styles.createButton, !createCapability.allowed && styles.disabled]}><Plus size={20} color="#ffffff" /></TouchableOpacity>
@@ -295,7 +297,7 @@ export default function ProjectManagementScreen() {
                   {canEdit ? <TouchableOpacity accessibilityLabel={`Options for ${project.name}`} hitSlop={8} onPress={() => setMenuProject(project)} style={styles.menuButton}><MoreHorizontal size={18} color={colors.mutedText} /></TouchableOpacity> : null}
                 </View>
                 <View style={styles.badges}>
-                  <Text style={[styles.badge, styles.statusBadge, project.status === 'archived' && styles.mutedBadge, project.status === 'on-hold' && styles.warningBadge]}>{project.status}</Text>
+                  <Text style={[styles.badge, styles.statusBadge, project.status === 'archived' && styles.mutedBadge, project.status === 'on-hold' && styles.warningBadge]}>{formatProjectStatus(project.status)}</Text>
                   <Text style={[styles.badge, styles.roleBadge]}>{project.role}</Text>
                 </View>
                 <Text style={styles.cardText}>{project.description || 'No description'}</Text>

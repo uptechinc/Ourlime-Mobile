@@ -84,7 +84,7 @@ export default function HelpRoute() {
 					backgroundColor: colors.navigation,
 				}}
 			>
-				<TouchableOpacity onPress={() => router.back()} style={{ padding: 5 }}>
+				<TouchableOpacity onPress={() => router.back()} style={{ padding: 5 }} hitSlop={8} accessibilityRole="button" accessibilityLabel="Go back">
 					<Ionicons name="chevron-back" size={26} color={colors.icon} />
 				</TouchableOpacity>
 				<Text
