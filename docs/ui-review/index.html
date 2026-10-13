@@ -56,15 +56,24 @@ ul.plain { margin: 12px 0 0; padding-left: 20px; display: grid; gap: 8px; max-wi
 ul.plain li::marker { color: var(--lime); }
 .note { margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-size: 0.95rem; }
 code { font-family: var(--mono); font-size: 0.85em; background: var(--lime-soft); color: var(--ink); padding: 1px 5px; border-radius: 4px; }
+.table-wrap { margin-top: 16px; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table.perf { width: 100%; border-collapse: collapse; font-size: 0.88rem; min-width: 720px; }
+table.perf th, table.perf td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.perf th { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+table.perf tr:last-child td { border-bottom: 0; }
+table.perf td.num { font-family: var(--mono); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+table.perf td:first-child { min-width: 200px; }
+table.perf td.win { color: var(--lime); }
+h3.sub { margin-top: 28px; }
 </style>
 
 <div class="wrap">
   <h1>Ourlime UI Review</h1>
-  <p class="lede">Bug fixes from tester reports and a cleanup of crowded filter screens, shown as before-and-after screenshots from the Android app and the website at phone width.</p>
+  <p class="lede">Bug fixes from tester reports, a cleanup of crowded filter screens, a page-by-page polish pass and a production performance audit of the Android app and the website.</p>
   <div class="meta">
     <span>App branch <b>ui-cleanup-and-bug-fixes</b> vs <b>New-Main</b></span>
     <span>Website branch <b>ui-cleanup-and-bug-fixes</b> vs <b>Main</b></span>
-    <span>Captured <b>12 Oct 2026</b> · Pixel 6 emulator · 375px browser</span>
+    <span>Captured <b>12–13 Oct 2026</b> · Pixel 6 emulator · 1440px and 390px browser</span>
   </div>
   <nav class="toc" aria-label="Sections">
     <a href="#app">Mobile app</a>
@@ -72,6 +81,10 @@ code { font-family: var(--mono); font-size: 0.85em; background: var(--lime-soft)
     <a href="#access">Who can see what</a>
     <a href="#community">Communities</a>
     <a href="#unseen">Fixes without a screen</a>
+    <a href="#polish">Polish pass</a>
+    <a href="#perf">Performance audit</a>
+    <a href="#optimizations">Optimizations</a>
+    <a href="#recommendations">Recommendations</a>
     <a href="#open">Still open</a>
   </nav>
 
@@ -235,6 +248,189 @@ code { font-family: var(--mono); font-size: 0.85em; background: var(--lime-soft)
     <li><strong>Members count.</strong> The project stat now counts accepted members only, matching Team Members.</li>
     <li><strong>Roles and permissions guide.</strong> A rule file for AI agents in both repos explains that “Administrator Access Required” pages, such as a shared Lime, are an admin choice and not a bug.</li>
   </ul>
+
+  <h2 id="polish">Polish pass</h2>
+  <p class="lede">A page-by-page sweep of both apps for small, high-impact fixes: honest loading states, readable labels, theme colors, touch targets and spacing. Layouts, navigation and page structure were left alone; anything bigger is listed under Recommendations.</p>
+
+  <section class="finding">
+    <h3>Events and Market say “Loading” instead of “0”</h3>
+    <p class="why">While data was on its way, Events read <strong>0 upcoming community and public events</strong>, and Market and E-Hub read <strong>0 listings loaded</strong>. Both looked like empty pages. They now say they are loading until the data arrives. Jobs got the same treatment on both platforms.</p>
+    <div class="pairs">
+      <figure><img src="polish/app/before/p-events-loading.png" alt="Events hero reading 0 upcoming events while cards are still loading" loading="lazy"><figcaption><span class="tag before">Before</span>“0 upcoming” while loading</figcaption></figure>
+      <figure><img src="polish/app/after/p-events-loading.png" alt="Events hero reading Loading events" loading="lazy"><figcaption><span class="tag after">After</span>“Loading events…”</figcaption></figure>
+      <figure><img src="polish/app/before/p-market-loading.png" alt="Marketplace reading 0 listings loaded over skeleton cards" loading="lazy"><figcaption><span class="tag before">Before</span>“0 listings loaded”</figcaption></figure>
+      <figure><img src="polish/app/after/p-market-loading.png" alt="Marketplace reading Loading listings" loading="lazy"><figcaption><span class="tag after">After</span>“Loading listings…”</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Settings: account fields stay together</h3>
+    <p class="why">The policy links sat between <strong>First Name</strong> and <strong>Last Name</strong>. They now follow the account fields, in the same tab.</p>
+    <div class="pairs">
+      <figure><img src="polish/app/before/p-settings.png" alt="Policy links between first and last name fields" loading="lazy"><figcaption><span class="tag before">Before</span>Links split the form</figcaption></figure>
+      <figure><img src="polish/app/after/p-settings.png" alt="Name, username and bio followed by policy links" loading="lazy"><figcaption><span class="tag after">After</span>Form, then links</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Courses and cart read cleanly</h3>
+    <p class="why">The course catalog showed <strong>Programming</strong> three times because the category list has duplicate names. The saved cart opened with a fragment, <strong>“synced. Items do not reserve stock.”</strong> Each status is now a full sentence.</p>
+    <div class="pairs">
+      <figure><img src="polish/app/before/p-courses.png" alt="Three Programming chips in a row" loading="lazy"><figcaption><span class="tag before">Before</span>Repeated chip</figcaption></figure>
+      <figure><img src="polish/app/after/p-courses.png" alt="Programming, Data Science and Design chips" loading="lazy"><figcaption><span class="tag after">After</span>One chip per category</figcaption></figure>
+      <figure><img src="polish/app/before/p-cart-notice.png" alt="Cart notice starting with lowercase synced" loading="lazy"><figcaption><span class="tag before">Before</span>Raw status word</figcaption></figure>
+      <figure><img src="polish/app/after/p-cart-notice.png" alt="Cart notice reading Synced with your account" loading="lazy"><figcaption><span class="tag after">After</span>Full sentence</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding web">
+    <h3>Website: greeting, sign-in hints and status chips</h3>
+    <p class="why">E-Learning greeted people by email address and showed <code>Don&amp;apos;t</code> in a course message. Help showed <strong>Sign in required</strong> on every card to people already signed in. E-Projects chips showed raw values such as <strong>active</strong> and <strong>owner</strong>.</p>
+    <div class="pairs">
+      <figure><img src="polish/web-desktop/before/w10-elearning.jpg" alt="E-Learning greeting by email address" loading="lazy"><figcaption><span class="tag before">Before</span>“Welcome, aaronhazzard2018@…”</figcaption></figure>
+      <figure><img src="polish/web-desktop/after/w10-elearning.jpg" alt="E-Learning greeting by first name" loading="lazy"><figcaption><span class="tag after">After</span>“Welcome, Aaron”</figcaption></figure>
+      <figure><img src="polish/web-desktop/before/w18-help.jpg" alt="Help cards labelled Sign in required for a signed-in user" loading="lazy"><figcaption><span class="tag before">Before</span>Sign-in hints while signed in</figcaption></figure>
+      <figure><img src="polish/web-desktop/after/w18-help.jpg" alt="Help cards without sign-in hints" loading="lazy"><figcaption><span class="tag after">After</span>Shown only when signed out</figcaption></figure>
+      <figure><img src="polish/web-desktop/before/w12-projects.jpg" alt="Project card chips reading active and owner" loading="lazy"><figcaption><span class="tag before">Before</span>“active”, “owner”</figcaption></figure>
+      <figure><img src="polish/web-desktop/after/w12-projects.jpg" alt="Project card chips reading Active and Owner" loading="lazy"><figcaption><span class="tag after">After</span>“Active”, “Owner”</figcaption></figure>
+    </div>
+  </section>
+
+  <h3 class="sub">Every change, by page</h3>
+  <p class="why">Most of these don’t show in a resting screenshot: they appear while loading, on failure, in dark mode, or on touch.</p>
+  <div class="table-wrap"><table class="perf">
+    <thead><tr><th>Area</th><th>App</th><th>Website</th></tr></thead>
+    <tbody>
+      <tr><td>Feed and posts</td><td>“Check Metro…” developer hints removed from feed errors; event chip no longer reads “none”; “No photo posts yet” instead of “No photos posts yet”</td><td>Post menu button 40px with a label</td></tr>
+      <tr><td>Events, Jobs</td><td>Hero counts wait for data; job applications show the question text and readable statuses; Discover shows “Quick task” instead of “quickTask”</td><td>Counts wait for data; “1 event”, “1 applicant”; event detail separates “couldn’t load” (with retry) from “not found”; status badges have dark-mode colors</td></tr>
+      <tr><td>Market, E-Hub</td><td>“Loading listings…”; seller application labels such as “Store name”; readable cart status</td><td>Retry card when the catalog fails instead of “0 products”; no fake 4.8 rating on unrated products; 36px cart buttons; E-Hub chips work in dark mode</td></tr>
+      <tr><td>Communities</td><td>“1 member”, “1 post”, “1 vote”; member actions labelled</td><td>Report and member-action buttons visible on touch screens; “1 community”; report status reads “In review”</td></tr>
+      <tr><td>Projects</td><td>“On hold”; draft statuses “To do”, “In progress”, “Done”; error card no longer sits above zero stats</td><td>Status, role, task status and priority labels</td></tr>
+      <tr><td>Chat</td><td>Blocked, reply and stale banners, the forward sheet and link previews use theme colors; bigger hit areas on header, cancel and clear buttons</td><td>—</td></tr>
+      <tr><td>Profile, Friends</td><td>Header buttons labelled with bigger hit areas; profile colors themed; Limes and reposts tabs show an error with retry instead of “No Limes yet”</td><td>“1 Follower”; each Friends tab has its own empty message, plus “No matches for …” when searching</td></tr>
+      <tr><td>E-Learning</td><td>No repeated category chips; “1 lesson”, “1 student”</td><td>Greeting uses the first name; courses count waits for data</td></tr>
+      <tr><td>Settings, Help</td><td>Policy links after the account fields; dark-mode colors for privacy toggles and buttons</td><td>Sign-in hints only for signed-out visitors; 2FA and delete buttons readable in dark mode</td></tr>
+      <tr><td>Shared UI</td><td>Back button hit area and label; modal icon circles follow the theme; drawer badges themed</td><td>Notification bulk actions 36px with labels; mobile menu button labelled; events, projects, market and blog detail capped at 1400px on wide screens</td></tr>
+      <tr><td>Admin</td><td>—</td><td>Undefined colour tokens replaced, so badges and chips render again on Child Safety and Support. The user-management Retry button was invisible white-on-white. Jobs, Security, Products and export menus moved to the admin palette.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="perf">Performance audit</h2>
+  <p class="lede">Measured against production builds before changing any queries: <code>next build</code> + <code>next start</code> for the website, and a minified <code>--no-dev</code> bundle on the Pixel 6 emulator for the app. Temporary hooks timed every Firestore read and counted documents, server-side for the website and in the app’s Firestore client.</p>
+  <div class="meta">
+    <span>Website <b>32 pages × desktop + phone</b></span>
+    <span>App <b>18 screens + cold start</b></span>
+    <span>Signed in as an admin account</span>
+  </div>
+  <p class="note">Network latency to Firestore varied a lot during the runs: the same query took 300 ms in one minute and 3–8 s in another. Rows show what each page did and what it cost in that run. The optimization results below repeat each page several times and compare medians.</p>
+
+  <h3 class="sub">Mobile app</h3>
+  <div class="table-wrap"><table class="perf">
+    <thead><tr><th>Screen</th><th>Query or operation</th><th>Measured</th><th>Docs read</th><th>Suspected cause</th></tr></thead>
+    <tbody>
+      <tr><td>Cold start → home feed</td><td>Feed: each repost’s original post fetched one at a time, in groups of 4</td><td class="num">feed data at 22.2 s<br>(11.4 s after JS start)</td><td class="num">235 reads / 595 docs in first 29 s</td><td>N+1 sequential reads</td></tr>
+      <tr><td>Cold start</td><td>Same documents read repeatedly: your user doc ×15, account settings ×10, security config ×2</td><td class="num">security config 3.5 s each</td><td class="num">27</td><td>No sharing of in-flight or recent reads</td></tr>
+      <tr><td>Any screen after returning to the app</td><td>Full preload re-runs: home feed, communities feed, community directory, projects</td><td class="num">Blogs window: 14.4 s</td><td class="num">401 reads / 1,395 docs</td><td>Preload has no freshness check on resume</td></tr>
+      <tr><td>Blogs</td><td><code>feedPosts/{id}</code> ×95; <code>blogsAndArticles/{id}/engagement</code> ×14</td><td class="num">up to 4.0 s / 4.7 s</td><td class="num">95 + 14</td><td>N+1 per repost (background feed) and per blog</td></tr>
+      <tr><td>Jobs</td><td><code>jobApplications</code> by user; <code>jobs/{id}/questions</code> ×13</td><td class="num">8.6–9.8 s (0 docs)<br>screen ready ≈ 20 s</td><td class="num">13 jobs + 13</td><td>Queued behind background refresh; N+1 questions per job</td></tr>
+      <tr><td>Profile tab</td><td>User docs; friendship pair query</td><td class="num">up to 18.0 s / 18.8 s</td><td class="num">65</td><td>Waiting behind other reads on the single long-polling connection</td></tr>
+      <tr><td>Discover</td><td>Per suggested person: user, profile image, image selection; per community: member count</td><td class="num">8.8 s</td><td class="num">152 reads / 439 docs</td><td>N+1 per person and per community</td></tr>
+      <tr><td>Market</td><td><code>subImages</code> per product ×11</td><td class="num">up to 4.4 s; 20.3 s window</td><td class="num">205 reads / 333 docs</td><td>N+1 per product</td></tr>
+      <tr><td>Courses</td><td>All reads queued ≈ 10 s</td><td class="num">10.7 s</td><td class="num">116 reads / 186 docs</td><td>Connection congestion from background work</td></tr>
+      <tr><td>Community detail</td><td>Community doc read 3×, account settings 3×</td><td class="num">13.0 s</td><td class="num">40 reads / 50 docs</td><td>Duplicate reads</td></tr>
+      <tr><td>Post detail</td><td>Same post doc read twice in a row</td><td class="num">3.0 s</td><td class="num">13 reads / 15 docs</td><td>Duplicate read</td></tr>
+      <tr><td>Events</td><td><code>eventAttendees</code> per event ×6</td><td class="num">1.8 s</td><td class="num">12 reads / 59 docs</td><td>Small N+1</td></tr>
+      <tr><td>Communities</td><td>Cached directory, categories</td><td class="num win">2.2 s</td><td class="num">3 reads / 2 docs</td><td>Fine (warmed at startup since the last round)</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 class="sub">Website</h3>
+  <div class="table-wrap"><table class="perf">
+    <thead><tr><th>Page</th><th>Query or operation</th><th>Measured</th><th>Docs read</th><th>Suspected cause</th></tr></thead>
+    <tbody>
+      <tr><td>Every page and API call</td><td>Middleware calls <code>/api/security/check-access</code> over HTTP; each call reads your user doc, and API calls also run a rate-limit transaction</td><td class="num">51 calls hit the 3.5 s timeout in one run</td><td class="num">1–2 per request</td><td>Role lookup not cached; concurrent transactions on one rate-limit doc</td></tr>
+      <tr><td>Every signed-in page</td><td><code>/api/notifications?limit=20</code> loaded twice; each reads up to 150 notification items</td><td class="num">0.7–3.5 s each</td><td class="num">≈276</td><td>Two components fetch the same list; over-fetch for a page of 20</td></tr>
+      <tr><td>Every signed-in page</td><td><code>/api/chat/friends</code> loaded twice</td><td class="num">1.1–1.2 s each</td><td class="num">≈54</td><td>Duplicate fetch</td></tr>
+      <tr><td>Home</td><td>13–16 API calls; games ×2, drafts ×2, notifications ×2</td><td class="num">5.3 s (plain run)<br>14.3 s (slow run)</td><td class="num">90 reads / 840 docs</td><td>Duplicate fetches</td></tr>
+      <tr><td>Profile</td><td>User docs ×26</td><td class="num">6.7 s</td><td class="num">92 reads / 754 docs</td><td>N+1 user lookups</td></tr>
+      <tr><td>Another person’s profile</td><td>Profile image selections ×9, user subcollections ×8</td><td class="num">6.4 s</td><td class="num">130 reads / 1,042 docs</td><td>N+1 per friend/post author</td></tr>
+      <tr><td>Communities</td><td>User docs ×13</td><td class="num">3.4 s</td><td class="num">45 reads / 570 docs</td><td>N+1 per creator</td></tr>
+      <tr><td>Blogs</td><td>User docs ×10, account settings ×5</td><td class="num">7.7 s</td><td class="num">34 reads / 231 docs</td><td>N+1 per author</td></tr>
+      <tr><td>Courses</td><td>Count query per course ×6</td><td class="num">3.2–14.3 s</td><td class="num">56 reads / 597 docs</td><td>N+1 counts</td></tr>
+      <tr><td>Community detail</td><td>Posts, members, reactions</td><td class="num">6.7–7.6 s</td><td class="num">62 reads / 649 docs</td><td>Down from 8.4 s after last round’s batching</td></tr>
+      <tr><td>Admin pages</td><td>Mostly the shared header reads above</td><td class="num">3.7–5.5 s</td><td class="num">37–51 reads / 425–708 docs</td><td>Shared chrome</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">No query failed for lack of an index, and no new index is needed for the fixes below. Every page’s baseline is ≈400 documents before its own content: notifications, chats and sessions, mostly read twice.</p>
+
+  <h2 id="optimizations">Optimizations</h2>
+  <p class="lede">Applied in order of measured impact, each re-measured on a fresh production build. Website numbers are medians of three desktop runs per page; app numbers come from repeated cold starts and screen opens on the production bundle. No schema, security rule or index changes.</p>
+
+  <h3 class="sub">Website</h3>
+  <div class="table-wrap"><table class="perf">
+    <thead><tr><th>Step</th><th>Page</th><th>API calls</th><th>Server reads</th><th>Docs read</th><th>Time to data</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="4"><strong>1. Duplicate fetches removed</strong><br>The notification listener’s first snapshot no longer triggers a second full load. The chat button and chat window share one friends request. The two home games panels share one request.</td><td>Calendar</td><td class="num win">7 → 5</td><td class="num win">53 → 40</td><td class="num win">512 → 293</td><td class="num">3.05 → 2.81 s</td></tr>
+      <tr><td>Blogs</td><td class="num win">14 → 12</td><td class="num win">59 → 44</td><td class="num win">526 → 296</td><td class="num">7.12 → 6.19 s</td></tr>
+      <tr><td>Profile</td><td class="num win">14 → 12</td><td class="num win">109 → 84</td><td class="num win">897 → 601</td><td class="num">6.45 → 6.40 s</td></tr>
+      <tr><td>Home</td><td class="num win">16 → 13</td><td class="num win">124 → 109</td><td class="num win">1,051 → 833</td><td class="num">5.16 → 5.87 s</td></tr>
+      <tr><td rowspan="4"><strong>2. Access check reuses the role lookup</strong><br>The user’s role and email are cached for 15 s, the same TTL the security settings already use. Before, every page and API request re-read the user document.</td><td>Calendar</td><td class="num">5</td><td class="num win">40 → 20</td><td class="num">293 → 272</td><td class="num">2.81 → 2.66 s</td></tr>
+      <tr><td>Blogs</td><td class="num">12</td><td class="num win">44 → 36</td><td class="num">296 → 298</td><td class="num">6.19 → 6.64 s</td></tr>
+      <tr><td>Profile</td><td class="num">12</td><td class="num win">84 → 65</td><td class="num win">601 → 506</td><td class="num">6.40 → 6.62 s</td></tr>
+      <tr><td>Home</td><td class="num">13</td><td class="num win">109 → 87</td><td class="num">833 → 788</td><td class="num">5.87 → 4.91 s</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note"><strong>Overall:</strong> 25–47% fewer documents read per page and 2–3 fewer API calls. Time to data barely moved and stays within run-to-run noise. The pages now wait mostly on the rate-limit step described under Recommendations: Blogs’ six parallel <code>/interactions</code> calls finish one after another, from 0.4 s to 3.3 s.</p>
+
+  <h3 class="sub">Mobile app</h3>
+  <div class="table-wrap"><table class="perf">
+    <thead><tr><th>Change</th><th>Measured on</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Reposts resolved in batches.</strong> Originals come from posts already loaded, and the rest are fetched 30 at a time, instead of one read per repost.</td><td>Cold start, JS ready → home feed data (production bundle)</td><td class="num">13.3 s median (12.9–13.6 s, 4 runs)<br>19 sequential post reads</td><td class="num win">11.4 s median (10.8–13.2 s, 3 runs)<br>1 batched read</td></tr>
+      <tr><td><strong>Post detail reads the post once.</strong> The same document used to be fetched twice in a row.</td><td>Opening a shared post</td><td class="num">13 reads, 3.0 s</td><td class="num win">10 reads, 2.2 s</td></tr>
+      <tr><td><strong>Tried and reverted:</strong> skip the startup preload when one finished in the last 5 minutes.</td><td>Reads in 25 s after returning to the app</td><td class="num">3–5</td><td class="num">2–3 (no real gain; each feed already has its own freshness check)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">The temporary timing hooks are removed from both repos (<code>lib/perfFirestoreServer.ts</code> on the website, and <code>lib/shims/perfFirestore.js</code> plus its Metro alias on the app).</p>
+
+  <h2 id="recommendations">Recommendations</h2>
+  <p class="lede">Larger changes the audit points to. None of these is implemented: each needs your call because it changes security behavior, data shape, indexes or page structure.</p>
+
+  <h3 class="sub">Speed</h3>
+  <ul class="plain">
+    <li><strong>Rate limiting serializes parallel API calls (website).</strong> Every API request runs a Firestore transaction on one per-user, per-minute document, so a page’s parallel requests queue behind each other, and 5–51 middleware checks per run hit the 3.5 s timeout. Options: rate-limit only writes, or count with atomic increments and no transaction. This is a security trade-off, so it’s yours to decide.</li>
+    <li><strong>Middleware checks access over HTTP (website).</strong> Each page and API request makes a second HTTP request to <code>/api/security/check-access</code>. Doing the check inside the middleware with a short cache would remove that hop.</li>
+    <li><strong>Notifications read 150 to show 20 (website).</strong> The “unread first” sort loads up to 150 items per request. Querying unread items separately needs a composite index on <code>isRead</code> + <code>createdAt</code>, which means deploying an index.</li>
+    <li><strong>Blogs load interactions one blog at a time (website).</strong> Returning the viewer’s likes and bookmarks with the blog list would remove six requests per page. This changes the API response shape.</li>
+    <li><strong>One slow connection carries every read (app).</strong> Forced long-polling sends all Firestore traffic through one channel, so background refreshes delay the screen in front of you by 4–18 s (Jobs took about 20 s to show). Options: try auto-detected long-polling on real phones, or move to the native Firestore SDK, which is a larger migration.</li>
+    <li><strong>Opening a link re-runs feeds (app).</strong> One Blogs open from a link ran the home feed and communities feed five times each (401 reads). The trigger needs tracing.</li>
+    <li><strong>Remaining N+1 reads (app).</strong> Discover suggestions (152 reads), job questions (13 per screen), blog engagement (14), product images (11) and event attendees (6) can each be batched with <code>in</code> queries. This is straightforward follow-up work.</li>
+    <li><strong>Comment totals counted post by post (app).</strong> 30 count queries per community feed refresh. A server-maintained counter would remove them; that needs a Cloud Function.</li>
+    <li><strong>Same documents re-read at startup (app).</strong> Your user document is read 15 times and account settings 10 times. A shared profile cache would fix it.</li>
+    <li><strong>Profile loads relationships twice (website).</strong> The relationship status and follower counts are each requested twice, and Home loads drafts twice with different filters.</li>
+  </ul>
+
+  <h3 class="sub">Design and structure</h3>
+  <ul class="plain">
+    <li>Headers differ across pages: games, help, tickets and policies use the Advertise header.</li>
+    <li>Community detail has four differently saturated action buttons. They need one primary action and quieter secondaries.</li>
+    <li>On phones, the admin “Preview” pill overlaps the open-in-app banner.</li>
+    <li>Child Safety and Support admin pages still use solid blue buttons and links, which the admin color rule reserves for neutral styling. Restyling those primary actions goes past token fixes.</li>
+    <li>Events shows placeholder stats (“12,500 Happy Users”, “4.3 Rating”, “98% Energy Level”) next to the real count. Remove them or replace them with real metrics.</li>
+    <li>The app’s notifications list, Discover sections and Limes viewer show “nothing here” when a load fails. Error states there need new state plumbing.</li>
+    <li>The home feed stretches with the screen at extra-wide sizes; capping it changes its three-column grid.</li>
+  </ul>
+
+  <h3 class="sub">Correctness found along the way</h3>
+  <ul class="plain">
+    <li>The website market API returns 0 products while admin shows approved listings.</li>
+    <li><code>/verify/[uId]</code> writes <code>users.verified</code> from the browser.</li>
+    <li>Some routes the code calls don’t exist: <code>/api/wallet/balance</code>, <code>/api/wallet/transfer</code>, <code>/api/ads/proof/pending</code>, <code>/api/user/profile</code>.</li>
+    <li>Help staff pages are public at the middleware level. The pages still check roles.</li>
+    <li>In the app, the event link target and the job apply parameters are ignored, <code>/jobs/[id]</code> is unreachable, and the privacy and terms screens have no entry point.</li>
+  </ul>
+
+
 
   <h2 id="open">Still open</h2>
   <ul class="plain">
