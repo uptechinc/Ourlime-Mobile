@@ -84,7 +84,7 @@ h3.sub { margin-top: 28px; }
     <a href="#polish">Polish pass</a>
     <a href="#perf">Performance audit</a>
     <a href="#optimizations">Optimizations</a>
-    <a href="#recommendations">Recommendations</a>
+    <a href="#recommendations">Follow-up round</a>
     <a href="#open">Still open</a>
   </nav>
 
@@ -380,7 +380,7 @@ h3.sub { margin-top: 28px; }
       <tr><td>Home</td><td class="num">13</td><td class="num win">109 → 87</td><td class="num">833 → 788</td><td class="num">5.87 → 4.91 s</td></tr>
     </tbody>
   </table></div>
-  <p class="note"><strong>Overall:</strong> 25–47% fewer documents read per page and 2–3 fewer API calls. Time to data barely moved and stays within run-to-run noise. The pages now wait mostly on the rate-limit step described under Recommendations: Blogs’ six parallel <code>/interactions</code> calls finish one after another, from 0.4 s to 3.3 s.</p>
+  <p class="note"><strong>Overall:</strong> 25–47% fewer documents read per page and 2–3 fewer API calls. Time to data barely moved and stays within run-to-run noise. They were waiting mostly on the rate-limit step, fixed in the follow-up round below: Blogs’ six parallel <code>/interactions</code> calls finish one after another, from 0.4 s to 3.3 s.</p>
 
   <h3 class="sub">Mobile app</h3>
   <div class="table-wrap"><table class="perf">
@@ -393,50 +393,46 @@ h3.sub { margin-top: 28px; }
   </table></div>
   <p class="note">The temporary timing hooks are removed from both repos (<code>lib/perfFirestoreServer.ts</code> on the website, and <code>lib/shims/perfFirestore.js</code> plus its Metro alias on the app).</p>
 
-  <h2 id="recommendations">Recommendations</h2>
-  <p class="lede">Larger changes the audit points to. None of these is implemented: each needs your call because it changes security behavior, data shape, indexes or page structure.</p>
+  <h2 id="recommendations">Follow-up round</h2>
+  <p class="lede">You approved the recommendations, so they were built in parallel: one session for the app’s per-item reads, three for the website, and the rest here. Each change was then verified on production builds, signed in, before merging.</p>
 
-  <h3 class="sub">Speed</h3>
+  <h3 class="sub">Measured results</h3>
+  <div class="table-wrap"><table class="perf">
+    <thead><tr><th>Change</th><th>Where</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Rate limiting counts writes only.</strong> Reads skip the per-minute counter; posts, comments and sign-in stay limited as before.</td><td>6 parallel API reads</td><td class="num">finished one after another, 1.0–3.9 s</td><td class="num win">all within 0.4 s of each other, 0.6–1.3 s</td></tr>
+      <tr><td><strong>Notifications index deployed</strong>, so the efficient query is used instead of reading up to 150 items for 20</td><td>Notifications per load</td><td class="num">up to 150 docs</td><td class="num win">21 docs, 161 ms</td></tr>
+      <tr><td><strong>Blogs return your likes and saves with the list</strong></td><td>/blogs API calls</td><td class="num">12</td><td class="num win">6</td></tr>
+      <tr><td><strong>Profile counts and Home drafts load once</strong></td><td>/profile, Home API calls</td><td class="num">12, 16</td><td class="num win">10, 12</td></tr>
+      <tr><td><strong>Returning to the app refreshes only the main feeds</strong>; filtered copies refresh when opened</td><td>App resume after feeds went stale</td><td class="num">12 feed loads, 341–422 reads, 1,540–1,744 docs</td><td class="num win">2 feed loads, 113 reads, 331 docs</td></tr>
+      <tr><td><strong>Your profile and settings are read once and shared</strong> across services at startup</td><td>App cold start</td><td class="num">profile doc read 12–14×</td><td class="num win">4–5×</td></tr>
+      <tr><td><strong>Discover, Market and Events read in batches</strong></td><td>Pull to refresh: per-item reads</td><td class="num">Discover 33 · Market 11 · Events 6</td><td class="num win">10 · 1 · 1</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">The notifications index was the only index change: it was already defined in the repo’s index file but had never been deployed. It was created on its own; the file’s other 25 undeployed definitions were left alone.</p>
+
+  <h3 class="sub">Fixed</h3>
   <ul class="plain">
-    <li><strong>Rate limiting serializes parallel API calls (website).</strong> Every API request runs a Firestore transaction on one per-user, per-minute document, so a page’s parallel requests queue behind each other, and 5–51 middleware checks per run hit the 3.5 s timeout. Options: rate-limit only writes, or count with atomic increments and no transaction. This is a security trade-off, so it’s yours to decide.</li>
-    <li><strong>Middleware checks access over HTTP (website).</strong> Each page and API request makes a second HTTP request to <code>/api/security/check-access</code>. Doing the check inside the middleware with a short cache would remove that hop.</li>
-    <li><strong>Notifications read 150 to show 20 (website).</strong> The “unread first” sort loads up to 150 items per request. Querying unread items separately needs a composite index on <code>isRead</code> + <code>createdAt</code>, which means deploying an index.</li>
-    <li><strong>Blogs load interactions one blog at a time (website).</strong> Returning the viewer’s likes and bookmarks with the blog list would remove six requests per page. This changes the API response shape.</li>
-    <li><strong>One slow connection carries every read (app).</strong> Forced long-polling sends all Firestore traffic through one channel, so background refreshes delay the screen in front of you by 4–18 s (Jobs took about 20 s to show). Options: try auto-detected long-polling on real phones, or move to the native Firestore SDK, which is a larger migration.</li>
-    <li><strong>Opening a link re-runs feeds (app).</strong> One Blogs open from a link ran the home feed and communities feed five times each (401 reads). The trigger needs tracing.</li>
-    <li><strong>Remaining N+1 reads (app).</strong> Discover suggestions (152 reads), job questions (13 per screen), blog engagement (14), product images (11) and event attendees (6) can each be batched with <code>in</code> queries. This is straightforward follow-up work.</li>
-    <li><strong>Comment totals counted post by post (app).</strong> 30 count queries per community feed refresh. A server-maintained counter would remove them; that needs a Cloud Function.</li>
-    <li><strong>Same documents re-read at startup (app).</strong> Your user document is read 15 times and account settings 10 times. A shared profile cache would fix it.</li>
-    <li><strong>Profile loads relationships twice (website).</strong> The relationship status and follower counts are each requested twice, and Home loads drafts twice with different filters.</li>
+    <li><strong>Market</strong> showed 0 products because older listings lacked a newer field; all 11 now show. Ratings appear only when real reviews exist (“No reviews yet” replaces “4.5 (0)” and the fake 4.8).</li>
+    <li><strong>Email verification</strong> is checked and written on the server; the browser no longer sets <code>users.verified</code>.</li>
+    <li><strong>Staff Help pages</strong> need a session (signed-out visitors go to login); public Help and Child Safety Standards stay open.</li>
+    <li><strong>Calls to API routes that never existed are gone.</strong> The admin stickers page loads the profile directly. Ad proof review and ad booking payment now say “not available yet”, because their backends (proof review, wallet balance and transfer) were never built.</li>
+    <li><strong>Blogs with no author:</strong> “Rishi’s Lily Farm” is Rishi Kowlessar’s and “The Future of E-Project” is Chris Walker’s; the duplicate “Chatbot Era” copy and “Test 3” were deleted after a JSON backup.</li>
+    <li><strong>Design:</strong> Games, Help, Tickets and Policies use the standard header. Community detail has one primary action. The admin preview pill no longer covers the open-in-app banner. Child Safety and Support use the neutral admin styles. The home grid is capped at wide sizes. Events dropped its placeholder stats.</li>
+    <li><strong>App errors and links:</strong> Notifications, the Limes viewer and each Discover section show “couldn’t load” with Try again instead of looking empty. Event links open with that event first and highlighted. Shared jobs open the job page with Apply.</li>
   </ul>
-
-  <h3 class="sub">Design and structure</h3>
-  <ul class="plain">
-    <li>Headers differ across pages: games, help, tickets and policies use the Advertise header.</li>
-    <li>Community detail has four differently saturated action buttons. They need one primary action and quieter secondaries.</li>
-    <li>On phones, the admin “Preview” pill overlaps the open-in-app banner.</li>
-    <li>Child Safety and Support admin pages still use solid blue buttons and links, which the admin color rule reserves for neutral styling. Restyling those primary actions goes past token fixes.</li>
-    <li>Events shows placeholder stats (“12,500 Happy Users”, “4.3 Rating”, “98% Energy Level”) next to the real count. Remove them or replace them with real metrics.</li>
-    <li>The app’s notifications list, Discover sections and Limes viewer show “nothing here” when a load fails. Error states there need new state plumbing.</li>
-    <li>The home feed stretches with the screen at extra-wide sizes; capping it changes its three-column grid.</li>
-  </ul>
-
-  <h3 class="sub">Correctness found along the way</h3>
-  <ul class="plain">
-    <li>The website market API returns 0 products while admin shows approved listings.</li>
-    <li><code>/verify/[uId]</code> writes <code>users.verified</code> from the browser.</li>
-    <li>Some routes the code calls don’t exist: <code>/api/wallet/balance</code>, <code>/api/wallet/transfer</code>, <code>/api/ads/proof/pending</code>, <code>/api/user/profile</code>.</li>
-    <li>Help staff pages are public at the middleware level. The pages still check roles.</li>
-    <li>In the app, the event link target and the job apply parameters are ignored, <code>/jobs/[id]</code> is unreachable, and the privacy and terms screens have no entry point.</li>
-  </ul>
-
-
+  <div class="pairs">
+    <figure><img src="polish/app/after/v-event-link.png" alt="Events list with the linked event first and outlined" loading="lazy"><figcaption><span class="tag after">After</span>Linked event first</figcaption></figure>
+    <figure><img src="polish/app/after/v-job-link.png" alt="Job detail page opened from a shared link with Apply Now" loading="lazy"><figcaption><span class="tag after">After</span>Shared job opens its page</figcaption></figure>
+  </div>
 
   <h2 id="open">Still open</h2>
   <ul class="plain">
-    <li><strong>Blogs with no author.</strong> Traced in the database: “Rishi’s Lily Farm” belongs to Rishi Kowlessar (viewed and liked 24 seconds after it was posted, name in the title) and “The Future of E-Project” to Chris Walker (opened on the website 34 seconds after it was posted from the app). “The End of the Chatbot Era” copy is a word-for-word duplicate of Krishna’s post, and “Test 3” is filler. The fix (assign two, delete two with a backup) is ready but changes live data, so it is waiting for approval.</li>
+    <li><strong>One slow connection carries every read (app).</strong> Forced long-polling sends all Firestore traffic through one channel. With the bursts above removed it matters less, but the fix is testing auto-detected long-polling on real phones or moving to the native Firestore SDK.</li>
+    <li><strong>Comment totals are counted post by post (app).</strong> A counter kept by a Cloud Function would remove ~30 count queries per community feed refresh. That needs a function deployment, so it waits for your call.</li>
+    <li><strong>Home fetches promotions twice at narrow widths</strong> (about 800 px), because the page mounts twice there. Desktop is fine.</li>
+    <li><strong>Standalone admin pages</strong> (/admin/*) still use the header with the Advertise button.</li>
     <li><strong>Limes page description</strong> in Page Access reads “Social posts and conversations”. An admin can change it there.</li>
-    <li><strong>Firestore connection on the app.</strong> Every read uses forced long-polling, which costs seconds per round trip on slow networks. Automatic detection was slower in testing, so it stays for now.</li>
   </ul>
-  <p class="note">The round “N” badge in the website screenshots is the Next.js development indicator and does not appear in production.</p>
+  <p class="note">The round “N” badge in the earlier website screenshots is the Next.js development indicator and does not appear in production.</p>
 </div>
