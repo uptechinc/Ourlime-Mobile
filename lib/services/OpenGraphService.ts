@@ -273,14 +273,12 @@ export class OpenGraphService {
     try {
       const parsed = new URL(value);
       const hostname = parsed.hostname.toLowerCase();
-      const isPrivateDevelopmentHost = (typeof __DEV__ !== 'undefined' && __DEV__)
-        && (
-          hostname === 'localhost'
-          || hostname === '127.0.0.1'
-          || /^10\./.test(hostname)
-          || /^192\.168\./.test(hostname)
-          || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
-        );
+      // Links shared from a development server stay in chat history; resolve them like ourlime.com links.
+      const isPrivateDevelopmentHost = hostname === 'localhost'
+        || hostname === '127.0.0.1'
+        || /^10\./.test(hostname)
+        || /^192\.168\./.test(hostname)
+        || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
       return hostname === 'ourlime.com'
         || hostname === 'www.ourlime.com'
         || isPrivateDevelopmentHost;
