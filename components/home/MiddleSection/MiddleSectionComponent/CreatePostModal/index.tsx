@@ -380,8 +380,26 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
   };
 
   const handleTrimmedVideo = (item: PostMediaDraft) => {
-    setMedia((current) => [...current, item].slice(0, MAX_POST_MEDIA));
+    const replaceIndex = trimQueue[0]?.replaceIndex;
+    setMedia((current) => replaceIndex !== undefined && current[replaceIndex]
+      ? current.map((existing, mediaIndex) => (mediaIndex === replaceIndex ? item : existing))
+      : [...current, item].slice(0, MAX_POST_MEDIA));
     setTrimQueue((current) => current.slice(1));
+  };
+
+  // Opens the trimmer on a video already in the post; the trimmed copy keeps its place.
+  const handleTrimMedia = (index: number) => {
+    const item = media[index];
+    if (!item || item.type !== 'video' || !item.durationSeconds) return;
+    const pending: PendingVideoTrim = {
+      asset: { uri: item.uri, width: item.width ?? 0, height: item.height ?? 0, type: 'video', fileName: item.fileName, mimeType: item.mimeType, fileSize: item.fileSize, duration: item.durationSeconds * 1000 },
+      fileName: item.fileName,
+      mimeType: item.mimeType ?? 'video/mp4',
+      fileSize: item.fileSize ?? 0,
+      durationSeconds: item.durationSeconds,
+      replaceIndex: index,
+    };
+    setTrimQueue((current) => [...current, pending]);
   };
 
   const handleAddHashtag = () => {
@@ -731,6 +749,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
                       <View key={`${item.uri}-${index}`} style={{ marginRight: 10 }}>
                         {item.type === 'image' ? <Image source={{ uri: item.uri }} style={{ width: 104, height: 104, borderRadius: 12 }} /> : <View style={{ width: 104, height: 104, borderRadius: 12, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' }}><Icon name="video" size={28} color="#ffffff" /><Text style={{ marginTop: 5, color: '#ffffff', fontSize: 10 }}>{Math.round(item.durationSeconds ?? 0)}s</Text></View>}
                         <TouchableOpacity onPress={() => setMedia((current) => current.filter((_, mediaIndex) => mediaIndex !== index))} style={{ position: 'absolute', top: 4, right: 4, width: 25, height: 25, borderRadius: 13, backgroundColor: '#111827cc', alignItems: 'center', justifyContent: 'center' }}><Icon name="x" size={15} color="#ffffff" /></TouchableOpacity>
+                        {item.type === 'video' && item.durationSeconds ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Trim video" onPress={() => handleTrimMedia(index)} disabled={isSubmitting} style={{ position: 'absolute', top: 4, left: 4, width: 25, height: 25, borderRadius: 13, backgroundColor: '#111827cc', alignItems: 'center', justifyContent: 'center' }}><Icon name="scissors" size={14} color="#ffffff" /></TouchableOpacity> : null}
                         <View style={{ position: 'absolute', bottom: 4, left: 4, flexDirection: 'row' }}>
                           <TouchableOpacity onPress={() => handleMoveMedia(index, -1)} disabled={index === 0} style={{ padding: 5, borderRadius: 10, backgroundColor: '#111827bb', opacity: index === 0 ? 0.35 : 1 }}><Icon name="chevron-left" size={15} color="#ffffff" /></TouchableOpacity>
                           <TouchableOpacity onPress={() => handleMoveMedia(index, 1)} disabled={index === media.length - 1} style={{ marginLeft: 4, padding: 5, borderRadius: 10, backgroundColor: '#111827bb', opacity: index === media.length - 1 ? 0.35 : 1 }}><Icon name="chevron-right" size={15} color="#ffffff" /></TouchableOpacity>

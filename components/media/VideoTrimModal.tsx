@@ -5,6 +5,7 @@ import {
   Image,
   Modal,
   PanResponder,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -220,6 +221,8 @@ export default function VideoTrimModal({
   const startDragOffsetRef = useRef(0);
   const leftHandlePanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
+    // The selection window (this handle's parent) also claims horizontal drags; keep the gesture on the handle.
+    onPanResponderTerminationRequest: () => false,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: () => {
       isDraggingRef.current = true;
@@ -263,6 +266,8 @@ export default function VideoTrimModal({
   const endDragOffsetRef = useRef(0);
   const rightHandlePanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
+    // The selection window (this handle's parent) also claims horizontal drags; keep the gesture on the handle.
+    onPanResponderTerminationRequest: () => false,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: () => {
       isDraggingRef.current = true;
@@ -675,7 +680,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   timelineSection: {
-    paddingHorizontal: 16,
+    // Android's edge back gesture covers about 24dp on each side; dragging a handle there closed the trimmer.
+    paddingHorizontal: Platform.OS === 'android' ? 36 : 16,
     paddingTop: 6,
     paddingBottom: 10,
   },
