@@ -118,7 +118,8 @@
         "android.permission.USE_FULL_SCREEN_INTENT",
         "android.permission.WAKE_LOCK",
         "android.permission.VIBRATE"
-      ]
+      ],
+      "versionCode": 2
     },
     "web": {
       "bundler": "metro",
