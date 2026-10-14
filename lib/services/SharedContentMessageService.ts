@@ -102,15 +102,13 @@ export class SharedContentMessageService {
     try {
       const url = new URL(sourceUrl);
       const hostname = url.hostname.toLowerCase();
-      const isDevelopmentBundle = typeof __DEV__ !== 'undefined' && __DEV__;
-      const isPrivateDevelopmentHost = isDevelopmentBundle
-        && (
-          hostname === 'localhost'
-          || hostname === '127.0.0.1'
-          || /^10\./.test(hostname)
-          || /^192\.168\./.test(hostname)
-          || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
-        );
+      // Links shared from a development server (localhost or a LAN address) stay in chat history after the
+      // build that sent them is gone; treat them as Ourlime links so they show as cards, not dead addresses.
+      const isPrivateDevelopmentHost = hostname === 'localhost'
+        || hostname === '127.0.0.1'
+        || /^10\./.test(hostname)
+        || /^192\.168\./.test(hostname)
+        || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
       const isOurlimeHost = hostname === 'ourlime.com'
         || hostname === 'www.ourlime.com'
         || isPrivateDevelopmentHost;

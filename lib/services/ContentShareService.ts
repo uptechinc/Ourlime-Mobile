@@ -121,10 +121,8 @@ export class ContentShareService {
     const settledResults = await Promise.all(
       recipientIds.map(async (recipientId) => {
         try {
-          await messaging.sendMessage(recipientId, shareUrl, currentUserId);
-          if (optionalMessage) {
-            await messaging.sendMessage(recipientId, optionalMessage, currentUserId);
-          }
+          // One message: the link becomes the card and the note its caption, like WhatsApp and Instagram.
+          await messaging.sendMessage(recipientId, optionalMessage ? `${shareUrl}\n${optionalMessage}` : shareUrl, currentUserId);
           return { ok: true as const };
         } catch (err: unknown) {
           return { ok: false as const, error: err };

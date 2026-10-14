@@ -142,7 +142,18 @@ export class CourseService {
   public async getInstructors(): Promise<InstructorProfile[]> {
     this.requireUserId();
     const snapshot = await getDocs(query(collection(this.database, 'instructors'), where('isVerified', '==', true), limit(20)));
-    return snapshot.docs.map((item) => this.instructor(item.id, item.data())).filter((item): item is InstructorProfile => item !== null);
+    const instructors = snapshot.docs
+      .map((item) => this.instructor(item.id, item.data()))
+      .filter((item): item is InstructorProfile => item !== null)
+      .sort((left, right) => right.totalStudents - left.totalStudents);
+    // Some instructors have more than one profile document; list each person once (the busiest profile wins).
+    const seenNames = new Set<string>();
+    return instructors.filter((instructor) => {
+      const key = instructor.name.toLowerCase();
+      if (seenNames.has(key)) return false;
+      seenNames.add(key);
+      return true;
+    });
   }
 
   public async getCategories(): Promise<CourseCategory[]> {
