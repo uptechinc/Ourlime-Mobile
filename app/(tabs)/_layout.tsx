@@ -25,10 +25,12 @@ const TabLayout = () => {
 
   const currentUserId = authService.getCurrentUser()?.uid;
   const conversations = useResourceStore((state) => state.conversations.data);
-  const unreadChatCount = (conversations ?? []).reduce((sum, item) => {
-    if (currentUserId && item.lastMessageSenderId === currentUserId) return sum;
-    return sum + (item.unreadCount || 0);
-  }, 0);
+  // Number of chats with unread messages, matching the Chat screen's Unread filter: archived chats don't count.
+  const unreadChatCount = (conversations ?? []).filter((item) =>
+    !item.isArchived
+    && !(currentUserId && item.lastMessageSenderId === currentUserId)
+    && (item.unreadCount || 0) > 0
+  ).length;
 
   useEffect(() => {
     const unsub = authService.subscribeToVerifiedAuthState((user) => {
