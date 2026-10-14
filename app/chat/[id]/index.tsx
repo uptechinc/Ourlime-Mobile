@@ -339,6 +339,9 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
     const isSharedMediaCard = sharedContent?.kind === 'lime' || sharedContent?.kind === 'post';
     const visibleText = sharedContent?.visibleText ?? msg.message;
     const hasVisibleText = visibleText.trim().length > 0;
+    // A shared Lime or post with no note shows as a bare card; with a note, card and note share one bubble.
+    const isBareSharedCard = isSharedMediaCard && !hasVisibleText;
+    const isCaptionedSharedCard = isSharedMediaCard && hasVisibleText;
     const detectedUrl = sharedContent?.sourceUrl ?? (hasText ? findFirstUrl(msg.message) : null);
 
     const reactionSummary: { emoji: string; count: number; iMine: boolean }[] = Object.entries(msg.reactions ?? {}).map(([emoji, users]) => ({
@@ -414,19 +417,19 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                     </TouchableOpacity>
                 ) : (
                     <View style={{
-                        backgroundColor: isSharedMediaCard ? 'transparent' : isOwn ? '#10b981' : colors.elevated,
+                        backgroundColor: isBareSharedCard ? 'transparent' : isOwn ? '#10b981' : colors.elevated,
                         borderRadius: 18,
                         borderBottomRightRadius: isOwn ? 4 : 18,
                         borderBottomLeftRadius: isOwn ? 18 : 4,
-                        paddingHorizontal: isSharedMediaCard ? 0 : isDeleted || isImage || isVideo || isVoiceNote ? 10 : 14,
-                        paddingVertical: isSharedMediaCard ? 0 : 9,
-                        borderWidth: isSharedMediaCard || isOwn ? 0 : 1,
-                        borderColor: isSharedMediaCard ? 'transparent' : colors.border,
+                        paddingHorizontal: isBareSharedCard ? 0 : isCaptionedSharedCard ? 4 : isDeleted || isImage || isVideo || isVoiceNote ? 10 : 14,
+                        paddingVertical: isBareSharedCard ? 0 : isCaptionedSharedCard ? 4 : 9,
+                        borderWidth: isBareSharedCard || isOwn ? 0 : 1,
+                        borderColor: isBareSharedCard ? 'transparent' : colors.border,
                         shadowColor: '#000',
                         shadowOffset: { width: 0, height: 1 },
-                        shadowOpacity: isSharedMediaCard ? 0 : 0.06,
+                        shadowOpacity: isBareSharedCard ? 0 : 0.06,
                         shadowRadius: 4,
-                        elevation: isSharedMediaCard ? 0 : 1,
+                        elevation: isBareSharedCard ? 0 : 1,
                     }}>
                         {isDeleted ? (
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -529,39 +532,34 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
                                     />
                                 )}
 
-                                {hasVisibleText && (
-                                    <View style={isSharedMediaCard ? {
-                                        alignSelf: isOwn ? 'flex-end' : 'flex-start',
-                                        backgroundColor: isOwn ? '#10b981' : colors.elevated,
-                                        borderRadius: 16,
-                                        borderWidth: isOwn ? 0 : 1,
-                                        borderColor: colors.border,
-                                        paddingHorizontal: 13,
-                                        paddingVertical: 9,
-                                        marginBottom: 6,
-                                    } : undefined}>
-                                        <Text style={{ fontSize: 15, color: isOwn ? '#ffffff' : colors.text, lineHeight: 21 }}>
-                                            {visibleText}
-                                        </Text>
-                                    </View>
+                                {hasVisibleText && !isSharedMediaCard && (
+                                    <Text style={{ fontSize: 15, color: isOwn ? '#ffffff' : colors.text, lineHeight: 21 }}>
+                                        {visibleText}
+                                    </Text>
                                 )}
 
                                 {/* OpenGraph Link Card */}
                                 {detectedUrl && (
                                     <LinkPreviewMessage url={detectedUrl} isOwn={isOwn} instanceId={getMsgId(msg)} />
                                 )}
+
+                                {isCaptionedSharedCard && (
+                                    <Text style={{ fontSize: 15, color: isOwn ? '#ffffff' : colors.text, lineHeight: 21, paddingHorizontal: 8, paddingTop: 6 }}>
+                                        {visibleText}
+                                    </Text>
+                                )}
                             </>
                         )}
 
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, gap: 4 }}>
-                            <Text style={{ fontSize: 10, color: isSharedMediaCard ? colors.mutedText : isOwn ? 'rgba(255,255,255,0.65)' : colors.mutedText }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, gap: 4, paddingHorizontal: isCaptionedSharedCard ? 6 : 0, paddingBottom: isCaptionedSharedCard ? 2 : 0 }}>
+                            <Text style={{ fontSize: 10, color: isBareSharedCard ? colors.mutedText : isOwn ? 'rgba(255,255,255,0.65)' : colors.mutedText }}>
                                 {formatMessageTime(msg.timestamp)}
                             </Text>
                             {isOwn && (
                                 <Icon
                                     name={msg.status === 'read' ? 'check-circle' : 'check'}
                                     size={12}
-                                    color={msg.status === 'read' ? '#60a5fa' : isSharedMediaCard ? colors.mutedText : 'rgba(255,255,255,0.6)'}
+                                    color={msg.status === 'read' ? '#60a5fa' : isBareSharedCard ? colors.mutedText : 'rgba(255,255,255,0.6)'}
                                 />
                             )}
                         </View>
