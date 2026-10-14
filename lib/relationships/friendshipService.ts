@@ -76,7 +76,7 @@ export class FriendshipService {
             
             // Create notification for receiver
             try {
-                await notificationHelpers.createFriendRequestNotification(receiverId, senderId);
+                await notificationHelpers.createFriendRequestNotification(receiverId);
             } catch (notifErr) {
                 console.error('Error creating friend request notification:', notifErr);
             }
@@ -123,10 +123,7 @@ export class FriendshipService {
 
             if (status === 'accepted') {
                 try {
-                    await notificationHelpers.createFriendAcceptedNotification(
-                        friendshipData.userId1,
-                        friendshipData.userId2
-                    );
+                    await notificationHelpers.createFriendAcceptedNotification(friendshipData.userId1);
                 } catch (notifError) {
                     console.error('Error creating friendship notification:', notifError);
                 }

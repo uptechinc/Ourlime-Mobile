@@ -33,17 +33,7 @@ type RelationshipSource = {
   profilePicture?: unknown;
   reason?: unknown;
 };
-type RelationshipNotificationMetadata = {
-  actorUserId?: unknown;
-  sourceUserId?: unknown;
-  senderId?: unknown;
-  userId?: unknown;
-};
-type RelationshipNotificationSource = RelationshipNotificationMetadata & {
-  metadata?: RelationshipNotificationMetadata;
-};
 const isRelationshipSource = (value: unknown): value is RelationshipSource => typeof value === 'object' && value !== null && !Array.isArray(value);
-const isRelationshipNotificationSource = (value: unknown): value is RelationshipNotificationSource => typeof value === 'object' && value !== null && !Array.isArray(value);
 const readString = (value: unknown): string => typeof value === 'string' ? value : '';
 
 export class RelationshipService {
@@ -67,11 +57,11 @@ export class RelationshipService {
     if (shouldFollow) {
       if (snapshot.empty) {
         await addDoc(collection(db, 'followers'), { followerId, followeeId, createdAt: serverTimestamp() });
-        await notificationHelpers.createFollowNotification(followeeId, followerId);
+        await notificationHelpers.createFollowNotification(followeeId);
       }
     } else {
       await Promise.all(snapshot.docs.map((document) => deleteDoc(document.ref)));
-      await this.deleteRelationshipNotifications(followerId, followeeId, ['follow']);
+      await this.deleteRelationshipNotifications(followeeId, ['follow']);
     }
     const persistedState = await this.checkFollowStatus(followerId, followeeId);
     if (persistedState !== shouldFollow) throw new Error('The follow status could not be confirmed. Please try again.');
@@ -219,51 +209,16 @@ export class RelationshipService {
     if (pendingDocuments.length === 0) {
       const hasAcceptedRelationship = documents.some((document) => this.readDocumentFriendshipStatus(document.data()) === 'accepted');
       if (hasAcceptedRelationship) throw new Error('This friend request has already been accepted.');
-      await this.deleteRelationshipNotifications(currentUserId, targetUserId, ['friend_request']);
+      await this.deleteRelationshipNotifications(targetUserId, ['friend_request']);
       return;
     }
     await Promise.all(pendingDocuments.map((document) => deleteDoc(document.ref)));
-    await this.deleteRelationshipNotifications(currentUserId, targetUserId, ['friend_request']);
+    await this.deleteRelationshipNotifications(targetUserId, ['friend_request']);
   }
 
-  private async deleteRelationshipNotifications(actorUserId: string, targetUserId: string, types: ('follow' | 'friend_request')[]): Promise<void> {
-    const mappedNotifications = await notificationHelpers.getUserNotifications(targetUserId, 200);
-    const matchingMappedNotifications = mappedNotifications.filter((notification) => {
-      if (!types.includes(notification.type as 'follow' | 'friend_request')) return false;
-      return notification.metadata?.sourceUserId === actorUserId
-        || notification.metadata?.sourceId === actorUserId
-        || notification.userDetails?.uid === actorUserId
-        || notification.userDetails?.userId === actorUserId;
-    });
-    const notificationCollections = [
-      collection(doc(db, 'userNotifications', targetUserId), 'items'),
-      collection(db, `users/${targetUserId}/notifications`),
-    ];
-    const snapshots = await Promise.all(notificationCollections.map((notificationCollection) => (
-      getDocs(query(notificationCollection, where('type', 'in', types))).catch(() => null)
-    )));
-    const matchingDocuments = snapshots.flatMap((snapshot) => snapshot?.docs ?? []).filter((document) => {
-      const value: unknown = document.data();
-      if (!isRelationshipNotificationSource(value)) return false;
-      const metadata = isRelationshipNotificationSource(value.metadata) ? value.metadata : undefined;
-      const notificationActorId = readString(value.actorUserId)
-        || readString(value.sourceUserId)
-        || readString(value.senderId)
-        || readString(value.userId)
-        || readString(metadata?.actorUserId)
-        || readString(metadata?.sourceUserId)
-        || readString(metadata?.senderId)
-        || readString(metadata?.userId);
-      return notificationActorId === actorUserId;
-    });
-    await Promise.all([
-      ...matchingMappedNotifications.map(async (notification) => {
-        if (!notification.id) return;
-        await notificationHelpers.deleteNotification(targetUserId, notification.id);
-        await deleteDoc(doc(db, 'userNotifications', targetUserId, 'items', notification.id)).catch(() => {});
-      }),
-      ...matchingDocuments.map((document) => deleteDoc(document.ref).catch(() => {})),
-    ]);
+  /** The notices the viewer caused in targetUserId's inbox; the server removes them once the relationship ended. */
+  private async deleteRelationshipNotifications(targetUserId: string, types: ('follow' | 'friend_request')[]): Promise<void> {
+    await notificationHelpers.clearSocialNotifications(targetUserId, types);
   }
 
   private async getDirectFriendshipDocuments(userId1: string, userId2: string) {

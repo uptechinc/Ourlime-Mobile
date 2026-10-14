@@ -306,15 +306,12 @@ export class CommunityDataService {
     const viewerVerified = viewerData?.isVerified === true || viewerData?.identityVerified === true || readString(viewerData?.verificationStatus).toLowerCase() === 'verified';
 
     // Stored counts default to 0 and older app versions never incremented them, so a 0 (or missing) count is
-    // re-counted from the posts themselves and the stored number is corrected for next time.
+    // re-counted from the posts themselves for display. The stored number is corrected by the server's
+    // countCommunityPost* triggers on the next post change (the rules let clients move it only by one).
     const missingPostCounts = sourceDocuments.filter((document) => !readNonNegativeNumber(countByCommunity.get(document.id)?.postCount)).map((document) => document.id);
     const countMissingPosts = Promise.all(missingPostCounts.map(async (communityId): Promise<[string, number]> => {
       const counted = await getCountFromServer(query(collection(db, 'communityVariantDetails'), where('communityVariantId', '==', communityId))).catch(() => null);
-      const total = counted?.data().count ?? 0;
-      if (total > 0) {
-        void setDoc(doc(db, 'communityVariantMembershipAndLikeCount', communityId), { communityVariantId: communityId, postCount: total }, { merge: true }).catch(() => undefined);
-      }
-      return [communityId, total];
+      return [communityId, counted?.data().count ?? 0];
     }));
     // Member previews and post re-counts don't depend on each other, so they run together.
     const [users, pictures, recounted] = await Promise.all([this.loadUsers(userIds), this.loadProfilePictures(userIds), countMissingPosts]);
@@ -642,23 +639,7 @@ export class CommunityDataService {
       const wasPending = existing.docs[0]?.data().status === 'pending';
       await setDoc(requestRef, { userId: viewerId, communityVariantId: communityId, status: 'pending', requestedAt: serverTimestamp(), declinedAt: deleteField() }, { merge: true });
       if (!wasPending && readString(community.userId)) {
-        const requester = (await getDoc(doc(db, 'users', viewerId))).data() ?? {};
-        void notificationHelpers.addNotification({
-          userId: readString(community.userId),
-          type: 'community_join_request',
-          title: 'New community join request',
-          message: `${personName(requester, 'Someone')} requested to join ${readString(community.title) || 'your community'}.`,
-          isRead: false,
-          metadata: {
-            sourceUserId: viewerId, communityId, requestId: requestRef.id,
-            actionUrl: `/communities/${readString(community.uniqueName) || communityId}?dashboard=members`,
-            communityTitle: readString(community.title),
-            communityAvatar: readString(community.imageUrl) || readString(community.bannerImageUrl) || null,
-            communityBanner: readString(community.bannerImageUrl) || null,
-            sourceProfileImage: readString(requester.profileImage),
-          },
-          userDetails: { firstName: readString(requester.firstName), lastName: readString(requester.lastName), userName: readString(requester.userName), profileImage: readString(requester.profileImage) },
-        }).catch(() => undefined);
+        void notificationHelpers.sendSocialNotification({ kind: 'community_join_request', communityId });
       }
       return 'requested';
     }
@@ -741,20 +722,7 @@ export class CommunityDataService {
     batch.set(doc(db, 'communityVariantMembershipAndLikeCount', communityId), { membershipCount: activeIds.size, updatedAt: serverTimestamp() }, { merge: true });
     await batch.commit();
 
-    const community = access.communityData;
-    const communityTitle = readString(community.title) || 'Community';
-    void notificationHelpers.addNotification({
-      userId,
-      type: action === 'approve' ? 'community_accepted' : 'community_rejected',
-      title: action === 'approve' ? 'Join Request Accepted' : 'Join Request Declined',
-      message: action === 'approve' ? `Your request to join "${communityTitle}" has been accepted!` : `Your request to join "${communityTitle}" has been declined.`,
-      isRead: false,
-      metadata: {
-        communityId, actionUrl: `/communities/${readString(community.uniqueName) || communityId}`, communityTitle,
-        communityAvatar: readString(community.imageUrl) || readString(community.bannerImageUrl) || null,
-        communityBanner: readString(community.bannerImageUrl) || null,
-      },
-    }).catch(() => undefined);
+    void notificationHelpers.sendSocialNotification({ kind: action === 'approve' ? 'community_accepted' : 'community_rejected', communityId, targetUserId: userId });
     if (action === 'decline') void appServerService.call('sendCommunityMemberEmail', { communityId, userId, kind: 'declined' }).catch(() => undefined);
     return activeIds.size;
   }
@@ -792,15 +760,7 @@ export class CommunityDataService {
     if (ban) batch.set(doc(db, 'bannedCommunityMembers', `${id}_${userId}`), { communityVariantId: id, userId, bannedBy: access.viewerId, bannedAt: serverTimestamp() }, { merge: true });
     await batch.commit();
 
-    const communityTitle = readString(access.communityData.title) || 'Community';
-    void notificationHelpers.addNotification({
-      userId,
-      type: 'community_removed',
-      title: 'Removed from Community',
-      message: `You have been removed from the community "${communityTitle}".`,
-      isRead: false,
-      metadata: { communityId: id, actionUrl: `/communities/${readString(access.communityData.uniqueName) || id}` },
-    }).catch(() => undefined);
+    void notificationHelpers.sendSocialNotification({ kind: 'community_removed', communityId: id, targetUserId: userId });
     void appServerService.call('sendCommunityMemberEmail', { communityId: id, userId, kind: 'removed' }).catch(() => undefined);
     return activeIds.size;
   }
