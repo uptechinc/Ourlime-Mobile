@@ -119,7 +119,8 @@ export class MyJobsManageJobsService {
                         applicant: {
                             userId: applicantId,
                             name: userName,
-                            email: userData?.email,
+                            // Emails are private (users/{uid}/private/profile).
+                            email: '',
                             imageUrl: profileImage,
                             education,
                             workExperience

@@ -227,7 +227,6 @@ export class JobsService {
                         name: userData ? `${userData.firstName} ${userData.lastName}` : 'Anonymous',
                         username: userData?.userName || 'anonymous',
                         profileImage: profileImageUrl,
-                        email: userData?.email
                     }
                 } as JobRecord;
             });

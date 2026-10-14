@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore';
 import type { CatalogCursor, CatalogPage, MarketProduct, MarketProductCondition, MarketVariant, CartLine } from '@/lib/types/reliability';
 import type { CheckoutContact } from '@/lib/types/ehub';
+import { privateProfileService } from './PrivateProfileService';
 
 export type CheckoutLineReview = { line: CartLine; currentPrice: number | null; reason: string | null; priceChanged: boolean };
 export type MarketSupportConfig = { email: string; helpUrl: string };
@@ -233,10 +234,12 @@ export class MarketplaceService {
     const snapshot = await getDoc(reference);
     nativeSessionService.assertOwner(ownerId);
     if (!snapshot.exists()) {
-      const profile = (await getDoc(doc(db, 'users', ownerId))).data() as { firstName?: unknown; lastName?: unknown; email?: unknown; phoneNumber?: unknown; phone?: unknown; countryCode?: unknown; city?: unknown } | undefined;
+      const profile = (await getDoc(doc(db, 'users', ownerId))).data() as { firstName?: unknown; lastName?: unknown; countryCode?: unknown; city?: unknown } | undefined;
+      // Email and phone are in the owner's private profile.
+      const privateProfile = await privateProfileService.getOwn(ownerId, profile);
       nativeSessionService.assertOwner(ownerId);
       const text = (v: unknown) => typeof v === 'string' ? v : '';
-      return { name: [text(profile?.firstName), text(profile?.lastName)].filter(Boolean).join(' '), email: text(profile?.email), phone: text(profile?.phoneNumber || profile?.phone), country: text(profile?.countryCode), address: '', city: text(profile?.city), postalCode: '' };
+      return { name: [text(profile?.firstName), text(profile?.lastName)].filter(Boolean).join(' '), email: privateProfile.email, phone: privateProfile.phone, country: text(profile?.countryCode), address: '', city: text(profile?.city), postalCode: '' };
     }
     const data = snapshot.data();
     return { name: decode.string(data?.name), email: decode.string(data?.email), phone: decode.string(data?.phone), country: decode.string(data?.country), address: decode.string(data?.address), city: decode.string(data?.city), postalCode: decode.string(data?.postalCode) };

@@ -249,14 +249,16 @@ export class LinkPreviewDataService {
 
   private async getPost(postId: string, viewerId?: string): Promise<ShareEntity | null> {
     const path = `/post/${encodeURIComponent(postId)}`;
-    let postDocument = await getDoc(doc(db, 'feedPosts', postId));
-    let isCommunityPost = !postDocument.exists();
-    if (isCommunityPost) postDocument = await getDoc(doc(db, 'communityVariantDetails', postId));
-    if (!postDocument.exists()) {
-      postDocument = await getDoc(doc(db, 'posts', postId));
+    // The rules deny posts the viewer may not see (friends-only, private, private communities): treat them as missing.
+    const readPost = async (collectionName: string) => (await getDoc(doc(db, collectionName, postId)).catch(() => null)) ?? null;
+    let postDocument = await readPost('feedPosts');
+    let isCommunityPost = !postDocument?.exists();
+    if (isCommunityPost) postDocument = await readPost('communityVariantDetails');
+    if (!postDocument?.exists()) {
+      postDocument = await readPost('posts');
       isCommunityPost = false;
     }
-    if (!postDocument.exists()) return unavailable('Post', path, 'deleted');
+    if (!postDocument?.exists()) return unavailable('Post', path, 'deleted');
     const post = postDocument.data();
     const removal = this.removalReason(post);
     if (removal) return unavailable('Post', path, removal);

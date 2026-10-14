@@ -430,7 +430,6 @@ export class ProjectService {
       return this.readString(userData?.displayName)
         || fullName
         || this.readString(userData?.userName)
-        || this.readString(userData?.email)
         || 'Project owner';
     } catch {
       return 'Project owner';
@@ -444,7 +443,8 @@ export class ProjectService {
       const fullName = [this.readString(userData?.firstName), this.readString(userData?.lastName)].filter(Boolean).join(' ');
       return {
         name: this.readString(userData?.displayName) || fullName || this.readString(userData?.userName) || 'User',
-        email: this.readString(userData?.email),
+        // Other members' emails are private (users/{uid}/private/profile).
+        email: '',
         avatar: this.readString(userData?.profileImage) || this.readString(userData?.avatar) || '',
       };
     } catch {

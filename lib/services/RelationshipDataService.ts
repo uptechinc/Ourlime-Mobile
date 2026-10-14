@@ -25,6 +25,8 @@ import type { RelationshipHubPage, RelationshipHubSection, RelationshipHubUser, 
 export type FriendProfile = { id: string; firstName: string; lastName: string; userName: string; profileImage?: string; relationshipId?: string; mutualFriendsCount: number };
 export type BlockStatus = { isBlocked: boolean; isBlockedByFirstUser: boolean; isBlockedBySecondUser: boolean };
 
+/** Firestore rules cap list queries on users at 200 documents. */
+const USER_QUERY_LIMIT = 200;
 const readString = (value: unknown): string => (typeof value === 'string' ? value : '');
 const friendshipStatusOf = (data: DocumentData): string => readString(data.friendshipStatus) || readString(data.status);
 const chunk = <TValue>(values: TValue[], size = 30): TValue[][] => {
@@ -217,7 +219,7 @@ export class RelationshipDataService {
   private async getBlockedUserIds(userId: string): Promise<Set<string>> {
     const [user, blockedBy] = await Promise.all([
       getDoc(doc(db, 'users', userId)).catch(() => null),
-      getDocs(query(collection(db, 'users'), where('blockList', 'array-contains', userId))).catch(() => null),
+      getDocs(query(collection(db, 'users'), where('blockList', 'array-contains', userId), limit(USER_QUERY_LIMIT))).catch(() => null),
     ]);
     const ids = new Set<string>(Array.isArray(user?.data()?.blockList) ? (user?.data()?.blockList as unknown[]).filter((id): id is string => typeof id === 'string') : []);
     blockedBy?.docs.forEach((entry) => ids.add(entry.id));
