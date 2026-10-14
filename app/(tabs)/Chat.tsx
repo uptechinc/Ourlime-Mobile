@@ -55,6 +55,14 @@ function formatLastMessagePreview(msg?: string, userName?: string, sentByViewer 
   return msg;
 }
 
+
+type SelectionAction = {
+  key: string;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  destructive?: boolean;
+};
 export default function ChatTabScreen() {
   const router = useRouter();
   const { isDark, colors } = useAppTheme();
@@ -268,66 +276,55 @@ export default function ChatTabScreen() {
         return item?.lastMessageSenderId !== currentUserId && (item?.unreadCount ?? 0) > 0;
       })
     : filteredConversations.some((c) => c.lastMessageSenderId !== currentUserId && (c.unreadCount ?? 0) > 0);
+  const allVisibleSelected = filteredConversations.length > 0 && selectedUids.size === filteredConversations.length;
+
+  // Labelled actions for the selection bar; the label always says what a tap will do.
+  const selectionActions: SelectionAction[] = [
+    { key: 'pin', label: allSelectedPinned ? 'Unpin' : 'Pin', icon: allSelectedPinned ? 'pin' : 'pin-outline', onPress: () => void handleTogglePinSelected() },
+    { key: 'archive', label: allSelectedArchived ? 'Unarchive' : 'Archive', icon: allSelectedArchived ? 'arrow-undo-outline' : 'archive-outline', onPress: () => void handleToggleArchiveSelected() },
+    anyUnreadSelected
+      ? { key: 'read', label: 'Read', icon: 'mail-open-outline', onPress: () => void handleMarkAsReadSelected() }
+      : { key: 'unread', label: 'Unread', icon: 'mail-unread-outline', onPress: () => void handleMarkAsUnreadSelected() },
+    { key: 'mute', label: allSelectedMuted ? 'Unmute' : 'Mute', icon: allSelectedMuted ? 'notifications-outline' : 'notifications-off-outline', onPress: () => void handleToggleMuteSelected() },
+    { key: 'delete', label: 'Delete', icon: 'trash-outline', onPress: handleDeleteSelected, destructive: true },
+  ];
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.surface }}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isSelectionMode ? '#10b981' : colors.surface} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
 
       {/* Header / Selection Action Bar */}
       {isSelectionMode ? (
         <View style={{
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-          backgroundColor: '#10b981',
+          paddingHorizontal: 10,
+          paddingVertical: 10,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          backgroundColor: colors.surface,
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          elevation: 4,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.15,
-          shadowRadius: 4,
+          gap: 6,
         }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-            <TouchableOpacity onPress={handleExitSelection} hitSlop={12}>
-              <Feather name="x" size={24} color="#ffffff" />
-            </TouchableOpacity>
-            <Text style={{ fontSize: 19, fontWeight: '800', color: '#ffffff' }}>
-              {selectedUids.size}
+          <TouchableOpacity
+            onPress={handleExitSelection}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel selection"
+            style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="close" size={24} color={colors.icon} />
+          </TouchableOpacity>
+          <Text style={{ flex: 1, fontSize: 19, fontWeight: '800', color: colors.text }}>
+            {selectedUids.size} selected
+          </Text>
+          <TouchableOpacity
+            onPress={handleSelectAll}
+            accessibilityRole="button"
+            style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.successSurface }}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.accentText }}>
+              {allVisibleSelected ? 'Clear' : 'Select all'}
             </Text>
-          </View>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-            <TouchableOpacity onPress={handleSelectAll} hitSlop={10} accessibilityLabel="Select all">
-              <Feather name="check-square" size={20} color="#ffffff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={handleTogglePinSelected} hitSlop={10} accessibilityLabel="Pin conversation">
-              <Ionicons name={allSelectedPinned ? 'bookmark' : 'bookmark-outline'} size={20} color="#ffffff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={handleToggleArchiveSelected} hitSlop={10} accessibilityLabel={allSelectedArchived ? "Unarchive conversation" : "Archive conversation"}>
-              <Feather name="archive" size={20} color="#ffffff" />
-            </TouchableOpacity>
-
-            {anyUnreadSelected ? (
-              <TouchableOpacity onPress={handleMarkAsReadSelected} hitSlop={10} accessibilityLabel="Mark as read">
-                <Feather name="check" size={20} color="#ffffff" />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity onPress={handleMarkAsUnreadSelected} hitSlop={10} accessibilityLabel="Mark as unread">
-                <Feather name="mail" size={20} color="#ffffff" />
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity onPress={handleToggleMuteSelected} hitSlop={10} accessibilityLabel="Mute notifications">
-              <Feather name={allSelectedMuted ? 'bell' : 'bell-off'} size={20} color="#ffffff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={handleDeleteSelected} hitSlop={10} accessibilityLabel="Delete chats">
-              <Feather name="trash-2" size={20} color="#ffffff" />
-            </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </View>
       ) : (
         <View style={{
@@ -484,7 +481,7 @@ export default function ChatTabScreen() {
       {/* Conversations List */}
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.canvas }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 80 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: isSelectionMode ? 120 : 80 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
       >
         {isLoading ? (
@@ -607,7 +604,7 @@ export default function ChatTabScreen() {
                         <Text style={{ fontSize: 16, fontWeight: hasUnread ? '800' : '600', color: colors.text }} numberOfLines={1}>
                           {user.firstName} {user.lastName}
                         </Text>
-                        {isPinned && <Ionicons name="bookmark" size={12} color="#10b981" />}
+                        {isPinned && <Ionicons name="pin" size={12} color="#10b981" accessibilityLabel="Pinned" />}
                         {isMuted && <Feather name="bell-off" size={12} color={colors.mutedText} />}
                       </View>
                       <Text style={{ fontSize: 11, color: hasUnread ? '#10b981' : colors.mutedText, fontWeight: hasUnread ? '700' : '400' }}>
@@ -701,6 +698,41 @@ export default function ChatTabScreen() {
         </SafeAreaView>
         </SwipeDismissSurface>
       </Modal>
+      {isSelectionMode ? (
+        <View style={{
+          position: 'absolute',
+          left: 12,
+          right: 12,
+          bottom: 12,
+          flexDirection: 'row',
+          paddingVertical: 6,
+          paddingHorizontal: 4,
+          borderRadius: 20,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.elevated,
+          elevation: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.12,
+          shadowRadius: 12,
+        }}>
+          {selectionActions.map((action) => (
+            <TouchableOpacity
+              key={action.key}
+              onPress={action.onPress}
+              accessibilityRole="button"
+              accessibilityLabel={`${action.label} ${selectedUids.size === 1 ? 'chat' : 'chats'}`}
+              style={{ flex: 1, alignItems: 'center', gap: 4, paddingVertical: 8, borderRadius: 14 }}
+            >
+              <Ionicons name={action.icon} size={22} color={action.destructive ? colors.destructive : colors.icon} />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: action.destructive ? colors.destructiveText : colors.secondaryText }}>
+                {action.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
