@@ -15,6 +15,7 @@ import {
 import { db } from '@/lib/firebaseConfig';
 import { adminAccessService } from './AdminAccessService';
 import { adminApiService } from './AdminApiService';
+import { privateProfileService } from './PrivateProfileService';
 
 type FirebaseDateValue = { toMillis?: () => number; seconds?: number } | string | number | Date | null | undefined;
 type AdminDocumentData = {
@@ -49,6 +50,7 @@ type AdminDocumentData = {
   displayName?: unknown;
   invitedBy?: unknown;
   adminNotes?: unknown;
+  betaAdminNotes?: unknown;
   reviewedByName?: unknown;
   betaTester?: unknown;
   betaTesterStatus?: unknown;
@@ -255,7 +257,9 @@ export class AdminWorkspaceService {
     const records: AdminBetaRecord[] = [
       ...applications.docs.map((document) => this.normalizeBetaRecord('application', document.id, document.data() as AdminDocumentData)),
       ...invitations.docs.map((document) => this.normalizeBetaRecord('invitation', document.id, document.data() as AdminDocumentData)),
-      ...testers.docs.map((document) => this.normalizeBetaRecord('tester', document.id, document.data() as AdminDocumentData)),
+      // Tester emails and notes are in each member's private profile, which administrators can read.
+      ...(await privateProfileService.withPrivateFields(testers.docs.map((document) => ({ id: document.id, data: document.data() as AdminDocumentData }))))
+        .map((tester, index) => this.normalizeBetaRecord('tester', testers.docs[index].id, tester)),
     ];
     const modeValue = config?.docs.find((document) => document.id === 'general')?.data().registrationMode;
     const registrationMode = modeValue === 'open' || modeValue === 'closed' ? modeValue : 'invite_only';
@@ -324,7 +328,7 @@ export class AdminWorkspaceService {
       email: readString(value.email),
       status: kind === 'tester' ? readString(value.betaTesterStatus) || 'active' : readString(value.status) || (kind === 'invitation' ? 'invited' : 'pending'),
       source: kind === 'application' ? readString(value.invitedBy) || 'Direct application' : kind === 'invitation' ? readString(value.invitationType) || 'single_use' : 'Beta programme',
-      notes: readString(value.adminNotes),
+      notes: readString(value.adminNotes) || readString(value.betaAdminNotes),
       reviewer: readString(value.reviewedByName) || 'Unassigned',
       createdAtMs: readDateMs(kind === 'tester' ? value.betaTesterSince : value.createdAt),
     };

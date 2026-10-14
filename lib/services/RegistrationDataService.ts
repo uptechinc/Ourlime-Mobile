@@ -60,10 +60,12 @@ export class RegistrationDataService {
     };
   }
 
-  public async isEmailAvailable(email: string): Promise<boolean> {
-    const normalized = email.trim().toLowerCase();
-    const users = await getDocs(query(collection(db, 'users'), where('email', '==', normalized), limit(1)));
-    return users.empty;
+  /**
+   * Emails are private (users/{uid}/private/profile) and signed-out visitors can't query members, so there is
+   * nothing to check here: startRegistration reports an address that is already registered.
+   */
+  public async isEmailAvailable(_email: string): Promise<boolean> {
+    return true;
   }
 
   public async isUsernameAvailable(userName: string): Promise<boolean> {

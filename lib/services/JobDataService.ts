@@ -232,7 +232,8 @@ export class JobDataService {
       applicant: {
         userId: applicantId,
         name: `${readString(userData.firstName)} ${readString(userData.lastName)}`.trim() || readString(userData.userName) || 'Anonymous',
-        email: readString(userData.email),
+        // Emails are private (users/{uid}/private/profile); employers reach applicants through messages.
+        email: '',
         imageUrl: readString(image?.data()?.imageURL),
         verificationStatus: readString(userData.identityVerificationStatus) || readString(userData.verificationStatus),
         education,

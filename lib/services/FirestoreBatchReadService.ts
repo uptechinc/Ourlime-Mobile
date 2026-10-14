@@ -15,7 +15,7 @@ export class FirestoreBatchReadService {
   /** Documents of `collectionName` whose ids are in `ids`; ids with no document are simply absent from the result. */
   public async getDocumentsByIds(collectionName: string, ids: string[]): Promise<Map<string, DocumentData>> {
     const snapshots = await Promise.all(this.chunk(ids).map((idChunk) =>
-      getDocs(query(collection(db, collectionName), where(documentId(), 'in', idChunk)))));
+      getDocs(query(collection(db, collectionName), where(documentId(), 'in', idChunk), limit(idChunk.length)))));
     return new Map(snapshots.flatMap((snapshot) => snapshot.docs.map((document) => [document.id, document.data()] as [string, DocumentData])));
   }
 

@@ -3,7 +3,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  documentId,
   getDoc,
   getCountFromServer,
   getDocs,
@@ -19,7 +18,9 @@ import {
   writeBatch,
   type DocumentData,
   type DocumentReference,
+  type QueryConstraint,
   type QueryDocumentSnapshot,
+  type QuerySnapshot,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { sharedDocumentReader } from './SharedDocumentReader';
@@ -180,6 +181,8 @@ export type CreatePostInput = {
 type UnknownRecord = Record<string, unknown>;
 type DataDocument = { id: string; data: UnknownRecord };
 type RelationshipSets = { friends: Set<string>; following: Set<string>; blockedUsers: Set<string> };
+/** Visibilities the author's friends may read (firestore.rules feedPosts). */
+const FRIEND_VISIBILITIES = ['friends', 'friends_followers'];
 
 const isRecord = (value: unknown): value is UnknownRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -243,19 +246,16 @@ export class PostService {
   public async getAuthorPostCount(userId: string): Promise<number> {
     if (!userId) return 0;
     try {
-      const snapshot = await getCountFromServer(
-        query(collection(db, 'feedPosts'), where('userId', '==', userId)),
-      );
-      return snapshot.data().count;
-    } catch {
-      try {
-        const snap = await getDocs(
-          query(collection(db, 'feedPosts'), where('userId', '==', userId)),
-        );
-        return snap.size;
-      } catch {
-        return 0;
+      // Other members' posts are counted in the visibilities the viewer may read: friends see friends-only
+      // posts, everyone else public ones (the rules deny the wider count to non-friends).
+      if (userId === auth.currentUser?.uid) {
+        return (await getCountFromServer(query(collection(db, 'feedPosts'), where('userId', '==', userId)))).data().count;
       }
+      const countIn = async (visibilities: string[]) =>
+        (await getCountFromServer(query(collection(db, 'feedPosts'), where('userId', '==', userId), where('visibility', 'in', visibilities)))).data().count;
+      return await countIn(['public', ...FRIEND_VISIBILITIES]).catch(() => countIn(['public']));
+    } catch {
+      return 0;
     }
   }
 
@@ -373,24 +373,23 @@ export class PostService {
         });
       }
       communityIds = [...new Set(communityIds.filter(Boolean))];
+      // The rules allow an `in` query only when every listed community is readable (public, or the viewer is a
+      // member through `${communityId}_${uid}`), so drop deleted communities and private ones the viewer isn't in.
+      communityIds = await this.readableCommunityIds(communityIds, viewerId);
 
       if (communityIds.length === 0) {
         return { posts: [], nextCursor: null, hasMore: false };
       }
 
       const chunks = Array.from({ length: Math.ceil(communityIds.length / 30) }, (_, index) => communityIds.slice(index * 30, index * 30 + 30));
-      const [variantSnapshots, idSnapshots] = await Promise.all([
-        Promise.all(
-          chunks.map((chunkIds) =>
-            getDocs(query(collection(db, 'communityVariantDetails'), where('communityVariantId', 'in', chunkIds), limit(scanLimit))).catch(() => null)
-          )
-        ),
-        Promise.all(
-          chunks.map((chunkIds) =>
-            getDocs(query(collection(db, 'communityVariantDetails'), where('communityId', 'in', chunkIds), limit(scanLimit))).catch(() => null)
-          )
-        ),
-      ]);
+      const variantSnapshots = await Promise.all(
+        chunks.map((chunkIds) =>
+          getDocs(query(collection(db, 'communityVariantDetails'), where('communityVariantId', 'in', chunkIds), limit(scanLimit))).catch((error: unknown) => {
+            this.logger.warn('PostService', 'feed-firestore:community-chunk', { error: error instanceof Error ? error.message : String(error) });
+            return null;
+          })
+        )
+      );
 
       const allDocsMap = new Map<string, DataDocument>();
       variantSnapshots.forEach((s) => {
@@ -398,31 +397,9 @@ export class PostService {
           allDocsMap.set(docSnap.id, { id: docSnap.id, data: isRecord(docSnap.data()) ? docSnap.data() : {} });
         });
       });
-      idSnapshots.forEach((s) => {
-        s?.docs.forEach((docSnap) => {
-          allDocsMap.set(docSnap.id, { id: docSnap.id, data: isRecord(docSnap.data()) ? docSnap.data() : {} });
-        });
-      });
 
-      let rawDocuments: DataDocument[] = Array.from(allDocsMap.values())
+      const rawDocuments: DataDocument[] = Array.from(allDocsMap.values())
         .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
-
-      if (rawDocuments.length === 0) {
-        const [recentCommunityDetails, recentFeedCommunityPosts] = await Promise.all([
-          getDocs(query(collection(db, 'communityVariantDetails'), limit(scanLimit))).catch(() => null),
-          getDocs(query(collection(db, 'feedPosts'), limit(scanLimit))).catch(() => null),
-        ]);
-        if (recentCommunityDetails && !recentCommunityDetails.empty) {
-          rawDocuments = recentCommunityDetails.docs
-            .map((d) => ({ id: d.id, data: isRecord(d.data()) ? d.data() : {} }))
-            .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
-        } else if (recentFeedCommunityPosts && !recentFeedCommunityPosts.empty) {
-          rawDocuments = recentFeedCommunityPosts.docs
-            .map((d) => ({ id: d.id, data: isRecord(d.data()) ? d.data() : {} }))
-            .filter((d) => Boolean(d.data.communityId || d.data.communityVariantId || d.data.origin === 'community'))
-            .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
-        }
-      }
 
       const postIds = rawDocuments.map((d) => d.id);
       const uniqueCommunityIds = [...new Set(rawDocuments.map((d) => readString(d.data.communityVariantId) || readString(d.data.communityId)).filter(Boolean))];
@@ -521,18 +498,14 @@ export class PostService {
       };
     }
 
-    const postsReference = collection(db, 'feedPosts');
-    const snapshot = options.authorId
-      ? await getDocs(query(postsReference, where('userId', '==', options.authorId), limit(scanLimit)))
-      : await getDocs(query(postsReference, orderBy('createdAt', 'desc'), limit(scanLimit)));
-    const rawDocuments: DataDocument[] = snapshot.docs
-      .map((document) => ({
-        id: document.id,
-        data: isRecord(document.data()) ? document.data() : {},
-      }))
+    const relationships = await this.loadRelationships(viewerId);
+    const snapshots = await this.queryVisibleFeedPosts(options.authorId ?? null, viewerId, relationships, scanLimit);
+    const rawDocuments: DataDocument[] = [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((document) => [document.id, {
+      id: document.id,
+      data: isRecord(document.data()) ? document.data() : {},
+    }] as const)).values()]
       .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
 
-    const relationships = await this.loadRelationships(viewerId);
     const eligibleDocuments = rawDocuments.filter((document) => {
       if (!this.canViewPost(document.data, viewerId, relationships)) return false;
       const isRepost = document.data.isRepost === true || isRecord(document.data.repostedFrom);
@@ -655,7 +628,7 @@ export class PostService {
       collection: 'feedPosts',
       scope: options.scope ?? 'home',
       renderedPostCount: posts.length,
-      hasMore: filteredDocuments.length > fetchLimit || snapshot.docs.length >= scanLimit,
+      hasMore: filteredDocuments.length > fetchLimit || snapshots.some((page) => page.docs.length >= scanLimit),
     });
 
     return {
@@ -699,19 +672,66 @@ export class PostService {
         return 'missingId' in step ? [step.missingId] : [];
       }))];
       if (missing.length === 0) break;
-      const chunks = Array.from({ length: Math.ceil(missing.length / 30) }, (_, index) => missing.slice(index * 30, index * 30 + 30));
-      const snapshots = await Promise.all(chunks.map((chunk) => getDocs(query(collection(db, 'feedPosts'), where(documentId(), 'in', chunk)))));
+      // One read per missing original: the rules judge a `documentId in` query by every listed post, so a single
+      // original the viewer may not see (friends-only, private) would deny the whole batch.
+      const originals = await Promise.all(missing.map((postId) => getDoc(doc(db, 'feedPosts', postId)).catch(() => null)));
       missing.forEach((postId) => known.set(postId, null));
-      snapshots.forEach((snapshot) => snapshot.docs.forEach((document) => {
-        const data = document.data();
-        known.set(document.id, { id: document.id, data: isRecord(data) ? data : {} });
-      }));
+      originals.forEach((original) => {
+        if (!original?.exists()) return;
+        const data = original.data();
+        known.set(original.id, { id: original.id, data: isRecord(data) ? data : {} });
+      });
     }
 
     return new Map(entries.map((entry) => {
       const step = walk(entry);
       return [entry.id, 'original' in step ? step.original : null] as const;
     }));
+  }
+
+  /** Communities whose posts the viewer may read: public ones, and private ones with a canonical membership. */
+  private async readableCommunityIds(communityIds: string[], viewerId: string | null): Promise<string[]> {
+    const checks = await Promise.all(communityIds.map(async (communityId) => {
+      const community = await getDoc(doc(db, 'communityVariant', communityId)).catch(() => null);
+      if (!community?.exists()) return null;
+      const data = community.data();
+      if (data.isPrivate !== true && data.privacy !== 'private') return communityId;
+      if (!viewerId) return null;
+      if (data.userId === viewerId) return communityId;
+      const membership = await getDoc(doc(db, 'communityVariantMembership', `${communityId}_${viewerId}`)).catch(() => null);
+      return membership?.exists() && membership.data().isMember !== false ? communityId : null;
+    }));
+    return checks.filter((communityId): communityId is string => communityId !== null);
+  }
+
+  /**
+   * Feed queries the Firestore rules can allow: public posts, the viewer's own posts, and friends-only posts by
+   * the viewer's friends (author in a chunk of 30 friends). A profile asks for its author's posts in the
+   * visibilities the viewer may see.
+   */
+  private async queryVisibleFeedPosts(authorId: string | null, viewerId: string | null, relationships: RelationshipSets, scanLimit: number): Promise<QuerySnapshot<DocumentData>[]> {
+    const postsReference = collection(db, 'feedPosts');
+    if (authorId) {
+      if (authorId === viewerId) return [await getDocs(query(postsReference, where('userId', '==', authorId), limit(scanLimit)))];
+      const visibilities = relationships.friends.has(authorId) ? ['public', ...FRIEND_VISIBILITIES] : ['public'];
+      return [await getDocs(query(postsReference, where('userId', '==', authorId), where('visibility', 'in', visibilities), limit(scanLimit)))];
+    }
+    const newest = (...constraints: QueryConstraint[]) => getDocs(query(postsReference, ...constraints, orderBy('createdAt', 'desc'), limit(scanLimit)));
+    const friendIds = [...relationships.friends];
+    const friendChunks = Array.from({ length: Math.ceil(friendIds.length / 30) }, (_, index) => friendIds.slice(index * 30, index * 30 + 30));
+    const [publicPosts, ownPosts, ...friendPosts] = await Promise.all([
+      // Without the composite index (visibility, createdAt) fall back to an unordered page of public posts.
+      newest(where('visibility', '==', 'public')).catch((error: unknown) => {
+        this.logger.warn('PostService', 'feed-firestore:public-unordered', { error: error instanceof Error ? error.message : String(error) });
+        return getDocs(query(postsReference, where('visibility', '==', 'public'), limit(scanLimit)));
+      }),
+      viewerId ? newest(where('userId', '==', viewerId)).catch(() => getDocs(query(postsReference, where('userId', '==', viewerId), limit(scanLimit))).catch(() => null)) : Promise.resolve(null),
+      ...friendChunks.map((ids) => newest(where('userId', 'in', ids), where('visibility', 'in', FRIEND_VISIBILITIES)).catch((error: unknown) => {
+        this.logger.warn('PostService', 'feed-firestore:friend-posts', { error: error instanceof Error ? error.message : String(error) });
+        return null;
+      })),
+    ]);
+    return [publicPosts, ownPosts, ...friendPosts].filter((snapshot): snapshot is QuerySnapshot<DocumentData> => snapshot !== null);
   }
 
   private async resolveOriginalPost(entry: DataDocument): Promise<DataDocument | null> {
@@ -723,8 +743,9 @@ export class PostService {
       const source = isRecord(current.data.repostedFrom) ? current.data.repostedFrom : null;
       const originalId = source ? readString(source.postId) : '';
       if (!originalId) return current.data.isRepost === true ? null : current;
-      const snapshot = await getDoc(doc(db, 'feedPosts', originalId));
-      if (!snapshot.exists()) return null;
+      // A post the viewer may not see (friends-only or private) is denied by the rules: treat it as unavailable.
+      const snapshot = await getDoc(doc(db, 'feedPosts', originalId)).catch(() => null);
+      if (!snapshot?.exists()) return null;
       const data = snapshot.data();
       current = { id: snapshot.id, data: isRecord(data) ? data : {} };
     }
@@ -966,8 +987,15 @@ export class PostService {
   }
 
   public async fetchPost(postId: string): Promise<PostItem> {
-    const reference = await getDoc(doc(db, 'feedPosts', postId));
-    if (reference.exists()) {
+    // The rules deny friends-only and private posts (and private-community posts) to other members.
+    let denied = false;
+    const readVisible = (collectionName: string) => getDoc(doc(db, collectionName, postId)).catch((error: unknown) => {
+      if ((error as { code?: unknown } | null)?.code !== 'permission-denied') throw error;
+      denied = true;
+      return null;
+    });
+    const reference = await readVisible('feedPosts');
+    if (reference?.exists()) {
       const data = reference.data();
       const original = await this.resolveOriginalPost({ id: reference.id, data: isRecord(data) ? data : {} });
       if (!original) throw new Error('The original post is no longer available.');
@@ -977,14 +1005,14 @@ export class PostService {
       // Reuse the read above; a second read of the same post cost another round trip on every post open.
       let snap = reference;
       let isCommunity = false;
-      if (!snap.exists()) {
-        snap = await getDoc(doc(db, 'communityVariantDetails', postId));
-        if (snap.exists()) isCommunity = true;
+      if (!snap?.exists()) {
+        snap = await readVisible('communityVariantDetails');
+        if (snap?.exists()) isCommunity = true;
       }
-      if (!snap.exists()) {
-        snap = await getDoc(doc(db, 'posts', postId));
+      if (!snap?.exists()) {
+        snap = await readVisible('posts');
       }
-      if (snap.exists()) {
+      if (snap?.exists()) {
         const rawData = snap.data();
         const data = isRecord(rawData) ? rawData : {};
         if (
@@ -1038,6 +1066,7 @@ export class PostService {
       console.error('[PostService.fetchPost] Error:', error instanceof Error ? error.message : 'Unknown error');
       throw new Error('This post could not be loaded.');
     }
+    if (denied) throw new Error('This post is only visible to people the author shared it with.');
     throw new Error('This post was deleted.');
   }
 
