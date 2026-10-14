@@ -18,7 +18,8 @@ export type AppVersionCheck =
   | { status: 'supported' }
   | { status: 'update_required'; installedVersion: string; minimumVersion: string; storeUrl: string; message: string };
 
-const CONFIG_TIMEOUT_MS = 6000;
+// The app keeps running while this loads (the screen appears when the answer arrives), so the wait can be long.
+const CONFIG_TIMEOUT_MS = 30000;
 const ANDROID_STORE_URL = 'https://play.google.com/store/apps/details?id=com.ourlime.app';
 const WEBSITE_URL = 'https://ourlime.com';
 const STORE_URL_PATTERN = /^(https:\/\/|market:\/\/|itms-apps:\/\/)/;
