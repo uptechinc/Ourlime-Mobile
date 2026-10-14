@@ -17,7 +17,9 @@ import {
   updateDoc,
   where,
   writeBatch,
+  type DocumentData,
   type DocumentReference,
+  type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { sharedDocumentReader } from './SharedDocumentReader';
@@ -1438,7 +1440,11 @@ export class PostService {
       getDocs(query(collection(db, 'communityVariantDetailsSummary'), where('communityVariantDetailsId', '==', postId))),
       getDocs(query(collection(db, 'communityVariantDetailsLikes'), where('postId', '==', postId))),
       getDocs(query(collection(db, 'feedsPostComments'), where('feedsPostId', '==', postId))),
-      getDocs(query(collection(db, 'notifications'), where('postId', '==', postId))),
+      // Legacy notifications are not readable under the deployed rules; the post still deletes without them.
+      getDocs(query(collection(db, 'notifications'), where('postId', '==', postId))).catch((error: unknown) => {
+        console.warn('[PostService.deleteCommunityPost] Legacy notifications skipped:', error);
+        return { docs: [] as QueryDocumentSnapshot<DocumentData>[] };
+      }),
     ]);
     const commentChildren = await Promise.all(comments.docs.map(async (comment) => {
       const [replies, commentLikes] = await Promise.all([
