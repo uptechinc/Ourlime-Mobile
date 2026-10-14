@@ -25,6 +25,7 @@ import { crashReportingService } from '@/lib/services/CrashReportingService';
 import { memoryPressureService } from '@/lib/services/MemoryPressureService';
 import NotificationNavigationCoordinator from '@/components/providers/NotificationNavigationCoordinator';
 import RegionalAccessRestrictedModal from '@/components/ui/RegionalAccessRestrictedModal';
+import AppUpdateRequiredModal from '@/components/ui/AppUpdateRequiredModal';
 
 export { RouteErrorBoundary as ErrorBoundary } from '@/components/ui/AppErrorBoundary';
 
@@ -103,6 +104,8 @@ export default function Layout() {
       <AppErrorBoundary>
         <ThemeProvider>
           <AppRouteTree />
+          {/* Blocks builds older than siteConfig/mobileApp.minimumVersion; runs before sign-in (registration too). */}
+          <AppUpdateRequiredModal />
         </ThemeProvider>
       </AppErrorBoundary>
     </GestureHandlerRootView>
