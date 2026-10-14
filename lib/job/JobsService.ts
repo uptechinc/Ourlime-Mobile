@@ -16,6 +16,10 @@ import {
     type DocumentData
 } from 'firebase/firestore';
 import { firestoreBatchReadService } from '@/lib/services/FirestoreBatchReadService';
+import { accountLifecycleVisibilityService } from '@/lib/services/AccountLifecycleVisibilityService';
+
+const MAX_PUBLISHED_JOB_SCAN = 500;
+const MAX_OPEN_JOBS_RETURNED = 200;
 
 export type JobRecord = {
     id: string;
@@ -173,27 +177,44 @@ export class JobsService {
     }
     
 
+    private toMillis(value: unknown): number | null {
+        if (value instanceof Timestamp) return value.toMillis();
+        if (value && typeof value === 'object' && 'seconds' in value && typeof value.seconds === 'number') return value.seconds * 1000;
+        if (typeof value === 'string' || typeof value === 'number') {
+            const parsed = new Date(value).getTime();
+            return Number.isNaN(parsed) ? null : parsed;
+        }
+        return null;
+    }
+
+    /**
+     * Open jobs, newest first: published, not past their closing date, owner account not hidden (the same set the
+     * website's /api/jobs lists). Sorting and the closing-date check happen here so the query needs no composite
+     * index; at most MAX_PUBLISHED_JOB_SCAN published jobs are read.
+     */
     public async fetchJobs(maxResults = 20): Promise<JobRecord[]> {
         try {
-            const jobsCollection = collection(this.db, 'jobs');
-            const resultLimit = limit(Math.min(40, Math.max(1, maxResults)));
-            const orderedJobsSnapshot = await getDocs(query(
-                jobsCollection,
-                orderBy('basic_info.createdAt', 'desc'),
-                resultLimit,
-            )).catch((orderedQueryError: unknown) => {
-                console.warn('[JobsService.fetchJobs] Ordered query failed; using unordered compatibility query.', orderedQueryError);
-                return null;
-            });
-            const jobsSnapshot = orderedJobsSnapshot && !orderedJobsSnapshot.empty
-                ? orderedJobsSnapshot
-                : await getDocs(query(jobsCollection, resultLimit));
-            const creatorIds = jobsSnapshot.docs.map((docSnapshot) => {
+            const now = Date.now();
+            const publishedSnapshot = await getDocs(query(
+                collection(this.db, 'jobs'),
+                where('basic_info.status', '==', 'published'),
+                limit(MAX_PUBLISHED_JOB_SCAN),
+            ));
+            const jobDocs = publishedSnapshot.docs
+                .filter((docSnapshot) => {
+                    const data = docSnapshot.data();
+                    if (accountLifecycleVisibilityService.isHidden(data)) return false;
+                    const closesAt = this.toMillis(data.basic_info?.closingDate);
+                    return closesAt === null || closesAt >= now;
+                })
+                .sort((left, right) => (this.toMillis(right.data().basic_info?.createdAt) ?? 0) - (this.toMillis(left.data().basic_info?.createdAt) ?? 0))
+                .slice(0, Math.min(MAX_OPEN_JOBS_RETURNED, Math.max(1, maxResults)));
+            const creatorIds = jobDocs.map((docSnapshot) => {
                 const basicInfo = docSnapshot.data().basic_info;
                 return basicInfo && typeof basicInfo === 'object' && typeof basicInfo.userId === 'string' ? basicInfo.userId : '';
             });
             const creators = await this.fetchCreators(creatorIds);
-            const jobs = jobsSnapshot.docs.map((docSnapshot) => {
+            const jobs = jobDocs.map((docSnapshot) => {
                 const data = docSnapshot.data();
                 const basicInfo = data.basic_info && typeof data.basic_info === 'object' ? data.basic_info : {};
                 const userId = typeof basicInfo.userId === 'string' ? basicInfo.userId : '';
@@ -231,7 +252,7 @@ export class JobsService {
                 } as JobRecord;
             });
     
-            return jobs.filter((job) => job.basic_info.status === 'published' || job.basic_info.status === 'active');
+            return jobs;
         } catch (error) {
             console.error('Error in fetchJobs:', error);
             throw new Error('Failed to fetch jobs');

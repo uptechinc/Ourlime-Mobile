@@ -8,6 +8,7 @@ import { ProfessionalJobsList } from '@/components/jobs/ProfessionalJobsList';
 import { QuickTasksList } from '@/components/jobs/QuickTasksList';
 import JobCreationModal from '@/components/jobs/createJobsModal/jobCreationModal';
 import { JobsService, type JobRecord } from '@/lib/job/JobsService';
+import { jobCategoryPopularity } from '@/lib/job/JobCategoryPopularity';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { SkeletonJobCard } from '@/components/home/SkeletonLoaders';
 
@@ -29,41 +30,43 @@ export default function JobsPage() {
 
   const loadJobs = useCallback(async () => {
     setError('');
-    try { setJobs(await jobsService.fetchJobs(30)); }
+    try { setJobs(await jobsService.fetchJobs(200)); }
     catch (loadError: unknown) { setError(loadError instanceof Error ? loadError.message : 'Jobs could not be loaded.'); }
     finally { setLoading(false); setRefreshing(false); }
   }, []);
 
   useEffect(() => { void loadJobs(); }, [loadJobs]);
 
-  const categories = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const job of jobs) {
-      const category = job.basic_info.category || job.category || 'Uncategorized';
-      counts.set(category, (counts.get(category) ?? 0) + 1);
-    }
-    return [...counts.entries()].sort((leftCategory, rightCategory) => rightCategory[1] - leftCategory[1]);
-  }, [jobs]);
+  // Only the active tab's jobs: a category count must match what tapping it shows.
+  const tabJobs = useMemo(() => jobs.filter((job) => job.basic_info.type === activeTab), [activeTab, jobs]);
+  const categories = useMemo(() => jobCategoryPopularity.rank(tabJobs.map((job) => ({
+    category: job.basic_info.category || job.category || null,
+    createdAtMs: job.basic_info.createdAt?.seconds ? job.basic_info.createdAt.seconds * 1000 : null,
+  }))), [tabJobs]);
+  const professionalCount = useMemo(() => jobs.filter((job) => job.basic_info.type === 'professional').length, [jobs]);
+  const quickTaskCount = jobs.length - professionalCount;
+
+  // A category picked on one tab may not exist on the other.
+  useEffect(() => { setSelectedCategory(null); }, [activeTab]);
 
   const filteredJobs = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-    return jobs.filter((job) => {
-      if (job.basic_info.type !== activeTab) return false;
+    return tabJobs.filter((job) => {
       const category = job.basic_info.category || job.category || 'Uncategorized';
       if (selectedCategory && category !== selectedCategory) return false;
       if (!normalizedSearch) return true;
       return [job.basic_info.title, job.basic_info.description, category, job.category_specific.name ?? '', ...job.details.skills]
         .some((value) => value.toLowerCase().includes(normalizedSearch));
     });
-  }, [activeTab, jobs, search, selectedCategory]);
+  }, [tabJobs, search, selectedCategory]);
 
   return <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
     <PageHeader title="Jobs" onBackPress={() => router.back()} />
     <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void loadJobs(); }} tintColor="#10b981" />}>
-      <View style={styles.hero}><Briefcase size={30} color="#052e16" /><View style={styles.heroCopy}><Text style={styles.heroTitle}>Find your next opportunity</Text><Text style={styles.heroText}>{loading ? 'Loading opportunities…' : `${jobs.length} live professional jobs and quick tasks`}</Text></View></View>
+      <View style={styles.hero}><Briefcase size={30} color="#052e16" /><View style={styles.heroCopy}><Text style={styles.heroTitle}>Find your next opportunity</Text><Text style={styles.heroText}>{loading ? 'Loading opportunities…' : `${professionalCount} open ${professionalCount === 1 ? 'job' : 'jobs'} · ${quickTaskCount} quick ${quickTaskCount === 1 ? 'task' : 'tasks'}`}</Text></View></View>
       <View style={styles.searchRow}><View style={styles.searchBox}><Search size={19} color={colors.mutedText} /><TextInput value={search} onChangeText={setSearch} placeholder="Search jobs, skills, companies…" placeholderTextColor={colors.mutedText} style={styles.searchInput} /></View><TouchableOpacity accessibilityRole="button" accessibilityLabel="My applications" onPress={() => router.push('/jobs/applications' as Href)} style={styles.applicationsButton}><ClipboardList size={19} color="#ffffff" /></TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel="Manage posted jobs" onPress={() => router.push('/jobs/manage')} style={styles.manageButton}><Settings2 size={19} color="#ffffff" /></TouchableOpacity></View>
-      {categories.length > 0 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}><TouchableOpacity onPress={() => setSelectedCategory(null)} style={[styles.chip, !selectedCategory && styles.chipActive]}><Text style={[styles.chipText, !selectedCategory && styles.chipTextActive]}>All</Text></TouchableOpacity>{categories.map(([category, count]) => <TouchableOpacity key={category} onPress={() => setSelectedCategory(category)} style={[styles.chip, selectedCategory === category && styles.chipActive]}><Text style={[styles.chipText, selectedCategory === category && styles.chipTextActive]}>{category} ({count})</Text></TouchableOpacity>)}</ScrollView> : null}
       <View style={styles.toolbar}><View style={styles.tabs}>{([{ id: 'professional', label: 'Professional', Icon: Briefcase }, { id: 'quickTask', label: 'Quick Tasks', Icon: Clock }] as const).map(({ id, label, Icon }) => <TouchableOpacity key={id} onPress={() => setActiveTab(id)} style={[styles.tab, activeTab === id && styles.tabActive]}><Icon size={17} color={activeTab === id ? '#ffffff' : '#10b981'} /><Text style={[styles.tabText, activeTab === id && styles.tabTextActive]}>{label}</Text></TouchableOpacity>)}</View><TouchableOpacity onPress={() => setModalOpen(true)} style={styles.addButton}><Plus size={18} color="#ffffff" /></TouchableOpacity></View>
+      {categories.length > 0 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}><TouchableOpacity onPress={() => setSelectedCategory(null)} style={[styles.chip, !selectedCategory && styles.chipActive]}><Text style={[styles.chipText, !selectedCategory && styles.chipTextActive]}>All</Text></TouchableOpacity>{categories.map(({ name, count }) => <TouchableOpacity key={name} onPress={() => setSelectedCategory(name)} style={[styles.chip, selectedCategory === name && styles.chipActive]}><Text style={[styles.chipText, selectedCategory === name && styles.chipTextActive]}>{name} ({count})</Text></TouchableOpacity>)}</ScrollView> : null}
       {error ? <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text><TouchableOpacity onPress={() => void loadJobs()}><Text style={styles.retryText}>Try again</Text></TouchableOpacity></View> : null}
       {loading ? (
         <View style={{ paddingHorizontal: 18, gap: 10 }}>
