@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { LinearGradient } from 'expo-linear-gradient';
 import { openGraphService, extractDomain, type LinkPreviewData } from '@/lib/services/OpenGraphService';
 import { useDeepLinkNavigation } from '@/lib/hooks/useDeepLinkNavigation';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -196,6 +197,12 @@ export function LinkPreviewMessage({
             <Icon name="video" size={42} color="#10b981" />
           )}
           <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.08)' }} />
+          {/* Keeps the white creator name readable on light thumbnails, as on the website. */}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.7)', 'rgba(0,0,0,0)']}
+            pointerEvents="none"
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 96 }}
+          />
           <View style={{ position: 'absolute', width: 58, height: 58, borderRadius: 29, backgroundColor: 'rgba(0,0,0,0.58)', alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="play" size={28} color="#ffffff" style={{ marginLeft: 3 }} />
           </View>
