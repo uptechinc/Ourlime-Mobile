@@ -4,6 +4,7 @@ import {
   deleteDoc,
   doc,
   getCountFromServer,
+  getDoc,
   getDocs,
   limit,
   query,
@@ -15,6 +16,7 @@ import {
 import { db } from '@/lib/firebaseConfig';
 import { adminAccessService } from './AdminAccessService';
 import { adminApiService } from './AdminApiService';
+import { appServerService } from './AppServerService';
 
 type FirebaseDateValue = { toMillis?: () => number; seconds?: number } | string | number | Date | null | undefined;
 type AdminDocumentData = {
@@ -153,6 +155,10 @@ export class AdminWorkspaceService {
 
   public async setWorkspaceStatus(kind: AdminWorkspaceKind, itemId: string, status: AdminWorkspaceStatus): Promise<void> {
     const administrator = await adminAccessService.requireAdmin();
+    if (kind === 'products') {
+      await this.reviewProduct(itemId, status);
+      return;
+    }
     const statusFields = kind === 'stickers' || kind === 'sticker_packs'
       ? { isActive: status === 'active' || status === 'approved', isPublished: status === 'active' || status === 'approved', status }
       : { status };
@@ -162,6 +168,14 @@ export class AdminWorkspaceService {
 
   public async deleteWorkspaceItem(kind: AdminWorkspaceKind, itemId: string): Promise<void> {
     const administrator = await adminAccessService.requireAdmin();
+    if (kind === 'products') {
+      // Products are server-managed: the admin content route soft-deletes the listing, notifies the seller and audits it.
+      await adminApiService.request('/api/admin/content/delete', {
+        method: 'POST',
+        body: { contentType: 'product', contentId: itemId, category: 'custom', customReason: 'Removed by an administrator.' },
+      });
+      return;
+    }
     await deleteDoc(doc(db, getWorkspaceCollection(kind), itemId));
     await this.writeAudit(administrator.userId, `admin_${kind}_delete`, itemId, 'deleted');
   }
@@ -354,6 +368,26 @@ export class AdminWorkspaceService {
     if (!response.success) {
       throw new Error(response.error || 'Failed to restore item');
     }
+  }
+
+  /**
+   * Listing decisions go through the reviewProductListing callable (the rules let no client change a product):
+   * active/approved publishes, rejected/disabled/archived hides the listing; other states are not review decisions.
+   */
+  private async reviewProduct(productId: string, status: AdminWorkspaceStatus): Promise<void> {
+    const decision = status === 'active' || status === 'approved' ? 'approved'
+      : status === 'rejected' || status === 'disabled' || status === 'archived' ? 'rejected' : null;
+    if (!decision) throw new Error('Listings can only be approved or rejected here.');
+    const product = await getDoc(doc(db, 'products', productId));
+    if (!product.exists()) throw new Error('Product not found.');
+    const revision: unknown = product.data().revision;
+    await appServerService.call('reviewProductListing', {
+      productId,
+      decision,
+      expectedRevision: typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0 ? revision : 0,
+      operationId: doc(collection(db, 'operationIds')).id,
+      ...(decision === 'rejected' ? { reason: status === 'rejected' ? 'Rejected by an administrator.' : `Listing ${status} by an administrator.` } : {}),
+    });
   }
 
   private async writeAudit(adminId: string, action: string, targetId: string, details: string): Promise<void> {
