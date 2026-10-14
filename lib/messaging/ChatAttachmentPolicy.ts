@@ -19,7 +19,7 @@ const EXTENSION_MIME: Record<string, string> = {
   mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/x-m4v', webm: 'video/webm', '3gp': 'video/3gpp', mkv: 'video/x-matroska',
   mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', ogg: 'audio/ogg', opus: 'audio/ogg', flac: 'audio/flac',
   pdf: 'application/pdf',
-  txt: 'text/plain', csv: 'text/csv', md: 'text/markdown', html: 'text/html', htm: 'text/html', xml: 'text/xml', json: 'text/plain', log: 'text/plain',
+  txt: 'text/plain', csv: 'text/csv', md: 'text/markdown', html: 'text/plain', htm: 'text/plain', xml: 'text/plain', svg: 'text/plain', json: 'text/plain', log: 'text/plain',
   doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 
@@ -32,12 +32,18 @@ export function formatMegabytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// The Storage rule accepts only these text types; any other text (HTML, XML, SVG markup...) is sent as plain text, so
+// a file served from Storage can never render as a page.
+const STORED_TEXT_MIME = /^text\/(plain|csv|markdown)(;.*)?$/;
+const AS_PLAIN_TEXT_MIME = ['application/json', 'application/javascript', 'application/xml', 'application/xhtml+xml', 'image/svg+xml'];
+
 /** The MIME type the upload will use: picker type when useful, otherwise from the extension. */
 export function resolveChatMimeType(fileName: string, pickerMimeType?: string | null, kind?: ChatAttachmentKind): string {
   const picked = (pickerMimeType || '').toLowerCase();
   if (picked && picked !== 'application/octet-stream' && picked.includes('/')) {
-    // JSON/JS files are previewed as text, and the Storage rule only accepts text/*.
-    if (picked === 'application/json' || picked === 'application/javascript' || picked === 'application/xml') return 'text/plain';
+    // JSON/JS files are previewed as text; HTML, XML and SVG are stored as plain text (see STORED_TEXT_MIME).
+    if (AS_PLAIN_TEXT_MIME.includes(picked)) return 'text/plain';
+    if (picked.startsWith('text/') && !STORED_TEXT_MIME.test(picked)) return 'text/plain';
     return picked;
   }
   const extension = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() ?? '' : '';
