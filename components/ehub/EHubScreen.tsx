@@ -25,6 +25,8 @@ export default function EHubScreen() {
   const catalog = useMarketplaceCatalog(profile?.uid ?? null, search, category);
   const preferences = useMarketplacePreferences();
   const products = catalog.data?.products ?? EMPTY_CATALOG_ITEMS;
+  // Nothing has arrived yet: show the skeleton, never an empty state or a 0 count.
+  const isCatalogLoading = !catalog.error && !products.length && (catalog.data === null || catalog.status === 'hydrating' || catalog.status === 'refreshing');
   const categories = useMemo(() => [...new Set(products.map((product) => product.category).filter(Boolean))].sort(), [products]);
 
   const handleOpenMarket = () => router.push('/market' as Href);
@@ -57,10 +59,10 @@ export default function EHubScreen() {
           {categories.map((categoryName) => <Pressable key={categoryName} onPress={() => setCategory(categoryName)} style={[styles.categoryCard, category === categoryName && styles.categoryActive]}><Tag size={22} color={category === categoryName ? colors.onAccent : colors.accentText} /><Text numberOfLines={2} style={[styles.categoryText, category === categoryName && styles.categoryTextActive]}>{categoryName}</Text></Pressable>)}
         </ScrollView> : null}
 
-        <View style={styles.heading}><View><Text style={styles.sectionTitle}>{search || category ? 'Matching products' : 'Featured products'}</Text><Text style={styles.sectionSubtitle}>{products.length} live {products.length === 1 ? 'listing' : 'listings'}</Text></View><Pressable onPress={handleOpenMarket} style={styles.link}><Text style={styles.linkText}>View all</Text><ArrowRight size={16} color={colors.accentText} /></Pressable></View>
-        {catalog.status === 'hydrating' && !products.length ? <MarketplaceSkeleton /> : null}
+        <View style={styles.heading}><View><Text style={styles.sectionTitle}>{search || category ? 'Matching products' : 'Featured products'}</Text><Text style={styles.sectionSubtitle}>{isCatalogLoading ? 'Loading listings…' : `${products.length} live ${products.length === 1 ? 'listing' : 'listings'}`}</Text></View><Pressable onPress={handleOpenMarket} style={styles.link}><Text style={styles.linkText}>View all</Text><ArrowRight size={16} color={colors.accentText} /></Pressable></View>
+        {isCatalogLoading ? <MarketplaceSkeleton /> : null}
         {catalog.error ? <Pressable accessibilityRole="button" onPress={() => void catalog.refresh()} style={styles.error}><Text style={styles.errorText}>{catalog.error.message} Tap to retry.</Text></Pressable> : null}
-        {!catalog.error && catalog.status !== 'hydrating' && !products.length ? <View style={styles.empty}><ShoppingBag size={38} color={colors.mutedText} /><Text style={styles.emptyTitle}>No products found</Text><Text style={styles.sectionSubtitle}>Try another search or browse the full Market.</Text></View> : null}
+        {!catalog.error && !isCatalogLoading && !products.length ? <View style={styles.empty}><ShoppingBag size={38} color={colors.mutedText} /><Text style={styles.emptyTitle}>No products found</Text><Text style={styles.sectionSubtitle}>Try another search or browse the full Market.</Text></View> : null}
         {products.length ? <View style={styles.grid}>{products.slice(0, 8).map((product) => <MarketProductCard key={product.id} product={product} favorite={preferences.favoriteIds.includes(product.id)} onOpen={handleOpenProduct} onToggleFavorite={(productId) => void preferences.toggleFavorite(productId)} onQuickAdd={handleOpenProduct} />)}</View> : null}
         <Pressable onPress={handleOpenMarket} style={styles.marketCard}><Store size={25} color={colors.accentText} /><View style={styles.flex}><Text style={styles.marketTitle}>Open Lime Market</Text><Text style={styles.sectionSubtitle}>Filters, product details, seller information, favorites, and saved cart</Text></View><ArrowRight size={20} color={colors.mutedText} /></Pressable>
       </ScrollView>

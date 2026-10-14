@@ -4,6 +4,7 @@ import { AuthService } from './AuthService';
 import type { Event, MediaItem } from '@/types/eventTypes';
 import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
 import { communityDataService } from './CommunityDataService';
+import { firestoreBatchReadService } from './FirestoreBatchReadService';
 
 export type EventAttendanceStatus = { isAttending: boolean; attendeeCount: number };
 type EventMediaRecord = { type?: unknown; url?: unknown; typeUrl?: unknown };
@@ -145,6 +146,21 @@ export class EventService {
       attendeeCount: attendees.size,
       isAttending: Boolean(userId && attendees.docs.some((document) => document.data().userId === userId)),
     };
+  }
+
+  /** Attendance for a list of events from batched eventAttendees reads, instead of one query per event. */
+  public async getAttendanceForEvents(eventIds: string[]): Promise<Map<string, EventAttendanceStatus>> {
+    const userId = this.authService.getVerifiedCurrentUser()?.uid;
+    const attendees = await firestoreBatchReadService.getDocumentsByField('eventAttendees', 'eventId', eventIds);
+    const attendance = new Map<string, EventAttendanceStatus>(eventIds.map((eventId) => [eventId, { attendeeCount: 0, isAttending: false }]));
+    attendees.forEach((document) => {
+      const attendee = document.data();
+      const current = typeof attendee.eventId === 'string' ? attendance.get(attendee.eventId) : undefined;
+      if (!current) return;
+      current.attendeeCount += 1;
+      if (userId && attendee.userId === userId) current.isAttending = true;
+    });
+    return attendance;
   }
 
   public async toggleAttendance(eventId: string): Promise<EventAttendanceStatus> {

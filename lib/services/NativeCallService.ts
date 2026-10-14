@@ -6,6 +6,7 @@ import { DiagnosticLogService } from './DiagnosticLogService';
 import { platformEnvironmentService } from './PlatformEnvironmentService';
 import { notificationSoundPreferenceService } from './NotificationSoundPreferenceService';
 import type { CallEndReason, CallPushPayload, CallSession, CallType } from '@/lib/types/call';
+import { withCleanup } from '@/lib/utils/withCleanup';
 
 type NativeCallCallbacks = {
   onIncomingCall: (payload: CallPushPayload) => void;
@@ -539,7 +540,7 @@ export class NativeCallService {
       VoipPush.addEventListener('register', (token) => { void this.registerToken(token, 'ios', 'apns_voip').catch(() => {}); });
       VoipPush.addEventListener('notification', (notification) => {
         const payload = this.parsePayload(notification);
-        if (payload) void this.displayIncomingCall(payload).finally(() => VoipPush.onVoipNotificationCompleted(payload.callId));
+        if (payload) void withCleanup(this.displayIncomingCall(payload), () => VoipPush.onVoipNotificationCompleted(payload.callId)).catch(() => undefined);
       });
       VoipPush.addEventListener('didLoadWithEvents', (events) => {
         events.forEach((event) => {

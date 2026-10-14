@@ -59,7 +59,7 @@ export default function MyJobApplicationsScreen() {
               .catch((withdrawError: unknown) => {
                 setError(withdrawError instanceof Error ? withdrawError.message : 'The application could not be withdrawn.');
               })
-              .finally(() => setWorkingId(null));
+              .then(() => setWorkingId(null));
           },
         },
       ],
@@ -75,7 +75,7 @@ export default function MyJobApplicationsScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+    <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="My Applications" onBackPress={() => router.back()} />
       <ScrollView
         contentContainerStyle={styles.content}
@@ -90,7 +90,7 @@ export default function MyJobApplicationsScreen() {
         </View>
         {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
         {loading ? <ApplicationsSkeleton /> : null}
-        {!loading && applications.length === 0 ? (
+        {!loading && !error && applications.length === 0 ? (
           <View style={styles.empty}>
             <FileText size={42} color={colors.mutedText} />
             <Text style={styles.emptyTitle}>No applications yet</Text>

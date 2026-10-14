@@ -1,0 +1,3366 @@
+[
+ {
+  "name": "w01-home",
+  "route": "/",
+  "kind": "web-desktop",
+  "startedAt": 1791860120952,
+  "endedAt": 1791860129250,
+  "finalUrl": "http://localhost:3000/",
+  "nav": {
+   "ttfb": 151,
+   "dcl": 183,
+   "load": 443
+  },
+  "timeToDataMs": 5259,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 188
+   },
+   {
+    "path": "/api/home/promotions?limit=6",
+    "ms": 67
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 719
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1251
+   },
+   {
+    "path": "/api/home/LeftSection/games",
+    "ms": 1836
+   },
+   {
+    "path": "/api/posts/drafts?kind=post",
+    "ms": 1866
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 2010
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=discover&limit=4",
+    "ms": 2161
+   },
+   {
+    "path": "/api/posts/drafts",
+    "ms": 2481
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 1610
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 2669
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2106
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2489
+   },
+   {
+    "path": "/api/home/MiddleSection/Post?pageSize=10&filter=all&scope=home",
+    "ms": 2547
+   },
+   {
+    "path": "/api/home/LeftSection/activity",
+    "ms": 3806
+   },
+   {
+    "path": "/api/home/LeftSection/games",
+    "ms": 4423
+   }
+  ],
+  "firestoreRequests": 20
+ },
+ {
+  "name": "w02-limes",
+  "route": "/limes",
+  "kind": "web-desktop",
+  "startedAt": 1791860129647,
+  "endedAt": 1791860135910,
+  "finalUrl": "http://localhost:3000/limes",
+  "nav": {
+   "ttfb": 131,
+   "dcl": 162,
+   "load": 477
+  },
+  "timeToDataMs": 3185,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 208
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 694
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 826
+   },
+   {
+    "path": "/api/limes?category=all&viewerId=&limit=10",
+    "ms": 1420
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1316
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 772
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1172
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1137
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w03-communities",
+  "route": "/communities",
+  "kind": "web-desktop",
+  "startedAt": 1791860136172,
+  "endedAt": 1791860143492,
+  "finalUrl": "http://localhost:3000/communities",
+  "nav": {
+   "ttfb": 164,
+   "dcl": 198,
+   "load": 415
+  },
+  "timeToDataMs": 3412,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 198
+   },
+   {
+    "path": "/api/admin/community-categories",
+    "ms": 275
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 712
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 829
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1297
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 670
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1042
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1021
+   }
+  ],
+  "firestoreRequests": 35
+ },
+ {
+  "name": "w04-community-detail",
+  "route": "/communities/74qbXH76V0VvtQiTuenZ",
+  "kind": "web-desktop",
+  "startedAt": 1791860143833,
+  "endedAt": 1791860154509,
+  "finalUrl": "http://localhost:3000/communities/74qbXH76V0VvtQiTuenZ",
+  "nav": {
+   "ttfb": 182,
+   "dcl": 499,
+   "load": 499
+  },
+  "timeToDataMs": 7610,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 191
+   },
+   {
+    "path": "/api/admin/community-categories",
+    "ms": 272
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 889
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 964
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1336
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 796
+   },
+   {
+    "path": "/api/communities/fetch?type=community&id=74qbXH76V0VvtQiTuenZ",
+    "ms": 1580
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2354
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2230
+   },
+   {
+    "path": "/api/communities/check-ban?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&communityId=74qbXH76V0VvtQiTuenZ",
+    "ms": 789
+   },
+   {
+    "path": "/api/communities/fetch?type=requests&id=74qbXH76V0VvtQiTuenZ",
+    "ms": 1216
+   },
+   {
+    "path": "/api/communities/posts?communityId=74qbXH76V0VvtQiTuenZ",
+    "ms": 1603
+   },
+   {
+    "path": "/api/communities/communitylikes?communityId=74qbXH76V0VvtQiTuenZ&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 2110
+   },
+   {
+    "path": "/api/communities/fetch?type=members&id=74qbXH76V0VvtQiTuenZ",
+    "ms": 2701
+   },
+   {
+    "path": "/api/communities/fetch?type=posts&id=74qbXH76V0VvtQiTuenZ",
+    "ms": 3955
+   }
+  ],
+  "firestoreRequests": 28
+ },
+ {
+  "name": "w05-blogs",
+  "route": "/blogs",
+  "kind": "web-desktop",
+  "startedAt": 1791860154804,
+  "endedAt": 1791860165188,
+  "finalUrl": "http://localhost:3000/blogs",
+  "nav": {
+   "ttfb": 139,
+   "dcl": 175,
+   "load": 404
+  },
+  "timeToDataMs": 7670,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 193
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 816
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 859
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1417
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 724
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1068
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1171
+   },
+   {
+    "path": "/api/blogs&articles?sort=newest&limit=6&page=1",
+    "ms": 3555
+   },
+   {
+    "path": "/api/blogs&articles/yiWcRSxjrI3EsM3f0LHu/interactions",
+    "ms": 1497
+   },
+   {
+    "path": "/api/blogs&articles/SHvPts9j0utRcvFFQGZT/interactions",
+    "ms": 1609
+   },
+   {
+    "path": "/api/blogs&articles/rUNrIMxlGHh9ULvAbrSA/interactions",
+    "ms": 1838
+   },
+   {
+    "path": "/api/blogs&articles/KGOY4m6GKY3mnSLTTTVj/interactions",
+    "ms": 2252
+   },
+   {
+    "path": "/api/blogs&articles/djlDAk9RFTVH8eNlcdh2/interactions",
+    "ms": 2917
+   },
+   {
+    "path": "/api/blogs&articles/KHHnH5rMOLpzi8ByOBSt/interactions",
+    "ms": 3352
+   }
+  ],
+  "firestoreRequests": 32
+ },
+ {
+  "name": "w06-events",
+  "route": "/events",
+  "kind": "web-desktop",
+  "startedAt": 1791860165565,
+  "endedAt": 1791860171882,
+  "finalUrl": "http://localhost:3000/events",
+  "nav": {
+   "ttfb": 157,
+   "dcl": 192,
+   "load": 432
+  },
+  "timeToDataMs": 3073,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 174
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 656
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 698
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1235
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 610
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1061
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1159
+   }
+  ],
+  "firestoreRequests": 19
+ },
+ {
+  "name": "w07-jobs",
+  "route": "/jobs",
+  "kind": "web-desktop",
+  "startedAt": 1791860172194,
+  "endedAt": 1791860179008,
+  "finalUrl": "http://localhost:3000/jobs",
+  "nav": {
+   "ttfb": 145,
+   "dcl": 181,
+   "load": 404
+  },
+  "timeToDataMs": 3414,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 181
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 685
+   },
+   {
+    "path": "/api/jobs?limit=12&sortBy=createdAt&sortOrder=desc",
+    "ms": 1199
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 887
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1266
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 665
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1071
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 996
+   }
+  ],
+  "firestoreRequests": 19
+ },
+ {
+  "name": "w08-market",
+  "route": "/market",
+  "kind": "web-desktop",
+  "startedAt": 1791860179288,
+  "endedAt": 1791860186099,
+  "finalUrl": "http://localhost:3000/market",
+  "nav": {
+   "ttfb": 138,
+   "dcl": 173,
+   "load": 394
+  },
+  "timeToDataMs": 3089,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 195
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 765
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 868
+   },
+   {
+    "path": "/api/market/fetch",
+    "ms": 814
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1360
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 734
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1093
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1092
+   }
+  ],
+  "firestoreRequests": 30
+ },
+ {
+  "name": "w09-ehub",
+  "route": "/ehub",
+  "kind": "web-desktop",
+  "startedAt": 1791860186414,
+  "endedAt": 1791860192695,
+  "finalUrl": "http://localhost:3000/ehub",
+  "nav": {
+   "ttfb": 138,
+   "dcl": 174,
+   "load": 379
+  },
+  "timeToDataMs": 2930,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 191
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 640
+   },
+   {
+    "path": "/api/ehub/catalog",
+    "ms": 540
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 729
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1243
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 659
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1108
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1065
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w10-elearning",
+  "route": "/eLearning",
+  "kind": "web-desktop",
+  "startedAt": 1791860193123,
+  "endedAt": 1791860199399,
+  "finalUrl": "http://localhost:3000/eLearning",
+  "nav": {
+   "ttfb": 132,
+   "dcl": 171,
+   "load": 389
+  },
+  "timeToDataMs": 3021,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 185
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 744
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 771
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1283
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 745
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1314
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1119
+   }
+  ],
+  "firestoreRequests": 19
+ },
+ {
+  "name": "w11-courses",
+  "route": "/eLearning/courses",
+  "kind": "web-desktop",
+  "startedAt": 1791860199659,
+  "endedAt": 1791860211483,
+  "finalUrl": "http://localhost:3000/eLearning/courses",
+  "nav": {
+   "ttfb": 132,
+   "dcl": 157,
+   "load": 397
+  },
+  "timeToDataMs": 3218,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 176
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 636
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 695
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1339
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 633
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1082
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1213
+   }
+  ],
+  "firestoreRequests": 59
+ },
+ {
+  "name": "w12-projects",
+  "route": "/projectManagement",
+  "kind": "web-desktop",
+  "startedAt": 1791860211755,
+  "endedAt": 1791860218011,
+  "finalUrl": "http://localhost:3000/projectManagement",
+  "nav": {
+   "ttfb": 143,
+   "dcl": 176,
+   "load": 409
+  },
+  "timeToDataMs": 3005,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 193
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 802
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 995
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1298
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 689
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1002
+   },
+   {
+    "path": "/api/projects/invite",
+    "ms": 1937
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1064
+   }
+  ],
+  "firestoreRequests": 20
+ },
+ {
+  "name": "w13-profile",
+  "route": "/profile",
+  "kind": "web-desktop",
+  "startedAt": 1791860218277,
+  "endedAt": 1791860227577,
+  "finalUrl": "http://localhost:3000/profile",
+  "nav": {
+   "ttfb": 129,
+   "dcl": 165,
+   "load": 440
+  },
+  "timeToDataMs": 6654,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 220
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 736
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 850
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1464
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 691
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 535
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1004
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1436
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2361
+   },
+   {
+    "path": "/api/home/MiddleSection/Reel?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 1733
+   },
+   {
+    "path": "/api/home/MiddleSection/Post?authorId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&pageSize=20",
+    "ms": 1958
+   },
+   {
+    "path": "/api/profile/header?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 2094
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 676
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 2017
+   }
+  ],
+  "firestoreRequests": 21
+ },
+ {
+  "name": "w14-friends",
+  "route": "/profile/friends",
+  "kind": "web-desktop",
+  "startedAt": 1791860227929,
+  "endedAt": 1791860235228,
+  "finalUrl": "http://localhost:3000/profile/friends",
+  "nav": {
+   "ttfb": 137,
+   "dcl": 172,
+   "load": 393
+  },
+  "timeToDataMs": 4545,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 204
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 817
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1320
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 673
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1391
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 1865
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 910
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1191
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2416
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2551
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w15-settings",
+  "route": "/profile/settings",
+  "kind": "web-desktop",
+  "startedAt": 1791860235467,
+  "endedAt": 1791860244287,
+  "finalUrl": "http://localhost:3000/profile/settings",
+  "nav": {
+   "ttfb": 136,
+   "dcl": 165,
+   "load": 399
+  },
+  "timeToDataMs": 6107,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 247
+   },
+   {
+    "path": "/api/profile/settings?type=account&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 763
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 889
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1258
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 669
+   },
+   {
+    "path": "/api/profile/settings?type=notifications&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 829
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 563
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 2092
+   },
+   {
+    "path": "/api/profile/settings/privacy-security?type=privacy&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 664
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1947
+   },
+   {
+    "path": "/api/profile/settings/privacy-security?type=security&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 797
+   },
+   {
+    "path": "/api/profile/settings/privacy-security?type=connected-accounts&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 672
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2448
+   },
+   {
+    "path": "/api/profile/settings/privacy-security?type=login-activity&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 641
+   },
+   {
+    "path": "/api/profile/blocklist",
+    "ms": 512
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 3386
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w16-notifications",
+  "route": "/notifications",
+  "kind": "web-desktop",
+  "startedAt": 1791860244630,
+  "endedAt": 1791860250922,
+  "finalUrl": "http://localhost:3000/notifications",
+  "nav": {
+   "ttfb": 145,
+   "dcl": 187,
+   "load": 446
+  },
+  "timeToDataMs": 3251,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 199
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 668
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1323
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 667
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1055
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1009
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 2543
+   }
+  ],
+  "firestoreRequests": 19
+ },
+ {
+  "name": "w17-games",
+  "route": "/games",
+  "kind": "web-desktop",
+  "startedAt": 1791860251233,
+  "endedAt": 1791860257972,
+  "finalUrl": "http://localhost:3000/games",
+  "nav": {
+   "ttfb": 125,
+   "dcl": 160,
+   "load": 421
+  },
+  "timeToDataMs": 4004,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 183
+   },
+   {
+    "path": "/api/home/LeftSection/games",
+    "ms": 566
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 814
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 871
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1282
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 644
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1028
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2576
+   }
+  ],
+  "firestoreRequests": 19
+ },
+ {
+  "name": "w18-help",
+  "route": "/help",
+  "kind": "web-desktop",
+  "startedAt": 1791860258325,
+  "endedAt": 1791860264622,
+  "finalUrl": "http://localhost:3000/help",
+  "nav": {
+   "ttfb": 156,
+   "dcl": 192,
+   "load": 468
+  },
+  "timeToDataMs": 3188,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 239
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 691
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 783
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1380
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 777
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1204
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1094
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w19-tickets",
+  "route": "/help/tickets",
+  "kind": "web-desktop",
+  "startedAt": 1791860264923,
+  "endedAt": 1791860271724,
+  "finalUrl": "http://localhost:3000/help/tickets",
+  "nav": {
+   "ttfb": 146,
+   "dcl": 195,
+   "load": 398
+  },
+  "timeToDataMs": 4180,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 226
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 794
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 850
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1241
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 610
+   },
+   {
+    "path": "/api/support/tickets",
+    "ms": 1909
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1127
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2321
+   }
+  ],
+  "firestoreRequests": 19
+ },
+ {
+  "name": "w20-policies",
+  "route": "/policies",
+  "kind": "web-desktop",
+  "startedAt": 1791860271991,
+  "endedAt": 1791860278489,
+  "finalUrl": "http://localhost:3000/policies",
+  "nav": {
+   "ttfb": 158,
+   "dcl": 401,
+   "load": 668
+  },
+  "timeToDataMs": 3411,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 268
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 766
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 818
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1331
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 792
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1096
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1136
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w21-other-profile",
+  "route": "/profile/viewOtherProfile/rishi06",
+  "kind": "web-desktop",
+  "startedAt": 1791860278821,
+  "endedAt": 1791860288140,
+  "finalUrl": "http://localhost:3000/profile/viewOtherProfile/rishi06",
+  "nav": {
+   "ttfb": 150,
+   "dcl": 657,
+   "load": 658
+  },
+  "timeToDataMs": 6448,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 173
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 681
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1509
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 688
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1140
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 2616
+   },
+   {
+    "path": "/api/profile/viewOtherProfile?username=rishi06",
+    "ms": 2430
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2720
+   },
+   {
+    "path": "/api/relationships/status?userId1=5w95Iy6msWfb4b5aFaQcxtRgmrb2&userId2=reopBDNY34cqUf9wjIUovC3Eh3V2&type=all",
+    "ms": 1038
+   },
+   {
+    "path": "/api/profile/presence?userId=reopBDNY34cqUf9wjIUovC3Eh3V2",
+    "ms": 1539
+   }
+  ],
+  "firestoreRequests": 20
+ },
+ {
+  "name": "w22-calendar",
+  "route": "/calendar",
+  "kind": "web-desktop",
+  "startedAt": 1791860288429,
+  "endedAt": 1791860294717,
+  "finalUrl": "http://localhost:3000/calendar",
+  "nav": {
+   "ttfb": 141,
+   "dcl": 170,
+   "load": 404
+  },
+  "timeToDataMs": 2924,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 190
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 741
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1343
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 673
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 1679
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1117
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 933
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w30-admin-users",
+  "route": "/profile/admin/user-management",
+  "kind": "web-desktop",
+  "startedAt": 1791860294990,
+  "endedAt": 1791860302804,
+  "finalUrl": "http://localhost:3000/profile/admin/user-management",
+  "nav": {
+   "ttfb": 141,
+   "dcl": 184,
+   "load": 503
+  },
+  "timeToDataMs": 4001,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 862
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 911
+   },
+   {
+    "path": "/api/admin/users?limit=50",
+    "ms": 1054
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 615
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1505
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 601
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2239
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1476
+   }
+  ],
+  "firestoreRequests": 26
+ },
+ {
+  "name": "w31-admin-moderation",
+  "route": "/profile/admin/moderation",
+  "kind": "web-desktop",
+  "startedAt": 1791860303099,
+  "endedAt": 1791860311436,
+  "finalUrl": "http://localhost:3000/profile/admin/moderation",
+  "nav": {
+   "ttfb": 140,
+   "dcl": 172,
+   "load": 493
+  },
+  "timeToDataMs": 5562,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 639
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1167
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 764
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 557
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1006
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 2495
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 2955
+   }
+  ],
+  "firestoreRequests": 19
+ },
+ {
+  "name": "w32-admin-activity",
+  "route": "/profile/admin/activity-logs",
+  "kind": "web-desktop",
+  "startedAt": 1791860311703,
+  "endedAt": 1791860318975,
+  "finalUrl": "http://localhost:3000/profile/admin/activity-logs",
+  "nav": {
+   "ttfb": 134,
+   "dcl": 169,
+   "load": 437
+  },
+  "timeToDataMs": 4674,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 770
+   },
+   {
+    "path": "/api/admin/activity-logs?limit=200",
+    "ms": 1145
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 607
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1540
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 658
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 1887
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1117
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 3017
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w33-admin-analytics",
+  "route": "/profile/admin/analytics",
+  "kind": "web-desktop",
+  "startedAt": 1791860319220,
+  "endedAt": 1791860327540,
+  "finalUrl": "http://localhost:3000/profile/admin/analytics",
+  "nav": {
+   "ttfb": 136,
+   "dcl": 186,
+   "load": 482
+  },
+  "timeToDataMs": 5386,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 664
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 701
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1346
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 645
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 538
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 942
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1355
+   }
+  ],
+  "firestoreRequests": 88
+ },
+ {
+  "name": "w34-admin-page-access",
+  "route": "/profile/admin/page-access",
+  "kind": "web-desktop",
+  "startedAt": 1791860327840,
+  "endedAt": 1791860334659,
+  "finalUrl": "http://localhost:3000/profile/admin/page-access",
+  "nav": {
+   "ttfb": 156,
+   "dcl": 202,
+   "load": 560
+  },
+  "timeToDataMs": 4113,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 653
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 708
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1243
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 795
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 568
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1158
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1210
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w35-admin-testers",
+  "route": "/profile/admin/testers",
+  "kind": "web-desktop",
+  "startedAt": 1791860334989,
+  "endedAt": 1791860342292,
+  "finalUrl": "http://localhost:3000/profile/admin/testers",
+  "nav": {
+   "ttfb": 135,
+   "dcl": 173,
+   "load": 552
+  },
+  "timeToDataMs": 4272,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 766
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 943
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1301
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 657
+   },
+   {
+    "path": "/api/beta/admin/overview",
+    "ms": 1668
+   },
+   {
+    "path": "/api/beta/registration-mode",
+    "ms": 1668
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 563
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1211
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2433
+   }
+  ],
+  "firestoreRequests": 19
+ },
+ {
+  "name": "w36-admin-communities",
+  "route": "/profile/admin/communities",
+  "kind": "web-desktop",
+  "startedAt": 1791860342649,
+  "endedAt": 1791860349584,
+  "finalUrl": "http://localhost:3000/profile/admin/communities",
+  "nav": {
+   "ttfb": 283,
+   "dcl": 317,
+   "load": 627
+  },
+  "timeToDataMs": 4119,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 797
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 901
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1434
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 683
+   },
+   {
+    "path": "/api/admin/communities?limit=25",
+    "ms": 710
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 726
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1249
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1301
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w37-admin-products",
+  "route": "/profile/admin/products",
+  "kind": "web-desktop",
+  "startedAt": 1791860349865,
+  "endedAt": 1791860356625,
+  "finalUrl": "http://localhost:3000/profile/admin/products",
+  "nav": {
+   "ttfb": 129,
+   "dcl": 166,
+   "load": 443
+  },
+  "timeToDataMs": 3812,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 701
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 766
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1306
+   },
+   {
+    "path": "/api/admin/products?limit=25",
+    "ms": 401
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 611
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 588
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1217
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1287
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w38-admin-security",
+  "route": "/profile/admin/security",
+  "kind": "web-desktop",
+  "startedAt": 1791860356915,
+  "endedAt": 1791860363203,
+  "finalUrl": "http://localhost:3000/profile/admin/security",
+  "nav": {
+   "ttfb": 143,
+   "dcl": 186,
+   "load": 415
+  },
+  "timeToDataMs": 3566,
+  "api": [
+   {
+    "path": "/api/admin/security/access-controls",
+    "ms": 583
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 773
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 793
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 648
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1542
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 610
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2034
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1222
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w39-admin-jobs",
+  "route": "/profile/admin/jobs",
+  "kind": "web-desktop",
+  "startedAt": 1791860363455,
+  "endedAt": 1791860370247,
+  "finalUrl": "http://localhost:3000/profile/admin/jobs",
+  "nav": {
+   "ttfb": 158,
+   "dcl": 191,
+   "load": 428
+  },
+  "timeToDataMs": 3758,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 716
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 847
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1445
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 541
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 886
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1113
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1307
+   }
+  ],
+  "firestoreRequests": 18
+ },
+ {
+  "name": "w01-home",
+  "route": "/",
+  "kind": "web-mobile",
+  "startedAt": 1791860375451,
+  "endedAt": 1791860382747,
+  "finalUrl": "http://localhost:3000/",
+  "nav": {
+   "ttfb": 123,
+   "dcl": 145,
+   "load": 395
+  },
+  "timeToDataMs": 4448,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 180
+   },
+   {
+    "path": "/api/home/promotions?limit=6",
+    "ms": 29
+   },
+   {
+    "path": "/api/home/LeftSection/games",
+    "ms": 611
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 1239
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1258
+   },
+   {
+    "path": "/api/posts/drafts",
+    "ms": 1641
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 2002
+   },
+   {
+    "path": "/api/posts/drafts?kind=post",
+    "ms": 1901
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 2028
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 1556
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=discover&limit=4",
+    "ms": 2913
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2007
+   },
+   {
+    "path": "/api/home/LeftSection/games",
+    "ms": 3259
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1873
+   },
+   {
+    "path": "/api/home/MiddleSection/Post?pageSize=10&filter=all&scope=home",
+    "ms": 2050
+   }
+  ],
+  "firestoreRequests": 52
+ },
+ {
+  "name": "w02-limes",
+  "route": "/limes",
+  "kind": "web-mobile",
+  "startedAt": 1791860383411,
+  "endedAt": 1791860390743,
+  "finalUrl": "http://localhost:3000/limes",
+  "nav": {
+   "ttfb": 151,
+   "dcl": 182,
+   "load": 468
+  },
+  "timeToDataMs": 4507,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 192
+   },
+   {
+    "path": "/api/limes?category=all&viewerId=&limit=10",
+    "ms": 713
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 884
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1467
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 761
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1160
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 2262
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2208
+   }
+  ],
+  "firestoreRequests": 42
+ },
+ {
+  "name": "w03-communities",
+  "route": "/communities",
+  "kind": "web-mobile",
+  "startedAt": 1791860391200,
+  "endedAt": 1791860398547,
+  "finalUrl": "http://localhost:3000/communities",
+  "nav": {
+   "ttfb": 150,
+   "dcl": 187,
+   "load": 513
+  },
+  "timeToDataMs": 3562,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 209
+   },
+   {
+    "path": "/api/admin/community-categories",
+    "ms": 261
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 837
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 859
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1347
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 676
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1261
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1288
+   }
+  ],
+  "firestoreRequests": 106
+ },
+ {
+  "name": "w04-community-detail",
+  "route": "/communities/74qbXH76V0VvtQiTuenZ",
+  "kind": "web-mobile",
+  "startedAt": 1791860399146,
+  "endedAt": 1791860410364,
+  "finalUrl": "http://localhost:3000/communities/74qbXH76V0VvtQiTuenZ",
+  "nav": {
+   "ttfb": 163,
+   "dcl": 543,
+   "load": 543
+  },
+  "timeToDataMs": 8420,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 178
+   },
+   {
+    "path": "/api/admin/community-categories",
+    "ms": 343
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 760
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 829
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 584
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1349
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1138
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2454
+   },
+   {
+    "path": "/api/communities/fetch?type=community&id=74qbXH76V0VvtQiTuenZ",
+    "ms": 2457
+   },
+   {
+    "path": "/api/communities/communitylikes?communityId=74qbXH76V0VvtQiTuenZ&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 574
+   },
+   {
+    "path": "/api/communities/posts?communityId=74qbXH76V0VvtQiTuenZ",
+    "ms": 981
+   },
+   {
+    "path": "/api/communities/fetch?type=members&id=74qbXH76V0VvtQiTuenZ",
+    "ms": 2267
+   },
+   {
+    "path": "/api/communities/fetch?type=requests&id=74qbXH76V0VvtQiTuenZ",
+    "ms": 2543
+   },
+   {
+    "path": "/api/communities/fetch?type=posts&id=74qbXH76V0VvtQiTuenZ",
+    "ms": 3296
+   },
+   {
+    "path": "/api/communities/check-ban?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&communityId=74qbXH76V0VvtQiTuenZ",
+    "ms": 3669
+   }
+  ],
+  "firestoreRequests": 62
+ },
+ {
+  "name": "w05-blogs",
+  "route": "/blogs",
+  "kind": "web-mobile",
+  "startedAt": 1791860410783,
+  "endedAt": 1791860421645,
+  "finalUrl": "http://localhost:3000/blogs",
+  "nav": {
+   "ttfb": 137,
+   "dcl": 180,
+   "load": 454
+  },
+  "timeToDataMs": 7977,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 197
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 712
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 829
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1247
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 1137
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1220
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2753
+   },
+   {
+    "path": "/api/blogs&articles?sort=newest&limit=6&page=1",
+    "ms": 3507
+   },
+   {
+    "path": "/api/blogs&articles/rUNrIMxlGHh9ULvAbrSA/interactions",
+    "ms": 683
+   },
+   {
+    "path": "/api/blogs&articles/yiWcRSxjrI3EsM3f0LHu/interactions",
+    "ms": 1496
+   },
+   {
+    "path": "/api/blogs&articles/KHHnH5rMOLpzi8ByOBSt/interactions",
+    "ms": 1795
+   },
+   {
+    "path": "/api/blogs&articles/djlDAk9RFTVH8eNlcdh2/interactions",
+    "ms": 2311
+   },
+   {
+    "path": "/api/blogs&articles/SHvPts9j0utRcvFFQGZT/interactions",
+    "ms": 3646
+   },
+   {
+    "path": "/api/blogs&articles/KGOY4m6GKY3mnSLTTTVj/interactions",
+    "ms": 3652
+   }
+  ],
+  "firestoreRequests": 42
+ },
+ {
+  "name": "w06-events",
+  "route": "/events",
+  "kind": "web-mobile",
+  "startedAt": 1791860422209,
+  "endedAt": 1791860430534,
+  "finalUrl": "http://localhost:3000/events",
+  "nav": {
+   "ttfb": 133,
+   "dcl": 182,
+   "load": 425
+  },
+  "timeToDataMs": 3448,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 169
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 725
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 1554
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1563
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 632
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1054
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1106
+   }
+  ],
+  "firestoreRequests": 80
+ },
+ {
+  "name": "w07-jobs",
+  "route": "/jobs",
+  "kind": "web-mobile",
+  "startedAt": 1791860430978,
+  "endedAt": 1791860437283,
+  "finalUrl": "http://localhost:3000/jobs",
+  "nav": {
+   "ttfb": 192,
+   "dcl": 227,
+   "load": 476
+  },
+  "timeToDataMs": 3443,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 195
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 813
+   },
+   {
+    "path": "/api/jobs?limit=12&sortBy=createdAt&sortOrder=desc",
+    "ms": 1303
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1434
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 809
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 1940
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1300
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1062
+   }
+  ],
+  "firestoreRequests": 46
+ },
+ {
+  "name": "w08-market",
+  "route": "/market",
+  "kind": "web-mobile",
+  "startedAt": 1791860437648,
+  "endedAt": 1791860444410,
+  "finalUrl": "http://localhost:3000/market",
+  "nav": {
+   "ttfb": 128,
+   "dcl": 159,
+   "load": 412
+  },
+  "timeToDataMs": 3924,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 248
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 704
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 750
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1263
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 624
+   },
+   {
+    "path": "/api/market/fetch",
+    "ms": 1984
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1012
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1857
+   }
+  ],
+  "firestoreRequests": 49
+ },
+ {
+  "name": "w09-ehub",
+  "route": "/ehub",
+  "kind": "web-mobile",
+  "startedAt": 1791860444762,
+  "endedAt": 1791860451550,
+  "finalUrl": "http://localhost:3000/ehub",
+  "nav": {
+   "ttfb": 127,
+   "dcl": 159,
+   "load": 357
+  },
+  "timeToDataMs": 3926,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 177
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 768
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 915
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1399
+   },
+   {
+    "path": "/api/ehub/catalog",
+    "ms": 1626
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 924
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1051
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2351
+   }
+  ],
+  "firestoreRequests": 44
+ },
+ {
+  "name": "w10-elearning",
+  "route": "/eLearning",
+  "kind": "web-mobile",
+  "startedAt": 1791860451984,
+  "endedAt": 1791860458327,
+  "finalUrl": "http://localhost:3000/eLearning",
+  "nav": {
+   "ttfb": 195,
+   "dcl": 227,
+   "load": 469
+  },
+  "timeToDataMs": 3277,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 190
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 772
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 802
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1315
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 698
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1177
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1139
+   }
+  ],
+  "firestoreRequests": 43
+ },
+ {
+  "name": "w11-courses",
+  "route": "/eLearning/courses",
+  "kind": "web-mobile",
+  "startedAt": 1791860458748,
+  "endedAt": 1791860468107,
+  "finalUrl": "http://localhost:3000/eLearning/courses",
+  "nav": {
+   "ttfb": 152,
+   "dcl": 191,
+   "load": 414
+  },
+  "timeToDataMs": 3408,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 176
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 814
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 864
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1387
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 668
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1198
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1151
+   }
+  ],
+  "firestoreRequests": 95
+ },
+ {
+  "name": "w12-projects",
+  "route": "/projectManagement",
+  "kind": "web-mobile",
+  "startedAt": 1791860468450,
+  "endedAt": 1791860474738,
+  "finalUrl": "http://localhost:3000/projectManagement",
+  "nav": {
+   "ttfb": 140,
+   "dcl": 175,
+   "load": 397
+  },
+  "timeToDataMs": 3665,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 241
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 824
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 898
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 751
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1677
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1337
+   },
+   {
+    "path": "/api/projects/invite",
+    "ms": 2289
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1295
+   }
+  ],
+  "firestoreRequests": 43
+ },
+ {
+  "name": "w13-profile",
+  "route": "/profile",
+  "kind": "web-mobile",
+  "startedAt": 1791860475127,
+  "endedAt": 1791860484945,
+  "finalUrl": "http://localhost:3000/profile",
+  "nav": {
+   "ttfb": 130,
+   "dcl": 167,
+   "load": 436
+  },
+  "timeToDataMs": 7094,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 220
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 729
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 827
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 658
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1401
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1392
+   },
+   {
+    "path": "/api/profile/header?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 969
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 2332
+   },
+   {
+    "path": "/api/home/MiddleSection/Reel?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 2441
+   },
+   {
+    "path": "/api/home/MiddleSection/Post?authorId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&pageSize=20",
+    "ms": 2441
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 1584
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 2724
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 4046
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 3021
+   }
+  ],
+  "firestoreRequests": 52
+ },
+ {
+  "name": "w14-friends",
+  "route": "/profile/friends",
+  "kind": "web-mobile",
+  "startedAt": 1791860485449,
+  "endedAt": 1791860493781,
+  "finalUrl": "http://localhost:3000/profile/friends",
+  "nav": {
+   "ttfb": 145,
+   "dcl": 189,
+   "load": 437
+  },
+  "timeToDataMs": 5450,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 205
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 816
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1283
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1353
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 659
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 2103
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2633
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 2480
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2278
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1215
+   }
+  ],
+  "firestoreRequests": 43
+ },
+ {
+  "name": "w15-settings",
+  "route": "/profile/settings",
+  "kind": "web-mobile",
+  "startedAt": 1791860494106,
+  "endedAt": 1791860505481,
+  "finalUrl": "http://localhost:3000/profile/settings",
+  "nav": {
+   "ttfb": 153,
+   "dcl": 185,
+   "load": 417
+  },
+  "timeToDataMs": 8523,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 252
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 763
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1428
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 586
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1141
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 2410
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1840
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 2210
+   },
+   {
+    "path": "/api/profile/settings?type=account&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 3761
+   },
+   {
+    "path": "/api/profile/settings?type=notifications&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 655
+   },
+   {
+    "path": "/api/profile/settings/privacy-security?type=privacy&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 688
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 2116
+   },
+   {
+    "path": "/api/profile/settings/privacy-security?type=security&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 719
+   },
+   {
+    "path": "/api/profile/settings/privacy-security?type=connected-accounts&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 778
+   },
+   {
+    "path": "/api/profile/settings/privacy-security?type=login-activity&userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2",
+    "ms": 660
+   },
+   {
+    "path": "/api/profile/blocklist",
+    "ms": 498
+   }
+  ],
+  "firestoreRequests": 58
+ },
+ {
+  "name": "w16-notifications",
+  "route": "/notifications",
+  "kind": "web-mobile",
+  "startedAt": 1791860505876,
+  "endedAt": 1791860512134,
+  "finalUrl": "http://localhost:3000/notifications",
+  "nav": {
+   "ttfb": 153,
+   "dcl": 185,
+   "load": 440
+  },
+  "timeToDataMs": 3206,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 172
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 833
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 893
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1435
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 645
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1117
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 980
+   }
+  ],
+  "firestoreRequests": 51
+ },
+ {
+  "name": "w17-games",
+  "route": "/games",
+  "kind": "web-mobile",
+  "startedAt": 1791860512612,
+  "endedAt": 1791860519488,
+  "finalUrl": "http://localhost:3000/games",
+  "nav": {
+   "ttfb": 229,
+   "dcl": 260,
+   "load": 475
+  },
+  "timeToDataMs": 4277,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 175
+   },
+   {
+    "path": "/api/home/LeftSection/games",
+    "ms": 552
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 793
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 615
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1242
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1057
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 2048
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2246
+   }
+  ],
+  "firestoreRequests": 44
+ },
+ {
+  "name": "w18-help",
+  "route": "/help",
+  "kind": "web-mobile",
+  "startedAt": 1791860520077,
+  "endedAt": 1791860525857,
+  "finalUrl": "http://localhost:3000/help",
+  "nav": {
+   "ttfb": 155,
+   "dcl": 211,
+   "load": 400
+  },
+  "timeToDataMs": 3181,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 189
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 799
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 851
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 614
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1351
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1222
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1144
+   }
+  ],
+  "firestoreRequests": 44
+ },
+ {
+  "name": "w19-tickets",
+  "route": "/help/tickets",
+  "kind": "web-mobile",
+  "startedAt": 1791860526277,
+  "endedAt": 1791860533096,
+  "finalUrl": "http://localhost:3000/help/tickets",
+  "nav": {
+   "ttfb": 136,
+   "dcl": 187,
+   "load": 375
+  },
+  "timeToDataMs": 4219,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 167
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 788
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1323
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 710
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 1812
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1037
+   },
+   {
+    "path": "/api/support/tickets",
+    "ms": 1944
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2184
+   }
+  ],
+  "firestoreRequests": 44
+ },
+ {
+  "name": "w20-policies",
+  "route": "/policies",
+  "kind": "web-mobile",
+  "startedAt": 1791860533471,
+  "endedAt": 1791860539950,
+  "finalUrl": "http://localhost:3000/policies",
+  "nav": {
+   "ttfb": 158,
+   "dcl": 385,
+   "load": 638
+  },
+  "timeToDataMs": 3548,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 226
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 800
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1430
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 729
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 1828
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1043
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1047
+   }
+  ],
+  "firestoreRequests": 44
+ },
+ {
+  "name": "w21-other-profile",
+  "route": "/profile/viewOtherProfile/rishi06",
+  "kind": "web-mobile",
+  "startedAt": 1791860540272,
+  "endedAt": 1791860549564,
+  "finalUrl": "http://localhost:3000/profile/viewOtherProfile/rishi06",
+  "nav": {
+   "ttfb": 138,
+   "dcl": 626,
+   "load": 642
+  },
+  "timeToDataMs": 6686,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 187
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 732
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 738
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 620
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1331
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1107
+   },
+   {
+    "path": "/api/profile/viewOtherProfile?username=rishi06",
+    "ms": 2389
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2685
+   },
+   {
+    "path": "/api/profile/presence?userId=reopBDNY34cqUf9wjIUovC3Eh3V2",
+    "ms": 501
+   },
+   {
+    "path": "/api/relationships/status?userId1=5w95Iy6msWfb4b5aFaQcxtRgmrb2&userId2=reopBDNY34cqUf9wjIUovC3Eh3V2&type=all",
+    "ms": 2066
+   }
+  ],
+  "firestoreRequests": 53
+ },
+ {
+  "name": "w22-calendar",
+  "route": "/calendar",
+  "kind": "web-mobile",
+  "startedAt": 1791860549966,
+  "endedAt": 1791860556356,
+  "finalUrl": "http://localhost:3000/calendar",
+  "nav": {
+   "ttfb": 223,
+   "dcl": 266,
+   "load": 481
+  },
+  "timeToDataMs": 3718,
+  "api": [
+   {
+    "path": "/api/security/check-access?clientIp=190.213.217.143&clientCountry=TT",
+    "ms": 191
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 698
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 836
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1349
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 732
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1046
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 2234
+   }
+  ],
+  "firestoreRequests": 72
+ },
+ {
+  "name": "w30-admin-users",
+  "route": "/profile/admin/user-management",
+  "kind": "web-mobile",
+  "startedAt": 1791860556754,
+  "endedAt": 1791860563540,
+  "finalUrl": "http://localhost:3000/profile/admin/user-management",
+  "nav": {
+   "ttfb": 129,
+   "dcl": 170,
+   "load": 512
+  },
+  "timeToDataMs": 3717,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 739
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 787
+   },
+   {
+    "path": "/api/admin/users?limit=50",
+    "ms": 884
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1316
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 719
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 558
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1014
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1184
+   }
+  ],
+  "firestoreRequests": 118
+ },
+ {
+  "name": "w31-admin-moderation",
+  "route": "/profile/admin/moderation",
+  "kind": "web-mobile",
+  "startedAt": 1791860563923,
+  "endedAt": 1791860571196,
+  "finalUrl": "http://localhost:3000/profile/admin/moderation",
+  "nav": {
+   "ttfb": 124,
+   "dcl": 158,
+   "load": 437
+  },
+  "timeToDataMs": 4626,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 749
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 854
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 623
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1471
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1116
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 1558
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1241
+   }
+  ],
+  "firestoreRequests": 39
+ },
+ {
+  "name": "w32-admin-activity",
+  "route": "/profile/admin/activity-logs",
+  "kind": "web-mobile",
+  "startedAt": 1791860571535,
+  "endedAt": 1791860578843,
+  "finalUrl": "http://localhost:3000/profile/admin/activity-logs",
+  "nav": {
+   "ttfb": 131,
+   "dcl": 162,
+   "load": 427
+  },
+  "timeToDataMs": 4651,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 818
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 879
+   },
+   {
+    "path": "/api/admin/activity-logs?limit=200",
+    "ms": 1064
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 653
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1443
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1244
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 1588
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1267
+   }
+  ],
+  "firestoreRequests": 39
+ },
+ {
+  "name": "w33-admin-analytics",
+  "route": "/profile/admin/analytics",
+  "kind": "web-mobile",
+  "startedAt": 1791860579240,
+  "endedAt": 1791860587550,
+  "finalUrl": "http://localhost:3000/profile/admin/analytics",
+  "nav": {
+   "ttfb": 140,
+   "dcl": 170,
+   "load": 447
+  },
+  "timeToDataMs": 5334,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 1216
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 1223
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1323
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 812
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1159
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 2105
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1203
+   }
+  ],
+  "firestoreRequests": 106
+ },
+ {
+  "name": "w34-admin-page-access",
+  "route": "/profile/admin/page-access",
+  "kind": "web-mobile",
+  "startedAt": 1791860587926,
+  "endedAt": 1791860595738,
+  "finalUrl": "http://localhost:3000/profile/admin/page-access",
+  "nav": {
+   "ttfb": 143,
+   "dcl": 179,
+   "load": 541
+  },
+  "timeToDataMs": 5111,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 1092
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 1149
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1279
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 652
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1089
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 1809
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1179
+   }
+  ],
+  "firestoreRequests": 34
+ },
+ {
+  "name": "w35-admin-testers",
+  "route": "/profile/admin/testers",
+  "kind": "web-mobile",
+  "startedAt": 1791860596139,
+  "endedAt": 1791860602904,
+  "finalUrl": "http://localhost:3000/profile/admin/testers",
+  "nav": {
+   "ttfb": 147,
+   "dcl": 184,
+   "load": 473
+  },
+  "timeToDataMs": 4204,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 836
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 1014
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1468
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 808
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 777
+   },
+   {
+    "path": "/api/beta/registration-mode",
+    "ms": 1908
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1324
+   },
+   {
+    "path": "/api/beta/admin/overview",
+    "ms": 2292
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1441
+   }
+  ],
+  "firestoreRequests": 39
+ },
+ {
+  "name": "w36-admin-communities",
+  "route": "/profile/admin/communities",
+  "kind": "web-mobile",
+  "startedAt": 1791860603223,
+  "endedAt": 1791860609476,
+  "finalUrl": "http://localhost:3000/profile/admin/communities",
+  "nav": {
+   "ttfb": 123,
+   "dcl": 152,
+   "load": 387
+  },
+  "timeToDataMs": 3630,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 756
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 792
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1347
+   },
+   {
+    "path": "/api/admin/communities?limit=25",
+    "ms": 719
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 851
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 678
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1938
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1279
+   }
+  ],
+  "firestoreRequests": 40
+ },
+ {
+  "name": "w37-admin-products",
+  "route": "/profile/admin/products",
+  "kind": "web-mobile",
+  "startedAt": 1791860609891,
+  "endedAt": 1791860616660,
+  "finalUrl": "http://localhost:3000/profile/admin/products",
+  "nav": {
+   "ttfb": 134,
+   "dcl": 176,
+   "load": 543
+  },
+  "timeToDataMs": 3902,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 827
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 890
+   },
+   {
+    "path": "/api/admin/products?limit=25",
+    "ms": 401
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 701
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1585
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 644
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1106
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1193
+   }
+  ],
+  "firestoreRequests": 40
+ },
+ {
+  "name": "w38-admin-security",
+  "route": "/profile/admin/security",
+  "kind": "web-mobile",
+  "startedAt": 1791860617068,
+  "endedAt": 1791860624340,
+  "finalUrl": "http://localhost:3000/profile/admin/security",
+  "nav": {
+   "ttfb": 125,
+   "dcl": 162,
+   "load": 421
+  },
+  "timeToDataMs": 4681,
+  "api": [
+   {
+    "path": "/api/admin/security/access-controls",
+    "ms": 467
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 835
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1418
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 667
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 1942
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1215
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 1555
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1194
+   }
+  ],
+  "firestoreRequests": 50
+ },
+ {
+  "name": "w39-admin-jobs",
+  "route": "/profile/admin/jobs",
+  "kind": "web-mobile",
+  "startedAt": 1791860624763,
+  "endedAt": 1791860632130,
+  "finalUrl": "http://localhost:3000/profile/admin/jobs",
+  "nav": {
+   "ttfb": 136,
+   "dcl": 178,
+   "load": 442
+  },
+  "timeToDataMs": 4653,
+  "api": [
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 838
+   },
+   {
+    "path": "/api/profile/presence",
+    "ms": 856
+   },
+   {
+    "path": "/api/auth/session",
+    "ms": 1320
+   },
+   {
+    "path": "/api/notifications?limit=20&sort=unread_first",
+    "ms": 900
+   },
+   {
+    "path": "/api/chat/friends?limit=20",
+    "ms": 1490
+   },
+   {
+    "path": "/api/relationships/followers?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&action=counts",
+    "ms": 1547
+   },
+   {
+    "path": "/api/relationships/status?userId=5w95Iy6msWfb4b5aFaQcxtRgmrb2&type=friends",
+    "ms": 1239
+   }
+  ],
+  "firestoreRequests": 48
+ }
+]

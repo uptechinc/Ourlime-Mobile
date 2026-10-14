@@ -274,6 +274,7 @@ type LinkInputBannerProps = {
  * LinkInputBanner — Live card banner shown above input box when user types a link.
  */
 export function LinkInputBanner({ url, onDismiss }: LinkInputBannerProps) {
+  const { colors } = useAppTheme();
   const [preview, setPreview] = useState<LinkPreviewData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const sharedContent = useMemo(() => sharedContentMessageService.parse(url), [url]);
@@ -299,7 +300,7 @@ export function LinkInputBanner({ url, onDismiss }: LinkInputBannerProps) {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#ffffff',
+        backgroundColor: colors.surface,
         borderTopWidth: 2,
         borderTopColor: '#10b981',
         paddingHorizontal: 12,
@@ -309,9 +310,9 @@ export function LinkInputBanner({ url, onDismiss }: LinkInputBannerProps) {
     >
       {/* Thumbnail */}
       {preview?.image ? (
-        <Image source={{ uri: preview.image }} style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: '#f1f5f9' }} />
+        <Image source={{ uri: preview.image }} style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: colors.control }} />
       ) : (
-        <View style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: '#dcfce7', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: colors.successSurface, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="link" size={20} color="#10b981" />
         </View>
       )}
@@ -323,14 +324,14 @@ export function LinkInputBanner({ url, onDismiss }: LinkInputBannerProps) {
         {isLoading ? (
           <ActivityIndicator size="small" color="#10b981" style={{ alignSelf: 'flex-start', marginTop: 2 }} />
         ) : (
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#1e293b' }} numberOfLines={1}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }} numberOfLines={1}>
             {preview?.title ?? sharedContent?.summary ?? url}
           </Text>
         )}
       </View>
 
-      <TouchableOpacity onPress={onDismiss} style={{ padding: 6 }}>
-        <Icon name="x" size={18} color="#94a3b8" />
+      <TouchableOpacity onPress={onDismiss} style={{ padding: 6 }} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss link preview">
+        <Icon name="x" size={18} color={colors.mutedText} />
       </TouchableOpacity>
     </View>
   );

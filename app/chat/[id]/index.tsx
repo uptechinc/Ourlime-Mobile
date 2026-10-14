@@ -1398,14 +1398,14 @@ export default function ChatPage() {
                     <View style={{ flex: 1 }} />
                 )}
 
-                <TouchableOpacity onPress={() => handleStartCall('audio')} disabled={isCallingBlocked} style={{ padding: 8, opacity: isCallingBlocked ? 0.35 : 1 }}>
+                <TouchableOpacity onPress={() => handleStartCall('audio')} disabled={isCallingBlocked} hitSlop={6} accessibilityRole="button" accessibilityLabel="Start voice call" style={{ padding: 8, opacity: isCallingBlocked ? 0.35 : 1 }}>
                     <Icon name="phone" size={20} color="#10b981" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleStartCall('video')} disabled={isCallingBlocked} style={{ padding: 8, opacity: isCallingBlocked ? 0.35 : 1 }}>
+                <TouchableOpacity onPress={() => handleStartCall('video')} disabled={isCallingBlocked} hitSlop={6} accessibilityRole="button" accessibilityLabel="Start video call" style={{ padding: 8, opacity: isCallingBlocked ? 0.35 : 1 }}>
                     <Icon name="video" size={20} color="#10b981" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowSettings(true)} style={{ padding: 8 }}>
-                    <Icon name="settings" size={20} color="#6b7280" />
+                <TouchableOpacity onPress={() => setShowSettings(true)} hitSlop={6} accessibilityRole="button" accessibilityLabel="Chat settings" style={{ padding: 8 }}>
+                    <Icon name="settings" size={20} color={colors.icon} />
                 </TouchableOpacity>
             </View>
 
@@ -1534,8 +1534,8 @@ export default function ChatPage() {
 
                 {/* ── Blocked Banner ────────────────────────────────────────── */}
                 {isBlocked ? (
-                    <View style={{ backgroundColor: '#fef2f2', paddingVertical: 14, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: '#fecaca', alignItems: 'center' }}>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#dc2626', textAlign: 'center' }}>
+                    <View style={{ backgroundColor: colors.destructiveSurface, paddingVertical: 14, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: colors.border, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.destructiveText, textAlign: 'center' }}>
                             You cannot send messages to @{friend?.userName ?? 'user'} due to block restrictions.
                         </Text>
                     </View>
@@ -1624,8 +1624,8 @@ export default function ChatPage() {
                                     <Text style={{ fontSize: 12, fontWeight: '700', color: '#10b981' }}>Editing message</Text>
                                     <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText }}>{editingMessage.message}</Text>
                                 </View>
-                                <TouchableOpacity accessibilityLabel="Cancel editing" onPress={() => { setEditingMessage(null); setMessageText(''); }} style={{ padding: 4 }}>
-                                    <Icon name="x" size={18} color="#94a3b8" />
+                                <TouchableOpacity accessibilityLabel="Cancel editing" accessibilityRole="button" hitSlop={10} onPress={() => { setEditingMessage(null); setMessageText(''); }} style={{ padding: 4 }}>
+                                    <Icon name="x" size={18} color={colors.mutedText} />
                                 </TouchableOpacity>
                             </View>
                         ) : null}
@@ -1635,7 +1635,7 @@ export default function ChatPage() {
                             <View style={{
                                 flexDirection: 'row',
                                 alignItems: 'center',
-                                backgroundColor: '#f0fdf4',
+                                backgroundColor: colors.successSurface,
                                 borderTopWidth: 2,
                                 borderTopColor: '#10b981',
                                 paddingHorizontal: 14,
@@ -1646,12 +1646,12 @@ export default function ChatPage() {
                                     <Text style={{ fontSize: 12, fontWeight: '700', color: '#10b981' }}>
                                         Replying to {replyTo.senderId === currentUserId ? 'yourself' : friend?.firstName}
                                     </Text>
-                                    <Text style={{ fontSize: 12, color: '#475569' }} numberOfLines={1}>
+                                    <Text style={{ fontSize: 12, color: colors.secondaryText }} numberOfLines={1}>
                                         {describeMessageForReply(replyTo)}
                                     </Text>
                                 </View>
-                                <TouchableOpacity onPress={() => setReplyTo(null)}>
-                                    <Icon name="x" size={18} color="#94a3b8" />
+                                <TouchableOpacity onPress={() => setReplyTo(null)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Cancel reply">
+                                    <Icon name="x" size={18} color={colors.mutedText} />
                                 </TouchableOpacity>
                             </View>
                         )}
@@ -1924,7 +1924,7 @@ export default function ChatPage() {
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
                             <Icon name="star" size={18} color="#f59e0b" />
                             <Text style={{ flex: 1, marginLeft: 8, color: colors.text, fontSize: 17, fontWeight: '900' }}>Starred messages</Text>
-                            <TouchableOpacity accessibilityLabel="Close starred messages" onPress={() => setShowStarred(false)} style={{ padding: 4 }}><Icon name="x" size={20} color={colors.mutedText} /></TouchableOpacity>
+                            <TouchableOpacity accessibilityLabel="Close starred messages" accessibilityRole="button" hitSlop={10} onPress={() => setShowStarred(false)} style={{ padding: 4 }}><Icon name="x" size={20} color={colors.mutedText} /></TouchableOpacity>
                         </View>
                         <FlatList
                             data={messages.filter((message) => starredMessageIds.has(getMsgId(message)))}

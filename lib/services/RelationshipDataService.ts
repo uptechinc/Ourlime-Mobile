@@ -25,6 +25,8 @@ import type { RelationshipHubPage, RelationshipHubSection, RelationshipHubUser, 
 export type FriendProfile = { id: string; firstName: string; lastName: string; userName: string; profileImage?: string; relationshipId?: string; mutualFriendsCount: number };
 export type BlockStatus = { isBlocked: boolean; isBlockedByFirstUser: boolean; isBlockedBySecondUser: boolean };
 
+/** Firestore rules cap list queries on users at 200 documents. */
+const USER_QUERY_LIMIT = 200;
 const readString = (value: unknown): string => (typeof value === 'string' ? value : '');
 const friendshipStatusOf = (data: DocumentData): string => readString(data.friendshipStatus) || readString(data.status);
 const chunk = <TValue>(values: TValue[], size = 30): TValue[][] => {
@@ -126,7 +128,7 @@ export class RelationshipDataService {
         userId1: senderId, userId2: receiverId, friendshipStatus: 'pending', typeOfFriendship: 'friend', createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
       });
     }
-    await notificationHelpers.createFriendRequestNotification(receiverId, senderId).catch(() => false);
+    await notificationHelpers.createFriendRequestNotification(receiverId).catch(() => false);
   }
 
   /** The viewer accepts or declines a request that requesterId sent them. */
@@ -141,14 +143,14 @@ export class RelationshipDataService {
     await updateDoc(friendship.ref, { friendshipStatus: status, updatedAt: serverTimestamp() });
     if (status === 'accepted') {
       await Promise.all([
-        notificationHelpers.createFriendAcceptedNotification(requesterId, viewerId).catch(() => false),
+        notificationHelpers.createFriendAcceptedNotification(requesterId).catch(() => false),
         this.ensureFriendConversationSummaries(requesterId, viewerId),
       ]);
     } else {
       await Promise.all([
         this.removeFriendRequestNotification(viewerId, requesterId),
         this.removeFriendRequestNotification(requesterId, viewerId),
-        notificationHelpers.createFriendRequestDeclinedNotification(requesterId, viewerId).catch(() => false),
+        notificationHelpers.createFriendRequestDeclinedNotification(requesterId).catch(() => false),
       ]);
     }
   }
@@ -217,7 +219,7 @@ export class RelationshipDataService {
   private async getBlockedUserIds(userId: string): Promise<Set<string>> {
     const [user, blockedBy] = await Promise.all([
       getDoc(doc(db, 'users', userId)).catch(() => null),
-      getDocs(query(collection(db, 'users'), where('blockList', 'array-contains', userId))).catch(() => null),
+      getDocs(query(collection(db, 'users'), where('blockList', 'array-contains', userId), limit(USER_QUERY_LIMIT))).catch(() => null),
     ]);
     const ids = new Set<string>(Array.isArray(user?.data()?.blockList) ? (user?.data()?.blockList as unknown[]).filter((id): id is string => typeof id === 'string') : []);
     blockedBy?.docs.forEach((entry) => ids.add(entry.id));
@@ -396,9 +398,16 @@ export class RelationshipDataService {
     await batch.commit();
   }
 
-  /** Removes the friend-request notification actorUserId sent targetUserId (all three storage shapes). */
+  /**
+   * Removes the friend-request notification actorUserId sent targetUserId (all three storage shapes). Only the
+   * viewer's own inbox is writable here; a notice the viewer sent to someone else is removed by the server.
+   */
   public async removeFriendRequestNotification(targetUserId: string, actorUserId: string): Promise<void> {
     if (!targetUserId || !actorUserId) return;
+    if (targetUserId !== this.requireViewerId()) {
+      await notificationHelpers.clearSocialNotifications(targetUserId, ['friend_request']);
+      return;
+    }
     const parentRef = doc(db, 'userNotifications', targetUserId);
     const [items, parent, root] = await Promise.all([
       getDocs(query(collection(parentRef, 'items'), where('type', '==', 'friend_request'))).catch(() => null),

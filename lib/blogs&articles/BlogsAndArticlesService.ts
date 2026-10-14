@@ -1,26 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  addDoc,
-  arrayUnion,
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
   limit as limitTo,
   orderBy,
   query,
-  runTransaction,
-  setDoc,
-  Timestamp,
-  updateDoc,
   where,
-  writeBatch,
   type DocumentData,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { contentDateService } from '@/lib/services/ContentDateService';
 import { auth, db, storage } from '@/lib/firebaseConfig';
+import { appServerService } from '@/lib/services/AppServerService';
+import { contentDraftService } from '@/lib/services/ContentDraftService';
+import { nativeEngagementService } from '@/lib/services/NativeEngagementService';
+import { nativeSessionService } from '@/lib/services/NativeSessionService';
+import { pageAccessService } from '@/lib/services/PageAccessService';
 import type {
   BlogAuthorSummary,
   BlogCategory,
@@ -48,7 +45,6 @@ export const BLOG_PAGE_SIZE = 6;
 // Kept identical to Ourlime-Web lib/blogs&articles/blogSecurity.ts.
 export const AUTHOR_DISCLAIMER_VERSION = '2026-08-25';
 const MAX_TAG_COUNT = 10;
-const COMMENT_RATE_LIMIT_MS = 5000;
 const LIST_CACHE_MS = 60_000;
 
 /** Thrown when a post does not exist or is not visible to the viewer (web: 404 BLOG_NOT_FOUND). */
@@ -84,23 +80,10 @@ function isSafeExternalUrl(value: string): boolean {
   return !value || /^https?:\/\/\S+$/i.test(value.trim());
 }
 
-function createBlogSlug(title: string): string {
-  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'post';
-}
-
-function createContentFingerprint(title: string, excerpt: string, content: string): string {
-  let hash = 2166136261;
-  const value = `${title}\u0000${excerpt}\u0000${content}`;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0');
-}
-
 /**
- * Blogs & Articles for the app, reading and writing Firestore directly with the same data model
- * and rules as the website's /api/blogs&articles routes (the app never calls the website's API).
+ * Blogs & Articles for the app. Reads come from Firestore with the same data model as the website's
+ * /api/blogs&articles routes; writes go through the Cloud Functions callables (publishContentDraft,
+ * updateBlogPost, archiveBlog, mutateEngagement), since the rules let no client write blog records.
  */
 export class BlogsAndArticlesService {
   private static instance: BlogsAndArticlesService;
@@ -334,54 +317,44 @@ export class BlogsAndArticlesService {
     if (user.blogPublishingSuspended === true) throw new Error('Your blog publishing privileges are suspended.');
   }
 
+  /** The author's edit goes through the updateBlogPost callable (the rules keep blog documents server-written). */
   public async updatePost(postId: string, update: BlogPostUpdate): Promise<{ id: string; status: BlogPublicationStatus }> {
     const { userId, data } = await this.requireOwnedPost(postId);
-    const targetStatus: BlogPublicationStatus = update.status ?? this.readStatus(data.status);
+    const targetStatus: BlogSubmitStatus = update.status === 'published' || update.status === 'draft'
+      ? update.status
+      : data.status === 'published' ? 'published' : 'draft';
     if (targetStatus === 'published') {
       await this.assertCanPublish(userId);
       if (update.disclaimerAcceptance?.accepted !== true) throw new Error('Accept the current disclaimer before publishing changes.');
     }
-    const title = update.title !== undefined ? sanitizePlainText(update.title, 180) : text(data.title);
-    const excerpt = update.excerpt !== undefined ? sanitizePlainText(update.excerpt, 500) : text(data.excerpt);
-    const content = update.content !== undefined ? sanitizeBlogHtml(update.content) : text(data.content);
-    if (!title || !excerpt || !content.replace(/<[^>]*>/g, '').trim()) throw new Error('Title, excerpt, and content are required.');
-    const tags = update.tags !== undefined ? update.tags.slice(0, MAX_TAG_COUNT).map((tag) => sanitizePlainText(tag, 40)).filter(Boolean) : undefined;
-
-    await addDoc(collection(db, 'blogRevisionHistory'), { blogId: postId, userId, previous: data, createdAt: Timestamp.now() });
-    await updateDoc(doc(db, 'blogsAndArticles', postId), {
-      title,
-      excerpt,
-      content,
+    const result = await this.callServer<{ id: string; status: BlogSubmitStatus }>(userId, 'updateBlogPost', {
+      postId,
       status: targetStatus,
+      disclaimerAccepted: update.disclaimerAcceptance?.accepted === true,
+      ...(update.title !== undefined ? { title: update.title } : {}),
+      ...(update.excerpt !== undefined ? { excerpt: update.excerpt } : {}),
+      ...(update.content !== undefined ? { content: update.content } : {}),
       ...(update.coverImage !== undefined ? { coverImage: update.coverImage } : {}),
-      ...(update.categoryId !== undefined ? { categoryId: sanitizePlainText(update.categoryId, 80) } : {}),
-      ...(tags ? { tags } : {}),
-      readTime: Math.max(1, Math.ceil(content.replace(/<[^>]*>/g, ' ').trim().split(/\s+/).filter(Boolean).length / 200)),
-      updatedAt: Timestamp.now(),
-      disclaimerAcceptance: targetStatus === 'published'
-        ? { version: AUTHOR_DISCLAIMER_VERSION, accepted: true, acceptedBy: userId, contentFingerprint: createContentFingerprint(title, excerpt, content), timestamp: Timestamp.now() }
-        : data.disclaimerAcceptance ?? null,
+      ...(update.categoryId !== undefined ? { categoryId: update.categoryId } : {}),
+      ...(update.tags !== undefined ? { tags: update.tags.slice(0, MAX_TAG_COUNT) } : {}),
     });
-    // Keep the tags subcollection (what readers see) in step with the edit.
-    if (tags) await this.replaceTags(postId, tags);
     this.postCache.delete(postId);
     this.invalidateList();
-    return { id: postId, status: targetStatus };
+    return { id: result.id, status: result.status };
   }
 
   public async deletePost(postId: string): Promise<void> {
-    await this.requireOwnedPost(postId);
-    await updateDoc(doc(db, 'blogsAndArticles', postId), { status: 'removed', removedAt: Timestamp.now(), updatedAt: Timestamp.now() });
+    const { userId } = await this.requireOwnedPost(postId);
+    await this.callServer<void>(userId, 'archiveBlog', { postId });
     this.postCache.delete(postId);
     this.invalidateList();
   }
 
-  private async replaceTags(postId: string, tags: string[]): Promise<void> {
-    const existing = await getDocs(collection(db, 'blogsAndArticles', postId, 'tags'));
-    const batch = writeBatch(db);
-    existing.docs.forEach((entry) => batch.delete(entry.ref));
-    tags.forEach((tag) => batch.set(doc(collection(db, 'blogsAndArticles', postId, 'tags')), { name: tag, slug: tag.toLowerCase(), postCount: 1 }));
-    await batch.commit();
+  /** Blog writes run on the server; the session bridge must be ready first (same as the engagement calls). */
+  private async callServer<TResponse>(userId: string, name: string, data: object): Promise<TResponse> {
+    pageAccessService.assertMutation('/blogs');
+    await nativeSessionService.ensure(userId);
+    return appServerService.call<TResponse>(name, data);
   }
 
   // ── Interactions (web: /api/blogs&articles/{id}/interactions) ──
@@ -396,27 +369,15 @@ export class BlogsAndArticlesService {
     return { isLiked: like.exists(), isSaved: saved.exists() };
   }
 
+  /** Likes, saves and views go through mutateEngagement, which keeps one record per member and the totals. */
   public async updateInteraction(postId: string, action: 'like' | 'save' | 'view', enabled?: boolean): Promise<void> {
     const userId = auth.currentUser?.uid;
     if (!userId) throw new Error('Please sign in.');
-    if (action === 'save') {
-      const saveRef = doc(db, 'users', userId, 'savedBlogs', postId);
-      if (enabled) await setDoc(saveRef, { blogId: postId, savedAt: Timestamp.now() });
-      else await deleteDoc(saveRef);
-      return;
-    }
-    const markerRef = doc(db, 'blogsAndArticles', postId, action === 'like' ? 'likes' : 'views', userId);
-    const metricsRef = doc(db, 'blogsAndArticles', postId, 'engagement', 'metrics');
-    const field = action === 'like' ? 'likesCount' : 'viewsCount';
-    const shouldExist = action === 'view' ? true : enabled === true;
-    await runTransaction(db, async (transaction) => {
-      const [marker, metrics] = await Promise.all([transaction.get(markerRef), transaction.get(metricsRef)]);
-      // Idempotent: a user counts once, exactly like the web transaction.
-      if (marker.exists() === shouldExist) return;
-      const current = count(metrics.data()?.[field]);
-      if (shouldExist) transaction.set(markerRef, { userId, createdAt: Timestamp.now() });
-      else transaction.delete(markerRef);
-      transaction.set(metricsRef, { [field]: Math.max(0, current + (shouldExist ? 1 : -1)) }, { merge: true });
+    await nativeEngagementService.mutate(userId, {
+      kind: 'blog',
+      targetId: postId,
+      action: action === 'save' ? 'bookmark' : action,
+      active: action === 'view' ? true : enabled === true,
     });
     if (action === 'like') this.invalidateList();
   }
@@ -427,19 +388,27 @@ export class BlogsAndArticlesService {
     const viewerId = auth.currentUser?.uid ?? null;
     const [snapshot, likes] = await Promise.all([
       getDocs(query(collection(db, 'blogsAndArticles', postId, 'comments'), orderBy('createdAt', 'desc'), limitTo(50))),
-      viewerId ? getDocs(query(collection(db, 'blogsAndArticles', postId, 'commentLikes'), where('userId', '==', viewerId))) : Promise.resolve(null),
+      // commentLikes is server-written and not readable under the rules; a denied read shows no likes as the viewer's.
+      viewerId ? getDocs(query(collection(db, 'blogsAndArticles', postId, 'commentLikes'), where('userId', '==', viewerId))).catch(() => null) : Promise.resolve(null),
     ]);
     const liked = new Set((likes?.docs ?? []).map((entry) => `${text(entry.data().commentId)}:${text(entry.data().replyId)}`));
     const visible = snapshot.docs.filter((entry) => entry.data().isDeleted !== true && entry.data().status !== 'deleted');
     return Promise.all(visible.map(async (entry): Promise<BlogComment> => {
       const data = entry.data();
       const author = await this.resolveAuthor(text(data.userId));
-      const replies: BlogCommentReply[] = await Promise.all((Array.isArray(data.replies) ? data.replies : []).map(async (reply: DocumentData): Promise<BlogCommentReply> => {
+      // Replies are stored in the comment (website and older app versions) or, from the server, under comments/{id}/replies.
+      const nativeReplies = count(data.replyCount) > 0
+        ? (await getDocs(query(collection(db, 'blogsAndArticles', postId, 'comments', entry.id, 'replies'), limitTo(50))).catch(() => null))?.docs
+          .filter((reply) => !/^legacy_\d+$/.test(reply.id) && reply.data().isDeleted !== true)
+          .map((reply): DocumentData => ({ ...reply.data(), id: reply.id })) ?? []
+        : [];
+      const storedReplies: DocumentData[] = [...(Array.isArray(data.replies) ? data.replies : []), ...nativeReplies];
+      const replies: BlogCommentReply[] = await Promise.all(storedReplies.map(async (reply: DocumentData): Promise<BlogCommentReply> => {
         const replyAuthor = await this.resolveAuthor(text(reply.userId));
         return {
           id: text(reply.id),
           userId: text(reply.userId),
-          text: text(reply.text),
+          text: text(reply.text) || text(reply.content),
           createdAt: this.toIso(reply.createdAt),
           authorName: text(reply.authorName) || replyAuthor.name,
           authorAvatar: replyAuthor.avatar || text(reply.authorAvatar),
@@ -452,7 +421,7 @@ export class BlogsAndArticlesService {
       return {
         id: entry.id,
         userId: text(data.userId),
-        text: text(data.text),
+        text: text(data.text) || text(data.content),
         createdAt: this.toIso(data.createdAt),
         authorName: author.name,
         authorAvatar: author.avatar,
@@ -464,90 +433,31 @@ export class BlogsAndArticlesService {
     }));
   }
 
+  /** A comment, or a reply to commentId, through mutateEngagement (it also moves the comment total). */
   public async addComment(postId: string, commentText: string, commentId?: string): Promise<void> {
     const userId = auth.currentUser?.uid;
     if (!userId) throw new Error('Please sign in.');
     const body = sanitizePlainText(commentText, 2000);
     if (!body) throw new Error('Comment cannot be empty.');
-    const [blogSnap, userSnap, rateSnap] = await Promise.all([
-      getDoc(doc(db, 'blogsAndArticles', postId)),
-      getDoc(doc(db, 'users', userId)),
-      getDoc(doc(db, 'blogsAndArticles', postId, 'commentRateLimits', userId)),
-    ]);
-    if (!blogSnap.exists() || blogSnap.data().status !== 'published') throw new BlogNotFoundError();
-    if (userSnap.data()?.commentingDisabled === true) throw new Error('Commenting has been disabled on your account.');
-    const lastCommentMs = contentDateService.toMilliseconds(rateSnap.data()?.lastCommentAt) ?? 0;
-    if (Date.now() - lastCommentMs < COMMENT_RATE_LIMIT_MS) throw new Error('You are commenting too quickly. Please wait a few seconds.');
-
-    await setDoc(doc(db, 'blogsAndArticles', postId, 'commentRateLimits', userId), { lastCommentAt: Timestamp.now() });
-    if (commentId) {
-      const author = await this.resolveAuthor(userId);
-      await updateDoc(doc(db, 'blogsAndArticles', postId, 'comments', commentId), {
-        replies: arrayUnion({
-          id: doc(collection(db, 'blogsAndArticles')).id,
-          userId,
-          text: body,
-          createdAt: Timestamp.now(),
-          authorName: author.name,
-          authorAvatar: author.avatar,
-          isVerified: author.identityVerified,
-        }),
-      });
-      return;
-    }
-    const metricsRef = doc(db, 'blogsAndArticles', postId, 'engagement', 'metrics');
-    const commentRef = doc(collection(db, 'blogsAndArticles', postId, 'comments'));
-    await runTransaction(db, async (transaction) => {
-      const metrics = await transaction.get(metricsRef);
-      transaction.set(commentRef, { userId, text: body, createdAt: Timestamp.now(), replies: [], isDeleted: false });
-      transaction.set(metricsRef, { commentsCount: count(metrics.data()?.commentsCount) + 1 }, { merge: true });
-    });
+    await nativeEngagementService.mutate(userId, { kind: 'blog', targetId: postId, action: 'comment', text: body, ...(commentId ? { parentId: commentId } : {}) });
   }
 
-  /** Soft delete by the comment author, the blog author, or an admin (web rule). Top-level comments only. */
+  /** The comment's author removes it (the server keeps the comment total in step). */
   public async deleteComment(postId: string, commentId: string): Promise<void> {
     const userId = auth.currentUser?.uid;
     if (!userId) throw new Error('Please sign in.');
-    const commentRef = doc(db, 'blogsAndArticles', postId, 'comments', commentId);
-    const metricsRef = doc(db, 'blogsAndArticles', postId, 'engagement', 'metrics');
-    const [blogSnap, commentSnap, userSnap] = await Promise.all([
-      getDoc(doc(db, 'blogsAndArticles', postId)),
-      getDoc(commentRef),
-      getDoc(doc(db, 'users', userId)),
-    ]);
-    const comment = commentSnap.data();
-    if (!comment || comment.isDeleted === true) throw new Error('Comment not found.');
-    const role = text(userSnap.data()?.role);
-    const allowed = comment.userId === userId || blogSnap.data()?.userId === userId || role === 'admin' || role === 'super_admin';
-    if (!allowed) throw new Error('You cannot delete this comment.');
-    await runTransaction(db, async (transaction) => {
-      const metrics = await transaction.get(metricsRef);
-      transaction.update(commentRef, { text: '[Comment removed]', isDeleted: true, deletedAt: Timestamp.now(), deletedBy: userId });
-      transaction.set(metricsRef, { commentsCount: Math.max(0, count(metrics.data()?.commentsCount) - 1) }, { merge: true });
-    });
+    await nativeEngagementService.mutate(userId, { kind: 'blog', targetId: postId, action: 'delete_comment', commentId });
   }
 
-  /** Web BlogCommentLikeService.setLike, including likes on replies stored inside the comment. */
+  /** Likes a comment, or a reply (replyId) under commentId, through mutateEngagement. */
   public async setCommentLike(postId: string, commentId: string, enabled: boolean, replyId?: string): Promise<BlogCommentLikeState> {
     const userId = auth.currentUser?.uid;
     if (!userId) throw new Error('Please sign in.');
-    const commentRef = doc(db, 'blogsAndArticles', postId, 'comments', commentId);
-    const likeRef = doc(db, 'blogsAndArticles', postId, 'commentLikes', `${commentId}:${replyId ?? ''}:${userId}`);
-    return runTransaction(db, async (transaction) => {
-      const [commentSnap, likeSnap] = await Promise.all([transaction.get(commentRef), transaction.get(likeRef)]);
-      const comment = commentSnap.data();
-      if (!comment || comment.isDeleted === true) throw new Error('Comment not found.');
-      const replies: DocumentData[] = Array.isArray(comment.replies) ? comment.replies : [];
-      const reply = replyId ? replies.find((entry) => entry.id === replyId && entry.isDeleted !== true) : undefined;
-      if (replyId && !reply) throw new Error('Reply not found.');
-      const currentCount = Math.max(0, count(replyId ? reply?.likesCount : comment.likesCount));
-      const likesCount = Math.max(0, currentCount + (enabled === likeSnap.exists() ? 0 : enabled ? 1 : -1));
-      if (enabled) transaction.set(likeRef, { userId, commentId, replyId: replyId ?? null });
-      else transaction.delete(likeRef);
-      if (replyId) transaction.update(commentRef, { replies: replies.map((entry) => (entry.id === replyId ? { ...entry, likesCount } : entry)) });
-      else transaction.update(commentRef, { likesCount });
-      return { isLiked: enabled, likesCount };
+    const result = await nativeEngagementService.mutate(userId, {
+      kind: 'blog', targetId: postId, action: 'comment_like', active: enabled,
+      ...(replyId ? { parentId: commentId, commentId: replyId } : { commentId }),
     });
+    return { isLiked: result.active ?? enabled, likesCount: result.count ?? 0 };
   }
 
   // ── Editor ──
@@ -637,7 +547,7 @@ export class BlogsAndArticlesService {
       return { postId: editBlogId, slug: '', readTime: 0 };
     }
 
-    await this.assertCanPublish(userId);
+    if (status === 'published') await this.assertCanPublish(userId);
     const title = sanitizePlainText(draft.title, 180);
     const excerpt = sanitizePlainText(draft.excerpt, 500);
     const content = sanitizeBlogHtml(draft.content);
@@ -646,49 +556,29 @@ export class BlogsAndArticlesService {
     const tags = [...new Set(draft.tags.map((tag) => sanitizePlainText(tag, 40)).filter(Boolean))];
     if (tags.length > MAX_TAG_COUNT) throw new Error(`A maximum of ${MAX_TAG_COUNT} tags is allowed.`);
     const sources = draft.sources.filter((source) => source.url.trim());
-    if (sources.some((source) => !isSafeExternalUrl(source.url))) throw new Error('Every source must use a valid HTTP or HTTPS URL and date.');
-    if (draft.coverImage && !isSafeExternalUrl(draft.coverImage)) throw new Error('The cover image link is not valid.');
-
-    const slug = await this.createUniqueSlug(title);
+    if (sources.some((source) => !isSafeExternalUrl(source.url) || !Number.isFinite(Date.parse(source.publishDate)))) throw new Error('Every source must use a valid HTTP or HTTPS URL and date.');
+    if (draft.coverImage && !/^https:\/\//i.test(draft.coverImage)) throw new Error('The cover image link is not valid.');
     const readTime = Math.max(1, Math.ceil(content.replace(/<[^>]*>/g, ' ').trim().split(/\s+/).filter(Boolean).length / 200));
-    const postRef = doc(collection(db, 'blogsAndArticles'));
-    const batch = writeBatch(db);
-    batch.set(postRef, {
-      userId, title, type: draft.type, excerpt, content, coverImage: draft.coverImage, categoryId, slug,
-      metaDescription: sanitizePlainText(excerpt, 160), ogImage: draft.coverImage, readTime, tags, sources: [],
-      status, createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
-      flags: { isFeatured: false, trending: false },
-      ...(status === 'published' ? {
-        disclaimerAcceptance: { version: AUTHOR_DISCLAIMER_VERSION, accepted: true, acceptedBy: userId, contentFingerprint: createContentFingerprint(title, excerpt, content), timestamp: Timestamp.now() },
-      } : {}),
-    });
-    sources.forEach((source) => {
-      const publishMs = source.publishDate ? Date.parse(source.publishDate) : 0;
-      batch.set(doc(collection(db, 'blogsAndArticles', postRef.id, 'sources')), {
-        title: sanitizePlainText(source.title, 200), url: source.url.trim(), author: sanitizePlainText(source.author, 120),
-        publishDate: Timestamp.fromMillis(Number.isFinite(publishMs) ? publishMs : 0), type: sanitizePlainText(source.type, 50),
-        citation: sanitizePlainText(source.citation, 500), status: 'unchecked', lastCheckedAt: Timestamp.now(),
-      });
-    });
-    batch.set(doc(db, 'blogsAndArticles', postRef.id, 'categories', categoryId), { name: categoryId, description: '', postCount: 1, slug: categoryId.toLowerCase(), isActive: true });
-    tags.forEach((tag) => batch.set(doc(collection(db, 'blogsAndArticles', postRef.id, 'tags')), { name: tag, slug: tag.toLowerCase(), postCount: 1 }));
-    batch.set(doc(db, 'blogsAndArticles', postRef.id, 'engagement', 'metrics'), { likesCount: 0, sharesCount: 0, commentsCount: 0, viewsCount: 0, readTimeAverage: readTime });
-    await batch.commit();
 
+    // New posts are published by the publishContentDraft callable from a saved account draft; "Save draft" keeps
+    // the post as that account draft (it appears under Drafts) until it is published.
+    const saved = await contentDraftService.create(userId, 'blog', {
+      title, type: draft.type, excerpt, content, coverImage: draft.coverImage, categoryId, readTime, tags,
+      sources: sources.map((source) => ({
+        title: sanitizePlainText(source.title, 200), url: source.url.trim(), author: sanitizePlainText(source.author, 120),
+        publishDate: source.publishDate, type: sanitizePlainText(source.type, 50), citation: sanitizePlainText(source.citation, 500), isVerified: false,
+      })),
+    });
+    const synced = await contentDraftService.sync(userId);
+    if (status === 'draft') {
+      await this.clearDraft(userId);
+      return { postId: saved.id, slug: '', readTime };
+    }
+    if (synced.conflicts > 0) throw new Error('Your draft changed on another device. Review it under Drafts before publishing.');
+    const receipt = await contentDraftService.publish(saved, { disclaimerAccepted });
     await this.clearDraft(userId);
     this.invalidateList();
-    return { postId: postRef.id, slug, readTime };
-  }
-
-  /** base, base-2, base-3 … like the web createUniqueSlug. */
-  private async createUniqueSlug(title: string): Promise<string> {
-    const base = createBlogSlug(title);
-    const existing = await getDocs(query(collection(db, 'blogsAndArticles'), where('slug', '>=', base), where('slug', '<=', `${base}`)));
-    const taken = new Set(existing.docs.map((entry) => text(entry.data().slug)));
-    if (!taken.has(base)) return base;
-    let suffix = 2;
-    while (taken.has(`${base}-${suffix}`)) suffix += 1;
-    return `${base}-${suffix}`;
+    return { postId: receipt.destinationId, slug: '', readTime };
   }
 
   // ── Mapping ──

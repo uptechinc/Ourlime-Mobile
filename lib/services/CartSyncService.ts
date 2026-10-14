@@ -6,6 +6,7 @@ import { reliabilityDecoder } from './ReliabilityDecoderService';
 import { contentDraftService } from './ContentDraftService';
 import { pageAccessService } from './PageAccessService';
 import type { CartLine, CartMutation, CartSnapshot, MarketProduct, MarketVariant } from '@/lib/types/reliability';
+import { withCleanup } from '@/lib/utils/withCleanup';
 
 export class CartSyncService {
   private static instance: CartSyncService;
@@ -74,7 +75,7 @@ export class CartSyncService {
   public async sync(ownerId: string): Promise<CartSnapshot> {
     const existing = this.synchronizations.get(ownerId);
     if (existing) return existing;
-    const synchronization = this.synchronize(ownerId).finally(() => { this.synchronizations.delete(ownerId); });
+    const synchronization = withCleanup(this.synchronize(ownerId), () => { this.synchronizations.delete(ownerId); });
     this.synchronizations.set(ownerId, synchronization);
     return synchronization;
   }

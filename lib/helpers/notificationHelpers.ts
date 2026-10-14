@@ -4,12 +4,16 @@ import {
   updateDoc, 
   Timestamp, 
   getDoc,
-  increment,
-  setDoc,
   deleteField
 } from 'firebase/firestore';
 import { NotificationData, NotificationType } from '@/lib/types/notification';
-import { pushNotificationService } from '@/lib/services/PushNotificationService';
+import { appServerService } from '@/lib/services/AppServerService';
+
+type ClearableSocialNotificationType = 'friend_request' | 'follow';
+export type SocialNotificationInput =
+  | { kind: 'friend_request' | 'friend_accepted' | 'friend_declined' | 'follow'; targetUserId: string }
+  | { kind: 'community_join_request'; communityId: string }
+  | { kind: 'community_accepted' | 'community_rejected' | 'community_removed'; communityId: string; targetUserId: string };
 
 const toTimestampMillis = (value: unknown): number => {
   if (value instanceof Date) return value.getTime();
@@ -38,76 +42,28 @@ export const notificationHelpers = {
     };
   },
 
-  // Ensure user has notification fields
-  async ensureUserHasNotificationFields(userId: string): Promise<void> {
+  /**
+   * Friend, follow and community-membership notices go through the sendSocialNotification callable: the Firestore
+   * rules let no client write another member's inbox. The server checks the relationship, builds the text and sends
+   * the device push, so the caller only names the kind and the recipient (the sender is always the signed-in user).
+   */
+  async sendSocialNotification(input: SocialNotificationInput): Promise<boolean> {
     try {
-      const userNotifRef = doc(db, 'userNotifications', userId);
-      const userNotifDoc = await getDoc(userNotifRef);
-      if (!userNotifDoc.exists()) {
-        await setDoc(userNotifRef, {
-          notificationsMap: {},
-          notificationCount: 0,
-          unreadCount: 0,
-          documentSize: 0,
-        });
-      }
-    } catch (e) {
-      console.error('[notificationHelpers.ensureUserHasNotificationFields]', e);
+      const result = await appServerService.call<{ sent: boolean }>('sendSocialNotification', input);
+      return result.sent;
+    } catch (error: unknown) {
+      console.error('[notificationHelpers.sendSocialNotification] Error:', error instanceof Error ? error.message : error);
+      return false;
     }
   },
 
-  // Add a notification to the database
-  async addNotification(notification: NotificationData): Promise<boolean> {
+  /** Removes the friend-request or follow notices the signed-in user caused in targetUserId's inbox (after the relationship ended). */
+  async clearSocialNotifications(targetUserId: string, types: ClearableSocialNotificationType[]): Promise<void> {
+    if (!targetUserId || types.length === 0) return;
     try {
-      await this.ensureUserHasNotificationFields(notification.userId);
-      
-      const userNotifRef = doc(db, 'userNotifications', notification.userId);
-      const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      const userNotifDoc = await getDoc(userNotifRef);
-      
-      const notifObj = {
-        ...notification,
-        id: notificationId,
-        createdAt: Timestamp.now(),
-      };
-
-      if (!userNotifDoc.exists()) {
-        await setDoc(userNotifRef, {
-          notificationsMap: {
-            [notificationId]: notifObj
-          },
-          notificationCount: 1,
-          unreadCount: notification.isRead ? 0 : 1,
-          documentSize: JSON.stringify(notification).length + 50
-        });
-      } else {
-        await updateDoc(userNotifRef, {
-          [`notificationsMap.${notificationId}`]: notifObj,
-          notificationCount: increment(1),
-          unreadCount: increment(notification.isRead ? 0 : 1)
-        });
-      }
-
-      // Also write to items subcollection for query parity with web
-      try {
-        await setDoc(doc(db, 'userNotifications', notification.userId, 'items', notificationId), notifObj);
-      } catch (subErr) {
-        console.warn('[addNotification] items subcollection write notice:', subErr);
-      }
-
-      // Dispatch high priority device push notification to receiver's device
-      void pushNotificationService.sendPushNotification(notification.userId, {
-        title: notification.title || 'Ourlime Notification',
-        body: notification.message || 'You have a new notification',
-        type: notification.type,
-        senderId: notification.userDetails?.uid || notification.userDetails?.userId || '',
-        path: typeof notification.metadata?.actionUrl === 'string' ? notification.metadata.actionUrl : '/notifications',
-      });
-
-      return true;
-    } catch (error) {
-      console.error('Error adding notification:', error);
-      return false;
+      await appServerService.call<{ removed: number }>('clearSocialNotifications', { targetUserId, types });
+    } catch (error: unknown) {
+      console.error('[notificationHelpers.clearSocialNotifications] Error:', error instanceof Error ? error.message : error);
     }
   },
 
@@ -269,155 +225,20 @@ export const notificationHelpers = {
     }
   },
 
-  // Create friend request notification
-  async createFriendRequestNotification(targetUserId: string, sourceUserId: string): Promise<boolean> {
-    const existing = await this.getUserNotifications(targetUserId, 20);
-    const alreadyExists = existing.some(n => n.type === 'friend_request' && n.metadata?.sourceUserId === sourceUserId && !n.isRead);
-    if (alreadyExists) return false;
-
-    try {
-      const sourceUserDoc = await getDoc(doc(db, 'users', sourceUserId));
-      if (!sourceUserDoc.exists()) return false;
-
-      const sourceUser = sourceUserDoc.data();
-      const senderName = `${sourceUser.firstName || ''} ${sourceUser.lastName || ''}`.trim() || sourceUser.userName || 'Someone';
-
-      const notificationData: Partial<NotificationData> = {
-        userId: targetUserId,
-        type: 'friend_request',
-        title: 'New Friend Request',
-        message: `${senderName} sent you a friend request`,
-        isRead: false,
-        metadata: {
-          sourceId: sourceUserId,
-          sourceUserId: sourceUserId,
-          actionUrl: `/profile/${sourceUser.userName || sourceUserId}`,
-          sourceProfileImage: sourceUser.profileImage || '',
-        },
-        userDetails: {
-          profileImage: sourceUser.profileImage || '',
-          firstName: sourceUser.firstName || '',
-          lastName: sourceUser.lastName || '',
-          userName: sourceUser.userName || ''
-        }
-      };
-
-      const notification = this.createNotification(notificationData);
-      return await this.addNotification(notification);
-    } catch (error) {
-      console.error('Error creating friend request notification:', error);
-      return false;
-    }
+  async createFriendRequestNotification(targetUserId: string): Promise<boolean> {
+    return this.sendSocialNotification({ kind: 'friend_request', targetUserId });
   },
 
-  async createFollowNotification(targetUserId: string, sourceUserId: string): Promise<boolean> {
-    const existing = await this.getUserNotifications(targetUserId, 50);
-    const alreadyExists = existing.some((notification) => notification.type === 'follow'
-      && notification.metadata?.sourceUserId === sourceUserId);
-    if (alreadyExists) return false;
-
-    try {
-      const sourceUserDocument = await getDoc(doc(db, 'users', sourceUserId));
-      if (!sourceUserDocument.exists()) return false;
-      const sourceUser = sourceUserDocument.data();
-      const senderName = `${sourceUser.firstName || ''} ${sourceUser.lastName || ''}`.trim() || sourceUser.userName || 'Someone';
-      const notification = this.createNotification({
-        userId: targetUserId,
-        type: 'follow',
-        title: 'New Follower',
-        message: `${senderName} started following you`,
-        isRead: false,
-        metadata: {
-          sourceId: sourceUserId,
-          sourceUserId,
-          actionUrl: `/profile/${sourceUser.userName || sourceUserId}`,
-          sourceProfileImage: sourceUser.profileImage || sourceUser.profilePicture || '',
-        },
-        userDetails: {
-          uid: sourceUserId,
-          userId: sourceUserId,
-          profileImage: sourceUser.profileImage || sourceUser.profilePicture || '',
-          firstName: sourceUser.firstName || '',
-          lastName: sourceUser.lastName || '',
-          userName: sourceUser.userName || '',
-        },
-      });
-      return await this.addNotification(notification);
-    } catch (error: unknown) {
-      console.error('[notificationHelpers.createFollowNotification]', error);
-      return false;
-    }
+  async createFollowNotification(targetUserId: string): Promise<boolean> {
+    return this.sendSocialNotification({ kind: 'follow', targetUserId });
   },
 
-  // Create friend request accepted notification
-  async createFriendAcceptedNotification(targetUserId: string, sourceUserId: string): Promise<boolean> {
-    try {
-      const sourceUserDoc = await getDoc(doc(db, 'users', sourceUserId));
-      if (!sourceUserDoc.exists()) return false;
-
-      const sourceUser = sourceUserDoc.data();
-      const senderName = `${sourceUser.firstName || ''} ${sourceUser.lastName || ''}`.trim() || sourceUser.userName || 'Someone';
-
-      const notificationData: Partial<NotificationData> = {
-        userId: targetUserId,
-        type: 'friend_accepted',
-        title: 'Friend Request Accepted',
-        message: `${senderName} accepted your friend request`,
-        isRead: false,
-        metadata: {
-          sourceUserId: sourceUserId,
-          actionUrl: `/profile/${sourceUser.userName || sourceUserId}`,
-          sourceProfileImage: sourceUser.profileImage || '',
-        },
-        userDetails: {
-          profileImage: sourceUser.profileImage || '',
-          firstName: sourceUser.firstName || '',
-          lastName: sourceUser.lastName || '',
-          userName: sourceUser.userName || ''
-        }
-      };
-
-      const notification = this.createNotification(notificationData);
-      return await this.addNotification(notification);
-    } catch (error) {
-      console.error('Error creating friend request accepted notification:', error);
-      return false;
-    }
+  async createFriendAcceptedNotification(targetUserId: string): Promise<boolean> {
+    return this.sendSocialNotification({ kind: 'friend_accepted', targetUserId });
   },
 
-  // Create friend request declined notification
-  async createFriendRequestDeclinedNotification(targetUserId: string, sourceUserId: string): Promise<boolean> {
-    try {
-      const sourceUserDoc = await getDoc(doc(db, 'users', sourceUserId));
-      if (!sourceUserDoc.exists()) return false;
-
-      const sourceUser = sourceUserDoc.data();
-      const senderName = `${sourceUser.firstName || ''} ${sourceUser.lastName || ''}`.trim() || sourceUser.userName || 'Someone';
-
-      const notificationData: Partial<NotificationData> = {
-        userId: targetUserId,
-        type: 'friend_declined',
-        title: 'Friend Request Declined',
-        message: `${senderName} declined your friend request`,
-        isRead: false,
-        metadata: {
-          sourceUserId: sourceUserId,
-          sourceProfileImage: sourceUser.profileImage || '',
-        },
-        userDetails: {
-          profileImage: sourceUser.profileImage || '',
-          firstName: sourceUser.firstName || '',
-          lastName: sourceUser.lastName || '',
-          userName: sourceUser.userName || ''
-        }
-      };
-
-      const notification = this.createNotification(notificationData);
-      return await this.addNotification(notification);
-    } catch (error) {
-      console.error('Error creating friend request declined notification:', error);
-      return false;
-    }
+  async createFriendRequestDeclinedNotification(targetUserId: string): Promise<boolean> {
+    return this.sendSocialNotification({ kind: 'friend_declined', targetUserId });
   },
 
   // Format notification title

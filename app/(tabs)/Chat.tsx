@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { AuthService, type UserProfile } from '@/lib/services/AuthService';
 import { SkeletonChatRow } from '@/components/home/SkeletonLoaders';
@@ -55,6 +55,14 @@ function formatLastMessagePreview(msg?: string, userName?: string, sentByViewer 
   return msg;
 }
 
+
+type SelectionAction = {
+  key: string;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  destructive?: boolean;
+};
 export default function ChatTabScreen() {
   const router = useRouter();
   const { isDark, colors } = useAppTheme();
@@ -62,8 +70,6 @@ export default function ChatTabScreen() {
   const [composeVisible, setComposeVisible] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'unread' | 'archived'>('all');
   const [selectedUids, setSelectedUids] = useState<Set<string>>(new Set());
-  const [pinnedUids, setPinnedUids] = useState<Set<string>>(new Set());
-  const [archivedUids, setArchivedUids] = useState<Set<string>>(new Set());
   const [mutedUids, setMutedUids] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -75,69 +81,33 @@ export default function ChatTabScreen() {
   const loadError = resource.error?.message ?? null;
 
   const isSelectionMode = selectedUids.size > 0;
-  const pinnedKey = `ourlime_pinned_chats_${currentUserId}`;
   const archivedKey = `ourlime_archived_chats_${currentUserId}`;
   const mutedKey = `ourlime_muted_chats_${currentUserId}`;
 
-  // Load pinned, archived, and muted lists from storage
-  useEffect(() => {
+  // Pinned and archived come only from the conversation summaries, so an
+  // unarchive/unpin made anywhere (chat settings, another device) takes effect here.
+  const pinnedUids = useMemo(() => new Set(conversations.filter((c) => c.isPinned).map((c) => c.uid)), [conversations]);
+  const archivedUids = useMemo(() => new Set(conversations.filter((c) => c.isArchived).map((c) => c.uid)), [conversations]);
+
+  // Mute lives in chatMuteSettings, mirrored to storage. Reload on focus so a
+  // change made inside a chat is reflected when returning to this tab.
+  useFocusEffect(useCallback(() => {
     if (!currentUserId) return;
-    AsyncStorage.getItem(pinnedKey).then((val) => {
-      if (val) {
-        try {
-          setPinnedUids(new Set(JSON.parse(val) as string[]));
-        } catch {
-          // ignore
-        }
-      }
-    }).catch(() => {});
-
-    AsyncStorage.getItem(archivedKey).then((val) => {
-      if (val) {
-        try {
-          setArchivedUids(new Set(JSON.parse(val) as string[]));
-        } catch {
-          // ignore
-        }
-      }
-    }).catch(() => {});
-
     AsyncStorage.getItem(mutedKey).then((val) => {
-      if (val) {
-        try {
-          setMutedUids(new Set(JSON.parse(val) as string[]));
-        } catch {
-          // ignore
-        }
+      try {
+        const stored = val ? new Set(JSON.parse(val) as string[]) : new Set<string>();
+        setMutedUids(stored);
+      } catch {
+        // ignore
       }
     }).catch(() => {});
-  }, [currentUserId, pinnedKey, archivedKey, mutedKey]);
+  }, [currentUserId, mutedKey]));
 
-  // Sync firestore flags to local state sets
+  // Keep the storage mirror used by push suppression in step with Firestore.
   useEffect(() => {
-    if (conversations.length === 0) return;
-    setPinnedUids((prev) => {
-      const next = new Set(prev);
-      conversations.forEach((c) => {
-        if (c.isPinned) next.add(c.uid);
-      });
-      return next;
-    });
-    setArchivedUids((prev) => {
-      const next = new Set(prev);
-      conversations.forEach((c) => {
-        if (c.isArchived) next.add(c.uid);
-      });
-      return next;
-    });
-    setMutedUids((prev) => {
-      const next = new Set(prev);
-      conversations.forEach((c) => {
-        if (c.isMuted) next.add(c.uid);
-      });
-      return next;
-    });
-  }, [conversations]);
+    if (!currentUserId || resource.data === null) return;
+    void AsyncStorage.setItem(archivedKey, JSON.stringify(Array.from(archivedUids))).catch(() => {});
+  }, [archivedKey, archivedUids, currentUserId, resource.data]);
 
   const onRefresh = useCallback(() => {
     void refresh();
@@ -240,14 +210,7 @@ export default function ChatTabScreen() {
 
   const handleTogglePinSelected = async () => {
     const uids = Array.from(selectedUids);
-    const nextPinned = new Set(pinnedUids);
-    const allPinned = uids.every((uid) => nextPinned.has(uid));
-    uids.forEach((uid) => {
-      if (allPinned) nextPinned.delete(uid);
-      else nextPinned.add(uid);
-    });
-    setPinnedUids(nextPinned);
-    await AsyncStorage.setItem(pinnedKey, JSON.stringify(Array.from(nextPinned))).catch(() => {});
+    const allPinned = uids.every((uid) => pinnedUids.has(uid));
     for (const uid of uids) {
       void simpleChatMessageService.setPinStatus(uid, !allPinned);
       void conversationResourceService.patchConversation(currentUserId, uid, { isPinned: !allPinned });
@@ -257,14 +220,7 @@ export default function ChatTabScreen() {
 
   const handleToggleArchiveSelected = async () => {
     const uids = Array.from(selectedUids);
-    const nextArchived = new Set(archivedUids);
-    const allArchived = uids.every((uid) => nextArchived.has(uid));
-    uids.forEach((uid) => {
-      if (allArchived) nextArchived.delete(uid);
-      else nextArchived.add(uid);
-    });
-    setArchivedUids(nextArchived);
-    await AsyncStorage.setItem(archivedKey, JSON.stringify(Array.from(nextArchived))).catch(() => {});
+    const allArchived = uids.every((uid) => archivedUids.has(uid));
     for (const uid of uids) {
       void simpleChatMessageService.setArchiveStatus(uid, !allArchived);
       void conversationResourceService.patchConversation(currentUserId, uid, { isArchived: !allArchived });
@@ -320,66 +276,55 @@ export default function ChatTabScreen() {
         return item?.lastMessageSenderId !== currentUserId && (item?.unreadCount ?? 0) > 0;
       })
     : filteredConversations.some((c) => c.lastMessageSenderId !== currentUserId && (c.unreadCount ?? 0) > 0);
+  const allVisibleSelected = filteredConversations.length > 0 && selectedUids.size === filteredConversations.length;
+
+  // Labelled actions for the selection bar; the label always says what a tap will do.
+  const selectionActions: SelectionAction[] = [
+    { key: 'pin', label: allSelectedPinned ? 'Unpin' : 'Pin', icon: allSelectedPinned ? 'pin' : 'pin-outline', onPress: () => void handleTogglePinSelected() },
+    { key: 'archive', label: allSelectedArchived ? 'Unarchive' : 'Archive', icon: allSelectedArchived ? 'arrow-undo-outline' : 'archive-outline', onPress: () => void handleToggleArchiveSelected() },
+    anyUnreadSelected
+      ? { key: 'read', label: 'Read', icon: 'mail-open-outline', onPress: () => void handleMarkAsReadSelected() }
+      : { key: 'unread', label: 'Unread', icon: 'mail-unread-outline', onPress: () => void handleMarkAsUnreadSelected() },
+    { key: 'mute', label: allSelectedMuted ? 'Unmute' : 'Mute', icon: allSelectedMuted ? 'notifications-outline' : 'notifications-off-outline', onPress: () => void handleToggleMuteSelected() },
+    { key: 'delete', label: 'Delete', icon: 'trash-outline', onPress: handleDeleteSelected, destructive: true },
+  ];
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.surface }}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isSelectionMode ? '#10b981' : colors.surface} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
 
       {/* Header / Selection Action Bar */}
       {isSelectionMode ? (
         <View style={{
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-          backgroundColor: '#10b981',
+          paddingHorizontal: 10,
+          paddingVertical: 10,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          backgroundColor: colors.surface,
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          elevation: 4,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.15,
-          shadowRadius: 4,
+          gap: 6,
         }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-            <TouchableOpacity onPress={handleExitSelection} hitSlop={12}>
-              <Feather name="x" size={24} color="#ffffff" />
-            </TouchableOpacity>
-            <Text style={{ fontSize: 19, fontWeight: '800', color: '#ffffff' }}>
-              {selectedUids.size}
+          <TouchableOpacity
+            onPress={handleExitSelection}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel selection"
+            style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="close" size={24} color={colors.icon} />
+          </TouchableOpacity>
+          <Text style={{ flex: 1, fontSize: 19, fontWeight: '800', color: colors.text }}>
+            {selectedUids.size} selected
+          </Text>
+          <TouchableOpacity
+            onPress={handleSelectAll}
+            accessibilityRole="button"
+            style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.successSurface }}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.accentText }}>
+              {allVisibleSelected ? 'Clear' : 'Select all'}
             </Text>
-          </View>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-            <TouchableOpacity onPress={handleSelectAll} hitSlop={10} accessibilityLabel="Select all">
-              <Feather name="check-square" size={20} color="#ffffff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={handleTogglePinSelected} hitSlop={10} accessibilityLabel="Pin conversation">
-              <Ionicons name={allSelectedPinned ? 'bookmark' : 'bookmark-outline'} size={20} color="#ffffff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={handleToggleArchiveSelected} hitSlop={10} accessibilityLabel={allSelectedArchived ? "Unarchive conversation" : "Archive conversation"}>
-              <Feather name="archive" size={20} color="#ffffff" />
-            </TouchableOpacity>
-
-            {anyUnreadSelected ? (
-              <TouchableOpacity onPress={handleMarkAsReadSelected} hitSlop={10} accessibilityLabel="Mark as read">
-                <Feather name="check" size={20} color="#ffffff" />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity onPress={handleMarkAsUnreadSelected} hitSlop={10} accessibilityLabel="Mark as unread">
-                <Feather name="mail" size={20} color="#ffffff" />
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity onPress={handleToggleMuteSelected} hitSlop={10} accessibilityLabel="Mute notifications">
-              <Feather name={allSelectedMuted ? 'bell' : 'bell-off'} size={20} color="#ffffff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={handleDeleteSelected} hitSlop={10} accessibilityLabel="Delete chats">
-              <Feather name="trash-2" size={20} color="#ffffff" />
-            </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </View>
       ) : (
         <View style={{
@@ -394,7 +339,7 @@ export default function ChatTabScreen() {
         }}>
           <Text style={{ fontSize: 24, fontWeight: '800', color: colors.text }}>Messages</Text>
           <View style={{ flexDirection: 'row', gap: 12 }}>
-            <TouchableOpacity onPress={() => setComposeVisible(true)} style={{ padding: 6 }} accessibilityLabel="Start a new conversation">
+            <TouchableOpacity onPress={() => setComposeVisible(true)} style={{ padding: 6 }} hitSlop={8} accessibilityRole="button" accessibilityLabel="Start a new conversation">
               <Feather name="edit" size={20} color="#10b981" />
             </TouchableOpacity>
           </View>
@@ -422,7 +367,7 @@ export default function ChatTabScreen() {
               autoCapitalize="none"
             />
             {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={12} accessibilityRole="button" accessibilityLabel="Clear search">
                 <Feather name="x-circle" size={18} color={colors.mutedText} />
               </TouchableOpacity>
             )}
@@ -536,7 +481,7 @@ export default function ChatTabScreen() {
       {/* Conversations List */}
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.canvas }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 80 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: isSelectionMode ? 120 : 80 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
       >
         {isLoading ? (
@@ -550,7 +495,7 @@ export default function ChatTabScreen() {
         ) : loadError && conversations.length === 0 ? (
           <View style={{ paddingVertical: 80, alignItems: 'center' }}>
             <Feather name="alert-triangle" size={36} color="#c64d53" />
-            <Text style={{ marginTop: 12, fontSize: 16, fontWeight: '700', color: '#991b1b' }}>Messages unavailable</Text>
+            <Text style={{ marginTop: 12, fontSize: 16, fontWeight: '700', color: colors.destructiveText }}>Messages unavailable</Text>
             <Text style={{ marginTop: 6, color: colors.mutedText, textAlign: 'center' }}>{loadError}</Text>
             <TouchableOpacity onPress={() => void refresh()} style={{ marginTop: 16, borderRadius: 999, backgroundColor: '#10b981', paddingHorizontal: 18, paddingVertical: 10 }}>
               <Text style={{ color: '#fff', fontWeight: '700' }}>Retry</Text>
@@ -558,7 +503,7 @@ export default function ChatTabScreen() {
           </View>
         ) : filteredConversations.length === 0 ? (
           <View style={{ paddingVertical: 80, alignItems: 'center' }}>
-            <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#f0fdf4', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: colors.successSurface, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
               <Feather name="message-circle" size={36} color="#10b981" />
             </View>
             <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 6 }}>
@@ -583,8 +528,8 @@ export default function ChatTabScreen() {
         ) : (
           <>
             {loadError ? (
-              <TouchableOpacity onPress={() => void refresh()} style={{ marginBottom: 8, padding: 10, borderRadius: 12, backgroundColor: '#fff7ed' }}>
-                <Text style={{ color: '#9a3412', textAlign: 'center', fontSize: 12, fontWeight: '700' }}>Showing saved conversations · Tap to retry</Text>
+              <TouchableOpacity onPress={() => void refresh()} accessibilityRole="button" style={{ marginBottom: 8, minHeight: 44, justifyContent: 'center', padding: 10, borderRadius: 12, backgroundColor: colors.warningSurface }}>
+                <Text style={{ color: colors.warningText, textAlign: 'center', fontSize: 12, fontWeight: '700' }}>Showing saved conversations · Tap to retry</Text>
               </TouchableOpacity>
             ) : null}
 
@@ -659,7 +604,7 @@ export default function ChatTabScreen() {
                         <Text style={{ fontSize: 16, fontWeight: hasUnread ? '800' : '600', color: colors.text }} numberOfLines={1}>
                           {user.firstName} {user.lastName}
                         </Text>
-                        {isPinned && <Ionicons name="bookmark" size={12} color="#10b981" />}
+                        {isPinned && <Ionicons name="pin" size={12} color="#10b981" accessibilityLabel="Pinned" />}
                         {isMuted && <Feather name="bell-off" size={12} color={colors.mutedText} />}
                       </View>
                       <Text style={{ fontSize: 11, color: hasUnread ? '#10b981' : colors.mutedText, fontWeight: hasUnread ? '700' : '400' }}>
@@ -698,8 +643,8 @@ export default function ChatTabScreen() {
               );
             })}
             {hasMore ? (
-              <TouchableOpacity onPress={() => void loadMore()} style={{ alignSelf: 'center', marginTop: 8, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 18, backgroundColor: '#ecfdf5' }}>
-                <Text style={{ color: '#059669', fontSize: 12, fontWeight: '700' }}>Load older conversations</Text>
+              <TouchableOpacity onPress={() => void loadMore()} style={{ alignSelf: 'center', marginTop: 8, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 18, backgroundColor: colors.successSurface }}>
+                <Text style={{ color: colors.successText, fontSize: 12, fontWeight: '700' }}>Load older conversations</Text>
               </TouchableOpacity>
             ) : null}
           </>
@@ -753,6 +698,41 @@ export default function ChatTabScreen() {
         </SafeAreaView>
         </SwipeDismissSurface>
       </Modal>
+      {isSelectionMode ? (
+        <View style={{
+          position: 'absolute',
+          left: 12,
+          right: 12,
+          bottom: 12,
+          flexDirection: 'row',
+          paddingVertical: 6,
+          paddingHorizontal: 4,
+          borderRadius: 20,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.elevated,
+          elevation: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.12,
+          shadowRadius: 12,
+        }}>
+          {selectionActions.map((action) => (
+            <TouchableOpacity
+              key={action.key}
+              onPress={action.onPress}
+              accessibilityRole="button"
+              accessibilityLabel={`${action.label} ${selectedUids.size === 1 ? 'chat' : 'chats'}`}
+              style={{ flex: 1, alignItems: 'center', gap: 4, paddingVertical: 8, borderRadius: 14 }}
+            >
+              <Ionicons name={action.icon} size={22} color={action.destructive ? colors.destructive : colors.icon} />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: action.destructive ? colors.destructiveText : colors.secondaryText }}>
+                {action.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }

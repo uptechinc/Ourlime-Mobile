@@ -61,7 +61,7 @@ export default function CreateCommunityModal({ visible, onClose, onCreated, cate
     }
     setCheckingAvailability(true);
     const timeout = setTimeout(() => {
-      void communityService.checkAvailability(title.trim(), slug).then(setAvailability).catch(() => setAvailability(null)).finally(() => setCheckingAvailability(false));
+      void communityService.checkAvailability(title.trim(), slug).then(setAvailability).catch(() => setAvailability(null)).then(() => setCheckingAvailability(false));
     }, 450);
     return () => clearTimeout(timeout);
   }, [slug, title, visible]);

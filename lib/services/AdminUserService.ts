@@ -8,6 +8,7 @@ import { DiagnosticLogService } from './DiagnosticLogService';
 import type { ModerationDeliveryResult } from '@/lib/types/moderationDelivery';
 import { localCacheService } from './LocalCacheService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
+import { privateProfileService } from './PrivateProfileService';
 
 const USER_LIFECYCLE_START_TIMEOUT_MS = 18_000;
 const USER_LIFECYCLE_POLL_INTERVAL_MS = 1_000;
@@ -254,8 +255,10 @@ export class AdminUserService {
       : [orderBy(documentId()), limit(pageSize + 1)];
     const snapshot = await getDocs(query(collection(db, 'users'), ...constraints));
     const documents = snapshot.docs.slice(0, pageSize);
+    // Email and status reasons are in each member's private profile, which administrators can read.
+    const users = await privateProfileService.withPrivateFields(documents.map((document) => ({ id: document.id, data: document.data() })));
     return this.createPage(
-      documents.map((document) => ({ ...document.data(), id: document.id })),
+      users.map((user, index) => ({ ...user, id: documents[index].id })),
       snapshot.docs.length > pageSize,
       snapshot.docs.length > pageSize ? documents.at(-1)?.id ?? null : null,
     );

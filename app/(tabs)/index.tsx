@@ -75,9 +75,8 @@ export default function FeedsScreen() {
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={['top', 'left', 'right']}>
         {profileError ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
-            <Text style={{ color: '#991b1b', fontSize: 18, fontWeight: '700', textAlign: 'center' }}>Could not load your profile</Text>
-            <Text style={{ marginTop: 8, color: '#7f1d1d', textAlign: 'center' }}>{profileError}</Text>
-            <Text style={{ marginTop: 8, color: '#6b7280', fontSize: 12, textAlign: 'center' }}>Check Metro for [Ourlime.Mobile][AuthService] logs.</Text>
+            <Text style={{ color: colors.destructiveText, fontSize: 18, fontWeight: '700', textAlign: 'center' }}>Could not load your profile</Text>
+            <Text style={{ marginTop: 8, color: colors.secondaryText, textAlign: 'center' }}>{profileError}</Text>
           </View>
         ) : (
           <View style={{ flex: 1, padding: 16 }}>

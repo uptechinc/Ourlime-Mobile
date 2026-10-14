@@ -36,6 +36,8 @@ export type PendingVideoTrim = {
   mimeType: string;
   fileSize: number;
   durationSeconds: number;
+  /** Set when the user trims a video already in the post: the result replaces the item at this index. */
+  replaceIndex?: number;
 };
 export type MediaSelectionResult = {
   imagesToCrop: PendingImageCrop[];

@@ -45,6 +45,8 @@ export default function ProfileLimesScreen() {
 
   const [limes, setLimes] = useState<Reel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(SCREEN_HEIGHT);
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
@@ -96,6 +98,7 @@ export default function ProfileLimesScreen() {
         const data = await limeService.fetchUserReels(targetUserId);
         if (cancelled) return;
         setLimes(data);
+        setLoadError(null);
 
         // Find initial index from clicked limeId
         if (limeId && data.length > 0) {
@@ -106,6 +109,7 @@ export default function ProfileLimesScreen() {
         }
       } catch (err) {
         console.error('[ProfileLimesScreen] Failed to fetch profile limes:', err);
+        if (!cancelled) setLoadError('These Limes could not be loaded.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -115,7 +119,7 @@ export default function ProfileLimesScreen() {
     return () => {
       cancelled = true;
     };
-  }, [targetUserId, limeId]);
+  }, [targetUserId, limeId, reloadKey]);
 
   // Scroll to initial index once data is loaded
   useEffect(() => {
@@ -224,7 +228,16 @@ export default function ProfileLimesScreen() {
             <ChevronLeft size={24} color="#ffffff" />
           </TouchableOpacity>
         </SafeAreaView>
-        <Text style={screenStyles.emptyText}>No Limes found</Text>
+        <Text style={screenStyles.emptyText}>{loadError ?? 'No Limes found'}</Text>
+        {loadError ? (
+          <TouchableOpacity
+            onPress={() => setReloadKey((key) => key + 1)}
+            style={screenStyles.retryButton}
+            accessibilityRole="button"
+          >
+            <Text style={screenStyles.retryText}>Try again</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
   }
@@ -402,6 +415,18 @@ const screenStyles = StyleSheet.create({
     backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  retryButton: {
+    marginTop: 16,
+    minHeight: 44,
+    paddingHorizontal: 22,
+    borderRadius: 22,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  retryText: {
+    color: '#ffffff',
+    fontWeight: '700',
   },
   emptyText: {
     color: '#94a3b8',

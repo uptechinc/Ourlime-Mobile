@@ -1,11 +1,12 @@
 import { auth, db } from '@/lib/firebaseConfig';
-import { collection, doc, getDocs, runTransaction, query, orderBy, documentId, startAfter, limit, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDocs, runTransaction, query, orderBy, documentId, startAfter, limit } from 'firebase/firestore';
 import { durableWorkService } from './DurableWorkService';
 import { reliabilityDecoder } from './ReliabilityDecoderService';
 import { nativeSessionService } from './NativeSessionService';
 import { pageAccessService } from './PageAccessService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { BlogDraftPayload, ContentDraft, PublicationReceipt, TaskDraftPayload } from '@/lib/types/reliability';
+import { withCleanup } from '@/lib/utils/withCleanup';
 
 export class ContentDraftService {
   private static instance: ContentDraftService;
@@ -66,7 +67,7 @@ export class ContentDraftService {
   public async sync(ownerId: string): Promise<{ conflicts: number; pending: number }> {
     const existing = this.synchronizations.get(ownerId);
     if (existing) return existing;
-    const synchronization = this.synchronize(ownerId).finally(() => { this.synchronizations.delete(ownerId); });
+    const synchronization = withCleanup(this.synchronize(ownerId), () => { this.synchronizations.delete(ownerId); });
     this.synchronizations.set(ownerId, synchronization);
     return synchronization;
   }
@@ -157,7 +158,8 @@ export class ContentDraftService {
       if (!saved || JSON.stringify(saved.value.payload) !== JSON.stringify(draft.payload)) throw new Error('Legacy draft migration could not be verified. The original is retained.');
     }
   }
-  public async publish(draft: ContentDraft): Promise<PublicationReceipt> {
+  /** disclaimerAccepted records the author's acceptance of the current publishing disclaimer on a blog. */
+  public async publish(draft: ContentDraft, options: { disclaimerAccepted?: boolean } = {}): Promise<PublicationReceipt> {
     pageAccessService.assertMutation(draft.kind === 'blog' ? '/blogs' : '/projectManagement');
     await this.sync(draft.ownerId);
     const stored = await durableWorkService.read(draft.ownerId, 'draft', draft.id, reliabilityDecoder.draft);
@@ -167,16 +169,11 @@ export class ContentDraftService {
     if (JSON.stringify(stored.value.payload) !== JSON.stringify(draft.payload)) throw new Error('A draft conflict must be resolved before publishing.');
     const { getFunctions, httpsCallable } = await import('@react-native-firebase/functions');
     nativeSessionService.assertOwner(draft.ownerId);
-    let receipt: PublicationReceipt | null = null;
-    try {
-      // The publish callable authenticates through native Firebase, so the session bridge must be ready here.
-      await nativeSessionService.ensure(draft.ownerId);
-      const response = await httpsCallable(getFunctions(), 'publishContentDraft')({ draftId: draft.id, operationId: stored.value.operationId, revision: stored.value.revision });
-      receipt = reliabilityDecoder.receipt(response.data);
-    } catch (publicationError: unknown) {
-      if (stored.value.kind !== 'task') throw publicationError;
-      receipt = await this.publishTaskDirect(stored.value);
-    }
+    // The publish callable authenticates through native Firebase, so the session bridge must be ready here.
+    // Tasks are created only by the callable (the rules deny direct task writes), so a failure keeps the draft.
+    await nativeSessionService.ensure(draft.ownerId);
+    const response = await httpsCallable(getFunctions(), 'publishContentDraft')({ draftId: draft.id, operationId: stored.value.operationId, revision: stored.value.revision, ...(options.disclaimerAccepted === true ? { disclaimerAccepted: true } : {}) });
+    const receipt: PublicationReceipt | null = reliabilityDecoder.receipt(response.data);
     if (!receipt) throw new Error('Publication was not confirmed. Your draft was retained.');
     if (auth.currentUser?.uid !== draft.ownerId) return receipt;
     await this.enqueue(draft.ownerId, async () => {
@@ -184,42 +181,6 @@ export class ContentDraftService {
       if (latest) await durableWorkService.write(draft.ownerId, 'draft', draft.id, { ...latest.value, receipt }, latest.revision);
     });
     return receipt;
-  }
-
-  private async publishTaskDirect(draft: Extract<ContentDraft, { kind: 'task' }>): Promise<PublicationReceipt> {
-    const title = draft.payload.title.trim();
-    if (!title) throw new Error('Task title is required. Your draft was retained.');
-    nativeSessionService.assertOwner(draft.ownerId);
-    const projectReference = doc(db, 'projects', draft.projectId);
-    const taskReference = doc(db, 'projects', draft.projectId, 'tasks', draft.operationId);
-    const publishedAt = new Date().toISOString();
-    await runTransaction(db, async (transaction) => {
-      const [projectSnapshot, taskSnapshot] = await Promise.all([transaction.get(projectReference), transaction.get(taskReference)]);
-      if (!projectSnapshot.exists()) throw new Error('Project not found. Your draft was retained.');
-      if (taskSnapshot.exists()) return;
-      const project = reliabilityDecoder.object(projectSnapshot.data());
-      const membershipMap = reliabilityDecoder.object(project.teamMembers);
-      const membership = reliabilityDecoder.object(membershipMap[draft.ownerId]);
-      const isOwner = project.ownerId === draft.ownerId;
-      const isAcceptedMember = membership.membershipStatus === 'accepted' && membership.role !== 'viewer';
-      if (!isOwner && !isAcceptedMember) throw new Error('You do not have permission to create tasks in this project.');
-      if (project.status !== 'active') throw new Error('Archived and completed projects are read-only.');
-      const totalTasks = typeof project.totalTasks === 'number' ? Math.max(0, Math.trunc(project.totalTasks)) : 0;
-      const completedTasks = typeof project.completedTasks === 'number' ? Math.max(0, Math.trunc(project.completedTasks)) : 0;
-      const nextTotal = totalTasks + 1;
-      const nextCompleted = completedTasks + (draft.payload.status === 'done' ? 1 : 0);
-      transaction.set(taskReference, {
-        ...draft.payload,
-        title,
-        createdBy: draft.ownerId,
-        createdAt: publishedAt,
-        updatedAt: publishedAt,
-        subTasks: [], comments: [], attachments: [], timeEntries: [], progress: draft.payload.status === 'done' ? 100 : 0, archived: false,
-        operationId: draft.operationId,
-      });
-      transaction.set(projectReference, { totalTasks: nextTotal, completedTasks: nextCompleted, progress: nextTotal > 0 ? Math.round((nextCompleted / nextTotal) * 100) : 0, updatedAt: serverTimestamp() }, { merge: true });
-    });
-    return { operationId: draft.operationId, destinationId: taskReference.id, publishedAt };
   }
 }
 export const contentDraftService = ContentDraftService.getInstance();

@@ -20,7 +20,7 @@ import { RelationshipService, type RelationshipSuggestion } from '@/lib/services
 import { SearchService } from '@/lib/services/SearchService';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { useDiscoverResource } from '@/lib/hooks/useDiscoverResource';
-import type { DiscoverEvent } from '@/lib/types/discoverResources';
+import type { DiscoverEvent, DiscoverResourceData } from '@/lib/types/discoverResources';
 import {
   SkeletonUserCard,
   SkeletonCommunityCard,
@@ -38,6 +38,21 @@ const relationshipService = RelationshipService.getInstance();
 const searchService = SearchService.getInstance();
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
+type DiscoverSection = keyof DiscoverResourceData['sectionStatus'];
+type SectionDisplayState = 'loading' | 'error' | 'ready';
+type SectionLoadErrorProps = { message: string; onRetry: () => void; textColor: string; inset?: boolean };
+
+function SectionLoadError({ message, onRetry, textColor, inset = false }: SectionLoadErrorProps) {
+  return (
+    <View accessibilityRole="alert" style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: inset ? 16 : 0 }}>
+      <Text style={{ color: textColor, fontSize: 13 }}>{message} · </Text>
+      <TouchableOpacity onPress={onRetry} hitSlop={10} accessibilityRole="button" accessibilityLabel="Retry">
+        <Text style={{ color: '#10b981', fontSize: 13, fontWeight: '700' }}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function DiscoverScreen() {
   const { isDark, colors } = useAppTheme();
   const router = useRouter();
@@ -50,12 +65,21 @@ export default function DiscoverScreen() {
   const [discoverQuery, setDiscoverQuery] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<RelationshipSuggestion[]>([]);
   const [isSearchingQuery, setIsSearchingQuery] = useState(false);
+  const [hasSearchError, setHasSearchError] = useState(false);
+  const [searchAttempt, setSearchAttempt] = useState(0);
   const [friendSentIds, setFriendSentIds] = useState<Set<string>>(new Set());
   const [eventToShare, setEventToShare] = useState<DiscoverEvent | null>(null);
-  const isLoadingPeople = suggestedPeople.length === 0 && (!resource.data || resource.data.sectionStatus.people === 'loading');
-  const isLoadingCommunities = communities.length === 0 && (!resource.data || resource.data.sectionStatus.communities === 'loading');
-  const isLoadingEvents = events.length === 0 && (!resource.data || resource.data.sectionStatus.events === 'loading');
-  const isLoadingJobs = jobs.length === 0 && (!resource.data || resource.data.sectionStatus.jobs === 'loading');
+  // Cards on hand are always shown; otherwise a section is loading or failed, including when the whole load failed with nothing cached.
+  const sectionDisplayState = (section: DiscoverSection, itemCount: number): SectionDisplayState => {
+    if (itemCount > 0) return 'ready';
+    if (!resource.data) return resource.status === 'error' ? 'error' : 'loading';
+    const status = resource.data.sectionStatus[section];
+    return status === 'loading' ? 'loading' : status === 'error' ? 'error' : 'ready';
+  };
+  const peopleState = sectionDisplayState('people', suggestedPeople.length);
+  const communitiesState = sectionDisplayState('communities', communities.length);
+  const eventsState = sectionDisplayState('events', events.length);
+  const jobsState = sectionDisplayState('jobs', jobs.length);
 
   const handleQueryChange = (text: string) => {
     setDiscoverQuery(text);
@@ -66,10 +90,12 @@ export default function DiscoverScreen() {
     if (!query) {
       setUserSearchResults([]);
       setIsSearchingQuery(false);
+      setHasSearchError(false);
       return;
     }
     let isCurrent = true;
     setIsSearchingQuery(true);
+    setHasSearchError(false);
     const timer = setTimeout(() => {
       void (async () => {
         try {
@@ -83,8 +109,12 @@ export default function DiscoverScreen() {
             profileImage: profile.profilePicture ?? undefined,
             reason: 'Search result',
           })));
-        } catch {
-          if (isCurrent) setUserSearchResults([]);
+        } catch (error: unknown) {
+          console.error('[DiscoverScreen.searchUsers] Error:', error);
+          if (isCurrent) {
+            setUserSearchResults([]);
+            setHasSearchError(true);
+          }
         } finally {
           if (isCurrent) setIsSearchingQuery(false);
         }
@@ -94,7 +124,9 @@ export default function DiscoverScreen() {
       isCurrent = false;
       clearTimeout(timer);
     };
-  }, [discoverQuery]);
+  }, [discoverQuery, searchAttempt]);
+
+  const handleRetrySearch = useCallback(() => setSearchAttempt((attempt) => attempt + 1), []);
 
   const onRefresh = useCallback(() => {
     void refresh();
@@ -194,7 +226,7 @@ export default function DiscoverScreen() {
             autoCapitalize="none"
           />
           {discoverQuery.length > 0 && (
-            <TouchableOpacity onPress={() => handleQueryChange('')}>
+            <TouchableOpacity onPress={() => handleQueryChange('')} hitSlop={12} accessibilityRole="button" accessibilityLabel="Clear search">
               <Icon name="x-circle" size={18} color={colors.mutedText} />
             </TouchableOpacity>
           )}
@@ -216,7 +248,12 @@ export default function DiscoverScreen() {
                 </View>
               </View>
 
-              {isLoadingPeople || (isSearchingQuery && filteredPeople.length === 0) ? (
+              {normalizedQuery && hasSearchError && filteredPeople.length > 0 ? (
+                <View style={{ marginBottom: 10 }}>
+                  <SectionLoadError message="Couldn't search people" onRetry={handleRetrySearch} textColor={colors.destructiveText} inset />
+                </View>
+              ) : null}
+              {peopleState === 'loading' || (isSearchingQuery && filteredPeople.length === 0) ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
                   {[0, 1, 2].map((item) => <SkeletonUserCard key={`person-skeleton-${item}`} />)}
                 </ScrollView>
@@ -258,14 +295,14 @@ export default function DiscoverScreen() {
                           paddingHorizontal: 14,
                           paddingVertical: 7,
                           borderRadius: 14,
-                          backgroundColor: isSent ? '#fef3c7' : '#10b981',
+                          backgroundColor: isSent ? colors.warningSurface : '#10b981',
                           borderWidth: isSent ? 1 : 0,
-                          borderColor: '#f59e0b',
+                          borderColor: colors.warningText,
                           width: '100%',
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: isSent ? '#b45309' : '#ffffff' }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: isSent ? colors.warningText : '#ffffff' }}>
                           {isSent ? 'Cancel Request' : 'Add Friend'}
                         </Text>
                       </TouchableOpacity>
@@ -273,6 +310,10 @@ export default function DiscoverScreen() {
                   );
                 })}
                 </ScrollView>
+              ) : normalizedQuery && hasSearchError ? (
+                <SectionLoadError message="Couldn't search people" onRetry={handleRetrySearch} textColor={colors.destructiveText} inset />
+              ) : peopleState === 'error' && !normalizedQuery ? (
+                <SectionLoadError message="Couldn't load suggestions" onRetry={onRefresh} textColor={colors.destructiveText} inset />
               ) : (
                 <Text style={{ paddingHorizontal: 16, color: colors.mutedText, fontSize: 13 }}>
                   {normalizedQuery ? 'No people match your search.' : 'No friend suggestions are available yet.'}
@@ -292,7 +333,7 @@ export default function DiscoverScreen() {
                 </TouchableOpacity>
               </View>
 
-              {isLoadingCommunities ? (
+              {communitiesState === 'loading' ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
                   {[0, 1].map((item) => <SkeletonCommunityCard key={`community-skeleton-${item}`} />)}
                 </ScrollView>
@@ -312,15 +353,17 @@ export default function DiscoverScreen() {
                       marginRight: 14,
                     }}
                   >
-                    {community.imageUrl ? <Image source={{ uri: community.imageUrl }} style={{ width: '100%', height: 110 }} /> : <View style={{ width: '100%', height: 110, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}><Icon name="users" size={30} color="#10b981" /></View>}
+                    {community.imageUrl ? <Image source={{ uri: community.imageUrl }} style={{ width: '100%', height: 110 }} /> : <View style={{ width: '100%', height: 110, backgroundColor: colors.successSurface,alignItems: 'center', justifyContent: 'center' }}><Icon name="users" size={30} color="#10b981" /></View>}
                     <View style={{ padding: 14 }}>
                       <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{community.title}</Text>
-                      <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 4 }}>{community.membershipCount.toLocaleString()} members</Text>
-                      <Text style={{ marginTop: 12, fontSize: 12, fontWeight: '700', color: '#047857' }}>View community</Text>
+                      <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 4 }}>{community.membershipCount.toLocaleString()} {community.membershipCount === 1 ? 'member' : 'members'}</Text>
+                      <Text style={{ marginTop: 12, fontSize: 12, fontWeight: '700', color: colors.accentText }}>View community</Text>
                     </View>
                   </TouchableOpacity>
                   ))}
                 </ScrollView>
+              ) : communitiesState === 'error' ? (
+                <SectionLoadError message="Couldn't load communities" onRetry={onRefresh} textColor={colors.destructiveText} inset />
               ) : (
                 <Text style={{ paddingHorizontal: 16, color: colors.mutedText, fontSize: 13 }}>
                   {normalizedQuery ? 'No communities match your search.' : 'No featured communities are available yet.'}
@@ -340,7 +383,7 @@ export default function DiscoverScreen() {
                 </TouchableOpacity>
               </View>
 
-              {isLoadingEvents ? (
+              {eventsState === 'loading' ? (
                 <>
                   <SkeletonEventCard />
                   <SkeletonEventCard />
@@ -362,7 +405,7 @@ export default function DiscoverScreen() {
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    {evt.image ? <Image source={{ uri: evt.image }} style={{ width: 64, height: 64, borderRadius: 16 }} /> : <View style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}><Icon name="calendar" size={24} color="#10b981" /></View>}
+                    {evt.image ? <Image source={{ uri: evt.image }} style={{ width: 64, height: 64, borderRadius: 16 }} /> : <View style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: colors.successSurface,alignItems: 'center', justifyContent: 'center' }}><Icon name="calendar" size={24} color="#10b981" /></View>}
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={{ fontSize: 11, fontWeight: '800', color: '#10b981', textTransform: 'uppercase' }}>{evt.date}</Text>
                       <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginTop: 2 }}>{evt.title}</Text>
@@ -371,7 +414,7 @@ export default function DiscoverScreen() {
                         <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, fontSize: 12, color: colors.mutedText, marginLeft: 4 }}>{locationLabel}</Text>
                       </View>
                     </View>
-                    <TouchableOpacity onPress={() => setEventToShare(evt)} style={{ padding: 8 }}>
+                    <TouchableOpacity onPress={() => setEventToShare(evt)} style={{ padding: 8 }} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Share ${evt.title}`}>
                       <Icon name="share-2" size={18} color={colors.icon} />
                     </TouchableOpacity>
                   </View>
@@ -381,7 +424,9 @@ export default function DiscoverScreen() {
                     <PostLocationMap location={{ name: evt.title, address: evt.location }} />
                   ) : null}
                 </View>;
-              }) : (
+              }) : eventsState === 'error' ? (
+                <SectionLoadError message="Couldn't load events" onRetry={onRefresh} textColor={colors.destructiveText} />
+              ) : (
                 <Text style={{ color: colors.mutedText, fontSize: 13 }}>
                   {normalizedQuery ? 'No events match your search.' : 'No upcoming events are available yet.'}
                 </Text>
@@ -400,7 +445,7 @@ export default function DiscoverScreen() {
                 </TouchableOpacity>
               </View>
 
-              {isLoadingJobs ? (
+              {jobsState === 'loading' ? (
                 <>
                   <SkeletonJobCard />
                   <SkeletonJobCard />
@@ -420,10 +465,10 @@ export default function DiscoverScreen() {
                     alignItems: 'center',
                   }}
                 >
-                  {job.image ? <Image source={{ uri: job.image }} style={{ width: 44, height: 44, borderRadius: 14 }} /> : <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}><Icon name="briefcase" size={20} color="#10b981" /></View>}
+                  {job.image ? <Image source={{ uri: job.image }} style={{ width: 44, height: 44, borderRadius: 14 }} /> : <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.successSurface,alignItems: 'center', justifyContent: 'center' }}><Icon name="briefcase" size={20} color="#10b981" /></View>}
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{job.role}</Text>
-                    <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 2 }}>{job.company} · <Text style={{ color: '#10b981', fontWeight: '600' }}>{job.type}</Text></Text>
+                    <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 2 }}>{job.company} · <Text style={{ color: '#10b981', fontWeight: '600' }}>{job.type === 'quickTask' ? 'Quick task' : 'Professional'}</Text></Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>{job.salary}</Text>
@@ -433,7 +478,9 @@ export default function DiscoverScreen() {
                     </View>
                   </View>
                 </TouchableOpacity>
-              )) : (
+              )) : jobsState === 'error' ? (
+                <SectionLoadError message="Couldn't load jobs" onRetry={onRefresh} textColor={colors.destructiveText} />
+              ) : (
                 <Text style={{ color: colors.mutedText, fontSize: 13 }}>
                   {normalizedQuery ? 'No jobs match your search.' : 'No featured jobs are available yet.'}
                 </Text>

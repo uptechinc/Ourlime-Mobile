@@ -116,6 +116,7 @@ export function ChatSettingsMenu({
     setMutedUntil(until);
     try {
       await messagingService.setMuteUntil(currentUserId, friendId, until);
+      void conversationResourceService.patchConversation(currentUserId, friendId, { isMuted: true, mutedUntil: until });
       const mutedKey = `ourlime_muted_chats_${currentUserId}`;
       const val = await AsyncStorage.getItem(mutedKey);
       const list = val ? (JSON.parse(val) as string[]) : [];
@@ -147,6 +148,7 @@ export function ChatSettingsMenu({
     setMutedUntil(null);
     try {
       await messagingService.setMuteUntil(currentUserId, friendId, null);
+      void conversationResourceService.patchConversation(currentUserId, friendId, { isMuted: false, mutedUntil: null });
       const mutedKey = `ourlime_muted_chats_${currentUserId}`;
       const val = await AsyncStorage.getItem(mutedKey);
       const list = val ? (JSON.parse(val) as string[]) : [];
@@ -179,6 +181,7 @@ export function ChatSettingsMenu({
     setIsArchived(nextArchived);
     try {
       await messagingService.setArchiveStatus(friendId, nextArchived);
+      await conversationResourceService.patchConversation(currentUserId, friendId, { isArchived: nextArchived });
       const archivedKey = `ourlime_archived_chats_${currentUserId}`;
       const val = await AsyncStorage.getItem(archivedKey);
       const list = val ? (JSON.parse(val) as string[]) : [];

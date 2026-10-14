@@ -2,6 +2,8 @@ import { ALL_COUNTRIES } from '@/lib/constants/countries';
 import { nativeSessionService } from './NativeSessionService';
 import { reliabilityDecoder as decode } from './ReliabilityDecoderService';
 import { db } from '@/lib/firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
+import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import {
   collection,
   doc,
@@ -20,6 +22,7 @@ import {
 } from 'firebase/firestore';
 import type { CatalogCursor, CatalogPage, MarketProduct, MarketProductCondition, MarketVariant, CartLine } from '@/lib/types/reliability';
 import type { CheckoutContact } from '@/lib/types/ehub';
+import { privateProfileService } from './PrivateProfileService';
 
 export type CheckoutLineReview = { line: CartLine; currentPrice: number | null; reason: string | null; priceChanged: boolean };
 export type MarketSupportConfig = { email: string; helpUrl: string };
@@ -82,8 +85,10 @@ export class MarketplaceService {
       if (search && !normalizedTitle.startsWith(search)) return false;
       return !category || decode.string(data.category) === category;
     }).slice(0, 30);
+    // Every listing's gallery images in one batched read, shared by the per-product decoding below.
+    const subImagesByProduct = this.loadSubImageNames(visibleDocuments.map((document) => document.id));
     for (let offset = 0; offset < visibleDocuments.length; offset += 4) {
-      decodedProducts.push(...await Promise.all(visibleDocuments.slice(offset, offset + 4).map((document: QueryDocumentSnapshot<DocumentData>) => this.decodeProduct(document.id, document.data()))));
+      decodedProducts.push(...await Promise.all(visibleDocuments.slice(offset, offset + 4).map((document: QueryDocumentSnapshot<DocumentData>) => this.decodeProduct(document.id, document.data(), subImagesByProduct))));
     }
     const last = visibleDocuments[visibleDocuments.length - 1];
     return {
@@ -112,15 +117,31 @@ export class MarketplaceService {
     return product;
   }
 
-  private async decodeProduct(id: string, value: unknown): Promise<MarketProduct> {
+  /** subImages for many products, grouped by product and capped at 100 each like the single-product query. */
+  private async loadSubImageNames(productIds: string[]): Promise<Map<string, unknown[]>> {
+    const documents = await firestoreBatchReadService.getDocumentsByField('subImages', 'productId', productIds, 100);
+    const namesByProduct = new Map<string, unknown[]>();
+    documents.forEach((document) => {
+      const productId = document.data().productId;
+      if (typeof productId !== 'string') return;
+      const names = namesByProduct.get(productId) ?? [];
+      if (names.length < 100) names.push(document.data().imageName);
+      namesByProduct.set(productId, names);
+    });
+    return namesByProduct;
+  }
+
+  private async decodeProduct(id: string, value: unknown, subImagesByProduct?: Promise<Map<string, unknown[]>>): Promise<MarketProduct> {
     const product = decode.object(value);
     const directSellerId = typeof product.sellerId === 'string' ? product.sellerId : '';
-    const [publishedVariantsSnapshot, ownershipSnapshot, colorSnapshot, sizeSnapshot, subImageSnapshot] = await Promise.all([
+    const [publishedVariantsSnapshot, ownershipSnapshot, colorSnapshot, sizeSnapshot, subImageNames] = await Promise.all([
       getDocs(query(collection(db, 'variants'), where('productId', '==', id), where('publicationState', '==', 'published'), limit(401))),
       getDocs(query(collection(db, 'ownership'), where('productId', '==', id), limit(2))),
       getDocs(query(collection(db, 'colorVariants'), where('productId', '==', id), limit(200))),
       getDocs(query(collection(db, 'sizeVariants'), where('productId', '==', id), limit(200))),
-      getDocs(query(collection(db, 'subImages'), where('productId', '==', id), limit(100))),
+      subImagesByProduct
+        ? subImagesByProduct.then((namesByProduct) => namesByProduct.get(id) ?? [])
+        : getDocs(query(collection(db, 'subImages'), where('productId', '==', id), limit(100))).then((snapshot) => snapshot.docs.map((document) => document.data().imageName)),
     ]);
     const variantsSnapshot = publishedVariantsSnapshot.empty
       ? await getDocs(query(collection(db, 'variants'), where('productId', '==', id), limit(401)))
@@ -147,7 +168,7 @@ export class MarketplaceService {
         price: priceValid ? Number(variant.price) : 0,
         currency,
         stock,
-        available: available && priceValid && Boolean(currency) && stock > 0 && variant.status !== 'inactive' && variant.status !== 'archived',
+        available: available && priceValid && stock > 0 && variant.status !== 'inactive' && variant.status !== 'archived',
         image: typeof variant.image === 'string' ? variant.image : null,
         colorName,
         colorCode: typeof color?.colorCode === 'string' ? color.colorCode : null,
@@ -156,6 +177,12 @@ export class MarketplaceService {
       };
     });
     const condition: MarketProductCondition = ['new', 'like_new', 'good', 'fair', 'refurbished'].includes(String(product.condition)) ? product.condition as MarketProductCondition : null;
+    const storeName = typeof (store as { storeName?: string } | null)?.storeName === 'string' ? (store as { storeName: string }).storeName : null;
+    const listedName = storeName ?? (typeof ownership?.userName === 'string' ? ownership.userName : typeof product.sellerName === 'string' ? product.sellerName : null);
+    // Older listings carry no seller name; the website shows the seller's profile name, so read it the same way.
+    const sellerProfile = !listedName && sellerId ? (await sharedDocumentReader.read(doc(db, 'users', sellerId)).catch(() => null))?.data() : undefined;
+    const profileName = [sellerProfile?.firstName, sellerProfile?.lastName].filter((part): part is string => typeof part === 'string' && Boolean(part.trim())).join(' ')
+      || (typeof sellerProfile?.userName === 'string' ? sellerProfile.userName : '');
     const finiteNumber = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null;
     const text = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim() : null;
     return {
@@ -165,12 +192,12 @@ export class MarketplaceService {
       description: typeof product.longDescription === 'string' ? product.longDescription : typeof product.shortDescription === 'string' ? product.shortDescription : '',
       category: typeof product.category === 'string' ? product.category : '',
       sellerId,
-      sellerName: typeof (store as { storeName?: string } | null)?.storeName === 'string' ? (store as { storeName: string }).storeName : typeof ownership?.userName === 'string' ? ownership.userName : typeof product.sellerName === 'string' ? product.sellerName : 'Seller information unavailable',
+      sellerName: listedName ?? (profileName || 'Seller information unavailable'),
       sellerVerified: (store as { verificationStatus?: string } | null)?.verificationStatus === 'approved',
       images: [
         product.thumbnailImage,
         ...(Array.isArray(product.images) ? product.images : []),
-        ...subImageSnapshot.docs.map((document) => document.data().imageName),
+        ...subImageNames,
       ].filter((image, index, images): image is string => typeof image === 'string' && /^https:\/\//.test(image) && images.indexOf(image) === index),
       available,
       unavailableReason: available ? null : 'This listing is unavailable.',
@@ -207,10 +234,12 @@ export class MarketplaceService {
     const snapshot = await getDoc(reference);
     nativeSessionService.assertOwner(ownerId);
     if (!snapshot.exists()) {
-      const profile = (await getDoc(doc(db, 'users', ownerId))).data() as { firstName?: unknown; lastName?: unknown; email?: unknown; phoneNumber?: unknown; phone?: unknown; countryCode?: unknown; city?: unknown } | undefined;
+      const profile = (await getDoc(doc(db, 'users', ownerId))).data() as { firstName?: unknown; lastName?: unknown; countryCode?: unknown; city?: unknown } | undefined;
+      // Email and phone are in the owner's private profile.
+      const privateProfile = await privateProfileService.getOwn(ownerId, profile);
       nativeSessionService.assertOwner(ownerId);
       const text = (v: unknown) => typeof v === 'string' ? v : '';
-      return { name: [text(profile?.firstName), text(profile?.lastName)].filter(Boolean).join(' '), email: text(profile?.email), phone: text(profile?.phoneNumber || profile?.phone), country: text(profile?.countryCode), address: '', city: text(profile?.city), postalCode: '' };
+      return { name: [text(profile?.firstName), text(profile?.lastName)].filter(Boolean).join(' '), email: privateProfile.email, phone: privateProfile.phone, country: text(profile?.countryCode), address: '', city: text(profile?.city), postalCode: '' };
     }
     const data = snapshot.data();
     return { name: decode.string(data?.name), email: decode.string(data?.email), phone: decode.string(data?.phone), country: decode.string(data?.country), address: decode.string(data?.address), city: decode.string(data?.city), postalCode: decode.string(data?.postalCode) };

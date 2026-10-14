@@ -67,7 +67,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
   const router = useRouter();
   const { isDark, colors } = useAppTheme();
   const swipeDismiss = useSwipeDismiss({ visible: visible && mode === 'modal', onDismiss: onClose });
-  const { notifications, unreadCount, readCount, isLoading, hasMore, loadMore, markAsRead, markManyAsRead, markManyAsUnread, markAllAsRead, deleteNotifications, refreshNotifications } = useNotifications();
+  const { notifications, unreadCount, readCount, isLoading, loadError, hasMore, loadMore, markAsRead, markManyAsRead, markManyAsUnread, markAllAsRead, deleteNotifications, refreshNotifications } = useNotifications();
 
   const [sortMode, setSortMode] = useState<SortMode>('unread_first');
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
@@ -531,8 +531,8 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
             <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
               {item.title || notificationHelpers.formatNotificationTitle(item.type)}
             </Text>
-            <TouchableOpacity onPress={() => handlePromptSingleDelete(item.id)} style={{ padding: 4 }}>
-              <Icon name="trash-2" size={14} color="#94a3b8" />
+            <TouchableOpacity onPress={() => handlePromptSingleDelete(item.id)} style={{ padding: 4 }} hitSlop={12} accessibilityRole="button" accessibilityLabel="Delete notification">
+              <Icon name="trash-2" size={14} color={colors.mutedText} />
             </TouchableOpacity>
           </View>
 
@@ -875,6 +875,15 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
               <SkeletonNotificationRow />
               <SkeletonNotificationRow />
               <SkeletonNotificationRow />
+            </View>
+          ) : loadError ? (
+            <View style={{ flex: 1, paddingVertical: 80, alignItems: 'center' }}>
+              <Icon name="wifi-off" size={44} color={colors.mutedText} />
+              <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginTop: 14 }}>Couldn’t load notifications</Text>
+              <Text style={{ fontSize: 14, color: colors.mutedText, marginTop: 4, textAlign: 'center', paddingHorizontal: 30 }}>Check your connection and try again.</Text>
+              <TouchableOpacity onPress={() => { void refreshNotifications(); }} accessibilityRole="button" style={{ marginTop: 16, minHeight: 44, paddingHorizontal: 20, borderRadius: 22, justifyContent: 'center', backgroundColor: colors.successSurface }}>
+                <Text style={{ color: colors.successText, fontWeight: '700' }}>Try again</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={{ flex: 1, paddingVertical: 80, alignItems: 'center' }}>

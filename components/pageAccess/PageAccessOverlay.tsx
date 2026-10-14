@@ -21,6 +21,8 @@ type PageAccessPresentation = { icon: keyof typeof Ionicons.glyphMap; title: str
 type PageAccessPresentationMap = { [status in PageAccessStatus]: PageAccessPresentation };
 type PreviousDestination = { route: string; label: string };
 
+const TAB_SCREEN_PATHS = new Set(['/', '/index', '/discover', '/limes', '/chat', '/profile', '/search']);
+
 const PRESENTATION: PageAccessPresentationMap = {
   enabled: { icon: 'checkmark-circle-outline', title: '', description: '', color: '#10b981', background: '#ecfdf5' },
   coming_soon: { icon: 'time-outline', title: 'Coming Soon', description: 'This feature is not currently available during Phase 2 testing. We are focusing on a smaller set of core Ourlime features before expanding access. Thank you for helping us improve Ourlime.', color: '#10b981', background: '#ecfdf5' },
@@ -44,16 +46,9 @@ export default function PageAccessOverlay() {
   const isTabRoute = useMemo(() => {
     if (activeOverlayRoute) return true;
     if (!pathname) return false;
+    // Only the tab screens themselves sit above the tab bar; deeper pages (like the Lime viewer) are full screen.
     const clean = pathname.toLowerCase();
-    return (
-      clean.includes('(tabs)') ||
-      clean === '/' ||
-      clean === '/index' ||
-      clean.startsWith('/discover') ||
-      clean.startsWith('/limes') ||
-      clean.startsWith('/chat') ||
-      clean.startsWith('/profile')
-    );
+    return TAB_SCREEN_PATHS.has(clean) || clean.includes('(tabs)');
   }, [activeOverlayRoute, pathname]);
 
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 20);
@@ -97,7 +92,8 @@ export default function PageAccessOverlay() {
         bottom: isTabRoute ? tabBarHeight : 0,
         left: 0,
         zIndex: 9999,
-        backgroundColor: 'rgba(2,6,23,0.78)',
+        // Opaque: nothing of a restricted page may show through.
+        backgroundColor: '#020617',
       }}
     >
       <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 }}>

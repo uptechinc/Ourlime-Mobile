@@ -11,6 +11,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
+import FilterBar from '@/components/ui/FilterBar';
 import { childSafetyReportService } from '@/lib/services/ChildSafetyReportService';
 import {
 	CHILD_SAFETY_CATEGORY_LABELS,
@@ -20,6 +22,13 @@ import {
 } from '@/lib/types/childSafety';
 
 type ChildSafetyCasesScreenProps = { detailRoutePrefix?: string };
+
+const PRIORITY_OPTIONS: readonly ChildSafetyPriority[] = ['critical', 'high', 'medium', 'standard'];
+const STATUS_OPTIONS: readonly ChildSafetyStatus[] = ['submitted', 'under_review', 'escalated', 'action_required', 'resolved', 'reported_to_authority', 'closed'];
+const toLabel = (value: string): string => {
+	const words = value.replaceAll('_', ' ');
+	return words.charAt(0).toUpperCase() + words.slice(1);
+};
 
 export default function ChildSafetyCasesScreen({
 	detailRoutePrefix = '/admin/child-safety',
@@ -33,6 +42,7 @@ export default function ChildSafetyCasesScreen({
 	const [error, setError] = useState('');
 	const [nextCursor, setNextCursor] = useState<string | null>(null);
 	const [hasMore, setHasMore] = useState(false);
+	const [filtersOpen, setFiltersOpen] = useState(false);
 
 	const loadCases = useCallback(
 		async (cursor: string | null = null) => {
@@ -64,6 +74,19 @@ export default function ChildSafetyCasesScreen({
 		setLoading(true);
 		void loadCases(null);
 	}, [loadCases]);
+
+	const filterGroups: FilterGroup[] = [
+		{ key: 'priority', label: 'Priority', options: [{ value: 'all', label: 'Any priority' }, ...PRIORITY_OPTIONS.map((option) => ({ value: option, label: toLabel(option) }))], value: priority ?? 'all', defaultValue: 'all' },
+		{ key: 'status', label: 'Status', options: [{ value: 'all', label: 'Any status' }, ...STATUS_OPTIONS.map((option) => ({ value: option, label: toLabel(option) }))], value: status ?? 'all', defaultValue: 'all' },
+	];
+	const handleApplyFilters = (values: FilterValues): void => {
+		setPriority(PRIORITY_OPTIONS.find((option) => option === readSingleFilter(values, 'priority')));
+		setStatus(STATUS_OPTIONS.find((option) => option === readSingleFilter(values, 'status')));
+	};
+	const handleClearFilter = (groupKey: string): void => {
+		if (groupKey === 'priority') setPriority(undefined);
+		if (groupKey === 'status') setStatus(undefined);
+	};
 
 	return (
 		<SafeAreaView
@@ -109,101 +132,9 @@ export default function ChildSafetyCasesScreen({
 				}
 				contentContainerStyle={{ padding: 15, paddingBottom: 35 }}
 			>
-				<Text
-					style={{
-						marginBottom: 7,
-						color: colors.mutedText,
-						fontSize: 11,
-						fontWeight: '900',
-						textTransform: 'uppercase',
-					}}
-				>
-					Priority
-				</Text>
-				<ScrollView
-					horizontal
-					showsHorizontalScrollIndicator={false}
-					contentContainerStyle={{ gap: 8, paddingBottom: 13 }}
-				>
-					{([undefined, 'critical', 'high', 'medium', 'standard'] as const).map(
-						(option) => (
-							<TouchableOpacity
-								key={option ?? 'all'}
-								onPress={() => setPriority(option)}
-								style={{
-									paddingHorizontal: 14,
-									paddingVertical: 9,
-									borderRadius: 999,
-									backgroundColor:
-										priority === option ? colors.destructive : colors.control,
-								}}
-							>
-								<Text
-									style={{
-										color:
-											priority === option ? '#ffffff' : colors.secondaryText,
-										fontWeight: '800',
-										textTransform: 'capitalize',
-									}}
-								>
-									{option ?? 'All'}
-								</Text>
-							</TouchableOpacity>
-						)
-					)}
-				</ScrollView>
-				<Text
-					style={{
-						marginBottom: 7,
-						color: colors.mutedText,
-						fontSize: 11,
-						fontWeight: '900',
-						textTransform: 'uppercase',
-					}}
-				>
-					Status
-				</Text>
-				<ScrollView
-					horizontal
-					showsHorizontalScrollIndicator={false}
-					contentContainerStyle={{ gap: 8, paddingBottom: 13 }}
-				>
-					{(
-						[
-							undefined,
-							'submitted',
-							'under_review',
-							'escalated',
-							'action_required',
-							'resolved',
-							'reported_to_authority',
-							'closed',
-						] as const
-					).map((option) => (
-						<TouchableOpacity
-							key={option ?? 'all'}
-							onPress={() => setStatus(option)}
-							style={{
-								paddingHorizontal: 14,
-								paddingVertical: 9,
-								borderRadius: 999,
-								backgroundColor:
-									status === option ? colors.accent : colors.control,
-							}}
-						>
-							<Text
-								style={{
-									color:
-										status === option ? colors.onAccent : colors.secondaryText,
-									fontWeight: '800',
-									textTransform: 'capitalize',
-								}}
-							>
-								{option?.replaceAll('_', ' ') ?? 'All'}
-							</Text>
-						</TouchableOpacity>
-					))}
-				</ScrollView>
+				<View style={{ marginBottom: 13 }}>
+					<FilterBar groups={filterGroups} onOpen={() => setFiltersOpen(true)} onClear={handleClearFilter} />
+				</View>
 				{error ? (
 					<View
 						style={{
@@ -320,6 +251,7 @@ export default function ChildSafetyCasesScreen({
 					</TouchableOpacity>
 				) : null}
 			</ScrollView>
+			<FilterSheet visible={filtersOpen} title="Filter cases" groups={filterGroups} applyLabel="Show cases" onApply={handleApplyFilters} onClose={() => setFiltersOpen(false)} />
 		</SafeAreaView>
 	);
 }

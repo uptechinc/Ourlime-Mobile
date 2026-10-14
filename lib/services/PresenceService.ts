@@ -1,5 +1,6 @@
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 import { DiagnosticLogService } from './DiagnosticLogService';
 
 export type PresenceState = {
@@ -23,7 +24,7 @@ export class PresenceService {
   }
 
   private async readActivityStatus(userId: string): Promise<boolean> {
-    const settings = await getDoc(doc(db, 'users', userId, 'userSettings', 'account')).catch(() => null);
+    const settings = await sharedDocumentReader.read(doc(db, 'users', userId, 'userSettings', 'account')).catch(() => null);
     return settings?.data()?.activityStatus !== false;
   }
 
@@ -37,7 +38,7 @@ export class PresenceService {
   }
 
   public async getPresence(userId: string): Promise<PresenceState> {
-    const [user, activityStatus] = await Promise.all([getDoc(doc(db, 'users', userId)), this.readActivityStatus(userId)]);
+    const [user, activityStatus] = await Promise.all([sharedDocumentReader.read(doc(db, 'users', userId)), this.readActivityStatus(userId)]);
     if (!user.exists()) throw new Error('User not found');
     const lastActive: unknown = user.data().lastActive;
     const lastActiveMs = lastActive && typeof lastActive === 'object' && 'toMillis' in lastActive && typeof lastActive.toMillis === 'function' ? (lastActive.toMillis as () => number)() : null;

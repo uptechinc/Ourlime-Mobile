@@ -241,7 +241,8 @@ export function JobManagementAuditSheet({
 							: 'Activity could not be loaded.'
 					);
 			})
-			.finally(() => {
+			// No .finally: the runtime Promise can lack it (see lib/shims/promiseFinally.ts).
+			.then(() => {
 				if (active) setLoading(false);
 			});
 		return () => {
@@ -810,7 +811,8 @@ export function JobManagementEditSheet({
 						</View>
 						{job?.applications.length ? (
 							<Text style={styles.notice}>
-								This job has {job.applications.length} application(s), so its
+								This job has {job.applications.length}{' '}
+								{job.applications.length === 1 ? 'application' : 'applications'}, so its
 								opportunity type remains locked.
 							</Text>
 						) : null}

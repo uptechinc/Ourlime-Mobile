@@ -26,8 +26,10 @@ import {
   type QuerySnapshot,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 import { notificationHelpers } from '@/lib/helpers/notificationHelpers';
 import { appServerService } from './AppServerService';
+import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import type {
   CommunityCardModel,
   CommunityDashboardData,
@@ -166,7 +168,7 @@ export class CommunityDataService {
       const [bans, memberships, viewer] = await Promise.all([
         getDocs(query(collection(db, 'bannedCommunityMembers'), where('communityVariantId', '==', communityId), where('userId', '==', viewerId), limit(1))),
         getDocs(query(collection(db, 'communityVariantMembership'), where('communityVariantId', '==', communityId), where('userId', '==', viewerId), where('isMember', '==', true), limit(1))),
-        getDoc(doc(db, 'users', viewerId)),
+        sharedDocumentReader.read(doc(db, 'users', viewerId)),
       ]);
       isBanned = !bans.empty;
       const membership = memberships.docs[0]?.data();
@@ -272,13 +274,19 @@ export class CommunityDataService {
     if (sourceDocuments.length === 0) return { cards: [], communityOfTheWeek: null };
     const communityIds = sourceDocuments.map((document) => document.id);
 
-    const [countDocuments, memberships, friendIds, requests, bans, viewerDocument] = await Promise.all([
-      Promise.all(communityIds.map((communityId) => getDoc(doc(db, 'communityVariantMembershipAndLikeCount', communityId)))),
+    // Categories only depend on the community list, so they load alongside everything else.
+    const categoryIds = [...new Set(sourceDocuments.map((document) => readString(document.data().categoryId)).filter(Boolean))];
+    const [countByCommunity, memberships, friendIds, requests, bans, viewerDocument, categoryDocuments] = await Promise.all([
+      firestoreBatchReadService.getDocumentsByIds('communityVariantMembershipAndLikeCount', communityIds),
       this.loadMemberships(communityIds),
       this.loadFriendIds(viewerId),
       viewerId ? getDocs(query(collection(db, 'communityRequests'), where('userId', '==', viewerId))) : Promise.resolve(null),
       viewerId ? getDocs(query(collection(db, 'bannedCommunityMembers'), where('userId', '==', viewerId))) : Promise.resolve(null),
-      viewerId ? getDoc(doc(db, 'users', viewerId)) : Promise.resolve(null),
+      viewerId ? sharedDocumentReader.read(doc(db, 'users', viewerId)) : Promise.resolve(null),
+      firestoreBatchReadService.getDocumentsByIds('communityCategories', categoryIds).catch((error: unknown) => {
+        console.error('[CommunityDataService.buildDirectoryCards] Error: categories', error);
+        return new Map<string, DocumentData>();
+      }),
     ]);
     const membershipsByCommunity = new Map<string, DocumentData[]>();
     memberships.forEach((membership) => {
@@ -288,28 +296,26 @@ export class CommunityDataService {
     const requestStatus = new Map<string, string>();
     requests?.docs.forEach((document) => requestStatus.set(readString(document.data().communityVariantId), readString(document.data().status)));
     const bannedIds = new Set((bans?.docs ?? []).map((document) => readString(document.data().communityVariantId)).filter(Boolean));
-    const countByCommunity = new Map(countDocuments.map((document) => [document.id, document.data()]));
     const creatorIds = sourceDocuments.map((document) => readString(document.data().userId)).filter(Boolean);
     const memberUserIds = [...membershipsByCommunity.values()].flatMap((communityMemberships) => {
       const activeIds = [...new Set(communityMemberships.filter((membership) => membership.isMember === true).map((membership) => readString(membership.userId)).filter(Boolean))];
       return [...activeIds.slice(0, 3), ...activeIds.filter((userId) => friendIds.has(userId)).slice(0, 3)];
     });
     const userIds = [...new Set([...creatorIds, ...memberUserIds])];
-    const [users, pictures] = await Promise.all([this.loadUsers(userIds), this.loadProfilePictures(userIds)]);
     const viewerData = viewerDocument?.data();
     const viewerVerified = viewerData?.isVerified === true || viewerData?.identityVerified === true || readString(viewerData?.verificationStatus).toLowerCase() === 'verified';
 
     // Stored counts default to 0 and older app versions never incremented them, so a 0 (or missing) count is
-    // re-counted from the posts themselves and the stored number is corrected for next time.
+    // re-counted from the posts themselves for display. The stored number is corrected by the server's
+    // countCommunityPost* triggers on the next post change (the rules let clients move it only by one).
     const missingPostCounts = sourceDocuments.filter((document) => !readNonNegativeNumber(countByCommunity.get(document.id)?.postCount)).map((document) => document.id);
-    const postCounts = new Map<string, number>(await Promise.all(missingPostCounts.map(async (communityId): Promise<[string, number]> => {
+    const countMissingPosts = Promise.all(missingPostCounts.map(async (communityId): Promise<[string, number]> => {
       const counted = await getCountFromServer(query(collection(db, 'communityVariantDetails'), where('communityVariantId', '==', communityId))).catch(() => null);
-      const total = counted?.data().count ?? 0;
-      if (total > 0) {
-        void setDoc(doc(db, 'communityVariantMembershipAndLikeCount', communityId), { communityVariantId: communityId, postCount: total }, { merge: true }).catch(() => undefined);
-      }
-      return [communityId, total];
-    })));
+      return [communityId, counted?.data().count ?? 0];
+    }));
+    // Member previews and post re-counts don't depend on each other, so they run together.
+    const [users, pictures, recounted] = await Promise.all([this.loadUsers(userIds), this.loadProfilePictures(userIds), countMissingPosts]);
+    const postCounts = new Map<string, number>(recounted);
 
     const cards = sourceDocuments.map((document): CommunityCardModel => {
       const data = document.data();
@@ -370,9 +376,7 @@ export class CommunityDataService {
       };
     });
 
-    const categoryIds = [...new Set(cards.map((card) => card.categoryId).filter((categoryId): categoryId is string => Boolean(categoryId)))];
-    const categoryDocuments = await Promise.all(categoryIds.map((categoryId) => getDoc(doc(db, 'communityCategories', categoryId)).catch(() => null)));
-    const categoryNames = new Map(categoryDocuments.flatMap((document) => (document ? [[document.id, readString(document.data()?.name) || readString(document.data()?.type)] as [string, string]] : [])));
+    const categoryNames = new Map([...categoryDocuments].map(([categoryId, category]) => [categoryId, readString(category.name) || readString(category.type)] as [string, string]));
     const hydrated = cards.map((card) => ({ ...card, categoryName: card.categoryId ? categoryNames.get(card.categoryId) ?? '' : '' }));
     const weekScore = (card: CommunityCardModel) => card.likeCount * 3 + card.memberCount * 2 + card.postCount * 5;
     const communityOfTheWeek = [...hydrated].sort((first, second) => weekScore(second) - weekScore(first))[0] ?? null;
@@ -450,8 +454,10 @@ export class CommunityDataService {
   }
 
   private async loadUsers(userIds: string[]): Promise<Map<string, DocumentData>> {
-    const snapshots = await Promise.all(userIds.map((userId) => getDoc(doc(db, 'users', userId)).catch(() => null)));
-    return new Map(snapshots.flatMap((snapshot) => (snapshot?.exists() ? [[snapshot.id, snapshot.data()] as [string, DocumentData]] : [])));
+    return firestoreBatchReadService.getDocumentsByIds('users', userIds).catch((error: unknown) => {
+      console.error('[CommunityDataService.loadUsers] Error:', error);
+      return new Map<string, DocumentData>();
+    });
   }
 
   /** Web loadCommunityProfilePictures: the selected profile image per user. */
@@ -464,11 +470,14 @@ export class CommunityDataService {
       const userId = readString(document.data().userId);
       if (imageId && userId) ownerByImage.set(imageId, userId);
     }));
-    const images = await Promise.all([...ownerByImage.keys()].map((imageId) => getDoc(doc(db, 'profileImages', imageId)).catch(() => null)));
+    const images = await firestoreBatchReadService.getDocumentsByIds('profileImages', [...ownerByImage.keys()]).catch((error: unknown) => {
+      console.error('[CommunityDataService.loadProfilePictures] Error:', error);
+      return new Map<string, DocumentData>();
+    });
     const pictures = new Map<string, string>();
-    images.forEach((image) => {
-      const userId = image ? ownerByImage.get(image.id) : undefined;
-      const url = readString(image?.data()?.imageURL);
+    images.forEach((image, imageId) => {
+      const userId = ownerByImage.get(imageId);
+      const url = readString(image.imageURL);
       if (userId && url) pictures.set(userId, url);
     });
     return pictures;
@@ -518,7 +527,7 @@ export class CommunityDataService {
     const [slugMatch, titleMatch, creator] = await Promise.all([
       getDocs(query(collection(db, 'communityVariant'), where('uniqueName', '==', slug), limit(1))),
       getDocs(query(collection(db, 'communityVariant'), where('titleLower', '==', title.toLowerCase()), limit(1))),
-      getDoc(doc(db, 'users', viewerId)),
+      sharedDocumentReader.read(doc(db, 'users', viewerId)),
     ]);
     if (!slugMatch.empty) throw new Error('That community URL is already in use.');
     if (!titleMatch.empty) throw new Error('A community already uses that name.');
@@ -630,23 +639,7 @@ export class CommunityDataService {
       const wasPending = existing.docs[0]?.data().status === 'pending';
       await setDoc(requestRef, { userId: viewerId, communityVariantId: communityId, status: 'pending', requestedAt: serverTimestamp(), declinedAt: deleteField() }, { merge: true });
       if (!wasPending && readString(community.userId)) {
-        const requester = (await getDoc(doc(db, 'users', viewerId))).data() ?? {};
-        void notificationHelpers.addNotification({
-          userId: readString(community.userId),
-          type: 'community_join_request',
-          title: 'New community join request',
-          message: `${personName(requester, 'Someone')} requested to join ${readString(community.title) || 'your community'}.`,
-          isRead: false,
-          metadata: {
-            sourceUserId: viewerId, communityId, requestId: requestRef.id,
-            actionUrl: `/communities/${readString(community.uniqueName) || communityId}?dashboard=members`,
-            communityTitle: readString(community.title),
-            communityAvatar: readString(community.imageUrl) || readString(community.bannerImageUrl) || null,
-            communityBanner: readString(community.bannerImageUrl) || null,
-            sourceProfileImage: readString(requester.profileImage),
-          },
-          userDetails: { firstName: readString(requester.firstName), lastName: readString(requester.lastName), userName: readString(requester.userName), profileImage: readString(requester.profileImage) },
-        }).catch(() => undefined);
+        void notificationHelpers.sendSocialNotification({ kind: 'community_join_request', communityId });
       }
       return 'requested';
     }
@@ -729,20 +722,7 @@ export class CommunityDataService {
     batch.set(doc(db, 'communityVariantMembershipAndLikeCount', communityId), { membershipCount: activeIds.size, updatedAt: serverTimestamp() }, { merge: true });
     await batch.commit();
 
-    const community = access.communityData;
-    const communityTitle = readString(community.title) || 'Community';
-    void notificationHelpers.addNotification({
-      userId,
-      type: action === 'approve' ? 'community_accepted' : 'community_rejected',
-      title: action === 'approve' ? 'Join Request Accepted' : 'Join Request Declined',
-      message: action === 'approve' ? `Your request to join "${communityTitle}" has been accepted!` : `Your request to join "${communityTitle}" has been declined.`,
-      isRead: false,
-      metadata: {
-        communityId, actionUrl: `/communities/${readString(community.uniqueName) || communityId}`, communityTitle,
-        communityAvatar: readString(community.imageUrl) || readString(community.bannerImageUrl) || null,
-        communityBanner: readString(community.bannerImageUrl) || null,
-      },
-    }).catch(() => undefined);
+    void notificationHelpers.sendSocialNotification({ kind: action === 'approve' ? 'community_accepted' : 'community_rejected', communityId, targetUserId: userId });
     if (action === 'decline') void appServerService.call('sendCommunityMemberEmail', { communityId, userId, kind: 'declined' }).catch(() => undefined);
     return activeIds.size;
   }
@@ -780,15 +760,7 @@ export class CommunityDataService {
     if (ban) batch.set(doc(db, 'bannedCommunityMembers', `${id}_${userId}`), { communityVariantId: id, userId, bannedBy: access.viewerId, bannedAt: serverTimestamp() }, { merge: true });
     await batch.commit();
 
-    const communityTitle = readString(access.communityData.title) || 'Community';
-    void notificationHelpers.addNotification({
-      userId,
-      type: 'community_removed',
-      title: 'Removed from Community',
-      message: `You have been removed from the community "${communityTitle}".`,
-      isRead: false,
-      metadata: { communityId: id, actionUrl: `/communities/${readString(access.communityData.uniqueName) || id}` },
-    }).catch(() => undefined);
+    void notificationHelpers.sendSocialNotification({ kind: 'community_removed', communityId: id, targetUserId: userId });
     void appServerService.call('sendCommunityMemberEmail', { communityId: id, userId, kind: 'removed' }).catch(() => undefined);
     return activeIds.size;
   }

@@ -5,6 +5,7 @@ import { ResourceErrorService } from './ResourceErrorService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import type { ProjectRecord } from '@/lib/types/project';
 import type { ResourceSource, ResourceState } from '@/lib/types/resourceState';
+import { withCleanup } from '@/lib/utils/withCleanup';
 
 const PROJECT_DIRECTORY_NAMESPACE = 'project-directories';
 const PROJECT_DIRECTORY_KEY = 'owned-and-member';
@@ -55,7 +56,7 @@ export class ProjectResourceService {
     if (!force && current?.data && current.updatedAt && Date.now() - current.updatedAt < PROJECT_DIRECTORY_STALE_MS) return;
     const existing = this.refreshes.get(userId);
     if (existing) return existing;
-    const refresh = this.performRefresh(userId).finally(() => this.refreshes.delete(userId));
+    const refresh = withCleanup(this.performRefresh(userId), () => { this.refreshes.delete(userId); });
     this.refreshes.set(userId, refresh);
     return refresh;
   }
@@ -63,14 +64,14 @@ export class ProjectResourceService {
   public async reconcileInvites(userId: string): Promise<void> {
     const existing = this.inviteReconciliations.get(userId);
     if (existing) return existing;
-    const reconciliation = (async () => {
+    const reconciliation = withCleanup((async () => {
       try {
         await this.projectService.claimEmailInvites();
       } catch (error: unknown) {
         this.logger.warn('ProjectResourceService', 'invites:claim-failed', { userId, error: error instanceof Error ? error.message : String(error) });
       }
       await this.refresh(userId, true);
-    })().finally(() => this.inviteReconciliations.delete(userId));
+    })(), () => { this.inviteReconciliations.delete(userId); });
     this.inviteReconciliations.set(userId, reconciliation);
     return reconciliation;
   }

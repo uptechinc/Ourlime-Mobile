@@ -1,5 +1,6 @@
 import { collection, doc, getDoc, getDocs, limit, query, where, type DocumentData, type DocumentSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
 import type {
   LinkPreviewData,
@@ -189,7 +190,7 @@ export class LinkPreviewDataService {
     if (viewerId === ownerId || viewerId === readString(community.userId)) return true;
     const [membership, viewer] = await Promise.all([
       getDocs(query(collection(db, 'communityVariantMembership'), where('communityVariantId', '==', communityId), where('userId', '==', viewerId), where('isMember', '==', true), limit(1))),
-      getDoc(doc(db, 'users', viewerId)),
+      sharedDocumentReader.read(doc(db, 'users', viewerId)),
     ]);
     const viewerData = viewer.data() ?? {};
     return !membership.empty || viewerData.isAdmin === true || viewerData.role === 'admin' || viewerData.accountType === 'admin';
@@ -248,14 +249,16 @@ export class LinkPreviewDataService {
 
   private async getPost(postId: string, viewerId?: string): Promise<ShareEntity | null> {
     const path = `/post/${encodeURIComponent(postId)}`;
-    let postDocument = await getDoc(doc(db, 'feedPosts', postId));
-    let isCommunityPost = !postDocument.exists();
-    if (isCommunityPost) postDocument = await getDoc(doc(db, 'communityVariantDetails', postId));
-    if (!postDocument.exists()) {
-      postDocument = await getDoc(doc(db, 'posts', postId));
+    // The rules deny posts the viewer may not see (friends-only, private, private communities): treat them as missing.
+    const readPost = async (collectionName: string) => (await getDoc(doc(db, collectionName, postId)).catch(() => null)) ?? null;
+    let postDocument = await readPost('feedPosts');
+    let isCommunityPost = !postDocument?.exists();
+    if (isCommunityPost) postDocument = await readPost('communityVariantDetails');
+    if (!postDocument?.exists()) {
+      postDocument = await readPost('posts');
       isCommunityPost = false;
     }
-    if (!postDocument.exists()) return unavailable('Post', path, 'deleted');
+    if (!postDocument?.exists()) return unavailable('Post', path, 'deleted');
     const post = postDocument.data();
     const removal = this.removalReason(post);
     if (removal) return unavailable('Post', path, removal);

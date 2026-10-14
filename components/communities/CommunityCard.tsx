@@ -76,7 +76,7 @@ export default function CommunityCard({ community, viewMode, busy, onOpen, onMem
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingTop: 11, borderTopWidth: 1, borderTopColor: colors.border }}>
           <Users size={14} color="#3b82f6" /><Text style={{ marginLeft: 5, color: colors.secondaryText, fontWeight: '800', fontSize: 12 }}>{community.memberCount.toLocaleString()}</Text>
           <Heart size={14} color="#ec4899" style={{ marginLeft: 15 }} /><Text style={{ marginLeft: 5, color: colors.secondaryText, fontWeight: '800', fontSize: 12 }}>{community.likeCount.toLocaleString()}</Text>
-          <Text style={{ marginLeft: 15, color: colors.mutedText, fontSize: 11 }}>{community.postCount.toLocaleString()} posts</Text>
+          <Text style={{ marginLeft: 15, color: colors.mutedText, fontSize: 11 }}>{community.postCount.toLocaleString()} {community.postCount === 1 ? 'post' : 'posts'}</Text>
           <View style={{ flex: 1 }} />
           {community.topMembers.slice(0, 3).map((member, index) => member.profilePicture ? <CachedImage key={member.userId} uri={member.profilePicture} recyclingKey={`community-member-${member.userId}-${member.profilePicture}`} style={{ width: 23, height: 23, borderRadius: 12, marginLeft: index === 0 ? 0 : -7, borderWidth: 2, borderColor: colors.surface }} contentFit="cover" /> : <View key={member.userId} style={{ width: 23, height: 23, borderRadius: 12, marginLeft: index === 0 ? 0 : -7, borderWidth: 2, borderColor: colors.surface, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control }}><Text style={{ color: colors.mutedText, fontSize: 9, fontWeight: '900' }}>{(member.firstName || member.userName).charAt(0).toUpperCase()}</Text></View>)}
         </View>

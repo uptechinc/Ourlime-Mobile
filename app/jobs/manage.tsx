@@ -4,6 +4,8 @@ import { Archive, Briefcase, CalendarClock, CheckSquare, ChevronDown, ChevronUp,
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PageHeader from '@/components/ui/PageHeader';
+import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
+import FilterBar from '@/components/ui/FilterBar';
 import { JobManagementSkeleton } from '@/components/ui/Skeleton';
 import { JobManagementAuditSheet, JobManagementEditSheet, JobManagementInterviewSheet, JobManagementNotesSheet } from '@/components/jobs/manage/JobManagementSheets';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -19,10 +21,18 @@ type ApplicationFilter = 'all' | ApplicationStatus;
 type ApplicationSort = 'newest' | 'oldest' | 'name';
 
 const applicationStatuses: ApplicationStatus[] = ['reviewing', 'interviewing', 'offer', 'accepted', 'rejected'];
-const applicationFilters: ApplicationFilter[] = ['all', 'pending', 'reviewing', 'interviewing', 'offer', 'accepted', 'rejected', 'withdrawn', 'job_withdrawn'];
-const applicationSorts: ApplicationSort[] = ['newest', 'oldest', 'name'];
+const applicationFilters: { value: ApplicationFilter; label: string }[] = [
+  { value: 'all', label: 'Any status' }, { value: 'pending', label: 'Pending' }, { value: 'reviewing', label: 'Reviewing' },
+  { value: 'interviewing', label: 'Interviewing' }, { value: 'offer', label: 'Offer' }, { value: 'accepted', label: 'Accepted' },
+  { value: 'rejected', label: 'Rejected' }, { value: 'withdrawn', label: 'Withdrawn' }, { value: 'job_withdrawn', label: 'Job withdrawn' },
+];
+const applicationSorts: { value: ApplicationSort; label: string }[] = [
+  { value: 'newest', label: 'Newest' }, { value: 'oldest', label: 'Oldest' }, { value: 'name', label: 'Name A–Z' },
+];
 
-const getAllowedApplicationStatuses = (status: ApplicationStatus): ApplicationStatus[] => {
+const formatApplicationStatus = (status: ApplicationStatus): string => status === 'job_withdrawn' ? 'Job withdrawn' : status.charAt(0).toUpperCase() + status.slice(1);
+
+const getAllowedApplicationStatuses =(status: ApplicationStatus): ApplicationStatus[] => {
   if (status === 'pending') return ['reviewing', 'rejected'];
   if (status === 'reviewing') return ['interviewing', 'accepted', 'rejected'];
   if (status === 'interviewing' || status === 'offer') return ['accepted', 'rejected'];
@@ -42,6 +52,7 @@ export default function ManageJobsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<ApplicationFilter>('all');
   const [sort, setSort] = useState<ApplicationSort>('newest');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedApplicationIds, setSelectedApplicationIds] = useState<Set<string>>(new Set());
   const [expandedApplicationId, setExpandedApplicationId] = useState('');
   const [notesApplication, setNotesApplication] = useState<ManagedJobApplication | null>(null);
@@ -69,18 +80,19 @@ export default function ManageJobsScreen() {
 
   useEffect(() => {
     let active = true;
+    // No .finally: the runtime Promise can lack it (see lib/shims/promiseFinally.ts).
+    const loadFresh = (): void => { if (active) void load(); };
     void jobManagementService.getCachedCurrentUserJobs().then((cachedJobs) => {
       if (active && cachedJobs?.length) {
         applyJobs(cachedJobs);
         setLoading(false);
       }
-    }).finally(() => {
-      if (active) void load();
-    });
+    }).then(loadFresh, loadFresh);
     return () => { active = false; };
   }, [applyJobs, load]);
 
   const selectedJob = useMemo(() => jobs.find((job) => job.id === selectedJobId) ?? null, [jobs, selectedJobId]);
+  const questionTextById = useMemo(() => new Map((selectedJob?.questions ?? []).map((question) => [question.id, question.question])), [selectedJob]);
 
   useEffect(() => {
     setSelectedApplicationIds(new Set());
@@ -174,6 +186,21 @@ export default function ManageJobsScreen() {
     await Linking.openURL(url);
   };
 
+  const filterGroups: FilterGroup[] = [
+    { key: 'status', label: 'Application status', options: applicationFilters, value: filter, defaultValue: 'all' },
+    { key: 'sort', label: 'Sort by', options: applicationSorts, value: sort, defaultValue: 'newest' },
+  ];
+  const handleApplyFilters = (values: FilterValues): void => {
+    const nextFilter = applicationFilters.find((option) => option.value === readSingleFilter(values, 'status'));
+    if (nextFilter) setFilter(nextFilter.value);
+    const nextSort = applicationSorts.find((option) => option.value === readSingleFilter(values, 'sort'));
+    if (nextSort) setSort(nextSort.value);
+  };
+  const handleClearFilter = (groupKey: string): void => {
+    if (groupKey === 'status') setFilter('all');
+    if (groupKey === 'sort') setSort('newest');
+  };
+
   const listHeader = <>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.jobSelector}>
       {jobs.map((job) => <TouchableOpacity key={job.id} onPress={() => setSelectedJobId(job.id)} style={[styles.jobChip, selectedJobId === job.id && styles.jobChipActive]}><Text numberOfLines={1} style={[styles.jobChipText, selectedJobId === job.id && styles.jobChipTextActive]}>{job.title}</Text><Text style={[styles.jobChipCount, selectedJobId === job.id && styles.jobChipTextActive]}>{job.applications.length}</Text></TouchableOpacity>)}
@@ -183,15 +210,15 @@ export default function ManageJobsScreen() {
       <View style={styles.actions}><TouchableOpacity onPress={() => setEditJob(selectedJob)} style={styles.editAction}><Edit3 size={15} color={colors.icon} /><Text style={styles.editActionText}>Edit</Text></TouchableOpacity>{selectedJob.status === 'closed' || selectedJob.status === 'archived' ? <Action label="Reopen" icon="reopen" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'reopen')} /> : <Action label="Close" icon="close" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'close')} />}<Action label="Archive" icon="archive" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'archive')} /><Action label="Delete" icon="delete" danger disabled={workingId === selectedJob.id} onPress={() => handleDeleteJob(selectedJob)} /></View>
     </View> : null}
     <View style={styles.searchBox}><Search size={18} color={colors.mutedText} /><TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Search applicants, cover letters, answers…" placeholderTextColor={colors.mutedText} style={styles.searchInput} /></View>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>{applicationFilters.map((filterOption) => <TouchableOpacity key={filterOption} onPress={() => setFilter(filterOption)} style={[styles.filterChip, filter === filterOption && styles.filterChipActive]}><Text style={[styles.filterText, filter === filterOption && styles.filterTextActive]}>{filterOption}</Text></TouchableOpacity>)}</ScrollView>
-    <View style={styles.sortRow}><Text style={styles.sectionLabel}>{visibleApplications.length} applicant{visibleApplications.length === 1 ? '' : 's'}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortOptions}>{applicationSorts.map((sortOption) => <TouchableOpacity key={sortOption} onPress={() => setSort(sortOption)}><Text style={[styles.sortText, sort === sortOption && styles.sortTextActive]}>{sortOption}</Text></TouchableOpacity>)}</ScrollView></View>
+    <View style={styles.filterBar}><FilterBar groups={filterGroups} onOpen={() => setFiltersOpen(true)} onClear={handleClearFilter} /></View>
+    <Text style={[styles.sectionLabel, styles.applicantCount]}>{visibleApplications.length} applicant{visibleApplications.length === 1 ? '' : 's'}</Text>
     {selectedApplicationIds.size > 0 ? <View style={styles.bulkBar}><Text style={styles.bulkTitle}>{selectedApplicationIds.size} selected</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bulkActions}>{applicationStatuses.map((status) => <TouchableOpacity key={status} disabled={workingId === 'bulk'} onPress={() => void handleBulkStatus(status)} style={styles.bulkChip}><Text style={styles.bulkChipText}>{status}</Text></TouchableOpacity>)}</ScrollView></View> : null}
     {error ? <Text style={styles.error}>{error}</Text> : null}
   </>;
 
   if (loading && jobs.length === 0) {
     return (
-      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
         <PageHeader title="Manage Jobs" onBackPress={() => router.back()} />
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <JobManagementSkeleton />
@@ -199,9 +226,9 @@ export default function ManageJobsScreen() {
       </SafeAreaView>
     );
   }
-  if (!loading && jobs.length === 0) return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}><PageHeader title="Manage Jobs" onBackPress={() => router.back()} /><View style={styles.center}><Briefcase size={42} color={colors.mutedText} /><Text style={styles.jobTitle}>No jobs published</Text><Text style={styles.meta}>Create an opportunity from the Jobs screen.</Text></View></SafeAreaView>;
+  if (!loading && jobs.length === 0) return <SafeAreaView edges={['left', 'right']} style={styles.safeArea}><PageHeader title="Manage Jobs" onBackPress={() => router.back()} /><View style={styles.center}><Briefcase size={42} color={colors.mutedText} /><Text style={styles.jobTitle}>No jobs published</Text><Text style={styles.meta}>Create an opportunity from the Jobs screen.</Text></View></SafeAreaView>;
 
-  return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+  return <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
     <PageHeader title="Manage Jobs" onBackPress={() => router.back()} />
     <FlatList
       data={visibleApplications}
@@ -212,6 +239,7 @@ export default function ManageJobsScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#10b981" />}
       renderItem={({ item: application }) => <ApplicationCard
         application={application}
+        questionTextById={questionTextById}
         selected={selectedApplicationIds.has(application.id)}
         expanded={expandedApplicationId === application.id}
         working={workingId === application.id}
@@ -228,6 +256,7 @@ export default function ManageJobsScreen() {
       removeClippedSubviews
     />
     <JobManagementNotesSheet application={notesApplication} jobId={selectedJob?.id ?? ''} onClose={() => setNotesApplication(null)} />
+    <FilterSheet visible={filtersOpen} title="Filter applicants" groups={filterGroups} applyLabel="Show applicants" onApply={handleApplyFilters} onClose={() => setFiltersOpen(false)} />
     <JobManagementAuditSheet job={auditJob} onClose={() => setAuditJob(null)} />
     <JobManagementEditSheet job={editJob} onClose={() => setEditJob(null)} onSaved={async () => { await load(); }} />
     <JobManagementInterviewSheet application={interviewApplication} job={selectedJob} onClose={() => setInterviewApplication(null)} onScheduled={async () => { await load(); }} />
@@ -236,6 +265,7 @@ export default function ManageJobsScreen() {
 
 type ApplicationCardProps = {
   application: ManagedJobApplication;
+  questionTextById: Map<string, string>;
   selected: boolean;
   expanded: boolean;
   working: boolean;
@@ -247,7 +277,7 @@ type ApplicationCardProps = {
   onOpenLink: (url: string) => void;
 };
 
-function ApplicationCard({ application, selected, expanded, working, onToggleSelected, onToggleExpanded, onStatus, onNotes, onInterview, onOpenLink }: ApplicationCardProps) {
+function ApplicationCard({ application, questionTextById, selected, expanded, working, onToggleSelected, onToggleExpanded, onStatus, onNotes, onInterview, onOpenLink }: ApplicationCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const answers = Object.entries(application.answers);
@@ -255,14 +285,14 @@ function ApplicationCard({ application, selected, expanded, working, onToggleSel
   const canScheduleInterview = application.status === 'reviewing';
   return <View style={[styles.applicationCard, selected && styles.applicationSelected]}>
     <View style={styles.applicationHeader}><TouchableOpacity onPress={onToggleSelected} hitSlop={8}>{selected ? <CheckSquare size={22} color={colors.accent} /> : <Square size={22} color={colors.mutedText} />}</TouchableOpacity><TouchableOpacity style={styles.flex} onPress={onToggleExpanded}><Text style={styles.applicantName}>{application.applicant.name}</Text><Text style={styles.meta}>{application.applicant.email || 'No public email'} · Applied {formatDate(application.createdAtMs)}</Text></TouchableOpacity><TouchableOpacity onPress={onToggleExpanded}>{expanded ? <ChevronUp size={21} color={colors.icon} /> : <ChevronDown size={21} color={colors.icon} />}</TouchableOpacity></View>
-    <View style={styles.applicationToolbar}><View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{application.status}</Text></View><TouchableOpacity onPress={onNotes} style={styles.smallAction}><StickyNote size={15} color={colors.warningText} /><Text style={styles.noteActionText}>Notes</Text></TouchableOpacity><TouchableOpacity disabled={!canScheduleInterview} onPress={onInterview} style={[styles.smallAction, !canScheduleInterview && styles.disabled]}><CalendarClock size={15} color={colors.accentText} /><Text style={styles.interviewActionText}>Interview</Text></TouchableOpacity></View>
+    <View style={styles.applicationToolbar}><View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{formatApplicationStatus(application.status)}</Text></View><TouchableOpacity onPress={onNotes} style={styles.smallAction}><StickyNote size={15} color={colors.warningText} /><Text style={styles.noteActionText}>Notes</Text></TouchableOpacity><TouchableOpacity disabled={!canScheduleInterview} onPress={onInterview} style={[styles.smallAction, !canScheduleInterview && styles.disabled]}><CalendarClock size={15} color={colors.accentText} /><Text style={styles.interviewActionText}>Interview</Text></TouchableOpacity></View>
     {expanded ? <View style={styles.applicationDetails}>
       <Text style={styles.detailLabel}>Cover letter</Text><Text style={styles.detailBody}>{application.coverLetter || 'No cover letter provided.'}</Text>
-      {answers.length ? <><Text style={styles.detailLabel}>Application answers</Text>{answers.map(([questionId, answer]) => <View key={questionId} style={styles.answerRow}><Text style={styles.answerQuestion}>{questionId}</Text><Text style={styles.detailBody}>{Array.isArray(answer) ? answer.join(', ') : answer}</Text></View>)}</> : null}
+      {answers.length ? <><Text style={styles.detailLabel}>Application answers</Text>{answers.map(([questionId, answer]) => <View key={questionId} style={styles.answerRow}><Text style={styles.answerQuestion}>{questionTextById.get(questionId) || 'Question'}</Text><Text style={styles.detailBody}>{Array.isArray(answer) ? answer.join(', ') : answer}</Text></View>)}</> : null}
       {application.applicant.workExperience.length ? <><Text style={styles.detailLabel}>Experience</Text>{application.applicant.workExperience.slice(0, 4).map((experience) => <Text key={experience.id} style={styles.detailBody}>{experience.role || 'Role'} · {experience.company || 'Company'}</Text>)}</> : null}
       {application.applicant.education.length ? <><Text style={styles.detailLabel}>Education</Text>{application.applicant.education.slice(0, 4).map((education) => <Text key={education.id} style={styles.detailBody}>{education.degree || 'Study'} · {education.school || 'School'}</Text>)}</> : null}
       <View style={styles.linkRow}>{application.resumeUrl ? <LinkButton label="Resume" onPress={() => onOpenLink(application.resumeUrl)} /> : null}{application.portfolioLink ? <LinkButton label="Portfolio" onPress={() => onOpenLink(application.portfolioLink)} /> : null}</View>
-      {allowedStatuses.length > 0 ? <><Text style={styles.detailLabel}>Update status</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statuses}>{allowedStatuses.map((status) => <TouchableOpacity key={status} disabled={working} onPress={() => onStatus(status)} style={styles.statusChip}><Text style={styles.statusText}>{status}</Text></TouchableOpacity>)}</ScrollView></> : <Text style={styles.terminalStatus}>This application is in a final state.</Text>}
+      {allowedStatuses.length > 0 ? <><Text style={styles.detailLabel}>Update status</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statuses}>{allowedStatuses.map((status) => <TouchableOpacity key={status} disabled={working} onPress={() => onStatus(status)} style={styles.statusChip}><Text style={styles.statusText}>{formatApplicationStatus(status)}</Text></TouchableOpacity>)}</ScrollView></> : <Text style={styles.terminalStatus}>This application is in a final state.</Text>}
     </View> : null}
   </View>;
 }
@@ -314,16 +344,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   disabled: { opacity: 0.5 },
   searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.input, paddingHorizontal: 12 },
   searchInput: { flex: 1, color: colors.text, paddingVertical: 11 },
-  filterRow: { gap: 7, paddingHorizontal: 16, paddingVertical: 11 },
-  filterChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 999, backgroundColor: colors.surface, paddingHorizontal: 11, paddingVertical: 7 },
-  filterChipActive: { borderColor: colors.accent, backgroundColor: colors.accent },
-  filterText: { color: colors.mutedText, fontSize: 11, fontWeight: '800', textTransform: 'capitalize' },
-  filterTextActive: { color: colors.onAccent },
-  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, marginBottom: 9 },
+  filterBar: { paddingHorizontal: 16, paddingVertical: 11 },
+  applicantCount: { flex: 0, paddingHorizontal: 16, marginBottom: 9 },
   sectionLabel: { flex: 1, color: colors.secondaryText, fontSize: 12, fontWeight: '900' },
-  sortOptions: { gap: 12 },
-  sortText: { color: colors.mutedText, fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
-  sortTextActive: { color: colors.successText, textDecorationLine: 'underline' },
   bulkBar: { marginHorizontal: 16, marginBottom: 10, borderRadius: 14, backgroundColor: colors.selectedControl, padding: 11, gap: 8 },
   bulkTitle: { color: colors.selectedText, fontSize: 12, fontWeight: '900' },
   bulkActions: { gap: 7 },

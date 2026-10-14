@@ -25,9 +25,11 @@ import {
   Timestamp,
   updateDoc,
   onSnapshot,
+  writeBatch,
   type DocumentData,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { pushNotificationService } from './PushNotificationService';
 import { localCacheService } from './LocalCacheService';
@@ -40,6 +42,7 @@ import { nativeCallService } from './NativeCallService';
 import { AppServerError, appServerService } from './AppServerService';
 import { qrLoginService, QRLoginService } from './QRLoginService';
 import { usernameService } from './UsernameService';
+import { privateProfileService } from './PrivateProfileService';
 export { AuthServiceError, getAuthErrorCode } from '@/lib/auth/AuthErrors';
 export type { AuthServiceErrorCode } from '@/lib/auth/AuthErrors';
 
@@ -189,7 +192,7 @@ export class AuthService {
       const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
       const accountDocument = await getDoc(doc(db, 'users', credential.user.uid));
       const account = accountDocument.data();
-      await this.assertAccountCanSignIn(account);
+      await this.assertAccountCanSignIn(account, credential.user.uid);
       if (account?.registrationStatus === 'incomplete') {
         await setDoc(doc(db, 'users', credential.user.uid), { registrationStatus: 'complete', currentStep: 8, updatedAt: serverTimestamp() }, { merge: true })
           .catch((error: unknown) => this.logger.warn('AuthService', 'login:finish-registration', { error: error instanceof Error ? error.message : String(error) }));
@@ -274,24 +277,22 @@ export class AuthService {
       const coverPhoto = formData.coverPhoto && /^(file:|content:)/i.test(formData.coverPhoto)
         ? await this.saveRegistrationCover(user.uid, formData.coverPhoto)
         : null;
-      const userProfile: UserProfile = {
-      uid: user.uid,
-      firstName: formData.firstName.trim(),
-      lastName: formData.lastName.trim(),
-      userName: formData.userName.trim(),
-      email: formData.email.trim(),
-      accountType: formData.accountType,
-      gender: formData.gender || '',
-      dateOfBirth: formData.dateOfBirth || '',
-      country: formData.country || '',
-      state: formData.state || '',
-      city: formData.city || '',
-      phone: formData.phone || '',
-      profilePicture,
-      ...(coverPhoto ? { coverPhoto } : {}),
-      selectedInterests: formData.selectedInterests || [],
-      createdAt: serverTimestamp(),
-    };
+      // Public profile fields only: email, phone, birth date and guardian details go to users/{uid}/private/profile.
+      const publicProfile = {
+        uid: user.uid,
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        userName: formData.userName.trim(),
+        accountType: formData.accountType,
+        gender: formData.gender || '',
+        country: formData.country || '',
+        state: formData.state || '',
+        city: formData.city || '',
+        profilePicture,
+        ...(coverPhoto ? { coverPhoto } : {}),
+        selectedInterests: formData.selectedInterests || [],
+        createdAt: serverTimestamp(),
+      };
 
       // Handle Verification Documents Upload if provided
       const docs = formData.verificationDocuments;
@@ -375,17 +376,24 @@ export class AuthService {
             ? 'pending'
             : 'documents_required';
 
-      await setDoc(doc(db, 'users', user.uid), {
-        ...userProfile,
+      // One batch: birth date and guardian details lock once registrationStatus is 'complete'.
+      const profileBatch = writeBatch(db);
+      profileBatch.set(privateProfileService.reference(user.uid), privateProfileService.payload({
+        email: user.email || formData.email.trim(),
+        phone: formData.phone || '',
+        dateOfBirth: formData.dateOfBirth || '',
+        guardianRelation: formData.guardianRelation || null,
+        guardianEmail: formData.guardianEmail?.trim() || null,
+      }), { merge: true });
+      profileBatch.set(doc(db, 'users', user.uid), {
+        ...publicProfile,
         studentLevel: formData.studentLevel || '',
         registrationStatus: 'complete',
         currentStep: 8,
         emailVerified: false,
         verificationType,
         idSubType: formData.idSubType || null,
-        guardianRelation: formData.guardianRelation || null,
         verificationStatus,
-        guardianEmail: formData.guardianEmail?.trim() || null,
         policyAcknowledgements: {
           termsAcceptedAt: serverTimestamp(),
           privacyAcceptedAt: serverTimestamp(),
@@ -394,6 +402,7 @@ export class AuthService {
         },
         updatedAt: serverTimestamp(),
       }, { merge: true });
+      await profileBatch.commit();
 
       await usernameService.claim(user.uid, formData.userName).catch((error: unknown) => {
         this.logger.warn('AuthService', 'register:reserve-username', { error: error instanceof Error ? error.message : String(error) });
@@ -442,17 +451,21 @@ export class AuthService {
     await appServerService.call('resendVerificationEmail', { userId }, 30_000);
   }
 
-  private async assertAccountCanSignIn(account: DocumentData | undefined): Promise<void> {
+  private async assertAccountCanSignIn(account: DocumentData | undefined, userId: string): Promise<void> {
     const deny = async (code: 'ACCOUNT_DELETED' | 'ACCOUNT_DISABLED' | 'ACCOUNT_BANNED' | 'ACCOUNT_SUSPENDED' | 'BETA_ACCESS_REVOKED' | 'BETA_ACCESS_SUSPENDED', message: string): Promise<never> => {
       await signOut(auth);
       throw new AuthServiceError(code, message);
     };
     if (!account) return;
+    const restricted = account.isBanned === true || account.isSuspended === true
+      || ['banned', 'suspended'].includes(String(account.accountStatus)) || ['banned', 'suspended'].includes(String(account.status));
+    // Ban and suspension reasons are private (users/{uid}/private/profile); older accounts still carry them here.
+    const reasons = restricted ? await privateProfileService.getOwn(userId, account) : null;
     if (account.deletedAt || account.status === 'deleted' || account.accountStatus === 'archived') {
       await deny('ACCOUNT_DELETED', 'This account has been archived. Contact support if you believe this is a mistake.');
     }
     if (account.isBanned === true || account.accountStatus === 'banned' || account.status === 'banned') {
-      const reason = typeof account.statusReason === 'string' ? account.statusReason : typeof account.banReason === 'string' ? account.banReason : 'Violation of Ourlime community standards.';
+      const reason = reasons?.statusReason || reasons?.banReason || 'Violation of Ourlime community standards.';
       await deny('ACCOUNT_BANNED', `Your account has been permanently banned from Ourlime. Reason: ${reason}`);
     }
     if (account.betaTesterStatus === 'removed') {
@@ -464,7 +477,7 @@ export class AuthService {
     if (account.isSuspended === true || account.accountStatus === 'suspended' || account.status === 'suspended') {
       const suspendedUntil = this.readAccountDate(account.suspendedUntil);
       if (!suspendedUntil || suspendedUntil.getTime() > Date.now()) {
-        const reason = typeof account.statusReason === 'string' ? account.statusReason : typeof account.suspensionReason === 'string' ? account.suspensionReason : 'Violation of Ourlime community standards.';
+        const reason = reasons?.statusReason || reasons?.suspensionReason || 'Violation of Ourlime community standards.';
         const untilLabel = suspendedUntil ? ` until ${suspendedUntil.toLocaleString()}` : '';
         await deny('ACCOUNT_SUSPENDED', `Your account is temporarily suspended${untilLabel}. Reason: ${reason}`);
       }
@@ -533,7 +546,7 @@ export class AuthService {
   private async fetchUserProfileInternal(uid: string, warnIfMissing = true): Promise<UserProfile | null> {
     this.logger.info('AuthService', 'profile:user-document:start', { uid, collection: 'users' });
     try {
-      const snap = await getDoc(doc(db, 'users', uid));
+      const snap = await sharedDocumentReader.read(doc(db, 'users', uid));
       this.logger.success('AuthService', 'profile:user-document', { uid, exists: snap.exists() });
       if (!snap.exists()) {
         if (warnIfMissing) {
@@ -544,6 +557,8 @@ export class AuthService {
 
       const rawProfile: unknown = snap.data();
       const profileRecord = this.toRecord(rawProfile);
+      // Email, phone and birth date are private (users/{uid}/private/profile): only the member's own profile has them.
+      const ownPrivateProfile = uid === auth.currentUser?.uid ? await privateProfileService.getOwn(uid, profileRecord) : null;
       const profileSelectionsQuery = query(
         collection(db, 'profileImageSetAs'),
         where('userId', '==', uid)
@@ -595,7 +610,7 @@ export class AuthService {
         firstName: this.readString(profileRecord.firstName),
         lastName: this.readString(profileRecord.lastName),
         userName: this.readString(profileRecord.userName),
-        email: this.readString(profileRecord.email, auth.currentUser?.email ?? ''),
+        email: ownPrivateProfile ? ownPrivateProfile.email || auth.currentUser?.email || '' : '',
         accountType: this.readString(profileRecord.accountType, 'regular'),
         role: this.readString(profileRecord.role) || undefined,
         isAdmin: profileRecord.isAdmin === true,
@@ -614,10 +629,10 @@ export class AuthService {
         friendsCount: this.readNumber(profileRecord.friendsCount),
         postsCount: this.readNumber(profileRecord.postsCount),
         gender: this.readString(profileRecord.gender) || undefined,
-        dateOfBirth: this.readString(profileRecord.dateOfBirth) || undefined,
+        dateOfBirth: ownPrivateProfile?.dateOfBirth || undefined,
         country: this.readString(profileRecord.country) || undefined,
         city: this.readString(profileRecord.city) || undefined,
-        phone: this.readString(profileRecord.phone) || undefined,
+        phone: ownPrivateProfile?.phone || undefined,
         profilePicture: resolvedProfilePicture,
         selectedInterests: Array.isArray(profileRecord.selectedInterests)
           ? profileRecord.selectedInterests.filter((interest): interest is string => typeof interest === 'string')
@@ -731,6 +746,7 @@ export class AuthService {
       coverPicture: updates.coverPhoto ?? null,
       updatedAt: serverTimestamp(),
     });
+    sharedDocumentReader.invalidate(`users/${userId}`);
   }
 
   /**
@@ -802,6 +818,7 @@ export class AuthService {
       verificationStatus: 'pending',
       updatedAt: serverTimestamp(),
     });
+    sharedDocumentReader.invalidate(`users/${currentUser.uid}`);
 
     this.invalidateUserProfile(currentUser.uid);
 

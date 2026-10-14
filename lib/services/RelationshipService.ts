@@ -15,7 +15,9 @@ import {
   addDoc,
   limit,
   serverTimestamp,
+  type DocumentData,
 } from 'firebase/firestore';
+import { firestoreBatchReadService } from './FirestoreBatchReadService';
 
 export type RelationshipUser = { id: string; firstName: string; lastName: string; userName: string; profileImage?: string };
 export type RelationshipSuggestion = RelationshipUser & { reason?: string };
@@ -31,17 +33,7 @@ type RelationshipSource = {
   profilePicture?: unknown;
   reason?: unknown;
 };
-type RelationshipNotificationMetadata = {
-  actorUserId?: unknown;
-  sourceUserId?: unknown;
-  senderId?: unknown;
-  userId?: unknown;
-};
-type RelationshipNotificationSource = RelationshipNotificationMetadata & {
-  metadata?: RelationshipNotificationMetadata;
-};
 const isRelationshipSource = (value: unknown): value is RelationshipSource => typeof value === 'object' && value !== null && !Array.isArray(value);
-const isRelationshipNotificationSource = (value: unknown): value is RelationshipNotificationSource => typeof value === 'object' && value !== null && !Array.isArray(value);
 const readString = (value: unknown): string => typeof value === 'string' ? value : '';
 
 export class RelationshipService {
@@ -65,11 +57,11 @@ export class RelationshipService {
     if (shouldFollow) {
       if (snapshot.empty) {
         await addDoc(collection(db, 'followers'), { followerId, followeeId, createdAt: serverTimestamp() });
-        await notificationHelpers.createFollowNotification(followeeId, followerId);
+        await notificationHelpers.createFollowNotification(followeeId);
       }
     } else {
       await Promise.all(snapshot.docs.map((document) => deleteDoc(document.ref)));
-      await this.deleteRelationshipNotifications(followerId, followeeId, ['follow']);
+      await this.deleteRelationshipNotifications(followeeId, ['follow']);
     }
     const persistedState = await this.checkFollowStatus(followerId, followeeId);
     if (persistedState !== shouldFollow) throw new Error('The follow status could not be confirmed. Please try again.');
@@ -145,19 +137,34 @@ export class RelationshipService {
       })
       .slice(0, maxResults);
 
-    return Promise.all(candidates.map(async (document): Promise<RelationshipSuggestion> => {
-      const user = document.data();
-      const imageSelections = await getDocs(
-        query(collection(db, 'profileImageSetAs'), where('userId', '==', document.id)),
-      ).catch(() => null);
-      const preferredSelection = imageSelections?.docs.find((selection) => selection.data().setAs === 'profile')
-        ?? imageSelections?.docs.find((selection) => selection.data().setAs === 'postProfile');
+    // Image selections and images for every candidate in two batched reads instead of two reads per person.
+    const imageSelections = await firestoreBatchReadService
+      .getDocumentsByField('profileImageSetAs', 'userId', candidates.map((document) => document.id))
+      .catch((error: unknown) => {
+        console.error('[RelationshipService.getSuggestionsFromFirestore] Error: profile image selections', error);
+        return [];
+      });
+    const imageIdByUser = new Map<string, string>();
+    candidates.forEach((document) => {
+      const selections = imageSelections.filter((selection) => selection.data().userId === document.id);
+      const preferredSelection = selections.find((selection) => selection.data().setAs === 'profile')
+        ?? selections.find((selection) => selection.data().setAs === 'postProfile');
       const imageId = preferredSelection ? readString(preferredSelection.data().profileImageId) : '';
-      const imageDocument = imageId
-        ? await getDoc(doc(db, 'profileImages', imageId)).catch(() => null)
-        : null;
-      const profileImage = readString(imageDocument?.data()?.imageURL)
-        || readString(imageDocument?.data()?.imageUrl)
+      if (imageId) imageIdByUser.set(document.id, imageId);
+    });
+    const imagesById = await firestoreBatchReadService
+      .getDocumentsByIds('profileImages', [...imageIdByUser.values()])
+      .catch((error: unknown) => {
+        console.error('[RelationshipService.getSuggestionsFromFirestore] Error: profile images', error);
+        return new Map<string, DocumentData>();
+      });
+
+    return candidates.map((document): RelationshipSuggestion => {
+      const user = document.data();
+      const imageId = imageIdByUser.get(document.id);
+      const imageData = imageId ? imagesById.get(imageId) : undefined;
+      const profileImage = readString(imageData?.imageURL)
+        || readString(imageData?.imageUrl)
         || readString(user.profilePicture)
         || readString(user.profileImage);
       const sameCountry = Boolean(viewerCountry && viewerCountry === readString(user.country));
@@ -169,7 +176,7 @@ export class RelationshipService {
         profileImage: profileImage || undefined,
         reason: sameCountry ? 'People near you' : 'Suggested for you',
       };
-    }));
+    });
   }
 
   public async blockUser(userIdToBlock: string): Promise<void> {
@@ -202,51 +209,16 @@ export class RelationshipService {
     if (pendingDocuments.length === 0) {
       const hasAcceptedRelationship = documents.some((document) => this.readDocumentFriendshipStatus(document.data()) === 'accepted');
       if (hasAcceptedRelationship) throw new Error('This friend request has already been accepted.');
-      await this.deleteRelationshipNotifications(currentUserId, targetUserId, ['friend_request']);
+      await this.deleteRelationshipNotifications(targetUserId, ['friend_request']);
       return;
     }
     await Promise.all(pendingDocuments.map((document) => deleteDoc(document.ref)));
-    await this.deleteRelationshipNotifications(currentUserId, targetUserId, ['friend_request']);
+    await this.deleteRelationshipNotifications(targetUserId, ['friend_request']);
   }
 
-  private async deleteRelationshipNotifications(actorUserId: string, targetUserId: string, types: ('follow' | 'friend_request')[]): Promise<void> {
-    const mappedNotifications = await notificationHelpers.getUserNotifications(targetUserId, 200);
-    const matchingMappedNotifications = mappedNotifications.filter((notification) => {
-      if (!types.includes(notification.type as 'follow' | 'friend_request')) return false;
-      return notification.metadata?.sourceUserId === actorUserId
-        || notification.metadata?.sourceId === actorUserId
-        || notification.userDetails?.uid === actorUserId
-        || notification.userDetails?.userId === actorUserId;
-    });
-    const notificationCollections = [
-      collection(doc(db, 'userNotifications', targetUserId), 'items'),
-      collection(db, `users/${targetUserId}/notifications`),
-    ];
-    const snapshots = await Promise.all(notificationCollections.map((notificationCollection) => (
-      getDocs(query(notificationCollection, where('type', 'in', types))).catch(() => null)
-    )));
-    const matchingDocuments = snapshots.flatMap((snapshot) => snapshot?.docs ?? []).filter((document) => {
-      const value: unknown = document.data();
-      if (!isRelationshipNotificationSource(value)) return false;
-      const metadata = isRelationshipNotificationSource(value.metadata) ? value.metadata : undefined;
-      const notificationActorId = readString(value.actorUserId)
-        || readString(value.sourceUserId)
-        || readString(value.senderId)
-        || readString(value.userId)
-        || readString(metadata?.actorUserId)
-        || readString(metadata?.sourceUserId)
-        || readString(metadata?.senderId)
-        || readString(metadata?.userId);
-      return notificationActorId === actorUserId;
-    });
-    await Promise.all([
-      ...matchingMappedNotifications.map(async (notification) => {
-        if (!notification.id) return;
-        await notificationHelpers.deleteNotification(targetUserId, notification.id);
-        await deleteDoc(doc(db, 'userNotifications', targetUserId, 'items', notification.id)).catch(() => {});
-      }),
-      ...matchingDocuments.map((document) => deleteDoc(document.ref).catch(() => {})),
-    ]);
+  /** The notices the viewer caused in targetUserId's inbox; the server removes them once the relationship ended. */
+  private async deleteRelationshipNotifications(targetUserId: string, types: ('follow' | 'friend_request')[]): Promise<void> {
+    await notificationHelpers.clearSocialNotifications(targetUserId, types);
   }
 
   private async getDirectFriendshipDocuments(userId1: string, userId2: string) {

@@ -34,6 +34,8 @@ import { useAppData } from '@/lib/contexts/AppDataContext';
 import { courseService } from '@/lib/services/CourseService';
 import type { Course, CourseModule, Enrollment } from '@/lib/types/course';
 
+const pluralize = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
+
 export default function CourseDetailScreen() {
   const router = useRouter();
   const { courseId } = useLocalSearchParams<{ courseId: string }>();
@@ -178,7 +180,7 @@ export default function CourseDetailScreen() {
               <View style={styles.ratingRow}>
                 <Star size={15} color="#f59e0b" fill="#f59e0b" />
                 <Text style={[styles.ratingText, { color: colors.text }]}>
-                  {course.rating} ({course.totalRatings} ratings)
+                  {course.rating} ({pluralize(course.totalRatings, 'rating', 'ratings')})
                 </Text>
               </View>
             </View>
@@ -190,16 +192,16 @@ export default function CourseDetailScreen() {
             <View style={styles.metaRow}>
               <View style={styles.metaItem}>
                 <Clock size={15} color="#10b981" />
-                <Text style={[styles.metaText, { color: colors.text }]}>{course.duration} hours</Text>
+                <Text style={[styles.metaText, { color: colors.text }]}>{pluralize(course.duration, 'hour', 'hours')}</Text>
               </View>
               <View style={styles.metaItem}>
                 <Users size={15} color="#10b981" />
-                <Text style={[styles.metaText, { color: colors.text }]}>{course.enrolledStudents} students</Text>
+                <Text style={[styles.metaText, { color: colors.text }]}>{pluralize(course.enrolledStudents, 'student', 'students')}</Text>
               </View>
               <View style={styles.metaItem}>
                 <BookOpen size={15} color="#10b981" />
                 <Text style={[styles.metaText, { color: colors.text }]}>
-                  {curriculum.reduce((acc, m) => acc + (m.lessons?.length || 0), 0)} lessons
+                  {pluralize(curriculum.reduce((acc, m) => acc + (m.lessons?.length || 0), 0), 'lesson', 'lessons')}
                 </Text>
               </View>
             </View>
@@ -274,7 +276,7 @@ export default function CourseDetailScreen() {
                         <View style={{ flex: 1 }}>
                           <Text style={[styles.moduleTitle, { color: colors.text }]}>{module.title}</Text>
                           <Text style={[styles.moduleLessonsCount, { color: colors.mutedText }]}>
-                            {module.lessons?.length || 0} lessons
+                            {pluralize(module.lessons?.length || 0, 'lesson', 'lessons')}
                           </Text>
                         </View>
                         {isExpanded ? (

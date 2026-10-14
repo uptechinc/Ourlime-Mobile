@@ -12,7 +12,6 @@ import {
   onSnapshot,
   query,
   serverTimestamp,
-  setDoc,
   updateDoc,
   where,
   type DocumentData,
@@ -192,8 +191,8 @@ export class ProjectService {
           const alreadyCreated = await getDoc(doc(this.database, 'projects', pendingProjectId)).catch(() => null);
           if (alreadyCreated?.exists()) return pendingProjectId;
         }
-        console.warn('[ProjectService.createProject] Cloud mutation failed; executing direct Firestore project creation:', mutationError);
-        return await this.createProjectDirect(ownerId, fields, pendingProjectId);
+        // Projects are created only by the mutateProjectMembership callable (the rules deny direct creates).
+        throw mutationError;
       } finally {
         this.projectCreations.delete(identity);
       }
@@ -214,33 +213,6 @@ export class ProjectService {
       });
     }
     return projectId;
-  }
-
-  private async createProjectDirect(ownerId: string, fields: { name: string; description: string }, projectId: string | null = null): Promise<string> {
-    const projectsCollection = collection(this.database, 'projects');
-    const projectRef = projectId ? doc(projectsCollection, projectId) : doc(projectsCollection);
-    const now = new Date().toISOString();
-    await setDoc(projectRef, {
-      name: fields.name,
-      description: fields.description || '',
-      color: 'bg-emerald-500',
-      status: 'active',
-      visibility: 'private',
-      tags: [],
-      endDate: null,
-      ownerId,
-      memberUids: [ownerId],
-      teamMembers: {
-        [ownerId]: { role: 'owner', membershipStatus: 'accepted', joinedAt: now }
-      },
-      totalTasks: 0,
-      completedTasks: 0,
-      progress: 0,
-      teamMembersCount: 1,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    return projectRef.id;
   }
 
   private async createProjectPending(ownerId: string, input: CreateProjectInput, identity: string, onProjectId: (projectId: string) => void): Promise<string> {
@@ -458,7 +430,6 @@ export class ProjectService {
       return this.readString(userData?.displayName)
         || fullName
         || this.readString(userData?.userName)
-        || this.readString(userData?.email)
         || 'Project owner';
     } catch {
       return 'Project owner';
@@ -472,7 +443,8 @@ export class ProjectService {
       const fullName = [this.readString(userData?.firstName), this.readString(userData?.lastName)].filter(Boolean).join(' ');
       return {
         name: this.readString(userData?.displayName) || fullName || this.readString(userData?.userName) || 'User',
-        email: this.readString(userData?.email),
+        // Other members' emails are private (users/{uid}/private/profile).
+        email: '',
         avatar: this.readString(userData?.profileImage) || this.readString(userData?.avatar) || '',
       };
     } catch {

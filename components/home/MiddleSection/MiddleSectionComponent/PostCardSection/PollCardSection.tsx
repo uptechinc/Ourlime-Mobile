@@ -81,6 +81,10 @@ export default function PollCardSection({ post, isVisible = false, shouldLoadVid
   });
   const [shareCount, setShareCount] = useState(post.stats.shares);
   const [hasShared, setHasShared] = useState(false);
+  // Follow refreshed counts from the feed (the card can mount from an older cached copy).
+  useEffect(() => {
+    setShareCount(post.stats.shares);
+  }, [post.stats.shares]);
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [likesVisible, setLikesVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);

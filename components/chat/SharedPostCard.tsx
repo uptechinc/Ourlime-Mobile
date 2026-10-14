@@ -126,7 +126,7 @@ export function SharedPostCard({ preview, path, instanceId }: SharedPostCardProp
         {post?.poll ? (
           <View style={{ marginHorizontal: 12, marginTop: 11, padding: 10, borderRadius: 13, backgroundColor: colors.control }}>
             {post.poll.options.slice(0, 3).map((option) => <View key={option} style={{ marginBottom: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 9, backgroundColor: colors.elevated }}><Text numberOfLines={1} style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>{option}</Text></View>)}
-            <Text style={{ color: colors.mutedText, fontSize: 11 }}>{post.poll.totalVotes} votes · {post.poll.ended ? 'Poll ended' : 'Open post to vote'}</Text>
+            <Text style={{ color: colors.mutedText, fontSize: 11 }}>{post.poll.totalVotes} {post.poll.totalVotes === 1 ? 'vote' : 'votes'} · {post.poll.ended ? 'Poll ended' : 'Open post to vote'}</Text>
           </View>
         ) : null}
 

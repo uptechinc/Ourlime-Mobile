@@ -18,6 +18,7 @@ import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import { toast } from 'sonner-native';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type ForwardMessageModalProps = {
   visible: boolean;
@@ -35,6 +36,7 @@ export function ForwardMessageModal({
   onForwardSuccess,
 }: ForwardMessageModalProps) {
   const insets = useSafeAreaInsets();
+  const { colors } = useAppTheme();
   const [friends, setFriends] = useState<UserProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -104,14 +106,14 @@ export function ForwardMessageModal({
 
   return (
     <Modal visible={visible} animationType="none" transparent presentationStyle="overFullScreen" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }} onPress={onClose} />
+      <Pressable style={{ flex: 1, backgroundColor: colors.modalScrim }} onPress={onClose} />
 
-      <SwipeDismissSurface visible={visible} onDismiss={onClose} handleColor="#d1d5db" accessibilityLabel="Swipe down to close message forwarding" style={{
+      <SwipeDismissSurface visible={visible} onDismiss={onClose} handleColor={colors.border} accessibilityLabel="Swipe down to close message forwarding" style={{
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
-        backgroundColor: '#ffffff',
+        backgroundColor: colors.surface,
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         maxHeight: '75%',
@@ -120,20 +122,20 @@ export function ForwardMessageModal({
       }}>
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 12 }}>
-          <Text style={{ fontSize: 18, fontWeight: '800', color: '#111827', flex: 1 }}>Forward Message</Text>
-          <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
-            <Icon name="x" size={20} color="#94a3b8" />
+          <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, flex: 1 }}>Forward Message</Text>
+          <TouchableOpacity onPress={onClose} style={{ padding: 4 }} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+            <Icon name="x" size={20} color={colors.mutedText} />
           </TouchableOpacity>
         </View>
 
         {/* Search */}
         <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
-            <Icon name="search" size={16} color="#94a3b8" style={{ marginRight: 8 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.control, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
+            <Icon name="search" size={16} color={colors.mutedText} style={{ marginRight: 8 }} />
             <TextInput
-              style={{ flex: 1, fontSize: 14, color: '#0f172a' }}
+              style={{ flex: 1, fontSize: 14, color: colors.text }}
               placeholder="Search friends..."
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={colors.mutedText}
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoCapitalize="none"
@@ -148,7 +150,7 @@ export function ForwardMessageModal({
           </View>
         ) : filteredFriends.length === 0 ? (
           <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-            <Text style={{ color: '#94a3b8', fontSize: 14 }}>No friends found</Text>
+            <Text style={{ color: colors.mutedText, fontSize: 14 }}>No friends found</Text>
           </View>
         ) : (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 30 }}>
@@ -164,18 +166,18 @@ export function ForwardMessageModal({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    backgroundColor: '#ffffff',
+                    backgroundColor: colors.surface,
                     paddingVertical: 10,
                     borderBottomWidth: 1,
-                    borderBottomColor: '#f1f5f9',
+                    borderBottomColor: colors.border,
                   }}
                 >
                   <UserAvatar profileImage={friend.profilePicture} firstName={friend.firstName ?? 'U'} size={44} />
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#1e293b' }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
                       {friend.firstName} {friend.lastName}
                     </Text>
-                    <Text style={{ fontSize: 12, color: '#64748b' }}>@{friend.userName}</Text>
+                    <Text style={{ fontSize: 12, color: colors.mutedText }}>@{friend.userName}</Text>
                   </View>
 
                   <View style={{ backgroundColor: '#10b981', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 7 }}>

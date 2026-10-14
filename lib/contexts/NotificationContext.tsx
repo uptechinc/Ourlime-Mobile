@@ -11,6 +11,8 @@ type NotificationContextValue = {
   readCount: number;
   totalCount: number;
   isLoading: boolean;
+  /** Set when the latest load failed and nothing is cached to show. */
+  loadError: string | null;
   hasMore: boolean;
   loadMore: () => Promise<void>;
   deleteNotifications: (notificationIds: string[]) => Promise<void>;
@@ -56,6 +58,7 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
   const notificationsRef = useRef<NotificationData[]>([]);
   useEffect(() => { notificationsRef.current = notifications; }, [notifications]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [readCount, setReadCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
@@ -85,8 +88,10 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
         setTotalCount(page.totalCount ?? (page.unreadCount + (page.readCount ?? 0)));
         setNextCursor(page.nextCursor);
         setHasMore(page.hasMore);
+        setLoadError(null);
       } catch (error: unknown) {
         console.warn('[NotificationContext.refreshNotifications] Error:', error instanceof Error ? error.message : String(error));
+        if (!hasDataRef.current) setLoadError('Notifications could not be loaded.');
       } finally {
         setIsLoading(false);
       }
@@ -241,6 +246,7 @@ export const NotificationProvider = ({ children }: NotificationProviderProps) =>
       readCount,
       totalCount,
       isLoading,
+      loadError,
       hasMore,
       loadMore,
       deleteNotifications,

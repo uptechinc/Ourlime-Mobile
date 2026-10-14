@@ -71,6 +71,12 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
   const [eventAttendanceLoading, setEventAttendanceLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(null);
 
+  // Follow refreshed counts from the feed (the card can mount from an older cached copy).
+  useEffect(() => {
+    if (repostSyncingRef.current) return;
+    setShareCount(post.stats.shares);
+  }, [post.stats.shares]);
+
   useEffect(() => {
     if (repostSyncingRef.current) return;
     setIsReposted(post.repostedByViewer === true);
@@ -341,9 +347,9 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
           <View style={{ marginTop: 12, padding: 13, borderRadius: 14, backgroundColor: isDark ? '#064e3b' : '#f0fdf4', borderWidth: 1, borderColor: isDark ? '#047857' : '#bbf7d0' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}><Icon name="calendar" size={17} color={isDark ? '#34d399' : '#047857'} /><Text style={{ marginLeft: 8, color: isDark ? '#34d399' : '#047857', fontWeight: '800' }}>{post.startDate ? new Date(post.startDate).toLocaleString() : 'Event date to be announced'}</Text></View>
             {post.endDate ? <Text style={{ marginTop: 5, color: isDark ? '#a8b3c7' : '#4b5563', fontSize: 12 }}>Ends {new Date(post.endDate).toLocaleString()}</Text> : null}
-            <View style={{ flexDirection: 'row', marginTop: post.recurrence || post.category ? 8 : 0 }}>
+            <View style={{ flexDirection: 'row', marginTop: (post.recurrence && post.recurrence !== 'none') || post.category ? 8 : 0 }}>
               {post.category ? <View style={{ marginRight: 7, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: isDark ? '#065f46' : '#d1fae5' }}><Text style={{ color: isDark ? '#6ee7b7' : '#047857', fontSize: 11, fontWeight: '700' }}>{post.category}</Text></View> : null}
-              {post.recurrence ? <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: isDark ? '#1e293b' : '#ffffff' }}><Text style={{ color: colors.mutedText, fontSize: 11 }}>{post.recurrence}</Text></View> : null}
+              {post.recurrence && post.recurrence !== 'none' ? <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: isDark ? '#1e293b' : '#ffffff' }}><Text style={{ color: colors.mutedText, fontSize: 11 }}>{post.recurrence.charAt(0).toUpperCase() + post.recurrence.slice(1)}</Text></View> : null}
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 11 }}>
               <Text style={{ color: colors.mutedText, fontSize: 12 }}>{eventAttendance?.attendeeCount ?? 0} {(eventAttendance?.attendeeCount ?? 0) === 1 ? 'attendee' : 'attendees'}</Text>

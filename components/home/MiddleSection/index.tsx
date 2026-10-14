@@ -46,6 +46,18 @@ const apiFilterByUiFilter: Record<FeedFilter, ApiFeedFilter> = {
   Trending: 'trending',
   Saved: 'saved',
 };
+const emptyPostsLabelByFilter: Record<FeedFilter, string> = {
+  All: 'posts',
+  Photos: 'photo posts',
+  Videos: 'video posts',
+  Sound: 'audio posts',
+  Documents: 'document posts',
+  Links: 'link posts',
+  Events: 'event posts',
+  Polls: 'polls',
+  Trending: 'trending posts',
+  Saved: 'saved posts',
+};
 
 // Viewability config: a post is "visible" when at least 40% of it is in the viewport
 const VIEWABILITY_CONFIG = {
@@ -267,9 +279,6 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
               </View>
               <Text style={{ color: isDark ? '#fca5a5' : '#991b1b', fontSize: 20, fontWeight: '700', textAlign: 'center' }}>Could not load your feed</Text>
               <Text style={{ marginTop: 9, color: isDark ? '#fecaca' : '#7f1d1d', fontSize: 13, textAlign: 'center' }}>{row.message}</Text>
-              <Text style={{ marginTop: 8, color: colors.mutedText, fontSize: 12, textAlign: 'center' }}>
-                Check Metro for logs beginning with [Ourlime.Mobile][PostService].
-              </Text>
               <TouchableOpacity
                 onPress={() => { void refreshFeed(); }}
                 style={{ marginTop: 18, paddingHorizontal: 20, paddingVertical: 11, borderRadius: 18, backgroundColor: '#10b981' }}
@@ -283,10 +292,10 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
           const isCommunities = activeFeedSource === 'communities';
           const isFriends = activeFeedSource === 'friends';
           const emptyTitle = isCommunities
-            ? (activeFilter === 'All' ? 'No community posts yet' : `No ${activeFilter.toLowerCase()} in your communities`)
+            ? (activeFilter === 'All' ? 'No community posts yet' : `No ${emptyPostsLabelByFilter[activeFilter]} in your communities`)
             : isFriends
-            ? (activeFilter === 'All' ? 'No posts from friends yet' : `No ${activeFilter.toLowerCase()} from friends`)
-            : (activeFilter === 'All' ? 'Your feed is quiet!' : `No ${activeFilter.toLowerCase()} posts yet`);
+            ? (activeFilter === 'All' ? 'No posts from friends yet' : `No ${emptyPostsLabelByFilter[activeFilter]} from friends`)
+            : (activeFilter === 'All' ? 'Your feed is quiet!' : `No ${emptyPostsLabelByFilter[activeFilter]} yet`);
           const emptySubtitle = isCommunities
             ? 'Join communities or share the first post to get discussions started.'
             : isFriends

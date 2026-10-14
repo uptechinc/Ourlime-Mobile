@@ -16,9 +16,14 @@ import {
   updateDoc,
   where,
   writeBatch,
+  type DocumentData,
   type DocumentReference,
+  type QueryConstraint,
+  type QueryDocumentSnapshot,
+  type QuerySnapshot,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import { sharedDocumentReader } from './SharedDocumentReader';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { AvatarService } from './AvatarService';
 import { communityDataService } from './CommunityDataService';
@@ -28,6 +33,7 @@ import { PostMediaService, isCancellationError, type MediaUploadProgress, type P
 import type { PageResult } from '@/lib/types/serviceResults';
 import { postAuthorizationService } from '@/lib/services/PostAuthorizationService';
 import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
+import { postCounterService } from './PostCounterService';
 
 export type PostMediaType = 'image' | 'video';
 export type PostType = 'regular' | 'poll' | 'event';
@@ -175,6 +181,8 @@ export type CreatePostInput = {
 type UnknownRecord = Record<string, unknown>;
 type DataDocument = { id: string; data: UnknownRecord };
 type RelationshipSets = { friends: Set<string>; following: Set<string>; blockedUsers: Set<string> };
+/** Visibilities the author's friends may read (firestore.rules feedPosts). */
+const FRIEND_VISIBILITIES = ['friends', 'friends_followers'];
 
 const isRecord = (value: unknown): value is UnknownRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -228,29 +236,19 @@ export class PostService {
     return (await this.fetchFeedPage({ limit: fetchLimit })).posts;
   }
 
-  /** Saves a freshly counted post total on the user (the stored counter drifts with website/admin changes). */
-  public async syncAuthorPostCount(userId: string, postsCount: number): Promise<void> {
-    await updateDoc(doc(db, 'users', userId), { postsCount: Math.max(0, postsCount) }).catch((error: unknown) => {
-      this.logger.warn('PostService', 'syncAuthorPostCount', { error: error instanceof Error ? error.message : String(error) });
-    });
-  }
-
   public async getAuthorPostCount(userId: string): Promise<number> {
     if (!userId) return 0;
     try {
-      const snapshot = await getCountFromServer(
-        query(collection(db, 'feedPosts'), where('userId', '==', userId)),
-      );
-      return snapshot.data().count;
-    } catch {
-      try {
-        const snap = await getDocs(
-          query(collection(db, 'feedPosts'), where('userId', '==', userId)),
-        );
-        return snap.size;
-      } catch {
-        return 0;
+      // Other members' posts are counted in the visibilities the viewer may read: friends see friends-only
+      // posts, everyone else public ones (the rules deny the wider count to non-friends).
+      if (userId === auth.currentUser?.uid) {
+        return (await getCountFromServer(query(collection(db, 'feedPosts'), where('userId', '==', userId)))).data().count;
       }
+      const countIn = async (visibilities: string[]) =>
+        (await getCountFromServer(query(collection(db, 'feedPosts'), where('userId', '==', userId), where('visibility', 'in', visibilities)))).data().count;
+      return await countIn(['public', ...FRIEND_VISIBILITIES]).catch(() => countIn(['public']));
+    } catch {
+      return 0;
     }
   }
 
@@ -266,11 +264,13 @@ export class PostService {
       .filter((document) => document.data.hidden !== true)
       .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
     const postIds = documents.map((document) => document.id);
-    const [mediaDocuments, viewerLikes, counters, users] = await Promise.all([
+    const [mediaDocuments, viewerLikes, counters, users, legacyCounts, commentCounts] = await Promise.all([
       this.getDocumentsByField('communityVariantDetailsSummary', 'communityVariantDetailsId', postIds),
       viewerId ? getDocs(query(collection(db, 'communityVariantDetailsLikes'), where('userId', '==', viewerId))) : Promise.resolve(null),
       Promise.all(postIds.map((postId) => getDoc(doc(db, 'communityVariantDetailsCounter', postId)).catch(() => null))),
       this.loadUserCards(documents.map((document) => readString(document.data.userId))),
+      postCounterService.loadLegacyCommunityCounts(postIds),
+      postCounterService.countComments(postIds),
     ]);
     const mediaByPost = new Map<string, PostMedia[]>();
     mediaDocuments.forEach((document) => {
@@ -289,11 +289,12 @@ export class PostService {
     const posts = documents.map((document, index) => {
       const userId = readString(document.data.userId);
       const likeCount = Math.max(0, Number(counters[index]?.data()?.likeCount) || 0);
+      const { commentCount, shareCount } = postCounterService.mergeCommunityCounts(counters[index]?.data(), legacyCounts.get(document.id), commentCounts.get(document.id));
       return this.mapPost(
         { id: document.id, data: { ...document.data, communityId: access.communityId, communityName: readString(access.communityData.title) } },
         users.get(userId) ?? this.emptyUser(userId),
         mediaByPost.get(document.id) ?? [],
-        { likeCount, commentCount: document.data.commentCount, shareCount: document.data.shareCount },
+        { likeCount, commentCount, shareCount },
         viewerId && likedPostIds.has(document.id) ? [viewerId] : [],
       );
     });
@@ -365,24 +366,23 @@ export class PostService {
         });
       }
       communityIds = [...new Set(communityIds.filter(Boolean))];
+      // The rules allow an `in` query only when every listed community is readable (public, or the viewer is a
+      // member through `${communityId}_${uid}`), so drop deleted communities and private ones the viewer isn't in.
+      communityIds = await this.readableCommunityIds(communityIds, viewerId);
 
       if (communityIds.length === 0) {
         return { posts: [], nextCursor: null, hasMore: false };
       }
 
       const chunks = Array.from({ length: Math.ceil(communityIds.length / 30) }, (_, index) => communityIds.slice(index * 30, index * 30 + 30));
-      const [variantSnapshots, idSnapshots] = await Promise.all([
-        Promise.all(
-          chunks.map((chunkIds) =>
-            getDocs(query(collection(db, 'communityVariantDetails'), where('communityVariantId', 'in', chunkIds), limit(scanLimit))).catch(() => null)
-          )
-        ),
-        Promise.all(
-          chunks.map((chunkIds) =>
-            getDocs(query(collection(db, 'communityVariantDetails'), where('communityId', 'in', chunkIds), limit(scanLimit))).catch(() => null)
-          )
-        ),
-      ]);
+      const variantSnapshots = await Promise.all(
+        chunks.map((chunkIds) =>
+          getDocs(query(collection(db, 'communityVariantDetails'), where('communityVariantId', 'in', chunkIds), limit(scanLimit))).catch((error: unknown) => {
+            this.logger.warn('PostService', 'feed-firestore:community-chunk', { error: error instanceof Error ? error.message : String(error) });
+            return null;
+          })
+        )
+      );
 
       const allDocsMap = new Map<string, DataDocument>();
       variantSnapshots.forEach((s) => {
@@ -390,39 +390,19 @@ export class PostService {
           allDocsMap.set(docSnap.id, { id: docSnap.id, data: isRecord(docSnap.data()) ? docSnap.data() : {} });
         });
       });
-      idSnapshots.forEach((s) => {
-        s?.docs.forEach((docSnap) => {
-          allDocsMap.set(docSnap.id, { id: docSnap.id, data: isRecord(docSnap.data()) ? docSnap.data() : {} });
-        });
-      });
 
-      let rawDocuments: DataDocument[] = Array.from(allDocsMap.values())
+      const rawDocuments: DataDocument[] = Array.from(allDocsMap.values())
         .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
-
-      if (rawDocuments.length === 0) {
-        const [recentCommunityDetails, recentFeedCommunityPosts] = await Promise.all([
-          getDocs(query(collection(db, 'communityVariantDetails'), limit(scanLimit))).catch(() => null),
-          getDocs(query(collection(db, 'feedPosts'), limit(scanLimit))).catch(() => null),
-        ]);
-        if (recentCommunityDetails && !recentCommunityDetails.empty) {
-          rawDocuments = recentCommunityDetails.docs
-            .map((d) => ({ id: d.id, data: isRecord(d.data()) ? d.data() : {} }))
-            .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
-        } else if (recentFeedCommunityPosts && !recentFeedCommunityPosts.empty) {
-          rawDocuments = recentFeedCommunityPosts.docs
-            .map((d) => ({ id: d.id, data: isRecord(d.data()) ? d.data() : {} }))
-            .filter((d) => Boolean(d.data.communityId || d.data.communityVariantId || d.data.origin === 'community'))
-            .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
-        }
-      }
 
       const postIds = rawDocuments.map((d) => d.id);
       const uniqueCommunityIds = [...new Set(rawDocuments.map((d) => readString(d.data.communityVariantId) || readString(d.data.communityId)).filter(Boolean))];
-      const [mediaDocuments, likeDocuments, counters, communityDocuments] = await Promise.all([
+      const [mediaDocuments, likeDocuments, counters, communityDocuments, legacyCounts, commentCounts] = await Promise.all([
         this.getDocumentsByField('communityVariantDetailsSummary', 'communityVariantDetailsId', postIds),
         viewerId ? this.getDocumentsByField('communityVariantDetailsLikes', 'postId', postIds) : Promise.resolve([]),
         Promise.all(postIds.map((postId) => getDoc(doc(db, 'communityVariantDetailsCounter', postId)))),
         Promise.all(uniqueCommunityIds.map((cId) => getDoc(doc(db, 'communityVariant', cId)))),
+        postCounterService.loadLegacyCommunityCounts(postIds),
+        postCounterService.countComments(postIds),
       ]);
 
       const communityMap = new Map<string, UnknownRecord>();
@@ -486,7 +466,7 @@ export class PostService {
           document,
           usersMap.get(userId) ?? this.emptyUser(userId),
           mediaByPost.get(document.id) ?? [],
-          { ...document.data, ...counter },
+          { ...document.data, ...counter, ...postCounterService.mergeCommunityCounts(counter, legacyCounts.get(document.id), commentCounts.get(document.id)) },
           likedUsersByPost.get(document.id) ?? [],
         );
         return {
@@ -511,18 +491,14 @@ export class PostService {
       };
     }
 
-    const postsReference = collection(db, 'feedPosts');
-    const snapshot = options.authorId
-      ? await getDocs(query(postsReference, where('userId', '==', options.authorId), limit(scanLimit)))
-      : await getDocs(query(postsReference, orderBy('createdAt', 'desc'), limit(scanLimit)));
-    const rawDocuments: DataDocument[] = snapshot.docs
-      .map((document) => ({
-        id: document.id,
-        data: isRecord(document.data()) ? document.data() : {},
-      }))
+    const relationships = await this.loadRelationships(viewerId);
+    const snapshots = await this.queryVisibleFeedPosts(options.authorId ?? null, viewerId, relationships, scanLimit);
+    const rawDocuments: DataDocument[] = [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((document) => [document.id, {
+      id: document.id,
+      data: isRecord(document.data()) ? document.data() : {},
+    }] as const)).values()]
       .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
 
-    const relationships = await this.loadRelationships(viewerId);
     const eligibleDocuments = rawDocuments.filter((document) => {
       if (!this.canViewPost(document.data, viewerId, relationships)) return false;
       const isRepost = document.data.isRepost === true || isRecord(document.data.repostedFrom);
@@ -534,13 +510,8 @@ export class PostService {
     // A repost is distribution of the original, never a second authored post.
     const repostAuthorsByPost = new Map<string, Set<string>>();
     const originalsById = new Map<string, DataDocument>();
-    const resolvedEntries: { entry: DataDocument; original: DataDocument | null }[] = [];
-    for (let offset = 0; offset < eligibleDocuments.length; offset += 4) {
-      resolvedEntries.push(...await Promise.all(eligibleDocuments.slice(offset, offset + 4).map(async (entry) => ({
-        entry,
-        original: await this.resolveOriginalPost(entry),
-      }))));
-    }
+    const originalsByEntry = await this.resolveOriginalPosts(eligibleDocuments, rawDocuments);
+    const resolvedEntries = eligibleDocuments.map((entry) => ({ entry, original: originalsByEntry.get(entry.id) ?? null }));
     for (const { entry, original } of resolvedEntries) {
       if (!original || !this.canViewPost(original.data, viewerId, relationships)) continue;
       originalsById.set(original.id, original);
@@ -650,7 +621,7 @@ export class PostService {
       collection: 'feedPosts',
       scope: options.scope ?? 'home',
       renderedPostCount: posts.length,
-      hasMore: filteredDocuments.length > fetchLimit || snapshot.docs.length >= scanLimit,
+      hasMore: filteredDocuments.length > fetchLimit || snapshots.some((page) => page.docs.length >= scanLimit),
     });
 
     return {
@@ -658,6 +629,102 @@ export class PostService {
       nextCursor: null,
       hasMore: false,
     };
+  }
+
+  /**
+   * Original post for each feed entry (the entry itself unless it is a repost). Posts already loaded are used
+   * directly and the remaining originals are fetched in batches, instead of one read per repost.
+   */
+  private async resolveOriginalPosts(entries: DataDocument[], loaded: DataDocument[]): Promise<Map<string, DataDocument | null>> {
+    const known = new Map<string, DataDocument | null>(loaded.map((document) => [document.id, document]));
+    entries.forEach((entry) => known.set(entry.id, entry));
+    const originalIdOf = (document: DataDocument): string => {
+      const source = isRecord(document.data.repostedFrom) ? document.data.repostedFrom : null;
+      return source ? readString(source.postId) : '';
+    };
+    // Follows the repost chain through known posts; returns the next id to fetch when the chain leaves them.
+    const walk = (entry: DataDocument): { original: DataDocument | null } | { missingId: string } => {
+      let current = entry;
+      const visited = new Set<string>();
+      for (let depth = 0; depth < 10; depth += 1) {
+        if (visited.has(current.id)) return { original: null };
+        visited.add(current.id);
+        const originalId = originalIdOf(current);
+        if (!originalId) return { original: current.data.isRepost === true ? null : current };
+        if (!known.has(originalId)) return { missingId: originalId };
+        const next = known.get(originalId);
+        if (!next) return { original: null };
+        current = next;
+      }
+      return { original: null };
+    };
+
+    for (let round = 0; round < 10; round += 1) {
+      const missing = [...new Set(entries.flatMap((entry) => {
+        const step = walk(entry);
+        return 'missingId' in step ? [step.missingId] : [];
+      }))];
+      if (missing.length === 0) break;
+      // One read per missing original: the rules judge a `documentId in` query by every listed post, so a single
+      // original the viewer may not see (friends-only, private) would deny the whole batch.
+      const originals = await Promise.all(missing.map((postId) => getDoc(doc(db, 'feedPosts', postId)).catch(() => null)));
+      missing.forEach((postId) => known.set(postId, null));
+      originals.forEach((original) => {
+        if (!original?.exists()) return;
+        const data = original.data();
+        known.set(original.id, { id: original.id, data: isRecord(data) ? data : {} });
+      });
+    }
+
+    return new Map(entries.map((entry) => {
+      const step = walk(entry);
+      return [entry.id, 'original' in step ? step.original : null] as const;
+    }));
+  }
+
+  /** Communities whose posts the viewer may read: public ones, and private ones with a canonical membership. */
+  private async readableCommunityIds(communityIds: string[], viewerId: string | null): Promise<string[]> {
+    const checks = await Promise.all(communityIds.map(async (communityId) => {
+      const community = await getDoc(doc(db, 'communityVariant', communityId)).catch(() => null);
+      if (!community?.exists()) return null;
+      const data = community.data();
+      if (data.isPrivate !== true && data.privacy !== 'private') return communityId;
+      if (!viewerId) return null;
+      if (data.userId === viewerId) return communityId;
+      const membership = await getDoc(doc(db, 'communityVariantMembership', `${communityId}_${viewerId}`)).catch(() => null);
+      return membership?.exists() && membership.data().isMember !== false ? communityId : null;
+    }));
+    return checks.filter((communityId): communityId is string => communityId !== null);
+  }
+
+  /**
+   * Feed queries the Firestore rules can allow: public posts, the viewer's own posts, and friends-only posts by
+   * the viewer's friends (author in a chunk of 30 friends). A profile asks for its author's posts in the
+   * visibilities the viewer may see.
+   */
+  private async queryVisibleFeedPosts(authorId: string | null, viewerId: string | null, relationships: RelationshipSets, scanLimit: number): Promise<QuerySnapshot<DocumentData>[]> {
+    const postsReference = collection(db, 'feedPosts');
+    if (authorId) {
+      if (authorId === viewerId) return [await getDocs(query(postsReference, where('userId', '==', authorId), limit(scanLimit)))];
+      const visibilities = relationships.friends.has(authorId) ? ['public', ...FRIEND_VISIBILITIES] : ['public'];
+      return [await getDocs(query(postsReference, where('userId', '==', authorId), where('visibility', 'in', visibilities), limit(scanLimit)))];
+    }
+    const newest = (...constraints: QueryConstraint[]) => getDocs(query(postsReference, ...constraints, orderBy('createdAt', 'desc'), limit(scanLimit)));
+    const friendIds = [...relationships.friends];
+    const friendChunks = Array.from({ length: Math.ceil(friendIds.length / 30) }, (_, index) => friendIds.slice(index * 30, index * 30 + 30));
+    const [publicPosts, ownPosts, ...friendPosts] = await Promise.all([
+      // Without the composite index (visibility, createdAt) fall back to an unordered page of public posts.
+      newest(where('visibility', '==', 'public')).catch((error: unknown) => {
+        this.logger.warn('PostService', 'feed-firestore:public-unordered', { error: error instanceof Error ? error.message : String(error) });
+        return getDocs(query(postsReference, where('visibility', '==', 'public'), limit(scanLimit)));
+      }),
+      viewerId ? newest(where('userId', '==', viewerId)).catch(() => getDocs(query(postsReference, where('userId', '==', viewerId), limit(scanLimit))).catch(() => null)) : Promise.resolve(null),
+      ...friendChunks.map((ids) => newest(where('userId', 'in', ids), where('visibility', 'in', FRIEND_VISIBILITIES)).catch((error: unknown) => {
+        this.logger.warn('PostService', 'feed-firestore:friend-posts', { error: error instanceof Error ? error.message : String(error) });
+        return null;
+      })),
+    ]);
+    return [publicPosts, ownPosts, ...friendPosts].filter((snapshot): snapshot is QuerySnapshot<DocumentData> => snapshot !== null);
   }
 
   private async resolveOriginalPost(entry: DataDocument): Promise<DataDocument | null> {
@@ -669,8 +736,9 @@ export class PostService {
       const source = isRecord(current.data.repostedFrom) ? current.data.repostedFrom : null;
       const originalId = source ? readString(source.postId) : '';
       if (!originalId) return current.data.isRepost === true ? null : current;
-      const snapshot = await getDoc(doc(db, 'feedPosts', originalId));
-      if (!snapshot.exists()) return null;
+      // A post the viewer may not see (friends-only or private) is denied by the rules: treat it as unavailable.
+      const snapshot = await getDoc(doc(db, 'feedPosts', originalId)).catch(() => null);
+      if (!snapshot?.exists()) return null;
       const data = snapshot.data();
       current = { id: snapshot.id, data: isRecord(data) ? data : {} };
     }
@@ -856,13 +924,8 @@ export class PostService {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    // users.postsCount is server-only; the countAuthorPostCreated trigger recounts it.
     await batch.commit();
-
-    try {
-      await updateDoc(doc(db, 'users', input.userId), { postsCount: increment(1) });
-    } catch {
-      // User doc update is best-effort
-    }
 
     const mediaRecords = await Promise.all(
       media.map(async (mediaItem, mediaIndex) => {
@@ -912,24 +975,32 @@ export class PostService {
   }
 
   public async fetchPost(postId: string): Promise<PostItem> {
-    const reference = await getDoc(doc(db, 'feedPosts', postId));
-    if (reference.exists()) {
+    // The rules deny friends-only and private posts (and private-community posts) to other members.
+    let denied = false;
+    const readVisible = (collectionName: string) => getDoc(doc(db, collectionName, postId)).catch((error: unknown) => {
+      if ((error as { code?: unknown } | null)?.code !== 'permission-denied') throw error;
+      denied = true;
+      return null;
+    });
+    const reference = await readVisible('feedPosts');
+    if (reference?.exists()) {
       const data = reference.data();
       const original = await this.resolveOriginalPost({ id: reference.id, data: isRecord(data) ? data : {} });
       if (!original) throw new Error('The original post is no longer available.');
       if (original.id !== postId) return this.fetchPost(original.id);
     }
     try {
-      let snap = await getDoc(doc(db, 'feedPosts', postId));
+      // Reuse the read above; a second read of the same post cost another round trip on every post open.
+      let snap = reference;
       let isCommunity = false;
-      if (!snap.exists()) {
-        snap = await getDoc(doc(db, 'communityVariantDetails', postId));
-        if (snap.exists()) isCommunity = true;
+      if (!snap?.exists()) {
+        snap = await readVisible('communityVariantDetails');
+        if (snap?.exists()) isCommunity = true;
       }
-      if (!snap.exists()) {
-        snap = await getDoc(doc(db, 'posts', postId));
+      if (!snap?.exists()) {
+        snap = await readVisible('posts');
       }
-      if (snap.exists()) {
+      if (snap?.exists()) {
         const rawData = snap.data();
         const data = isRecord(rawData) ? rawData : {};
         if (
@@ -969,7 +1040,10 @@ export class PostService {
           trimEndSeconds: typeof d.data.trimEndSeconds === 'number' ? d.data.trimEndSeconds : undefined,
           durationSeconds: typeof d.data.durationSeconds === 'number' ? d.data.durationSeconds : undefined,
         }));
-        const counter = (isCommunity ? countDocs[0] : pickLikeCounter(countDocs, postId))?.data ?? data;
+        const pickedCounter = (isCommunity ? countDocs[0] : pickLikeCounter(countDocs, postId))?.data ?? data;
+        const counter = isCommunity
+          ? { ...pickedCounter, ...postCounterService.mergeCommunityCounts(countDocs[0]?.data, (await postCounterService.loadLegacyCommunityCounts([postId])).get(postId), (await postCounterService.countComments([postId])).get(postId)) }
+          : pickedCounter;
         const likedUserIds = likeDocs.filter((d) => d.data.likes === true).map((d) => readString(d.data.userId)).filter(Boolean);
         return this.mapPost(postDoc, userCard, mediaItems, counter, likedUserIds);
       }
@@ -980,6 +1054,7 @@ export class PostService {
       console.error('[PostService.fetchPost] Error:', error instanceof Error ? error.message : 'Unknown error');
       throw new Error('This post could not be loaded.');
     }
+    if (denied) throw new Error('This post is only visible to people the author shared it with.');
     throw new Error('This post was deleted.');
   }
 
@@ -1179,24 +1254,8 @@ export class PostService {
   }
 
   public async recordShare(postId: string): Promise<{ path: string; shareCount: number }> {
-    const counterRef = await this.findLikeCounterRef(postId).catch(() => null);
-    let shareCount = 1;
-    if (counterRef) {
-      const counterSnap = await getDoc(counterRef).catch(() => null);
-      shareCount = (Number((counterSnap?.data() as UnknownRecord | undefined)?.shareCount) || 0) + 1;
-      await updateDoc(counterRef, { shareCount: increment(1), updatedAt: serverTimestamp() }).catch(() => {});
-    } else {
-      // Fixed ID (not a random one), so a post never gets a second counter with a different like count.
-      await setDoc(doc(db, 'likesCount', postId), {
-        feedsPostId: postId,
-        likeCount: 0,
-        commentCount: 0,
-        shareCount: 1,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }, { merge: true }).catch(() => {});
-    }
-    return { path: `/post/${encodeURIComponent(postId)}`, shareCount };
+    const shareCount = await postCounterService.adjust(postId, 'shareCount', 1);
+    return { path: `/post/${encodeURIComponent(postId)}`, shareCount: shareCount ?? 1 };
   }
 
   public getPostUrl(postId: string): string {
@@ -1323,10 +1382,7 @@ export class PostService {
     if (snap) {
       await Promise.all(snap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
     }
-    const counterRef = await this.findLikeCounterRef(postId).catch(() => null);
-    if (counterRef) {
-      await updateDoc(counterRef, { shareCount: increment(-1), updatedAt: serverTimestamp() }).catch(() => {});
-    }
+    // The countRepostRemoved trigger takes the share off the original post's counter when the marker is deleted.
   }
 
   public async updateVisibility(postId: string, visibility: 'public' | 'private'): Promise<void> {
@@ -1338,15 +1394,11 @@ export class PostService {
       await this.deleteCommunityPost(postId);
       return;
     }
-    const currentUserId = auth.currentUser?.uid;
     const postRef = doc(db, 'feedPosts', postId);
     const postSnap = await getDoc(postRef);
     if (postSnap.exists()) {
-      const authorId = readString(postSnap.data().userId) || currentUserId;
+      // users.postsCount is server-only; the countAuthorPostDeleted trigger recounts it.
       await deleteDoc(postRef);
-      if (authorId) {
-        await updateDoc(doc(db, 'users', authorId), { postsCount: increment(-1) }).catch(() => {});
-      }
       return;
     }
     const commRef = doc(db, 'communityVariantDetails', postId);
@@ -1398,7 +1450,11 @@ export class PostService {
       getDocs(query(collection(db, 'communityVariantDetailsSummary'), where('communityVariantDetailsId', '==', postId))),
       getDocs(query(collection(db, 'communityVariantDetailsLikes'), where('postId', '==', postId))),
       getDocs(query(collection(db, 'feedsPostComments'), where('feedsPostId', '==', postId))),
-      getDocs(query(collection(db, 'notifications'), where('postId', '==', postId))),
+      // Legacy notifications are not readable under the deployed rules; the post still deletes without them.
+      getDocs(query(collection(db, 'notifications'), where('postId', '==', postId))).catch((error: unknown) => {
+        console.warn('[PostService.deleteCommunityPost] Legacy notifications skipped:', error);
+        return { docs: [] as QueryDocumentSnapshot<DocumentData>[] };
+      }),
     ]);
     const commentChildren = await Promise.all(comments.docs.map(async (comment) => {
       const [replies, commentLikes] = await Promise.all([
@@ -1501,7 +1557,7 @@ export class PostService {
         getDocs(query(collection(db, 'friendship'), where('userId1', '==', viewerId))),
         getDocs(query(collection(db, 'friendship'), where('userId2', '==', viewerId))),
         getDocs(query(collection(db, 'followers'), where('followerId', '==', viewerId))),
-        getDoc(doc(db, 'users', viewerId)),
+        sharedDocumentReader.read(doc(db, 'users', viewerId)),
       ]);
       const friends = new Set<string>();
       asFirst.docs.forEach((item) => {

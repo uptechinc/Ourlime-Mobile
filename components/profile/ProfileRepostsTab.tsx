@@ -104,7 +104,7 @@ export default function ProfileRepostsTab({ userId, refreshKey }: ProfileReposts
 
   const activePost = activePostId ? allPosts.find((post) => post.id === activePostId) ?? null : null;
   const isPostsLoading = !resource.data && (resource.status === 'idle' || resource.status === 'hydrating');
-  const isLoading = isPostsLoading && isLimesLoading;
+  const isLoading = isPostsLoading || isLimesLoading;
 
   const totalCount = repostedPosts.length + repostedLimes.length;
 

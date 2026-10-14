@@ -244,7 +244,7 @@ export default function CommunityPollsWorkspace({
 															: 'Vote could not be saved.'
 													)
 												)
-												.finally(() => setBusy(false));
+												.then(() => setBusy(false));
 										}}
 										style={{
 											minHeight: 52,
@@ -310,7 +310,7 @@ export default function CommunityPollsWorkspace({
 							})}
 						</View>
 						<Text style={{ color: colors.mutedText, fontSize: 11 }}>
-							{poll.totalVotes} total votes · ends{' '}
+							{poll.totalVotes} total {poll.totalVotes === 1 ? 'vote' : 'votes'} · ends{' '}
 							{new Date(poll.expiresAt).toLocaleString()}
 						</Text>
 					</View>

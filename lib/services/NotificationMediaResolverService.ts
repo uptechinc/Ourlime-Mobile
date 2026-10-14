@@ -469,11 +469,12 @@ export class NotificationMediaResolverService {
       const postId = (typeof metadata.postId === 'string' && metadata.postId) ||
         (typeof metadata.contentId === 'string' && metadata.contentId);
       if (postId) {
-        let postSnap = await getDoc(doc(db, 'feedPosts', postId));
-        if (!postSnap.exists()) {
-          postSnap = await getDoc(doc(db, 'posts', postId));
+        // A post the viewer may no longer see is denied by the rules; the notice then shows no preview.
+        let postSnap = await getDoc(doc(db, 'feedPosts', postId)).catch(() => null);
+        if (!postSnap?.exists()) {
+          postSnap = await getDoc(doc(db, 'posts', postId)).catch(() => null);
         }
-        if (postSnap.exists()) {
+        if (postSnap?.exists()) {
           const postData = postSnap.data();
           const mediaFiles = Array.isArray(postData.mediaFiles) ? postData.mediaFiles : [];
           const images = Array.isArray(postData.images) ? postData.images : [];

@@ -5,6 +5,7 @@ import { Globe, Lock, Plus, X } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import DateTimeField from '@/components/ui/DateTimeField';
 import type { ProjectRecord, ProjectStatus, ProjectVisibility } from '@/lib/types/project';
+import { useAndroidKeyboardInset } from '@/lib/hooks/useKeyboardHeight';
 
 export type ProjectFormValues = {
   name: string;
@@ -49,6 +50,7 @@ function parseDateString(value: string | null): Date | null {
 /** Create / edit project form with the same fields as the website's project modal. */
 export default function ProjectFormSheet({ visible, project, onClose, onSubmit }: ProjectFormSheetProps) {
   const { colors } = useAppTheme();
+  const keyboardInset = useAndroidKeyboardInset();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState<Date | null>(null);
@@ -115,7 +117,7 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit }
             {isSaving ? <ActivityIndicator size="small" color={colors.onAccent} /> : <Text style={{ color: colors.onAccent, fontWeight: '900' }}>{project ? 'Save' : 'Create'}</Text>}
           </TouchableOpacity>
         </View>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1, paddingBottom: keyboardInset }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: 40 }}>
             {error ? <Text accessibilityRole="alert" style={{ color: colors.destructiveText, fontWeight: '700' }}>{error}</Text> : null}
             <View style={{ gap: 6 }}>

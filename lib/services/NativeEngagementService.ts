@@ -24,13 +24,14 @@ export type DiscussionComment = {
   legacyReplies: BlogCommentReply[];
 };
 export type DiscussionPage = { comments: DiscussionComment[]; cursor: string | null };
-type EngagementInput = { kind: 'blog' | 'product'; targetId: string; action: 'like' | 'bookmark' | 'view' | 'comment' | 'delete_comment' | 'report'; active?: boolean; parentId?: string; text?: string; commentId?: string };
+type EngagementInput = { kind: 'blog' | 'product'; targetId: string; action: 'like' | 'bookmark' | 'view' | 'comment' | 'delete_comment' | 'report' | 'comment_like'; active?: boolean; parentId?: string; text?: string; commentId?: string };
+export type EngagementResult = { active?: boolean; id?: string; count?: number };
 
 export class NativeEngagementService {
   private static instance: NativeEngagementService;
   private queues = new Map<string, Promise<void>>();
   public static getInstance(): NativeEngagementService { return this.instance ??= new NativeEngagementService(); }
-  public async mutate(ownerId: string, input: EngagementInput): Promise<{ active?: boolean; id?: string }> {
+  public async mutate(ownerId: string, input: EngagementInput): Promise<EngagementResult> {
     pageAccessService.assertMutation(input.kind === 'blog' ? '/blogs' : '/market');
     const key = JSON.stringify(input);
     const queueKey = `${ownerId}:${input.kind}:${input.targetId}:${input.action}`;
@@ -44,7 +45,7 @@ export class NativeEngagementService {
       await durableWorkService.remove(ownerId, 'mutation', key, revision);
       nativeSessionService.assertOwner(ownerId);
       const value = decode.object(result.data);
-      return { active: typeof value.active === 'boolean' ? value.active : undefined, id: typeof value.id === 'string' ? value.id : undefined };
+      return { active: typeof value.active === 'boolean' ? value.active : undefined, id: typeof value.id === 'string' ? value.id : undefined, count: typeof value.count === 'number' ? value.count : undefined };
     });
     this.queues.set(queueKey, operation.then(() => {}, () => {}));
     return operation;

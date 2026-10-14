@@ -2,7 +2,7 @@
   "expo": {
     "name": "Ourlime",
     "slug": "ourlime",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "default",
     "icon": "./assets/images/logo.png",
     "scheme": "ourlime",
@@ -118,7 +118,8 @@
         "android.permission.USE_FULL_SCREEN_INTENT",
         "android.permission.WAKE_LOCK",
         "android.permission.VIBRATE"
-      ]
+      ],
+      "versionCode": 2
     },
     "web": {
       "bundler": "metro",

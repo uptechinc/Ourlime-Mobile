@@ -372,6 +372,22 @@ export default function CommunityDetailScreen() {
 			media: draft.media,
 		});
 		await loadEvents(true);
+		if (draft.poll && community.permissions.canCreatePoll) {
+			// The event exists already; a failed poll is reported without undoing the event.
+			const hoursUntilStart = (start.getTime() - Date.now()) / (60 * 60 * 1000);
+			try {
+				await detailService.createPoll(viewerId, {
+					communityId: community.id,
+					question: draft.poll.question,
+					options: draft.poll.options,
+					durationHours: Math.min(Math.max(hoursUntilStart, 1), 24 * 30),
+					allowMultiple: false,
+				});
+			} catch (error: unknown) {
+				console.error('[CommunityDetail.handleCreateEvent] Error:', error instanceof Error ? error.message : 'Poll could not be created');
+				setFeedback('The event was created, but its poll could not be added. You can add it from the Polls tab.');
+			}
+		}
 	};
 
 	const handleReviewRequest = async (
@@ -1112,6 +1128,7 @@ export default function CommunityDetailScreen() {
 								<CommunityEventsWorkspace
 									resource={events}
 									canCreate={community.permissions.canHostEvent}
+									canCreatePoll={community.permissions.canCreatePoll}
 									createRequestKey={eventCreateRequestKey}
 									onRetry={() => void loadEvents(true)}
 									onCreate={handleCreateEvent}

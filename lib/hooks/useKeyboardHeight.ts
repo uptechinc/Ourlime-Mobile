@@ -26,3 +26,12 @@ export function useKeyboardHeight(): number {
 
   return keyboardHeight;
 }
+
+/**
+ * Bottom space to reserve for the software keyboard inside Android modals,
+ * where KeyboardAvoidingView has no effect. iOS sheets keep using KeyboardAvoidingView.
+ */
+export function useAndroidKeyboardInset(): number {
+  const keyboardHeight = useKeyboardHeight();
+  return Platform.OS === 'android' ? keyboardHeight : 0;
+}

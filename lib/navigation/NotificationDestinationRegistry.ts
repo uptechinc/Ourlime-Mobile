@@ -215,7 +215,7 @@ export class NotificationDestinationRegistry {
 		) {
 			return {
 				behavior: 'call',
-				route: peerId ? this.chatRoute(peerId) : fallbackRoute,
+				route: this.chatRouteOr(peerId, fallbackRoute),
 				fallbackRoute,
 				notificationId: data.notificationId,
 				peerId,
@@ -224,7 +224,7 @@ export class NotificationDestinationRegistry {
 		}
 		if (type === 'message' || data.destinationKind === 'chat') {
 			return this.navigate(
-				peerId ? this.chatRoute(peerId) : fallbackRoute,
+				this.chatRouteOr(peerId, fallbackRoute),
 				fallbackRoute,
 				data,
 				peerId
@@ -236,7 +236,7 @@ export class NotificationDestinationRegistry {
 			type === 'call_state'
 		) {
 			return this.navigate(
-				peerId ? this.chatRoute(peerId) : fallbackRoute,
+				this.chatRouteOr(peerId, fallbackRoute),
 				fallbackRoute,
 				data,
 				peerId
@@ -253,7 +253,7 @@ export class NotificationDestinationRegistry {
 				path.includes('/admin/testers') ||
 				path.includes('/profile/admin/testers');
 			return this.navigate(
-				isAdministratorAlert ? '/admin/testers' : fallbackRoute,
+				isAdministratorAlert ? '/admin/testers' : null,
 				fallbackRoute,
 				data
 			);
@@ -391,7 +391,7 @@ export class NotificationDestinationRegistry {
 			if (params && data.notificationId)
 				params.notificationId = data.notificationId;
 			return this.navigate(
-				params ? { pathname: '/post/[id]', params } : fallbackRoute,
+				params ? { pathname: '/post/[id]', params } : null,
 				fallbackRoute,
 				data
 			);
@@ -418,7 +418,7 @@ export class NotificationDestinationRegistry {
 							pathname: '/profile/[username]',
 							params: { username: profileIdentifier },
 						}
-					: fallbackRoute,
+					: null,
 				fallbackRoute,
 				data
 			);
@@ -437,7 +437,7 @@ export class NotificationDestinationRegistry {
 							pathname: '/communities/[id]',
 							params: { id: communityId, dashboard: 'requests' },
 						}
-					: fallbackRoute,
+					: null,
 				fallbackRoute,
 				data
 			);
@@ -476,7 +476,7 @@ export class NotificationDestinationRegistry {
 			return this.navigate(
 				communityId
 					? { pathname: '/communities/[id]', params: { id: communityId } }
-					: fallbackRoute,
+					: null,
 				fallbackRoute,
 				data
 			);
@@ -517,15 +517,20 @@ export class NotificationDestinationRegistry {
 		return this.navigate(fallbackRoute, fallbackRoute, data);
 	}
 
+	// Branches pass null instead of `cond ? route : fallbackRoute`: with the
+	// generated typed routes, a ternary of two Href values exceeds TypeScript's
+	// union size limit (TS2590), so the fallback is resolved here with an if.
 	private navigate(
-		route: Href,
+		route: Href | null,
 		fallbackRoute: Href,
 		data: NotificationDestinationInput,
 		peerId?: string
 	): NotificationDestinationResult {
+		let resolvedRoute: Href = fallbackRoute;
+		if (route) resolvedRoute = route;
 		return {
 			behavior: 'navigate',
-			route,
+			route: resolvedRoute,
 			fallbackRoute,
 			notificationId: data.notificationId,
 			peerId,
@@ -542,6 +547,11 @@ export class NotificationDestinationRegistry {
 
 	private chatRoute(peerId: string): Href {
 		return { pathname: '/chat/[id]', params: { id: peerId } };
+	}
+
+	private chatRouteOr(peerId: string | undefined, fallbackRoute: Href): Href {
+		if (peerId) return this.chatRoute(peerId);
+		return fallbackRoute;
 	}
 
 	private readString(value: unknown): string {

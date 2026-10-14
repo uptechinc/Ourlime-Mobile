@@ -160,7 +160,7 @@ export default function SupportTicketsScreen() {
 								style={{ marginTop: 4, color: colors.mutedText, fontSize: 12 }}
 							>
 								{SUPPORT_TICKET_CATEGORY_LABELS[ticket.category]} ·{' '}
-								{ticket.status.replaceAll('_', ' ')}
+								{ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1).replaceAll('_', ' ')}
 							</Text>
 							<Text
 								style={{ marginTop: 3, color: colors.mutedText, fontSize: 12 }}

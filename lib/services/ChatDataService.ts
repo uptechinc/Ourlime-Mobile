@@ -28,6 +28,7 @@ import { communityDataService } from './CommunityDataService';
 import { sharedContentMessageService } from './SharedContentMessageService';
 import { appServerService } from './AppServerService';
 import { serverClockService } from './ServerClockService';
+import { privateProfileService } from './PrivateProfileService';
 
 export type ChatFriendRecord = {
   id: string;
@@ -519,8 +520,13 @@ export class ChatDataService {
     const text = payload.message.trim();
     if (!receiverId || (!text && !payload.attachment && !payload.stickerData && !payload.voiceNoteData)) throw new Error('Message content is required');
 
-    const [sender, receiver] = await Promise.all([getDoc(doc(db, 'users', senderId)), getDoc(doc(db, 'users', receiverId))]);
-    const restriction = this.messagingRestriction(sender.data());
+    const [sender, receiver, senderPrivate] = await Promise.all([
+      getDoc(doc(db, 'users', senderId)),
+      getDoc(doc(db, 'users', receiverId)),
+      // Restriction reasons and accountRestrictions live in the sender's private profile.
+      getDoc(privateProfileService.reference(senderId)).catch(() => null),
+    ]);
+    const restriction = this.messagingRestriction(sender.exists() ? { ...sender.data(), ...senderPrivate?.data() } : undefined);
     if (restriction) throw new Error(restriction);
     if (!receiver.exists()) throw new Error('Recipient not found');
     if (readStringList(sender.data()?.blockList).includes(receiverId) || readStringList(receiver.data().blockList).includes(senderId)) {

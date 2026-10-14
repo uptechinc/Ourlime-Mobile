@@ -39,7 +39,7 @@ export default function CustomModal({
   onCancel,
   onClose,
 }: CustomModalProps) {
-  const { isDark } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
   const themeStyles = createThemeStyles(isDark);
   if (!visible) return null;
 
@@ -47,27 +47,27 @@ export default function CustomModal({
     switch (type) {
       case 'success':
         return (
-          <View style={[styles.iconContainer, { backgroundColor: '#ecfdf5' }]}>
+          <View style={[styles.iconContainer, { backgroundColor: colors.successSurface }]}>
             <Icon name="check-circle" size={32} color="#10b981" />
           </View>
         );
       case 'danger':
       case 'error':
         return (
-          <View style={[styles.iconContainer, { backgroundColor: '#fef2f2' }]}>
+          <View style={[styles.iconContainer, { backgroundColor: colors.destructiveSurface }]}>
             <Icon name="alert-circle" size={32} color="#ef4444" />
           </View>
         );
       case 'warning':
         return (
-          <View style={[styles.iconContainer, { backgroundColor: '#fffbeb' }]}>
+          <View style={[styles.iconContainer, { backgroundColor: colors.warningSurface }]}>
             <Icon name="alert-triangle" size={32} color="#f59e0b" />
           </View>
         );
       case 'info':
       default:
         return (
-          <View style={[styles.iconContainer, { backgroundColor: '#eff6ff' }]}>
+          <View style={[styles.iconContainer, { backgroundColor: isDark ? '#172554' : '#eff6ff' }]}>
             <Icon name="info" size={32} color="#3b82f6" />
           </View>
         );

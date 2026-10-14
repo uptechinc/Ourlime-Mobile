@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
 	ActivityIndicator,
-	ScrollView,
 	Text,
 	TextInput,
 	TouchableOpacity,
@@ -19,6 +18,8 @@ import {
 import { adminContentService } from '@/lib/services/AdminContentService';
 import type { ContentAppealRecord } from '@/lib/types/adminContent';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
+import FilterBar from '@/components/ui/FilterBar';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 
 const moderationService = AdminModerationService.getInstance();
@@ -33,6 +34,11 @@ const STATUS_FILTERS: readonly (AdminReportStatus | 'all')[] = [
 	'escalated',
 ];
 const SEVERITY_FILTERS = ['all', 'low', 'medium', 'high', 'critical'] as const;
+const toFilterLabel = (value: string, allLabel: string): string => {
+	if (value === 'all') return allLabel;
+	const words = value.replaceAll('_', ' ');
+	return words.charAt(0).toUpperCase() + words.slice(1);
+};
 
 export default function ModerationSection() {
 	const router = useRouter();
@@ -47,6 +53,19 @@ export default function ModerationSection() {
 	const [loading, setLoading] = useState(true);
 	const [appealsLoading, setAppealsLoading] = useState(false);
 	const [message, setMessage] = useState<string | null>(null);
+	const [filtersOpen, setFiltersOpen] = useState(false);
+	const filterGroups: FilterGroup[] = [
+		{ key: 'status', label: 'Status', options: STATUS_FILTERS.map((filter) => ({ value: filter, label: toFilterLabel(filter, 'Any status') })), value: status, defaultValue: 'all' },
+		{ key: 'severity', label: 'Severity', options: SEVERITY_FILTERS.map((filter) => ({ value: filter, label: toFilterLabel(filter, 'Any severity') })), value: severity, defaultValue: 'all' },
+	];
+	const handleApplyFilters = (values: FilterValues): void => {
+		setStatus(STATUS_FILTERS.find((filter) => filter === readSingleFilter(values, 'status')) ?? 'all');
+		setSeverity(SEVERITY_FILTERS.find((filter) => filter === readSingleFilter(values, 'severity')) ?? 'all');
+	};
+	const handleClearFilter = (groupKey: string): void => {
+		if (groupKey === 'status') setStatus('all');
+		if (groupKey === 'severity') setSeverity('all');
+	};
 
 	const load = useCallback(async () => {
 		setLoading(true);
@@ -278,68 +297,10 @@ export default function ModerationSection() {
 							<Icon name="refresh-cw" size={17} color={colors.accent} />
 						</TouchableOpacity>
 					</View>
-					<ScrollView horizontal showsHorizontalScrollIndicator={false}>
-						{STATUS_FILTERS.map((filter) => (
-							<TouchableOpacity
-								key={filter}
-								onPress={() => setStatus(filter)}
-								style={{
-									marginRight: 7,
-									borderRadius: 999,
-									paddingHorizontal: 11,
-									paddingVertical: 7,
-									backgroundColor:
-										status === filter ? colors.accent : colors.control,
-								}}
-							>
-								<Text
-									style={{
-										color:
-											status === filter ? colors.onAccent : colors.secondaryText,
-										textTransform: 'capitalize',
-										fontSize: 11,
-										fontWeight: '800',
-									}}
-								>
-									{filter.replace('_', ' ')}
-								</Text>
-							</TouchableOpacity>
-						))}
-					</ScrollView>
-					<ScrollView
-						horizontal
-						showsHorizontalScrollIndicator={false}
-						style={{ marginTop: 9, marginBottom: 12 }}
-					>
-						{SEVERITY_FILTERS.map((filter) => (
-							<TouchableOpacity
-								key={filter}
-								onPress={() => setSeverity(filter)}
-								style={{
-									marginRight: 7,
-									borderRadius: 999,
-									paddingHorizontal: 10,
-									paddingVertical: 6,
-									backgroundColor:
-										severity === filter ? colors.accent : colors.control,
-								}}
-							>
-								<Text
-									style={{
-										color:
-											severity === filter
-												? colors.onAccent
-												: colors.secondaryText,
-										textTransform: 'capitalize',
-										fontSize: 11,
-										fontWeight: '800',
-									}}
-								>
-									{filter}
-								</Text>
-							</TouchableOpacity>
-						))}
-					</ScrollView>
+					<View style={{ marginBottom: 12 }}>
+						<FilterBar groups={filterGroups} onOpen={() => setFiltersOpen(true)} onClear={handleClearFilter} />
+					</View>
+					<FilterSheet visible={filtersOpen} title="Filter reports" groups={filterGroups} applyLabel="Show reports" onApply={handleApplyFilters} onClose={() => setFiltersOpen(false)} />
 					{visible.length === 0 ? (
 						<View
 							style={{

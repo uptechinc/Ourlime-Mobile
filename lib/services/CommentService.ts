@@ -6,7 +6,6 @@ import {
   getDoc,
   getDocs,
   increment,
-  limit,
   query,
   serverTimestamp,
   setDoc,
@@ -16,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { postCounterService } from './PostCounterService';
 
 export type CommentMediaAsset = {
   id: string;
@@ -151,10 +151,7 @@ export class CommentService {
       sticker: sticker ?? null,
     });
 
-    const countSnap = await getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', postId), limit(1))).catch(() => null);
-    if (countSnap && !countSnap.empty) {
-      await updateDoc(countSnap.docs[0].ref, { commentCount: increment(1), updatedAt: serverTimestamp() }).catch(() => {});
-    }
+    await postCounterService.adjust(postId, 'commentCount', 1);
 
     const author = await this.getAuthor(currentUserId);
     this.logger.success('CommentService', 'create-comment', { postId, commentId: commentRef.id });
@@ -238,10 +235,7 @@ export class CommentService {
 
   public async deleteComment(postId: string, commentId: string): Promise<void> {
     await deleteDoc(doc(db, 'feedsPostComments', commentId));
-    const countSnap = await getDocs(query(collection(db, 'likesCount'), where('feedsPostId', '==', postId), limit(1))).catch(() => null);
-    if (countSnap && !countSnap.empty) {
-      await updateDoc(countSnap.docs[0].ref, { commentCount: increment(-1), updatedAt: serverTimestamp() }).catch(() => {});
-    }
+    await postCounterService.adjust(postId, 'commentCount', -1);
   }
 
   public async deleteReply(commentId: string, replyId: string): Promise<void> {

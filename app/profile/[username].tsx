@@ -293,17 +293,17 @@ export default function UserProfileScreen() {
 
       {/* Header Bar */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 6, marginRight: 10 }}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Go back" style={{ padding: 6, marginRight: 10 }}>
           <Ionicons name="chevron-back" size={26} color={colors.icon} />
         </TouchableOpacity>
         <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: '800', color: colors.text, flex: 1 }}>
           {displayName}
         </Text>
-        <TouchableOpacity onPress={() => setShareVisible(true)} style={{ padding: 6 }}>
+        <TouchableOpacity onPress={() => setShareVisible(true)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Share profile" style={{ padding: 6 }}>
           <Ionicons name="share-outline" size={22} color={colors.icon} />
         </TouchableOpacity>
         {!isOwnProfile && profile ? (
-          <TouchableOpacity onPress={() => setModal({ visible: true, type: 'warning', title: isBlockedByMe ? 'Unblock user?' : 'Block user?', message: isBlockedByMe ? `Allow @${profile.userName} to interact with you again?` : `@${profile.userName} will no longer be able to interact with you.`, action: isBlockedByMe ? 'unblock' : 'block' })} style={{ padding: 6 }}>
+          <TouchableOpacity onPress={() => setModal({ visible: true, type: 'warning', title: isBlockedByMe ? 'Unblock user?' : 'Block user?', message: isBlockedByMe ? `Allow @${profile.userName} to interact with you again?` : `@${profile.userName} will no longer be able to interact with you.`, action: isBlockedByMe ? 'unblock' : 'block' })} hitSlop={8} accessibilityRole="button" accessibilityLabel={isBlockedByMe ? 'Unblock user' : 'Block user'} style={{ padding: 6 }}>
             <Ionicons name={isBlockedByMe ? 'person-add-outline' : 'ban-outline'} size={21} color={colors.icon} />
           </TouchableOpacity>
         ) : null}
@@ -325,7 +325,7 @@ export default function UserProfileScreen() {
           contentContainerStyle={{ paddingBottom: 60 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
         >
-          {profileError ? <TouchableOpacity onPress={() => void refreshProfile()} style={{ marginHorizontal: 16, marginTop: 10, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 14, backgroundColor: '#fff7ed' }}><Text style={{ color: '#9a3412', textAlign: 'center', fontSize: 12, fontWeight: '700' }}>Showing saved profile · Tap to retry</Text></TouchableOpacity> : null}
+          {profileError ? <TouchableOpacity onPress={() => void refreshProfile()} style={{ marginHorizontal: 16, marginTop: 10, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 14, backgroundColor: colors.warningSurface }}><Text style={{ color: colors.warningText, textAlign: 'center', fontSize: 12, fontWeight: '700' }}>Showing saved profile · Tap to retry</Text></TouchableOpacity> : null}
           {/* ── Cover Photo Banner ── */}
           <View style={{ height: 130, width: '100%', position: 'relative' }}>
             {coverImage ? (
@@ -340,7 +340,7 @@ export default function UserProfileScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: -40, marginBottom: 12 }}>
               <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.surface, padding: 3, elevation: 4 }}>
                 <UserAvatar profileImage={profile?.profilePicture} firstName={profile?.firstName || username} size={78} />
-                {presence?.status === 'online' ? <View style={{ position: 'absolute', right: 2, bottom: 2, width: 16, height: 16, borderRadius: 8, backgroundColor: '#10b981', borderWidth: 3, borderColor: '#ffffff' }} /> : null}
+                {presence?.status === 'online' ? <View style={{ position: 'absolute', right: 2, bottom: 2, width: 16, height: 16, borderRadius: 8, backgroundColor: '#10b981', borderWidth: 3, borderColor: colors.surface }} /> : null}
               </View>
 
               {/* Public Actions (Follow, Add Friend, Message) */}
@@ -355,7 +355,7 @@ export default function UserProfileScreen() {
                       borderRadius: 20,
                       backgroundColor: isFollowing ? colors.control : colors.accent,
                       borderWidth: 1,
-                      borderColor: isFollowing ? '#cbd5e1' : '#10b981',
+                      borderColor: isFollowing ? colors.border : colors.accent,
                     }}
                   >
                     <Text style={{ color: isFollowing ? colors.text : colors.onAccent, fontWeight: '800', fontSize: 13 }}>
@@ -370,12 +370,12 @@ export default function UserProfileScreen() {
                       paddingHorizontal: 14,
                       paddingVertical: 8,
                       borderRadius: 20,
-                      backgroundColor: friendshipStatus === 'accepted' ? '#ecfdf5' : friendshipStatus === 'pending' ? '#fef3c7' : '#047857',
+                      backgroundColor: friendshipStatus === 'accepted' ? colors.successSurface : friendshipStatus === 'pending' ? colors.warningSurface : '#047857',
                       borderWidth: friendshipStatus === 'pending' ? 1 : 0,
-                      borderColor: '#f59e0b',
+                      borderColor: colors.warningText,
                     }}
                   >
-                    <Text style={{ color: friendshipStatus === 'accepted' ? '#047857' : friendshipStatus === 'pending' ? '#b45309' : '#ffffff', fontWeight: '700', fontSize: 13 }}>
+                    <Text style={{ color: friendshipStatus === 'accepted' ? colors.successText : friendshipStatus === 'pending' ? colors.warningText : '#ffffff', fontWeight: '700', fontSize: 13 }}>
                       {friendshipStatus === 'accepted' ? 'Remove Friend' : friendshipStatus === 'pending' ? 'Cancel Request' : 'Add Friend'}
                     </Text>
                   </TouchableOpacity>
@@ -500,7 +500,7 @@ export default function UserProfileScreen() {
             {activeTab === 'communities' && (
               <View style={{ padding: 16, backgroundColor: colors.surface, borderRadius: 16, marginHorizontal: 16 }}>
                 <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 12 }}>Joined Communities</Text>
-                {profileDetails.communities.length ? profileDetails.communities.map((community: PublicProfileResult['communities'][number]) => <TouchableOpacity key={community.id} onPress={() => router.push({ pathname: '/communities/[id]', params: { id: community.id } })} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}><Text style={{ fontWeight: '700', color: colors.text }}>{community.title}</Text><Text style={{ color: colors.mutedText, marginTop: 2 }}>{community.membershipCount.toLocaleString()} members</Text></TouchableOpacity>) : <Text style={{ fontSize: 13, color: colors.mutedText }}>No visible communities.</Text>}
+                {profileDetails.communities.length ? profileDetails.communities.map((community: PublicProfileResult['communities'][number]) => <TouchableOpacity key={community.id} onPress={() => router.push({ pathname: '/communities/[id]', params: { id: community.id } })} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}><Text style={{ fontWeight: '700', color: colors.text }}>{community.title}</Text><Text style={{ color: colors.mutedText, marginTop: 2 }}>{community.membershipCount.toLocaleString()} {community.membershipCount === 1 ? 'member' : 'members'}</Text></TouchableOpacity>) : <Text style={{ fontSize: 13, color: colors.mutedText }}>No visible communities.</Text>}
               </View>
             )}
 

@@ -1,0 +1,518 @@
+<title>Ourlime UI Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a single reading column of findings; each finding pairs phone screenshots before → after. */
+:root {
+  --bg: #f6f8f5;
+  --surface: #ffffff;
+  --ink: #17211b;
+  --muted: #5d6b62;
+  --line: #dde5df;
+  --lime: #0f9a63;
+  --lime-soft: #e3f5eb;
+  --before: #8a5a14;
+  --before-soft: #fbf1df;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1411; --surface: #16201b; --ink: #e6efe9; --muted: #9aaba1; --line: #26332c;
+    --lime: #3dd598; --lime-soft: #143326; --before: #e6b56a; --before-soft: #33281a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1411; --surface: #16201b; --ink: #e6efe9; --muted: #9aaba1; --line: #26332c;
+  --lime: #3dd598; --lime-soft: #143326; --before: #e6b56a; --before-soft: #33281a; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 80px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: 1.6rem; font-weight: 800; margin-top: 56px; padding-top: 24px; border-top: 2px solid var(--ink); }
+h3 { font-size: 1.2rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--muted); font-size: 1.1rem; margin-top: 12px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 20px; font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+.meta b { color: var(--ink); font-weight: 500; }
+.toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.toc a { font-size: 0.9rem; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none; }
+.toc a:hover, .toc a:focus-visible { border-color: var(--lime); outline: none; }
+.finding { display: grid; gap: 14px; margin-top: 36px; }
+.finding .why { color: var(--muted); }
+.finding .why strong { color: var(--ink); }
+.pairs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 16px; align-items: start; }
+.web .pairs { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+figure { margin: 0; display: grid; gap: 8px; min-width: 0; }
+figure img { width: 100%; max-width: 100%; height: auto; display: block; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); }
+figcaption { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
+.tag { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; }
+.tag.before { background: var(--before-soft); color: var(--before); }
+.tag.after { background: var(--lime-soft); color: var(--lime); }
+ul.plain { margin: 12px 0 0; padding-left: 20px; display: grid; gap: 8px; max-width: 72ch; }
+ul.plain li::marker { color: var(--lime); }
+.note { margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-size: 0.95rem; }
+code { font-family: var(--mono); font-size: 0.85em; background: var(--lime-soft); color: var(--ink); padding: 1px 5px; border-radius: 4px; }
+.table-wrap { margin-top: 16px; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table.perf { width: 100%; border-collapse: collapse; font-size: 0.88rem; min-width: 720px; }
+table.perf th, table.perf td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.perf th { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+table.perf tr:last-child td { border-bottom: 0; }
+table.perf td.num { font-family: var(--mono); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+table.perf td:first-child { min-width: 200px; }
+table.perf td.win { color: var(--lime); }
+h3.sub { margin-top: 28px; }
+</style>
+
+<div class="wrap">
+  <h1>Ourlime UI Review</h1>
+  <p class="lede">Bug fixes from tester reports, a cleanup of crowded filter screens, a page-by-page polish pass and a production performance audit of the Android app and the website.</p>
+  <div class="meta">
+    <span>App branch <b>ui-cleanup-and-bug-fixes</b> vs <b>New-Main</b></span>
+    <span>Website branch <b>ui-cleanup-and-bug-fixes</b> vs <b>Main</b></span>
+    <span>Captured <b>12–13 Oct 2026</b> · Pixel 6 emulator · 1440px and 390px browser</span>
+  </div>
+  <nav class="toc" aria-label="Sections">
+    <a href="#app">Mobile app</a>
+    <a href="#web">Website</a>
+    <a href="#access">Who can see what</a>
+    <a href="#community">Communities</a>
+    <a href="#unseen">Fixes without a screen</a>
+    <a href="#polish">Polish pass</a>
+    <a href="#perf">Performance audit</a>
+    <a href="#optimizations">Optimizations</a>
+    <a href="#recommendations">Follow-up round</a>
+    <a href="#testpass">Full test pass</a>
+    <a href="#latest">Latest round</a>
+    <a href="#open">Still open</a>
+  </nav>
+
+  <h2 id="app">Mobile app</h2>
+
+  <section class="finding">
+    <h3>E-Projects: three rows of chips become one Filters button</h3>
+    <p class="why">Status, role and sort each had a full chip row, plus an Asc/Desc toggle. They now sit in a bottom sheet, with a count on the button and a removable chip for each active filter. Sort and direction merged into plain choices such as <strong>Name A–Z</strong>. The empty band above the header is also gone: the page was adding the status-bar inset twice.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m01-projects-top.png" alt="E-Projects before, with a tall empty gap above the header" loading="lazy"><figcaption><span class="tag before">Before</span>Gap above the header</figcaption></figure>
+      <figure><img src="app/after/m01-projects-top.png" alt="E-Projects after, header sits under the status bar" loading="lazy"><figcaption><span class="tag after">After</span>Header in place</figcaption></figure>
+      <figure><img src="app/before/m02-projects-filters.png" alt="Three rows of filter chips" loading="lazy"><figcaption><span class="tag before">Before</span>Three chip rows</figcaption></figure>
+      <figure><img src="app/after/m02b-projects-filter-sheet.png" alt="Filter projects bottom sheet" loading="lazy"><figcaption><span class="tag after">After</span>One button, one sheet</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Task details: typing stays visible above the keyboard</h3>
+    <p class="why">Raushawn could not see what he typed. On Android the keyboard covered the comment and log-time fields inside the sheet. The sheet now lifts above the keyboard.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m06-task-keyboard.png" alt="Keyboard covering the log time field" loading="lazy"><figcaption><span class="tag before">Before</span>Field hidden behind keyboard</figcaption></figure>
+      <figure><img src="app/after/m06-task-keyboard.png" alt="Log time field visible with 45 typed above the keyboard" loading="lazy"><figcaption><span class="tag after">After</span>“45” visible while typing</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Project settings: delete button stays inside the sheet</h3>
+    <p class="why"><strong>Delete Entire Project</strong> spilled out below the sheet. The sheet now scrolls and keeps every control inside it.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m07-project-settings.png" alt="Delete button overflowing below the settings sheet" loading="lazy"><figcaption><span class="tag before">Before</span>Delete hangs off the sheet</figcaption></figure>
+      <figure><img src="app/after/m07-project-settings.png" alt="Settings sheet containing the delete button" loading="lazy"><figcaption><span class="tag after">After</span>Contained</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Project activity reads as plain English</h3>
+    <p class="why">Recent Activity showed internal keys like <code>add_subtask</code> and <code>time</code>, twice per entry. It now reads “added a subtask”, “commented”, “logged time”.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m04-board-activity.png" alt="Activity list with raw action keys" loading="lazy"><figcaption><span class="tag before">Before</span>Raw keys</figcaption></figure>
+      <figure><img src="app/after/m04-board-activity.png" alt="Activity list in plain English" loading="lazy"><figcaption><span class="tag after">After</span>Readable</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Community posts: comment and share counts survive a refresh</h3>
+    <p class="why">Chris reported counts disappearing. The app saved community comment and share counts in the wrong place and read them from a field nothing writes, and the card kept whatever number it first loaded. Counts now come from the same counter the website uses, comments are counted directly, and the card follows the refreshed number. This post has one comment and one share.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m09-community-post.png" alt="Community post showing 0 comments" loading="lazy"><figcaption><span class="tag before">Before</span>0 comments shown</figcaption></figure>
+      <figure><img src="app/after/m09-community-post.png" alt="Community post showing 1 comment and 1 share" loading="lazy"><figcaption><span class="tag after">After</span>1 comment, 1 share</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Hosting an event: crop the cover, add a poll</h3>
+    <p class="why">Picking a cover only showed a file name, with no preview and no way to crop. The photo now opens the crop screen, then shows as a preview with Crop, Replace and Remove. Chris’s suggestion is in too: a Yes/No <strong>Add a poll?</strong> toggle that creates a community poll closing when the event starts.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m10-event-form.png" alt="Event form showing only a filename" loading="lazy"><figcaption><span class="tag before">Before</span>Just a file name</figcaption></figure>
+      <figure><img src="app/after/m10a-event-crop.png" alt="Crop photo screen with aspect presets" loading="lazy"><figcaption><span class="tag after">After</span>Crop screen</figcaption></figure>
+      <figure><img src="app/after/m10-event-form.png" alt="Cover preview with Crop, Replace and Remove" loading="lazy"><figcaption><span class="tag after">After</span>Preview and actions</figcaption></figure>
+      <figure><img src="app/after/m10b-event-poll.png" alt="Poll question with Yes, No, Maybe options" loading="lazy"><figcaption><span class="tag after">After</span>Optional poll</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Blogs: one row of categories</h3>
+    <p class="why">The page stacked a type toggle, categories and a long tag row before any content. Categories stay on the page; type, sort and tags (pick several) moved into the existing filter button, which now shows a count.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m08-blogs.png" alt="Blogs with three stacked filter rows" loading="lazy"><figcaption><span class="tag before">Before</span>Three filter rows</figcaption></figure>
+      <figure><img src="app/after/m08-blogs.png" alt="Blogs with one category row" loading="lazy"><figcaption><span class="tag after">After</span>One row</figcaption></figure>
+      <figure><img src="app/after/m08b-blogs-filter-sheet.png" alt="Blogs sort and filter sheet" loading="lazy"><figcaption><span class="tag after">After</span>Sort, type and tags</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Admin: Users and Reports</h3>
+    <p class="why">Two labelled chip rows on each screen became one Filters button. Labels such as <code>under_review</code> now read “Under review”.</p>
+    <div class="pairs">
+      <figure><img src="app/before/m11-admin-users.png" alt="Admin users with status and role chip rows" loading="lazy"><figcaption><span class="tag before">Before</span>Users</figcaption></figure>
+      <figure><img src="app/after/m11-admin-users.png" alt="Admin users with a single Filters button" loading="lazy"><figcaption><span class="tag after">After</span>Users</figcaption></figure>
+      <figure><img src="app/before/m12-admin-reports.png" alt="Admin reports with status and severity chip rows" loading="lazy"><figcaption><span class="tag before">Before</span>Reports</figcaption></figure>
+      <figure><img src="app/after/m12-admin-reports.png" alt="Admin reports with a single Filters button" loading="lazy"><figcaption><span class="tag after">After</span>Reports</figcaption></figure>
+    </div>
+  </section>
+
+  <h2 id="web">Website at phone width</h2>
+  <p class="lede">Desktop and tablet layouts are unchanged. Below 640px the same controls move into a bottom sheet behind one Filters button.</p>
+
+  <section class="finding web">
+    <h3>E-Projects</h3>
+    <p class="why">Three full-width dropdowns and a direction button took five rows before the first project.</p>
+    <div class="pairs">
+      <figure><img src="web/before/w01-projects.png" alt="Website E-Projects with stacked dropdowns" loading="lazy"><figcaption><span class="tag before">Before</span>Five rows of controls</figcaption></figure>
+      <figure><img src="web/after/w01-projects.png" alt="Website E-Projects with one Filters row" loading="lazy"><figcaption><span class="tag after">After</span>One row</figcaption></figure>
+      <figure><img src="web/after/w01b-projects-sheet.png" alt="Website filter projects sheet" loading="lazy"><figcaption><span class="tag after">After</span>Sheet</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding web">
+    <h3>Blogs</h3>
+    <p class="why">Type, sort and all popular tags sat above the posts, and the page said <strong>No blogs found</strong> while it was still loading. It now says “Loading blogs…”, and a blank tag pill is gone.</p>
+    <div class="pairs">
+      <figure><img src="web/before/w02-blogs.png" alt="Website blogs with tags and a premature no blogs message" loading="lazy"><figcaption><span class="tag before">Before</span>“No blogs found” while loading</figcaption></figure>
+      <figure><img src="web/after/w02-blogs.png" alt="Website blogs with one Filters row and loading text" loading="lazy"><figcaption><span class="tag after">After</span>“Loading blogs…”</figcaption></figure>
+      <figure><img src="web/after/w02b-blogs-sheet.png" alt="Website blogs sort and filter sheet" loading="lazy"><figcaption><span class="tag after">After</span>Sheet</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding web">
+    <h3>Admin pages</h3>
+    <p class="why">Users had four wrapping dropdown buttons. Reports had three labelled dropdowns, and its tab row broke words mid-way (“Repo / rts”). Activity Logs had two fixed-width dropdowns over three rows.</p>
+    <div class="pairs">
+      <figure><img src="web/before/w03-admin-users.png" alt="Admin users with four filter buttons" loading="lazy"><figcaption><span class="tag before">Before</span>Users</figcaption></figure>
+      <figure><img src="web/after/w03-admin-users.png" alt="Admin users with one Filters button" loading="lazy"><figcaption><span class="tag after">After</span>Users</figcaption></figure>
+      <figure><img src="web/before/w04-admin-reports.png" alt="Reports with broken tab labels" loading="lazy"><figcaption><span class="tag before">Before</span>Reports, broken tabs</figcaption></figure>
+      <figure><img src="web/after/w04-admin-reports.png" alt="Reports with scrolling tabs and one Filters button" loading="lazy"><figcaption><span class="tag after">After</span>Reports</figcaption></figure>
+      <figure><img src="web/before/w05-activity-logs.png" alt="Activity logs with stacked dropdowns" loading="lazy"><figcaption><span class="tag before">Before</span>Activity Logs</figcaption></figure>
+      <figure><img src="web/after/w05-activity-logs.png" alt="Activity logs with one Filters button" loading="lazy"><figcaption><span class="tag after">After</span>Activity Logs</figcaption></figure>
+    </div>
+  </section>
+
+  <h2 id="access">Who can see what</h2>
+  <p class="lede">Each page’s availability is set by admins in Page Access. Restricted pages were only half enforced: the app’s tab bar ignored the settings, and both the app and the website drew restricted pages behind a see-through overlay while linking to them from every menu. Now a page someone can’t open is neither listed nor rendered for them. The screenshots below were taken with this admin account temporarily treated as a regular user.</p>
+
+  <section class="finding">
+    <h3>App: tabs and menu only list what the account can open</h3>
+    <p class="why">The Limes tab matched no setting because tab paths are capitalised (<code>/Limes</code>), so admin-only Limes stayed open to everyone. The same mismatch hid the website’s <code>/messages</code> and <code>/profile/settings</code> settings from the app. Restricted tabs and menu items are now removed, the blocking screen is fully opaque, and Limes videos never play behind it.</p>
+    <div class="pairs">
+      <figure><img src="app/after/m13-user-tabs.png" alt="Regular user home with no Limes tab" loading="lazy"><figcaption><span class="tag after">Regular user</span>No Limes tab</figcaption></figure>
+      <figure><img src="app/after/m15-user-menu.png" alt="Side menu listing only open pages" loading="lazy"><figcaption><span class="tag after">Regular user</span>Menu without Events, Jobs, Market, Admin</figcaption></figure>
+      <figure><img src="app/after/m14-user-limes-blocked.png" alt="Opaque Administrator Access Required screen over a shared Lime" loading="lazy"><figcaption><span class="tag after">Regular user</span>Shared Lime: nothing shows through</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding web">
+    <h3>Website: restricted pages are never rendered or linked</h3>
+    <p class="why">The overlay was 50% black with blur, so the restricted page still rendered and loaded its data underneath, and greyed-out links stayed in the top bar, feed tabs, profile menu, bottom bar and Games card (which offered admin-only Trini Wordle). Restricted pages are now withheld until access is confirmed, every nav hides them, and the last known settings are cached so this check doesn’t slow the first paint.</p>
+    <div class="pairs">
+      <figure><img src="web/after/w06-user-home.png" alt="Website home for a regular user without Limes, Events, Jobs, Market links and without Wordle" loading="lazy"><figcaption><span class="tag after">Regular user</span>Only open pages and games</figcaption></figure>
+    </div>
+  </section>
+
+  <h2 id="community">Communities</h2>
+  <section class="finding web">
+    <h3>Comment counts agree everywhere, and posts load faster</h3>
+    <p class="why">The website increased one field when someone commented and displayed a different one, while the app wrote a third. Both now count the comments themselves, so the app, the website and the database agree. The website’s community posts were built with about five database reads per post; they now use a handful of batched reads, and a second call that re-read every post and every like counter in all communities was cut down to this community only. Moderated (hidden) community posts were also still shown on the website because the hidden flag was dropped; they are now filtered.</p>
+    <div class="pairs">
+      <figure><img src="web/after/w07-community-comments.png" alt="Website community post showing Comment (1)" loading="lazy"><figcaption><span class="tag after">After</span>“Comment (1)” on the website</figcaption></figure>
+    </div>
+    <ul class="plain">
+      <li><strong>App directory:</strong> the Communities list made six database round trips one after another. Independent ones now run together (13.5 s → 10.8 s on the emulator), and the list is now warmed in the background at startup like the feed, so it opens filled.</li>
+      <li><strong>Website community page:</strong> posts arrive in about 3 s on the local development server after the first compile.</li>
+    </ul>
+  </section>
+
+  <h2 id="unseen">Fixes without a screen</h2>
+  <ul class="plain">
+    <li><strong>Chat archive.</strong> Unarchiving from inside a chat now takes it out of Archived, and it stays out after a restart. The list used to rebuild from a stale local copy.</li>
+    <li><strong>Manage Jobs crash.</strong> The screen crashed on open because the app’s runtime lacks <code>Promise.finally</code>. All 16 uses across the app were replaced.</li>
+    <li><strong>Status bar.</strong> After visiting Limes, the clock and battery icons turned white on light screens such as Communities. Limes now sets its dark status bar only while it is open.</li>
+    <li><strong>Event poll toggle.</strong> The selected Yes/No option no longer stays faded after tapping.</li>
+    <li><strong>Members count.</strong> The project stat now counts accepted members only, matching Team Members.</li>
+    <li><strong>Roles and permissions guide.</strong> A rule file for AI agents in both repos explains that “Administrator Access Required” pages, such as a shared Lime, are an admin choice and not a bug.</li>
+  </ul>
+
+  <h2 id="polish">Polish pass</h2>
+  <p class="lede">A page-by-page sweep of both apps for small, high-impact fixes: honest loading states, readable labels, theme colors, touch targets and spacing. Layouts, navigation and page structure were left alone; anything bigger is listed under Recommendations.</p>
+
+  <section class="finding">
+    <h3>Events and Market say “Loading” instead of “0”</h3>
+    <p class="why">While data was on its way, Events read <strong>0 upcoming community and public events</strong>, and Market and E-Hub read <strong>0 listings loaded</strong>. Both looked like empty pages. They now say they are loading until the data arrives. Jobs got the same treatment on both platforms.</p>
+    <div class="pairs">
+      <figure><img src="polish/app/before/p-events-loading.png" alt="Events hero reading 0 upcoming events while cards are still loading" loading="lazy"><figcaption><span class="tag before">Before</span>“0 upcoming” while loading</figcaption></figure>
+      <figure><img src="polish/app/after/p-events-loading.png" alt="Events hero reading Loading events" loading="lazy"><figcaption><span class="tag after">After</span>“Loading events…”</figcaption></figure>
+      <figure><img src="polish/app/before/p-market-loading.png" alt="Marketplace reading 0 listings loaded over skeleton cards" loading="lazy"><figcaption><span class="tag before">Before</span>“0 listings loaded”</figcaption></figure>
+      <figure><img src="polish/app/after/p-market-loading.png" alt="Marketplace reading Loading listings" loading="lazy"><figcaption><span class="tag after">After</span>“Loading listings…”</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Settings: account fields stay together</h3>
+    <p class="why">The policy links sat between <strong>First Name</strong> and <strong>Last Name</strong>. They now follow the account fields, in the same tab.</p>
+    <div class="pairs">
+      <figure><img src="polish/app/before/p-settings.png" alt="Policy links between first and last name fields" loading="lazy"><figcaption><span class="tag before">Before</span>Links split the form</figcaption></figure>
+      <figure><img src="polish/app/after/p-settings.png" alt="Name, username and bio followed by policy links" loading="lazy"><figcaption><span class="tag after">After</span>Form, then links</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding">
+    <h3>Courses and cart read cleanly</h3>
+    <p class="why">The course catalog showed <strong>Programming</strong> three times because the category list has duplicate names. The saved cart opened with a fragment, <strong>“synced. Items do not reserve stock.”</strong> Each status is now a full sentence.</p>
+    <div class="pairs">
+      <figure><img src="polish/app/before/p-courses.png" alt="Three Programming chips in a row" loading="lazy"><figcaption><span class="tag before">Before</span>Repeated chip</figcaption></figure>
+      <figure><img src="polish/app/after/p-courses.png" alt="Programming, Data Science and Design chips" loading="lazy"><figcaption><span class="tag after">After</span>One chip per category</figcaption></figure>
+      <figure><img src="polish/app/before/p-cart-notice.png" alt="Cart notice starting with lowercase synced" loading="lazy"><figcaption><span class="tag before">Before</span>Raw status word</figcaption></figure>
+      <figure><img src="polish/app/after/p-cart-notice.png" alt="Cart notice reading Synced with your account" loading="lazy"><figcaption><span class="tag after">After</span>Full sentence</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="finding web">
+    <h3>Website: greeting, sign-in hints and status chips</h3>
+    <p class="why">E-Learning greeted people by email address and showed <code>Don&amp;apos;t</code> in a course message. Help showed <strong>Sign in required</strong> on every card to people already signed in. E-Projects chips showed raw values such as <strong>active</strong> and <strong>owner</strong>.</p>
+    <div class="pairs">
+      <figure><img src="polish/web-desktop/before/w10-elearning.jpg" alt="E-Learning greeting by email address" loading="lazy"><figcaption><span class="tag before">Before</span>“Welcome, aaronhazzard2018@…”</figcaption></figure>
+      <figure><img src="polish/web-desktop/after/w10-elearning.jpg" alt="E-Learning greeting by first name" loading="lazy"><figcaption><span class="tag after">After</span>“Welcome, Aaron”</figcaption></figure>
+      <figure><img src="polish/web-desktop/before/w18-help.jpg" alt="Help cards labelled Sign in required for a signed-in user" loading="lazy"><figcaption><span class="tag before">Before</span>Sign-in hints while signed in</figcaption></figure>
+      <figure><img src="polish/web-desktop/after/w18-help.jpg" alt="Help cards without sign-in hints" loading="lazy"><figcaption><span class="tag after">After</span>Shown only when signed out</figcaption></figure>
+      <figure><img src="polish/web-desktop/before/w12-projects.jpg" alt="Project card chips reading active and owner" loading="lazy"><figcaption><span class="tag before">Before</span>“active”, “owner”</figcaption></figure>
+      <figure><img src="polish/web-desktop/after/w12-projects.jpg" alt="Project card chips reading Active and Owner" loading="lazy"><figcaption><span class="tag after">After</span>“Active”, “Owner”</figcaption></figure>
+    </div>
+  </section>
+
+  <h3 class="sub">Every change, by page</h3>
+  <p class="why">Most of these don’t show in a resting screenshot: they appear while loading, on failure, in dark mode, or on touch.</p>
+  <div class="table-wrap"><table class="perf">
+    <thead><tr><th>Area</th><th>App</th><th>Website</th></tr></thead>
+    <tbody>
+      <tr><td>Feed and posts</td><td>“Check Metro…” developer hints removed from feed errors; event chip no longer reads “none”; “No photo posts yet” instead of “No photos posts yet”</td><td>Post menu button 40px with a label</td></tr>
+      <tr><td>Events, Jobs</td><td>Hero counts wait for data; job applications show the question text and readable statuses; Discover shows “Quick task” instead of “quickTask”</td><td>Counts wait for data; “1 event”, “1 applicant”; event detail separates “couldn’t load” (with retry) from “not found”; status badges have dark-mode colors</td></tr>
+      <tr><td>Market, E-Hub</td><td>“Loading listings…”; seller application labels such as “Store name”; readable cart status</td><td>Retry card when the catalog fails instead of “0 products”; no fake 4.8 rating on unrated products; 36px cart buttons; E-Hub chips work in dark mode</td></tr>
+      <tr><td>Communities</td><td>“1 member”, “1 post”, “1 vote”; member actions labelled</td><td>Report and member-action buttons visible on touch screens; “1 community”; report status reads “In review”</td></tr>
+      <tr><td>Projects</td><td>“On hold”; draft statuses “To do”, “In progress”, “Done”; error card no longer sits above zero stats</td><td>Status, role, task status and priority labels</td></tr>
+      <tr><td>Chat</td><td>Blocked, reply and stale banners, the forward sheet and link previews use theme colors; bigger hit areas on header, cancel and clear buttons</td><td>—</td></tr>
+      <tr><td>Profile, Friends</td><td>Header buttons labelled with bigger hit areas; profile colors themed; Limes and reposts tabs show an error with retry instead of “No Limes yet”</td><td>“1 Follower”; each Friends tab has its own empty message, plus “No matches for …” when searching</td></tr>
+      <tr><td>E-Learning</td><td>No repeated category chips; “1 lesson”, “1 student”</td><td>Greeting uses the first name; courses count waits for data</td></tr>
+      <tr><td>Settings, Help</td><td>Policy links after the account fields; dark-mode colors for privacy toggles and buttons</td><td>Sign-in hints only for signed-out visitors; 2FA and delete buttons readable in dark mode</td></tr>
+      <tr><td>Shared UI</td><td>Back button hit area and label; modal icon circles follow the theme; drawer badges themed</td><td>Notification bulk actions 36px with labels; mobile menu button labelled; events, projects, market and blog detail capped at 1400px on wide screens</td></tr>
+      <tr><td>Admin</td><td>—</td><td>Undefined colour tokens replaced, so badges and chips render again on Child Safety and Support. The user-management Retry button was invisible white-on-white. Jobs, Security, Products and export menus moved to the admin palette.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="perf">Performance audit</h2>
+  <p class="lede">Measured against production builds before changing any queries: <code>next build</code> + <code>next start</code> for the website, and a minified <code>--no-dev</code> bundle on the Pixel 6 emulator for the app. Temporary hooks timed every Firestore read and counted documents, server-side for the website and in the app’s Firestore client.</p>
+  <div class="meta">
+    <span>Website <b>32 pages × desktop + phone</b></span>
+    <span>App <b>18 screens + cold start</b></span>
+    <span>Signed in as an admin account</span>
+  </div>
+  <p class="note">Network latency to Firestore varied a lot during the runs: the same query took 300 ms in one minute and 3–8 s in another. Rows show what each page did and what it cost in that run. The optimization results below repeat each page several times and compare medians.</p>
+
+  <h3 class="sub">Mobile app</h3>
+  <div class="table-wrap"><table class="perf">
+    <thead><tr><th>Screen</th><th>Query or operation</th><th>Measured</th><th>Docs read</th><th>Suspected cause</th></tr></thead>
+    <tbody>
+      <tr><td>Cold start → home feed</td><td>Feed: each repost’s original post fetched one at a time, in groups of 4</td><td class="num">feed data at 22.2 s<br>(11.4 s after JS start)</td><td class="num">235 reads / 595 docs in first 29 s</td><td>N+1 sequential reads</td></tr>
+      <tr><td>Cold start</td><td>Same documents read repeatedly: your user doc ×15, account settings ×10, security config ×2</td><td class="num">security config 3.5 s each</td><td class="num">27</td><td>No sharing of in-flight or recent reads</td></tr>
+      <tr><td>Any screen after returning to the app</td><td>Full preload re-runs: home feed, communities feed, community directory, projects</td><td class="num">Blogs window: 14.4 s</td><td class="num">401 reads / 1,395 docs</td><td>Preload has no freshness check on resume</td></tr>
+      <tr><td>Blogs</td><td><code>feedPosts/{id}</code> ×95; <code>blogsAndArticles/{id}/engagement</code> ×14</td><td class="num">up to 4.0 s / 4.7 s</td><td class="num">95 + 14</td><td>N+1 per repost (background feed) and per blog</td></tr>
+      <tr><td>Jobs</td><td><code>jobApplications</code> by user; <code>jobs/{id}/questions</code> ×13</td><td class="num">8.6–9.8 s (0 docs)<br>screen ready ≈ 20 s</td><td class="num">13 jobs + 13</td><td>Queued behind background refresh; N+1 questions per job</td></tr>
+      <tr><td>Profile tab</td><td>User docs; friendship pair query</td><td class="num">up to 18.0 s / 18.8 s</td><td class="num">65</td><td>Waiting behind other reads on the single long-polling connection</td></tr>
+      <tr><td>Discover</td><td>Per suggested person: user, profile image, image selection; per community: member count</td><td class="num">8.8 s</td><td class="num">152 reads / 439 docs</td><td>N+1 per person and per community</td></tr>
+      <tr><td>Market</td><td><code>subImages</code> per product ×11</td><td class="num">up to 4.4 s; 20.3 s window</td><td class="num">205 reads / 333 docs</td><td>N+1 per product</td></tr>
+      <tr><td>Courses</td><td>All reads queued ≈ 10 s</td><td class="num">10.7 s</td><td class="num">116 reads / 186 docs</td><td>Connection congestion from background work</td></tr>
+      <tr><td>Community detail</td><td>Community doc read 3×, account settings 3×</td><td class="num">13.0 s</td><td class="num">40 reads / 50 docs</td><td>Duplicate reads</td></tr>
+      <tr><td>Post detail</td><td>Same post doc read twice in a row</td><td class="num">3.0 s</td><td class="num">13 reads / 15 docs</td><td>Duplicate read</td></tr>
+      <tr><td>Events</td><td><code>eventAttendees</code> per event ×6</td><td class="num">1.8 s</td><td class="num">12 reads / 59 docs</td><td>Small N+1</td></tr>
+      <tr><td>Communities</td><td>Cached directory, categories</td><td class="num win">2.2 s</td><td class="num">3 reads / 2 docs</td><td>Fine (warmed at startup since the last round)</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 class="sub">Website</h3>
+  <div class="table-wrap"><table class="perf">
+    <thead><tr><th>Page</th><th>Query or operation</th><th>Measured</th><th>Docs read</th><th>Suspected cause</th></tr></thead>
+    <tbody>
+      <tr><td>Every page and API call</td><td>Middleware calls <code>/api/security/check-access</code> over HTTP; each call reads your user doc, and API calls also run a rate-limit transaction</td><td class="num">51 calls hit the 3.5 s timeout in one run</td><td class="num">1–2 per request</td><td>Role lookup not cached; concurrent transactions on one rate-limit doc</td></tr>
+      <tr><td>Every signed-in page</td><td><code>/api/notifications?limit=20</code> loaded twice; each reads up to 150 notification items</td><td class="num">0.7–3.5 s each</td><td class="num">≈276</td><td>Two components fetch the same list; over-fetch for a page of 20</td></tr>
+      <tr><td>Every signed-in page</td><td><code>/api/chat/friends</code> loaded twice</td><td class="num">1.1–1.2 s each</td><td class="num">≈54</td><td>Duplicate fetch</td></tr>
+      <tr><td>Home</td><td>13–16 API calls; games ×2, drafts ×2, notifications ×2</td><td class="num">5.3 s (plain run)<br>14.3 s (slow run)</td><td class="num">90 reads / 840 docs</td><td>Duplicate fetches</td></tr>
+      <tr><td>Profile</td><td>User docs ×26</td><td class="num">6.7 s</td><td class="num">92 reads / 754 docs</td><td>N+1 user lookups</td></tr>
+      <tr><td>Another person’s profile</td><td>Profile image selections ×9, user subcollections ×8</td><td class="num">6.4 s</td><td class="num">130 reads / 1,042 docs</td><td>N+1 per friend/post author</td></tr>
+      <tr><td>Communities</td><td>User docs ×13</td><td class="num">3.4 s</td><td class="num">45 reads / 570 docs</td><td>N+1 per creator</td></tr>
+      <tr><td>Blogs</td><td>User docs ×10, account settings ×5</td><td class="num">7.7 s</td><td class="num">34 reads / 231 docs</td><td>N+1 per author</td></tr>
+      <tr><td>Courses</td><td>Count query per course ×6</td><td class="num">3.2–14.3 s</td><td class="num">56 reads / 597 docs</td><td>N+1 counts</td></tr>
+      <tr><td>Community detail</td><td>Posts, members, reactions</td><td class="num">6.7–7.6 s</td><td class="num">62 reads / 649 docs</td><td>Down from 8.4 s after last round’s batching</td></tr>
+      <tr><td>Admin pages</td><td>Mostly the shared header reads above</td><td class="num">3.7–5.5 s</td><td class="num">37–51 reads / 425–708 docs</td><td>Shared chrome</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">No query failed for lack of an index, and no new index is needed for the fixes below. Every page’s baseline is ≈400 documents before its own content: notifications, chats and sessions, mostly read twice.</p>
+
+  <h2 id="optimizations">Optimizations</h2>
+  <p class="lede">Applied in order of measured impact, each re-measured on a fresh production build. Website numbers are medians of three desktop runs per page; app numbers come from repeated cold starts and screen opens on the production bundle. No schema, security rule or index changes.</p>
+
+  <h3 class="sub">Website</h3>
+  <div class="table-wrap"><table class="perf">
+    <thead><tr><th>Step</th><th>Page</th><th>API calls</th><th>Server reads</th><th>Docs read</th><th>Time to data</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="4"><strong>1. Duplicate fetches removed</strong><br>The notification listener’s first snapshot no longer triggers a second full load. The chat button and chat window share one friends request. The two home games panels share one request.</td><td>Calendar</td><td class="num win">7 → 5</td><td class="num win">53 → 40</td><td class="num win">512 → 293</td><td class="num">3.05 → 2.81 s</td></tr>
+      <tr><td>Blogs</td><td class="num win">14 → 12</td><td class="num win">59 → 44</td><td class="num win">526 → 296</td><td class="num">7.12 → 6.19 s</td></tr>
+      <tr><td>Profile</td><td class="num win">14 → 12</td><td class="num win">109 → 84</td><td class="num win">897 → 601</td><td class="num">6.45 → 6.40 s</td></tr>
+      <tr><td>Home</td><td class="num win">16 → 13</td><td class="num win">124 → 109</td><td class="num win">1,051 → 833</td><td class="num">5.16 → 5.87 s</td></tr>
+      <tr><td rowspan="4"><strong>2. Access check reuses the role lookup</strong><br>The user’s role and email are cached for 15 s, the same TTL the security settings already use. Before, every page and API request re-read the user document.</td><td>Calendar</td><td class="num">5</td><td class="num win">40 → 20</td><td class="num">293 → 272</td><td class="num">2.81 → 2.66 s</td></tr>
+      <tr><td>Blogs</td><td class="num">12</td><td class="num win">44 → 36</td><td class="num">296 → 298</td><td class="num">6.19 → 6.64 s</td></tr>
+      <tr><td>Profile</td><td class="num">12</td><td class="num win">84 → 65</td><td class="num win">601 → 506</td><td class="num">6.40 → 6.62 s</td></tr>
+      <tr><td>Home</td><td class="num">13</td><td class="num win">109 → 87</td><td class="num">833 → 788</td><td class="num">5.87 → 4.91 s</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note"><strong>Overall:</strong> 25–47% fewer documents read per page and 2–3 fewer API calls. Time to data barely moved and stays within run-to-run noise. They were waiting mostly on the rate-limit step, fixed in the follow-up round below: Blogs’ six parallel <code>/interactions</code> calls finish one after another, from 0.4 s to 3.3 s.</p>
+
+  <h3 class="sub">Mobile app</h3>
+  <div class="table-wrap"><table class="perf">
+    <thead><tr><th>Change</th><th>Measured on</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Reposts resolved in batches.</strong> Originals come from posts already loaded, and the rest are fetched 30 at a time, instead of one read per repost.</td><td>Cold start, JS ready → home feed data (production bundle)</td><td class="num">13.3 s median (12.9–13.6 s, 4 runs)<br>19 sequential post reads</td><td class="num win">11.4 s median (10.8–13.2 s, 3 runs)<br>1 batched read</td></tr>
+      <tr><td><strong>Post detail reads the post once.</strong> The same document used to be fetched twice in a row.</td><td>Opening a shared post</td><td class="num">13 reads, 3.0 s</td><td class="num win">10 reads, 2.2 s</td></tr>
+      <tr><td><strong>Tried and reverted:</strong> skip the startup preload when one finished in the last 5 minutes.</td><td>Reads in 25 s after returning to the app</td><td class="num">3–5</td><td class="num">2–3 (no real gain; each feed already has its own freshness check)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">The temporary timing hooks are removed from both repos (<code>lib/perfFirestoreServer.ts</code> on the website, and <code>lib/shims/perfFirestore.js</code> plus its Metro alias on the app).</p>
+
+  <h2 id="recommendations">Follow-up round</h2>
+  <p class="lede">You approved the recommendations, so they were built in parallel: one session for the app’s per-item reads, three for the website, and the rest here. Each change was then verified on production builds, signed in, before merging.</p>
+
+  <h3 class="sub">Measured results</h3>
+  <div class="table-wrap"><table class="perf">
+    <thead><tr><th>Change</th><th>Where</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Rate limiting counts writes only.</strong> Reads skip the per-minute counter; posts, comments and sign-in stay limited as before.</td><td>6 parallel API reads</td><td class="num">finished one after another, 1.0–3.9 s</td><td class="num win">all within 0.4 s of each other, 0.6–1.3 s</td></tr>
+      <tr><td><strong>Notifications index deployed</strong>, so the efficient query is used instead of reading up to 150 items for 20</td><td>Notifications per load</td><td class="num">up to 150 docs</td><td class="num win">21 docs, 161 ms</td></tr>
+      <tr><td><strong>Blogs return your likes and saves with the list</strong></td><td>/blogs API calls</td><td class="num">12</td><td class="num win">6</td></tr>
+      <tr><td><strong>Profile counts and Home drafts load once</strong></td><td>/profile, Home API calls</td><td class="num">12, 16</td><td class="num win">10, 12</td></tr>
+      <tr><td><strong>Returning to the app refreshes only the main feeds</strong>; filtered copies refresh when opened</td><td>App resume after feeds went stale</td><td class="num">12 feed loads, 341–422 reads, 1,540–1,744 docs</td><td class="num win">2 feed loads, 113 reads, 331 docs</td></tr>
+      <tr><td><strong>Your profile and settings are read once and shared</strong> across services at startup</td><td>App cold start</td><td class="num">profile doc read 12–14×</td><td class="num win">4–5×</td></tr>
+      <tr><td><strong>Discover, Market and Events read in batches</strong></td><td>Pull to refresh: per-item reads</td><td class="num">Discover 33 · Market 11 · Events 6</td><td class="num win">10 · 1 · 1</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">The notifications index was the only index change: it was already defined in the repo’s index file but had never been deployed. It was created on its own; the file’s other 25 undeployed definitions were left alone.</p>
+
+  <h3 class="sub">Fixed</h3>
+  <ul class="plain">
+    <li><strong>Market</strong> showed 0 products because older listings lacked a newer field; all 11 now show. Ratings appear only when real reviews exist (“No reviews yet” replaces “4.5 (0)” and the fake 4.8).</li>
+    <li><strong>Email verification</strong> is checked and written on the server; the browser no longer sets <code>users.verified</code>.</li>
+    <li><strong>Staff Help pages</strong> need a session (signed-out visitors go to login); public Help and Child Safety Standards stay open.</li>
+    <li><strong>Calls to API routes that never existed are gone.</strong> The admin stickers page loads the profile directly. Ad proof review and ad booking payment now say “not available yet”, because their backends (proof review, wallet balance and transfer) were never built.</li>
+    <li><strong>Blogs with no author:</strong> “Rishi’s Lily Farm” is Rishi Kowlessar’s and “The Future of E-Project” is Chris Walker’s; the duplicate “Chatbot Era” copy and “Test 3” were deleted after a JSON backup.</li>
+    <li><strong>Design:</strong> Games, Help, Tickets and Policies use the standard header. Community detail has one primary action. The admin preview pill no longer covers the open-in-app banner. Child Safety and Support use the neutral admin styles. The home grid is capped at wide sizes. Events dropped its placeholder stats.</li>
+    <li><strong>App errors and links:</strong> Notifications, the Limes viewer and each Discover section show “couldn’t load” with Try again instead of looking empty. Event links open with that event first and highlighted. Shared jobs open the job page with Apply.</li>
+  </ul>
+  <div class="pairs">
+    <figure><img src="polish/app/after/v-event-link.png" alt="Events list with the linked event first and outlined" loading="lazy"><figcaption><span class="tag after">After</span>Linked event first</figcaption></figure>
+    <figure><img src="polish/app/after/v-job-link.png" alt="Job detail page opened from a shared link with Apply Now" loading="lazy"><figcaption><span class="tag after">After</span>Shared job opens its page</figcaption></figure>
+  </div>
+
+  <h2 id="testpass">Full test pass</h2>
+  <p class="lede">Every website route (140) was loaded signed in on a production build, checking for failed requests, console errors and unexpected redirects. Every app screen (62) was opened by deep link on the production bundle. Each bug below was fixed, confirmed in development mode, rebuilt for production and retested before moving on.</p>
+
+  <h3 class="sub">Website fixes</h3>
+  <ul class="plain">
+    <li><strong>You were signed out while browsing.</strong> Two causes: re-syncing a session rewrote its start time, so the duplicate-session cleanup deleted the live one; and opening /login while signed in (which the product edit page did while auth was still restoring) ended the session. Both fixed, and the security log no longer gains a login entry per page view.</li>
+    <li><strong>Ads pages could not tell who you are.</strong> Eight ads API routes checked the browser-only Firebase user on the server, which is always empty. They now read the session cookie or a sign-in token. My Bookings shows its empty state instead of an error.</li>
+    <li><strong>My Offers asked for <code>hostId=undefined</code></strong> and got a server error. It now looks up your host profile by your account.</li>
+    <li><strong>Project invites failed with 503.</strong> The shared server code used a second copy of the admin SDK that was never started; it is now started on demand.</li>
+    <li><strong>Page Access showed “Unauthorized”</strong> on load because it read the admin’s ID before the profile had loaded.</li>
+    <li><strong>A missing support ticket returned a server error (500)</strong> instead of not found (404). Blog cards without a cover requested an image that doesn’t exist; they now use a default cover. The instructor access page no longer redirects you away after 3 seconds. The Discover friends list waits for sign-in before loading.</li>
+    <li><strong>Missing database indexes</strong> broke course discussions, seller orders, ad offers and the host list. Seven composite indexes were created and added to <code>firestore.indexes.json</code>.</li>
+  </ul>
+
+  <h3 class="sub">App fixes</h3>
+  <ul class="plain">
+    <li><strong>Website links open the right screen.</strong> Help, Policies, Privacy, Terms, Settings, Saved, Games, Wallet, Ads, Chat and admin links used to fall through to the home feed.</li>
+    <li><strong>Market prices and sellers.</strong> Items without a stored currency showed no price and counted as unavailable; they now show “$700.00”. Seller names fall back to the seller’s profile name.</li>
+    <li><strong>Admin Stickers</strong>: the Packs/Stickers tabs sit under the header, and search reads “Search sticker packs”. Help hides the sign-in hint once you are signed in.</li>
+    <li><strong>Type check failed</strong> after the route list grew: notification routing now picks its fallback in a way the compiler can handle. All 22 routing tests pass.</li>
+  </ul>
+
+  <h3 class="sub">Follow-up: making the app match the website</h3>
+  <ul class="plain">
+    <li><strong>Course discussions are one system again.</strong> Posting on the website had been failing, because security rules block browser writes. The website now posts and replies through the same server functions as the app. The app gained replies (tap a discussion to open it and reply), shows the two older website posts with their titles, and fills in missing author names from profiles. Old posts stored the author’s email as their name; that is no longer shown. Replies will also store the author’s name once functions are next deployed.</li>
+    <li><strong>Privacy, Terms and Delete Account in the app.</strong> The embedded website page crashed (“Application error”) in the app’s web view, because the site called a native-bridge function that wasn’t there. Both sides are fixed. Links inside these pages now open the matching app screen, for example “Open account settings” opens Settings. The website hides its own header and navigation in the app once the website update is deployed.</li>
+    <li><strong>Discussion composer</strong> no longer sits under Android’s gesture bar.</li>
+    <li><strong>Checked, no change needed:</strong> admin lists load 6 s after a cold start on a healthy device (the 80 s earlier came from an overloaded emulator). /notifications and Limes settle within about 4 s, and Limes preloads only the first video. The earlier 48–53 s figure was the crawler’s wait, not page load.</li>
+    <li><strong>Server function tests</strong> ran on the local emulator: the discussion and reply tests pass, and so do both project-route tests, which needed their mocks updated. Six older tests that failed because their mocks predated the app’s switch of Firebase SDKs were repaired afterwards, so the suite passes 47/47. One concurrency test is flaky on the emulator (it passed on the rerun). The 13 comment-counter tests pass.</li>
+    <li><strong>Ads marketplace backend</strong> now runs on the admin SDK with ownership checks on every ads route. Ads is still “Coming Soon” on both platforms; payments and pricing are not built yet.</li>
+  </ul>
+  <div class="pairs">
+    <figure><img src="polish/app/before/r-discussion-composer.png" alt="Discussion composer with Android's gesture bar drawn through the placeholder text" loading="lazy"><figcaption><span class="tag before">Before</span>Composer under the gesture bar</figcaption></figure>
+    <figure><img src="polish/app/after/r-discussion-composer.png" alt="Discussion composer sitting above the gesture bar" loading="lazy"><figcaption><span class="tag after">After</span>Composer clears the gesture bar</figcaption></figure>
+    <figure><img src="polish/app/before/r-legal-page.png" alt="Delete Account in the app showing the website's own header and menu under the app header" loading="lazy"><figcaption><span class="tag before">Before</span>Website header inside the app</figcaption></figure>
+    <figure><img src="polish/app/after/r-legal-link-settings.png" alt="The app's Settings screen, opened from the Open account settings link" loading="lazy"><figcaption><span class="tag after">After</span>“Open account settings” opens Settings</figcaption></figure>
+  </div>
+  <p class="note">Expected, not bugs: the ads host dashboard and verification pages send non-hosts home, and My Offers and Become a Host show a 404 from the host lookup when you aren’t a host yet. A development-client-only crash (“App react context shouldn’t be created before”) appeared when the test script closed the app’s last screen and then reopened it; release builds don’t include that code.</p>
+
+  <h2 id="latest">Latest round</h2>
+  <p class="lede">Chat selection redesign, trimming for every video upload, an unread-badge fix, three data bugs, and the security lockdown work. Everything here was checked on the Android emulator and the website dev build, without writing real data.</p>
+
+  <h3 class="sub">Selecting chats</h3>
+  <p>Long-pressing a chat used to turn the header solid green with six unlabelled icons: a bookmark meant “pin” and a check meant “mark read”. The header now stays on the page surface with “1 selected” and a Select all / Clear button. The actions sit in a floating bar with labels (Pin, Archive, Read or Unread, Mute and Delete in red), all from one outline icon set. Each label says what a tap will do, for example Unpin when every selected chat is pinned. Pinned chats in the list show a pin instead of a bookmark.</p>
+  <div class="pairs">
+    <figure><img src="polish/app/before/r-chat-selection.png" alt="Chat selection mode with a solid green header and six unlabelled white icons" loading="lazy"><figcaption><span class="tag before">Before</span>Green bar, unlabelled icons</figcaption></figure>
+    <figure><img src="polish/app/after/r-chat-selection.png" alt="Chat selection mode with a light header reading 1 selected and a labelled action bar at the bottom" loading="lazy"><figcaption><span class="tag after">After</span>Labelled action bar</figcaption></figure>
+    <figure><img src="polish/app/after/r-chat-selection-dark.png" alt="The same selection mode in dark theme" loading="lazy"><figcaption><span class="tag after">After</span>Dark theme</figcaption></figure>
+  </div>
+
+  <h3 class="sub">Trim any video before posting</h3>
+  <p>The trimmer used to open only when a video was over the limit (2 minutes for posts, 30 seconds for Limes). Every selected video now has a Trim button in the feed composer and the Lime uploader, on the website and in the app. The trimmed copy replaces the original in place, and Cancel keeps the original. Two bugs in the app’s trimmer, which chat shares, are fixed. Dragging a handle was taken over by the selection window, so the handles didn’t move. On Android the right handle sat in the back-gesture zone, so dragging it closed the trimmer.</p>
+  <div class="pairs">
+    <figure><img src="polish/app/before/r-post-trim.png" alt="Post composer with a 12 second video tile showing scissors and remove buttons" loading="lazy"><figcaption><span class="tag after">After</span>Trim button on a 12 s video</figcaption></figure>
+    <figure><img src="polish/app/after/r-post-trim.png" alt="The same tile now 7 seconds long after trimming, with an updated cover" loading="lazy"><figcaption><span class="tag after">After</span>Trimmed to 7 s in place</figcaption></figure>
+  </div>
+
+  <h3 class="sub">Fixed</h3>
+  <ul class="plain">
+    <li><strong>The Chat badge showed 6 with nothing unread.</strong> It added up unread messages across every chat, including one archived chat with 6 unread. On the app tab and the website’s two chat badges, it now counts chats with unread messages and skips archived ones, the same rule as the Unread filter.</li>
+    <li><strong>Removing one photo from an album deleted the whole album.</strong> Only that photo is removed now.</li>
+    <li><strong>Deleting a job left its applications behind,</strong> and the jobs delete page always showed 0 applications. Both are fixed.</li>
+    <li><strong>/forgot-password</strong> no longer requests a missing image.</li>
+  </ul>
+
+  <h3 class="sub">Security</h3>
+  <p>The live database rules turned out to be Firebase’s open “test mode” template, so anyone could read or change any data; the repo’s ruleset had never been deployed. A full backup was exported (65,111 documents). The holes in the repo rules are closed, including a way for any user to make themselves an admin, and 76 rules tests prove it. Every website server route moved to the admin SDK with ownership checks. Client writes the new rules would block now go through the server: notifications, counters, events, blogs, e-learning, registration checks and listing status. Private personal data (email, phone, birth date, guardian details, moderation notes) moves to an owner-only document. Friends-only posts are readable only by friends and private (“Only me”) posts only by the author. The rules, migration and server-function suites pass on the emulator (89, 47 and 24 tests). The website’s server code now follows the same rule, so friends can no longer like or comment on “Only me” posts. The website composers offer Public, Friends and Only me, matching the app, and post cards show the real audience.</p>
+  <p>The app also gained a minimum-version check. It reads <code>siteConfig/mobileApp</code>. When the installed build is older than <code>minimumVersion</code>, a blocking “Update Ourlime” screen links to the store. If the setting is missing or can’t be read, the app keeps working. Builds released before this one don’t contain the check, so testers need this build before the rules go live.</p>
+
+  <h2 id="open">Still open</h2>
+  <ul class="plain">
+    <li><strong>Deploy, in this order</strong> (production deploys need you):
+      <ol>
+        <li>The website, from <code>ui-cleanup-and-bug-fixes</code>.</li>
+        <li>Cloud Functions and indexes: <code>firebase deploy --only functions,firestore:indexes --project ourlime-919f2</code>.</li>
+        <li>An app build with a higher version than 1.0.0, shipped to testers. Then create <code>siteConfig/mobileApp</code> with that <code>minimumVersion</code>.</li>
+        <li>The data migration: <code>npm --prefix functions run build</code>, then <code>node functions/scripts/migrate-private-profile-data.cjs --project=ourlime-919f2</code> (dry run), then the same with <code>--apply</code>.</li>
+        <li>The comment-count backfill: <code>node functions/scripts/backfill-community-comment-counts.cjs --project=ourlime-919f2</code>, then with <code>--apply</code>.</li>
+        <li>Re-run the migration with <code>--apply</code>, then the rules: <code>firebase deploy --only firestore:rules,storage,database --project ourlime-919f2</code>.</li>
+      </ol>
+      Until the rules deploy, production stays open. A full backup from before any change is in the project’s storage bucket.</li>
+    <li><strong>After the deploy:</strong> re-test every website page and app screen against the live rules, and switch on stored comment counts (<code>COMMUNITY_COMMENT_COUNTS_STORED</code> on web and app). The switch stops a count query per community post on every feed load. It can only go on once the counter functions and backfill have run.</li>
+    <li><strong>App connection mode stays as is.</strong> Auto-detected long-polling was retested on the production bundle against the current forced mode: feed data 16.7–17.8 s vs 16.9 s and median query 1.2–1.5 s vs 1.5 s, the same within noise. A real gain would need the native Firestore SDK, a larger migration.</li>
+
+  </ul>
+  <p class="note">Also checked this round: standalone admin pages (/admin/*) now use the standard header. The “promotions loaded twice” seen earlier was the browser pane recording one request twice, not a real duplicate. The hand-written <code>functions/src/web/lib</code> sources were never in git (a too-broad ignore rule); they are tracked now. The Limes description in Page Access now matches the app: “Short-form social video”.</p>
+  <p class="note">The round “N” badge in the earlier website screenshots is the Next.js development indicator and does not appear in production.</p>
+</div>

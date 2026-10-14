@@ -7,6 +7,26 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import type { SellerApplication, SellerFileKind } from '@/lib/types/reliability';
 
+type SellerTextField = 'name' | 'email' | 'phone' | 'storeName' | 'description';
+const SELLER_TEXT_FIELDS: SellerTextField[] = ['name', 'email', 'phone', 'storeName', 'description'];
+const SELLER_FIELD_LABELS: Record<SellerTextField, string> = {
+  name: 'Full name',
+  email: 'Email',
+  phone: 'Phone',
+  storeName: 'Store name',
+  description: 'Store description',
+};
+const SELLER_FILE_LABELS: Record<SellerFileKind, string> = {
+  governmentId: 'Government ID',
+  proofOfAddress: 'Proof of address',
+  businessRegistration: 'Business registration',
+  logo: 'Logo',
+};
+const formatApplicationStatus = (status: string): string => {
+  const label = status.replace(/_/g, ' ');
+  return label.charAt(0).toUpperCase() + label.slice(1);
+};
+
 type SellerApplicationModalProps = { onClose: () => void };
 export default function SellerApplicationModal({ onClose }: SellerApplicationModalProps) {
   const { colors } = useAppTheme();
@@ -64,13 +84,13 @@ export default function SellerApplicationModal({ onClose }: SellerApplicationMod
     <Text style={{ color: colors.text }}>Seller verification is reviewed by an administrator. Approval does not enable payments or payouts.</Text>
     {error ? <Text accessibilityRole="alert" style={{ color: colors.destructive }}>{error}</Text> : null}
     {form ? <>
-      <Text style={{ color: colors.text }}>Application status: {form.status} · Revision {form.revision}</Text>
+      <Text style={{ color: colors.text }}>Application status: {formatApplicationStatus(form.status)} · Revision {form.revision}</Text>
       {editable ? <>
-        {(['name', 'email', 'phone', 'storeName', 'description'] as const).map((field) => <MarketField key={field} label={field} value={form[field]} multiline={field === 'description'} onChangeText={(value) => { void save({ ...form, [field]: value }).catch(() => {}); }} />)}
+        {SELLER_TEXT_FIELDS.map((field) => <MarketField key={field} label={SELLER_FIELD_LABELS[field]}value={form[field]} multiline={field === 'description'} onChangeText={(value) => { void save({ ...form, [field]: value }).catch(() => {}); }} />)}
         <MarketListField label="Categories (comma separated)" values={form.categories} onChange={(categories) => { void save({ ...form, categories }).catch(() => {}); }} />
         <MarketButton label={form.isBusiness ? 'Registered business' : 'Individual seller'} onPress={() => { void save({ ...form, isBusiness: !form.isBusiness }).catch(() => {}); }} />
         {(['governmentId', 'proofOfAddress', ...(form.isBusiness ? ['businessRegistration' as const] : []), 'logo'] as SellerFileKind[]).map((kind) => <View key={kind} style={{ gap: 8 }}>
-          <Text style={{ color: colors.text }}>{kind}: {form.files.find((file) => file.kind === kind)?.name ?? 'No file selected'}</Text>
+          <Text style={{ color: colors.text }}>{SELLER_FILE_LABELS[kind]}: {form.files.find((file) => file.kind === kind)?.name ?? 'No file selected'}</Text>
           {pending.find((entry) => entry.kind === kind) ? <>
             <Text style={{ color: colors.secondaryText }}>Pending: {pending.find((entry) => entry.kind === kind)?.name}</Text>
             <MarketButton label="Retry saved upload" onPress={() => void action(async () => {
@@ -82,7 +102,7 @@ export default function SellerApplicationModal({ onClose }: SellerApplicationMod
             })} />
             <MarketButton label="Remove pending upload" onPress={() => void action(() => sellerVerificationService.discardUpload(ownerId, kind))} />
           </> : null}
-          <MarketButton label={`Choose / replace ${kind}`} disabled={busy} onPress={() => void action(() => pick(kind))} />
+          <MarketButton label={`Choose / replace ${SELLER_FILE_LABELS[kind]}`} disabled={busy} onPress={() => void action(() => pick(kind))} />
           {form.files.find((file) => file.kind === kind) ? <MarketButton label="Remove file" onPress={() => { void save({ ...form, files: form.files.filter((file) => file.kind !== kind) }).catch(() => {}); }} /> : null}
         </View>)}
         <MarketButton label="Read seller terms" onPress={() => setTerms(!terms)} />

@@ -33,6 +33,15 @@ const EXPO_ROUTE_ALIASES: Readonly<Record<string, string>> = {
   '/(tabs)/Limes': '/limes',
   '/(tabs)/Profile': '/profile',
   '/(tabs)/Search': '/discover',
+  // Tab screens report their own capitalised path (route groups are stripped).
+  '/Discover': '/discover',
+  '/Chat': '/chat',
+  '/Limes': '/limes',
+  '/Profile': '/profile',
+  '/Search': '/discover',
+  // Routes the website stores for pages the app keeps elsewhere.
+  '/messages': '/chat',
+  '/profile/settings': '/settings',
 };
 
 export type PageAccessDecision = {
@@ -169,7 +178,8 @@ export class PageAccessService {
       canRead: canAccess,
       canMutate: normalAccess,
       canEnterPreview,
-      isVisibleInNavigation: resolved && (setting?.showInNavigation ?? true) && status !== 'disabled',
+      // Only list pages this account can open (or preview as staff).
+      isVisibleInNavigation: resolved && (setting?.showInNavigation ?? true) && status !== 'disabled' && (normalAccess || canEnterPreview),
       isDeveloperPreview,
     };
   }

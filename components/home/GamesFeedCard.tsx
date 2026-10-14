@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
+import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
 import { Gamepad2, Globe2, Puzzle, Users } from 'lucide-react-native';
 import { db } from '@/lib/firebaseConfig';
@@ -47,10 +48,20 @@ export default function GamesFeedCard() {
     return () => { cancelled = true; };
   }, []);
 
+  const { getDecision } = usePageAccess();
+  const gameRoute = (game: GameCardItem): string =>
+    game.gameId === 'wordle' ? '/wordle-game' : game.gameId === 'triniGeoGuesser' ? '/triniGeoGuesser' : '/games';
+  // Only games this account can open are listed (Wordle is admin-only while it's being finished).
+  const visibleGames = games.filter((game) => {
+    const decision = getDecision(gameRoute(game));
+    return decision.canRead && decision.isVisibleInNavigation;
+  });
+
   const handleOpen = (game: GameCardItem): void => {
-    const route: Href = game.gameId === 'wordle' ? '/wordle-game' : game.gameId === 'triniGeoGuesser' ? '/triniGeoGuesser' : '/games';
-    router.push(route);
+    router.push(gameRoute(game) as Href);
   };
+
+  if (visibleGames.length === 0) return null;
 
   return (
     <View style={{ padding: 16, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, gap: 12 }}>
@@ -60,7 +71,7 @@ export default function GamesFeedCard() {
           <Text style={{ color: colors.text, fontSize: 17, fontWeight: '900' }}>Games</Text>
         </View>
       </View>
-      {games.map((game) => {
+      {visibleGames.map((game) => {
         const TypeIcon = game.type === 'quiz' ? Globe2 : Puzzle;
         return (
           <TouchableOpacity key={game.gameId} onPress={() => handleOpen(game)} activeOpacity={0.8} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 14, backgroundColor: colors.control }}>

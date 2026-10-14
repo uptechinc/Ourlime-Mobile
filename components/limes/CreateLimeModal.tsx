@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import CustomModal from '@/components/ui/CustomModal';
 import Animated from 'react-native-reanimated';
-import { X, Upload, Globe, Users, Lock, Film, Sparkles, Laugh, Lightbulb, Video as VideoIcon, Music2, Compass, Image as ImageIcon } from 'lucide-react-native';
+import { X, Upload, Globe, Users, Lock, Film, Sparkles, Laugh, Lightbulb, Video as VideoIcon, Music2, Compass, Image as ImageIcon, Scissors } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { AuthService } from '@/lib/services/AuthService';
 import { SearchService } from '@/lib/services/SearchService';
@@ -469,7 +469,8 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
       setDialogState({ visible: true, type: 'warning', title: 'Video too large', message: 'Lime videos can be up to 100 MB. Try a shorter part.' });
       return;
     }
-    // Continue into the usual cover-frame step with the shortened file.
+    // Continue into the usual cover-frame step with the shortened file; a cover from the old cut no longer applies.
+    setSelectedThumbnailUri('');
     setPendingAsset({
       ...source,
       uri: result.uri,
@@ -827,6 +828,11 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
                         {selectedAsset.duration ? `${Math.round(selectedAsset.duration / 1000)}s` : 'Video Reel'} • Instagram 9:16 ratio
                       </Text>
                     </View>
+                    {selectedAsset.duration && videoTrimService.isAvailable() ? (
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Trim video" onPress={() => setTrimSourceAsset(selectedAsset)} disabled={isUploading} style={[styles.removeBtn, { backgroundColor: colors.successSurface, marginRight: 8 }]}>
+                        <Scissors size={16} color="#10b981" />
+                      </TouchableOpacity>
+                    ) : null}
                     <TouchableOpacity onPress={handleRemoveVideo} style={[styles.removeBtn, { backgroundColor: colors.destructiveSurface }]}>
                       <X size={16} color="#ef4444" />
                     </TouchableOpacity>

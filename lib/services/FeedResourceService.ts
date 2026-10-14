@@ -252,7 +252,9 @@ export class FeedResourceService {
       const parts = key.split(':');
       const scope = parts[1];
       const filter = parts[2];
-      if ((scope !== 'home' && scope !== 'friends' && scope !== 'communities') || (filter !== 'all' && filter !== 'photo' && filter !== 'video' && filter !== 'audio' && filter !== 'poll' && filter !== 'event')) return;
+      // Only the main feeds catch up on resume. Filtered copies (photo, video, …) refresh when opened
+      // (useFeedQuery); refreshing all of them here sent ~10 full feed loads every time the app came back.
+      if ((scope !== 'home' && scope !== 'friends' && scope !== 'communities') || filter !== 'all') return;
       await this.refresh({ userId, scope, filter, authorId: parts[3] === 'feed' ? undefined : parts[3] }, { bufferNewPosts: true });
     }));
   }
