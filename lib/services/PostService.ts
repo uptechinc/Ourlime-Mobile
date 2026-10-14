@@ -233,13 +233,6 @@ export class PostService {
     return (await this.fetchFeedPage({ limit: fetchLimit })).posts;
   }
 
-  /** Saves a freshly counted post total on the user (the stored counter drifts with website/admin changes). */
-  public async syncAuthorPostCount(userId: string, postsCount: number): Promise<void> {
-    await updateDoc(doc(db, 'users', userId), { postsCount: Math.max(0, postsCount) }).catch((error: unknown) => {
-      this.logger.warn('PostService', 'syncAuthorPostCount', { error: error instanceof Error ? error.message : String(error) });
-    });
-  }
-
   public async getAuthorPostCount(userId: string): Promise<number> {
     if (!userId) return 0;
     try {
@@ -910,13 +903,8 @@ export class PostService {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    // users.postsCount is server-only; the countAuthorPostCreated trigger recounts it.
     await batch.commit();
-
-    try {
-      await updateDoc(doc(db, 'users', input.userId), { postsCount: increment(1) });
-    } catch {
-      // User doc update is best-effort
-    }
 
     const mediaRecords = await Promise.all(
       media.map(async (mediaItem, mediaIndex) => {
@@ -1365,10 +1353,7 @@ export class PostService {
     if (snap) {
       await Promise.all(snap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
     }
-    const counterRef = await this.findLikeCounterRef(postId).catch(() => null);
-    if (counterRef) {
-      await updateDoc(counterRef, { shareCount: increment(-1), updatedAt: serverTimestamp() }).catch(() => {});
-    }
+    // The countRepostRemoved trigger takes the share off the original post's counter when the marker is deleted.
   }
 
   public async updateVisibility(postId: string, visibility: 'public' | 'private'): Promise<void> {
@@ -1380,15 +1365,11 @@ export class PostService {
       await this.deleteCommunityPost(postId);
       return;
     }
-    const currentUserId = auth.currentUser?.uid;
     const postRef = doc(db, 'feedPosts', postId);
     const postSnap = await getDoc(postRef);
     if (postSnap.exists()) {
-      const authorId = readString(postSnap.data().userId) || currentUserId;
+      // users.postsCount is server-only; the countAuthorPostDeleted trigger recounts it.
       await deleteDoc(postRef);
-      if (authorId) {
-        await updateDoc(doc(db, 'users', authorId), { postsCount: increment(-1) }).catch(() => {});
-      }
       return;
     }
     const commRef = doc(db, 'communityVariantDetails', postId);

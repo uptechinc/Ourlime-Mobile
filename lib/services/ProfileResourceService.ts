@@ -134,11 +134,6 @@ export class ProfileResourceService {
           const posts = postsResult.status === 'fulfilled'
             ? postsResult.value
             : initialStats.posts;
-          // 5.3: the live count is the truth; fix the stored counter when it has drifted.
-          if (postsResult.status === 'fulfilled' && posts !== (profile.postsCount ?? 0)) {
-            void this.postService.syncAuthorPostCount(identifier.userId, posts);
-          }
-
           await this.commit(identifier, { profile, stats: { posts, ...networkStats } }, 'network');
         } catch {
           // The profile is already ready; network counts are optional enrichment.
