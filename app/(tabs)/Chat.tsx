@@ -589,22 +589,20 @@ export default function ChatTabScreen() {
                   {/* Avatar with online dot */}
                   <View style={{ position: 'relative' }}>
                     <UserAvatar profileImage={user.profilePicture} firstName={user.firstName ?? user.userName ?? 'U'} size={52} />
-                    {activityStatus !== 'offline' ? (
-                      <View
-                        accessibilityLabel={`${user.firstName ?? 'Friend'} is ${ACTIVITY_STATUS_LABELS[activityStatus].toLowerCase()}`}
-                        style={{
-                          position: 'absolute',
-                          bottom: 2,
-                          right: 2,
-                          width: 12,
-                          height: 12,
-                          borderRadius: 6,
-                          backgroundColor: ACTIVITY_STATUS_COLORS[activityStatus],
-                          borderWidth: 2,
-                          borderColor: colors.surface,
-                        }}
-                      />
-                    ) : null}
+                    <View
+                      accessibilityLabel={`${user.firstName ?? 'Friend'} is ${ACTIVITY_STATUS_LABELS[activityStatus].toLowerCase()}`}
+                      style={{
+                        position: 'absolute',
+                        bottom: 1,
+                        right: 1,
+                        width: 14,
+                        height: 14,
+                        borderRadius: 7,
+                        backgroundColor: ACTIVITY_STATUS_COLORS[activityStatus],
+                        borderWidth: 2,
+                        borderColor: colors.surface,
+                      }}
+                    />
                   </View>
 
                   <View style={{ flex: 1, marginLeft: 12 }}>
@@ -615,10 +613,6 @@ export default function ChatTabScreen() {
                         </Text>
                         {isPinned && <Ionicons name="pin" size={12} color="#10b981" accessibilityLabel="Pinned" />}
                         {isMuted && <Feather name="bell-off" size={12} color={colors.mutedText} />}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: ACTIVITY_STATUS_COLORS[activityStatus] }} />
-                          <Text style={{ fontSize: 11, color: colors.mutedText, fontWeight: '600' }}>{ACTIVITY_STATUS_LABELS[activityStatus]}</Text>
-                        </View>
                       </View>
                       <Text style={{ fontSize: 11, color: hasUnread ? '#10b981' : colors.mutedText, fontWeight: hasUnread ? '700' : '400' }}>
                         {formatLastMessageTime(user.lastMessageTime)}
