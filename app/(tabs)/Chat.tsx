@@ -23,6 +23,8 @@ import { conversationResourceService } from '@/lib/services/ConversationResource
 import { Timestamp } from 'firebase/firestore';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import { useConversations } from '@/lib/hooks/useConversations';
+import { useActivityStatuses } from '@/lib/hooks/useActivityStatuses';
+import { ACTIVITY_STATUS_COLORS, ACTIVITY_STATUS_LABELS } from '@/lib/services/PresenceService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import CustomModal from '@/components/ui/CustomModal';
 import { sharedContentMessageService } from '@/lib/services/SharedContentMessageService';
@@ -87,6 +89,9 @@ export default function ChatTabScreen() {
   // Pinned and archived come only from the conversation summaries, so an
   // unarchive/unpin made anywhere (chat settings, another device) takes effect here.
   const pinnedUids = useMemo(() => new Set(conversations.filter((c) => c.isPinned).map((c) => c.uid)), [conversations]);
+  // Live online / busy / away / working / offline for everyone in the list (same as the website).
+  const conversationUids = useMemo(() => conversations.map((conversation) => conversation.uid), [conversations]);
+  const activityStatuses = useActivityStatuses(conversationUids);
   const archivedUids = useMemo(() => new Set(conversations.filter((c) => c.isArchived).map((c) => c.uid)), [conversations]);
 
   // Mute lives in chatMuteSettings, mirrored to storage. Reload on focus so a
@@ -538,6 +543,7 @@ export default function ChatTabScreen() {
               const isSelected = selectedUids.has(user.uid);
               const isPinned = pinnedUids.has(user.uid);
               const isMuted = mutedUids.has(user.uid);
+              const activityStatus = activityStatuses[user.uid] ?? (user.isOnline ? 'online' : 'offline');
 
               return (
                 <TouchableOpacity
@@ -583,18 +589,21 @@ export default function ChatTabScreen() {
                   {/* Avatar with online dot */}
                   <View style={{ position: 'relative' }}>
                     <UserAvatar profileImage={user.profilePicture} firstName={user.firstName ?? user.userName ?? 'U'} size={52} />
-                    {user.isOnline ? (
-                      <View style={{
-                        position: 'absolute',
-                        bottom: 2,
-                        right: 2,
-                        width: 12,
-                        height: 12,
-                        borderRadius: 6,
-                        backgroundColor: '#10b981',
-                        borderWidth: 2,
-                        borderColor: colors.surface,
-                      }} />
+                    {activityStatus !== 'offline' ? (
+                      <View
+                        accessibilityLabel={`${user.firstName ?? 'Friend'} is ${ACTIVITY_STATUS_LABELS[activityStatus].toLowerCase()}`}
+                        style={{
+                          position: 'absolute',
+                          bottom: 2,
+                          right: 2,
+                          width: 12,
+                          height: 12,
+                          borderRadius: 6,
+                          backgroundColor: ACTIVITY_STATUS_COLORS[activityStatus],
+                          borderWidth: 2,
+                          borderColor: colors.surface,
+                        }}
+                      />
                     ) : null}
                   </View>
 
@@ -606,6 +615,10 @@ export default function ChatTabScreen() {
                         </Text>
                         {isPinned && <Ionicons name="pin" size={12} color="#10b981" accessibilityLabel="Pinned" />}
                         {isMuted && <Feather name="bell-off" size={12} color={colors.mutedText} />}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: ACTIVITY_STATUS_COLORS[activityStatus] }} />
+                          <Text style={{ fontSize: 11, color: colors.mutedText, fontWeight: '600' }}>{ACTIVITY_STATUS_LABELS[activityStatus]}</Text>
+                        </View>
                       </View>
                       <Text style={{ fontSize: 11, color: hasUnread ? '#10b981' : colors.mutedText, fontWeight: hasUnread ? '700' : '400' }}>
                         {formatLastMessageTime(user.lastMessageTime)}

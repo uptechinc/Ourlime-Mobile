@@ -61,11 +61,12 @@ import type { Sticker } from '@/lib/types/sticker';
 import type { Timestamp } from 'firebase/firestore';
 import { useSimpleChatMessages } from '@/lib/hooks/useSimpleChatMessages';
 import { useTypingIndicator } from '@/lib/hooks/useTypingIndicator';
+import { useActivityStatuses } from '@/lib/hooks/useActivityStatuses';
 import TypingIndicator from '@/components/chat/TypingIndicator';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import { ChatConversationSkeleton } from '@/components/ui/Skeleton';
 import { useAppData } from '@/lib/contexts/AppDataContext';
-import { presenceService, type PresenceState } from '@/lib/services/PresenceService';
+import { presenceService, ACTIVITY_STATUS_COLORS, ACTIVITY_STATUS_LABELS, type PresenceState } from '@/lib/services/PresenceService';
 import { useCallCoordinator } from '@/lib/contexts/CallContext';
 import { useCallStore } from '@/lib/store/useCallStore';
 import { useCallElsewhereNotice } from '@/lib/hooks/useCallElsewhereNotice';
@@ -730,6 +731,10 @@ export default function ChatPage() {
     }
     const [messageText, setMessageText] = useState('');
     const { isPeerTyping, notifyTyping, stopTyping } = useTypingIndicator(chatRoomId, friendId ?? '');
+    // Live online / busy / away / working / offline, as they picked it, while they're using Ourlime.
+    const friendIdList = useMemo(() => (friendId ? [friendId] : []), [friendId]);
+    const friendStatuses = useActivityStatuses(friendIdList);
+    const friendStatus = friendId ? friendStatuses[friendId] ?? friendPresence?.status ?? 'offline' : 'offline';
     const [replyTo, setReplyTo] = useState<FullMessage | null>(null);
     const [isSending, setIsSending] = useState(false);
     // Website parity: starred messages, editing your own messages, reporting a message.
@@ -1387,8 +1392,8 @@ export default function ChatPage() {
                             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }} numberOfLines={1}>
                                 {friend.firstName} {friend.lastName}
                             </Text>
-                            <Text style={{ fontSize: 12, color: isPeerTyping || friendPresence?.status === 'online' ? '#10b981' : colors.mutedText, fontStyle: isPeerTyping ? 'italic' : 'normal' }}>
-                                {isPeerTyping ? 'typing…' : friendPresence?.status === 'online' ? 'Online' : `@${friend.userName}`}
+                            <Text style={{ fontSize: 12, color: isPeerTyping ? '#10b981' : friendStatus !== 'offline' ? ACTIVITY_STATUS_COLORS[friendStatus] : colors.mutedText, fontStyle: isPeerTyping ? 'italic' : 'normal' }}>
+                                {isPeerTyping ? 'typing…' : friendStatus !== 'offline' ? ACTIVITY_STATUS_LABELS[friendStatus] : `@${friend.userName}`}
                             </Text>
                         </View>
                     </TouchableOpacity>

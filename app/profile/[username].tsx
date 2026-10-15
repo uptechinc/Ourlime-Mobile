@@ -32,7 +32,7 @@ import { relationshipResourceService } from '@/lib/services/RelationshipResource
 import { relationshipRequestResourceService } from '@/lib/services/RelationshipRequestResourceService';
 import { conversationResourceService } from '@/lib/services/ConversationResourceService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { presenceService, type PresenceState } from '@/lib/services/PresenceService';
+import { presenceService, ACTIVITY_STATUS_COLORS, ACTIVITY_STATUS_LABELS, type PresenceState } from '@/lib/services/PresenceService';
 import { adminAccessService } from '@/lib/services/AdminAccessService';
 import { adminContentService } from '@/lib/services/AdminContentService';
 import type { UserDeletedPostRecord } from '@/lib/types/adminContent';
@@ -340,7 +340,7 @@ export default function UserProfileScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: -40, marginBottom: 12 }}>
               <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.surface, padding: 3, elevation: 4 }}>
                 <UserAvatar profileImage={profile?.profilePicture} firstName={profile?.firstName || username} size={78} />
-                {presence?.status === 'online' ? <View style={{ position: 'absolute', right: 2, bottom: 2, width: 16, height: 16, borderRadius: 8, backgroundColor: '#10b981', borderWidth: 3, borderColor: colors.surface }} /> : null}
+                {presence && presence.status !== 'offline' ? <View accessibilityLabel={ACTIVITY_STATUS_LABELS[presence.status]} style={{ position: 'absolute', right: 2, bottom: 2, width: 16, height: 16, borderRadius: 8, backgroundColor: ACTIVITY_STATUS_COLORS[presence.status], borderWidth: 3, borderColor: colors.surface }} /> : null}
               </View>
 
               {/* Public Actions (Follow, Add Friend, Message) */}
