@@ -10,6 +10,7 @@ import { DeepLinkService } from '@/lib/services/DeepLinkService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import ShareContentSheet from '@/components/sharing/ShareContentSheet';
+import StatusPicker from './StatusPicker';
 
 const deepLinkService = DeepLinkService.getInstance();
 
@@ -161,6 +162,8 @@ export default function ProfileHeader({
         </View>
 
         <Text style={{ fontSize: 14, color: colors.mutedText, marginTop: 2 }}>{handle}</Text>
+        {/* Own profile: pick the status others see (same options as the website). */}
+        {currentUserId && profile.uid === currentUserId ? <StatusPicker userId={currentUserId} /> : null}
 
         {/* Bio */}
         {profile.bio ? (
