@@ -1038,7 +1038,7 @@ export default function ChatPage() {
      * Checks a picked file before it's attached: allowed type and the 25 MB Storage limit. Photos are resized to
      * 1600px like the website; videos over the limit open the trimmer.
      */
-    const stageAttachment = useCallback(async (picked: { uri: string; fileName: string; mimeType?: string | null; sizeBytes?: number | null; durationSeconds?: number | null; kind: 'image' | 'video' | 'document' }) => {
+    const stageAttachment = useCallback(async (picked: { uri: string; fileName: string; mimeType?: string | null; sizeBytes?: number | null; durationSeconds?: number | null; kind: 'image' | 'video' | 'document'; skipTrim?: boolean }) => {
         setPreparingAttachment(true);
         try {
             let { uri, fileName } = picked;
@@ -1059,11 +1059,12 @@ export default function ChatPage() {
                 }
             }
 
-            if (kind === 'video' && sizeBytes > MAX_CHAT_FILE_BYTES) {
+            // Every picked video opens the trimmer (keeping it whole is one tap); a trimmed or kept result skips this.
+            if (kind === 'video' && !picked.skipTrim) {
                 const durationSeconds = picked.durationSeconds ?? 0;
                 if (durationSeconds > 1) {
                     setTrimCandidate({ uri, durationSeconds, fileSize: sizeBytes, fileName, mimeType });
-                    toast(`This video is ${formatMegabytes(sizeBytes)}. Trim it to fit the 25 MB limit.`);
+                    if (sizeBytes > MAX_CHAT_FILE_BYTES) toast(`This video is ${formatMegabytes(sizeBytes)}. Trim it to fit the 25 MB limit.`);
                     return;
                 }
             }
@@ -1083,7 +1084,16 @@ export default function ChatPage() {
         const candidate = trimCandidate;
         setTrimCandidate(null);
         if (!candidate) return;
-        void stageAttachment({ uri: result.uri, fileName: candidate.fileName.replace(/\.[^.]+$/, '') + '.mp4', mimeType: 'video/mp4', sizeBytes: result.fileSize, durationSeconds: result.durationSeconds, kind: 'video' })
+        void stageAttachment({ uri: result.uri, fileName: candidate.fileName.replace(/\.[^.]+$/, '') + '.mp4', mimeType: 'video/mp4', sizeBytes: result.fileSize, durationSeconds: result.durationSeconds, kind: 'video', skipTrim: true })
+            .then(() => undefined);
+    }, [stageAttachment, trimCandidate]);
+
+    // Confirmed without moving the handles: send the original video as it is.
+    const handleKeepFullVideo = useCallback(() => {
+        const candidate = trimCandidate;
+        setTrimCandidate(null);
+        if (!candidate) return;
+        void stageAttachment({ uri: candidate.uri, fileName: candidate.fileName, mimeType: candidate.mimeType, sizeBytes: candidate.fileSize, durationSeconds: candidate.durationSeconds, kind: 'video', skipTrim: true })
             .then(() => undefined);
     }, [stageAttachment, trimCandidate]);
 
@@ -2017,6 +2027,7 @@ export default function ChatPage() {
                     requireCut
                     onCancel={() => setTrimCandidate(null)}
                     onComplete={handleTrimmedVideo}
+                    onKeepFull={trimCandidate.fileSize <= MAX_CHAT_FILE_BYTES ? handleKeepFullVideo : undefined}
                     onError={(message) => { setTrimCandidate(null); toast.error(message); }}
                 />
             ) : null}

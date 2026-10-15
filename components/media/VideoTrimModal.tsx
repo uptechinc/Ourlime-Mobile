@@ -52,6 +52,11 @@ type VideoTrimModalProps = {
   onCancel: () => void;
   onComplete: (result: TrimmedVideoResult) => void;
   onError?: (message: string) => void;
+  /**
+   * Opened on every pick (not only when the video is too long): confirming without moving the handles keeps the
+   * original file as it is (no re-encode). Only pass it when the whole video is allowed.
+   */
+  onKeepFull?: () => void;
 };
 
 const FILMSTRIP_FRAME_COUNT = 10;
@@ -85,6 +90,7 @@ export default function VideoTrimModal({
   onCancel,
   onComplete,
   onError,
+  onKeepFull,
 }: VideoTrimModalProps) {
   const totalDuration = Math.max(0.5, source.durationSeconds);
   const maxAllowedDuration = Math.min(totalDuration, maxDurationSeconds);
@@ -384,6 +390,16 @@ export default function VideoTrimModal({
   const estimatedBytes = Math.round((selectedDuration / totalDuration) * source.fileSize);
 
   const handleConfirm = async () => {
+    const keepsWholeVideo = startSeconds <= 0.05 && endSeconds >= totalDuration - 0.05;
+    if (onKeepFull && keepsWholeVideo) {
+      try {
+        player.pause();
+      } catch {
+        // ignore
+      }
+      onKeepFull();
+      return;
+    }
     setIsProcessing(true);
     try {
       player.pause();
@@ -601,7 +617,7 @@ export default function VideoTrimModal({
                   <Icon name="scissors" size={14} color="#ffffff" />
                 </View>
                 <Text style={styles.toastText}>
-                  Pick the best {formatSeconds(maxAllowedDuration)} to keep
+                  {onKeepFull ? "Trim if you like, or tap ✓ to keep it all" : `Pick the best ${formatSeconds(maxAllowedDuration)} to keep`}
                 </Text>
               </Animated.View>
             ) : null}

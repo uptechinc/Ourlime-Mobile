@@ -38,6 +38,8 @@ export default function VideoTrimModal({ pending, queueLength, onCancel, onCompl
       onCancel={onCancel}
       onComplete={handleComplete}
       onError={onError}
+      // A video that already fits the 2-minute limit can be kept whole.
+      onKeepFull={pending.fullDraft ? () => onComplete(pending.fullDraft as PostMediaDraft) : undefined}
     />
   );
 }

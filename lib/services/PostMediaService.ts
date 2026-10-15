@@ -38,6 +38,8 @@ export type PendingVideoTrim = {
   durationSeconds: number;
   /** Set when the user trims a video already in the post: the result replaces the item at this index. */
   replaceIndex?: number;
+  /** The video as picked, when it already fits the limit: the trimmer can keep it whole. */
+  fullDraft?: PostMediaDraft;
 };
 export type MediaSelectionResult = {
   imagesToCrop: PendingImageCrop[];
@@ -115,17 +117,18 @@ export class PostMediaService {
           errors.push(`Could not determine the duration of "${fileName}".`);
           continue;
         }
-        if (durationSeconds > MAX_POST_VIDEO_DURATION_SECONDS) {
-          videosToTrim.push({
-            asset,
-            fileName,
-            mimeType,
-            fileSize,
-            durationSeconds,
-          });
-          continue;
-        }
-        videos.push({ uri: asset.uri, type: 'video', fileName, mimeType, width: asset.width, height: asset.height, fileSize, durationSeconds });
+        // Every video opens the trimmer (like chat and Limes). One that already fits can be kept whole from there.
+        const fitsAsIs = durationSeconds <= MAX_POST_VIDEO_DURATION_SECONDS;
+        videosToTrim.push({
+          asset,
+          fileName,
+          mimeType,
+          fileSize,
+          durationSeconds,
+          ...(fitsAsIs
+            ? { fullDraft: { uri: asset.uri, type: 'video', fileName, mimeType, width: asset.width, height: asset.height, fileSize, durationSeconds } }
+            : {}),
+        });
         continue;
       }
 
