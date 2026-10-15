@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import Reanimated, { useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from 'react-native-reanimated';
 import { useIsFocused } from 'expo-router';
 import {
   Dimensions,
@@ -6,9 +7,9 @@ import {
   Text,
   View,
   Pressable,
-  Animated,
   TouchableOpacity,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,8 +32,9 @@ type DisplayPostMedia = {
 
 type ImageAndVideoPostSectionProps = {
   media: DisplayPostMedia[];
-  /** True only when the parent post card is at least 40% visible in the viewport */
+  /** True while this post is the one playing in the feed (the most visible post). */
   isParentVisible?: boolean;
+  /** True for the playing post and its neighbours: their players load early so the first frame is ready on arrival. */
   shouldLoadVideo?: boolean;
   onLike?: () => void;
 };
@@ -96,8 +98,15 @@ function VideoPostItem({
   const heldRef = useRef(false);
   const touchStartRef = useRef({ x: 0, y: 0 });
   const [isMuted, setIsMuted] = useState(true);
-  const [showPlayStateIcon, setShowPlayStateIcon] = useState<'play' | 'pause' | null>(null);
-  const playIconOpacity = useRef(new Animated.Value(0)).current;
+  const [playStateIcon, setPlayStateIcon] = useState<'play' | 'pause'>('pause');
+  const playIconOpacity = useSharedValue(0);
+  const playIconStyle = useAnimatedStyle(() => ({ opacity: playIconOpacity.value }));
+  // Until the first frame is drawn the view stays the same black as the card (no thumbnail, no flash).
+  const [hasFirstFrame, setHasFirstFrame] = useState(false);
+  // A tap to pause holds until the post leaves the screen; coming back plays it again.
+  const [isPausedByUser, setIsPausedByUser] = useState(false);
+  const isPausedByUserRef = useRef(false);
+  isPausedByUserRef.current = isPausedByUser;
 
   // Double tap state tracking
   const lastTapRef = useRef<number>(0);
@@ -105,7 +114,8 @@ function VideoPostItem({
 
   const heartRef = useRef<PlayfulFloatingHeartRef>(null);
 
-  const shouldAutoplay = isActiveSlide && isParentVisible;
+  const isInView = isActiveSlide && isParentVisible;
+  // Created paused at the first frame (or the trim start); the effect below plays it once it's in view.
   const player = useVideoPlayer(url, (p) => {
     if (Platform.OS === 'android') {
       p.bufferOptions = { preferredForwardBufferDuration: 3, minBufferForPlayback: 0.5, maxBufferBytes: 4 * 1024 * 1024, prioritizeTimeOverSizeThreshold: false };
@@ -117,22 +127,8 @@ function VideoPostItem({
     if (typeof trimStartSeconds === 'number' && trimStartSeconds > 0) {
       p.currentTime = trimStartSeconds;
     }
-    if (shouldAutoplay) {
-      p.play();
-    } else {
-      p.pause();
-    }
+    p.pause();
   });
-
-  useEffect(() => {
-    if (typeof trimStartSeconds === 'number' && trimStartSeconds > 0) {
-      try {
-        player.currentTime = trimStartSeconds;
-      } catch {
-        // ignore
-      }
-    }
-  }, [player, trimStartSeconds]);
 
   useEffect(() => {
     if (typeof trimEndSeconds !== 'number' || trimEndSeconds <= 0) return;
@@ -150,7 +146,11 @@ function VideoPostItem({
     return () => sub.remove();
   }, [player, trimStartSeconds, trimEndSeconds]);
 
-  const { session, snapshot, refresh, isPlaybackActive } = usePlaybackInteraction(player, shouldAutoplay);
+  const { session, snapshot, refresh, isPlaybackActive } = usePlaybackInteraction(player, isInView);
+
+  useEffect(() => {
+    if (!isInView) setIsPausedByUser(false);
+  }, [isInView]);
 
   const toggleMute = () => {
     try {
@@ -161,9 +161,9 @@ function VideoPostItem({
     }
   };
 
-  // Autoplay / pause on viewport visibility change
+  // Plays while in view (and not paused by a tap); pauses in place when it scrolls away so it resumes on return.
+  const shouldPlay = isPlaybackActive && !isPausedByUser;
   useEffect(() => {
-    const shouldPlay = isPlaybackActive;
     try {
       if (shouldPlay) {
         player.play();
@@ -173,28 +173,18 @@ function VideoPostItem({
     } catch {
       // Ignore calls on released native handles
     }
-  }, [isPlaybackActive, player]);
+  }, [shouldPlay, player]);
 
   // NOTE: Clean up unmount without calling player.pause() directly on native C++ instance to avoid release rejection error
   useEffect(() => {
     return () => {
       if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
     };
-  }, [isActiveSlide, isParentVisible]);
+  }, []);
 
-  const triggerPlayIconAnim = (type: 'play' | 'pause') => {
-    setShowPlayStateIcon(type);
-    playIconOpacity.setValue(1);
-    Animated.sequence([
-      Animated.delay(450),
-      Animated.timing(playIconOpacity, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setShowPlayStateIcon(null);
-    });
+  const flashPlayStateIcon = (type: 'play' | 'pause') => {
+    setPlayStateIcon(type);
+    playIconOpacity.value = withSequence(withTiming(1, { duration: 0 }), withDelay(450, withTiming(0, { duration: 250 })));
   };
 
   const handlePress = () => {
@@ -214,19 +204,13 @@ function VideoPostItem({
       lastTapRef.current = 0;
       return;
     } else {
-      // Potential single tap
+      // Potential single tap: flip what the viewer asked for (not player.playing, which is false while buffering).
       singleTapTimerRef.current = setTimeout(() => {
-        try {
-          if (player.playing) {
-            player.pause();
-            triggerPlayIconAnim('pause');
-          } else {
-            player.play();
-            triggerPlayIconAnim('play');
-          }
-        } catch {
-          // ignore
-        }
+        singleTapTimerRef.current = null;
+        const nextPaused = !isPausedByUserRef.current;
+        isPausedByUserRef.current = nextPaused;
+        setIsPausedByUser(nextPaused);
+        flashPlayStateIcon(nextPaused ? 'pause' : 'play');
       }, DOUBLE_TAP_DELAY);
     }
     lastTapRef.current = now;
@@ -248,7 +232,13 @@ function VideoPostItem({
         style={{ width: '100%', height: '100%' }}
         nativeControls={false}
         surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+        onFirstFrameRender={() => setHasFirstFrame(true)}
       />
+      {!hasFirstFrame ? (
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}>
+          {isInView ? <ActivityIndicator color="rgba(255,255,255,0.7)" /> : null}
+        </View>
+      ) : null}
 
       {/* Main Touch Overlay for Single Tap, Double Tap, and Long Press 2x */}
       <Pressable
@@ -295,11 +285,11 @@ function VideoPostItem({
         {/* Floating Heart Overlay on Double Tap */}
         <PlayfulFloatingHeart ref={heartRef} size={96} />
 
-        {/* Floating Play/Pause Indicator on Single Tap */}
-        {showPlayStateIcon && (
-          <Animated.View
-            pointerEvents="none"
-            style={{
+        {/* Play/Pause badge after a single tap, showing what the tap did */}
+        <Reanimated.View
+          pointerEvents="none"
+          style={[
+            {
               position: 'absolute',
               top: '40%',
               alignSelf: 'center',
@@ -309,16 +299,12 @@ function VideoPostItem({
               backgroundColor: 'rgba(0, 0, 0, 0.65)',
               justifyContent: 'center',
               alignItems: 'center',
-              opacity: playIconOpacity,
-            }}
-          >
-            <Ionicons
-              name={showPlayStateIcon === 'play' ? 'play' : 'pause'}
-              size={28}
-              color="#ffffff"
-            />
-          </Animated.View>
-        )}
+            },
+            playIconStyle,
+          ]}
+        >
+          <Ionicons name={playStateIcon} size={28} color="#ffffff" />
+        </Reanimated.View>
       </Pressable>
 
       {/* Floating Mute / Unmute Button */}
@@ -404,39 +390,27 @@ export default function ImageAndVideoPostSection({
             key={item.id ?? `${item.typeUrl}-${index}`}
             style={{ width: mediaWidth, height: 330, backgroundColor: '#111827' }}
           >
-            {item.type === 'video' && shouldLoadVideo && isParentVisible && isScreenFocused && index === activeIndex ? (
+            {item.type === 'video' && shouldLoadVideo && index === activeIndex ? (
               <VideoPostItem
                 key={item.typeUrl}
                 url={ensureMediaUrl(item.typeUrl)}
                 isActiveSlide={index === activeIndex}
-                isParentVisible={Boolean(isParentVisible)}
+                isParentVisible={Boolean(isParentVisible) && isScreenFocused}
                 onLike={onLike}
                 onSeekingChange={setSeeking}
                 trimStartSeconds={item.trimStartSeconds}
                 trimEndSeconds={item.trimEndSeconds}
               />
-            ) : item.type === 'video' && item.thumbnailUrl ? (
-              <View style={{ flex: 1 }}>
-                <CachedImage
-                  uri={ensureMediaUrl(item.thumbnailUrl)}
-                  style={{ width: '100%', height: '100%' }}
-                  recyclingKey={item.id ?? item.thumbnailUrl}
-                />
-                <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.18)' }}>
-                  <Ionicons name="play-circle" size={58} color="#ffffff" />
-                </View>
-              </View>
+            ) : item.type === 'video' ? (
+              // Not loaded yet (far from view): plain black, so the video appears from its first frame, not a cover.
+              <View style={{ flex: 1, backgroundColor: '#000000' }} />
             ) : item.type === 'image' ? (
               <ImagePostItem
                 url={item.typeUrl}
                 id={item.id}
                 onLike={onLike}
               />
-            ) : (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111827' }}>
-                <Ionicons name="play-circle-outline" size={54} color="#d1d5db" />
-              </View>
-            )}
+            ) : null}
           </View>
         ))}
       </ScrollView>

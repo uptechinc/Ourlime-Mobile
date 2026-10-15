@@ -6,6 +6,7 @@ import { pageAccessService } from '../services/PageAccessService';
 import { deepLinkService } from '../services/DeepLinkService';
 
 import { pushNotificationService } from '../services/PushNotificationService';
+import { startupPermissionService } from '../services/StartupPermissionService';
 import { notificationNavigationService } from '../services/NotificationNavigationService';
 import { authService } from '../services/AuthService';
 import { qrLoginService } from '../services/QRLoginService';
@@ -25,7 +26,12 @@ export function useAuthGuard() {
       setUser(verifiedUser);
       setIsInitializing(false);
       if (currentUser?.uid) {
-        void pushNotificationService.registerForPushNotifications(currentUser.uid);
+        // Notifications first, then the microphone and camera for voice notes and calls (one prompt at a time).
+        const userId = currentUser.uid;
+        void (async () => {
+          await pushNotificationService.registerForPushNotifications(userId).catch(() => null);
+          if (verifiedUser) await startupPermissionService.requestCallAndVoicePermissions();
+        })();
       }
     });
 
