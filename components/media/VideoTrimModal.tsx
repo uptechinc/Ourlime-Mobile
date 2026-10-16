@@ -142,20 +142,64 @@ export default function VideoTrimModal({
     p.play();
   });
 
+  // The seek just sent to loop back to the start. Until the player reports it landed, time updates still carry the old
+  // position; re-seeking on those restarted the seek every 50 ms, so the trimmed preview never played.
+  const loopSeekRef = useRef<{ target: number; sentAt: number } | null>(null);
+
+  /** Plays the kept part from its start: right after a handle is let go, and on every loop. */
+  const playFromStart = useCallback(() => {
+    const target = startSecondsRef.current;
+    loopSeekRef.current = { target, sentAt: Date.now() };
+    try {
+      player.currentTime = target;
+      player.play();
+    } catch {
+      // Released player.
+    }
+  }, [player]);
+
+  /** Fast, approximate seeks while a handle moves (playback is held), then back to normal playback of the new range. */
+  const setScrubbing = useCallback((scrubbing: boolean) => {
+    try {
+      player.scrubbingModeOptions = { scrubbingModeEnabled: scrubbing };
+    } catch {
+      // Released player.
+    }
+  }, [player]);
+
+  const beginDrag = useCallback(() => {
+    isDraggingRef.current = true;
+    try {
+      player.pause();
+    } catch {
+      // ignore
+    }
+    setScrubbing(true);
+  }, [player, setScrubbing]);
+
+  // Released or interrupted alike: the preview always goes back to playing the kept part, as in WhatsApp.
+  const endDrag = useCallback(() => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    setScrubbing(false);
+    playFromStart();
+  }, [playFromStart, setScrubbing]);
+
   // Track playback time and loop within [startSeconds, endSeconds]
   useEffect(() => {
     const timeSub = player.addListener('timeUpdate', (event) => {
       setPlayheadSeconds(event.currentTime);
       if (isDraggingRef.current) return;
+      const pendingSeek = loopSeekRef.current;
+      if (pendingSeek) {
+        const hasLanded = Math.abs(event.currentTime - pendingSeek.target) < 0.5;
+        if (!hasLanded && Date.now() - pendingSeek.sentAt < 1500) return;
+        loopSeekRef.current = null;
+      }
       const currentStart = startSecondsRef.current;
       const currentEnd = endSecondsRef.current;
-      if (event.currentTime >= currentEnd - 0.05 || event.currentTime < currentStart) {
-        try {
-          player.currentTime = currentStart;
-          player.play();
-        } catch {
-          // ignore
-        }
+      if (event.currentTime >= currentEnd - 0.05 || event.currentTime < currentStart - 0.25) {
+        playFromStart();
       }
     });
     const playingSub = player.addListener('playingChange', (event) => {
@@ -163,19 +207,14 @@ export default function VideoTrimModal({
     });
     const endSub = player.addListener('playToEnd', () => {
       if (isDraggingRef.current) return;
-      try {
-        player.currentTime = startSecondsRef.current;
-        player.play();
-      } catch {
-        // Released player.
-      }
+      playFromStart();
     });
     return () => {
       timeSub.remove();
       playingSub.remove();
       endSub.remove();
     };
-  }, [player]);
+  }, [player, playFromStart]);
 
   // Extract filmstrip frames for the timeline
   useEffect(() => {
@@ -231,13 +270,8 @@ export default function VideoTrimModal({
     onPanResponderTerminationRequest: () => false,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: () => {
-      isDraggingRef.current = true;
       startDragOffsetRef.current = secondsToPx(startSecondsRef.current);
-      try {
-        player.pause();
-      } catch {
-        // ignore
-      }
+      beginDrag();
     },
     onPanResponderMove: (_event, gestureState) => {
       const newPx = startDragOffsetRef.current + gestureState.dx;
@@ -247,6 +281,7 @@ export default function VideoTrimModal({
       if (currentEnd - newSec > maxDurationSeconds) {
         newSec = currentEnd - maxDurationSeconds;
       }
+      startSecondsRef.current = newSec;
       setStartSeconds(newSec);
       try {
         player.currentTime = newSec;
@@ -254,19 +289,9 @@ export default function VideoTrimModal({
         // ignore
       }
     },
-    onPanResponderRelease: () => {
-      isDraggingRef.current = false;
-      try {
-        player.currentTime = startSecondsRef.current;
-        player.play();
-      } catch {
-        // ignore
-      }
-    },
-    onPanResponderTerminate: () => {
-      isDraggingRef.current = false;
-    },
-  }), [maxDurationSeconds, player, pxToSeconds, secondsToPx]);
+    onPanResponderRelease: endDrag,
+    onPanResponderTerminate: endDrag,
+  }), [beginDrag, endDrag, maxDurationSeconds, player, pxToSeconds, secondsToPx]);
 
   // Right (end) handle pan responder
   const endDragOffsetRef = useRef(0);
@@ -276,13 +301,8 @@ export default function VideoTrimModal({
     onPanResponderTerminationRequest: () => false,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: () => {
-      isDraggingRef.current = true;
       endDragOffsetRef.current = secondsToPx(endSecondsRef.current);
-      try {
-        player.pause();
-      } catch {
-        // ignore
-      }
+      beginDrag();
     },
     onPanResponderMove: (_event, gestureState) => {
       const newPx = endDragOffsetRef.current + gestureState.dx;
@@ -292,6 +312,7 @@ export default function VideoTrimModal({
       if (newSec - currentStart > maxDurationSeconds) {
         newSec = currentStart + maxDurationSeconds;
       }
+      endSecondsRef.current = newSec;
       setEndSeconds(newSec);
       try {
         player.currentTime = newSec;
@@ -299,19 +320,9 @@ export default function VideoTrimModal({
         // ignore
       }
     },
-    onPanResponderRelease: () => {
-      isDraggingRef.current = false;
-      try {
-        player.currentTime = startSecondsRef.current;
-        player.play();
-      } catch {
-        // ignore
-      }
-    },
-    onPanResponderTerminate: () => {
-      isDraggingRef.current = false;
-    },
-  }), [maxDurationSeconds, player, pxToSeconds, secondsToPx, totalDuration]);
+    onPanResponderRelease: endDrag,
+    onPanResponderTerminate: endDrag,
+  }), [beginDrag, endDrag, maxDurationSeconds, player, pxToSeconds, secondsToPx, totalDuration]);
 
   // Window pan responder (drag whole window)
   const windowDragStartRef = useRef({ startSec: 0, endSec: 0, startPx: 0 });
@@ -319,17 +330,12 @@ export default function VideoTrimModal({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: (_event, gestureState) => Math.abs(gestureState.dx) > 3,
     onPanResponderGrant: (event) => {
-      isDraggingRef.current = true;
       windowDragStartRef.current = {
         startSec: startSecondsRef.current,
         endSec: endSecondsRef.current,
         startPx: event.nativeEvent.pageX,
       };
-      try {
-        player.pause();
-      } catch {
-        // ignore
-      }
+      beginDrag();
     },
     onPanResponderMove: (_event, gestureState) => {
       const windowDuration = windowDragStartRef.current.endSec - windowDragStartRef.current.startSec;
@@ -341,6 +347,8 @@ export default function VideoTrimModal({
         newStartSec = totalDuration - windowDuration;
       }
       const newEndSec = newStartSec + windowDuration;
+      startSecondsRef.current = newStartSec;
+      endSecondsRef.current = newEndSec;
       setStartSeconds(newStartSec);
       setEndSeconds(newEndSec);
       try {
@@ -349,19 +357,9 @@ export default function VideoTrimModal({
         // ignore
       }
     },
-    onPanResponderRelease: () => {
-      isDraggingRef.current = false;
-      try {
-        player.currentTime = startSecondsRef.current;
-        player.play();
-      } catch {
-        // ignore
-      }
-    },
-    onPanResponderTerminate: () => {
-      isDraggingRef.current = false;
-    },
-  }), [player, pxToSeconds, secondsToPx, totalDuration]);
+    onPanResponderRelease: endDrag,
+    onPanResponderTerminate: endDrag,
+  }), [beginDrag, endDrag, player, pxToSeconds, secondsToPx, totalDuration]);
 
   const togglePlayPause = () => {
     try {
@@ -370,7 +368,10 @@ export default function VideoTrimModal({
         return;
       }
       const atEnd = player.currentTime >= endSecondsRef.current - 0.1 || (player.duration > 0 && player.currentTime >= player.duration - 0.1);
-      if (atEnd || player.currentTime < startSecondsRef.current) player.currentTime = startSecondsRef.current;
+      if (atEnd || player.currentTime < startSecondsRef.current) {
+        playFromStart();
+        return;
+      }
       player.play();
     } catch (error: unknown) {
       console.warn('[VideoTrimModal.togglePlayPause] Error:', error instanceof Error ? error.message : String(error));
