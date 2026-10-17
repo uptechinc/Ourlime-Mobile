@@ -553,6 +553,11 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
           });
           return;
         }
+        // Like chat: the trimmer opens on every pick; confirming without trimming keeps the whole video.
+        if (videoTrimService.isAvailable()) {
+          setTrimSourceAsset(asset);
+          return;
+        }
         setPendingAsset(asset);
       }
     } catch (error) {
@@ -939,6 +944,15 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
         onCancel={() => setTrimSourceAsset(null)}
         onComplete={handleTrimmedLimeVideo}
         onError={handleTrimLimeError}
+        // Already within 30 s and 100 MB: confirming without trimming keeps the whole video.
+        onKeepFull={(trimSourceAsset.duration ?? 0) / 1000 <= MAX_LIME_VIDEO_DURATION_SECONDS
+          && (trimSourceAsset.fileSize ?? 0) <= MAX_LIME_VIDEO_SIZE_BYTES
+          ? () => {
+            const source = trimSourceAsset;
+            setTrimSourceAsset(null);
+            setPendingAsset(source);
+          }
+          : undefined}
       />
     ) : null}
     <DraftsSheet

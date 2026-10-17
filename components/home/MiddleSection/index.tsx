@@ -174,8 +174,12 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
 
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const firstVisiblePost = viewableItems.find((token) => (token.item as FeedRow).kind === 'post');
-      const row = firstVisiblePost?.item as FeedRow | undefined;
+      const visiblePostRows = viewableItems
+        .map((token) => token.item as FeedRow)
+        .filter((row): row is Extract<FeedRow, { kind: 'post' }> => row.kind === 'post');
+      // Prefer a visible post with a video, so scrolling a little past it (or back up to the post above) keeps it playing.
+      const row = visiblePostRows.find((postRow) => postRow.post.media?.some((mediaItem) => mediaItem.type === 'video'))
+        ?? visiblePostRows[0];
       const nextPostId = row?.kind === 'post' ? row.post.id : null;
       setActiveMediaPostId((currentPostId) => currentPostId === nextPostId ? currentPostId : nextPostId);
     },
