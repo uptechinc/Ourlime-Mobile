@@ -2,7 +2,7 @@
   "expo": {
     "name": "Ourlime",
     "slug": "ourlime",
-    "version": "1.1.2",
+    "version": "1.2.0",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -131,7 +131,7 @@
         "android.permission.WAKE_LOCK",
         "android.permission.VIBRATE"
       ],
-      "versionCode": 4
+      "versionCode": 5
     },
     "web": {
       "bundler": "metro",
