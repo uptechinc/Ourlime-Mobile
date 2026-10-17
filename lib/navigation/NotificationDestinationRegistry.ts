@@ -41,6 +41,7 @@ export type NotificationDestinationInput = {
 	childSafetyReviewerView?: string;
 	supportTicketId?: string;
 	supportStaffView?: string;
+	versionCode?: string;
 	path?: string;
 	actionUrl?: string;
 };
@@ -62,8 +63,20 @@ type CallDestinationResult = {
 	callId: string;
 };
 
+/** Opens the in-app update sheet instead of navigating (works before sign-in). */
+type AppUpdateDestinationResult = {
+	behavior: 'app_update';
+	route: Href;
+	fallbackRoute: Href;
+	notificationId?: string;
+	peerId?: string;
+	versionCode: number | null;
+};
+
 export type NotificationDestinationResult =
-	NavigationDestinationResult | CallDestinationResult;
+	| NavigationDestinationResult
+	| CallDestinationResult
+	| AppUpdateDestinationResult;
 
 type UnknownDestinationSource = {
 	schemaVersion?: unknown;
@@ -104,6 +117,7 @@ type UnknownDestinationSource = {
 	childSafetyReviewerView?: unknown;
 	supportTicketId?: unknown;
 	supportStaffView?: unknown;
+	versionCode?: unknown;
 };
 
 const DESTINATION_KINDS: readonly NativePushDestinationKind[] = [
@@ -126,6 +140,7 @@ const DESTINATION_KINDS: readonly NativePushDestinationKind[] = [
 	'course',
 	'child_safety_case',
 	'support_ticket',
+	'app_update',
 ];
 
 export class NotificationDestinationRegistry {
@@ -190,6 +205,7 @@ export class NotificationDestinationRegistry {
 			childSafetyReviewerView: this.readString(source.childSafetyReviewerView),
 			supportTicketId: this.readString(source.supportTicketId),
 			supportStaffView: this.readString(source.supportStaffView),
+			versionCode: this.readString(source.versionCode),
 		};
 	}
 
@@ -200,6 +216,17 @@ export class NotificationDestinationRegistry {
 		const type = data.type ?? '';
 		const peerId = data.chatId || data.senderId || data.sourceUserId;
 
+		if (type === 'app_update' || data.destinationKind === 'app_update') {
+			const versionCode = Number(data.versionCode);
+			return {
+				behavior: 'app_update',
+				route: fallbackRoute,
+				fallbackRoute,
+				notificationId: data.notificationId,
+				versionCode:
+					Number.isSafeInteger(versionCode) && versionCode > 0 ? versionCode : null,
+			};
+		}
 		if (type === 'draft_reminder') {
 			return this.navigate(
 				data.contentType === 'lime'

@@ -3,6 +3,18 @@
     "name": "Ourlime",
     "slug": "ourlime",
     "version": "1.1.2",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "url": "https://u.expo.dev/b2bd2a8c-17f8-4d08-8233-42ccb475a4e5",
+      "checkAutomatically": "NEVER",
+      "fallbackToCacheTimeout": 0,
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
+    },
     "orientation": "default",
     "icon": "./assets/images/logo.png",
     "scheme": "ourlime",
@@ -156,6 +168,7 @@
       "@react-native-firebase/crashlytics",
       "./plugins/withOurlimeCalling.cjs",
       "./plugins/withOurlimeMedia.cjs",
+      "./plugins/withOurlimeAppUpdate.cjs",
       [
         "expo-build-properties",
         {
@@ -184,7 +197,8 @@
       "router": {},
       "eas": {
         "projectId": "b2bd2a8c-17f8-4d08-8233-42ccb475a4e5"
-      }
+      },
+      "distribution": "sideload"
     },
     "owner": "a-hazzard"
   }

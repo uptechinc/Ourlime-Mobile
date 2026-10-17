@@ -28,7 +28,8 @@ export type NativePushDestinationKind =
   | 'blog'
   | 'course'
   | 'child_safety_case'
-  | 'support_ticket';
+  | 'support_ticket'
+  | 'app_update';
 
 export type NativePushDataV1 = {
   schemaVersion: '1';
@@ -65,6 +66,8 @@ export type NativePushDataV1 = {
   childSafetyReviewerView?: string;
   supportTicketId?: string;
   supportStaffView?: string;
+  /** app_update: the Android versionCode being announced (a decimal string, like every push field). */
+  versionCode?: string;
   imageUrl?: string;
   avatarUrl?: string;
 };

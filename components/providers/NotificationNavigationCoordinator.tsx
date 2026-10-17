@@ -7,6 +7,7 @@ import { pushNotificationService } from '@/lib/services/PushNotificationService'
 import { platformEnvironmentService } from '@/lib/services/PlatformEnvironmentService';
 import { DiagnosticLogService } from '@/lib/services/DiagnosticLogService';
 import { withCleanup } from '@/lib/utils/withCleanup';
+import { appUpdateService } from '@/lib/services/AppUpdateService';
 
 type NotificationNavigationCoordinatorProps = {
   userId: string | null;
@@ -56,6 +57,12 @@ export default function NotificationNavigationCoordinator({ userId }: Notificati
 
   const handleResponse = useCallback(async (response: PendingNotificationResponse) => {
     if (!notificationNavigationService.claimResponse(response.responseId)) return;
+    // Update pushes open the update sheet straight away: no sign-in or navigation needed (cold starts included).
+    const destination = pushNotificationService.resolveNotificationDestination(response.data);
+    if (destination.behavior === 'app_update') {
+      appUpdateService.openFromPush(destination.versionCode);
+      return;
+    }
     if (!userId || !isNavigationReady) {
       await notificationNavigationService.savePending(response);
       return;

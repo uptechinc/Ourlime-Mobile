@@ -23,8 +23,9 @@ import type { MessagePermission, SettingsTheme } from '@/lib/profile/settings/Se
 import NotificationSoundSettings from '@/components/settings/NotificationSoundSettings';
 import ChangePasswordModal from '@/components/settings/ChangePasswordModal';
 import ActiveSessionsSection from '@/components/settings/ActiveSessionsSection';
+import AppUpdateSettingsRow from '@/components/settings/AppUpdateSettingsRow';
 
-type SettingsTab = 'appearance' | 'account' | 'privacy' | 'notifications' | 'blocked' | 'security' | 'safety';
+type SettingsTab = 'appearance' | 'account' | 'privacy' | 'notifications' | 'blocked' | 'security' | 'safety' | 'app';
 type SettingsModalState = { visible: boolean; type: CustomModalType; title: string; message: string; action?: 'logout' };
 const authService = AuthService.getInstance();
 const settingsService = SettingsService.getInstance();
@@ -185,6 +186,7 @@ export default function SettingsScreen() {
           { key: 'blocked', label: 'Blocked', icon: 'user-x' },
           { key: 'security', label: 'Security', icon: 'shield' },
           { key: 'safety', label: 'Safety', icon: 'life-buoy' },
+          { key: 'app', label: 'App', icon: 'download-cloud' },
         ] satisfies { key: SettingsTab; label: string; icon: string }[]).map((tab) => {
           const active = activeTab === tab.key;
           return (
@@ -358,6 +360,14 @@ export default function SettingsScreen() {
               <Text style={styles.signOutText}>Sign Out of Ourlime</Text>
             </TouchableOpacity>
             <View style={styles.dangerZone}><Text style={styles.dangerTitle}>Danger Zone</Text><Text style={styles.switchSubtext}>Permanently delete your account and associated data.</Text><TouchableOpacity onPress={() => { setDeleteError(''); setDeleteModalOpen(true); }} style={styles.deleteAccountBtn}><Icon name="trash-2" size={18} color="#ffffff" /><Text style={styles.deleteAccountText}>Delete Account</Text></TouchableOpacity></View>
+          </View>
+        )}
+
+        {activeTab === 'app' && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>App updates</Text>
+            <Text style={[styles.switchSubtext, isDark && styles.subtextDark]}>Ourlime tells you when a new version is out. You can also check here at any time.</Text>
+            <AppUpdateSettingsRow />
           </View>
         )}
 
