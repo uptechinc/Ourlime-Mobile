@@ -122,6 +122,7 @@ All skills in `.agents/skills/` are configured with standard `agents/openai.yaml
 - **`react-native-navigation-fix`**: [`.agents/skills/react-native-navigation-fix/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/react-native-navigation-fix/SKILL.md) — Safe areas, header layout, and transitions.
 - **`native-build-stability`**: [`.agents/skills/native-build-stability/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/native-build-stability/SKILL.md) — Standalone APK/IPA stability.
 - **`roles-and-permissions`**: [`.agents/skills/roles-and-permissions/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/roles-and-permissions/SKILL.md) — User roles, page access statuses, staff preview, and why gated pages are intentional.
+- **`git-workflow`**: [`.agents/skills/git-workflow/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/git-workflow/SKILL.md) — Work directly on `main`: no feature branches, worktrees or PRs; pull, check, commit, push to main.
 
 AI Assistant files available across the repository:
 - [`CHATGPT.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/CHATGPT.md) — ChatGPT Projects & OpenAI workspace context.

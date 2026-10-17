@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Workflow: Work on main"
+  short_description: "No feature branches or PRs; pull, check, commit and push directly to main"
+  default_prompt: "Use $git-workflow: pull main first, keep the change on main, run the checks, then commit and push to main. Never create branches, worktrees or PRs."
