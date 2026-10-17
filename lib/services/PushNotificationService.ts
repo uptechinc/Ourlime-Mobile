@@ -72,7 +72,17 @@ export class PushNotificationService {
               shouldSetBadge: false,
             };
           }
-          const data = notification?.request?.content?.data as { type?: unknown; senderId?: unknown } | undefined;
+          const data = notification?.request?.content?.data as { type?: unknown; senderId?: unknown; destinationKind?: unknown } | undefined;
+          if (data?.type === 'app_update' || data?.destinationKind === 'app_update') {
+            // Shown as an in-app banner (tap opens the update sheet); a push for a build already installed is dropped.
+            await this.presentAppUpdateBanner(notification?.request?.content);
+            return {
+              shouldShowBanner: false,
+              shouldShowList: false,
+              shouldPlaySound: false,
+              shouldSetBadge: false,
+            };
+          }
           if (data?.type === 'incoming_call' || data?.type === 'call_state' || data?.type === 'voice_call' || data?.type === 'video_call') {
             return {
               shouldShowBanner: false,
@@ -130,6 +140,30 @@ export class PushNotificationService {
       });
     } catch {
       // Not supported in Expo Go — silently skip.
+    }
+  }
+
+  /** app_update push while Ourlime is open: an in-app banner whose tap opens the update sheet (stale pushes are dropped). */
+  private async presentAppUpdateBanner(content: { title?: string | null; body?: string | null; data?: unknown } | undefined): Promise<void> {
+    try {
+      const destination = notificationDestinationRegistry.normalize(content?.data);
+      const resolved = notificationDestinationRegistry.resolve({ ...destination, type: 'app_update' });
+      if (resolved.behavior !== 'app_update') return;
+      const [{ appUpdateService }, { inAppNotificationService }] = await Promise.all([
+        import('./AppUpdateService'),
+        import('./InAppNotificationService'),
+      ]);
+      if (appUpdateService.isStalePush(resolved.versionCode)) return;
+      inAppNotificationService.showNotification({
+        id: destination.notificationId || `app_update_${resolved.versionCode ?? 'latest'}`,
+        kind: 'notification',
+        title: content?.title?.trim() || 'Update available',
+        body: content?.body?.trim() || 'A new version of Ourlime is ready. Tap to update.',
+        avatarUrl: null,
+        destination: { ...destination, type: 'app_update', destinationKind: 'app_update' },
+      });
+    } catch (error: unknown) {
+      console.warn('[PushNotificationService.presentAppUpdateBanner] Error:', error instanceof Error ? error.message : error);
     }
   }
 

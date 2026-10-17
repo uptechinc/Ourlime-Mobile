@@ -1,12 +1,12 @@
 # Notification routing contract
 
-Last updated: 2026-08-23
+Last updated: 2026-10-16
 
 Web persistence and push delivery, the web Notifications surfaces, mobile push presses, mobile Notifications, and in-app banners resolve through the canonical notification destination registry. Producers must send the flat, string-only `NativePushDataV1` payload with `schemaVersion: "1"`, `destinationKind`, `type`, `notificationId`, a safe path, and only relevant whitelisted IDs.
 
 ## Entity fields
 
-Supported IDs are `senderId`, `sourceUserId`, `profileUserId`, `postId`, `rootCommentId`, `commentId`, `replyId`, `parentReplyId`, `limeId`, `reelId`, `communityId`, `requestId`, `projectId`, `taskId`, `reportId`, `eventId`, `marketplaceListingId`, `blogId`, `courseId`, `chatId`, `callId`, and `childSafetyReportId`. Concrete entity metadata takes precedence over a broad engagement type. Existing pushes with only a safe legacy `path` remain supported.
+Supported IDs are `senderId`, `sourceUserId`, `profileUserId`, `postId`, `rootCommentId`, `commentId`, `replyId`, `parentReplyId`, `limeId`, `reelId`, `communityId`, `requestId`, `projectId`, `taskId`, `reportId`, `eventId`, `marketplaceListingId`, `blogId`, `courseId`, `chatId`, `callId`, and `childSafetyReportId`. Concrete entity metadata takes precedence over a broad engagement type. App update pushes also carry `versionCode` (the Android versionCode as a decimal string). Existing pushes with only a safe legacy `path` remain supported.
 
 ## Destination matrix
 
@@ -26,11 +26,12 @@ Supported IDs are `senderId`, `sourceUserId`, `profileUserId`, `postId`, `rootCo
 | Project invitation/task | E-Projects with entity parameters |
 | Child Safety alert | Restricted case details |
 | Removed community, cancelled event, beta member update | Notifications |
+| App update (`destinationKind`/`type` `app_update`, `notificationId` `app_update_<versionCode>`) | Opens the in-app update sheet without navigating, before or after sign-in. Ignored when the installed build is already at or above `versionCode`; in the foreground it shows as an in-app banner instead of a system notification |
 | Missing, malformed, deleted, external, or unauthorized target | Notifications with `notificationId` highlighted |
 
 ## Cold starts and deduplication
 
-The mobile coordinator captures the response immediately, persists it for up to 24 hours when authentication or the Expo root navigator is not ready, and replays it after login. It marks the item read asynchronously. Expo response IDs and native call action pairs are deduplicated; a navigation failure replaces the current route with Notifications rather than the app root.
+The mobile coordinator captures the response immediately. App update responses open the update sheet at once (no sign-in or navigation needed, so cold starts work before login). For everything else it persists it for up to 24 hours when authentication or the Expo root navigator is not ready, and replays it after login. It marks the item read asynchronously. Expo response IDs and native call action pairs are deduplicated; a navigation failure replaces the current route with Notifications rather than the app root.
 
 Answered calls navigate once to the peer chat after either side ends. Missed, declined, cancelled, failed, and unanswered calls do not force navigation.
 

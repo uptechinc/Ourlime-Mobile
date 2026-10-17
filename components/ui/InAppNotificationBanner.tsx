@@ -13,6 +13,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { usePathname, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { appUpdateService } from '@/lib/services/AppUpdateService';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { inAppNotificationService, type InAppNotificationPayload } from '@/lib/services/InAppNotificationService';
 import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
@@ -107,7 +108,10 @@ export default function InAppNotificationBanner() {
 
   const handlePress = () => {
     dismiss();
-    if (activeBanner) router.push(notificationDestinationRegistry.resolve(activeBanner.destination).route);
+    if (!activeBanner) return;
+    const destination = notificationDestinationRegistry.resolve(activeBanner.destination);
+    if (destination.behavior === 'app_update') appUpdateService.openFromPush(destination.versionCode);
+    else router.push(destination.route);
   };
 
   if (!activeBanner) {

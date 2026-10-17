@@ -1,30 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
-import { appVersionService, type AppVersionCheck } from '@/lib/services/AppVersionService';
+import { useCallback } from 'react';
+import { appUpdateService } from '@/lib/services/AppUpdateService';
+import { useAppUpdateStore } from '@/lib/store/useAppUpdateStore';
+import type { AppVersionCheck } from '@/lib/services/AppVersionService';
 
-const RECHECK_INTERVAL_MS = 10 * 60 * 1000;
-
-/** Checks the minimum app version on launch and again when the app returns to the foreground (at most every 10 minutes). */
+/**
+ * The minimum-version answer. AppUpdateService keeps it current (live listener on siteConfig/mobileApp plus a
+ * re-check on launch and when the app returns to the foreground, at most every 10 minutes).
+ */
 export function useAppVersionGate(): { check: AppVersionCheck; isChecking: boolean; recheck: () => Promise<void> } {
-  const [check, setCheck] = useState<AppVersionCheck>({ status: 'supported' });
-  const [isChecking, setIsChecking] = useState(false);
-  const lastCheckedAt = useRef(0);
-
-  const recheck = useCallback(async () => {
-    lastCheckedAt.current = Date.now();
-    setIsChecking(true);
-    const result = await appVersionService.check();
-    setCheck(result);
-    setIsChecking(false);
-  }, []);
-
-  useEffect(() => {
-    void recheck();
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && Date.now() - lastCheckedAt.current > RECHECK_INTERVAL_MS) void recheck();
-    });
-    return () => subscription.remove();
-  }, [recheck]);
-
+  const check = useAppUpdateStore((store) => store.versionCheck);
+  const isChecking = useAppUpdateStore((store) => store.status === 'checking');
+  const recheck = useCallback(() => appUpdateService.refresh(true), []);
   return { check, isChecking, recheck };
 }
