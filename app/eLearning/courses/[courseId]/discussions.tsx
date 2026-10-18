@@ -145,7 +145,7 @@ export default function CourseDiscussionsScreen() {
   return (
     <View style={styles.container}>
       <PageHeader title="Course discussions" onBackPress={() => router.back()} />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.content}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.content}>
         {connecting ? <View style={styles.center}><ActivityIndicator color={colors.accent} /><Text style={styles.muted}>Connecting your secure learning session…</Text></View> : null}
         {nativeSession.status === 'retryable_failure' ? <View style={styles.center}><Text style={styles.errorText}>The secure learning session could not connect.</Text><TouchableOpacity onPress={retryNativeSession} style={styles.retryButton}><Text style={styles.buttonText}>Try Again</Text></TouchableOpacity></View> : null}
         {!connecting && nativeSession.status !== 'retryable_failure' ? (
