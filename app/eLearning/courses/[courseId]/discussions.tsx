@@ -4,6 +4,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageCircle, Send, X } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
+import MentionText from '@/components/ui/MentionText';
+import MentionSuggestionList from '@/components/ui/MentionSuggestionList';
+import { useMentionAutocomplete } from '@/lib/hooks/useMentionAutocomplete';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { courseInteractionService } from '@/lib/services/CourseInteractionService';
@@ -19,6 +22,7 @@ export default function CourseDiscussionsScreen() {
   const [items, setItems] = useState<CourseDiscussion[]>([]);
   const [cursor, setCursor] = useState<DiscussionCursor | null>(null);
   const [body, setBody] = useState('');
+  const mention = useMentionAutocomplete({ value: body, onChangeText: setBody });
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sending, setSending] = useState(false);
@@ -118,7 +122,7 @@ export default function CourseDiscussionsScreen() {
       <TouchableOpacity accessibilityRole="button" accessibilityLabel={isExpanded ? 'Hide replies' : 'Show replies'} activeOpacity={0.85} onPress={() => handleToggleDiscussion(item.id)} style={[styles.card, isExpanded && styles.cardExpanded]}>
         <View style={styles.row}><Text style={styles.author}>{item.authorName ?? 'Account unavailable'}</Text><Text style={styles.date}>{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'Sending'}</Text></View>
         {item.title ? <Text style={styles.discussionTitle}>{item.title}</Text> : null}
-        <Text style={styles.body}>{item.body}</Text>
+        <MentionText content={item.body} style={styles.body} />
         <Text style={styles.replyCount}>{item.replyCount} {item.replyCount === 1 ? 'reply' : 'replies'}{isExpanded ? '' : ' · Tap to view'}</Text>
         {isExpanded ? (
           <View style={styles.replies}>
@@ -128,7 +132,7 @@ export default function CourseDiscussionsScreen() {
             {discussionReplies.map((reply) => (
               <View key={reply.id} style={styles.reply}>
                 <View style={styles.row}><Text style={styles.replyAuthor}>{reply.authorName ?? 'Account unavailable'}</Text><Text style={styles.date}>{reply.createdAt ? new Date(reply.createdAt).toLocaleDateString() : ''}</Text></View>
-                <Text style={styles.replyBody}>{reply.body}</Text>
+                <MentionText content={reply.body} style={styles.replyBody} />
               </View>
             ))}
           </View>
@@ -160,7 +164,7 @@ export default function CourseDiscussionsScreen() {
           />
         ) : null}
         {nativeSession.status === 'ready' && expandedDiscussion ? <View style={styles.replyingBar}><Text numberOfLines={1} style={styles.replyingText}>Replying to {expandedDiscussion.authorName ?? 'this discussion'}</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Stop replying" onPress={() => setExpandedId(null)} hitSlop={10}><X size={18} color={colors.mutedText} /></TouchableOpacity></View> : null}
-        {nativeSession.status === 'ready' ? <View style={[styles.composer, { paddingBottom: Math.max(12, insets.bottom) }]}><TextInput value={body} onChangeText={setBody} editable={!sending} multiline maxLength={expandedDiscussion ? 2000 : 4000} placeholder={expandedDiscussion ? 'Write a reply' : 'Ask a question or start a discussion'} placeholderTextColor={colors.mutedText} style={styles.input} /><TouchableOpacity accessibilityRole="button" accessibilityLabel={expandedDiscussion ? 'Send reply' : 'Send discussion'} onPress={() => void handleSend()} disabled={!body.trim() || sending} style={[styles.sendButton, (!body.trim() || sending) && styles.disabled]}>{sending ? <ActivityIndicator color={colors.onAccent} /> : <Send size={20} color={colors.onAccent} />}</TouchableOpacity></View> : null}
+        {nativeSession.status === 'ready' ? <><View style={{ paddingHorizontal: 12 }}><MentionSuggestionList suggestions={mention.suggestions} isSearching={mention.isSearching} onSelect={mention.handleSelectSuggestion} /></View><View style={[styles.composer, { paddingBottom: Math.max(12, insets.bottom) }]}><TextInput value={body} onChangeText={setBody} onFocus={mention.handleFocus} onBlur={mention.handleBlur} onSelectionChange={mention.handleSelectionChange} selection={mention.selection} editable={!sending} multiline maxLength={expandedDiscussion ? 2000 : 4000} placeholder={expandedDiscussion ? 'Write a reply' : 'Ask a question or start a discussion'} placeholderTextColor={colors.mutedText} style={styles.input} /><TouchableOpacity accessibilityRole="button" accessibilityLabel={expandedDiscussion ? 'Send reply' : 'Send discussion'} onPress={() => void handleSend()} disabled={!body.trim() || sending} style={[styles.sendButton, (!body.trim() || sending) && styles.disabled]}>{sending ? <ActivityIndicator color={colors.onAccent} /> : <Send size={20} color={colors.onAccent} />}</TouchableOpacity></View></> : null}
       </KeyboardAvoidingView>
     </View>
   );

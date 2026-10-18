@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   findNodeHandle,
   Image,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -394,7 +396,9 @@ export default function BlogDetailScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView ref={scrollViewRef} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} onScroll={handleScroll} scrollEventThrottle={32}>
+        // The keyboard pushes the page up, so the response box (and its "@" list) is never hidden behind it.
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView ref={scrollViewRef} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} onScroll={handleScroll} scrollEventThrottle={32}>
           {blog.status !== 'published' ? (
             <View style={[styles.statusBanner, { backgroundColor: colors.warningSurface }]}>
               <Text style={[styles.statusBannerText, { color: colors.warningText }]}>
@@ -542,6 +546,7 @@ export default function BlogDetailScreen() {
             </View>
           </View>
         </ScrollView>
+        </KeyboardAvoidingView>
       )}
 
       {blog ? (

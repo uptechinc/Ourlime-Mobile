@@ -10,6 +10,9 @@ import {
 } from 'react-native';
 import { Send, CornerDownRight, Trash2, Flag, BadgeCheck, Heart } from 'lucide-react-native';
 import UserAvatar from '@/components/ui/UserAvatar';
+import MentionText from '@/components/ui/MentionText';
+import MentionSuggestionList from '@/components/ui/MentionSuggestionList';
+import { useMentionAutocomplete } from '@/lib/hooks/useMentionAutocomplete';
 import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
@@ -42,6 +45,9 @@ export default function BlogCommentsSection({
   const [commentText, setCommentText] = useState('');
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+  // "@" picker for the main box and the reply box (only the focused one shows its list).
+  const commentMention = useMentionAutocomplete({ value: commentText, onChangeText: setCommentText });
+  const replyMention = useMentionAutocomplete({ value: replyText, onChangeText: setReplyText });
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -130,6 +136,7 @@ export default function BlogCommentsSection({
       </Text>
 
       {/* Main Comment Input */}
+      <MentionSuggestionList suggestions={commentMention.suggestions} isSearching={commentMention.isSearching} onSelect={commentMention.handleSelectSuggestion} />
       <View style={[styles.inputBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <TextInput
           ref={composerRef}
@@ -138,6 +145,10 @@ export default function BlogCommentsSection({
           placeholderTextColor={colors.mutedText}
           value={commentText}
           onChangeText={setCommentText}
+          onFocus={commentMention.handleFocus}
+          onBlur={commentMention.handleBlur}
+          onSelectionChange={commentMention.handleSelectionChange}
+          selection={commentMention.selection}
           multiline
           style={[styles.textInput, { color: colors.text }]}
         />
@@ -208,7 +219,7 @@ export default function BlogCommentsSection({
                 ) : null}
               </View>
 
-              <Text style={[styles.commentBody, { color: colors.text }]}>{comment.text}</Text>
+              <MentionText content={comment.text} style={[styles.commentBody, { color: colors.text }]} />
 
               {/* Like & Reply Buttons */}
               <View style={styles.commentActionsRow}>
@@ -227,6 +238,8 @@ export default function BlogCommentsSection({
 
               {/* Inline Reply Input */}
               {isReplying ? (
+                <View>
+                <MentionSuggestionList suggestions={replyMention.suggestions} isSearching={replyMention.isSearching} onSelect={replyMention.handleSelectSuggestion} />
                 <View
                   style={[
                     styles.replyInputBox,
@@ -238,6 +251,10 @@ export default function BlogCommentsSection({
                     placeholderTextColor={colors.mutedText}
                     value={replyText}
                     onChangeText={setReplyText}
+                    onFocus={replyMention.handleFocus}
+                    onBlur={replyMention.handleBlur}
+                    onSelectionChange={replyMention.handleSelectionChange}
+                    selection={replyMention.selection}
                     multiline
                     style={[styles.replyTextInput, { color: colors.text }]}
                   />
@@ -251,6 +268,7 @@ export default function BlogCommentsSection({
                   >
                     <Send size={14} color="#ffffff" />
                   </TouchableOpacity>
+                </View>
                 </View>
               ) : null}
 
@@ -280,7 +298,7 @@ export default function BlogCommentsSection({
                           </Text>
                         </View>
                       </View>
-                      <Text style={[styles.replyBody, { color: colors.text }]}>{reply.text}</Text>
+                      <MentionText content={reply.text} style={[styles.replyBody, { color: colors.text }]} />
                       <View style={styles.commentActionsRow}>
                         {renderLikeButton(comment.id, reply, reply.id)}
                         {canMutate && activeUserId !== reply.userId ? (
