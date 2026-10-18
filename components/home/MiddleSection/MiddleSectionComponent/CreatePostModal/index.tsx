@@ -29,7 +29,9 @@ import LocationPickerModal from './LocationPickerModal';
 import MediaCropModal from './MediaCropModal';
 import VideoTrimModal from './VideoTrimModal';
 import { RelationshipService, type RelationshipUser } from '@/lib/services/RelationshipService';
-import { SearchService } from '@/lib/services/SearchService';
+import { findActiveMention, insertMention } from '@/lib/helpers/mentionText';
+import { mentionService } from '@/lib/services/MentionService';
+import MentionSuggestionList from '@/components/ui/MentionSuggestionList';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import CustomModal from '@/components/ui/CustomModal';
 import { linkPresentationService } from '@/lib/services/LinkPresentationService';
@@ -64,7 +66,6 @@ type CreatePostModalProps = {
 
 const mediaService = PostMediaService.getInstance();
 const relationshipService = RelationshipService.getInstance();
-const searchService = SearchService.getInstance();
 const emojis = ['😀', '😂', '😍', '🥳', '😎', '🤔', '😢', '😡', '👍', '👏', '🙏', '❤️', '🔥', '🎉', '🇹🇹', '🌴', '⚽', '🎵', '🍋', '✨'];
 const pollDurations: PollDurationChoice[] = [
   { label: '5m', hours: 5 / 60 },
@@ -124,61 +125,38 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
     [caption, description, taggedMentions]
   );
 
+  const inlineMention = useMemo(() => findActiveMention(caption, captionSelection.start), [caption, captionSelection.start]);
+
+  // The "Mention friends" box wins; otherwise the "@word" being typed in the caption (a bare "@" lists friends).
   const activeMentionQuery = useMemo(() => {
     const cleanMentionInput = mentionInput.trim().replace(/^@/, '').toLowerCase();
     if (cleanMentionInput.length > 0) return cleanMentionInput;
+    return inlineMention ? inlineMention.query.toLowerCase() : null;
+  }, [inlineMention, mentionInput]);
 
-    const beforeCaptionCursor = caption.slice(0, captionSelection.start);
-    const captionMatch = beforeCaptionCursor.match(/(?:^|\s)@?([\w.-]{1,30})$/);
-    if (captionMatch && beforeCaptionCursor.includes('@')) {
-      return captionMatch[1].toLowerCase();
-    }
-
-    const descMatch = description.match(/(?:^|\s)@?([\w.-]{1,30})$/);
-    if (descMatch && description.includes('@')) {
-      return descMatch[1].toLowerCase();
-    }
-
-    return null;
-  }, [caption, captionSelection.start, description, mentionInput]);
-
-  // Query Firestore users collection dynamically when typing query
+  // Friends show instantly (best match first); other members follow after a short pause.
   useEffect(() => {
-    if (!activeMentionQuery || activeMentionQuery.length < 1) {
+    if (activeMentionQuery === null) {
       setSearchedUsers([]);
       return;
     }
-    const timer = setTimeout(async () => {
-      try {
-        const profiles = await searchService.searchUsers(activeMentionQuery, 10);
-        const found: RelationshipUser[] = profiles.map((profile) => {
-          return {
-            id: profile.uid,
-            userName: profile.userName || 'user',
-            firstName: profile.firstName || '',
-            lastName: profile.lastName || '',
-            profileImage: profile.profilePicture || undefined,
-            isFollowing: false,
-            friendshipStatus: 'none',
-          };
-        });
-
-        const extraLocal = friends.filter((f) =>
-          `${f.userName} ${f.firstName} ${f.lastName}`.toLowerCase().includes(activeMentionQuery)
-        );
-
-        const merged = [...found];
-        for (const item of extraLocal) {
-          if (!merged.some((m) => m.id === item.id)) {
-            merged.push(item);
-          }
-        }
-        setSearchedUsers(merged.slice(0, 10));
-      } catch {}
+    const friendMatches = mentionService.matchFriends(friends, activeMentionQuery);
+    setSearchedUsers(friendMatches);
+    if (activeMentionQuery.length < 1) return;
+    let isCurrent = true;
+    const timer = setTimeout(() => {
+      void mentionService.searchMembers(activeMentionQuery, friendMatches).then((members) => {
+        if (isCurrent) setSearchedUsers(mentionService.combine(friendMatches, members));
+      });
     }, 200);
-    return () => clearTimeout(timer);
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
   }, [activeMentionQuery, friends]);
 
+  // An "@word" being typed in the caption (not the "Mention friends" box): its list is pinned above the keyboard.
+  const isCaptionMention = mentionInput.trim().length === 0 && inlineMention !== null;
   const mentionSuggestions = useMemo(() => activeMentionQuery === null ? [] : searchedUsers, [activeMentionQuery, searchedUsers]);
 
   const handleAddMentionTag = (usernameToAdd: string) => {
@@ -190,19 +168,12 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
   };
 
   const handleInsertMention = (targetUser: RelationshipUser) => {
+    const pickedFromCaption = mentionInput.trim().length === 0 ? inlineMention : null;
     handleAddMentionTag(targetUser.userName);
-    const beforeCursor = caption.slice(0, captionSelection.start);
-    const match = beforeCursor.match(/(?:^|\s)@?([\w.-]*)$/);
-    if (match) {
-      const matchText = match[0];
-      const start = captionSelection.start - matchText.length;
-      const prefix = matchText.startsWith(' ') ? ' ' : '';
-      const inserted = `${prefix}@${targetUser.userName} `;
-      const updated = `${caption.slice(0, start)}${inserted}${caption.slice(captionSelection.end)}`;
-      const cursor = start + inserted.length;
-      setCaption(updated);
-      setCaptionSelection({ start: cursor, end: cursor });
-    }
+    if (!pickedFromCaption) return;
+    const next = insertMention(caption, pickedFromCaption, targetUser.userName);
+    setCaption(next.text);
+    setCaptionSelection({ start: next.cursor, end: next.cursor });
   };
 
   const [eventTitle, setEventTitle] = useState('');
@@ -668,9 +639,10 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
               <TouchableOpacity onPress={() => setShowEmojiPicker((value) => !value)} style={{ position: 'absolute', right: 10, bottom: 28, padding: 8 }}><Icon name="smile" size={22} color={colors.accent} /></TouchableOpacity>
               <Text style={{ textAlign: 'right', fontSize: 11, color: caption.length > 2100 ? colors.destructive : colors.mutedText, marginTop: 4, marginRight: 6 }}>{caption.length}/2200</Text>
             </View>
-            {mentionSuggestions.length > 0 ? (
-              <View style={{ marginTop: 7, borderWidth: 1, borderColor: colors.border, borderRadius: 13, overflow: 'hidden' }}>
-                {mentionSuggestions.map((friend) => <TouchableOpacity key={friend.id} onPress={() => handleInsertMention(friend)} style={{ flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><UserAvatar profileImage={friend.profileImage} firstName={friend.firstName || friend.userName} size={34} /><View style={{ marginLeft: 9 }}><Text style={{ color: colors.text, fontWeight: '700' }}>{friend.firstName} {friend.lastName}</Text><Text style={{ color: colors.mutedText, fontSize: 12 }}>@{friend.userName}</Text></View></TouchableOpacity>)}
+            {/* The "Mention friends" box keeps its list in the flow (the form scrolls to it); an "@" typed in the caption shows it above the keyboard instead (below). */}
+            {!isCaptionMention ? (
+              <View style={{ marginTop: mentionSuggestions.length > 0 ? 7 : 0 }}>
+                <MentionSuggestionList suggestions={mentionSuggestions} onSelect={handleInsertMention} />
               </View>
             ) : null}
             {showEmojiPicker ? (
@@ -836,6 +808,12 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
               )
             ) : null}
           </ScrollView>
+          {isCaptionMention && mentionSuggestions.length > 0 ? (
+            <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 8 }}>
+              {/* Two rows (scrolls): enough to pick from while the caption stays visible above it. */}
+              <MentionSuggestionList suggestions={mentionSuggestions} maxVisibleRows={2} onSelect={handleInsertMention} />
+            </View>
+          ) : null}
         </KeyboardAvoidingView>
       </SafeAreaView>
 

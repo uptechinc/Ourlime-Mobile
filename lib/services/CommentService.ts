@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { mentionNotificationService } from './MentionNotificationService';
 import { postCounterService } from './PostCounterService';
 
 export type CommentMediaAsset = {
@@ -152,6 +153,8 @@ export class CommentService {
     });
 
     await postCounterService.adjust(postId, 'commentCount', 1);
+    // Friends named with @ are told (server side); never blocks the comment.
+    void mentionNotificationService.notify('comment', commentRef.id, validatedContent);
 
     const author = await this.getAuthor(currentUserId);
     this.logger.success('CommentService', 'create-comment', { postId, commentId: commentRef.id });
@@ -196,6 +199,8 @@ export class CommentService {
     await updateDoc(doc(db, 'feedsPostComments', input.commentId), {
       replyCount: increment(1),
     }).catch(() => {});
+
+    void mentionNotificationService.notify('reply', replyRef.id, validatedContent);
 
     const author = await this.getAuthor(currentUserId);
     this.logger.success('CommentService', 'create-reply', { commentId: input.commentId, replyId: replyRef.id });

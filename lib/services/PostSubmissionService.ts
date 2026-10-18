@@ -7,7 +7,7 @@ import { FeedResourceService } from './FeedResourceService';
 import { CommunityFeedResourceService } from './CommunityFeedResourceService';
 import { ProfileResourceService } from './ProfileResourceService';
 import { DiagnosticLogService } from './DiagnosticLogService';
-import { dispatchMentionNotifications } from './dispatchMentionNotifications';
+import { mentionNotificationService } from './MentionNotificationService';
 import { usePostSubmissionStore } from '@/lib/store/usePostSubmissionStore';
 import { creationDraftService } from './CreationDraftService';
 import type { PostSubmissionDraft, PostSubmissionSnapshot } from '@/lib/types/postSubmission';
@@ -202,8 +202,7 @@ export class PostSubmissionService {
     if (post.communityId) {
       operations.push(CommunityFeedResourceService.getInstance().prepend(userId, post.communityId, post));
     } else operations.push(ProfileResourceService.getInstance().adjustOwnStats(userId, { posts: 1 }));
-    operations.push(dispatchMentionNotifications({ actorUserId: userId, actorName: post.user.userName || post.user.firstName,
-      actorProfileImage: post.user.profileImage, content: task.draft.post.caption, contentType: 'post', postId: post.id }));
+    operations.push(mentionNotificationService.notify('post', post.id, task.draft.post.caption));
     await Promise.all(operations);
   }
 

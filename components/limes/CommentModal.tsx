@@ -36,6 +36,8 @@ import CommunityReportModal from '@/components/communities/CommunityReportModal'
 import { ModerationService, type ReportReasonCategory } from '@/lib/services/ModerationService';
 import type { ChildSafetyIntakeValues } from '@/lib/types/childSafety';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import MentionSuggestionList from '@/components/ui/MentionSuggestionList';
+import { useMentionAutocomplete } from '@/lib/hooks/useMentionAutocomplete';
 
 const authService = AuthService.getInstance();
 const moderationService = ModerationService.getInstance();
@@ -168,6 +170,9 @@ export default function CommentModal({
   const [replyTarget, setReplyTarget] = useState<{ id: string; userName: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  // "@" picker: the main composer, or the edit box while a comment / reply is being edited.
+  const commentMention = useMentionAutocomplete({ value: commentText, onChangeText: setCommentText, enabled: editingId === null });
+  const editMention = useMentionAutocomplete({ value: editText, onChangeText: setEditText, enabled: editingId !== null });
   const [visibleRepliesLimitMap, setVisibleRepliesLimitMap] = useState<Record<string, number>>({});
   const [selectedMedia, setSelectedMedia] = useState<CommentMediaAsset | null>(null);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
@@ -444,9 +449,14 @@ export default function CommentModal({
 
           {isEditing ? (
             <View style={styles.editRow}>
+              <MentionSuggestionList suggestions={editMention.suggestions} isSearching={editMention.isSearching} onSelect={editMention.handleSelectSuggestion} />
               <TextInput
                 value={editText}
                 onChangeText={setEditText}
+                onFocus={editMention.handleFocus}
+                onBlur={editMention.handleBlur}
+                onSelectionChange={editMention.handleSelectionChange}
+                selection={editMention.selection}
                 style={[styles.editInput, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                 autoFocus
                 multiline
@@ -569,9 +579,14 @@ export default function CommentModal({
                       </View>
                       {replyEditing ? (
                         <View style={styles.editRow}>
+                          <MentionSuggestionList suggestions={editMention.suggestions} isSearching={editMention.isSearching} onSelect={editMention.handleSelectSuggestion} />
                           <TextInput
                             value={editText}
                             onChangeText={setEditText}
+                            onFocus={editMention.handleFocus}
+                            onBlur={editMention.handleBlur}
+                            onSelectionChange={editMention.handleSelectionChange}
+                            selection={editMention.selection}
                             style={[styles.editInput, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
                             autoFocus
                             multiline
@@ -763,6 +778,7 @@ export default function CommentModal({
                 </TouchableOpacity>
               </View>
             ) : null}
+            <MentionSuggestionList suggestions={commentMention.suggestions} isSearching={commentMention.isSearching} onSelect={commentMention.handleSelectSuggestion} />
             <View style={styles.inputRow}>
               <TouchableOpacity
                 onPress={() => setEnhancementPickerOpen(true)}
@@ -777,6 +793,10 @@ export default function CommentModal({
               <TextInput
                 value={commentText}
                 onChangeText={setCommentText}
+                onFocus={commentMention.handleFocus}
+                onBlur={commentMention.handleBlur}
+                onSelectionChange={commentMention.handleSelectionChange}
+                selection={commentMention.selection}
                 placeholder={
                   replyTarget
                     ? `Reply to @${replyTarget.userName}…`

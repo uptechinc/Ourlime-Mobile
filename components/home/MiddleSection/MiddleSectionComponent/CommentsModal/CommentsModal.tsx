@@ -19,6 +19,8 @@ import {
 } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import UserAvatar from '@/components/ui/UserAvatar';
+import MentionSuggestionList from '@/components/ui/MentionSuggestionList';
+import { useMentionAutocomplete } from '@/lib/hooks/useMentionAutocomplete';
 import {
 	CommentService,
 	type CommentMediaAsset,
@@ -118,6 +120,10 @@ export default function CommentsModal({
 	const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
 	const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
 	const [editText, setEditText] = useState('');
+	// "@" picker for whichever composer is showing (new comment, reply, or edit).
+	const commentMention = useMentionAutocomplete({ value: commentText, onChangeText: setCommentText, enabled: !editTarget && !replyTarget });
+	const replyMention = useMentionAutocomplete({ value: replyText, onChangeText: setReplyText, enabled: Boolean(replyTarget) && !editTarget });
+	const editMention = useMentionAutocomplete({ value: editText, onChangeText: setEditText, enabled: Boolean(editTarget) });
 	const [loading, setLoading] = useState(true);
 	const [loadingMore, setLoadingMore] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
@@ -1066,10 +1072,15 @@ export default function CommentsModal({
 								>
 									Editing your {editTarget.type}
 								</Text>
+								<MentionSuggestionList suggestions={editMention.suggestions} isSearching={editMention.isSearching} onSelect={editMention.handleSelectSuggestion} />
 								<View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
 									<TextInput
 										value={editText}
 										onChangeText={setEditText}
+										onFocus={editMention.handleFocus}
+										onBlur={editMention.handleBlur}
+										onSelectionChange={editMention.handleSelectionChange}
+										selection={editMention.selection}
 										maxLength={2000}
 										multiline
 										placeholderTextColor={colors.mutedText}
@@ -1156,6 +1167,7 @@ export default function CommentsModal({
 										</TouchableOpacity>
 									</View>
 								) : null}
+								<MentionSuggestionList suggestions={replyMention.suggestions} isSearching={replyMention.isSearching} onSelect={replyMention.handleSelectSuggestion} />
 								<View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
 									<TouchableOpacity
 										onPress={() => setEnhancementPickerOpen(true)}
@@ -1178,6 +1190,10 @@ export default function CommentsModal({
 									<TextInput
 										value={replyText}
 										onChangeText={setReplyText}
+										onFocus={replyMention.handleFocus}
+										onBlur={replyMention.handleBlur}
+										onSelectionChange={replyMention.handleSelectionChange}
+										selection={replyMention.selection}
 										maxLength={2000}
 										multiline
 										placeholder="Write a reply..."
@@ -1260,6 +1276,7 @@ export default function CommentsModal({
 										</TouchableOpacity>
 									</View>
 								) : null}
+								<MentionSuggestionList suggestions={commentMention.suggestions} isSearching={commentMention.isSearching} onSelect={commentMention.handleSelectSuggestion} />
 								<View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
 									<TouchableOpacity
 										onPress={() => setEnhancementPickerOpen(true)}
@@ -1282,6 +1299,10 @@ export default function CommentsModal({
 									<TextInput
 										value={commentText}
 										onChangeText={setCommentText}
+										onFocus={commentMention.handleFocus}
+										onBlur={commentMention.handleBlur}
+										onSelectionChange={commentMention.handleSelectionChange}
+										selection={commentMention.selection}
 										maxLength={2000}
 										multiline
 										placeholder="Write a comment..."
