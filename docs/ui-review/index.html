@@ -71,9 +71,9 @@ h3.sub { margin-top: 28px; }
   <h1>Ourlime UI Review</h1>
   <p class="lede">Bug fixes from tester reports, a cleanup of crowded filter screens, a page-by-page polish pass and a production performance audit of the Android app and the website.</p>
   <div class="meta">
-    <span>App merged into <b>main</b></span>
-    <span>Website merged into <b>Main</b> (a788c195)</span>
-    <span>Captured <b>12–14 Oct 2026</b> · Pixel 6 emulator · 1440px and 390px browser</span>
+    <span>App on <b>main</b> (61451af) · version <b>1.2.0</b> (versionCode 5)</span>
+    <span>Website on <b>main</b> (50f26b9f)</span>
+    <span>Captured <b>12–19 Oct 2026</b> · Pixel 6 and fast emulators · 1440px and 390px browser</span>
   </div>
   <nav class="toc" aria-label="Sections">
     <a href="#app">Mobile app</a>
@@ -88,6 +88,7 @@ h3.sub { margin-top: 28px; }
     <a href="#testpass">Full test pass</a>
     <a href="#latest">Round 3</a>
     <a href="#round4">Round 4</a>
+    <a href="#round5">Round 5</a>
     <a href="#open">Still open</a>
   </nav>
 
@@ -549,16 +550,58 @@ h3.sub { margin-top: 28px; }
     <li>Migration dry run: 192 private fields from 119 users, 72 community memberships, 156 friend-index entries. Backfill dry run: 7 comment counts. The <code>--apply</code> runs and the rules deploy are still to do; the rules wait until testers have 1.1.0.</li>
   </ul>
 
+  <h2 id="round5">Round 5: video playback, in-app updates and @ mentions</h2>
+  <p class="lede">Work from 15 to 19 October. Feed videos, permissions at sign-in, in-app updates for the Android APK, and an “@” picker on every comment box in the app and on the website. The mention screens were tested signed in, on the fast emulator and the website dev build; every draft was cleared and no real comment was posted, so no one was notified.</p>
+
+  <h3 class="sub">Feed videos</h3>
+  <ul class="plain">
+    <li><strong>A video starts by itself, from its first frame,</strong> when it scrolls into view. There is no play button on the first start and no thumbnail flash before it begins.</li>
+    <li><strong>Scrolling away and back resumes it</strong> instead of leaving it paused. The play and pause icon follows the real state.</li>
+    <li><strong>Trimming:</strong> feeds, Limes and chat open the trimmer for every selected video,. The app’s trimmer preview also shows the cut after trimming.</li>
+  </ul>
+
+  <h3 class="sub">Calls and voice: permissions at sign-in</h3>
+  <p>Microphone and camera permission are asked once at sign-in, so the first call or voice message does not stall on a system prompt. On the emulator both showed as granted.</p>
+
+  <h3 class="sub">In-app updates (Android APK)</h3>
+  <ul class="plain">
+    <li><strong>Live release sheet.</strong> When a newer build is published, an “Update available” sheet shows the version, size and release notes, before and after sign-in. <strong>Later</strong> snoozes only that version for 24 hours; Settings has a Check for updates row.</li>
+    <li><strong>The app installs itself.</strong> It downloads the APK (resumable, with progress and Cancel), checks the SHA-256, size, versionCode and signing key, asks for the install permission if needed, then hands over to Android’s installer. “What’s new” shows once after the update. On Play builds the app links to the store instead.</li>
+    <li><strong>Over-the-air updates</strong> for JavaScript-only changes (EAS Update, channel <code>production</code>). The app is ready for a <code>notifyAppUpdate</code> push to wake a closed app (pushes for an installed build are dropped), but that function is not in <code>functions/src</code> yet; the source is in <code>docs/app-updates/functions/</code> and still has to be added and deployed.</li>
+    <li><strong>Releasing:</strong> bump <code>version</code> and <code>versionCode</code> in <code>app.json</code>, run <code>npm run build:local</code>, then <code>node scripts/publish-android-release.cjs</code>. Storage rules allow public read of <code>app-releases/android/</code> and are deployed. The steps are in <code>docs/app-updates/</code>; <code>VALIDATION.md</code> lists what to check on a phone.</li>
+    <li><strong>Status:</strong> version 1.2.0 (versionCode 5) is the first build with the updater. A release APK was built locally on 19 October (<code>Ourlime-19.10.26.apk</code>). It has not been published as an update, and the device validation steps have not been run on a real phone.</li>
+  </ul>
+
+  <h3 class="sub">@ mentions on every comment box</h3>
+  <p>Typing “@” opens a list of your friends first, then other members, ranked by username prefix, then name prefix, then contains. Tapping a row (Enter or Tab on the website) writes <code>@username</code>. In shown comments, <code>@username</code> is a link to that profile. A mention needs a space, an opening bracket or the start of the text before it, so an email address never triggers it. The website list supports the arrow keys and Escape, and is announced as a listbox for screen readers. In the app the list opens above the input and shrinks on short screens.</p>
+  <ul class="plain">
+    <li><strong>App:</strong> feed and community comments, replies and edits; Lime comments; blog responses and replies; course discussions; the post composer (a “@” in the caption, and the Mention friends box).</li>
+    <li><strong>Website:</strong> the feed composer and comments, Limes and reel comments, event discussions, replies, reviews and organizer replies, event comments, blog comments and replies, and course discussions.</li>
+    <li><strong>Notifications:</strong> a mentioned friend gets a notification for a feed post, a comment or a reply. A server function (<code>sendMentionNotifications</code>, deployed) reads the saved content itself and notifies accepted friends only, once per person per item. Blog, event, discussion and Lime comments show links but do not send notifications yet.</li>
+    <li><strong>Keyboard fixes found while testing:</strong> the blog page and the course discussions composer now stay above the keyboard on Android. Before, the composer sat hidden behind it.</li>
+  </ul>
+  <div class="pairs">
+    <figure><img src="round5/app-lime-mention.jpg" alt="Lime comments on the phone with a list of friends above the input after typing @a" loading="lazy"><figcaption><span class="tag after">After</span>App: Lime comments</figcaption></figure>
+    <figure><img src="round5/app-discussions-mention.jpg" alt="Course discussions on the phone with the friends list and the composer above the keyboard" loading="lazy"><figcaption><span class="tag after">After</span>App: course discussions</figcaption></figure>
+    <figure><img src="round5/web-events-mention.jpg" alt="An event discussion box on the website with the friends list above it" loading="lazy"><figcaption><span class="tag after">After</span>Website: event discussions</figcaption></figure>
+    <figure><img src="round5/web-community-mention.jpg" alt="Community post comments on the website with the friends list above the box" loading="lazy"><figcaption><span class="tag after">After</span>Website: community comments</figcaption></figure>
+  </div>
+  <p class="note">Not yet covered: project task comments in the app have no picker (the website has a project-member one), the app’s Lime comments still use an old notification path that does not send, and the quick-comment box on the website’s feed post card is a demo field. Events shows a “Coming Soon” banner but is open to admins, and was tested as one. The course discussion list showed “Discussions unavailable” for the courses tried, a permissions error that probably means the test account is not enrolled; the composer and picker still worked.</p>
+
+  <h3 class="sub">How we work now</h3>
+  <p>Both repositories are worked on directly on <code>main</code>, with no feature branches or pull requests (the rule is in <code>AGENTS.md</code> and the git-workflow skill). On 19 October both were fully pushed, the website production build passed, and the app’s release APK built.</p>
+
   <h2 id="open">Still open</h2>
   <ul class="plain">
     <li><strong>Deploy, in this order</strong> (production deploys need you):
       <ol>
-        <li><strong>Done:</strong> the website work is merged into <code>main</code> and live on ourlime.com (a788c195). Cloud Functions (86, all active) and Firestore indexes (64, matching the repo) are deployed. App 1.1.0 (versionCode 2) is built for testers, and <code>siteConfig/mobileApp</code> has <code>minimumVersion</code> 1.1.0 with the APK link.</li>
+        <li><strong>Done:</strong> the website work is merged into <code>main</code> and live on ourlime.com (a788c195). Cloud Functions (86, all active) and Firestore indexes (64, matching the repo) are deployed. App 1.1.0 (versionCode 2) was built for testers on 14 October, and <code>siteConfig/mobileApp</code> then had <code>minimumVersion</code> 1.1.0 with the APK link. The app is now at 1.2.0 (versionCode 5); see Round 5 for what is and is not published, and re-check <code>siteConfig/mobileApp</code> before relying on these notes. The status of the migration, backfill and rules deploy below was last confirmed on 15 October and was not re-checked on 19 October.</li>
         <li>The data migration (the website is live, so it is safe to run). It moves email, phone, birth date and guardian email out of public user documents, and the old website still reads them there. Run <code>npm --prefix functions run build</code>, then <code>node functions/scripts/migrate-private-profile-data.cjs --project=ourlime-919f2</code> (dry run), then the same with <code>--apply</code>.</li>
         <li>The comment-count backfill: <code>node functions/scripts/backfill-community-comment-counts.cjs --project=ourlime-919f2</code>, then with <code>--apply</code>.</li>
         <li>Re-run the migration with <code>--apply</code>. Once testers have 1.1.0, deploy the rules: <code>npx firebase-tools deploy --only firestore:rules,storage,database --project ourlime-919f2</code>.</li>
       </ol>
       Until the rules deploy, production stays open. A full backup from before any change is in the project’s storage bucket.</li>
+    <li><strong>Round 5 follow-ups:</strong> add and deploy <code>notifyAppUpdate</code> (from <code>docs/app-updates/functions/</code>); run <code>docs/app-updates/VALIDATION.md</code> on a real phone with a release build; publish the 1.2.0 APK with <code>scripts/publish-android-release.cjs</code> when you want installed apps to be offered it; send mention notifications for blog, event, discussion and Lime comments; add the picker to app project task comments.</li>
     <li><strong>After the deploy:</strong> re-test every website page and app screen against the live rules, and switch on stored comment counts (<code>COMMUNITY_COMMENT_COUNTS_STORED</code> on web and app). The switch stops a count query per community post on every feed load. It can only go on once the counter functions and backfill have run.</li>
     <li><strong>App connection mode stays as is.</strong> Auto-detected long-polling was retested on the production bundle against the current forced mode: feed data 16.7–17.8 s vs 16.9 s and median query 1.2–1.5 s vs 1.5 s, the same within noise. A real gain would need the native Firestore SDK, a larger migration.</li>
 
