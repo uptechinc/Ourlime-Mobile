@@ -8,6 +8,7 @@ const {
   withMainActivity,
   withMainApplication,
 } = require('@expo/config-plugins');
+const { copyNativeSources, readAndroidPackage } = require('./androidPackage.cjs');
 
 const ANDROID_PERMISSIONS = [
   'android.permission.MANAGE_OWN_CALLS',
@@ -133,7 +134,7 @@ function withCallingMainActivity(config) {
       );
       const marker = '  /**\n   * Returns the name of the main component registered from JavaScript.';
       const method = `  private fun configureIncomingCallWindow(intent: Intent?) {
-    if (intent?.action?.startsWith("com.ourlime.app.INCOMING_CALL_") != true) return
+    if (intent?.action?.startsWith("${readAndroidPackage(config)}.INCOMING_CALL_") != true) return
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
       setShowWhenLocked(true)
       setTurnScreenOn(true)
@@ -157,20 +158,12 @@ function withCallingMainActivity(config) {
 
 function withCallingAndroidSources(config) {
   return withDangerousMod(config, ['android', async (result) => {
-    const packageDirectory = path.join(
+    copyNativeSources(
       result.modRequest.platformProjectRoot,
-      'app',
-      'src',
-      'main',
-      'java',
-      'com',
-      'ourlime',
-      'app',
+      path.join(__dirname, 'native-call'),
+      ['OurlimeIncomingCallModule.kt', 'OurlimeIncomingCallPackage.kt', 'OurlimeOngoingCallService.kt', 'OurlimePictureInPicture.kt'],
+      readAndroidPackage(config),
     );
-    fs.mkdirSync(packageDirectory, { recursive: true });
-    ['OurlimeIncomingCallModule.kt', 'OurlimeIncomingCallPackage.kt', 'OurlimeOngoingCallService.kt', 'OurlimePictureInPicture.kt'].forEach((fileName) => {
-      fs.copyFileSync(path.join(__dirname, 'native-call', fileName), path.join(packageDirectory, fileName));
-    });
     return result;
   }]);
 }

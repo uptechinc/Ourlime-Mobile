@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { AndroidConfig, withAndroidManifest, withDangerousMod, withMainApplication } = require('@expo/config-plugins');
+const { copyNativeSources, readAndroidPackage } = require('./androidPackage.cjs');
 
 const NATIVE_SOURCES = [
   'OurlimeAppUpdateModule.kt',
@@ -10,8 +11,6 @@ const NATIVE_SOURCES = [
 ];
 const INSTALL_PERMISSION = 'android.permission.REQUEST_INSTALL_PACKAGES';
 const NETWORK_STATE_PERMISSION = 'android.permission.ACCESS_NETWORK_STATE';
-const INSTALL_STATUS_RECEIVER = 'com.ourlime.app.OurlimeAppUpdateReceiver';
-const UPDATED_RECEIVER = 'com.ourlime.app.OurlimeAppUpdatedReceiver';
 
 /** extra.distribution: "sideload" (default; in-app APK updates) or "play" (Play policy: no REQUEST_INSTALL_PACKAGES). */
 function readDistribution(config) {
@@ -20,6 +19,9 @@ function readDistribution(config) {
 
 function withUpdateManifest(config) {
   const isSideload = readDistribution(config) === 'sideload';
+  const androidPackage = readAndroidPackage(config);
+  const INSTALL_STATUS_RECEIVER = `${androidPackage}.OurlimeAppUpdateReceiver`;
+  const UPDATED_RECEIVER = `${androidPackage}.OurlimeAppUpdatedReceiver`;
   return withAndroidManifest(config, (result) => {
     const manifest = result.modResults.manifest;
     manifest['uses-permission'] ||= [];
@@ -68,11 +70,7 @@ function withUpdateMainApplication(config) {
 
 function withUpdateAndroidSources(config) {
   return withDangerousMod(config, ['android', async (result) => {
-    const packageDirectory = path.join(result.modRequest.platformProjectRoot, 'app', 'src', 'main', 'java', 'com', 'ourlime', 'app');
-    fs.mkdirSync(packageDirectory, { recursive: true });
-    NATIVE_SOURCES.forEach((fileName) => {
-      fs.copyFileSync(path.join(__dirname, 'native-update', fileName), path.join(packageDirectory, fileName));
-    });
+    copyNativeSources(result.modRequest.platformProjectRoot, path.join(__dirname, 'native-update'), NATIVE_SOURCES, readAndroidPackage(config));
     return result;
   }]);
 }

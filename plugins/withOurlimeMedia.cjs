@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { withAppBuildGradle, withDangerousMod, withMainApplication } = require('@expo/config-plugins');
+const { copyNativeSources, readAndroidPackage } = require('./androidPackage.cjs');
 
 // Keep in step with expo-video's Media3 (node_modules/expo-video/android/build.gradle) so Gradle resolves one version.
 const MEDIA3_VERSION = '1.9.0';
@@ -43,11 +44,7 @@ function withMediaMainApplication(config) {
 
 function withMediaAndroidSources(config) {
   return withDangerousMod(config, ['android', async (result) => {
-    const packageDirectory = path.join(result.modRequest.platformProjectRoot, 'app', 'src', 'main', 'java', 'com', 'ourlime', 'app');
-    fs.mkdirSync(packageDirectory, { recursive: true });
-    NATIVE_SOURCES.forEach((fileName) => {
-      fs.copyFileSync(path.join(__dirname, 'native-media', fileName), path.join(packageDirectory, fileName));
-    });
+    copyNativeSources(result.modRequest.platformProjectRoot, path.join(__dirname, 'native-media'), NATIVE_SOURCES, readAndroidPackage(config));
     return result;
   }]);
 }

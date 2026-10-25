@@ -30,7 +30,9 @@
     "production": {
       "env": {
         "EXPO_PUBLIC_WEB_API_URL": "https://ourlime.com",
-        "EXPO_PUBLIC_OURLIME_API_BASE_URL": "https://ourlime.com"
+        "EXPO_PUBLIC_OURLIME_API_BASE_URL": "https://ourlime.com",
+        "OURLIME_ANDROID_PACKAGE": "com.ourlime.mobile",
+        "OURLIME_DISTRIBUTION": "play"
       },
       "android": {
         "buildType": "app-bundle"

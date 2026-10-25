@@ -16,8 +16,8 @@ const WHATS_NEW_CONFIG_WAIT_MS = 8000;
 const SNOOZE_KEY_PREFIX = 'ourlime_update_snoozed_until_';
 const LAST_SEEN_BUILD_KEY = 'ourlime_last_seen_version_code';
 const LAST_SEEN_OTA_KEY = 'ourlime_last_seen_update_id';
-const ANDROID_MARKET_URL = 'market://details?id=com.ourlime.app';
-const ANDROID_STORE_URL = 'https://play.google.com/store/apps/details?id=com.ourlime.app';
+const ANDROID_MARKET_URL = 'market://details?id=com.ourlime.mobile';
+const ANDROID_STORE_URL = 'https://play.google.com/store/apps/details?id=com.ourlime.mobile';
 
 const readStorage = async (key: string): Promise<string | null> => {
   try {
