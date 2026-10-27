@@ -41,11 +41,26 @@ function withCallingEntitlements(config) {
 /** Permissions that call-SDK dependencies merge in but Ourlime never uses; Play asks for a declaration for each one it finds. */
 const UNUSED_MERGED_PERMISSIONS = ['android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION'];
 
+/** Hardware the permissions above would otherwise make Play treat as required, which hides the app from tablets and Chromebooks. */
+const OPTIONAL_HARDWARE_FEATURES = [
+  'android.hardware.telephony',
+  'android.hardware.camera',
+  'android.hardware.camera.autofocus',
+  'android.hardware.microphone',
+  'android.hardware.bluetooth',
+];
+
 function withCallingAndroid(config) {
   return withAndroidManifest(config, (result) => {
     const manifest = result.modResults.manifest;
     manifest.$['xmlns:tools'] ||= 'http://schemas.android.com/tools';
     manifest['uses-permission'] ||= [];
+    manifest['uses-feature'] ||= [];
+    OPTIONAL_HARDWARE_FEATURES.forEach((feature) => {
+      const existingFeature = manifest['uses-feature'].find((entry) => entry.$['android:name'] === feature);
+      if (existingFeature) existingFeature.$['android:required'] = 'false';
+      else manifest['uses-feature'].push({ $: { 'android:name': feature, 'android:required': 'false' } });
+    });
     UNUSED_MERGED_PERMISSIONS.forEach((permission) => {
       manifest['uses-permission'] = manifest['uses-permission'].filter((entry) => entry.$['android:name'] !== permission);
       manifest['uses-permission'].push({ $: { 'android:name': permission, 'tools:node': 'remove' } });
