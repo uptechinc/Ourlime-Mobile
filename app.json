@@ -131,7 +131,7 @@
         "android.permission.WAKE_LOCK",
         "android.permission.VIBRATE"
       ],
-      "versionCode": 6
+      "versionCode": 7
     },
     "web": {
       "bundler": "metro",

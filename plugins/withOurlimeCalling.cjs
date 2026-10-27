@@ -38,10 +38,18 @@ function withCallingEntitlements(config) {
   });
 }
 
+/** Permissions that call-SDK dependencies merge in but Ourlime never uses; Play asks for a declaration for each one it finds. */
+const UNUSED_MERGED_PERMISSIONS = ['android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION'];
+
 function withCallingAndroid(config) {
   return withAndroidManifest(config, (result) => {
     const manifest = result.modResults.manifest;
+    manifest.$['xmlns:tools'] ||= 'http://schemas.android.com/tools';
     manifest['uses-permission'] ||= [];
+    UNUSED_MERGED_PERMISSIONS.forEach((permission) => {
+      manifest['uses-permission'] = manifest['uses-permission'].filter((entry) => entry.$['android:name'] !== permission);
+      manifest['uses-permission'].push({ $: { 'android:name': permission, 'tools:node': 'remove' } });
+    });
     const existing = new Set(manifest['uses-permission'].map((permission) => permission.$['android:name']));
     ANDROID_PERMISSIONS.forEach((permission) => {
       if (!existing.has(permission)) manifest['uses-permission'].push({ $: { 'android:name': permission } });
