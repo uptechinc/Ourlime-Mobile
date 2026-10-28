@@ -26,6 +26,7 @@
     "build:preview:local": "node scripts/build-local-apk.cjs",
     "build:prod": "npx eas build --platform android --profile production --non-interactive",
     "build:prod:local": "node scripts/build-local-apk.cjs",
+    "install-apk": "node scripts/install-apk.cjs",
     "kill": "bunx kill-port-bun"
   },
   "dependencies": {
