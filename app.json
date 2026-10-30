@@ -16,7 +16,7 @@
       }
     },
     "orientation": "default",
-    "icon": "./assets/images/logo.png",
+    "icon": "./assets/images/app-icon.png",
     "scheme": "ourlime",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -109,8 +109,8 @@
         }
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/logo.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/images/adaptive-icon-foreground.png",
+        "backgroundColor": "#202020"
       },
       "permissions": [
         "CAMERA",
@@ -129,7 +129,7 @@
         "android.permission.WAKE_LOCK",
         "android.permission.VIBRATE"
       ],
-      "versionCode": 7
+      "versionCode": 8
     },
     "web": {
       "bundler": "metro",
@@ -158,7 +158,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/transparentLogo.png",
+          "icon": "./assets/notification-icon.png",
           "color": "#10b981"
         }
       ],
