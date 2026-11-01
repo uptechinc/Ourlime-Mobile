@@ -204,6 +204,11 @@ export class DeepLinkService {
       const section = segments[1]?.toLowerCase();
       if ((section === 'products' || section === 'providers') && segments[2]) return this.screen(`/ehub/${section}/${segments[2]}`, `/ehub/${section}/${segments[2]}`);
       if (section === 'discover') return this.screen('/ehub/discover', '/ehub/discover');
+      // App-only E-Hub screens; on the website these live under /profile (business account under /profile too).
+      if (section === 'seller') return this.screen('/profile/ehub/seller', '/ehub/seller');
+      if (section === 'enquiries') return this.screen('/profile/ehub/enquiries', '/ehub/enquiries');
+      if (section === 'business-account') return this.screen('/profile/business-account', '/ehub/business-account');
+      if (section === 'terms') return this.screen('/ehub/terms', '/ehub');
       return { kind: 'ehub' };
     }
     if (first === 'elearning') return { kind: 'elearning', path: segments.slice(1).join('/') || undefined };

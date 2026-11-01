@@ -4,6 +4,7 @@ import type {
   EHubDraft, EHubDraftType, EHubImageScope, EHubProductDraftPayload, EHubPublicationState, EHubSellerProduct,
   EHubSellerWorkspace, EHubStoreDraftPayload,
 } from '@/lib/types/ehubSeller';
+import { withCleanup } from '@/lib/utils/withCleanup';
 
 export type EHubSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 export type EHubSellerNotice = { tone: 'success' | 'error'; text: string };
@@ -56,12 +57,12 @@ export function useEHubSellerCenter(ownerId: string | null) {
     if (!ownerId) { setIsLoading(false); return; }
     let isActive = true;
     setIsLoading(true);
-    loadWorkspace()
+    // withCleanup, not .finally(): the runtime Promise can lack finally (lib/utils/withCleanup.ts).
+    void withCleanup(loadWorkspace(), () => { if (isActive) setIsLoading(false); })
       .catch((error: unknown) => {
         console.error('[useEHubSellerCenter.load] Error:', readError(error, 'Unknown error'));
         if (isActive) setLoadError(readError(error, 'Unable to load Seller Center.'));
-      })
-      .finally(() => { if (isActive) setIsLoading(false); });
+      });
     return () => { isActive = false; };
   }, [loadWorkspace, ownerId]);
 

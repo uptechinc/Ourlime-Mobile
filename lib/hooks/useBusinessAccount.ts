@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { businessAccountService } from '@/lib/services/BusinessAccountService';
 import type { BusinessAccount, BusinessAccountForm } from '@/lib/types/businessAccount';
+import { withCleanup } from '@/lib/utils/withCleanup';
 
 function readError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -23,12 +24,12 @@ export function useBusinessAccount(ownerId: string | null) {
     if (!ownerId) { setIsLoading(false); return; }
     let isActive = true;
     setIsLoading(true);
-    load()
+    // withCleanup, not .finally(): the runtime Promise can lack finally (lib/utils/withCleanup.ts).
+    void withCleanup(load(), () => { if (isActive) setIsLoading(false); })
       .catch((loadError: unknown) => {
         console.error('[useBusinessAccount.load] Error:', readError(loadError, 'Unknown error'));
         if (isActive) setError(readError(loadError, 'Unable to load your business account.'));
-      })
-      .finally(() => { if (isActive) setIsLoading(false); });
+      });
     return () => { isActive = false; };
   }, [load, ownerId]);
 
