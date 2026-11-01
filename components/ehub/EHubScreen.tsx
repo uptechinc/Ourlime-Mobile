@@ -197,6 +197,12 @@ export default function EHubScreen() {
             <View style={styles.flex}><Text style={styles.inboxTitle}>Your enquiries</Text><Text style={styles.muted}>See enquiries you sent and replies from providers</Text></View>
             <ArrowRight size={19} color={colors.mutedText} />
           </Pressable>
+
+          <Pressable accessibilityRole="button" onPress={() => router.push('/ehub/seller' as Href)} style={styles.inboxCard}>
+            <Store size={24} color={colors.accentText} />
+            <View style={styles.flex}><Text style={styles.inboxTitle}>Seller Center</Text><Text style={styles.muted}>Set up your storefront, list products and manage drafts</Text></View>
+            <ArrowRight size={19} color={colors.mutedText} />
+          </Pressable>
         </View>
       </ScrollView>
     </View>

@@ -4,7 +4,8 @@ import type {
   EHubProductDetail, EHubProvider, EHubProviderDetail, EHubProviderFilters,
 } from '@/lib/types/ehubDiscovery';
 
-type EHubMethod = 'GET' | 'POST' | 'PATCH';
+export type EHubMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+export type EHubRequestOptions = { query?: string; body?: object; allowEmpty?: boolean };
 type GatewayResponse = { status: number; body: unknown };
 type RouteBody<TData> = { status?: string; data?: TData; message?: string };
 type CacheEntry<TValue> = { value: TValue; cachedAt: number };
@@ -79,6 +80,12 @@ export class EHubService {
     return this.request<EHubEnquiry>('PATCH', '/api/ehub/enquiries', { body: { enquiryId, status, ...(responseMessage ? { responseMessage } : {}) } });
   }
 
+  /** Seller changes show on the public lists straight away instead of after the 60 s cache. */
+  public clearCaches(): void {
+    this.catalogCache = null;
+    this.providersCache = null;
+  }
+
   private isFresh<TValue>(entry: CacheEntry<TValue> | null): entry is CacheEntry<TValue> {
     return entry !== null && Date.now() - entry.cachedAt < CACHE_TTL_MS;
   }
@@ -92,7 +99,8 @@ export class EHubService {
     }
   }
 
-  private async request<TData>(method: EHubMethod, path: string, options: { query?: string; body?: object } = {}): Promise<TData> {
+  /** One /api/ehub route through ehubApi. allowEmpty accepts a success with no data (the delete routes). */
+  public async request<TData>(method: EHubMethod, path: string, options: EHubRequestOptions = {}): Promise<TData> {
     let response: GatewayResponse;
     try {
       response = await appServerService.call<GatewayResponse>('ehubApi', {
@@ -108,10 +116,10 @@ export class EHubService {
       throw error;
     }
     const body = (response.body && typeof response.body === 'object' ? response.body : {}) as RouteBody<TData>;
-    if (response.status >= 400 || body.status !== 'success' || body.data === undefined) {
+    if (response.status >= 400 || body.status !== 'success' || (body.data === undefined && !options.allowEmpty)) {
       throw new EHubError(this.messageFor(response.status, body.message), response.status);
     }
-    return body.data;
+    return body.data as TData;
   }
 
   /** The enquiry route returns its error codes lower-cased with spaces (e.g. "message too short"). */

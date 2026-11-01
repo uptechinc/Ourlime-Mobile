@@ -176,7 +176,10 @@ export class DeepLinkService {
       const rest = profileScreen === '/admin' ? segments.slice(2) : [];
       return this.screen(`/${segments.join('/')}`, [profileScreen, ...rest].join('/'));
     }
-    // The website's enquiry inbox lives under /profile; the app's is /ehub/enquiries.
+    // The website's Seller Center and enquiry inbox live under /profile; the app's are /ehub/seller and /ehub/enquiries.
+    if (first === 'profile' && segments[1]?.toLowerCase() === 'ehub' && segments[2]?.toLowerCase() === 'seller') {
+      return this.screen('/profile/ehub/seller', '/ehub/seller');
+    }
     if (first === 'profile' && segments[1]?.toLowerCase() === 'ehub' && segments[2]?.toLowerCase() === 'enquiries') {
       const mode = url.searchParams.get('mode') === 'sent' ? '?mode=sent' : '';
       return { kind: 'screen', webPath: `/profile/ehub/enquiries${mode}`, appRoute: `/ehub/enquiries${mode}` };
