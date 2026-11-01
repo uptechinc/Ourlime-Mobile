@@ -33,6 +33,8 @@ const SCREEN_ROUTES: { [firstSegment: string]: string } = {
 const PROFILE_SCREEN_ROUTES: { [secondSegment: string]: string } = {
   settings: '/settings',
   admin: '/admin',
+  // The website's business account page; the app's is in the E-Hub stack next to Seller Center.
+  'business-account': '/ehub/business-account',
 };
 
 export class DeepLinkService {

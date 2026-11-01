@@ -10,7 +10,6 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 export const EHUB_SELLER_TERMS_URL = 'https://ourlime.com/ehub/terms#seller';
 export const EHUB_PROVIDER_TERMS_URL = 'https://ourlime.com/ehub/terms#provider';
-export const EHUB_BUSINESS_ACCOUNT_URL = 'https://ourlime.com/profile/business-account';
 
 export const EMPTY_EHUB_STORE: EHubStoreDraftPayload = {
   storeName: '', description: '', logoUrl: '', coverUrl: '', businessHours: '', sellerPolicies: '', returnPolicy: '', categories: [], services: [], serviceAreas: [],

@@ -1,15 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ChevronRight, Eye, FilePenLine, FileText, Inbox, LayoutDashboard, Lock, Package, Settings, Store, Trash2 } from 'lucide-react-native';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { Building2, ChevronRight, Eye, FilePenLine, FileText, Inbox, LayoutDashboard, Lock, Package, Settings, Store, Trash2 } from 'lucide-react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
 import CustomModal from '@/components/ui/CustomModal';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useEHubSellerCenter } from '@/lib/hooks/useEHubSellerCenter';
-import { EHUB_BUSINESS_ACCOUNT_URL, EHUB_SELLER_TERMS_URL } from '@/lib/services/EHubSellerService';
+import { EHUB_SELLER_TERMS_URL } from '@/lib/services/EHubSellerService';
 import type { EHubDraft, EHubPublicationState, EHubSellerProduct } from '@/lib/types/ehubSeller';
 import { EHubEmptyState, EHubNotice, useEHubLayout } from '@/components/ehub/EHubParts';
 import { SellerButton } from '@/components/ehub/EHubSellerFormParts';
@@ -46,7 +46,13 @@ export default function EHubSellerCenterScreen() {
   const [productsKey, setProductsKey] = useState(0);
   const [productsStartEditing, setProductsStartEditing] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
-  const { workspace } = center;
+  const { workspace, refresh } = center;
+  // Coming back from the business account screen (or anywhere else) reloads eligibility; the first focus is the initial load.
+  const hasFocused = useRef(false);
+  useFocusEffect(useCallback(() => {
+    if (hasFocused.current && profile?.uid) void refresh();
+    hasFocused.current = true;
+  }, [profile?.uid, refresh]));
   const activeDrafts = workspace?.drafts.filter((draft) => draft.status === 'active') ?? [];
   const deletedDrafts = workspace?.drafts.filter((draft) => draft.status === 'deleted') ?? [];
   const publishedProducts = workspace?.products.filter((product) => product.publicationState === 'published') ?? [];
@@ -118,6 +124,9 @@ export default function EHubSellerCenterScreen() {
               {workspace?.eligibility.reason ? <View style={styles.eligibility}>
                 <Text style={styles.eligibilityTitle}>Seller eligibility required</Text>
                 <Text style={styles.eligibilityText}>{workspace.eligibility.reason}</Text>
+                {!workspace.eligibility.hasBusiness && !workspace.eligibility.isRestricted ? <View style={styles.eligibilityAction}>
+                  <SellerButton compact label="Set up business account" icon={<Building2 size={16} color="#ffffff" />} onPress={() => router.push('/ehub/business-account' as Href)} />
+                </View> : null}
               </View> : null}
               {center.isLoading ? <View style={styles.main}><Skeleton height={120} borderRadius={22} /><Skeleton height={260} borderRadius={22} /></View> : <>
                 {section === 'overview' ? <View style={styles.section}>
@@ -153,7 +162,7 @@ export default function EHubSellerCenterScreen() {
                   <Text style={styles.cardTitle}>Seller settings</Text>
                   <Text style={styles.muted}>Seller eligibility, identity verification, and business ownership remain managed by your Ourlime account.</Text>
                   <View style={styles.buttonRow}>
-                    <SellerButton label="Business account" onPress={() => void Linking.openURL(EHUB_BUSINESS_ACCOUNT_URL)} />
+                    <SellerButton label="Business account" icon={<Building2 size={17} color="#ffffff" />} onPress={() => router.push('/ehub/business-account' as Href)} />
                     <SellerButton label="Seller terms" variant="secondary" onPress={() => void Linking.openURL(EHUB_SELLER_TERMS_URL)} />
                   </View>
                 </View> : null}
@@ -202,6 +211,7 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   eligibility: { padding: 16, gap: 4, borderRadius: 18, borderWidth: 1, borderColor: colors.warningText, backgroundColor: colors.warningSurface },
   eligibilityTitle: { color: colors.warningText, fontSize: 15, fontWeight: '900' },
   eligibilityText: { color: colors.warningText, fontSize: 14, lineHeight: 20 },
+  eligibilityAction: { marginTop: 8, flexDirection: 'row' },
   section: { gap: 16 },
   top: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   eyebrow: { color: colors.accentText, fontSize: 11, fontWeight: '900', letterSpacing: 1.6, textTransform: 'uppercase' },
