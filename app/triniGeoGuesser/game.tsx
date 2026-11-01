@@ -151,7 +151,7 @@ export default function GeoGuesserGameScreen() {
           {result ? (
             <View style={styles.resultCard}>
               <View style={styles.inline}><MapPin size={16} color="#10b981" /><Text style={styles.resultTitle}>{location.name}</Text></View>
-              <Text style={styles.muted}>{result.distanceKm.toFixed(2)} km away · +{result.points} {result.points === 1 ? 'point' : 'points'}</Text>
+              <Text style={styles.resultDetail}>{result.distanceKm.toFixed(2)} km away · +{result.points} {result.points === 1 ? 'point' : 'points'}</Text>
               {location.info ? <Text style={styles.info} numberOfLines={4}>{location.info}</Text> : null}
               <Pressable accessibilityRole="button" onPress={handleNext} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{roundIndex + 1 >= rounds.length ? 'See results' : 'Next round'}</Text></Pressable>
             </View>
@@ -189,6 +189,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   hintText: { flex: 1, color: '#92400e', fontSize: 13, fontWeight: '600' },
   resultCard: { padding: 14, gap: 6, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   resultTitle: { color: colors.text, fontSize: 16, fontWeight: '900' },
+  resultDetail: { color: colors.mutedText, fontSize: 13 },
   info: { color: colors.secondaryText, fontSize: 13, lineHeight: 19 },
   primaryButton: { minHeight: 50, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: colors.accent },
   primaryButtonText: { color: colors.onAccent, fontSize: 15, fontWeight: '800' },
