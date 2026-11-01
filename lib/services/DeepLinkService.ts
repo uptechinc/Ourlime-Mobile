@@ -176,6 +176,11 @@ export class DeepLinkService {
       const rest = profileScreen === '/admin' ? segments.slice(2) : [];
       return this.screen(`/${segments.join('/')}`, [profileScreen, ...rest].join('/'));
     }
+    // The website's enquiry inbox lives under /profile; the app's is /ehub/enquiries.
+    if (first === 'profile' && segments[1]?.toLowerCase() === 'ehub' && segments[2]?.toLowerCase() === 'enquiries') {
+      const mode = url.searchParams.get('mode') === 'sent' ? '?mode=sent' : '';
+      return { kind: 'screen', webPath: `/profile/ehub/enquiries${mode}`, appRoute: `/ehub/enquiries${mode}` };
+    }
     if (first === 'profile' && segments[1]?.toLowerCase() === 'viewotherprofile' && segments[2]) {
       return { kind: 'profile', username: this.normalizeUsername(segments[2]) };
     }
@@ -190,7 +195,12 @@ export class DeepLinkService {
     if (first === 'admin' && segments[1]?.toLowerCase() === 'reports' && segments[2]) {
       return { kind: 'admin-report', reportId: segments[2] };
     }
-    if (first === 'ehub') return segments[1] ? { kind: 'market-product', productId: segments[1] } : { kind: 'ehub' };
+    if (first === 'ehub') {
+      const section = segments[1]?.toLowerCase();
+      if ((section === 'products' || section === 'providers') && segments[2]) return this.screen(`/ehub/${section}/${segments[2]}`, `/ehub/${section}/${segments[2]}`);
+      if (section === 'discover') return this.screen('/ehub/discover', '/ehub/discover');
+      return { kind: 'ehub' };
+    }
     if (first === 'elearning') return { kind: 'elearning', path: segments.slice(1).join('/') || undefined };
     if (first === 'projectmanagement' || first === 'projects') return { kind: 'projects', projectId: segments[1] };
     if (first === 'register') {

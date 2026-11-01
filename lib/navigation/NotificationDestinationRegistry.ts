@@ -304,7 +304,9 @@ export class NotificationDestinationRegistry {
 		if (
 			(type === 'support_ticket' ||
 				data.destinationKind === 'support_ticket') &&
-			data.supportTicketId
+			data.supportTicketId &&
+			// E-Hub enquiry notices reuse the support_ticket type; their path opens the enquiry inbox below.
+			!(data.path || '').startsWith('/profile/ehub/')
 		) {
 			return this.navigate(
 				(data.supportStaffView === 'true'
