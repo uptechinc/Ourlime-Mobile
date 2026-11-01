@@ -29,6 +29,14 @@ import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
 import LessonQuiz from '@/components/eLearning/LessonQuiz';
 import type { Course, CourseModule, CourseLesson, Enrollment } from '@/lib/types/course';
 
+// Some lessons are typed "video" but hold a PDF or Word file; only real video files go to the player.
+const VIDEO_FILE = /\.(mp4|m4v|mov|webm|m3u8|3gp|mkv)$/i;
+const isVideoFile = (url: string | undefined): boolean => {
+  if (!url) return false;
+  const path = decodeURIComponent(url.split('?')[0] ?? '');
+  return VIDEO_FILE.test(path) || !/\.[a-z0-9]{2,5}$/i.test(path);
+};
+
 export default function LessonScreen() {
   const router = useRouter();
   const { courseId } = useLocalSearchParams<{ courseId: string }>();
@@ -191,10 +199,10 @@ export default function LessonScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           {/* Video Placeholder / Player Box */}
           <View style={[styles.playerBox, { backgroundColor: isDark ? '#0f172a' : '#1e293b' }]}>
-            {currentLesson.type === 'video' && currentLesson.mediaUrl ? (
+            {currentLesson.type === 'video' && isVideoFile(currentLesson.mediaUrl) ? (
               // key: a new lesson gets a fresh player instead of keeping the previous video's position.
-              <CustomVideoPlayer key={currentLesson.id} url={currentLesson.mediaUrl} autoPlay={false} showSpeed />
-            ) : currentLesson.type === 'video' ? (
+              <CustomVideoPlayer key={currentLesson.id} url={currentLesson.mediaUrl ?? ''} autoPlay={false} showSpeed />
+            ) : currentLesson.type === 'video' && !currentLesson.mediaUrl ? (
               <View style={styles.videoPlaceholder}>
                 <PlayCircle size={56} color="#10b981" />
                 <Text style={styles.videoPlaceholderText}>Video lesson</Text>
@@ -257,7 +265,7 @@ export default function LessonScreen() {
               </View>
             )}
 
-            {currentLesson.mediaUrl && currentLesson.type !== 'video' && currentLesson.type !== 'quiz' ? (
+            {currentLesson.mediaUrl && currentLesson.type !== 'quiz' && !(currentLesson.type === 'video' && isVideoFile(currentLesson.mediaUrl)) ? (
               <TouchableOpacity accessibilityRole="link" onPress={handleOpenMaterial} style={[styles.materialButton, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                 <FileText size={18} color="#10b981" />
                 <Text style={[styles.materialButtonText, { color: colors.text }]}>Open lesson material</Text>
