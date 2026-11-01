@@ -51,6 +51,7 @@ export default function ELearningScreen() {
           <QuickAction title="Browse courses" detail="Explore the catalog" icon={<BookOpen size={23} color="#ffffff" />} color="#059669" wide onPress={() => router.push('/eLearning/courses' as Href)} styles={styles} />
           <QuickAction title="My learning" detail="Resume your progress" icon={<GraduationCap size={23} color="#ffffff" />} color="#2563eb" onPress={() => router.push('/eLearning/my-learning' as Href)} styles={styles} />
           <QuickAction title="CXC hub" detail="CSEC and CAPE" icon={<BookOpen size={23} color="#ffffff" />} color="#7c3aed" onPress={() => router.push('/eLearning/cxc' as Href)} styles={styles} />
+          <QuickAction title="Teach on Ourlime" detail="Apply, manage courses and grade" icon={<Users size={23} color="#ffffff" />} color="#0f766e" wide onPress={() => router.push('/eLearning/instructor' as Href)} styles={styles} />
         </View>
 
         {loading ? (
