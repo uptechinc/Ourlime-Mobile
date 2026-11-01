@@ -42,12 +42,25 @@ export type CourseLesson = {
   title: string;
   description?: string;
   type: 'video' | 'text' | 'quiz' | 'assignment' | 'resource';
-  content?: string; // video URL or markdown text
+  /** Readable lesson text (the website stores it as HTML; tags are stripped). */
+  content?: string;
+  /** The lesson's video or file: contentUrl, attachedFile, or a URL stored in content. */
+  mediaUrl?: string;
+  /** Multiple-choice questions for quiz lessons; the server scores the answers. */
+  quizQuestions?: CourseQuizQuestion[];
   duration?: number; // in minutes
   order: number;
   isRequired?: boolean;
   isPublished?: boolean;
   isFree?: boolean;
+};
+
+export type CourseQuizQuestion = {
+  id: string;
+  title: string;
+  options: string[];
+  correctIndex?: number;
+  explanation?: string;
 };
 
 export type CourseResource = {

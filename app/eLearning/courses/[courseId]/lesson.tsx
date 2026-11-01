@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Linking,
   Modal,
   ScrollView,
   StyleSheet,
@@ -24,6 +25,8 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { LessonScreenSkeleton } from '@/components/ui/Skeleton';
 import { courseService } from '@/lib/services/CourseService';
+import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
+import LessonQuiz from '@/components/eLearning/LessonQuiz';
 import type { Course, CourseModule, CourseLesson, Enrollment } from '@/lib/types/course';
 
 export default function LessonScreen() {
@@ -128,6 +131,22 @@ export default function LessonScreen() {
     }
   };
 
+  const handleSubmitQuiz = async (answers: number[]): Promise<number | null> => {
+    if (!enrollment || !currentLesson) throw new Error('Enroll in this course before taking the quiz.');
+    const score = await courseService.submitQuiz(enrollment.id, currentLesson.id, answers);
+    const updated = await courseService.getEnrollmentStatus(enrollment.userId, id);
+    setEnrollment(updated);
+    return score;
+  };
+
+  const handleOpenMaterial = () => {
+    if (!currentLesson?.mediaUrl) return;
+    void Linking.openURL(currentLesson.mediaUrl).catch((error: unknown) => {
+      console.error('[LessonScreen.handleOpenMaterial] Error:', error instanceof Error ? error.message : 'Unknown error');
+      setDialogState({ visible: true, type: 'error', title: 'Could not open', message: 'This lesson material could not be opened on this device.' });
+    });
+  };
+
   const handleNext = () => {
     if (currentLessonIndex < allLessons.length - 1) {
       setCurrentLessonIndex((idx) => idx + 1);
@@ -172,7 +191,10 @@ export default function LessonScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           {/* Video Placeholder / Player Box */}
           <View style={[styles.playerBox, { backgroundColor: isDark ? '#0f172a' : '#1e293b' }]}>
-            {currentLesson.type === 'video' ? (
+            {currentLesson.type === 'video' && currentLesson.mediaUrl ? (
+              // key: a new lesson gets a fresh player instead of keeping the previous video's position.
+              <CustomVideoPlayer key={currentLesson.id} url={currentLesson.mediaUrl} autoPlay={false} showSpeed />
+            ) : currentLesson.type === 'video' ? (
               <View style={styles.videoPlaceholder}>
                 <PlayCircle size={56} color="#10b981" />
                 <Text style={styles.videoPlaceholderText}>Video lesson</Text>
@@ -197,6 +219,8 @@ export default function LessonScreen() {
               <View style={[styles.badge, { backgroundColor: '#10b98122' }]}>
                 <Text style={styles.badgeText}>Lesson {currentLessonIndex + 1} of {allLessons.length}</Text>
               </View>
+              {/* A quiz with questions is completed by submitting it; everything else is marked done by hand. */}
+              {currentLesson.type === 'quiz' && (currentLesson.quizQuestions?.length ?? 0) > 0 ? null : (
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={handleToggleComplete}
@@ -218,16 +242,28 @@ export default function LessonScreen() {
                   {isCompleted ? 'Completed' : savingCompletion ? 'Saving…' : 'Mark as Done'}
                 </Text>
               </TouchableOpacity>
+              )}
             </View>
 
             <Text style={[styles.lessonTitle, { color: colors.text }]}>{currentLesson.title}</Text>
 
-            {/* Content Text */}
-            <View style={[styles.contentCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.contentText, { color: colors.text }]}>
-                {currentLesson.content || 'No text content was provided for this lesson.'}
-              </Text>
-            </View>
+            {currentLesson.type === 'quiz' ? (
+              <LessonQuiz key={currentLesson.id} questions={currentLesson.quizQuestions ?? []} isCompleted={isCompleted} onSubmit={handleSubmitQuiz} />
+            ) : (
+              <View style={[styles.contentCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.contentText, { color: colors.text }]}>
+                  {currentLesson.content || currentLesson.description || (currentLesson.mediaUrl ? 'Open the lesson material below.' : 'No text content was provided for this lesson.')}
+                </Text>
+              </View>
+            )}
+
+            {currentLesson.mediaUrl && currentLesson.type !== 'video' && currentLesson.type !== 'quiz' ? (
+              <TouchableOpacity accessibilityRole="link" onPress={handleOpenMaterial} style={[styles.materialButton, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+                <FileText size={18} color="#10b981" />
+                <Text style={[styles.materialButtonText, { color: colors.text }]}>Open lesson material</Text>
+                <ChevronRight size={18} color={colors.mutedText} />
+              </TouchableOpacity>
+            ) : null}
           </View>
         </ScrollView>
       )}
@@ -375,7 +411,9 @@ const styles = StyleSheet.create({
   },
   playerBox: {
     width: '100%',
-    height: 230,
+    // 16:9 like the video itself, capped so a tablet in portrait keeps the lesson text in view.
+    aspectRatio: 16 / 9,
+    maxHeight: 520,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -430,6 +468,8 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     lineHeight: 28,
   },
+  materialButton: { marginTop: 12, minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: 1 },
+  materialButtonText: { flex: 1, fontSize: 15, fontWeight: '700' },
   contentCard: {
     padding: 16,
     borderRadius: 16,

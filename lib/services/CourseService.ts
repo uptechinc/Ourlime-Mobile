@@ -12,12 +12,13 @@ import {
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app, auth, db } from '@/lib/firebaseConfig';
 import { nativeSessionService } from './NativeSessionService';
-import type { Course, CourseAnnouncement, CourseCategory, CourseModule, CourseLesson, Enrollment, InstructorProfile, CxcSubject } from '@/lib/types/course';
+import type { Course, CourseAnnouncement, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, Enrollment, InstructorProfile, CxcSubject } from '@/lib/types/course';
 
 type Data = DocumentData;
 type QueryDocument = QueryDocumentSnapshot<Data>;
 export type LearningOverview = { courses: Course[]; announcements: CourseAnnouncement[]; instructors: InstructorProfile[]; categories: CourseCategory[] };
 type MutationResponse = { id: string };
+type LessonCompletionResponse = { id: string; score?: number };
 
 export class CourseService {
   private static instance: CourseService;
@@ -137,6 +138,17 @@ export class CourseService {
     return values.filter((item): item is Enrollment => item !== null);
   }
 
+  /** Submits quiz answers (option index per question, -1 when skipped); the server scores them and completes the lesson. */
+  public async submitQuiz(enrollmentId: string, lessonId: string, answers: number[]): Promise<number | null> {
+    const userId = this.requireUserId();
+    await nativeSessionService.ensure(userId);
+    const result = await httpsCallable<{ enrollmentId: string; lessonId: string; operationId: string; answers: number[] }, LessonCompletionResponse>(getFunctions(app), 'completeCourseLesson')({
+      enrollmentId, lessonId, operationId: enrollmentId + '_' + lessonId + '_quiz_' + Date.now(), answers,
+    });
+    nativeSessionService.assertOwner(userId);
+    return typeof result.data.score === 'number' ? result.data.score : null;
+  }
+
   public async markLessonCompleted(enrollmentId: string, lessonId: string, _totalLessonsCount: number): Promise<void> {
     const userId = this.requireUserId();
     await nativeSessionService.ensure(userId);
@@ -231,9 +243,35 @@ export class CourseService {
     const allowed = ['video', 'text', 'quiz', 'assignment', 'resource'] as const;
     const type = allowed.find((candidate) => candidate === data.type);
     if (!type || !this.text(data.courseId) || !this.text(data.moduleId) || !this.text(data.title)) return null;
+    // Same sources as the website lesson page: the media is contentUrl, attachedFile or a URL in content; content is HTML text.
+    const content = this.text(data.content);
+    const contentIsUrl = /^https?:\/\//i.test(content);
+    const mediaUrl = this.optionalText(data.contentUrl) ?? this.optionalText(data.attachedFile) ?? (contentIsUrl ? content : undefined);
     return { id, courseId: this.text(data.courseId), moduleId: this.text(data.moduleId), title: this.text(data.title), description: this.optionalText(data.description),
-      type, content: this.optionalText(data.content ?? data.contentUrl), duration: this.integer(data.duration), order: this.integer(data.order),
+      type, content: contentIsUrl ? undefined : this.plainText(content), mediaUrl, quizQuestions: this.quizQuestions(data.quizQuestions),
+      duration: this.integer(data.duration), order: this.integer(data.order),
       isRequired: data.isRequired === true, isPublished: data.isPublished !== false, isFree: data.isFree === true || data.isPreview === true };
+  }
+  private quizQuestions(value: unknown): CourseQuizQuestion[] {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((item: unknown, index): CourseQuizQuestion[] => {
+      const question = this.object(item);
+      if (!question || !this.text(question.title)) return [];
+      const options = this.textList(question.options);
+      if (options.length < 2) return [];
+      return [{ id: this.text(question.id) || 'question-' + index, title: this.text(question.title), options,
+        correctIndex: typeof question.correctIndex === 'number' ? question.correctIndex : undefined, explanation: this.optionalText(question.explanation) }];
+    });
+  }
+  private plainText(html: string): string | undefined {
+    const text = html
+      .replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6])\s*\/?>/gi, '\n')
+      .replace(/<li[^>]*>/gi, '• ')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return text || undefined;
   }
   private announcement(id: string, data: Data): CourseAnnouncement | null {
     if (!this.text(data.courseId) || !this.text(data.title) || !this.text(data.body ?? data.content)) return null;
