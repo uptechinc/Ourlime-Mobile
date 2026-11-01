@@ -61,20 +61,10 @@ export class MarketplaceService {
     constraints.push(limit(30));
     const productQuery = query(products, ...constraints);
 
-    let snapshot = await getDocs(productQuery);
-    let usesLegacySchema = false;
-
-    // Existing web listings predate publicationState/titleNormalized. Keep the
-    // read bounded and compatible until the release migration has verified and
-    // backfilled those fields. Once canonical documents exist, security rules
-    // can reject this compatibility query without affecting the catalog.
-    if (snapshot.empty) {
-      const legacyConstraints: QueryConstraint[] = [orderBy(documentId())];
-      if (cursor) legacyConstraints.push(startAfter(cursor.id));
-      legacyConstraints.push(limit(90));
-      snapshot = await getDocs(query(products, ...legacyConstraints));
-      usesLegacySchema = true;
-    }
+    // Only published products are readable (firestore.rules /products). The old unfiltered "legacy schema" fallback was
+    // refused for members and, for admins, surfaced unpublished listings whose images and variants are then refused.
+    const snapshot = await getDocs(productQuery);
+    const usesLegacySchema = false;
     const decodedProducts: MarketProduct[] = [];
     const visibleDocuments = snapshot.docs.filter((document) => {
       const data = document.data();

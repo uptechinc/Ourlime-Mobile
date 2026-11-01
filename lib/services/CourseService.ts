@@ -27,8 +27,13 @@ export class CourseService {
 
   public async getOverview(userId: string): Promise<LearningOverview> {
     this.assertWebSession(userId);
+    // Courses decide whether the page works at all; announcements, tutors and categories are extras that must not take
+    // the whole page down when one of them is refused (the website loads them the same way).
     const [courses, announcements, instructors, categories] = await Promise.all([
-      this.getCourses(), this.getAnnouncements(userId), this.getInstructors(), this.getCategories(),
+      this.getCourses(),
+      this.optional('announcements', this.getAnnouncements(userId), [] as CourseAnnouncement[]),
+      this.optional('instructors', this.getInstructors(), [] as InstructorProfile[]),
+      this.optional('categories', this.getCategories(), [] as CourseCategory[]),
     ]);
     nativeSessionService.assertOwner(userId);
     return { courses, announcements, instructors, categories };
@@ -63,8 +68,15 @@ export class CourseService {
     const values: (CourseModule | null)[] = await Promise.all(sortedDocs.map(async (moduleDocument): Promise<CourseModule | null> => {
       let lessonDocuments: QueryDocument[] = [];
       if (access === 'enrolled') {
-        const lessonsSnap = await getDocs(query(collection(this.database, 'courseLessons'), where('courseId', '==', courseId), where('moduleId', '==', moduleDocument.id), limit(200)));
-        lessonDocuments = [...lessonsSnap.docs].sort((a, b) => this.integer(a.data().order) - this.integer(b.data().order));
+        try {
+          const lessonsSnap = await getDocs(query(collection(this.database, 'courseLessons'), where('courseId', '==', courseId), where('moduleId', '==', moduleDocument.id), limit(200)));
+          lessonDocuments = [...lessonsSnap.docs].sort((a, b) => this.integer(a.data().order) - this.integer(b.data().order));
+        } catch (error: unknown) {
+          // The rules grant full lessons through enrollments/{uid}_{courseId}; an older auto-id enrollment is refused, so
+          // show the preview lessons rather than failing the whole course page.
+          console.warn('[CourseService.getCourseCurriculum] Enrolled lessons refused, showing previews:', error instanceof Error ? error.message : 'Unknown error');
+          lessonDocuments = await this.getPreviewLessonDocuments(courseId, moduleDocument.id);
+        }
       } else {
         lessonDocuments = await this.getPreviewLessonDocuments(courseId, moduleDocument.id);
       }
@@ -93,7 +105,12 @@ export class CourseService {
     const snapshot = await getDoc(doc(this.database, 'enrollments', userId + '_' + courseId));
     nativeSessionService.assertOwner(userId);
     const data = snapshot.data();
-    return snapshot.exists() && data ? this.enrollment(snapshot.id, data) : null;
+    if (snapshot.exists() && data) return this.enrollment(snapshot.id, data);
+    // Older website enrollments have auto ids (scripts/migrateEnrollmentIds.ts on the web moves them); find those by field.
+    const legacySnapshot = await getDocs(query(collection(this.database, 'enrollments'), where('userId', '==', userId), where('courseId', '==', courseId), limit(1)));
+    nativeSessionService.assertOwner(userId);
+    const legacyDocument = legacySnapshot.docs[0];
+    return legacyDocument ? this.enrollment(legacyDocument.id, legacyDocument.data()) : null;
   }
 
   public async enrollInCourse(userId: string, courseId: string, operationId = userId + '_' + courseId): Promise<Enrollment> {
@@ -107,11 +124,9 @@ export class CourseService {
   public async getMyEnrollments(userId: string): Promise<Enrollment[]> {
     this.assertWebSession(userId);
     const snapshot = await getDocs(query(collection(this.database, 'enrollments'), where('userId', '==', userId), limit(100)));
-    const sortedDocs = [...snapshot.docs].sort((a, b) => {
-      const timeA = new Date(String(a.data().enrolledAt || 0)).getTime();
-      const timeB = new Date(String(b.data().enrolledAt || 0)).getTime();
-      return timeB - timeA;
-    });
+    // enrolledAt is a Firestore Timestamp; String(timestamp) is not a parseable date, so read it through timestamp().
+    const enrolledAtMillis = (data: Data): number => Date.parse(this.timestamp(data.enrolledAt) ?? '') || 0;
+    const sortedDocs = [...snapshot.docs].sort((leftDocument, rightDocument) => enrolledAtMillis(rightDocument.data()) - enrolledAtMillis(leftDocument.data()));
     const values = await Promise.all(sortedDocs.map(async (item) => {
       const enrollment = this.enrollment(item.id, item.data());
       if (!enrollment) return null;
@@ -133,10 +148,24 @@ export class CourseService {
 
   public async getAnnouncements(userId: string): Promise<CourseAnnouncement[]> {
     const enrollments = await this.getMyEnrollments(userId);
-    const courseIds = [...new Set(enrollments.map((item) => item.courseId))].slice(0, 10);
+    const courseIds = [...new Set(enrollments.filter((item) => item.status === 'active' || item.status === 'completed').map((item) => item.courseId))].slice(0, 10);
     if (!courseIds.length) return [];
-    const snapshot = await getDocs(query(collection(this.database, 'courseAnnouncements'), where('courseId', 'in', courseIds), limit(20)));
-    return snapshot.docs.map((item) => this.announcement(item.id, item.data())).filter((item): item is CourseAnnouncement => item !== null);
+    // One equality query per course: the rules can only prove access course by course, so a single `in` query is refused
+    // as soon as one of the courses is not readable.
+    const perCourse = await Promise.all(courseIds.map((courseId) => this.optional('announcements:' + courseId,
+      getDocs(query(collection(this.database, 'courseAnnouncements'), where('courseId', '==', courseId), limit(5)))
+        .then((snapshot) => snapshot.docs.map((item) => this.announcement(item.id, item.data())).filter((item): item is CourseAnnouncement => item !== null)),
+      [] as CourseAnnouncement[])));
+    return perCourse.flat();
+  }
+
+  private async optional<Value>(label: string, request: Promise<Value>, fallback: Value): Promise<Value> {
+    try {
+      return await request;
+    } catch (error: unknown) {
+      console.warn('[CourseService.optional] ' + label + ' unavailable:', error instanceof Error ? error.message : 'Unknown error');
+      return fallback;
+    }
   }
 
   public async getInstructors(): Promise<InstructorProfile[]> {
