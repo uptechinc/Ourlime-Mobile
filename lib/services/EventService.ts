@@ -129,7 +129,8 @@ export class EventService {
     if (!profile) return undefined;
     const fullName = [profile.firstName, profile.lastName].filter((part): part is string => typeof part === 'string' && part.trim().length > 0).join(' ');
     if (typeof profile.displayName === 'string' && profile.displayName.trim()) return profile.displayName.trim();
-    return fullName || (typeof profile.userName === 'string' ? profile.userName : undefined);
+    // Some accounts' userName is their email address; never show that publicly.
+    return fullName || (typeof profile.userName === 'string' && !profile.userName.includes('@') ? profile.userName : undefined);
   }
 
   private isoDate(value: unknown): string | null {

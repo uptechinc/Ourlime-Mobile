@@ -28,6 +28,7 @@ import {
   ArrowRight,
 } from 'lucide-react-native';
 import UserAvatar from '@/components/ui/UserAvatar';
+import CourseReviews from '@/components/eLearning/CourseReviews';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { CourseDetailSkeleton } from '@/components/ui/Skeleton';
 import { useAppData } from '@/lib/contexts/AppDataContext';
@@ -254,6 +255,8 @@ export default function CourseDetailScreen() {
                     ))}
                   </View>
                 ) : null}
+
+                <CourseReviews courseId={id} currentUserId={activeUserId} canReview={Boolean(enrollment && (enrollment.status === 'active' || enrollment.status === 'completed'))} />
               </View>
             ) : null}
 

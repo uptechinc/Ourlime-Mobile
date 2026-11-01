@@ -11,8 +11,9 @@ import {
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app, auth, db } from '@/lib/firebaseConfig';
+import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import { nativeSessionService } from './NativeSessionService';
-import type { Course, CourseAnnouncement, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, Enrollment, InstructorProfile, CxcSubject } from '@/lib/types/course';
+import type { Course, CourseAnnouncement, CourseReview, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, Enrollment, InstructorProfile, CxcSubject } from '@/lib/types/course';
 
 type Data = DocumentData;
 type QueryDocument = QueryDocumentSnapshot<Data>;
@@ -136,6 +137,40 @@ export class CourseService {
     }));
     nativeSessionService.assertOwner(userId);
     return values.filter((item): item is Enrollment => item !== null);
+  }
+
+  /** Published reviews of a course, newest first (courseReviews; readable while the course is published). */
+  public async getReviews(courseId: string): Promise<CourseReview[]> {
+    this.requireUserId();
+    const snapshot = await getDocs(query(collection(this.database, 'courseReviews'), where('courseId', '==', courseId), limit(50)));
+    // The stored title falls back to the account's userName, which for some accounts is their email address: show the
+    // profile's name instead, and never an email.
+    const reviewerIds = [...new Set(snapshot.docs.map((item) => this.text(item.data().userId)).filter(Boolean))];
+    const profiles = await this.optional('reviewers', firestoreBatchReadService.getDocumentsByIds('users', reviewerIds), new Map<string, Data>());
+    return snapshot.docs.flatMap((item): CourseReview[] => {
+      const data = item.data();
+      const rating = this.integer(data.rating);
+      if (rating < 1 || rating > 5) return [];
+      const userId = this.text(data.userId);
+      return [{ id: item.id, userId, reviewerName: this.reviewerName(profiles.get(userId), this.text(data.title)), rating, comment: this.text(data.comment), createdAt: this.timestamp(data.createdAt) }];
+    }).sort((left, right) => (right.createdAt ?? '').localeCompare(left.createdAt ?? ''));
+  }
+
+  private reviewerName(profile: Data | undefined, storedTitle: string): string {
+    const fullName = profile ? [this.text(profile.firstName), this.text(profile.lastName)].filter(Boolean).join(' ') : '';
+    const candidates = [this.text(profile?.displayName), fullName, storedTitle, this.text(profile?.userName)];
+    const name = candidates.find((candidate) => candidate && !candidate.includes('@'));
+    return name || 'Student';
+  }
+
+  /** Rates a course through manageLearning (add_review), the same server action the website uses; one review per learner. */
+  public async addReview(courseId: string, rating: number, comment: string): Promise<void> {
+    const userId = this.requireUserId();
+    await nativeSessionService.ensure(userId);
+    await httpsCallable<{ action: 'add_review'; courseId: string; rating: number; comment: string }, { reviewId: string }>(getFunctions(app), 'manageLearning')({
+      action: 'add_review', courseId, rating, comment: comment.trim(),
+    });
+    nativeSessionService.assertOwner(userId);
   }
 
   /** Submits quiz answers (option index per question, -1 when skipped); the server scores them and completes the lesson. */

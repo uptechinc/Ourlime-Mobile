@@ -91,7 +91,9 @@ export class CourseInteractionService {
   private profileName(profile: Data | undefined): string | undefined {
     if (!profile) return undefined;
     const fullName = [this.text(profile.firstName), this.text(profile.lastName)].filter(Boolean).join(' ');
-    return this.optionalText(profile.displayName) ?? (fullName || this.optionalText(profile.userName));
+    // Some accounts' userName is their email address; never show that publicly.
+    const userName = this.optionalText(profile.userName);
+    return this.optionalText(profile.displayName) ?? (fullName || (userName && !userName.includes('@') ? userName : undefined));
   }
 
   private requireUserId(): string { const userId = auth.currentUser?.uid; if (!userId) throw new Error('You must be signed in to join course discussions.'); return userId; }

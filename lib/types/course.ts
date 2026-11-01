@@ -101,17 +101,6 @@ export type Enrollment = {
   course?: Course;
 };
 
-export type CourseReview = {
-  id: string;
-  userId: string;
-  courseId: string;
-  userName: string;
-  userAvatar?: string;
-  rating: number; // 1-5
-  comment: string;
-  createdAt: { seconds?: number; toDate?: () => Date } | string | Date;
-};
-
 export type CxcSubject = {
   id: string;
   code: string;
@@ -129,6 +118,7 @@ export type CxcSubject = {
   }[];
 };
 
+export type CourseReview = { id: string; userId: string; reviewerName: string; rating: number; comment: string; createdAt?: string };
 export type CourseAnnouncement = { id: string; courseId: string; title: string; body: string; authorName: string; authorAvatar?: string; important: boolean; createdAt?: string };
 export type InstructorProfile = { id: string; name: string; avatar?: string; bio?: string; specialties: string[]; rating: number; totalStudents: number; totalCourses: number; isVerified: true };
 export type CourseCategory = { id: string; name: string; description?: string; icon?: string; color?: string; order: number; isActive: boolean; courseCount: number };
