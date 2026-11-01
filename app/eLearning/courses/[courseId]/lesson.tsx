@@ -27,6 +27,7 @@ import { LessonScreenSkeleton } from '@/components/ui/Skeleton';
 import { courseService } from '@/lib/services/CourseService';
 import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
 import LessonQuiz from '@/components/eLearning/LessonQuiz';
+import LessonAssignment from '@/components/eLearning/LessonAssignment';
 import type { Course, CourseModule, CourseLesson, Enrollment } from '@/lib/types/course';
 
 // Some lessons are typed "video" but hold a PDF or Word file; only real video files go to the player.
@@ -271,6 +272,16 @@ export default function LessonScreen() {
                 <Text style={[styles.materialButtonText, { color: colors.text }]}>Open lesson material</Text>
                 <ChevronRight size={18} color={colors.mutedText} />
               </TouchableOpacity>
+            ) : null}
+
+            {currentLesson.type === 'assignment' && enrollment && activeUserId ? (
+              <LessonAssignment
+                key={currentLesson.id}
+                userId={activeUserId}
+                courseId={id}
+                lessonId={currentLesson.id}
+                onSubmitted={() => void courseService.getEnrollmentStatus(enrollment.userId, id).then(setEnrollment).catch(() => undefined)}
+              />
             ) : null}
           </View>
         </ScrollView>

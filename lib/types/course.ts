@@ -118,6 +118,8 @@ export type CxcSubject = {
   }[];
 };
 
+export type AssignmentFile = { name: string; url: string; size: number };
+export type AssignmentSubmission = { id: string; status: 'submitted' | 'graded'; textResponse: string; files: AssignmentFile[]; score?: number; maxScore?: number; feedback?: string; submittedAt?: string };
 export type CourseReview = { id: string; userId: string; reviewerName: string; rating: number; comment: string; createdAt?: string };
 export type CourseAnnouncement = { id: string; courseId: string; title: string; body: string; authorName: string; authorAvatar?: string; important: boolean; createdAt?: string };
 export type InstructorProfile = { id: string; name: string; avatar?: string; bio?: string; specialties: string[]; rating: number; totalStudents: number; totalCourses: number; isVerified: true };

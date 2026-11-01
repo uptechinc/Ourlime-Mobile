@@ -10,10 +10,11 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app, auth, db } from '@/lib/firebaseConfig';
+import { app, auth, db, storage } from '@/lib/firebaseConfig';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import { nativeSessionService } from './NativeSessionService';
-import type { Course, CourseAnnouncement, CourseReview, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, Enrollment, InstructorProfile, CxcSubject } from '@/lib/types/course';
+import type { AssignmentFile, AssignmentSubmission, Course, CourseAnnouncement, CourseReview, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, Enrollment, InstructorProfile, CxcSubject } from '@/lib/types/course';
 
 type Data = DocumentData;
 type QueryDocument = QueryDocumentSnapshot<Data>;
@@ -182,6 +183,45 @@ export class CourseService {
     await nativeSessionService.ensure(userId);
     await httpsCallable<{ action: 'add_review'; courseId: string; rating: number; comment: string }, { reviewId: string }>(getFunctions(app), 'manageLearning')({
       action: 'add_review', courseId, rating, comment: comment.trim(),
+    });
+    nativeSessionService.assertOwner(userId);
+  }
+
+  /** The learner's own submission for an assignment lesson, if any (readable by the student and the course owner). */
+  public async getMySubmission(userId: string, lessonId: string): Promise<AssignmentSubmission | null> {
+    this.assertWebSession(userId);
+    const snapshot = await getDocs(query(collection(this.database, 'assignmentSubmissions'), where('studentId', '==', userId), where('lessonId', '==', lessonId), limit(1)));
+    nativeSessionService.assertOwner(userId);
+    const item = snapshot.docs[0];
+    if (!item) return null;
+    const data = item.data();
+    const files = Array.isArray(data.files) ? data.files.flatMap((file: unknown): AssignmentFile[] => {
+      const value = this.object(file);
+      return value && this.text(value.url) ? [{ name: this.text(value.name) || 'Attachment', url: this.text(value.url), size: this.integer(value.size) }] : [];
+    }) : [];
+    return {
+      id: item.id, status: data.status === 'graded' ? 'graded' : 'submitted', textResponse: this.text(data.textResponse), files,
+      score: typeof data.score === 'number' ? data.score : undefined, maxScore: typeof data.maxScore === 'number' ? data.maxScore : undefined,
+      feedback: this.optionalText(data.feedback), submittedAt: this.timestamp(data.submittedAt ?? data.createdAt),
+    };
+  }
+
+  /** Uploads one attachment to assignment-submissions/{uid}/{lessonId}/, the folder the server accepts attachments from. */
+  public async uploadAssignmentFile(lessonId: string, file: { uri: string; name: string; mimeType?: string; size?: number }): Promise<AssignmentFile> {
+    const userId = this.requireUserId();
+    const blob = await (await fetch(file.uri)).blob();
+    const safeName = file.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-120) || 'attachment';
+    const fileReference = ref(storage, `assignment-submissions/${userId}/${lessonId}/${Date.now()}_${safeName}`);
+    await uploadBytes(fileReference, blob, { contentType: file.mimeType || blob.type || 'application/octet-stream' });
+    return { name: file.name, url: await getDownloadURL(fileReference), size: file.size ?? blob.size };
+  }
+
+  /** Hands an assignment in through manageLearning (submit_assignment), as the website does; resubmitting replaces it until graded. */
+  public async submitAssignment(courseId: string, lessonId: string, textResponse: string, files: AssignmentFile[]): Promise<void> {
+    const userId = this.requireUserId();
+    await nativeSessionService.ensure(userId);
+    await httpsCallable<{ action: 'submit_assignment'; courseId: string; lessonId: string; textResponse: string; files: AssignmentFile[] }, { submissionId: string }>(getFunctions(app), 'manageLearning')({
+      action: 'submit_assignment', courseId, lessonId, textResponse: textResponse.trim(), files,
     });
     nativeSessionService.assertOwner(userId);
   }
