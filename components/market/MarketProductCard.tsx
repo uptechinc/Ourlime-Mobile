@@ -29,7 +29,7 @@ export default function MarketProductCard({ product, favorite, onOpen, onToggleF
   const handleFavorite = (event: GestureResponderEvent) => { event.stopPropagation(); onToggleFavorite(product.id); };
   const handleQuickAdd = (event: GestureResponderEvent) => { event.stopPropagation(); onQuickAdd(product); };
   const condition = product.condition?.replace('_', ' ');
-  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.title}`} onPress={() => onOpen(product)} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
+  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.title}`} onPress={() => onOpen(product)} style={styles.card} android_ripple={{ color: colors.control }}>
     <View style={styles.imageFrame}>
       {product.images[0] ? <Image source={{ uri: product.images[0] }} resizeMode="cover" style={styles.image} /> : <View style={styles.imageFallback}><ImageIcon color={colors.mutedText} size={28} /><Text style={styles.fallbackText}>Image unavailable</Text></View>}
       <Pressable accessibilityRole="button" accessibilityLabel={favorite ? `Remove ${product.title} from favorites` : `Save ${product.title} to favorites`} onPress={handleFavorite} hitSlop={8} style={styles.favoriteButton}>

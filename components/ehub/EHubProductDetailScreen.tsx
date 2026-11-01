@@ -163,14 +163,15 @@ function ProductCollection({ title, products, onOpen }: { title: string; product
 }
 
 const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.canvas, alignItems: 'center' },
+  // No alignItems here: it shrank the full-width page header to its content. The body centres itself instead.
+  screen: { flex: 1, backgroundColor: colors.canvas },
   flex: { flex: 1, minWidth: 0 },
   fill: { width: '100%', height: '100%' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   stack: { gap: 14 },
   muted: { color: colors.mutedText, fontSize: 13, lineHeight: 19 },
   scrollContent: { paddingBottom: 48, alignItems: 'center' },
-  body: { maxWidth: '100%', paddingHorizontal: gutter, paddingTop: 16, gap: 22 },
+  body: { maxWidth: '100%', alignSelf: 'center', paddingHorizontal: gutter, paddingTop: 16, gap: 22 },
   top: { gap: 18 },
   topWide: { flexDirection: 'row', alignItems: 'flex-start', gap: 24 },
   mainImage: { width: '100%', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 24, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },

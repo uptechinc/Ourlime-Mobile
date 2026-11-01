@@ -46,7 +46,7 @@ export default function PromotionSlider({ onSelect }: PromotionSliderProps) {
               accessibilityRole="button"
               accessibilityLabel={`${promotion.name}. ${promotion.description}`}
               onPress={() => onSelect?.(promotion.id)}
-              style={({ pressed }) => [styles.card, { width: cardWidth }, pressed && styles.pressed]}
+              style={[styles.card, { width: cardWidth }]}
             >
               <LinearGradient colors={[...promotion.colors]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.gradient}>
                 <View style={styles.iconSurface}><Icon color="#ffffff" size={20} /></View>

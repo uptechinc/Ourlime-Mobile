@@ -155,12 +155,7 @@ export default function InAppNotificationBanner() {
           >
             <Pressable
               onPress={handlePress}
-              style={({ pressed }) => [
-                styles.pressableContent,
-                {
-                  opacity: pressed ? 0.9 : 1,
-                },
-              ]}
+              style={styles.pressableContent}
             >
               {/* Top meta row: App tag & time */}
               <View style={styles.topMetaRow}>

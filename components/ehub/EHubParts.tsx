@@ -59,7 +59,7 @@ export function EHubProductCard({ product, width, onOpen }: ProductCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isAvailable = product.inventory > 0;
-  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.title}`} onPress={() => onOpen(product.id)} style={({ pressed }) => [styles.productCard, { width }, pressed && styles.pressed]}>
+  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.title}`} onPress={() => onOpen(product.id)} style={[styles.productCard, { width }]} android_ripple={{ color: colors.control }}>
     <View style={[styles.productImage, { height: width }]}>
       {product.imageUrl ? <CachedImage uri={product.imageUrl} style={styles.fill} accessibilityLabel={product.title} /> : <Package size={34} color={colors.mutedText} />}
       <View style={styles.stockBadge}><Text style={styles.stockText}>{isAvailable ? `${product.inventory} available` : 'Out of stock'}</Text></View>
@@ -81,7 +81,7 @@ export function EHubProviderCard({ provider, width, onOpen, actionLabel = 'View 
   const label = provider.kind === 'professional' ? 'Professional' : 'Storefront';
   const tags = [...new Set([...provider.categories, ...provider.services])].slice(0, 3);
   const place = provider.nationwide ? 'Nationwide' : provider.location || provider.serviceAreas[0] || '';
-  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${provider.name}`} onPress={() => onOpen(provider.id)} style={({ pressed }) => [styles.providerCard, { width }, pressed && styles.pressed]}>
+  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${provider.name}`} onPress={() => onOpen(provider.id)} style={[styles.providerCard, { width }]} android_ripple={{ color: colors.control }}>
     <View style={styles.cover}>
       {provider.coverUrl ? <CachedImage uri={provider.coverUrl} style={styles.fill} /> : null}
       <View style={styles.kindBadge}><Text style={styles.kindText}>{label}</Text></View>
