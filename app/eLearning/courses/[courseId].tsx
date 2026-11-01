@@ -26,6 +26,7 @@ import {
   BookOpen,
   MessageCircle,
   ArrowRight,
+  TrendingUp,
 } from 'lucide-react-native';
 import UserAvatar from '@/components/ui/UserAvatar';
 import CourseReviews from '@/components/eLearning/CourseReviews';
@@ -234,6 +235,13 @@ export default function CourseDetailScreen() {
               <TouchableOpacity accessibilityRole="button" onPress={() => router.push(`/eLearning/courses/${id}/discussions` as Href)} style={[styles.discussionButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <MessageCircle size={19} color="#10b981" />
                 <Text style={[styles.discussionButtonText, { color: colors.text }]}>Course discussions</Text>
+                <ArrowRight size={17} color={colors.mutedText} />
+              </TouchableOpacity>
+            ) : null}
+            {enrollment ? (
+              <TouchableOpacity accessibilityRole="button" onPress={() => router.push(`/eLearning/courses/${id}/grades` as Href)} style={[styles.discussionButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <TrendingUp size={19} color="#10b981" />
+                <Text style={[styles.discussionButtonText, { color: colors.text }]}>Progress & grades</Text>
                 <ArrowRight size={17} color={colors.mutedText} />
               </TouchableOpacity>
             ) : null}

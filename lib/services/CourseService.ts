@@ -139,6 +139,19 @@ export class CourseService {
     return values.filter((item): item is Enrollment => item !== null);
   }
 
+  /** The learner's scored lessons in a course (courseProgress: moduleId holds the lesson id), as lessonId -> score. */
+  public async getLessonScores(userId: string, courseId: string): Promise<Map<string, number>> {
+    this.assertWebSession(userId);
+    const snapshot = await getDocs(query(collection(this.database, 'courseProgress'), where('userId', '==', userId), where('courseId', '==', courseId), limit(200)));
+    nativeSessionService.assertOwner(userId);
+    const scores = new Map<string, number>();
+    snapshot.docs.forEach((item) => {
+      const data = item.data();
+      if (typeof data.score === 'number' && Number.isFinite(data.score) && this.text(data.moduleId)) scores.set(this.text(data.moduleId), Math.round(data.score));
+    });
+    return scores;
+  }
+
   /** Published reviews of a course, newest first (courseReviews; readable while the course is published). */
   public async getReviews(courseId: string): Promise<CourseReview[]> {
     this.requireUserId();
