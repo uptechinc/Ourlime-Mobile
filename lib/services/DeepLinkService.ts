@@ -255,7 +255,7 @@ export class DeepLinkService {
       case 'blogs': return '/blogs';
       case 'blog': return `/blogs/${encodeURIComponent(destination.blogId)}`;
       case 'lime': return sharedContentMessageService.getMobileRoute('lime', destination.limeId);
-      case 'event': return destination.eventId ? `/events?targetId=${encodeURIComponent(destination.eventId)}` : '/events';
+      case 'event': return destination.eventId ? `/events/${encodeURIComponent(destination.eventId)}` : '/events';
       case 'job': return destination.jobId ? `/jobs/${encodeURIComponent(destination.jobId)}` : '/jobs';
       case 'market-product': return destination.productId ? `/market?product=${encodeURIComponent(destination.productId)}` : '/market';
       case 'admin-report': return `/admin/reports/${encodeURIComponent(destination.reportId)}`;

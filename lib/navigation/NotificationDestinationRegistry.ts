@@ -320,7 +320,7 @@ export class NotificationDestinationRegistry {
 			return this.navigate(fallbackRoute, fallbackRoute, data);
 		if (data.destinationKind === 'event' && data.eventId)
 			return this.navigate(
-				{ pathname: '/events', params: { targetId: data.eventId } },
+				{ pathname: '/events/[id]', params: { id: data.eventId } },
 				fallbackRoute,
 				data
 			);
