@@ -3,7 +3,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindo
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
-import { BookOpen, ClipboardCheck, Clock, GraduationCap, ShieldCheck, Star, Trash2, Users } from 'lucide-react-native';
+import { BookOpen, ClipboardCheck, Clock, GraduationCap, Plus, ShieldCheck, Star, Trash2, Users } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
 import CustomModal from '@/components/ui/CustomModal';
 import { CourseDetailSkeleton } from '@/components/ui/Skeleton';
@@ -118,8 +118,12 @@ export default function InstructorDashboardScreen() {
                   <View style={styles.statCard}><Users size={18} color={colors.accent} /><Text style={styles.statValue}>{totalStudents}</Text><Text style={styles.muted}>Learners</Text></View>
                 </View>
 
-                <Text style={styles.sectionTitle}>My courses</Text>
-                <Text style={styles.muted}>Create new courses on ourlime.com; manage and grade them here.</Text>
+                <View style={styles.coursesHeader}>
+                  <Text style={[styles.sectionTitle, styles.flex]}>My courses</Text>
+                  <Pressable accessibilityRole="button" onPress={() => router.push('/eLearning/instructor/create' as Href)} style={styles.createButton}>
+                    <Plus size={16} color={colors.onAccent} /><Text style={styles.createText}>Create course</Text>
+                  </Pressable>
+                </View>
                 {courses.length === 0 ? <Text style={styles.empty}>You have no courses yet.</Text> : null}
                 {courses.map((course) => (
                   <View key={course.id} style={styles.courseCard}>
@@ -191,6 +195,9 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   statsWide: { flexDirection: 'row' },
   statCard: { flex: 1, padding: 14, gap: 2, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   statValue: { marginTop: 4, color: colors.text, fontSize: 24, fontWeight: '900' },
+  coursesHeader: { marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  createButton: { minHeight: 40, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 12, backgroundColor: colors.accent },
+  createText: { color: colors.onAccent, fontSize: 13, fontWeight: '800' },
   sectionTitle: { marginTop: 6, color: colors.text, fontSize: 18, fontWeight: '900' },
   muted: { color: colors.mutedText, fontSize: 12 },
   empty: { color: colors.mutedText, fontSize: 14, paddingVertical: 12 },

@@ -51,7 +51,17 @@ export type InstructorApplication = {
   resumeUrl: string;
 };
 
+export type CourseLevel = 'beginner' | 'intermediate' | 'advanced';
+export type StagedCourseFile = { path: string; name: string; type: 'video' | 'pdf' | 'document' | 'image'; size: number };
+export type NewCourseLesson = { title: string; type: 'video' | 'text' | 'document'; content: string; duration: number; file: StagedCourseFile | null };
+export type NewCourse = {
+  course: { title: string; shortDescription: string; description: string; category: string; level: CourseLevel; price: number; tags: string[]; prerequisites: string[]; learningObjectives: string[] };
+  thumbnail: StagedCourseFile | null;
+  modules: { title: string; description: string; lessons: NewCourseLesson[] }[];
+};
+
 type ManageLearningRequest =
+  | ({ action: 'publish_course' } & NewCourse)
   | { action: 'register_instructor'; profile: InstructorApplication & { applicationType: 'individual'; courseAvailability: 'both' } }
   | { action: 'update_course'; courseId: string; updates: { status: InstructorCourseStatus } }
   | { action: 'delete_course'; courseId: string }
@@ -112,6 +122,25 @@ export class InstructorService {
     await this.call({ action: 'register_instructor', profile: { ...application, applicationType: 'individual', courseAvailability: 'both' } });
   }
 
+  /**
+   * Stages a course file at instructors/{uid}/courseUploads/<file> (the only place publish_course accepts files from;
+   * the server copies it into the course's own folder).
+   */
+  public async uploadCourseFile(file: { uri: string; name: string; mimeType?: string; size?: number }, type: StagedCourseFile['type']): Promise<StagedCourseFile> {
+    const userId = auth.currentUser?.uid;
+    if (!userId) throw new Error('Sign in to continue.');
+    const blob = await (await fetch(file.uri)).blob();
+    const safeName = file.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-120) || 'file';
+    const path = `instructors/${userId}/courseUploads/${Date.now()}_${safeName}`;
+    await uploadBytes(ref(storage, path), blob, { contentType: file.mimeType || blob.type || 'application/octet-stream' });
+    return { path, name: file.name, type, size: file.size ?? blob.size };
+  }
+
+  /** Creates the course with its modules and lessons; verified instructors publish straight away, others go to review. */
+  public async createCourse(course: NewCourse): Promise<{ courseId: string; status: 'published' | 'pending_review' }> {
+    return this.call<{ courseId: string; status: 'published' | 'pending_review' }>({ action: 'publish_course', ...course });
+  }
+
   public async setCourseStatus(courseId: string, status: InstructorCourseStatus): Promise<void> {
     await this.call({ action: 'update_course', courseId, updates: { status } });
   }
@@ -124,12 +153,13 @@ export class InstructorService {
     await this.call({ action: 'grade_submission', submissionId, score, feedback: feedback.trim() });
   }
 
-  private async call(request: ManageLearningRequest): Promise<void> {
+  private async call<Result = unknown>(request: ManageLearningRequest): Promise<Result> {
     const userId = auth.currentUser?.uid;
     if (!userId) throw new Error('Sign in to continue.');
     await nativeSessionService.ensure(userId);
-    await httpsCallable<ManageLearningRequest, unknown>(getFunctions(app), 'manageLearning')(request);
+    const result = await httpsCallable<ManageLearningRequest, Result>(getFunctions(app), 'manageLearning')(request);
     nativeSessionService.assertOwner(userId);
+    return result.data;
   }
 
   private toCourse(id: string, data: DocumentData): InstructorCourse {
