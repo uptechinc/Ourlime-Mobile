@@ -123,7 +123,7 @@ All skills in `.agents/skills/` are configured with standard `agents/openai.yaml
 - **`native-build-stability`**: [`.agents/skills/native-build-stability/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/native-build-stability/SKILL.md) — Standalone APK/IPA stability.
 - **`roles-and-permissions`**: [`.agents/skills/roles-and-permissions/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/roles-and-permissions/SKILL.md) — User roles, page access statuses, staff preview, and why gated pages are intentional.
 - **`git-workflow`**: [`.agents/skills/git-workflow/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/git-workflow/SKILL.md) — Work directly on `main`: no feature branches, worktrees or PRs; pull, check, commit, push to main.
-- **`app-release`**: [`.agents/skills/app-release/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/app-release/SKILL.md) — Every APK/OTA update ships detailed bulleted notes in `lib/releaseNotes.json` covering all changes since the last release; local builds only for the update prompt.
+- **`app-release`**: [`.agents/skills/app-release/SKILL.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/.agents/skills/app-release/SKILL.md) — Every APK/OTA update ships detailed bulleted notes in `lib/releaseNotes.json` covering all changes since the last release; production (Play `com.ourlime.mobile`) builds only, built locally, never EAS or tester builds.
 
 AI Assistant files available across the repository:
 - [`CHATGPT.md`](file:///c:/Users/aaron/Github/Ourlime-Web/Ourlime-Mobile/CHATGPT.md) — ChatGPT Projects & OpenAI workspace context.

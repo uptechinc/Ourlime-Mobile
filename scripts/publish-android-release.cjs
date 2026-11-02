@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 /*
- * Publishes a locally built Android APK as the newest in-app update (docs/app-updates/RELEASING.md).
+ * Announces a new production (Play, com.ourlime.mobile) release to installed apps (docs/app-updates/RELEASING.md).
+ * Run it only after the release is live on Play: it sets latestVersion/latestVersionCode, the notes and the Play
+ * link, so open apps show "Update available" (opening the Play listing) and notifyAppUpdate sends the push.
  *
  *   node scripts/publish-android-release.cjs --dry-run
- *   node scripts/publish-android-release.cjs --notes "Faster feeds|Trim videos before posting"
+ *   node scripts/publish-android-release.cjs
  *
  * Options:
- *   --dry-run                 Print what would change; upload and write nothing.
- *   --apk <path>              The APK to publish (default: newest release Ourlime-*.apk in the repo root / Gradle output).
+ *   --dry-run                 Print what would change; write nothing.
+ *   --sideload --apk <path>   Legacy: upload a sideload APK (com.ourlime.app) instead. Not used for releases.
  *   --notes "a|b|c"           Release notes, one line per "|" (or --notes-file <path>, one note per line).
  *                             Default: lib/releaseNotes.json, the notes bundled into the app for "What's new".
  *   --minimum-version <x.y.z> Also raise siteConfig/mobileApp.minimumVersion (blocks older builds). Use with care.
@@ -27,6 +29,7 @@ const { execFileSync } = require('child_process');
 
 const projectRoot = path.resolve(__dirname, '..');
 const PACKAGE_NAME = 'com.ourlime.app';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.ourlime.mobile';
 const STORAGE_PREFIX = 'app-releases/android';
 
 function fail(message) {
@@ -35,7 +38,7 @@ function fail(message) {
 }
 
 function readArguments(argv) {
-  const options = { dryRun: false, apk: null, notes: [], minimumVersion: null, otaAvailable: false };
+  const options = { dryRun: false, sideload: false, apk: null, notes: [], minimumVersion: null, otaAvailable: false };
   for (let index = 0; index < argv.length; index++) {
     const argument = argv[index];
     const next = () => {
@@ -44,6 +47,7 @@ function readArguments(argv) {
       return value;
     };
     if (argument === '--dry-run') options.dryRun = true;
+    else if (argument === '--sideload') options.sideload = true;
     else if (argument === '--apk') options.apk = path.resolve(next());
     else if (argument === '--notes') options.notes = next().split('|');
     else if (argument === '--notes-file') options.notes = fs.readFileSync(path.resolve(next()), 'utf8').split(/\r?\n/);
@@ -51,6 +55,7 @@ function readArguments(argv) {
     else if (argument === '--ota-available') options.otaAvailable = true;
     else fail(`Unknown option ${argument}`);
   }
+  if (options.apk && !options.sideload) fail('--apk is only for --sideload. Production releases ship through Play.');
   options.notes = options.notes.map((note) => note.trim()).filter(Boolean).slice(0, 12);
   if (options.minimumVersion && !/^\d+(\.\d+){0,3}$/.test(options.minimumVersion)) fail('--minimum-version must look like 1.2.0');
   return options;
@@ -161,11 +166,64 @@ function loadFirebaseAdmin() {
   return null;
 }
 
+/** Production: no upload; the Play listing is the download. sideloadUpdates false sends every build to the store. */
+async function publishPlayRelease(options, appConfig, firebaseProject) {
+  const nextFields = {
+    latestVersion: appConfig.version,
+    latestVersionCode: appConfig.versionCode,
+    releaseNotes: options.notes,
+    androidStoreUrl: PLAY_STORE_URL,
+    sideloadUpdates: false,
+    ...(options.otaAvailable ? { otaAvailable: true } : {}),
+    ...(options.minimumVersion ? { minimumVersion: options.minimumVersion } : {}),
+  };
+  console.log('Production release (Play)');
+  console.log(`  version          ${appConfig.version} (versionCode ${appConfig.versionCode})`);
+  console.log(`  store link       ${PLAY_STORE_URL}`);
+  console.log(`  notes            ${options.notes.length ? options.notes.join(' | ') : '(none)'}`);
+
+  const admin = loadFirebaseAdmin();
+  if (!admin || !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    const reason = !admin ? 'firebase-admin was not found (run `bun install` in ../functions)' : 'GOOGLE_APPLICATION_CREDENTIALS is not set';
+    if (options.dryRun) {
+      console.log(`\n(dry run) Skipping the Firestore comparison: ${reason}.`);
+      console.log(JSON.stringify({ ...nextFields, releasedAt: '<server timestamp>' }, null, 2));
+      return;
+    }
+    fail(`Cannot publish: ${reason}.`);
+  }
+  admin.app.initializeApp({ credential: admin.app.applicationDefault(), projectId: firebaseProject.projectId });
+  const database = admin.firestore.getFirestore();
+  const configReference = database.doc('siteConfig/mobileApp');
+  const current = (await configReference.get()).data() || {};
+  const currentCode = Number.isSafeInteger(current.latestVersionCode) ? current.latestVersionCode : 0;
+  console.log(`\nFirestore latestVersionCode now: ${currentCode || '(none)'}`);
+  if (appConfig.versionCode <= currentCode) fail(`versionCode ${appConfig.versionCode} is not greater than the published ${currentCode}.`);
+  console.log('\nsiteConfig/mobileApp changes:');
+  Object.entries(nextFields).forEach(([key, value]) => {
+    const before = JSON.stringify(current[key]);
+    const after = JSON.stringify(value);
+    if (before !== after) console.log(`  ${key}: ${before ?? '(unset)'} → ${after}`);
+  });
+  if (options.dryRun) {
+    console.log('\n(dry run) Nothing was written.');
+    return;
+  }
+  await database.runTransaction(async (transaction) => {
+    const latest = (await transaction.get(configReference)).data() || {};
+    const latestCode = Number.isSafeInteger(latest.latestVersionCode) ? latest.latestVersionCode : 0;
+    if (appConfig.versionCode <= latestCode) throw new Error(`Someone published versionCode ${latestCode} meanwhile.`);
+    transaction.set(configReference, { ...nextFields, releasedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+  console.log(`\n✔ Announced Ourlime ${appConfig.version} (${appConfig.versionCode}). Open apps see it within seconds; notifyAppUpdate sends the push.`);
+}
+
 async function main() {
   const options = readArguments(process.argv.slice(2));
   const appConfig = readAppConfig();
   if (options.notes.length === 0) options.notes = readBundledNotes(appConfig);
   const firebaseProject = readFirebaseProject();
+  if (!options.sideload) return publishPlayRelease(options, appConfig, firebaseProject);
   const apkPath = options.apk || findNewestApk();
   if (!fs.existsSync(apkPath)) fail(`APK not found: ${apkPath}`);
 

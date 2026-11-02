@@ -19,6 +19,7 @@
     "check": "tsc --noEmit && expo lint && node scripts/check-discipline.cjs",
     "build": "npx eas build --platform android --profile preview --non-interactive",
     "build:local": "node scripts/build-local-apk.cjs",
+    "build:local:apk": "node scripts/build-local-apk.cjs --apk",
     "build:local:debug": "node scripts/build-local-apk.cjs --debug",
     "build:dev": "npx eas build --platform android --profile development --non-interactive",
     "build:dev:local": "node scripts/build-local-apk.cjs --debug",

@@ -53,3 +53,7 @@ evidence/
 # Local build outputs (too large for GitHub)
 *.apk
 *.aab
+
+# Play upload key (npx eas-cli credentials -p android)
+credentials.json
+credentials/
