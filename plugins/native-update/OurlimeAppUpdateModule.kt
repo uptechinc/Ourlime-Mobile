@@ -1,5 +1,6 @@
 package com.ourlime.app
 
+import android.app.Activity
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -17,6 +18,12 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.google.android.play.core.appupdate.AppUpdateInfo
+import com.google.android.play.core.appupdate.AppUpdateManager
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.appupdate.AppUpdateOptions
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.UpdateAvailability
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -37,6 +44,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * a file whose size or SHA-256 doesn't match siteConfig/mobileApp. verifyApk checks package name, a higher
  * versionCode and the installed app's signing certificate before Android ever sees the file. installApk writes it into
  * a PackageInstaller session; Android shows its own confirmation and replaces the app (the process ends on success).
+ *
+ * checkPlayUpdate / startPlayUpdate ask Google Play itself (Play Core in-app updates) on Play builds, so a release is
+ * offered as soon as Play serves it, whatever siteConfig/mobileApp says.
  *
  * Every method has a single signature (no overloads, AGENTS §5) and rejects with an UPDATE_* code and a readable message.
  */
@@ -86,6 +96,61 @@ class OurlimeAppUpdateModule(
 
   @ReactMethod
   fun removeListeners(count: Int) = Unit
+
+  // ── Google Play in-app updates ──────────────────────────────────────────────
+
+  private val playUpdateManager: AppUpdateManager by lazy { AppUpdateManagerFactory.create(reactContext) }
+
+  /** Resolves { isAvailable, versionCode, stalenessDays, priority }; rejects when Play can't answer (sideload, no Play). */
+  @ReactMethod
+  fun checkPlayUpdate(promise: Promise) {
+    try {
+      playUpdateManager.appUpdateInfo
+        .addOnSuccessListener { info ->
+          promise.resolve(Arguments.createMap().apply {
+            putBoolean("isAvailable", isPlayUpdateStartable(info))
+            putDouble("versionCode", info.availableVersionCode().toDouble())
+            putDouble("stalenessDays", (info.clientVersionStalenessDays() ?: -1).toDouble())
+            putDouble("priority", info.updatePriority().toDouble())
+          })
+        }
+        .addOnFailureListener { error -> promise.reject("UPDATE_UNAVAILABLE", "Google Play could not be asked for updates.", error) }
+    } catch (error: Exception) {
+      promise.reject("UPDATE_UNAVAILABLE", "Google Play could not be asked for updates.", error)
+    }
+  }
+
+  /**
+   * Opens Play's full-screen update (IMMEDIATE): Play downloads, installs and restarts the app. Resolves "accepted"
+   * (the app is about to restart) or "cancelled"; rejects UPDATE_UNAVAILABLE when Play has nothing to install.
+   */
+  @ReactMethod
+  fun startPlayUpdate(promise: Promise) {
+    val activity: Activity = reactContext.currentActivity ?: run {
+      promise.reject("UPDATE_UNAVAILABLE", "Ourlime isn't in the foreground.")
+      return
+    }
+    try {
+      playUpdateManager.appUpdateInfo
+        .addOnSuccessListener { info ->
+          if (!isPlayUpdateStartable(info)) {
+            promise.reject("UPDATE_UNAVAILABLE", "Google Play has no update for this device yet.")
+            return@addOnSuccessListener
+          }
+          playUpdateManager.startUpdateFlow(info, activity, AppUpdateOptions.newBuilder(AppUpdateType.IMMEDIATE).build())
+            .addOnSuccessListener { resultCode -> promise.resolve(if (resultCode == Activity.RESULT_OK) "accepted" else "cancelled") }
+            .addOnFailureListener { error -> promise.reject("UPDATE_INSTALL_FAILED", "Google Play could not start the update.", error) }
+        }
+        .addOnFailureListener { error -> promise.reject("UPDATE_UNAVAILABLE", "Google Play could not be asked for updates.", error) }
+    } catch (error: Exception) {
+      promise.reject("UPDATE_INSTALL_FAILED", "Google Play could not start the update.", error)
+    }
+  }
+
+  /** An update Play can install now, or one already started by us that should be resumed. */
+  private fun isPlayUpdateStartable(info: AppUpdateInfo): Boolean =
+    (info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE && info.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE))
+      || info.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS
 
   // ── Installed build ─────────────────────────────────────────────────────────
 

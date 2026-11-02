@@ -42,6 +42,17 @@ export type NativeAppUpdateErrorCode =
 
 type NativeDownloadResult = { path: string; sizeBytes: number; sha256: string };
 
+/** What Google Play says about a newer build (Play builds only). */
+export type PlayUpdateInfo = {
+  isAvailable: boolean;
+  versionCode: number;
+  stalenessDays: number | null;
+  priority: number;
+};
+
+/** accepted: Play is installing and will restart the app. cancelled: the person backed out of Play's screen. */
+export type PlayUpdateResult = 'accepted' | 'cancelled';
+
 type NativeAppUpdateModule = {
   getInstalledInfo: () => Promise<NativeInstalledInfo>;
   canInstallPackages: () => Promise<boolean>;
@@ -52,6 +63,9 @@ type NativeAppUpdateModule = {
   verifyApk: (path: string) => Promise<{ versionCode: number; versionName: string }>;
   installApk: (path: string) => Promise<void>;
   clearDownloads: () => Promise<void>;
+  // Absent on binaries built before Play in-app updates were added.
+  checkPlayUpdate?: () => Promise<{ isAvailable?: unknown; versionCode?: unknown; stalenessDays?: unknown; priority?: unknown }>;
+  startPlayUpdate?: () => Promise<string>;
   addListener: (eventName: string) => void;
   removeListeners: (count: number) => void;
 };
@@ -210,6 +224,47 @@ export class NativeAppUpdateService {
     } catch (error: unknown) {
       const updateError = toUpdateError(error);
       this.logger.warn('NativeAppUpdateService', 'install:failed', { code: updateError.code, reason: updateError.message });
+      throw updateError;
+    }
+  }
+
+  // ── Google Play in-app updates ─────────────────────────────────────────────
+
+  public isPlayUpdateAvailable(): boolean {
+    return readDistribution() === 'play' && typeof getNativeModule()?.checkPlayUpdate === 'function';
+  }
+
+  /** Asks Google Play whether it serves a newer build; null when Play can't answer (sideload, no Play, old binary). */
+  public async checkPlayUpdate(): Promise<PlayUpdateInfo | null> {
+    const nativeModule = getNativeModule();
+    if (readDistribution() !== 'play' || !nativeModule?.checkPlayUpdate) return null;
+    try {
+      const info = await nativeModule.checkPlayUpdate();
+      const versionCode = typeof info.versionCode === 'number' && Number.isSafeInteger(info.versionCode) ? info.versionCode : 0;
+      const stalenessDays = typeof info.stalenessDays === 'number' && info.stalenessDays >= 0 ? info.stalenessDays : null;
+      return {
+        isAvailable: info.isAvailable === true && versionCode > 0,
+        versionCode,
+        stalenessDays,
+        priority: typeof info.priority === 'number' ? info.priority : 0,
+      };
+    } catch (error: unknown) {
+      console.warn('[NativeAppUpdateService.checkPlayUpdate] Error:', error instanceof Error ? error.message : error);
+      return null;
+    }
+  }
+
+  /** Play's full-screen update: Play downloads, installs and restarts Ourlime. */
+  public async startPlayUpdate(): Promise<PlayUpdateResult> {
+    const nativeModule = getNativeModule();
+    if (!nativeModule?.startPlayUpdate) throw new NativeAppUpdateError('UPDATE_UNAVAILABLE', 'In-app updates are not available in this build.');
+    try {
+      const result = await nativeModule.startPlayUpdate();
+      this.logger.info('NativeAppUpdateService', 'play-update', { result });
+      return result === 'accepted' ? 'accepted' : 'cancelled';
+    } catch (error: unknown) {
+      const updateError = toUpdateError(error);
+      this.logger.warn('NativeAppUpdateService', 'play-update:failed', { code: updateError.code, reason: updateError.message });
       throw updateError;
     }
   }

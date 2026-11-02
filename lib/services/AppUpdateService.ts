@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Linking, Platform, type AppStateStatus, type EmitterSubscription } from 'react-native';
-import { appVersionService, type AppRelease, type InstalledBuild, type MobileAppConfig } from './AppVersionService';
+import { appVersionService, type AppRelease, type AppVersionCheck, type InstalledBuild, type MobileAppConfig } from './AppVersionService';
 import { appUpdateStateMachine, type AppUpdateEvent } from './AppUpdateStateMachine';
 import { otaUpdateService } from './OtaUpdateService';
-import { nativeAppUpdateService, type ApkInstallEvent } from './NativeAppUpdateService';
+import { nativeAppUpdateService, type ApkInstallEvent, type PlayUpdateInfo } from './NativeAppUpdateService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { useAppUpdateStore, type AppUpdatePrompt } from '@/lib/store/useAppUpdateStore';
 import { useCallStore } from '@/lib/store/useCallStore';
@@ -40,8 +40,8 @@ const formatMegabytes = (bytes: number): string => `${Math.max(1, Math.round(byt
 
 /**
  * The one place the update flow lives (UI talks to it through useAppUpdate). Signals: a live listener on
- * siteConfig/mobileApp, a throttled foreground re-check (Firestore + EAS Update), app_update pushes, and the Settings
- * row. Releases are offered in a sheet; the APK path downloads, verifies and hands over to Android's installer, the
+ * siteConfig/mobileApp, a throttled foreground re-check (Firestore + EAS Update + Google Play on Play builds), app_update
+ * pushes, and the Settings row. A build Play serves is offered even before siteConfig/mobileApp names it. Releases are offered in a sheet; the APK path downloads, verifies and hands over to Android's installer, the
  * OTA path downloads and restarts on a tap. Nothing restarts, reloads or opens the installer on its own during a call
  * or an upload. Every failure falls back to "no update" so a broken update system never gets in the way.
  */
@@ -58,6 +58,8 @@ export class AppUpdateService {
   private readonly promptedKeys = new Set<string>();
   private isAwaitingInstallPermission = false;
   private releaseSubscriptions: Array<() => void> = [];
+  /** Google Play's last answer (Play builds); null when it has nothing newer or can't be asked. */
+  private playUpdate: PlayUpdateInfo | null = null;
 
   private constructor() {}
 
@@ -138,7 +140,7 @@ export class AppUpdateService {
   // ── Signals ──────────────────────────────────────────────────────────────────
 
   private applyConfig(config: MobileAppConfig | null): void {
-    const versionCheck = appVersionService.evaluate(this.installed.version, config, Platform.OS, this.installed.versionCode);
+    const versionCheck = this.withPlayUpdate(appVersionService.evaluate(this.installed.version, config, Platform.OS, this.installed.versionCode));
     this.dispatch({ type: 'check_finished', versionCheck, otaReady: otaUpdateService.hasPendingUpdate() });
     if (!this.hasHandledWhatsNew) void this.handleWhatsNew(config ? appVersionService.readRelease(config) : null);
     void this.maybePromptAutomatically();
@@ -155,7 +157,8 @@ export class AppUpdateService {
     this.lastCheckedAt = Date.now();
     if (isManual) this.dispatch({ type: 'check_started' });
     try {
-      const [versionCheck, otaResult] = await Promise.all([appVersionService.check(), otaUpdateService.check()]);
+      const [configCheck, otaResult] = await Promise.all([appVersionService.check(), otaUpdateService.check(), this.refreshPlayUpdate()]);
+      const versionCheck = this.withPlayUpdate(configCheck);
       this.dispatch({ type: 'check_finished', versionCheck, otaReady: otaUpdateService.hasPendingUpdate() });
       const state = useAppUpdateStore.getState();
       // A JavaScript-only update applies when there's no new APK to install for this device.
@@ -168,6 +171,36 @@ export class AppUpdateService {
       console.warn('[AppUpdateService.refresh] Error:', error instanceof Error ? error.message : error);
       if (isManual) this.dispatch({ type: 'failed', message: 'Could not check for updates. Try again later.' });
     }
+  }
+
+  private async refreshPlayUpdate(): Promise<void> {
+    const info = await nativeAppUpdateService.checkPlayUpdate();
+    const isNewer = info !== null && info.isAvailable && (this.installed.versionCode === null || info.versionCode > this.installed.versionCode);
+    this.playUpdate = isNewer ? info : null;
+    if (info) this.logger.info('AppUpdateService', 'play-check', { isAvailable: info.isAvailable, versionCode: info.versionCode, stalenessDays: info.stalenessDays ?? -1 });
+  }
+
+  /** siteConfig/mobileApp wins (it carries notes and the minimum version); Play fills in when the config is behind. */
+  private withPlayUpdate(versionCheck: AppVersionCheck): AppVersionCheck {
+    if (versionCheck.status !== 'supported' || !this.playUpdate) return versionCheck;
+    const release: AppRelease = {
+      version: '',
+      versionCode: this.playUpdate.versionCode,
+      apkUrl: null,
+      apkSha256: null,
+      apkSizeBytes: null,
+      releaseNotes: [],
+      releasedAtMs: null,
+      otaAvailable: false,
+      sideloadUpdates: false,
+    };
+    return {
+      status: 'update_available',
+      installedVersion: this.installed.version,
+      installedVersionCode: this.installed.versionCode,
+      storeUrl: ANDROID_STORE_URL,
+      release,
+    };
   }
 
   /** From an app_update push: a push for a build this device already has is ignored. */
@@ -288,8 +321,12 @@ export class AppUpdateService {
       && release.apkSizeBytes !== null;
   }
 
-  /** No in-app installer (iOS, Play builds, older binaries): the APK link on sideload builds, else the store. */
+  /**
+   * No APK installer (iOS, Play builds, older binaries): Google Play's own update screen when Play has the build,
+   * else the APK link on sideload builds, else the store.
+   */
   public async openExternalUpdate(release: AppRelease | null): Promise<void> {
+    if (await this.startPlayUpdate()) return;
     const state = useAppUpdateStore.getState();
     const storeUrl = state.versionCheck.status === 'supported' ? (Platform.OS === 'android' ? ANDROID_STORE_URL : 'https://ourlime.com') : state.versionCheck.storeUrl;
     const isSideload = nativeAppUpdateService.getDistribution() === 'sideload';
@@ -303,6 +340,20 @@ export class AppUpdateService {
       } catch (error: unknown) {
         console.warn('[AppUpdateService.openExternalUpdate] Error:', error instanceof Error ? error.message : error);
       }
+    }
+  }
+
+  /** True when Play's update screen took over (installing, or the person backed out of it). */
+  private async startPlayUpdate(): Promise<boolean> {
+    if (Platform.OS !== 'android' || !nativeAppUpdateService.isPlayUpdateAvailable()) return false;
+    if (!this.playUpdate) await this.refreshPlayUpdate();
+    if (!this.playUpdate) return false;
+    try {
+      await nativeAppUpdateService.startPlayUpdate();
+      return true;
+    } catch (error: unknown) {
+      console.warn('[AppUpdateService.startPlayUpdate] Error:', error instanceof Error ? error.message : error);
+      return false;
     }
   }
 

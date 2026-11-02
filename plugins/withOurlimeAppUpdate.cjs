@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { AndroidConfig, withAndroidManifest, withDangerousMod, withMainApplication } = require('@expo/config-plugins');
+const { AndroidConfig, withAndroidManifest, withAppBuildGradle, withDangerousMod, withMainApplication } = require('@expo/config-plugins');
 const { copyNativeSources, readAndroidPackage } = require('./androidPackage.cjs');
 
 const NATIVE_SOURCES = [
@@ -9,6 +9,8 @@ const NATIVE_SOURCES = [
   'OurlimeAppUpdateReceiver.kt',
   'OurlimeAppUpdatedReceiver.kt',
 ];
+// Google Play in-app updates (checkPlayUpdate / startPlayUpdate).
+const PLAY_APP_UPDATE_DEPENDENCY = 'implementation("com.google.android.play:app-update:2.1.0")';
 const INSTALL_PERMISSION = 'android.permission.REQUEST_INSTALL_PACKAGES';
 const NETWORK_STATE_PERMISSION = 'android.permission.ACCESS_NETWORK_STATE';
 
@@ -53,6 +55,20 @@ function withUpdateManifest(config) {
   });
 }
 
+function withUpdateGradle(config) {
+  return withAppBuildGradle(config, (result) => {
+    let source = result.modResults.contents;
+    if (!source.includes('com.google.android.play:app-update')) {
+      source = source.replace(
+        /dependencies\s*\{/,
+        `dependencies {\n    // Ourlime Google Play in-app updates (plugins/native-update)\n    ${PLAY_APP_UPDATE_DEPENDENCY}\n`,
+      );
+    }
+    result.modResults.contents = source;
+    return result;
+  });
+}
+
 function withUpdateMainApplication(config) {
   return withMainApplication(config, (result) => {
     if (result.modResults.language !== 'kt') return result;
@@ -77,9 +93,10 @@ function withUpdateAndroidSources(config) {
 
 /**
  * In-app APK updates for sideloaded builds (plugins/native-update): download, verify, and hand over to Android's
- * PackageInstaller. No FileProvider is needed: the APK bytes are written into the installer session directly, so no
+ * PackageInstaller. Play builds use Google Play's own in-app update flow (Play Core app-update) instead.
+ * No FileProvider is needed: the APK bytes are written into the installer session directly, so no
  * content URI to the cache is ever exposed to another app.
  */
 module.exports = function withOurlimeAppUpdate(config) {
-  return withUpdateAndroidSources(withUpdateMainApplication(withUpdateManifest(config)));
+  return withUpdateAndroidSources(withUpdateGradle(withUpdateMainApplication(withUpdateManifest(config))));
 };
