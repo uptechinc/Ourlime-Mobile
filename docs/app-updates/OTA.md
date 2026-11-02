@@ -26,7 +26,7 @@ OTA updates replace only the JavaScript bundle and assets. Anything native needs
 4. Nothing restarts during a call or an upload. A tap on **Restart now** then explains why, and the prompt waits until you're done.
 5. If a downloaded update crashes on launch, expo-updates rolls back to the embedded bundle (an emergency launch). The app logs this through `DiagnosticLogService` (`OtaUpdateService launch:emergency`).
 6. Dev builds, Expo Go, and binaries built before `expo-updates` was added do nothing (`__DEV__` / `Updates.isEnabled`).
-7. After an OTA is applied, "What's new" shows once. It uses the release notes when `siteConfig/mobileApp` describes this version, otherwise a generic line.
+7. After an OTA is applied, "What's new" shows once. It lists the notes bundled in `lib/releaseNotes.json` (shipped inside the OTA itself), then falls back to `siteConfig/mobileApp` notes for this version, then a generic line. Before publishing an OTA, replace the notes in that file with what the OTA changes.
 
 ## Publishing an OTA (run it yourself; not run by the agent)
 

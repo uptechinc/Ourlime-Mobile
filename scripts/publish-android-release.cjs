@@ -9,6 +9,7 @@
  *   --dry-run                 Print what would change; upload and write nothing.
  *   --apk <path>              The APK to publish (default: newest release Ourlime-*.apk in the repo root / Gradle output).
  *   --notes "a|b|c"           Release notes, one line per "|" (or --notes-file <path>, one note per line).
+ *                             Default: lib/releaseNotes.json, the notes bundled into the app for "What's new".
  *   --minimum-version <x.y.z> Also raise siteConfig/mobileApp.minimumVersion (blocks older builds). Use with care.
  *   --ota-available           Set the otaAvailable hint.
  *
@@ -62,6 +63,15 @@ function readAppConfig() {
   if (!/^\d+(\.\d+){0,3}$/.test(String(version))) fail('app.json expo.version is missing or not like 1.2.0');
   if (!Number.isSafeInteger(versionCode) || versionCode <= 0) fail('app.json expo.android.versionCode is missing');
   return { version, versionCode };
+}
+
+/** lib/releaseNotes.json, which must describe this version (the app shows the same notes after updating). */
+function readBundledNotes(appConfig) {
+  const bundled = JSON.parse(fs.readFileSync(path.join(projectRoot, 'lib', 'releaseNotes.json'), 'utf8'));
+  if (bundled.version !== appConfig.version || bundled.versionCode !== appConfig.versionCode) {
+    fail(`lib/releaseNotes.json describes ${bundled.version} (${bundled.versionCode}), not ${appConfig.version} (${appConfig.versionCode}). Update it, or pass --notes.`);
+  }
+  return (Array.isArray(bundled.notes) ? bundled.notes : []).map((note) => String(note).trim()).filter(Boolean).slice(0, 12);
 }
 
 function readFirebaseProject() {
@@ -154,6 +164,7 @@ function loadFirebaseAdmin() {
 async function main() {
   const options = readArguments(process.argv.slice(2));
   const appConfig = readAppConfig();
+  if (options.notes.length === 0) options.notes = readBundledNotes(appConfig);
   const firebaseProject = readFirebaseProject();
   const apkPath = options.apk || findNewestApk();
   if (!fs.existsSync(apkPath)) fail(`APK not found: ${apkPath}`);
