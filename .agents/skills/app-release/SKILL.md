@@ -29,7 +29,17 @@ Every app update tells people what changed. In "What's new" after updating, and 
 - For an **OTA** on the same version, replace the notes with what that OTA changes. The file ships inside the OTA, so "What's new" shows exactly those notes.
 - Commit the notes with (or before) the version bump, then push to `main` (see `git-workflow`).
 
-## 3. APK or OTA
+## 3. Build rules (always)
+
+- **Never run an EAS cloud build** (`eas build …`, `npm run build:prod`, or anything else that builds on expo.dev). Always build locally with `npm run build:local`. If an EAS build is queued or in progress, cancel it: `npx eas-cli build:list --status in-progress` / `--status in-queue`, then `npx eas-cli build:cancel <id>`.
+- **Before every build, delete the old APK and AAB files on this PC**, so the only build left is the one being released. Look in the repo root, `android/app/build/outputs/`, Downloads, Desktop, Documents and the agent scratchpads (`AppData/Local/Temp/claude`):
+  ```bash
+  find /c/Users/aaron/Github/Ourlime-Web /c/Users/aaron/Downloads /c/Users/aaron/Desktop /c/Users/aaron/Documents /c/Users/aaron/AppData/Local/Temp/claude -maxdepth 6 \( -iname "*.apk" -o -iname "*.aab" \) -not -path "*/node_modules/*" -not -path "*/intermediates/*"
+  ```
+  List what you found, then `rm` it. Never delete anything under `node_modules` or the Android SDK.
+- **Play Store bundles** (`com.ourlime.mobile`) must also be built locally, signed with the Play upload key (the EAS key, SHA-1 `8E:EE:1D:44…`). Download that keystore once with `npx eas-cli credentials -p android` and keep it out of git. Until the local signing setup exists, stop and tell the user instead of building on EAS.
+
+## 4. APK or OTA
 
 | What changed | Release |
 |---|---|
@@ -47,7 +57,12 @@ When unsure, ship an APK.
    ```bash
    GOOGLE_APPLICATION_CREDENTIALS=<key> node scripts/publish-android-release.cjs
    ```
-   Open apps show "Update available" within seconds, through the live `siteConfig/mobileApp` listener.
+   What users see:
+   - **Open apps** show "Update available" within seconds, through the live `siteConfig/mobileApp` listener.
+   - **Everyone else** sees it on the next launch, or when they come back to the app.
+   - **Closed apps** get the push "Ourlime update available" from the `notifyAppUpdate` Cloud Function (web repo, codebase `reliability`). It sends once per versionCode and records each one in `appUpdatePushes/{versionCode}`.
+
+   Only builds from 2026-10-17 onward (with the in-app updater and push routing) react to either.
 
 ### OTA (same native build, JS only)
 1. Update `lib/releaseNotes.json` with the OTA's changes, then commit and push.
@@ -58,8 +73,8 @@ When unsure, ship an APK.
 3. It reaches installs whose `expo.version` matches (runtime `appVersion`) and whose channel is `production`. That covers local builds; EAS `preview` builds are on the `preview` channel. Apps check on launch and on foreground (at most every 10 minutes), download in the background, offer "Restart now", and apply the update on the next cold start anyway.
 
 ### Play Store (`com.ourlime.mobile`)
-`eas build --profile production` (AAB) goes through Play Console. See memory `play-release-state`.
+A locally built AAB, uploaded in Play Console (see section 3, and memory `play-release-state`).
 
-## 4. Hand-off message
+## 5. Hand-off message
 
 Tell the user the version and versionCode, the notes as bullets, the APK or update link, the exact publish command, and what testers will see.
