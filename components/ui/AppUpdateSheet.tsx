@@ -32,8 +32,9 @@ export default function AppUpdateSheet() {
         onPress={() => { if (canDismiss) dismissSheet(); }}
         style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: colors.modalScrim }}
       >
-        <Pressable
-          onPress={() => undefined}
+        {/* A View that claims taps (so they don't close the sheet) without swallowing the ScrollView's drags. */}
+        <View
+          onStartShouldSetResponder={() => true}
           style={{
             backgroundColor: colors.surface,
             borderTopLeftRadius: 24,
@@ -45,10 +46,11 @@ export default function AppUpdateSheet() {
           }}
         >
           <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: 16 }} />
-          <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+          {/* flexShrink lets the list stay inside the 85% cap and scroll, instead of growing past it and being cut off. */}
+          <ScrollView style={{ flexShrink: 1 }} bounces={false} showsVerticalScrollIndicator={false}>
             <AppUpdatePanel />
           </ScrollView>
-        </Pressable>
+        </View>
       </Pressable>
     </Modal>
   );
