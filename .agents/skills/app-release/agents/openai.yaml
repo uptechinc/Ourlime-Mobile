@@ -1,0 +1,4 @@
+interface:
+  display_name: "App Release: Detailed Release Notes"
+  short_description: "Ship APK or OTA updates with bulleted release notes covering everything since the last release"
+  default_prompt: "Use $app-release: diff against the last published release, write lib/releaseNotes.json, pick APK (local build) or OTA, dry-run, and hand the publish command to the user."
