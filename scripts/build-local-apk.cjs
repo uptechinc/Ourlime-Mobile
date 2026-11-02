@@ -41,7 +41,7 @@ const isDebug = process.argv.includes('--debug');
 const isProductionApk = process.argv.includes('--apk');
 const PLAY_PACKAGE = 'com.ourlime.mobile';
 const DEV_PACKAGE = 'com.ourlime.app';
-const PLAY_UPLOAD_SHA1 = '8E:EE:1D:44:7A:4D:0E:E9:5B:31:1F:FE:A7:4E:AC:C9:55:D6:38:05';
+const PLAY_UPLOAD_SHA1 = 'BB:67:C0:81:2C:52:19:EC:00:9D:0D:7A:2C:49:A9:9D:82:95:45:D6';
 const targetPackage = isDebug ? DEV_PACKAGE : PLAY_PACKAGE;
 
 if (!isDebug) {

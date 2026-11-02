@@ -15,7 +15,7 @@ Every native release is a production build for the Play app. There are no tester
 
 1. **Bump `expo.version` and `expo.android.versionCode` in `app.json`.** The versionCode must be greater than the last one uploaded to Play.
 2. **Write `lib/releaseNotes.json`** with what changed since the last release (see step 2 of the legacy list below).
-3. **Build locally:** `npm run build:local` builds `Ourlime-<version>-vc<code>.aab` for `com.ourlime.mobile`, signed with the Play upload key from `credentials.json`. The script stops if the key is missing or the SHA-1 isn't `8E:EE:1D:44…`. For a test install of the same production build, use `npm run build:local:apk`.
+3. **Build locally:** `npm run build:local` builds `Ourlime-<version>-vc<code>.aab` for `com.ourlime.mobile`, signed with the Play upload key from `credentials.json`. The script stops if the key is missing or the SHA-1 isn't `BB:67:C0:81…`. For a test install of the same production build, use `npm run build:local:apk`.
    - First time only: run `npx eas-cli credentials -p android`, then **production** → **credentials.json** → **Download credentials from EAS to credentials.json**. `credentials.json` and `credentials/` are git-ignored.
 4. **Upload the .aab in Play Console** (a new Production release), paste the notes, and roll it out.
 5. **Once Play shows the update as live, announce it:**
