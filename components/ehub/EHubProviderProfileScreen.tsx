@@ -112,7 +112,7 @@ export default function EHubProviderProfileScreen() {
   return (
     <View style={styles.screen}>
       {header}
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={resource.isRefreshing} onRefresh={() => void resource.refresh()} tintColor={colors.accent} />} contentContainerStyle={styles.scrollContent}>
           <View style={[styles.body, { width: layout.contentWidth }]}>
             <View style={styles.profileCard}>

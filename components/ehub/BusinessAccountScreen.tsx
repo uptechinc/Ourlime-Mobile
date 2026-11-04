@@ -27,11 +27,14 @@ export default function BusinessAccountScreen() {
   const [requestedName, setRequestedName] = useState('');
   const [form, setForm] = useState<BusinessAccountForm | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  // A category typed but not yet added with Add; it counts as a change and is added when saving.
+  const [pendingCategory, setPendingCategory] = useState('');
+  const [chipFieldKey, setChipFieldKey] = useState(0);
   const savedForm = useMemo(() => business.account ? businessAccountService.toForm(business.account) : null, [business.account]);
 
   useEffect(() => { setForm(savedForm); }, [savedForm]);
 
-  const isDirty = form !== null && JSON.stringify(form) !== JSON.stringify(savedForm);
+  const isDirty = form !== null && (JSON.stringify(form) !== JSON.stringify(savedForm) || pendingCategory.trim().length > 0);
   const isNameValid = (form?.name.trim().length ?? 0) >= 2;
   const updateForm = (updates: Partial<BusinessAccountForm>) => { setSavedNotice(null); setForm((current) => current ? { ...current, ...updates } : current); };
   const updateContact = (updates: Partial<BusinessAccountForm['contact']>) => { setSavedNotice(null); setForm((current) => current ? { ...current, contact: { ...current.contact, ...updates } } : current); };
@@ -40,7 +43,14 @@ export default function BusinessAccountScreen() {
     if (await business.requestAccount(requestedName)) setSavedNotice('Business account created. Add your details below.');
   };
   const handleSave = async () => {
-    if (form && await business.saveAccount(form)) setSavedNotice('Business account saved.');
+    if (!form) return;
+    const category = pendingCategory.trim();
+    const categories = category && !form.categories.some((item) => item.toLowerCase() === category.toLowerCase()) ? [...form.categories, category].slice(0, 30) : form.categories;
+    if (await business.saveAccount({ ...form, categories })) {
+      setPendingCategory('');
+      setChipFieldKey((key) => key + 1);
+      setSavedNotice('Business account saved.');
+    }
   };
 
   const header = <PageHeader title="Business account" onBackPress={() => router.back()} />;
@@ -55,7 +65,7 @@ export default function BusinessAccountScreen() {
   return (
     <View style={styles.screen}>
       {header}
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={business.isRefreshing} onRefresh={() => void business.refresh()} tintColor={colors.accent} />} contentContainerStyle={styles.scrollContent}>
           <View style={[styles.body, { width: layout.contentWidth }]}>
             {business.error ? <EHubNotice tone="error" text={business.error} actionLabel={account ? undefined : 'Try again'} onAction={account ? undefined : () => void business.refresh()} /> : null}
@@ -93,7 +103,7 @@ export default function BusinessAccountScreen() {
                     <View style={styles.flex}><SellerTextField label="Phone" maxLength={50} value={form.contact.phone} onChangeText={(phone) => updateContact({ phone })} /></View>
                   </View>
                   <SellerTextField label="Website" placeholder="https://" maxLength={1000} value={form.contact.website} onChangeText={(website) => updateContact({ website })} />
-                  <SellerChipField label="Categories" values={form.categories} onChange={(categories) => updateForm({ categories: categories.slice(0, 30) })} placeholder="Add a category" />
+                  <SellerChipField key={chipFieldKey} label="Categories" values={form.categories} onDraftChange={(draft) => { setSavedNotice(null); setPendingCategory(draft); }} onChange={(categories) => updateForm({ categories: categories.slice(0, 30) })} placeholder="Add a category" />
                   <SellerButton label={business.isWorking ? 'Saving…' : 'Save changes'} icon={<Save size={17} color="#ffffff" />} isLoading={business.isWorking} disabled={!isDirty || !isNameValid} onPress={() => void handleSave()} />
                 </View>
               </> : null}

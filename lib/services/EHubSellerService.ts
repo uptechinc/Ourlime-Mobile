@@ -108,8 +108,16 @@ export class EHubSellerService {
     if (blob.size > MAX_IMAGE_BYTES) throw new Error('Images must be 8 MB or smaller.');
     const fileId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const storageReference = ref(storage, `ehub/${ownerId}/${scope}/${fileId}.jpg`);
-    await uploadBytes(storageReference, blob, { contentType: 'image/jpeg', customMetadata: { ownerId, scope } });
-    return getDownloadURL(storageReference);
+    try {
+      await uploadBytes(storageReference, blob, { contentType: 'image/jpeg', customMetadata: { ownerId, scope } });
+      return await getDownloadURL(storageReference);
+    } catch (error: unknown) {
+      console.error('[EHubSellerService.uploadImage] Error:', error instanceof Error ? error.message : 'Unknown error');
+      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+      if (code === 'storage/unauthorized') throw new Error('E-Hub image uploads are not available right now. Please try again later.');
+      if (code === 'storage/retry-limit-exceeded' || code === 'storage/canceled') throw new Error('The image did not finish uploading. Check your connection and try again.');
+      throw new Error('Unable to upload this image. Please try another one.');
+    }
   }
 }
 

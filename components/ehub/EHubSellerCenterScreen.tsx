@@ -109,12 +109,12 @@ export default function EHubSellerCenterScreen() {
         : { type: 'warning' as const, title: 'Unpublish this product?', message: 'It leaves the public catalog. You can publish it again at any time.', confirmText: 'Unpublish' }
       : confirmation?.kind === 'deleteDraft' && confirmation.permanent
         ? { type: 'danger' as const, title: 'Permanently delete draft?', message: 'This draft will be permanently removed and cannot be recovered.', confirmText: 'Delete permanently' }
-        : { type: 'warning' as const, title: 'Move draft to Recently Deleted?', message: 'You can restore this draft for 30 days before it is eligible for permanent removal.', confirmText: 'Move to Recently Deleted' };
+        : { type: 'warning' as const, title: 'Move draft to Recently Deleted?', message: 'You can restore this draft for 30 days before it is eligible for permanent removal.', confirmText: 'Delete draft' };
 
   return (
     <View style={styles.screen}>
       {header}
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={center.isRefreshing} onRefresh={() => void center.refresh()} tintColor={colors.accent} />} contentContainerStyle={styles.scrollContent}>
           <View style={[styles.body, { width: layout.contentWidth }, layout.isWide ? styles.bodyWide : null]}>
             {navigation}

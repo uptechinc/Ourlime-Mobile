@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Linking, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { BadgeCheck, Building2, Check, MapPin, Package, Send, Share2, Star, Truck } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
@@ -40,7 +40,9 @@ export default function EHubProductDetailScreen() {
   const handleShare = () => {
     if (!detail) return;
     const url = `https://ourlime.com/ehub/products/${encodeURIComponent(detail.product.id)}`;
-    void Share.share({ title: detail.product.title, message: `View ${detail.product.title} on E-Hub: ${url}`, url }).catch((error: unknown) => {
+    // Only the link: WhatsApp and other apps build the preview (name, price, photo) from the product page's metadata.
+    const content = Platform.OS === 'ios' ? { title: detail.product.title, url } : { title: detail.product.title, message: url };
+    void Share.share(content).catch((error: unknown) => {
       console.error('[EHubProductDetailScreen.handleShare] Error:', error instanceof Error ? error.message : 'Share failed');
     });
   };

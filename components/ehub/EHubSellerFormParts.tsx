@@ -63,16 +63,28 @@ export function SellerNumberField({ label, value, onChangeValue, required, isInt
   </SellerField>;
 }
 
-type ChipFieldProps = { label: string; values: string[]; onChange: (values: string[]) => void; placeholder: string };
+type ChipFieldProps = {
+  label: string;
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder: string;
+  /** The typed text not yet added as a chip, so a form can count it as a change and add it on save. */
+  onDraftChange?: (draft: string) => void;
+};
 
-export function SellerChipField({ label, values, onChange, placeholder }: ChipFieldProps) {
+export function SellerChipField({ label, values, onChange, placeholder, onDraftChange }: ChipFieldProps) {
   const { colors, styles } = useFormStyles();
   const [input, setInput] = useState('');
+  const handleInputChange = (text: string) => {
+    setInput(text);
+    onDraftChange?.(text);
+  };
+  // Also runs when the field loses focus, so a typed category is never silently dropped.
   const handleAdd = () => {
     const value = input.trim();
-    if (!value || values.some((item) => item.toLowerCase() === value.toLowerCase())) return;
-    onChange([...values, value]);
-    setInput('');
+    if (!value) return;
+    if (!values.some((item) => item.toLowerCase() === value.toLowerCase())) onChange([...values, value]);
+    handleInputChange('');
   };
   return <SellerField label={label}>
     <View style={styles.chipBox}>
@@ -80,7 +92,7 @@ export function SellerChipField({ label, values, onChange, placeholder }: ChipFi
         <Text style={styles.chipText}>{value}</Text><X size={13} color={colors.accentText} />
       </Pressable>)}</View> : null}
       <View style={styles.chipInputRow}>
-        <TextInput value={input} onChangeText={setInput} onSubmitEditing={handleAdd} blurOnSubmit={false} returnKeyType="done" placeholder={placeholder} placeholderTextColor={colors.mutedText} accessibilityLabel={label} style={styles.chipInput} />
+        <TextInput value={input} onChangeText={handleInputChange} onSubmitEditing={handleAdd} onBlur={handleAdd} blurOnSubmit={false} returnKeyType="done" placeholder={placeholder} placeholderTextColor={colors.mutedText} accessibilityLabel={label} style={styles.chipInput} />
         <Pressable accessibilityRole="button" onPress={handleAdd} style={styles.addButton}><Text style={styles.addText}>Add</Text></Pressable>
       </View>
     </View>
@@ -179,7 +191,8 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   required: { color: colors.destructiveText },
   hint: { color: colors.mutedText, fontSize: 12, lineHeight: 17 },
   input: { minHeight: 48, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 15 },
-  multiline: { minHeight: 120 },
+  // Capped so the caret stays on screen above the keyboard; longer text scrolls inside the box.
+  multiline: { minHeight: 120, maxHeight: 220 },
   chipBox: { padding: 8, gap: 8, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   chip: { minHeight: 32, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, backgroundColor: colors.successSurface },
