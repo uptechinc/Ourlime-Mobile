@@ -1,0 +1,48 @@
+{
+  "releases": [
+    {
+      "id": "1.3.1-ota-2026-11-03",
+      "version": "1.3.1",
+      "versionCode": 10,
+      "kind": "ota",
+      "date": "2026-11-03",
+      "notes": [
+        "E-Hub forms: the keyboard no longer covers what you type in Seller Center, your business account, enquiries and the enquiry form on a provider's page.",
+        "Business account: a category you typed is now saved when you tap Save, even if you didn't tap Add first.",
+        "Sharing an E-Hub product now sends just the link, so chats show the product's name, price and photo.",
+        "Fixes: long descriptions scroll inside their box so you can see what you're typing, image upload problems show a clear message, and the draft delete button reads \"Delete draft\"."
+      ]
+    },
+    {
+      "id": "1.3.1",
+      "version": "1.3.1",
+      "versionCode": 10,
+      "kind": "app",
+      "date": "2026-11-02",
+      "notes": [
+        "Updates from Google Play: when a new version of Ourlime is out, the app tells you right away and installs it through Play's own update screen, without sending you to the store.",
+        "Fixes: the \"What's new\" list now scrolls, so you can read every note and reach the \"Got it\" button."
+      ]
+    },
+    {
+      "id": "1.3.0",
+      "version": "1.3.0",
+      "versionCode": 9,
+      "kind": "app",
+      "date": "2026-11-01",
+      "notes": [
+        "E-Hub is in the app: browse the catalog, open product pages, discover sellers and service providers, view their profiles and send enquiries.",
+        "E-Hub Seller Center: set up your storefront, add and edit products, and see how your shop is doing.",
+        "Business account: create and manage your business profile from the app.",
+        "Course lessons: watch lesson videos, take quizzes and open lesson files (PDF, Word) without leaving the app.",
+        "Assignments: hand in a written answer and files, then see your grade and your instructor's feedback.",
+        "New progress & grades page for each course: completion, average quiz score and your result for every lesson.",
+        "Course reviews: read what other students say and leave your own rating.",
+        "Teach on Ourlime: apply to become an instructor, create and publish courses, and grade your students' work.",
+        "Events: a new event page with comments, plus a Calendar view that shows what's on each day.",
+        "Games: a new Games hub with Trini Wordle and Trini GeoGuesser. Find places across T&T on the map and climb the leaderboard.",
+        "Fixes: E-Learning and E-Hub screens that wouldn't load, Seller Center closing on open, broken card layouts, and member names that showed an email address."
+      ]
+    }
+  ]
+}

@@ -11,7 +11,7 @@
  *   --dry-run                 Print what would change; write nothing.
  *   --sideload --apk <path>   Legacy: upload a sideload APK (com.ourlime.app) instead. Not used for releases.
  *   --notes "a|b|c"           Release notes, one line per "|" (or --notes-file <path>, one note per line).
- *                             Default: lib/releaseNotes.json, the notes bundled into the app for "What's new".
+ *                             Default: this build's app release in lib/releaseHistory.json (also shown in "What's new").
  *   --minimum-version <x.y.z> Also raise siteConfig/mobileApp.minimumVersion (blocks older builds). Use with care.
  *   --ota-available           Set the otaAvailable hint.
  *
@@ -26,6 +26,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const releaseHistory = require('./release-history.cjs');
 
 const projectRoot = path.resolve(__dirname, '..');
 const PACKAGE_NAME = 'com.ourlime.app';
@@ -70,13 +71,13 @@ function readAppConfig() {
   return { version, versionCode };
 }
 
-/** lib/releaseNotes.json, which must describe this version (the app shows the same notes after updating). */
+/** This build's app release in lib/releaseHistory.json, which must be valid (the app shows the same notes). */
 function readBundledNotes(appConfig) {
-  const bundled = JSON.parse(fs.readFileSync(path.join(projectRoot, 'lib', 'releaseNotes.json'), 'utf8'));
-  if (bundled.version !== appConfig.version || bundled.versionCode !== appConfig.versionCode) {
-    fail(`lib/releaseNotes.json describes ${bundled.version} (${bundled.versionCode}), not ${appConfig.version} (${appConfig.versionCode}). Update it, or pass --notes.`);
-  }
-  return (Array.isArray(bundled.notes) ? bundled.notes : []).map((note) => String(note).trim()).filter(Boolean).slice(0, 12);
+  const problems = releaseHistory.validateHistory(releaseHistory.readHistory(), null);
+  if (problems.length) fail(`lib/releaseHistory.json: ${problems.join(' ')}`);
+  const notes = releaseHistory.readAppReleaseNotes(appConfig);
+  if (!notes) fail(`lib/releaseHistory.json has no app release for ${appConfig.version} (${appConfig.versionCode}). Add it at the top, or pass --notes.`);
+  return notes;
 }
 
 function readFirebaseProject() {

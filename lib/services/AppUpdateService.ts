@@ -8,7 +8,7 @@ import { DiagnosticLogService } from './DiagnosticLogService';
 import { useAppUpdateStore, type AppUpdatePrompt } from '@/lib/store/useAppUpdateStore';
 import { useCallStore } from '@/lib/store/useCallStore';
 import { usePostSubmissionStore } from '@/lib/store/usePostSubmissionStore';
-import bundledReleaseNotes from '@/lib/releaseNotes.json';
+import { releaseHistoryService } from './ReleaseHistoryService';
 
 const RECHECK_INTERVAL_MS = 10 * 60 * 1000;
 const SNOOZE_MS = 24 * 60 * 60 * 1000;
@@ -279,11 +279,9 @@ export class AppUpdateService {
       const isNewOta = !isNewBuild && updateId !== null && lastUpdateId !== null && lastUpdateId !== updateId;
       if (!isNewBuild && !isNewOta) return;
       if (isNewBuild) void nativeAppUpdateService.clearDownloads();
-      // The notes shipped inside this bundle (lib/releaseNotes.json) always describe what is running, OTA included;
-      // siteConfig/mobileApp's notes are the fallback for bundles published without them.
-      const bundledNotes = bundledReleaseNotes.version === this.installed.version
-        ? bundledReleaseNotes.notes.map((note) => note.trim()).filter((note) => note.length > 0)
-        : [];
+      // The newest entry in lib/releaseHistory.json for this version ships inside this bundle, so it describes what is
+      // running, OTA included; siteConfig/mobileApp's notes are the fallback for bundles published without them.
+      const bundledNotes = releaseHistoryService.getLatestFor(this.installed.version)?.notes ?? [];
       const notesMatchThisBuild = release !== null
         && ((release.versionCode !== null && release.versionCode === this.installed.versionCode) || release.version === this.installed.version);
       useAppUpdateStore.setState({

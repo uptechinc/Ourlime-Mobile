@@ -90,3 +90,7 @@ cmd /c "node_modules\.bin\tsc --noEmit"   # TypeScript verification
 node scripts/check-discipline.cjs        # Code discipline & naming verification
 npx expo start                           # Start Metro bundler
 ```
+
+## 5. App Releases
+
+Every Play release and OTA adds one new entry at the top of `lib/releaseHistory.json` (never edit past entries), then `npm run release:check` must pass before building or publishing. Members see the newest entry in "What's new" and every entry in Settings → Release notes. Full procedure: `.agents/skills/app-release/SKILL.md`.

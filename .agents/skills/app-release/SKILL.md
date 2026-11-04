@@ -1,33 +1,48 @@
 ---
 name: app-release
-description: Ship an Ourlime production app update (Play release or OTA) with detailed release notes. Use for any app version bump, build, Play upload, OTA publish, or when changing lib/releaseNotes.json or siteConfig/mobileApp.
+description: Ship an Ourlime production app update (Play release or OTA) with detailed release notes. Use for any app version bump, build, Play upload, OTA publish, or when changing lib/releaseHistory.json or siteConfig/mobileApp.
 ---
 
 # App Release: Updates With Detailed Release Notes
 
-Every app update tells people what changed. In "What's new" after updating, and in "Update available" before it, they see a bulleted list of real changes, never just "fixes and improvements".
+Every app update tells people what changed. In "What's new" after updating, in "Update available" before it, and in **Settings → App → Release notes** at any time, they see a bulleted list of real changes, never just "fixes and improvements".
+
+**The rule, for every model and every release (Play or OTA):** add one new entry at the top of `lib/releaseHistory.json`, run `npm run release:check`, and commit it before the build or `eas update`. Never edit or delete past entries: they are the app's release history. A release without its entry is not ready.
 
 ## 1. Know what is in the release before you push
 
 - The notes cover **everything since the last published release**, not just the last commit. Several commits before a release become one list.
-- Find the last release: the last commit that bumped `expo.version` / `expo.android.versionCode` in `app.json`. For an OTA, use the last commit that changed `lib/releaseNotes.json`. Then read the changes:
+- Find the last release: the last commit that changed `lib/releaseHistory.json` (its top entry is the last thing shipped, Play or OTA). Then read the changes:
   ```bash
   git log --format="%h %s" <lastReleaseCommit>..HEAD
   ```
   Also check the live release: `siteConfig/mobileApp.latestVersion` / `latestVersionCode`. Read it; never write it from a script you made up.
 - Keep commit subjects user-readable, saying what changed for the person using the app. They become the raw material for the notes.
 
-## 2. Write `lib/releaseNotes.json`
+## 2. Add the release to `lib/releaseHistory.json`
+
+The file lists every release, **newest first**. Add the new one at the top of `releases`:
 
 ```json
-{ "version": "1.3.0", "versionCode": 9, "notes": ["…", "…"] }
+{
+  "id": "1.3.2",
+  "version": "1.3.2",
+  "versionCode": 11,
+  "kind": "app",
+  "date": "2026-11-05",
+  "notes": ["…", "…"]
+}
 ```
 
-- `version` / `versionCode` must equal `app.json`. The publish script refuses when they don't, and the app only shows notes whose `version` matches the running app.
+- `kind`: `"app"` for a Play release (new versionCode), `"ota"` for an over-the-air update to the same build.
+- `id`: unique. The version for a Play release (`"1.3.2"`); `"<version>-ota-<date>"` for an OTA (`"1.3.2-ota-2026-11-07"`, add `-2` for a second OTA that day).
+- `version` / `versionCode` must equal `app.json`, and `date` is the publish day (YYYY-MM-DD).
 - Up to 12 notes, each under 240 characters. One bullet per feature or fix, in plain words for members ("Assignments: hand in a written answer and files, then see your grade"). No internal names, file paths or "parity".
 - Order: new features first, biggest first. End with one "Fixes: …" bullet.
-- For an **OTA** on the same version, replace the notes with what that OTA changes. The file ships inside the OTA, so "What's new" shows exactly those notes.
-- Commit the notes with (or before) the version bump, then push to `main` (see `git-workflow`).
+- An OTA's notes list only what that OTA changes; the earlier entries stay as they are.
+- Run `npm run release:check`. It refuses a missing or duplicate id, an entry out of order, too many or too long notes, and a top entry that doesn't match `app.json`.
+- How it is used: the file ships inside the app (and inside each OTA). "What's new" shows the newest entry for the running version, Settings → Release notes lists them all, and `scripts/publish-android-release.cjs` sends the `"app"` entry's notes to `siteConfig/mobileApp`.
+- Commit the entry with (or before) the version bump, then push to `main` (see `git-workflow`).
 
 ## 3. Production only (always)
 
@@ -51,7 +66,7 @@ Every app update tells people what changed. In "What's new" after updating, and 
 When unsure, ship a Play release.
 
 ### Play release
-1. Bump `expo.version` and `expo.android.versionCode` in `app.json` (greater than the last Play upload), and update `lib/releaseNotes.json`.
+1. Bump `expo.version` and `expo.android.versionCode` in `app.json` (greater than the last Play upload), add the `"app"` entry to `lib/releaseHistory.json`, and run `npm run release:check`.
 2. Delete old APK/AAB files, then `npm run build:local`. Check that the printed SHA-1 is the upload key.
 3. Test the same production build on the emulator with `npm run build:local:apk` and `adb install`. It installs as `com.ourlime.mobile`, next to the dev client.
 4. Open Play Console (account Uptech Incorporated, app `com.ourlime.mobile`), create a Production release, upload the .aab and add the notes. Show the user the version, versionCode, package and SHA-1. **The user clicks "Save and publish".**
@@ -63,10 +78,10 @@ When unsure, ship a Play release.
    - Open apps show "Update available" within seconds, and "Update now" opens Play.
    - Everyone else sees it on the next launch or foreground.
    - Closed apps get the push "Ourlime update available" from `notifyAppUpdate` (web repo, codebase `reliability`), once per versionCode.
-   - After updating, "What's new" shows `lib/releaseNotes.json`.
+   - After updating, "What's new" shows this release's entry from `lib/releaseHistory.json`.
 
 ### OTA (same native build, JS only)
-1. Update `lib/releaseNotes.json` with the OTA's changes, then commit and push.
+1. Add an `"ota"` entry at the top of `lib/releaseHistory.json` with only this OTA's changes, run `npm run release:check`, then commit and push.
 2. The user runs it:
    ```bash
    npx eas-cli@latest update --channel production --environment production --message "<short summary>"
@@ -75,4 +90,4 @@ When unsure, ship a Play release.
 
 ## 5. Hand-off message
 
-Tell the user the version and versionCode, the notes as bullets, the .aab path and SHA-1, what is ready in Play Console, the announce command, and what users will see.
+Tell the user the version and versionCode, the notes as bullets (they also appear in Settings → Release notes), the .aab path and SHA-1, what is ready in Play Console, the announce command, and what users will see.

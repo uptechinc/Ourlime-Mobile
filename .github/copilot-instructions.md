@@ -9,3 +9,7 @@
 - Implement only the user’s explicit request and the minimum dependencies and proportionate validation required to complete it.
 - Consider adjacent improvements, but report them instead of implementing them unless expressly authorized or strictly necessary.
 - Do not perform unrelated refactors, features, builds, deployments, migrations, pushes, documentation work, web changes, or native changes. Treat an approved plan as the complete authorized scope.
+
+## App Releases
+
+- Every Play release and OTA adds one new entry at the top of `lib/releaseHistory.json` (never edit past entries) and must pass `npm run release:check`. Members see it in "What's new" and Settings → Release notes. Procedure: `.agents/skills/app-release/SKILL.md`.

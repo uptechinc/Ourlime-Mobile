@@ -12,7 +12,7 @@ import {
 import { SettingsSkeleton } from '@/components/ui/Skeleton';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { AuthService } from '@/lib/services/AuthService';
 import { SettingsService, type BlockedUserSummary } from '@/lib/profile/settings/SettingsService';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
@@ -368,6 +368,7 @@ export default function SettingsScreen() {
             <Text style={[styles.sectionTitle, isDark && styles.textDark]}>App updates</Text>
             <Text style={[styles.switchSubtext, isDark && styles.subtextDark]}>Ourlime tells you when a new version is out. You can also check here at any time.</Text>
             <AppUpdateSettingsRow />
+            <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/settings/release-notes' as Href)} style={styles.policyButton}><Icon name="list" size={18} color="#047857" /><Text style={styles.policyButtonText}>Release notes</Text></TouchableOpacity>
           </View>
         )}
 
