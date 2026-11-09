@@ -71,8 +71,13 @@ export default function VideoThumbnailPicker({
     message: '',
   });
   const generationIdRef = useRef(0);
+  const isSavingRef = useRef(false);
+  // Parents pass inline callbacks; reading it through a ref keeps their re-renders from restarting frame extraction.
+  const onThumbnailChangeRef = useRef(onThumbnailChange);
+  onThumbnailChangeRef.current = onThumbnailChange;
 
-  const handleGenerateFrames = useCallback(async () => {
+  /** keepSelection: build the strip for the editor without replacing a cover that was already chosen. */
+  const handleGenerateFrames = useCallback(async (keepSelection = false) => {
     if (!videoUri || durationSeconds <= 0) return;
     const generationId = generationIdRef.current + 1;
     generationIdRef.current = generationId;
@@ -85,14 +90,18 @@ export default function VideoThumbnailPicker({
       const defaultFrame = generatedFrames[defaultIndex];
       setFrames(generatedFrames);
       setCoverSeconds(defaultFrame.timestampSeconds);
+      if (keepSelection) {
+        setExtractionState({ status: 'ready' });
+        return;
+      }
       setSelection({ source: 'video-frame', timestampSeconds: defaultFrame.timestampSeconds, previewUri: defaultFrame.previewUri, finalUri: defaultFrame.previewUri });
-      onThumbnailChange(defaultFrame.previewUri);
+      onThumbnailChangeRef.current(defaultFrame.previewUri);
       setExtractionState({ status: 'ready' });
     } catch (error: unknown) {
       if (generationIdRef.current !== generationId) return;
       setExtractionState({ status: 'error', message: error instanceof Error ? error.message : 'The cover could not be prepared.' });
     }
-  }, [durationSeconds, onThumbnailChange, videoUri]);
+  }, [durationSeconds, videoUri]);
 
   useEffect(() => {
     if (selectedThumbnailUri && selectedThumbnailUri !== selection?.finalUri) {
@@ -106,18 +115,38 @@ export default function VideoThumbnailPicker({
     };
   }, [handleGenerateFrames, selectedThumbnailUri, selection]);
 
+  // A cover chosen before the editor opened (e.g. on "Confirm video") leaves no strip: build one so frames can be picked.
+  useEffect(() => {
+    if (editorVisible && frames.length === 0 && extractionState.status === 'ready') void handleGenerateFrames(true);
+  }, [editorVisible, extractionState.status, frames.length, handleGenerateFrames]);
+
+  /**
+   * Finish always does something: with no timeline (custom image, frames still loading) it keeps the current cover
+   * and closes; if the exact frame can't be captured it falls back to the nearest strip frame instead of leaving the
+   * editor open with nothing to show for the tap.
+   */
   const handleSaveFrame = async () => {
-    if (frames.length === 0) return;
-    setExtractionState({ status: 'loading', message: 'Saving cover…' });
-    try {
-      const finalUri = await limeThumbnailService.createThumbnailAtTime(videoUri, coverSeconds);
-      setSelection({ source: 'video-frame', timestampSeconds: coverSeconds, previewUri: finalUri, finalUri });
-      onThumbnailChange(finalUri);
-      setExtractionState({ status: 'ready' });
+    if (isSavingRef.current) return;
+    if (frames.length === 0) {
       setEditorVisible(false);
-    } catch (error: unknown) {
-      setExtractionState({ status: 'error', message: error instanceof Error ? error.message : 'The selected cover could not be saved.' });
+      return;
     }
+    isSavingRef.current = true;
+    setExtractionState({ status: 'loading', message: 'Saving cover…' });
+    let finalUri: string;
+    try {
+      finalUri = await limeThumbnailService.createThumbnailAtTime(videoUri, coverSeconds);
+    } catch (error: unknown) {
+      console.warn('[VideoThumbnailPicker.handleSaveFrame] Error:', error instanceof Error ? error.message : error);
+      const nearestFrame = frames.reduce((nearest, frame) =>
+        Math.abs(frame.timestampSeconds - coverSeconds) < Math.abs(nearest.timestampSeconds - coverSeconds) ? frame : nearest);
+      finalUri = nearestFrame.previewUri;
+    }
+    setSelection({ source: 'video-frame', timestampSeconds: coverSeconds, previewUri: finalUri, finalUri });
+    onThumbnailChange(finalUri);
+    setExtractionState({ status: 'ready' });
+    setEditorVisible(false);
+    isSavingRef.current = false;
   };
 
   const handlePickCustomImage = async () => {
@@ -192,7 +221,14 @@ export default function VideoThumbnailPicker({
               <Icon name="chevron-left" size={26} color={colors.icon} />
             </TouchableOpacity>
             <Text style={[styles.editorTitle, { color: colors.text }]}>Edit cover</Text>
-            <TouchableOpacity onPress={() => void handleSaveFrame()} disabled={frames.length === 0 || extractionState.status === 'loading'} style={styles.headerAction}>
+            <TouchableOpacity
+              onPress={() => void handleSaveFrame()}
+              disabled={extractionState.status === 'loading'}
+              hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Finish editing cover"
+              style={styles.headerAction}
+            >
               <Text style={[styles.doneText, { color: colors.accentText }, extractionState.status === 'loading' && { opacity: 0.5 }]}>Finish</Text>
             </TouchableOpacity>
           </View>
