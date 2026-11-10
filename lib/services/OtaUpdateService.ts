@@ -7,8 +7,8 @@ export type OtaCheckResult = 'available' | 'none' | 'unavailable';
 
 /**
  * JavaScript-only updates over EAS Update (expo-updates). app.json sets checkAutomatically to NEVER, so nothing
- * downloads or reloads by surprise: this service checks and downloads when asked, and the app restarts only when the
- * person taps "Restart now". A downloaded update that isn't applied right away is used on the next cold start.
+ * downloads or reloads by surprise: this service checks on its own, but downloads only after the person taps
+ * "Update now" (a downloaded update is applied on the next cold start, so downloading is the consent step).
  * In development, Expo Go, dev clients without the native module, or builds with updates off, every call is a no-op.
  */
 export class OtaUpdateService {

@@ -192,7 +192,7 @@ export default function AppUpdatePanel({ isBlocking = false }: AppUpdatePanelPro
       const details = [release?.version ? `Version ${release.version}` : '', update.sizeLabel].filter(Boolean).join(' · ');
       return (
         <View>
-          {renderTitle(isOta ? 'An update is ready' : 'Update available', isOta ? 'A quick download, no reinstall.' : details)}
+          {renderTitle(isOta ? 'An update is ready' : 'Update available', isOta ? 'A quick download, no reinstall. Ourlime restarts to apply it.' : details)}
           {release && !isOta ? renderNotes(release.releaseNotes) : null}
           <PanelButton label="Update now" onPress={() => void update.startUpdate()} />
           {closeLabel ? <PanelButton label={closeLabel} variant="secondary" onPress={update.dismissSheet} /> : null}

@@ -42,7 +42,7 @@ const formatMegabytes = (bytes: number): string => `${Math.max(1, Math.round(byt
  * The one place the update flow lives (UI talks to it through useAppUpdate). Signals: a live listener on
  * siteConfig/mobileApp, a throttled foreground re-check (Firestore + EAS Update + Google Play on Play builds), app_update
  * pushes, and the Settings row. A build Play serves is offered even before siteConfig/mobileApp names it. Releases are offered in a sheet; the APK path downloads, verifies and hands over to Android's installer, the
- * OTA path downloads and restarts on a tap. Nothing restarts, reloads or opens the installer on its own during a call
+ * OTA path downloads only after "Update now" is tapped, then restarts into it. Nothing restarts, reloads or opens the installer on its own during a call
  * or an upload. Every failure falls back to "no update" so a broken update system never gets in the way.
  */
 export class AppUpdateService {
@@ -161,11 +161,9 @@ export class AppUpdateService {
       const versionCheck = this.withPlayUpdate(configCheck);
       this.dispatch({ type: 'check_finished', versionCheck, otaReady: otaUpdateService.hasPendingUpdate() });
       const state = useAppUpdateStore.getState();
-      // A JavaScript-only update applies when there's no new APK to install for this device.
-      if (otaResult === 'available' && state.status === 'up_to_date') {
-        this.dispatch({ type: 'ota_found' });
-        await this.downloadOta();
-      }
+      // A JavaScript-only update is offered when there's no new APK to install for this device. It is only downloaded
+      // after the person taps "Update now": a downloaded update would otherwise be applied on the next cold start.
+      if (otaResult === 'available' && state.status === 'up_to_date') this.dispatch({ type: 'ota_found' });
       await this.maybePromptAutomatically();
     } catch (error: unknown) {
       console.warn('[AppUpdateService.refresh] Error:', error instanceof Error ? error.message : error);
@@ -244,9 +242,10 @@ export class AppUpdateService {
     const state = useAppUpdateStore.getState();
     if (state.isSheetVisible || state.versionCheck.status === 'update_required') return;
     const isReleaseOffer = state.status === 'available' && state.source === null && state.release !== null;
+    const isOtaOffer = state.status === 'available' && state.source === 'ota';
     const isRestartOffer = state.status === 'ready_to_restart';
-    if (!isReleaseOffer && !isRestartOffer) return;
-    const promptKey = isRestartOffer ? 'ota' : `release:${state.release?.versionCode ?? state.release?.version}`;
+    if (!isReleaseOffer && !isOtaOffer && !isRestartOffer) return;
+    const promptKey = isOtaOffer || isRestartOffer ? 'ota' : `release:${state.release?.versionCode ?? state.release?.version}`;
     if (this.promptedKeys.has(promptKey)) return;
     if (isReleaseOffer && state.release && await this.isSnoozed(state.release)) return;
     if (this.isAppBusy()) {
@@ -361,7 +360,8 @@ export class AppUpdateService {
       const isReady = await otaUpdateService.download();
       if (isReady) {
         this.dispatch({ type: 'ota_ready' });
-        await this.maybePromptAutomatically();
+        // The person tapped "Update now", so restart straight into it (restart() waits out a call or upload).
+        await this.restart();
       } else {
         this.dispatch({ type: 'download_cancelled' });
       }

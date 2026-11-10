@@ -21,8 +21,8 @@ OTA updates replace only the JavaScript bundle and assets. Anything native needs
 ## What the app does
 
 1. On launch, and when it returns to the foreground (at most every 10 minutes), it calls `Updates.checkForUpdateAsync()`. It does the same when someone taps **Settings → App → Check for updates**.
-2. If an update exists, it downloads in the background (`fetchUpdateAsync`), then the sheet says **"Update downloaded. Restart Ourlime to apply it."** with **Restart now** (`reloadAsync`) and **Later**.
-3. **Later** is safe: a downloaded update is applied automatically on the next cold start.
+2. If an update exists, the sheet offers it ("An update is ready") with **Update now** and **Later**. Nothing is downloaded until **Update now** is tapped; then it downloads (`fetchUpdateAsync`) and restarts into it (`reloadAsync`).
+3. **Later** leaves the app as it is: nothing is downloaded, so nothing changes on the next launch. The offer comes back on a later check or from **Settings → App → Check for updates**. (Only an update the person already chose to download, but that waited out a call or upload, is applied on the next cold start.)
 4. Nothing restarts during a call or an upload. A tap on **Restart now** then explains why, and the prompt waits until you're done.
 5. If a downloaded update crashes on launch, expo-updates rolls back to the embedded bundle (an emergency launch). The app logs this through `DiagnosticLogService` (`OtaUpdateService launch:emergency`).
 6. Dev builds, Expo Go, and binaries built before `expo-updates` was added do nothing (`__DEV__` / `Updates.isEnabled`).
