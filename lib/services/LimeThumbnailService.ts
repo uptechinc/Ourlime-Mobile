@@ -1,9 +1,11 @@
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { createVideoPlayer } from 'expo-video';
 import { doc, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes, uploadBytesResumable } from 'firebase/storage';
 import { db, storage } from '@/lib/firebaseConfig';
 import { limeCoverTimelineService } from '@/lib/services/LimeCoverTimelineService';
+import { DiagnosticLogService } from '@/lib/services/DiagnosticLogService';
 
 type EnsureLimeThumbnailInput = {
   reelId: string;
@@ -48,7 +50,33 @@ export class LimeThumbnailService {
     return this.createThumbnailAtTime(videoUri, targetTime);
   }
 
+  /**
+   * The cover image at an exact moment. expo-video grabs the exact frame (Android OPTION_CLOSEST, iOS zero tolerance);
+   * expo-video-thumbnails is the fallback, but on Android it snaps to the nearest keyframe (up to a second or two off).
+   */
   public async createThumbnailAtTime(videoUri: string, timestampSeconds: number): Promise<string> {
+    try {
+      return await this.withTimeout(this.createExactFrame(videoUri, timestampSeconds), 'Preparing the video cover took too long.');
+    } catch (error: unknown) {
+      DiagnosticLogService.getInstance().info('LimeThumbnailService', 'exact-frame:fallback', { reason: error instanceof Error ? error.message : String(error) });
+      return this.createKeyframeThumbnail(videoUri, timestampSeconds);
+    }
+  }
+
+  private async createExactFrame(videoUri: string, timestampSeconds: number): Promise<string> {
+    const player = createVideoPlayer(videoUri);
+    try {
+      const [thumbnail] = await player.generateThumbnailsAsync(Math.max(timestampSeconds, 0.05));
+      if (!thumbnail) throw new Error('The video did not produce a frame.');
+      const image = await ImageManipulator.manipulate(thumbnail).renderAsync();
+      const savedImage = await image.saveAsync({ compress: 0.86, format: SaveFormat.JPEG });
+      return savedImage.uri;
+    } finally {
+      player.release();
+    }
+  }
+
+  private async createKeyframeThumbnail(videoUri: string, timestampSeconds: number): Promise<string> {
     const thumbnail = await this.withTimeout(
       VideoThumbnails.getThumbnailAsync(videoUri, {
         time: Math.round(Math.max(timestampSeconds, 0.05) * 1000),
