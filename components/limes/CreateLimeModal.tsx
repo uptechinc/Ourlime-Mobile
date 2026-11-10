@@ -25,6 +25,7 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { limeThumbnailService, type LimeCoverFrame } from '@/lib/services/LimeThumbnailService';
 import VideoThumbnailPicker from '@/components/media/VideoThumbnailPicker';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { CoverFramePreview, CoverFrameScrubber } from '@/components/media/CoverFrameScrubber';
 import VideoTrimModal, { type TrimmedVideoResult } from '@/components/media/VideoTrimModal';
 import { videoTrimService } from '@/lib/services/VideoTrimService';
@@ -82,7 +83,8 @@ function SelectedVideoPreview({ uri }: { uri: string }) {
 type LimeVideoConfirmationModalProps = {
   asset: ImagePicker.ImagePickerAsset | null;
   selectedThumbnailUri?: string;
-  onThumbnailChange?: (uri: string) => void;
+  /** coverSeconds: the frame's time, so Edit cover opens on it (absent for a camera-roll image). */
+  onThumbnailChange?: (uri: string, coverSeconds?: number) => void;
   onCancel: () => void;
   onFinish: () => void;
 };
@@ -171,13 +173,13 @@ function LimeVideoConfirmationModal({
     setIsExtracting(true);
     try {
       const finalUri = await limeThumbnailService.createThumbnailAtTime(asset.uri, coverSeconds);
-      if (onThumbnailChange) onThumbnailChange(finalUri);
+      if (onThumbnailChange) onThumbnailChange(finalUri, coverSeconds);
     } catch {
       // Closest strip frame as a fallback cover.
       const nearest = frames.reduce<LimeCoverFrame | null>((best, frame) => (
         !best || Math.abs(frame.timestampSeconds - coverSeconds) < Math.abs(best.timestampSeconds - coverSeconds) ? frame : best
       ), null);
-      if (nearest && onThumbnailChange) onThumbnailChange(nearest.previewUri);
+      if (nearest && onThumbnailChange) onThumbnailChange(nearest.previewUri, nearest.timestampSeconds);
     } finally {
       setIsExtracting(false);
     }
@@ -249,6 +251,8 @@ function LimeVideoConfirmationModal({
 
 export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialShowDrafts = false }: CreateLimeModalProps) {
   const insets = useSafeAreaInsets();
+  // The sheet sits in a transparent Modal, where Android doesn't resize for the keyboard: KeyboardSafeView lifts it.
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const { colors } = useAppTheme();
   const [visibility, setVisibility] = useState<'public' | 'friends' | 'private'>('public');
   const [category, setCategory] = useState('For You');
@@ -258,6 +262,8 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
   // A picked video longer than the Lime limit: the trimmer opens so the user can keep the best part.
   const [trimSourceAsset, setTrimSourceAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [selectedThumbnailUri, setSelectedThumbnailUri] = useState<string>('');
+  // Time of the frame picked on "Confirm video", so Edit cover opens on that frame instead of the start.
+  const [selectedCoverSeconds, setSelectedCoverSeconds] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -300,6 +306,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
     setSelectedAsset(null);
     setPendingAsset(null);
     setSelectedThumbnailUri('');
+    setSelectedCoverSeconds(null);
     setCaption('');
     setCategory('For You');
     setVisibility('public');
@@ -371,6 +378,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
       } else {
         setSelectedAsset(null);
         setSelectedThumbnailUri('');
+        setSelectedCoverSeconds(null);
       }
       setOpenedDraftId(draft.id);
       setIsDraftsSheetVisible(false);
@@ -471,6 +479,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
     }
     // Continue into the usual cover-frame step with the shortened file; a cover from the old cut no longer applies.
     setSelectedThumbnailUri('');
+    setSelectedCoverSeconds(null);
     setPendingAsset({
       ...source,
       uri: result.uri,
@@ -574,6 +583,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
   const handleRemoveVideo = () => {
     setSelectedAsset(null);
     setSelectedThumbnailUri('');
+    setSelectedCoverSeconds(null);
   };
 
   const handleCancelPendingVideo = () => {
@@ -692,6 +702,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
     setSelectedAsset(null);
     setPendingAsset(null);
     setSelectedThumbnailUri('');
+    setSelectedCoverSeconds(null);
     setCaption('');
     setCategory('For You');
     onSuccess();
@@ -708,8 +719,8 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
       // From a draft reminder: open the drafts list once the composer is on screen, so it is presented above it.
       onShow={() => { if (initialShowDrafts) setIsDraftsSheetVisible(true); }}
     >
-      <View style={[styles.overlay, { backgroundColor: colors.modalScrim }]}>
-        <Animated.View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border, paddingBottom: Math.max(24, insets.bottom) }, swipeDismiss.animatedStyle]}>
+      <KeyboardSafeView onKeyboardChange={setIsKeyboardOpen} style={[styles.overlay, { backgroundColor: colors.modalScrim, paddingTop: isKeyboardOpen ? insets.top : 0 }]}>
+        <Animated.View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border, paddingBottom: isKeyboardOpen ? 12 : Math.max(24, insets.bottom) }, isKeyboardOpen ? styles.modalCardWithKeyboard : styles.modalCardResting, swipeDismiss.animatedStyle]}>
           
           {/* Top Drag Handle Bar for Swipe-Down to Dismiss */}
           <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.mutedText} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close Lime creation" />
@@ -735,7 +746,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
             </View>
           </View>
 
-          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
             
             {/* Audience Privacy Selector */}
             <Text style={[styles.sectionLabel, { color: colors.secondaryText }]}>Who can see your Lime?</Text>
@@ -850,6 +861,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
                   videoUri={selectedAsset.uri}
                   durationSeconds={typeof selectedAsset.duration === 'number' ? selectedAsset.duration / 1000 : 0}
                   selectedThumbnailUri={selectedThumbnailUri}
+                  selectedCoverSeconds={selectedCoverSeconds}
                   onThumbnailChange={setSelectedThumbnailUri}
                   aspectRatio="9:16"
                   openEditorOnMount
@@ -905,7 +917,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
           </View>
 
         </Animated.View>
-      </View>
+      </KeyboardSafeView>
 
       {/* Modern Custom Success Overlay Card */}
       {showSuccessModal && (
@@ -978,7 +990,7 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
     <LimeVideoConfirmationModal
       asset={pendingAsset}
       selectedThumbnailUri={selectedThumbnailUri}
-      onThumbnailChange={setSelectedThumbnailUri}
+      onThumbnailChange={(uri, coverSeconds) => { setSelectedThumbnailUri(uri); setSelectedCoverSeconds(coverSeconds ?? null); }}
       onCancel={handleCancelPendingVideo}
       onFinish={handleFinishPendingVideo}
     />
@@ -996,8 +1008,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    maxHeight: '92%',
-    minHeight: '75%',
     paddingTop: 10,
     paddingHorizontal: 20,
     paddingBottom: 24,
@@ -1006,6 +1016,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 18,
     elevation: 24,
+  },
+  // Keyboard open: the sheet fills the space above the keyboard instead of keeping its usual 75% height.
+  modalCardResting: {
+    minHeight: '75%',
+    maxHeight: '92%',
+    flexGrow: 0,
+  },
+  modalCardWithKeyboard: {
+    minHeight: 0,
+    maxHeight: '100%',
+    flexGrow: 1,
   },
   selectedVideoPreview: {
     width: '100%',

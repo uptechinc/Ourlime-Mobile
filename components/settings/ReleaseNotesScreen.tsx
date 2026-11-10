@@ -23,7 +23,7 @@ export default function ReleaseNotesScreen() {
       <PageHeader title="Release notes" onBackPress={() => router.back()} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={[styles.body, { width: Math.min(width, 760) }]}>
-          <Text style={styles.intro}>What changed in each Ourlime update. Quick updates arrive by themselves while you use the app; app updates come from Google Play.</Text>
+          <Text style={styles.intro}>What changed in each Ourlime update. Quick updates download when you tap Update now; app updates come from Google Play.</Text>
           <AppUpdateSettingsRow />
           {releases.length === 0 ? <Text style={styles.empty}>No release notes yet.</Text> : releases.map((release) => {
             const isRunning = release.id === runningId;

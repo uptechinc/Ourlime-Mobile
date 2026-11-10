@@ -1,5 +1,6 @@
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router, type Href } from 'expo-router';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppUpdate } from '@/lib/hooks/useAppUpdate';
 
@@ -69,6 +70,7 @@ export default function AppUpdatePanel({ isBlocking = false }: AppUpdatePanelPro
           ? renderNotes(update.whatsNewNotes)
           : <Text style={{ color: colors.secondaryText, fontSize: 15, lineHeight: 21 }}>Ourlime was updated with fixes and improvements.</Text>}
         <PanelButton label="Got it" onPress={update.dismissSheet} />
+        <PanelButton label="See all release notes" variant="secondary" onPress={() => { update.dismissSheet(); router.push('/settings/release-notes' as Href); }} />
       </View>
     );
   }

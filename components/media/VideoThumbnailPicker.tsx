@@ -24,6 +24,8 @@ type VideoThumbnailPickerProps = {
   videoUri: string;
   durationSeconds: number;
   selectedThumbnailUri?: string;
+  /** Time of a cover chosen elsewhere (e.g. "Confirm video"); the editor opens on that frame. */
+  selectedCoverSeconds?: number | null;
   onThumbnailChange: (thumbnailUri: string) => void;
   aspectRatio?: '9:16' | '16:9' | '1:1' | '4:5';
   openEditorOnMount?: boolean;
@@ -48,6 +50,7 @@ export default function VideoThumbnailPicker({
   videoUri,
   durationSeconds,
   selectedThumbnailUri,
+  selectedCoverSeconds = null,
   onThumbnailChange,
   openEditorOnMount = false,
   title = 'Lime cover',
@@ -75,6 +78,9 @@ export default function VideoThumbnailPicker({
   // Parents pass inline callbacks; reading it through a ref keeps their re-renders from restarting frame extraction.
   const onThumbnailChangeRef = useRef(onThumbnailChange);
   onThumbnailChangeRef.current = onThumbnailChange;
+  // Read through a ref so a new value doesn't restart (and cancel) frame extraction.
+  const selectedCoverSecondsRef = useRef(selectedCoverSeconds);
+  selectedCoverSecondsRef.current = selectedCoverSeconds;
 
   /** keepSelection: build the strip for the editor without replacing a cover that was already chosen. */
   const handleGenerateFrames = useCallback(async (keepSelection = false) => {
@@ -89,11 +95,12 @@ export default function VideoThumbnailPicker({
       const defaultIndex = Math.min(2, generatedFrames.length - 1);
       const defaultFrame = generatedFrames[defaultIndex];
       setFrames(generatedFrames);
-      setCoverSeconds(defaultFrame.timestampSeconds);
       if (keepSelection) {
+        setCoverSeconds(selectedCoverSecondsRef.current ?? defaultFrame.timestampSeconds);
         setExtractionState({ status: 'ready' });
         return;
       }
+      setCoverSeconds(defaultFrame.timestampSeconds);
       setSelection({ source: 'video-frame', timestampSeconds: defaultFrame.timestampSeconds, previewUri: defaultFrame.previewUri, finalUri: defaultFrame.previewUri });
       onThumbnailChangeRef.current(defaultFrame.previewUri);
       setExtractionState({ status: 'ready' });
