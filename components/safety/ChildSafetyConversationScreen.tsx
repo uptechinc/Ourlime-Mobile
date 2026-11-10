@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import {
 	ActivityIndicator,
 	Alert,
-	KeyboardAvoidingView,
-	Platform,
 	ScrollView,
 	Text,
 	TextInput,
@@ -11,6 +9,7 @@ import {
 	View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import * as ImagePicker from 'expo-image-picker';
@@ -295,10 +294,7 @@ export default function ChildSafetyConversationScreen({
 					</TouchableOpacity>
 				) : null}
 			</View>
-			<KeyboardAvoidingView
-				style={{ flex: 1 }}
-				behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-			>
+			<KeyboardSafeView style={{ flex: 1 }}>
 				{busy && !report ? (
 					<ActivityIndicator
 						style={{ marginTop: 40 }}
@@ -510,7 +506,7 @@ export default function ChildSafetyConversationScreen({
 							: 'The reporter has not enabled contact.'}
 					</Text>
 				)}
-			</KeyboardAvoidingView>
+			</KeyboardSafeView>
 		</SafeAreaView>
 	);
 }

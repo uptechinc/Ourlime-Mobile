@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Linking, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CalendarDays, Clock, MapPin, MessageCircle, Repeat, Send, Share2, Trash2, Users } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import UserAvatar from '@/components/ui/UserAvatar';
 import CustomModal from '@/components/ui/CustomModal';
 import { EventsSkeleton } from '@/components/ui/Skeleton';
@@ -40,6 +41,7 @@ export default function EventDetailScreen() {
   const { activeUserId } = useAppData();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [event, setEvent] = useState<Event | null>(null);
@@ -161,7 +163,7 @@ export default function EventDetailScreen() {
   return (
     <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="Event" onBackPress={() => router.back()} />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardSafeView style={styles.flex} onKeyboardChange={setIsKeyboardOpen}>
         {isLoading ? (
           <ScrollView contentContainerStyle={styles.content}><EventsSkeleton /></ScrollView>
         ) : !event ? (
@@ -296,7 +298,7 @@ export default function EventDetailScreen() {
         )}
 
         {event ? (
-          <View style={[styles.composerBar, { paddingBottom: 10 + insets.bottom }]}>
+          <View style={[styles.composerBar, { paddingBottom: 10 + (isKeyboardOpen ? 0 : insets.bottom) }]}>
             <View style={[styles.composer, { width: contentWidth - 24 }]}>
               <TextInput
                 value={draft}
@@ -319,7 +321,7 @@ export default function EventDetailScreen() {
             </View>
           </View>
         ) : null}
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
 
       <CustomModal
         visible={Boolean(commentToDelete)}

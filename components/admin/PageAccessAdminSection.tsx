@@ -24,6 +24,7 @@ import type {
 	PageAccessStatus,
 } from '@/lib/types/pageAccess';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 const STATUSES: readonly PageAccessStatus[] = [
 	'enabled',
@@ -682,193 +683,197 @@ export default function PageAccessAdminSection() {
 								Edit {editing?.pageName}
 							</Text>
 						</View>
-						{editor ? (
-							<ScrollView
-								contentContainerStyle={{ padding: 18, paddingBottom: 45 }}
-							>
-								<Text style={{ color: colors.mutedText }}>
-									{editing?.route}
-								</Text>
-								<Text
-									style={{
-										marginTop: 18,
-										marginBottom: 9,
-										fontWeight: '900',
-										color: colors.text,
-									}}
+						{/* Full-screen Modal: Android doesn't resize for the keyboard, so shrink the form above it. */}
+						<KeyboardSafeView style={{ flex: 1 }}>
+							{editor ? (
+								<ScrollView
+									keyboardShouldPersistTaps="handled"
+									contentContainerStyle={{ padding: 18, paddingBottom: 45 }}
 								>
-									Availability status
-								</Text>
-								<ScrollView horizontal showsHorizontalScrollIndicator={false}>
-									{STATUSES.map((status) => (
-										<TouchableOpacity
-											key={status}
-											onPress={() =>
-												setEditor((current) =>
-													current
-														? {
-																...current,
-																status,
-																badgeText: getPageAccessBadge(status),
-															}
-														: current
-												)
-											}
-											style={{
-												marginRight: 7,
-												borderRadius: 999,
-												paddingHorizontal: 12,
-												paddingVertical: 8,
-												backgroundColor:
-													editor.status === status
-														? colors.accent
-														: colors.surface,
-											}}
-										>
+									<Text style={{ color: colors.mutedText }}>
+										{editing?.route}
+									</Text>
+									<Text
+										style={{
+											marginTop: 18,
+											marginBottom: 9,
+											fontWeight: '900',
+											color: colors.text,
+										}}
+									>
+										Availability status
+									</Text>
+									<ScrollView horizontal showsHorizontalScrollIndicator={false}>
+										{STATUSES.map((status) => (
+											<TouchableOpacity
+												key={status}
+												onPress={() =>
+													setEditor((current) =>
+														current
+															? {
+																	...current,
+																	status,
+																	badgeText: getPageAccessBadge(status),
+																}
+															: current
+													)
+												}
+												style={{
+													marginRight: 7,
+													borderRadius: 999,
+													paddingHorizontal: 12,
+													paddingVertical: 8,
+													backgroundColor:
+														editor.status === status
+															? colors.accent
+															: colors.surface,
+												}}
+											>
+												<Text
+													style={{
+														color:
+															editor.status === status
+																? colors.onAccent
+																: colors.secondaryText,
+														fontSize: 11,
+														fontWeight: '800',
+													}}
+												>
+													{getStatusLabel(status)}
+												</Text>
+											</TouchableOpacity>
+										))}
+									</ScrollView>
+									{[
+										[
+											'Show in navigation',
+											'Allow this route to appear in menus.',
+											'showInNavigation',
+										],
+										[
+											'Show page preview',
+											'Keep the destination visible behind its access overlay.',
+											'showPagePreview',
+										],
+									].map(([title, subtitle, key]) => {
+										const switchKey =
+											key === 'showInNavigation'
+												? 'showInNavigation'
+												: 'showPagePreview';
+										return (
+											<View
+												key={key}
+												style={{
+													marginTop: 14,
+													flexDirection: 'row',
+													alignItems: 'center',
+													padding: 13,
+													borderRadius: 14,
+													backgroundColor: colors.surface,
+												}}
+											>
+												<View style={{ flex: 1 }}>
+													<Text style={{ fontWeight: '900', color: colors.text }}>
+														{title}
+													</Text>
+													<Text
+														style={{
+															marginTop: 2,
+															color: colors.mutedText,
+															fontSize: 11,
+														}}
+													>
+														{subtitle}
+													</Text>
+												</View>
+												<Switch
+													value={editor[switchKey]}
+													onValueChange={(value) =>
+														setEditor((current) =>
+															current
+																? { ...current, [switchKey]: value }
+																: current
+														)
+													}
+													trackColor={{ true: '#10b981' }}
+												/>
+											</View>
+										);
+									})}
+									<Text
+										style={{
+											marginTop: 18,
+											fontWeight: '900',
+											color: colors.text,
+										}}
+									>
+										Overlay content
+									</Text>
+									{(
+										[
+											['Overlay title', 'overlayTitle', false],
+											['Overlay description', 'overlayDescription', true],
+											['Badge text', 'badgeText', false],
+											['Primary button label', 'primaryButtonLabel', false],
+											['Primary button route', 'primaryButtonRoute', false],
+											['Secondary button label', 'secondaryButtonLabel', false],
+											['Secondary button route', 'secondaryButtonRoute', false],
+										] as const
+									).map(([label, key, multiline]) => (
+										<View key={key} style={{ marginTop: 11 }}>
 											<Text
 												style={{
-													color:
-														editor.status === status
-															? colors.onAccent
-															: colors.secondaryText,
+													marginBottom: 5,
+													color: colors.secondaryText,
 													fontSize: 11,
 													fontWeight: '800',
 												}}
 											>
-												{getStatusLabel(status)}
+												{label}
 											</Text>
-										</TouchableOpacity>
-									))}
-								</ScrollView>
-								{[
-									[
-										'Show in navigation',
-										'Allow this route to appear in menus.',
-										'showInNavigation',
-									],
-									[
-										'Show page preview',
-										'Keep the destination visible behind its access overlay.',
-										'showPagePreview',
-									],
-								].map(([title, subtitle, key]) => {
-									const switchKey =
-										key === 'showInNavigation'
-											? 'showInNavigation'
-											: 'showPagePreview';
-									return (
-										<View
-											key={key}
-											style={{
-												marginTop: 14,
-												flexDirection: 'row',
-												alignItems: 'center',
-												padding: 13,
-												borderRadius: 14,
-												backgroundColor: colors.surface,
-											}}
-										>
-											<View style={{ flex: 1 }}>
-												<Text style={{ fontWeight: '900', color: colors.text }}>
-													{title}
-												</Text>
-												<Text
-													style={{
-														marginTop: 2,
-														color: colors.mutedText,
-														fontSize: 11,
-													}}
-												>
-													{subtitle}
-												</Text>
-											</View>
-											<Switch
-												value={editor[switchKey]}
-												onValueChange={(value) =>
+											<TextInput
+												value={editor[key]}
+												onChangeText={(value) =>
 													setEditor((current) =>
-														current
-															? { ...current, [switchKey]: value }
-															: current
+														current ? { ...current, [key]: value } : current
 													)
 												}
-												trackColor={{ true: '#10b981' }}
+												multiline={multiline}
+												style={{
+													minHeight: multiline ? 82 : undefined,
+													textAlignVertical: multiline ? 'top' : 'center',
+													borderRadius: 13,
+													borderWidth: 1,
+													borderColor: colors.border,
+													backgroundColor: colors.input,
+													color: colors.text,
+													padding: 11,
+												}}
 											/>
 										</View>
-									);
-								})}
-								<Text
-									style={{
-										marginTop: 18,
-										fontWeight: '900',
-										color: colors.text,
-									}}
-								>
-									Overlay content
-								</Text>
-								{(
-									[
-										['Overlay title', 'overlayTitle', false],
-										['Overlay description', 'overlayDescription', true],
-										['Badge text', 'badgeText', false],
-										['Primary button label', 'primaryButtonLabel', false],
-										['Primary button route', 'primaryButtonRoute', false],
-										['Secondary button label', 'secondaryButtonLabel', false],
-										['Secondary button route', 'secondaryButtonRoute', false],
-									] as const
-								).map(([label, key, multiline]) => (
-									<View key={key} style={{ marginTop: 11 }}>
-										<Text
-											style={{
-												marginBottom: 5,
-												color: colors.secondaryText,
-												fontSize: 11,
-												fontWeight: '800',
-											}}
-										>
-											{label}
-										</Text>
-										<TextInput
-											value={editor[key]}
-											onChangeText={(value) =>
-												setEditor((current) =>
-													current ? { ...current, [key]: value } : current
-												)
-											}
-											multiline={multiline}
-											style={{
-												minHeight: multiline ? 82 : undefined,
-												textAlignVertical: multiline ? 'top' : 'center',
-												borderRadius: 13,
-												borderWidth: 1,
-												borderColor: colors.border,
-												backgroundColor: colors.input,
-												color: colors.text,
-												padding: 11,
-											}}
-										/>
-									</View>
-								))}
-								<TouchableOpacity
-									disabled={saving}
-									onPress={() => void handleSave()}
-									style={{
-										marginTop: 18,
-										alignItems: 'center',
-										borderRadius: 15,
-										backgroundColor: '#10b981',
-										padding: 14,
-									}}
-								>
-									{saving ? (
-										<ActivityIndicator color="#fff" />
-									) : (
-										<Text style={{ color: '#fff', fontWeight: '900' }}>
-											Save Changes
-										</Text>
-									)}
-								</TouchableOpacity>
-							</ScrollView>
-						) : null}
+									))}
+									<TouchableOpacity
+										disabled={saving}
+										onPress={() => void handleSave()}
+										style={{
+											marginTop: 18,
+											alignItems: 'center',
+											borderRadius: 15,
+											backgroundColor: '#10b981',
+											padding: 14,
+										}}
+									>
+										{saving ? (
+											<ActivityIndicator color="#fff" />
+										) : (
+											<Text style={{ color: '#fff', fontWeight: '900' }}>
+												Save Changes
+											</Text>
+										)}
+									</TouchableOpacity>
+								</ScrollView>
+							) : null}
+						</KeyboardSafeView>
 					</SafeAreaView>
 				</SwipeDismissSurface>
 			</Modal>

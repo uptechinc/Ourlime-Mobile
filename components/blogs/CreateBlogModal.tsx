@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -23,6 +21,7 @@ import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesService';
 import RichTextEditor from '@/components/blogs/RichTextEditor';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import RichBlogContent from '@/components/blog/RichBlogContent';
 import { stripHtml } from '@/lib/utils/htmlUtils';
 import type { BlogEditorDraft, BlogEditorSource, BlogPostDetail, BlogSubmitStatus } from '@/lib/types/blog';
@@ -526,7 +525,7 @@ export default function CreateBlogModal({ isOpen, onClose, userId, onSuccess, ed
         </View>
         {renderStepProgress()}
 
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardSafeView style={{ flex: 1 }}>
           <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
             {renderStep()}
           </ScrollView>
@@ -552,7 +551,7 @@ export default function CreateBlogModal({ isOpen, onClose, userId, onSuccess, ed
               </Pressable>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </KeyboardSafeView>
       </SafeAreaView>
 
       <CustomModal

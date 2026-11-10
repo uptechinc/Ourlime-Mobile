@@ -9,6 +9,8 @@ import {
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import CachedImage from '@/components/ui/CachedImage';
 import AdminDeletionModal from '@/components/moderation/AdminDeletionModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -76,6 +78,9 @@ export default function AdminUserContentWorkspace({
   const [restoreReason, setRestoreReason] = useState('Restored after administrator review.');
   const [restoreMessage, setRestoreMessage] = useState('');
   const [restoring, setRestoring] = useState(false);
+  // Transparent Modal: Android doesn't resize for the keyboard, so KeyboardSafeView keeps the restore form above it.
+  const insets = useSafeAreaInsets();
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [mediaTarget, setMediaTarget] = useState<AdminContentMediaPreview | null>(null);
   const [delivery, setDelivery] = useState<ModerationDeliveryResult | null>(null);
 
@@ -479,8 +484,11 @@ export default function AdminUserContentWorkspace({
           if (!restoring) setRestoreTarget(null);
         }}
       >
-        <View style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(2,6,23,0.72)' }}>
-          <View style={{ maxHeight: '88%', overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
+        <KeyboardSafeView
+          onKeyboardChange={setIsKeyboardOpen}
+          style={{ flex: 1, justifyContent: 'center', padding: 20, paddingTop: isKeyboardOpen ? Math.max(20, insets.top) : 20, backgroundColor: 'rgba(2,6,23,0.72)' }}
+        >
+          <View style={{ maxHeight: isKeyboardOpen ? '100%' : '88%', flexShrink: 1, overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20 }}>
               <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                 <View style={{ flex: 1 }}>
@@ -546,7 +554,7 @@ export default function AdminUserContentWorkspace({
               </View>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardSafeView>
       </Modal>
       <Modal
         visible={Boolean(mediaTarget)}

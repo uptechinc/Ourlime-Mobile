@@ -31,6 +31,7 @@ import { conversationResourceService } from '@/lib/services/ConversationResource
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
 import FilterBar from '@/components/ui/FilterBar';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 const adminUserService = AdminUserService.getInstance();
 const ROLES: readonly AdminUserRole[] = [
@@ -610,241 +611,263 @@ export default function UserManagementSection() {
 								</TouchableOpacity>
 							))}
 						</ScrollView>
-						{selectedUser ? (
-							<ScrollView
-								contentContainerStyle={{ padding: 18, paddingBottom: 55 }}
-							>
-								{detailTab === 'overview' ? (
-									<>
-										<View style={{ alignItems: 'center' }}>
-											<UserAvatar
-												profileImage={selectedUser.profilePicture}
-												firstName={
-													selectedUser.firstName || selectedUser.userName
-												}
-												size={72}
-											/>
-											<Text
-												style={{
-													marginTop: 10,
-													fontSize: 20,
-													fontWeight: '900',
-													color: colors.text,
-												}}
-											>
-												{`${selectedUser.firstName} ${selectedUser.lastName}`.trim()}
-											</Text>
-											<Text style={{ color: colors.mutedText }}>
-												{selectedUser.email}
-											</Text>
-										</View>
-										{[
-											['Username', `@${selectedUser.userName || 'unknown'}`],
-											['Account', selectedUser.accountType],
-											['Role', selectedUser.role],
-											[
-												'Status',
-												selectedUser.archived
-													? 'archived'
-													: selectedUser.accountStatus,
-											],
-											[
-												'Email verified',
-												selectedUser.emailVerified ? 'Yes' : 'No',
-											],
-											[
-												'Identity verified',
-												selectedUser.isAuthenticated
-													? 'Yes'
-													: selectedUser.verificationStatus,
-											],
-											['Online status', selectedUser.onlineStatus],
-										].map(([label, value]) => (
-											<View
-												key={label}
-												style={{
-													marginTop: 11,
-													padding: 13,
-													borderRadius: 13,
-													backgroundColor: colors.elevated,
-													borderWidth: 1,
-													borderColor: colors.border,
-												}}
-											>
+						{/* Full-screen Modal: Android doesn't resize for the keyboard, so shrink the form above it. */}
+						<KeyboardSafeView style={{ flex: 1 }}>
+							{selectedUser ? (
+								<ScrollView
+									keyboardShouldPersistTaps="handled"
+									contentContainerStyle={{ padding: 18, paddingBottom: 55 }}
+								>
+									{detailTab === 'overview' ? (
+										<>
+											<View style={{ alignItems: 'center' }}>
+												<UserAvatar
+													profileImage={selectedUser.profilePicture}
+													firstName={
+														selectedUser.firstName || selectedUser.userName
+													}
+													size={72}
+												/>
 												<Text
 													style={{
-														color: colors.mutedText,
-														fontSize: 11,
-														fontWeight: '800',
-													}}
-												>
-													{label}
-												</Text>
-												<Text
-													style={{
-														marginTop: 3,
+														marginTop: 10,
+														fontSize: 20,
+														fontWeight: '900',
 														color: colors.text,
-														fontWeight: '800',
-														textTransform: 'capitalize',
 													}}
 												>
-													{value}
+													{`${selectedUser.firstName} ${selectedUser.lastName}`.trim()}
+												</Text>
+												<Text style={{ color: colors.mutedText }}>
+													{selectedUser.email}
 												</Text>
 											</View>
-										))}
-									</>
-								) : null}
-								{detailTab === 'content' ? (
-									<AdminUserContentWorkspace
-										userId={selectedUser.id}
-										userDisplayName={
-											`${selectedUser.firstName} ${selectedUser.lastName}`.trim()
-											|| selectedUser.userName
-											|| selectedUser.email
-										}
-										onOpenContent={(content) => {
-											setSelectedUser(null);
-											if (content.contentType === 'lime') {
-												router.push({
-													pathname: '/limes/viewer',
-													params: { limeId: content.id, viewer: '1' },
-												});
-												return;
-											}
-											router.push({
-												pathname: '/post/[id]',
-												params: { id: content.id },
-											});
-										}}
-									/>
-								) : null}
-								{detailTab === 'role' ? (
-									<>
-										<Text
-											style={{
-												marginBottom: 10,
-												color: colors.text,
-												fontWeight: '900',
-											}}
-										>
-											Platform role
-										</Text>
-										{ROLES.map((role) => (
-											<TouchableOpacity
-												key={role}
-												disabled={
-													busy ||
-													selectedUser.role === role ||
-													selectedUser.id ===
-														adminUserService.getCurrentUserId()
-												}
-												onPress={() => setPendingRole(role)}
-												style={{
-													flexDirection: 'row',
-													alignItems: 'center',
-													padding: 14,
-													marginBottom: 7,
-													borderRadius: 13,
-													backgroundColor:
-														selectedUser.role === role
-															? colors.successSurface
-															: colors.elevated,
-												}}
-											>
-												<View style={{ flex: 1 }}>
+											{[
+												['Username', `@${selectedUser.userName || 'unknown'}`],
+												['Account', selectedUser.accountType],
+												['Role', selectedUser.role],
+												[
+													'Status',
+													selectedUser.archived
+														? 'archived'
+														: selectedUser.accountStatus,
+												],
+												[
+													'Email verified',
+													selectedUser.emailVerified ? 'Yes' : 'No',
+												],
+												[
+													'Identity verified',
+													selectedUser.isAuthenticated
+														? 'Yes'
+														: selectedUser.verificationStatus,
+												],
+												['Online status', selectedUser.onlineStatus],
+											].map(([label, value]) => (
+												<View
+													key={label}
+													style={{
+														marginTop: 11,
+														padding: 13,
+														borderRadius: 13,
+														backgroundColor: colors.elevated,
+														borderWidth: 1,
+														borderColor: colors.border,
+													}}
+												>
 													<Text
 														style={{
+															color: colors.mutedText,
+															fontSize: 11,
+															fontWeight: '800',
+														}}
+													>
+														{label}
+													</Text>
+													<Text
+														style={{
+															marginTop: 3,
+															color: colors.text,
+															fontWeight: '800',
 															textTransform: 'capitalize',
+														}}
+													>
+														{value}
+													</Text>
+												</View>
+											))}
+										</>
+									) : null}
+									{detailTab === 'content' ? (
+										<AdminUserContentWorkspace
+											userId={selectedUser.id}
+											userDisplayName={
+												`${selectedUser.firstName} ${selectedUser.lastName}`.trim()
+												|| selectedUser.userName
+												|| selectedUser.email
+											}
+											onOpenContent={(content) => {
+												setSelectedUser(null);
+												if (content.contentType === 'lime') {
+													router.push({
+														pathname: '/limes/viewer',
+														params: { limeId: content.id, viewer: '1' },
+													});
+													return;
+												}
+												router.push({
+													pathname: '/post/[id]',
+													params: { id: content.id },
+												});
+											}}
+										/>
+									) : null}
+									{detailTab === 'role' ? (
+										<>
+											<Text
+												style={{
+													marginBottom: 10,
+													color: colors.text,
+													fontWeight: '900',
+												}}
+											>
+												Platform role
+											</Text>
+											{ROLES.map((role) => (
+												<TouchableOpacity
+													key={role}
+													disabled={
+														busy ||
+														selectedUser.role === role ||
+														selectedUser.id ===
+															adminUserService.getCurrentUserId()
+													}
+													onPress={() => setPendingRole(role)}
+													style={{
+														flexDirection: 'row',
+														alignItems: 'center',
+														padding: 14,
+														marginBottom: 7,
+														borderRadius: 13,
+														backgroundColor:
+															selectedUser.role === role
+																? colors.successSurface
+																: colors.elevated,
+													}}
+												>
+													<View style={{ flex: 1 }}>
+														<Text
+															style={{
+																textTransform: 'capitalize',
+																color:
+																	selectedUser.role === role
+																		? colors.successText
+																		: colors.secondaryText,
+																fontWeight: '900',
+															}}
+														>
+															{role}
+														</Text>
+														<Text
+															style={{
+																marginTop: 2,
+																color: colors.mutedText,
+																fontSize: 11,
+															}}
+														>
+															{role === 'admin'
+																? 'Full administration access'
+																: role === 'moderator'
+																	? 'Content reports and moderation'
+																	: role === 'developer'
+																		? 'Developer previews and tools'
+																		: role === 'tester'
+																			? 'Development previews without admin access'
+																			: role === 'premium'
+																				? 'Premium product capabilities'
+																				: 'Standard member access'}
+														</Text>
+													</View>
+													{selectedUser.role === role ? (
+														<Icon
+															name="check"
+															size={18}
+															color={colors.successText}
+														/>
+													) : null}
+												</TouchableOpacity>
+											))}
+										</>
+									) : null}
+									{detailTab === 'status' ? (
+										<>
+											<Text
+												style={{
+													marginBottom: 10,
+													color: colors.text,
+													fontWeight: '900',
+												}}
+											>
+												Account access status
+											</Text>
+											{(
+												['active', 'pending', 'suspended', 'banned'] as const
+											).map((status) => (
+												<TouchableOpacity
+													key={status}
+													onPress={() => setNewStatus(status)}
+													style={{
+														marginBottom: 7,
+														padding: 13,
+														borderRadius: 13,
+														backgroundColor:
+															newStatus === status
+																? colors.successSurface
+																: colors.elevated,
+													}}
+												>
+													<Text
+														style={{
 															color:
-																selectedUser.role === role
+																newStatus === status
 																	? colors.successText
 																	: colors.secondaryText,
+															textTransform: 'capitalize',
 															fontWeight: '900',
 														}}
 													>
-														{role}
+														{status}
 													</Text>
-													<Text
-														style={{
-															marginTop: 2,
-															color: colors.mutedText,
-															fontSize: 11,
-														}}
-													>
-														{role === 'admin'
-															? 'Full administration access'
-															: role === 'moderator'
-																? 'Content reports and moderation'
-																: role === 'developer'
-																	? 'Developer previews and tools'
-																	: role === 'tester'
-																		? 'Development previews without admin access'
-																		: role === 'premium'
-																			? 'Premium product capabilities'
-																			: 'Standard member access'}
-													</Text>
-												</View>
-												{selectedUser.role === role ? (
-													<Icon
-														name="check"
-														size={18}
-														color={colors.successText}
-													/>
-												) : null}
-											</TouchableOpacity>
-										))}
-									</>
-								) : null}
-								{detailTab === 'status' ? (
-									<>
-										<Text
-											style={{
-												marginBottom: 10,
-												color: colors.text,
-												fontWeight: '900',
-											}}
-										>
-											Account access status
-										</Text>
-										{(
-											['active', 'pending', 'suspended', 'banned'] as const
-										).map((status) => (
-											<TouchableOpacity
-												key={status}
-												onPress={() => setNewStatus(status)}
-												style={{
-													marginBottom: 7,
-													padding: 13,
-													borderRadius: 13,
-													backgroundColor:
-														newStatus === status
-															? colors.successSurface
-															: colors.elevated,
-												}}
-											>
-												<Text
+												</TouchableOpacity>
+											))}
+											{newStatus === 'suspended' ? (
+												<TextInput
+													value={suspensionDays}
+													onChangeText={setSuspensionDays}
+													keyboardType="number-pad"
+													placeholder="Suspension days"
+													placeholderTextColor={colors.mutedText}
 													style={{
-														color:
-															newStatus === status
-																? colors.successText
-																: colors.secondaryText,
-														textTransform: 'capitalize',
-														fontWeight: '900',
+														marginTop: 7,
+														borderRadius: 13,
+														borderWidth: 1,
+														borderColor: colors.border,
+														padding: 12,
+														backgroundColor: colors.input,
+														color: colors.text,
 													}}
-												>
-													{status}
-												</Text>
-											</TouchableOpacity>
-										))}
-										{newStatus === 'suspended' ? (
+												/>
+											) : null}
 											<TextInput
-												value={suspensionDays}
-												onChangeText={setSuspensionDays}
-												keyboardType="number-pad"
-												placeholder="Suspension days"
+												value={statusReason}
+												onChangeText={setStatusReason}
+												multiline
+												placeholder="Administrative reason shown to the user"
 												placeholderTextColor={colors.mutedText}
 												style={{
-													marginTop: 7,
+													minHeight: 86,
+													marginTop: 9,
+													textAlignVertical: 'top',
 													borderRadius: 13,
 													borderWidth: 1,
 													borderColor: colors.border,
@@ -853,316 +876,298 @@ export default function UserManagementSection() {
 													color: colors.text,
 												}}
 											/>
-										) : null}
-										<TextInput
-											value={statusReason}
-											onChangeText={setStatusReason}
-											multiline
-											placeholder="Administrative reason shown to the user"
-											placeholderTextColor={colors.mutedText}
-											style={{
-												minHeight: 86,
-												marginTop: 9,
-												textAlignVertical: 'top',
-												borderRadius: 13,
-												borderWidth: 1,
-												borderColor: colors.border,
-												padding: 12,
-												backgroundColor: colors.input,
-												color: colors.text,
-											}}
-										/>
-										<TouchableOpacity
-											disabled={
-												busy ||
-												selectedUser.id === adminUserService.getCurrentUserId()
-											}
-											onPress={() => void handleStatus()}
-											style={{
-												marginTop: 12,
-												alignItems: 'center',
-												borderRadius: 14,
-												backgroundColor:
-													newStatus === 'banned'
-														? colors.destructive
-														: colors.accent,
-												padding: 13,
-											}}
-										>
-											<Text
-												style={{ color: colors.onAccent, fontWeight: '900' }}
-											>
-												Apply status
-											</Text>
-										</TouchableOpacity>
-									</>
-								) : null}
-								{detailTab === 'verification' ? (
-									<>
-										<View
-											style={{
-												padding: 14,
-												borderRadius: 14,
-												backgroundColor: colors.surface,
-											}}
-										>
-											<Text style={{ color: colors.text, fontWeight: '900' }}>
-												Email verification
-											</Text>
-											<Text style={{ marginTop: 4, color: colors.mutedText }}>
-												{selectedUser.emailVerified
-													? 'Verified'
-													: 'Not verified'}
-											</Text>
-											{!selectedUser.emailVerified ? (
-												<TouchableOpacity
-													disabled={busy}
-													onPress={() => void handleEmailVerification()}
-													style={{
-														marginTop: 11,
-														alignItems: 'center',
-														borderRadius: 13,
-														backgroundColor: '#10b981',
-														padding: 11,
-													}}
-												>
-													<Text style={{ color: '#fff', fontWeight: '900' }}>
-														Verify email manually
-													</Text>
-												</TouchableOpacity>
-											) : null}
-										</View>
-										<View
-											style={{
-												marginTop: 11,
-												padding: 14,
-												borderRadius: 14,
-												backgroundColor: colors.surface,
-											}}
-										>
-											<Text style={{ color: colors.text, fontWeight: '900' }}>
-												Identity authentication
-											</Text>
-											{authenticationDocumentsLoading ? <ActivityIndicator color={colors.accent} style={{ marginVertical: 18 }} /> : null}
-											{authenticationDocumentsError ? (
-												<View style={{ marginTop: 10 }}><Text style={{ color: colors.destructiveText }}>{authenticationDocumentsError}</Text><TouchableOpacity onPress={() => void loadAuthenticationDocuments()} style={{ marginTop: 8, alignSelf: 'flex-start', borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 7 }}><Text style={{ color: colors.text, fontWeight: '800' }}>Retry</Text></TouchableOpacity></View>
-											) : null}
-											{!authenticationDocumentsLoading && !authenticationDocumentsError ? (
-												<ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }} contentContainerStyle={{ paddingRight: 8 }}>
-													{(['faceID', 'frontID', 'backID'] as const).map((documentType) => {
-														const identityDocument = authenticationDocuments.find((document) => document.type === documentType);
-														const label = documentType === 'faceID' ? 'Selfie' : documentType === 'frontID' ? 'Front ID' : 'Back ID';
-														return <View key={documentType} style={{ width: 180, marginRight: 10 }}><Text style={{ color: colors.mutedText, fontSize: 12, fontWeight: '800', marginBottom: 6 }}>{label}</Text>{identityDocument?.imageUrl ? <TouchableOpacity onPress={() => setPreviewDocumentUrl(identityDocument.imageUrl)}><Image source={{ uri: identityDocument.imageUrl }} resizeMode="contain" style={{ width: 180, height: 130, borderRadius: 12, backgroundColor: colors.input }} /></TouchableOpacity> : <View style={{ width: 180, height: 130, borderRadius: 12, backgroundColor: colors.input, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.mutedText }}>Not provided</Text></View>}</View>;
-													})}
-												</ScrollView>
-											) : null}
-											<Text
+											<TouchableOpacity
+												disabled={
+													busy ||
+													selectedUser.id === adminUserService.getCurrentUserId()
+												}
+												onPress={() => void handleStatus()}
 												style={{
-													marginTop: 4,
-													color: colors.mutedText,
-													textTransform: 'capitalize',
+													marginTop: 12,
+													alignItems: 'center',
+													borderRadius: 14,
+													backgroundColor:
+														newStatus === 'banned'
+															? colors.destructive
+															: colors.accent,
+													padding: 13,
 												}}
 											>
-												{selectedUser.verificationStatus}
-											</Text>
-											<TextInput
-												value={statusReason}
-												onChangeText={setStatusReason}
-												multiline
-												placeholder="Review notes or rejection reason"
-												placeholderTextColor={colors.mutedText}
+												<Text
+													style={{ color: colors.onAccent, fontWeight: '900' }}
+												>
+													Apply status
+												</Text>
+											</TouchableOpacity>
+										</>
+									) : null}
+									{detailTab === 'verification' ? (
+										<>
+											<View
 												style={{
-													minHeight: 75,
-													marginTop: 10,
-													textAlignVertical: 'top',
-													borderRadius: 12,
-													borderWidth: 1,
-													borderColor: colors.border,
-													backgroundColor: colors.input,
-													color: colors.text,
-													padding: 10,
+													padding: 14,
+													borderRadius: 14,
+													backgroundColor: colors.surface,
 												}}
-											/>
-											<View style={{ flexDirection: 'row', marginTop: 10 }}>
-												<TouchableOpacity
-													disabled={busy}
-													onPress={() => void handleIdentity('verified')}
-													style={{
-														flex: 1,
-														alignItems: 'center',
-														borderRadius: 12,
-														backgroundColor: '#10b981',
-														padding: 11,
-													}}
-												>
-													<Text style={{ color: '#fff', fontWeight: '900' }}>
-														Approve
-													</Text>
-												</TouchableOpacity>
-												<TouchableOpacity
-													disabled={busy}
-													onPress={() => void handleIdentity('rejected')}
-													style={{
-														flex: 1,
-														marginLeft: 8,
-														alignItems: 'center',
-														borderRadius: 12,
-														backgroundColor: colors.destructiveSurface,
-														padding: 11,
-													}}
-												>
-													<Text
-														style={{
-															color: colors.destructiveText,
-															fontWeight: '900',
-														}}
-													>
-														Reject
-													</Text>
-												</TouchableOpacity>
-											</View>
-										</View>
-									</>
-								) : null}
-								{detailTab === 'lifecycle' ? (
-									<>
-										<Text style={{ color: colors.text, fontWeight: '900' }}>
-											Account lifecycle
-										</Text>
-										<Text
-											style={{
-												marginTop: 5,
-												color: colors.mutedText,
-												lineHeight: 19,
-											}}
-						>
-							Archive is reversible. Permanent deletion removes the user
-							through the secure server lifecycle workflow and cannot be
-							undone.
-										</Text>
-										{lifecycleOperation ? (
-											<View style={{ marginTop: 12, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 12 }}>
-												<Text style={{ color: colors.text, fontWeight: '800' }}>
-													Lifecycle job: {lifecycleOperation.phase}
+											>
+												<Text style={{ color: colors.text, fontWeight: '900' }}>
+													Email verification
 												</Text>
 												<Text style={{ marginTop: 4, color: colors.mutedText }}>
-													{lifecycleOperation.processedDocuments}/{lifecycleOperation.totalDocuments || '?'} records · Email {lifecycleOperation.delivery?.emailStatus ?? 'pending'}
+													{selectedUser.emailVerified
+														? 'Verified'
+														: 'Not verified'}
 												</Text>
-												{lifecycleOperation.phase === 'failed' ? (
-													<TouchableOpacity onPress={() => void handleLifecycleRetry()} style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 10, backgroundColor: colors.accent, paddingHorizontal: 14, paddingVertical: 9 }}>
-														<Text style={{ color: '#fff', fontWeight: '800' }}>Retry safely</Text>
-													</TouchableOpacity>
-												) : null}
-												{lifecycleOperation.delivery?.emailStatus === 'failed' ? (
-													<TouchableOpacity onPress={() => void handleDeliveryRetry()} style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 10, backgroundColor: colors.accent, paddingHorizontal: 14, paddingVertical: 9 }}>
-														<Text style={{ color: '#fff', fontWeight: '800' }}>Retry email</Text>
+												{!selectedUser.emailVerified ? (
+													<TouchableOpacity
+														disabled={busy}
+														onPress={() => void handleEmailVerification()}
+														style={{
+															marginTop: 11,
+															alignItems: 'center',
+															borderRadius: 13,
+															backgroundColor: '#10b981',
+															padding: 11,
+														}}
+													>
+														<Text style={{ color: '#fff', fontWeight: '900' }}>
+															Verify email manually
+														</Text>
 													</TouchableOpacity>
 												) : null}
 											</View>
-										) : null}
-						<Text style={{ marginTop: 16, color: colors.text, fontWeight: '900' }}>
-							Reason <Text style={{ color: colors.destructiveText }}>*</Text>
-						</Text>
-						<Text style={{ marginTop: 4, color: colors.mutedText, fontSize: 12, lineHeight: 17 }}>
-							This reason is recorded in the audit history and included in the email sent to the user.
-						</Text>
-						<TextInput
-							value={lifecycleReason}
-							onChangeText={setLifecycleReason}
-							multiline
-							maxLength={500}
-							textAlignVertical="top"
-							placeholder={selectedUser.archived
-								? 'Explain why this account is being restored'
-								: 'Explain why this account is being archived or deleted'}
-							placeholderTextColor={colors.mutedText}
-							style={{
-								marginTop: 9,
-								minHeight: 96,
-								borderRadius: 13,
-								borderWidth: 1,
-								borderColor: lifecycleReason.trim()
-									? colors.border
-									: colors.destructiveText,
-								padding: 12,
-								backgroundColor: colors.input,
-								color: colors.text,
-							}}
-						/>
-						<Text style={{ marginTop: 4, color: colors.mutedText, fontSize: 10, textAlign: 'right' }}>
-							{lifecycleReason.length}/500
-						</Text>
-						<TouchableOpacity
-							disabled={
-								busy ||
-								!lifecycleReason.trim() ||
-								selectedUser.id === adminUserService.getCurrentUserId()
-							}
-											onPress={() =>
-												void handleLifecycle(
-													selectedUser.archived ? 'unarchive' : 'archive'
-												)
-											}
-											style={{
-												marginTop: 16,
-												alignItems: 'center',
-												borderRadius: 14,
-								backgroundColor: selectedUser.archived
-									? '#10b981'
-									: '#f59e0b',
-								opacity: lifecycleReason.trim() ? 1 : 0.55,
-												padding: 13,
-											}}
-										>
-											<Text style={{ color: '#fff', fontWeight: '900' }}>
-												{selectedUser.archived
-													? 'Restore account'
-													: 'Archive account'}
+											<View
+												style={{
+													marginTop: 11,
+													padding: 14,
+													borderRadius: 14,
+													backgroundColor: colors.surface,
+												}}
+											>
+												<Text style={{ color: colors.text, fontWeight: '900' }}>
+													Identity authentication
+												</Text>
+												{authenticationDocumentsLoading ? <ActivityIndicator color={colors.accent} style={{ marginVertical: 18 }} /> : null}
+												{authenticationDocumentsError ? (
+													<View style={{ marginTop: 10 }}><Text style={{ color: colors.destructiveText }}>{authenticationDocumentsError}</Text><TouchableOpacity onPress={() => void loadAuthenticationDocuments()} style={{ marginTop: 8, alignSelf: 'flex-start', borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 7 }}><Text style={{ color: colors.text, fontWeight: '800' }}>Retry</Text></TouchableOpacity></View>
+												) : null}
+												{!authenticationDocumentsLoading && !authenticationDocumentsError ? (
+													<ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }} contentContainerStyle={{ paddingRight: 8 }}>
+														{(['faceID', 'frontID', 'backID'] as const).map((documentType) => {
+															const identityDocument = authenticationDocuments.find((document) => document.type === documentType);
+															const label = documentType === 'faceID' ? 'Selfie' : documentType === 'frontID' ? 'Front ID' : 'Back ID';
+															return <View key={documentType} style={{ width: 180, marginRight: 10 }}><Text style={{ color: colors.mutedText, fontSize: 12, fontWeight: '800', marginBottom: 6 }}>{label}</Text>{identityDocument?.imageUrl ? <TouchableOpacity onPress={() => setPreviewDocumentUrl(identityDocument.imageUrl)}><Image source={{ uri: identityDocument.imageUrl }} resizeMode="contain" style={{ width: 180, height: 130, borderRadius: 12, backgroundColor: colors.input }} /></TouchableOpacity> : <View style={{ width: 180, height: 130, borderRadius: 12, backgroundColor: colors.input, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.mutedText }}>Not provided</Text></View>}</View>;
+														})}
+													</ScrollView>
+												) : null}
+												<Text
+													style={{
+														marginTop: 4,
+														color: colors.mutedText,
+														textTransform: 'capitalize',
+													}}
+												>
+													{selectedUser.verificationStatus}
+												</Text>
+												<TextInput
+													value={statusReason}
+													onChangeText={setStatusReason}
+													multiline
+													placeholder="Review notes or rejection reason"
+													placeholderTextColor={colors.mutedText}
+													style={{
+														minHeight: 75,
+														marginTop: 10,
+														textAlignVertical: 'top',
+														borderRadius: 12,
+														borderWidth: 1,
+														borderColor: colors.border,
+														backgroundColor: colors.input,
+														color: colors.text,
+														padding: 10,
+													}}
+												/>
+												<View style={{ flexDirection: 'row', marginTop: 10 }}>
+													<TouchableOpacity
+														disabled={busy}
+														onPress={() => void handleIdentity('verified')}
+														style={{
+															flex: 1,
+															alignItems: 'center',
+															borderRadius: 12,
+															backgroundColor: '#10b981',
+															padding: 11,
+														}}
+													>
+														<Text style={{ color: '#fff', fontWeight: '900' }}>
+															Approve
+														</Text>
+													</TouchableOpacity>
+													<TouchableOpacity
+														disabled={busy}
+														onPress={() => void handleIdentity('rejected')}
+														style={{
+															flex: 1,
+															marginLeft: 8,
+															alignItems: 'center',
+															borderRadius: 12,
+															backgroundColor: colors.destructiveSurface,
+															padding: 11,
+														}}
+													>
+														<Text
+															style={{
+																color: colors.destructiveText,
+																fontWeight: '900',
+															}}
+														>
+															Reject
+														</Text>
+													</TouchableOpacity>
+												</View>
+											</View>
+										</>
+									) : null}
+									{detailTab === 'lifecycle' ? (
+										<>
+											<Text style={{ color: colors.text, fontWeight: '900' }}>
+												Account lifecycle
 											</Text>
-										</TouchableOpacity>
-										<TextInput
-											value={deleteConfirmation}
-											onChangeText={setDeleteConfirmation}
-											autoCapitalize="characters"
-											placeholder="Type DELETE"
-											placeholderTextColor={colors.mutedText}
-											style={{
-												marginTop: 20,
-												borderRadius: 13,
-												borderWidth: 1,
-												borderColor: '#fecaca',
-												padding: 12,
-												backgroundColor: colors.input,
-												color: colors.text,
-											}}
-										/>
-										<TouchableOpacity
-											disabled={
-								busy ||
-								!lifecycleReason.trim() ||
-								deleteConfirmation !== 'DELETE' ||
-												selectedUser.id === adminUserService.getCurrentUserId()
-											}
-											onPress={() => void handleLifecycle('delete_permanently')}
-											style={{
-												marginTop: 9,
-												alignItems: 'center',
-												borderRadius: 14,
-												backgroundColor:
-								deleteConfirmation === 'DELETE' && lifecycleReason.trim()
-														? colors.destructive
-														: colors.disabled,
-												padding: 13,
-											}}
-										>
-											<Text style={{ color: '#fff', fontWeight: '900' }}>
-												Delete permanently
+											<Text
+												style={{
+													marginTop: 5,
+													color: colors.mutedText,
+													lineHeight: 19,
+												}}
+							>
+								Archive is reversible. Permanent deletion removes the user
+								through the secure server lifecycle workflow and cannot be
+								undone.
 											</Text>
-										</TouchableOpacity>
-									</>
-								) : null}
-							</ScrollView>
-						) : null}
+											{lifecycleOperation ? (
+												<View style={{ marginTop: 12, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 12 }}>
+													<Text style={{ color: colors.text, fontWeight: '800' }}>
+														Lifecycle job: {lifecycleOperation.phase}
+													</Text>
+													<Text style={{ marginTop: 4, color: colors.mutedText }}>
+														{lifecycleOperation.processedDocuments}/{lifecycleOperation.totalDocuments || '?'} records · Email {lifecycleOperation.delivery?.emailStatus ?? 'pending'}
+													</Text>
+													{lifecycleOperation.phase === 'failed' ? (
+														<TouchableOpacity onPress={() => void handleLifecycleRetry()} style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 10, backgroundColor: colors.accent, paddingHorizontal: 14, paddingVertical: 9 }}>
+															<Text style={{ color: '#fff', fontWeight: '800' }}>Retry safely</Text>
+														</TouchableOpacity>
+													) : null}
+													{lifecycleOperation.delivery?.emailStatus === 'failed' ? (
+														<TouchableOpacity onPress={() => void handleDeliveryRetry()} style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 10, backgroundColor: colors.accent, paddingHorizontal: 14, paddingVertical: 9 }}>
+															<Text style={{ color: '#fff', fontWeight: '800' }}>Retry email</Text>
+														</TouchableOpacity>
+													) : null}
+												</View>
+											) : null}
+							<Text style={{ marginTop: 16, color: colors.text, fontWeight: '900' }}>
+								Reason <Text style={{ color: colors.destructiveText }}>*</Text>
+							</Text>
+							<Text style={{ marginTop: 4, color: colors.mutedText, fontSize: 12, lineHeight: 17 }}>
+								This reason is recorded in the audit history and included in the email sent to the user.
+							</Text>
+							<TextInput
+								value={lifecycleReason}
+								onChangeText={setLifecycleReason}
+								multiline
+								maxLength={500}
+								textAlignVertical="top"
+								placeholder={selectedUser.archived
+									? 'Explain why this account is being restored'
+									: 'Explain why this account is being archived or deleted'}
+								placeholderTextColor={colors.mutedText}
+								style={{
+									marginTop: 9,
+									minHeight: 96,
+									borderRadius: 13,
+									borderWidth: 1,
+									borderColor: lifecycleReason.trim()
+										? colors.border
+										: colors.destructiveText,
+									padding: 12,
+									backgroundColor: colors.input,
+									color: colors.text,
+								}}
+							/>
+							<Text style={{ marginTop: 4, color: colors.mutedText, fontSize: 10, textAlign: 'right' }}>
+								{lifecycleReason.length}/500
+							</Text>
+							<TouchableOpacity
+								disabled={
+									busy ||
+									!lifecycleReason.trim() ||
+									selectedUser.id === adminUserService.getCurrentUserId()
+								}
+												onPress={() =>
+													void handleLifecycle(
+														selectedUser.archived ? 'unarchive' : 'archive'
+													)
+												}
+												style={{
+													marginTop: 16,
+													alignItems: 'center',
+													borderRadius: 14,
+									backgroundColor: selectedUser.archived
+										? '#10b981'
+										: '#f59e0b',
+									opacity: lifecycleReason.trim() ? 1 : 0.55,
+													padding: 13,
+												}}
+											>
+												<Text style={{ color: '#fff', fontWeight: '900' }}>
+													{selectedUser.archived
+														? 'Restore account'
+														: 'Archive account'}
+												</Text>
+											</TouchableOpacity>
+											<TextInput
+												value={deleteConfirmation}
+												onChangeText={setDeleteConfirmation}
+												autoCapitalize="characters"
+												placeholder="Type DELETE"
+												placeholderTextColor={colors.mutedText}
+												style={{
+													marginTop: 20,
+													borderRadius: 13,
+													borderWidth: 1,
+													borderColor: '#fecaca',
+													padding: 12,
+													backgroundColor: colors.input,
+													color: colors.text,
+												}}
+											/>
+											<TouchableOpacity
+												disabled={
+									busy ||
+									!lifecycleReason.trim() ||
+									deleteConfirmation !== 'DELETE' ||
+													selectedUser.id === adminUserService.getCurrentUserId()
+												}
+												onPress={() => void handleLifecycle('delete_permanently')}
+												style={{
+													marginTop: 9,
+													alignItems: 'center',
+													borderRadius: 14,
+													backgroundColor:
+									deleteConfirmation === 'DELETE' && lifecycleReason.trim()
+															? colors.destructive
+															: colors.disabled,
+													padding: 13,
+												}}
+											>
+												<Text style={{ color: '#fff', fontWeight: '900' }}>
+													Delete permanently
+												</Text>
+											</TouchableOpacity>
+										</>
+									) : null}
+								</ScrollView>
+							) : null}
+						</KeyboardSafeView>
 					</SafeAreaView>
 				</SwipeDismissSurface>
 			</Modal>

@@ -16,6 +16,7 @@ import { Image } from 'expo-image';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import CustomModal from '@/components/ui/CustomModal';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import UserAvatar from '@/components/ui/UserAvatar';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
 import { PostService, type PostItem } from '@/lib/services/PostService';
@@ -1441,63 +1442,40 @@ export default function AdminReportDetailRoute() {
 						backgroundColor: 'rgba(15,23,42,0.72)',
 					}}
 				>
-					<View
-						style={{
-							borderRadius: 22,
-							backgroundColor: colors.elevated,
-							padding: 18,
-						}}
-					>
-						<View style={{ flexDirection: 'row' }}>
-							<Text
-								style={{
-									flex: 1,
-									fontSize: 18,
-									fontWeight: '900',
-									color: colors.text,
-								}}
-							>
-								{ACTIONS.find((action) => action.id === selectedAction)?.label}
-							</Text>
-							<TouchableOpacity onPress={() => setSelectedAction(null)}>
-								<Icon name="x" size={22} color={colors.icon} />
-							</TouchableOpacity>
-						</View>
-						<TextInput
-							value={reason}
-							onChangeText={setReason}
-							multiline
-							placeholder="Required moderation reason"
-							placeholderTextColor={colors.mutedText}
+					{/* Transparent Modal: Android doesn't resize for the keyboard, so center the dialog above it. */}
+					<KeyboardSafeView style={{ flex: 1, justifyContent: 'center' }}>
+						<View
 							style={{
-								minHeight: 90,
-								marginTop: 14,
-								textAlignVertical: 'top',
-								borderRadius: 13,
-								borderWidth: 1,
-								borderColor: colors.border,
-								backgroundColor: colors.input,
-								color: colors.text,
-								padding: 11,
+								borderRadius: 22,
+								backgroundColor: colors.elevated,
+								padding: 18,
 							}}
-						/>
-						{selectedAction &&
-						[
-							'content_hidden',
-							'commenting_disabled',
-							'messaging_disabled',
-							'posting_disabled',
-							'account_suspended',
-							'account_temp_banned',
-						].includes(selectedAction) ? (
+						>
+							<View style={{ flexDirection: 'row' }}>
+								<Text
+									style={{
+										flex: 1,
+										fontSize: 18,
+										fontWeight: '900',
+										color: colors.text,
+									}}
+								>
+									{ACTIONS.find((action) => action.id === selectedAction)?.label}
+								</Text>
+								<TouchableOpacity onPress={() => setSelectedAction(null)}>
+									<Icon name="x" size={22} color={colors.icon} />
+								</TouchableOpacity>
+							</View>
 							<TextInput
-								value={durationDays}
-								onChangeText={setDurationDays}
-								keyboardType="number-pad"
-								placeholder="Duration in days"
+								value={reason}
+								onChangeText={setReason}
+								multiline
+								placeholder="Required moderation reason"
 								placeholderTextColor={colors.mutedText}
 								style={{
-									marginTop: 9,
+									minHeight: 90,
+									marginTop: 14,
+									textAlignVertical: 'top',
 									borderRadius: 13,
 									borderWidth: 1,
 									borderColor: colors.border,
@@ -1506,23 +1484,49 @@ export default function AdminReportDetailRoute() {
 									padding: 11,
 								}}
 							/>
-						) : null}
-						<TouchableOpacity
-							disabled={busy || !reason.trim()}
-							onPress={() => void handleAction()}
-							style={{
-								marginTop: 14,
-								alignItems: 'center',
-								borderRadius: 14,
-								backgroundColor: colors.accent,
-								padding: 13,
-							}}
-						>
-							<Text style={{ color: colors.onAccent, fontWeight: '900' }}>
-								{busy ? 'Applying…' : 'Apply action'}
-							</Text>
-						</TouchableOpacity>
-					</View>
+							{selectedAction &&
+							[
+								'content_hidden',
+								'commenting_disabled',
+								'messaging_disabled',
+								'posting_disabled',
+								'account_suspended',
+								'account_temp_banned',
+							].includes(selectedAction) ? (
+								<TextInput
+									value={durationDays}
+									onChangeText={setDurationDays}
+									keyboardType="number-pad"
+									placeholder="Duration in days"
+									placeholderTextColor={colors.mutedText}
+									style={{
+										marginTop: 9,
+										borderRadius: 13,
+										borderWidth: 1,
+										borderColor: colors.border,
+										backgroundColor: colors.input,
+										color: colors.text,
+										padding: 11,
+									}}
+								/>
+							) : null}
+							<TouchableOpacity
+								disabled={busy || !reason.trim()}
+								onPress={() => void handleAction()}
+								style={{
+									marginTop: 14,
+									alignItems: 'center',
+									borderRadius: 14,
+									backgroundColor: colors.accent,
+									padding: 13,
+								}}
+							>
+								<Text style={{ color: colors.onAccent, fontWeight: '900' }}>
+									{busy ? 'Applying…' : 'Apply action'}
+								</Text>
+							</TouchableOpacity>
+						</View>
+					</KeyboardSafeView>
 				</SafeAreaView>
 			</Modal>
 			<CustomModal

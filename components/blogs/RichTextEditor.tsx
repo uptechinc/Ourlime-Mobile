@@ -5,6 +5,7 @@ import {
   AlignCenter, AlignLeft, AlignRight, Bold, Heading2, Heading3, Italic, Link2, List, ListOrdered, Pilcrow, Quote, Strikethrough, Underline, Undo2, Redo2,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 type RichTextEditorProps = {
   /** Initial HTML; read once on mount (the editor owns its content afterwards). */
@@ -162,7 +163,7 @@ export default function RichTextEditor({ initialHtml, placeholder = 'Start writi
         scrollEnabled
       />
       <Modal visible={isLinkPromptOpen} transparent animationType="fade" onRequestClose={() => setIsLinkPromptOpen(false)}>
-        <View style={styles.linkOverlay}>
+        <KeyboardSafeView style={styles.linkOverlay}>
           <View style={[styles.linkCard, { backgroundColor: colors.surface }]}>
             <Text style={[styles.linkTitle, { color: colors.text }]}>Insert link</Text>
             <Text style={[styles.linkHint, { color: colors.mutedText }]}>Select text in the editor first, then add its link.</Text>
@@ -172,7 +173,7 @@ export default function RichTextEditor({ initialHtml, placeholder = 'Start writi
               <Pressable onPress={handleInsertLink} style={[styles.linkButton, { backgroundColor: '#10b981' }]}><Text style={{ color: '#ffffff', fontWeight: '700' }}>Add link</Text></Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardSafeView>
       </Modal>
     </View>
   );

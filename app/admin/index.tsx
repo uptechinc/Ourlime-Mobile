@@ -21,6 +21,7 @@ import ModerationSection from '@/components/admin/ModerationSection';
 import AdminSecurityWorkspace from '@/components/admin/AdminSecurityWorkspace';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 const adminMetricsService = AdminMetricsService.getInstance();
 
@@ -239,237 +240,252 @@ export default function AdminPortalScreen() {
 							</TouchableOpacity>
 						))}
 					</View>
-					{activeSection === 'seller_review' ? <SellerReviewSection /> : activeSection === 'security' ? (
-						<ScrollView
-							style={{ flex: 1 }}
-							contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
-						>
-							<AdminSecurityWorkspace />
-						</ScrollView>
-					) : activeSection === 'page_access' ? (
-						<ScrollView
-							style={{ flex: 1 }}
-							contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
-						>
-							<PageAccessAdminSection />
-						</ScrollView>
-					) : activeSection === 'users' ? (
-						<ScrollView
-							style={{ flex: 1 }}
-							contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
-						>
-							<UserManagementSection />
-						</ScrollView>
-					) : activeSection === 'moderation' ? (
-						<ScrollView
-							style={{ flex: 1 }}
-							contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
-						>
-							<ModerationSection />
-						</ScrollView>
-					) : loading ? (
-					<AdminOverviewSkeleton />
-				) : error ? (
-						<View style={styles.center}>
-							<Icon
-								name="alert-triangle"
-								size={34}
-								color={colors.destructive}
-							/>
-							<Text style={{ marginTop: 10, color: colors.destructiveText }}>
-								{error}
-							</Text>
-							<TouchableOpacity
-								onPress={() => void fetchAdminStats()}
-								style={{
-									marginTop: 14,
-									paddingHorizontal: 18,
-									paddingVertical: 10,
-									borderRadius: 999,
-									backgroundColor: colors.accent,
-								}}
+					{/* Edge-to-edge Android doesn't resize for the keyboard: shrink the section's ScrollView so inputs stay above it. */}
+					<KeyboardSafeView style={{ flex: 1 }}>
+						{activeSection === 'seller_review' ? (
+							<ScrollView
+								style={{ flex: 1 }}
+								keyboardShouldPersistTaps="handled"
+								contentContainerStyle={{ paddingBottom: 50 }}
 							>
-								<Text style={{ color: colors.onAccent, fontWeight: '700' }}>
-									Retry
-								</Text>
-							</TouchableOpacity>
-						</View>
-					) : (
-						<ScrollView
-							style={{ flex: 1 }}
-							contentContainerStyle={{ padding: 20, gap: 16 }}
-						>
-							<Text style={[styles.sectionTitle, { color: colors.text }]}>
-								Overview & Metrics
-							</Text>
-
-							{/* Metric Cards */}
-							<View style={styles.grid}>
-								<View
-									style={[
-										styles.metricCard,
-										{
-											backgroundColor: colors.surface,
-											borderColor: colors.border,
-										},
-									]}
-								>
-									<Icon name="users" size={22} color="#10b981" />
-									<Text style={[styles.metricVal, { color: colors.text }]}>
-										{stats.usersCount}
-									</Text>
-									<Text
-										style={[styles.metricLabel, { color: colors.mutedText }]}
-									>
-										Total Users
-									</Text>
-								</View>
-								<View
-									style={[
-										styles.metricCard,
-										{
-											backgroundColor: colors.surface,
-											borderColor: colors.border,
-										},
-									]}
-								>
-									<Icon name="file-text" size={22} color="#3b82f6" />
-									<Text style={[styles.metricVal, { color: colors.text }]}>
-										{stats.postsCount}
-									</Text>
-									<Text
-										style={[styles.metricLabel, { color: colors.mutedText }]}
-									>
-										Total Posts
-									</Text>
-								</View>
-								<View
-									style={[
-										styles.metricCard,
-										{
-											backgroundColor: colors.surface,
-											borderColor: colors.border,
-										},
-									]}
-								>
-									<Icon name="video" size={22} color="#8b5cf6" />
-									<Text style={[styles.metricVal, { color: colors.text }]}>
-										{stats.reelsCount}
-									</Text>
-									<Text
-										style={[styles.metricLabel, { color: colors.mutedText }]}
-									>
-										Total Limes
-									</Text>
-								</View>
-								<View
-									style={[
-										styles.metricCard,
-										{
-											backgroundColor: colors.surface,
-											borderColor: colors.border,
-										},
-									]}
-								>
-									<Icon name="calendar" size={22} color="#f59e0b" />
-									<Text style={[styles.metricVal, { color: colors.text }]}>
-										{stats.eventsCount}
-									</Text>
-									<Text
-										style={[styles.metricLabel, { color: colors.mutedText }]}
-									>
-										Events
-									</Text>
-								</View>
-								<View
-									style={[
-										styles.metricCard,
-										{
-											backgroundColor: colors.surface,
-											borderColor: colors.border,
-										},
-									]}
-								>
-									<Icon name="flag" size={22} color="#c64d53" />
-									<Text style={[styles.metricVal, { color: colors.text }]}>
-										{stats.reportsCount}
-									</Text>
-									<Text
-										style={[styles.metricLabel, { color: colors.mutedText }]}
-									>
-										Reports
-									</Text>
-								</View>
-							</View>
-
-							<View
-								style={[
-									styles.notice,
-									{ backgroundColor: colors.successSurface },
-								]}
+								<SellerReviewSection />
+							</ScrollView>
+						) : activeSection === 'security' ? (
+							<ScrollView
+								style={{ flex: 1 }}
+								keyboardShouldPersistTaps="handled"
+								contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
 							>
-								<Icon name="shield" size={20} color={colors.accent} />
-								<Text
-									style={[styles.noticeText, { color: colors.successText }]}
-								>
-									Admin tools are role-gated and use authenticated server
-									operations.
+								<AdminSecurityWorkspace />
+							</ScrollView>
+						) : activeSection === 'page_access' ? (
+							<ScrollView
+								style={{ flex: 1 }}
+								keyboardShouldPersistTaps="handled"
+								contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
+							>
+								<PageAccessAdminSection />
+							</ScrollView>
+						) : activeSection === 'users' ? (
+							<ScrollView
+								style={{ flex: 1 }}
+								keyboardShouldPersistTaps="handled"
+								contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
+							>
+								<UserManagementSection />
+							</ScrollView>
+						) : activeSection === 'moderation' ? (
+							<ScrollView
+								style={{ flex: 1 }}
+								keyboardShouldPersistTaps="handled"
+								contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
+							>
+								<ModerationSection />
+							</ScrollView>
+						) : loading ? (
+						<AdminOverviewSkeleton />
+					) : error ? (
+							<View style={styles.center}>
+								<Icon
+									name="alert-triangle"
+									size={34}
+									color={colors.destructive}
+								/>
+								<Text style={{ marginTop: 10, color: colors.destructiveText }}>
+									{error}
 								</Text>
+								<TouchableOpacity
+									onPress={() => void fetchAdminStats()}
+									style={{
+										marginTop: 14,
+										paddingHorizontal: 18,
+										paddingVertical: 10,
+										borderRadius: 999,
+										backgroundColor: colors.accent,
+									}}
+								>
+									<Text style={{ color: colors.onAccent, fontWeight: '700' }}>
+										Retry
+									</Text>
+								</TouchableOpacity>
 							</View>
-							<View
-								style={[
-									styles.pendingSection,
-									{
-										backgroundColor: colors.surface,
-										borderColor: colors.border,
-									},
-								]}
+						) : (
+							<ScrollView
+								style={{ flex: 1 }}
+								contentContainerStyle={{ padding: 20, gap: 16 }}
 							>
 								<Text style={[styles.sectionTitle, { color: colors.text }]}>
-									Additional Workspaces
+									Overview & Metrics
 								</Text>
-								<Text
-									style={[styles.pendingIntro, { color: colors.mutedText }]}
-								>
-									Open native administration workspaces for live platform
-									records and role-gated controls.
-								</Text>
-								{REMAINING_ADMIN_WORKSPACES.map((workspace) => (
-									<TouchableOpacity
-										key={workspace.id}
-										onPress={() => router.push(workspace.route)}
+
+								{/* Metric Cards */}
+								<View style={styles.grid}>
+									<View
 										style={[
-											styles.pendingRow,
-											{ borderTopColor: colors.border },
+											styles.metricCard,
+											{
+												backgroundColor: colors.surface,
+												borderColor: colors.border,
+											},
 										]}
 									>
-										<Icon name={workspace.icon} size={19} color={colors.icon} />
-										<Text
-											style={[styles.pendingRowTitle, { color: colors.text }]}
-										>
-											{workspace.title}
+										<Icon name="users" size={22} color="#10b981" />
+										<Text style={[styles.metricVal, { color: colors.text }]}>
+											{stats.usersCount}
 										</Text>
 										<Text
+											style={[styles.metricLabel, { color: colors.mutedText }]}
+										>
+											Total Users
+										</Text>
+									</View>
+									<View
+										style={[
+											styles.metricCard,
+											{
+												backgroundColor: colors.surface,
+												borderColor: colors.border,
+											},
+										]}
+									>
+										<Icon name="file-text" size={22} color="#3b82f6" />
+										<Text style={[styles.metricVal, { color: colors.text }]}>
+											{stats.postsCount}
+										</Text>
+										<Text
+											style={[styles.metricLabel, { color: colors.mutedText }]}
+										>
+											Total Posts
+										</Text>
+									</View>
+									<View
+										style={[
+											styles.metricCard,
+											{
+												backgroundColor: colors.surface,
+												borderColor: colors.border,
+											},
+										]}
+									>
+										<Icon name="video" size={22} color="#8b5cf6" />
+										<Text style={[styles.metricVal, { color: colors.text }]}>
+											{stats.reelsCount}
+										</Text>
+										<Text
+											style={[styles.metricLabel, { color: colors.mutedText }]}
+										>
+											Total Limes
+										</Text>
+									</View>
+									<View
+										style={[
+											styles.metricCard,
+											{
+												backgroundColor: colors.surface,
+												borderColor: colors.border,
+											},
+										]}
+									>
+										<Icon name="calendar" size={22} color="#f59e0b" />
+										<Text style={[styles.metricVal, { color: colors.text }]}>
+											{stats.eventsCount}
+										</Text>
+										<Text
+											style={[styles.metricLabel, { color: colors.mutedText }]}
+										>
+											Events
+										</Text>
+									</View>
+									<View
+										style={[
+											styles.metricCard,
+											{
+												backgroundColor: colors.surface,
+												borderColor: colors.border,
+											},
+										]}
+									>
+										<Icon name="flag" size={22} color="#c64d53" />
+										<Text style={[styles.metricVal, { color: colors.text }]}>
+											{stats.reportsCount}
+										</Text>
+										<Text
+											style={[styles.metricLabel, { color: colors.mutedText }]}
+										>
+											Reports
+										</Text>
+									</View>
+								</View>
+
+								<View
+									style={[
+										styles.notice,
+										{ backgroundColor: colors.successSurface },
+									]}
+								>
+									<Icon name="shield" size={20} color={colors.accent} />
+									<Text
+										style={[styles.noticeText, { color: colors.successText }]}
+									>
+										Admin tools are role-gated and use authenticated server
+										operations.
+									</Text>
+								</View>
+								<View
+									style={[
+										styles.pendingSection,
+										{
+											backgroundColor: colors.surface,
+											borderColor: colors.border,
+										},
+									]}
+								>
+									<Text style={[styles.sectionTitle, { color: colors.text }]}>
+										Additional Workspaces
+									</Text>
+									<Text
+										style={[styles.pendingIntro, { color: colors.mutedText }]}
+									>
+										Open native administration workspaces for live platform
+										records and role-gated controls.
+									</Text>
+									{REMAINING_ADMIN_WORKSPACES.map((workspace) => (
+										<TouchableOpacity
+											key={workspace.id}
+											onPress={() => router.push(workspace.route)}
 											style={[
-												styles.webBadge,
-												{
-													backgroundColor: colors.control,
-													color: colors.secondaryText,
-												},
+												styles.pendingRow,
+												{ borderTopColor: colors.border },
 											]}
 										>
-											LIVE
-										</Text>
-										<Icon
-											name="chevron-right"
-											size={18}
-											color={colors.mutedText}
-										/>
-									</TouchableOpacity>
-								))}
-							</View>
-						</ScrollView>
-					)}
+											<Icon name={workspace.icon} size={19} color={colors.icon} />
+											<Text
+												style={[styles.pendingRowTitle, { color: colors.text }]}
+											>
+												{workspace.title}
+											</Text>
+											<Text
+												style={[
+													styles.webBadge,
+													{
+														backgroundColor: colors.control,
+														color: colors.secondaryText,
+													},
+												]}
+											>
+												LIVE
+											</Text>
+											<Icon
+												name="chevron-right"
+												size={18}
+												color={colors.mutedText}
+											/>
+										</TouchableOpacity>
+									))}
+								</View>
+							</ScrollView>
+						)}
+					</KeyboardSafeView>
 				</>
 			)}
 		</SafeAreaView>

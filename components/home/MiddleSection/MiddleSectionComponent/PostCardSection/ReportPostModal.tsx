@@ -27,6 +27,7 @@ import { CommunityService } from '@/lib/services/CommunityService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { linkPresentationService } from '@/lib/services/LinkPresentationService';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import ChildSafetyIntakeFields from '@/components/safety/ChildSafetyIntakeFields';
 import type { ChildSafetyDangerAnswer } from '@/lib/types/childSafety';
@@ -273,7 +274,9 @@ export default function ReportPostModal({
 								<Icon name="x" size={22} color={colors.icon} />
 							</TouchableOpacity>
 						</View>
+						<KeyboardSafeView style={{ flex: 1 }}>
 						<ScrollView
+							keyboardShouldPersistTaps="handled"
 							contentContainerStyle={{ padding: 18, paddingBottom: 40 }}
 						>
 							<View
@@ -597,6 +600,7 @@ export default function ReportPostModal({
 								</TouchableOpacity>
 							</View>
 						) : null}
+						</KeyboardSafeView>
 					</SafeAreaView>
 				</Animated.View>
 			</Modal>

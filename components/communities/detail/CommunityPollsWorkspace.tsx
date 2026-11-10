@@ -24,6 +24,7 @@ import type { ResourceState } from '@/lib/types/resourceState';
 import CustomModal from '@/components/ui/CustomModal';
 import { FeedSkeleton } from '@/components/ui/Skeleton';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 type CommunityPollsWorkspaceProps = {
 	resource: ResourceState<CommunityPoll[]>;
@@ -373,6 +374,7 @@ export default function CommunityPollsWorkspace({
 							<X size={23} color={colors.icon} />
 						</TouchableOpacity>
 					</View>
+					<KeyboardSafeView style={{ flex: 1 }}>
 					<ScrollView
 						keyboardShouldPersistTaps="handled"
 						contentContainerStyle={{ padding: 18, paddingBottom: 45 }}
@@ -533,6 +535,7 @@ export default function CommunityPollsWorkspace({
 							)}
 						</TouchableOpacity>
 					</ScrollView>
+					</KeyboardSafeView>
 				</SafeAreaView>
 				</SwipeDismissSurface>
 			</Modal>

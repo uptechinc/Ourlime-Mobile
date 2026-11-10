@@ -18,6 +18,7 @@ import type { Sticker } from '@/lib/types/sticker';
 import { getLocalStickerSource, getRandomLocalStickerSource } from '@/assets/images/stickers/stickerMap';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 type KeyboardTab = 'emojis' | 'stickers';
 
@@ -133,6 +134,7 @@ export function EmojiStickerKeyboard({
   onBackspace,
 }: EmojiStickerKeyboardProps) {
   const insets = useSafeAreaInsets();
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const { colors, isDark } = useAppTheme();
   const [activeTab, setActiveTab] = useState<KeyboardTab>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
@@ -184,8 +186,13 @@ export function EmojiStickerKeyboard({
       presentationStyle="overFullScreen"
       onRequestClose={onClose}
     >
-      {/* Backdrop */}
-      <Pressable style={{ flex: 1, backgroundColor: colors.modalScrim }} onPress={onClose} />
+      {/* Lifts the sheet above the software keyboard while the search box is focused (Modals don't resize on Android). */}
+      <KeyboardSafeView
+        onKeyboardChange={setIsKeyboardOpen}
+        style={{ flex: 1, paddingTop: isKeyboardOpen ? insets.top : 0, backgroundColor: colors.modalScrim }}
+      >
+      {/* Backdrop (the scrim colour is on the wrapper, so it also covers the status bar area while lifted) */}
+      <Pressable style={{ flex: 1 }} onPress={onClose} />
 
       {/* WhatsApp Keyboard Sheet Container */}
       <SwipeDismissSurface
@@ -194,15 +201,15 @@ export function EmojiStickerKeyboard({
         handleColor={isDark ? '#475569' : '#cbd5e1'}
         accessibilityLabel="Swipe down to close emoji and sticker picker"
         style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
           backgroundColor: colors.surface,
           borderTopLeftRadius: 20,
           borderTopRightRadius: 20,
-          height: 380 + insets.bottom,
-          paddingBottom: insets.bottom,
+          // Explicit values in both states (Reanimated doesn't reset a removed prop). Keyboard open: the bottom inset
+          // is under the keyboard, and the sheet may shrink to fit the space above it.
+          height: isKeyboardOpen ? 380 : 380 + insets.bottom,
+          minHeight: 0,
+          flexShrink: isKeyboardOpen ? 1 : 0,
+          paddingBottom: isKeyboardOpen ? 0 : insets.bottom,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: isDark ? 0.35 : 0.12,
@@ -481,6 +488,7 @@ export function EmojiStickerKeyboard({
           )}
         </View>
       </SwipeDismissSurface>
+      </KeyboardSafeView>
     </Modal>
   );
 }

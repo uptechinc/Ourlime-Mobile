@@ -17,6 +17,7 @@ import {
 	type AdminBetaRecord,
 } from '@/lib/services/AdminWorkspaceService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 const workspaceService = AdminWorkspaceService.getInstance();
 const TABS = [
@@ -354,96 +355,99 @@ export default function AdminTestersWorkspace() {
 						backgroundColor: 'rgba(15,23,42,0.72)',
 					}}
 				>
-					<View
-						style={{
-							borderRadius: 22,
-							backgroundColor: colors.elevated,
-							padding: 18,
-						}}
-					>
-						<View style={{ flexDirection: 'row' }}>
-							<Text
-								style={{
-									flex: 1,
-									fontSize: 19,
-									fontWeight: '900',
-									color: colors.text,
-								}}
-							>
-								{selected?.name}
-							</Text>
-							<TouchableOpacity onPress={() => setSelected(null)}>
-								<Icon name="x" size={22} color={colors.icon} />
-							</TouchableOpacity>
-						</View>
-						<Text style={{ marginTop: 5, color: colors.mutedText }}>
-							{selected?.email}
-						</Text>
-						<Text
+					{/* Transparent Modal: Android doesn't resize for the keyboard, so center the dialog above it. */}
+					<KeyboardSafeView style={{ flex: 1, justifyContent: 'center' }}>
+						<View
 							style={{
-								marginTop: 16,
-								marginBottom: 6,
-								color: colors.secondaryText,
-								fontWeight: '800',
+								borderRadius: 22,
+								backgroundColor: colors.elevated,
+								padding: 18,
 							}}
 						>
-							Internal admin notes
-						</Text>
-						<TextInput
-							value={notes}
-							onChangeText={setNotes}
-							multiline
-							style={{
-								minHeight: 80,
-								textAlignVertical: 'top',
-								borderWidth: 1,
-								borderColor: colors.border,
-								backgroundColor: colors.input,
-								color: colors.text,
-								borderRadius: 13,
-								padding: 11,
-							}}
-						/>
-						{selected ? (
-							<View style={{ marginTop: 14 }}>
-								{(selected.kind === 'application'
-									? ['approved', 'rejected', 'pending']
-									: selected.kind === 'invitation'
-										? ['invited', 'revoked', 'expired']
-										: ['active', 'suspended', 'removed']
-								).map((statusOption) => (
-									<TouchableOpacity
-										key={statusOption}
-										disabled={saving}
-										onPress={() => void handleStatus(statusOption)}
-										style={{
-											marginBottom: 7,
-											alignItems: 'center',
-											borderRadius: 13,
-											padding: 11,
-											backgroundColor:
-												selected.status === statusOption
-													? colors.successSurface
-													: colors.control,
-										}}
-									>
-										<Text
+							<View style={{ flexDirection: 'row' }}>
+								<Text
+									style={{
+										flex: 1,
+										fontSize: 19,
+										fontWeight: '900',
+										color: colors.text,
+									}}
+								>
+									{selected?.name}
+								</Text>
+								<TouchableOpacity onPress={() => setSelected(null)}>
+									<Icon name="x" size={22} color={colors.icon} />
+								</TouchableOpacity>
+							</View>
+							<Text style={{ marginTop: 5, color: colors.mutedText }}>
+								{selected?.email}
+							</Text>
+							<Text
+								style={{
+									marginTop: 16,
+									marginBottom: 6,
+									color: colors.secondaryText,
+									fontWeight: '800',
+								}}
+							>
+								Internal admin notes
+							</Text>
+							<TextInput
+								value={notes}
+								onChangeText={setNotes}
+								multiline
+								style={{
+									minHeight: 80,
+									textAlignVertical: 'top',
+									borderWidth: 1,
+									borderColor: colors.border,
+									backgroundColor: colors.input,
+									color: colors.text,
+									borderRadius: 13,
+									padding: 11,
+								}}
+							/>
+							{selected ? (
+								<View style={{ marginTop: 14 }}>
+									{(selected.kind === 'application'
+										? ['approved', 'rejected', 'pending']
+										: selected.kind === 'invitation'
+											? ['invited', 'revoked', 'expired']
+											: ['active', 'suspended', 'removed']
+									).map((statusOption) => (
+										<TouchableOpacity
+											key={statusOption}
+											disabled={saving}
+											onPress={() => void handleStatus(statusOption)}
 											style={{
-												color:
+												marginBottom: 7,
+												alignItems: 'center',
+												borderRadius: 13,
+												padding: 11,
+												backgroundColor:
 													selected.status === statusOption
-														? colors.successText
-														: colors.secondaryText,
-												textTransform: 'capitalize',
-												fontWeight: '800',
+														? colors.successSurface
+														: colors.control,
 											}}
 										>
-											{statusOption}
-										</Text>
-									</TouchableOpacity>
-								))}
-							</View>
-						) : null}
-					</View>
+											<Text
+												style={{
+													color:
+														selected.status === statusOption
+															? colors.successText
+															: colors.secondaryText,
+													textTransform: 'capitalize',
+													fontWeight: '800',
+												}}
+											>
+												{statusOption}
+											</Text>
+										</TouchableOpacity>
+									))}
+								</View>
+							) : null}
+						</View>
+					</KeyboardSafeView>
 				</SafeAreaView>
 			</Modal>
 			<Modal
@@ -461,86 +465,89 @@ export default function AdminTestersWorkspace() {
 						backgroundColor: 'rgba(15,23,42,0.72)',
 					}}
 				>
-					<View
-						style={{
-							borderRadius: 22,
-							backgroundColor: colors.elevated,
-							padding: 18,
-						}}
-					>
-						<View style={{ flexDirection: 'row' }}>
-							<Text
-								style={{
-									flex: 1,
-									fontSize: 19,
-									fontWeight: '900',
-									color: colors.text,
-								}}
-							>
-								Invite Tester
-							</Text>
-							<TouchableOpacity onPress={() => setInviteOpen(false)}>
-								<Icon name="x" size={22} color={colors.icon} />
-							</TouchableOpacity>
-						</View>
-						{(
-							[
-								['Full name', inviteName, setInviteName, false],
-								['Email address', inviteEmail, setInviteEmail, false],
-								['Admin notes', inviteNotes, setInviteNotes, true],
-							] as const
-						).map(([label, value, setter, multiline]) => (
-							<View key={label} style={{ marginTop: 12 }}>
-								<Text
-									style={{
-										marginBottom: 5,
-										color: colors.secondaryText,
-										fontSize: 11,
-										fontWeight: '800',
-									}}
-								>
-									{label}
-								</Text>
-								<TextInput
-									value={value}
-									onChangeText={setter}
-									multiline={multiline}
-									placeholderTextColor={colors.mutedText}
-									autoCapitalize={
-										label === 'Email address' ? 'none' : 'sentences'
-									}
-									keyboardType={
-										label === 'Email address' ? 'email-address' : 'default'
-									}
-									style={{
-										minHeight: multiline ? 75 : undefined,
-										textAlignVertical: multiline ? 'top' : 'center',
-										borderRadius: 13,
-										borderWidth: 1,
-										borderColor: colors.border,
-										backgroundColor: colors.input,
-										color: colors.text,
-										padding: 11,
-									}}
-								/>
-							</View>
-						))}
-						<TouchableOpacity
-							disabled={!inviteEmail.trim() || saving}
-							onPress={() => void handleInvite()}
+					{/* Transparent Modal: Android doesn't resize for the keyboard, so center the dialog above it. */}
+					<KeyboardSafeView style={{ flex: 1, justifyContent: 'center' }}>
+						<View
 							style={{
-								marginTop: 15,
-								alignItems: 'center',
-								borderRadius: 14,
-								backgroundColor: colors.accent,
-								padding: 13,
+								borderRadius: 22,
+								backgroundColor: colors.elevated,
+								padding: 18,
 							}}
 						>
-							<Text style={{ color: colors.onAccent, fontWeight: '900' }}>
-								{saving ? 'Creating…' : 'Create Invitation'}
-							</Text>
-						</TouchableOpacity>
-					</View>
+							<View style={{ flexDirection: 'row' }}>
+								<Text
+									style={{
+										flex: 1,
+										fontSize: 19,
+										fontWeight: '900',
+										color: colors.text,
+									}}
+								>
+									Invite Tester
+								</Text>
+								<TouchableOpacity onPress={() => setInviteOpen(false)}>
+									<Icon name="x" size={22} color={colors.icon} />
+								</TouchableOpacity>
+							</View>
+							{(
+								[
+									['Full name', inviteName, setInviteName, false],
+									['Email address', inviteEmail, setInviteEmail, false],
+									['Admin notes', inviteNotes, setInviteNotes, true],
+								] as const
+							).map(([label, value, setter, multiline]) => (
+								<View key={label} style={{ marginTop: 12 }}>
+									<Text
+										style={{
+											marginBottom: 5,
+											color: colors.secondaryText,
+											fontSize: 11,
+											fontWeight: '800',
+										}}
+									>
+										{label}
+									</Text>
+									<TextInput
+										value={value}
+										onChangeText={setter}
+										multiline={multiline}
+										placeholderTextColor={colors.mutedText}
+										autoCapitalize={
+											label === 'Email address' ? 'none' : 'sentences'
+										}
+										keyboardType={
+											label === 'Email address' ? 'email-address' : 'default'
+										}
+										style={{
+											minHeight: multiline ? 75 : undefined,
+											textAlignVertical: multiline ? 'top' : 'center',
+											borderRadius: 13,
+											borderWidth: 1,
+											borderColor: colors.border,
+											backgroundColor: colors.input,
+											color: colors.text,
+											padding: 11,
+										}}
+									/>
+								</View>
+							))}
+							<TouchableOpacity
+								disabled={!inviteEmail.trim() || saving}
+								onPress={() => void handleInvite()}
+								style={{
+									marginTop: 15,
+									alignItems: 'center',
+									borderRadius: 14,
+									backgroundColor: colors.accent,
+									padding: 13,
+								}}
+							>
+								<Text style={{ color: colors.onAccent, fontWeight: '900' }}>
+									{saving ? 'Creating…' : 'Create Invitation'}
+								</Text>
+							</TouchableOpacity>
+						</View>
+					</KeyboardSafeView>
 				</SafeAreaView>
 			</Modal>
 			<CustomModal

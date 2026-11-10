@@ -24,6 +24,7 @@ import NotificationSoundSettings from '@/components/settings/NotificationSoundSe
 import ChangePasswordModal from '@/components/settings/ChangePasswordModal';
 import ActiveSessionsSection from '@/components/settings/ActiveSessionsSection';
 import AppUpdateSettingsRow from '@/components/settings/AppUpdateSettingsRow';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 type SettingsTab = 'appearance' | 'account' | 'privacy' | 'notifications' | 'blocked' | 'security' | 'safety' | 'app';
 type SettingsModalState = { visible: boolean; type: CustomModalType; title: string; message: string; action?: 'logout' };
@@ -202,8 +203,9 @@ export default function SettingsScreen() {
         })}
       </ScrollView>
 
-      {/* Section Content */}
-      <ScrollView style={styles.content} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+      {/* Section Content: KeyboardSafeView shrinks it above the keyboard so fields like Bio stay visible. */}
+      <KeyboardSafeView style={styles.content}>
+      <ScrollView style={styles.content} contentContainerStyle={{ padding: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         {activeTab === 'appearance' && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Appearance</Text>
@@ -382,6 +384,7 @@ export default function SettingsScreen() {
           </View>
         )}
       </ScrollView>
+      </KeyboardSafeView>
       <CustomModal visible={modal.visible} type={modal.type} title={modal.title} message={modal.message} confirmText={modal.action === 'logout' ? 'Sign Out' : 'OK'} cancelText={modal.action === 'logout' ? 'Cancel' : undefined} onClose={() => setModal((current) => ({ ...current, visible: false }))} onConfirm={modal.action === 'logout' ? () => { void authService.logout().then(() => router.replace('/(auth)/login')); } : undefined} />
       <ChangePasswordModal
         visible={passwordModalOpen}

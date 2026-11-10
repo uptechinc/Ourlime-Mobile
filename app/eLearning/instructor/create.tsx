@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
@@ -136,7 +137,7 @@ export default function CreateCourseScreen() {
   return (
     <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
       <PageHeader title="New course" onBackPress={() => router.back()} />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardSafeView style={styles.flex}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
           <View style={[styles.column, { width: Math.min(width, CONTENT_MAX_WIDTH) }]}>
             <Text style={styles.section}>Basics</Text>
@@ -214,7 +215,7 @@ export default function CreateCourseScreen() {
             </Pressable>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
       <CustomModal
         visible={Boolean(moduleToRemove)}
         type="warning"

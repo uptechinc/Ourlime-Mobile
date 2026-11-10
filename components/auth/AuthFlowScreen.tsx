@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StatusBar, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StatusBar, Text, TouchableOpacity, View } from 'react-native';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,7 +26,7 @@ export default function AuthFlowScreen({ title, subtitle, children, iconName }: 
         <Text style={{ fontSize: 18, fontWeight: '800', color: '#f8fafc', marginLeft: 6 }}>{title}</Text>
       </View>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardSafeView style={{ flex: 1 }}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingVertical: 24 }}>
           {/* Glass Card Container matching Web */}
           <View style={{
@@ -50,7 +51,7 @@ export default function AuthFlowScreen({ title, subtitle, children, iconName }: 
             {children}
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </SafeAreaView>
   );
 }

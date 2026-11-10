@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { qrLoginService } from '@/lib/services/QRLoginService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import QRLoginConfirmModal from '@/components/settings/QRLoginConfirmModal';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import type { QRLoginSession } from '@/lib/types/qrLogin';
 
 type QRScannerModalProps = {
@@ -84,6 +85,8 @@ export default function QRScannerModal({ visible, onClose, onSuccess }: QRScanne
           <View style={{ width: 32 }} />
         </View>
 
+        {/* Camera + manual code footer: KeyboardSafeView keeps the code field above the keyboard (the camera shrinks). */}
+        <KeyboardSafeView style={styles.keyboardArea}>
         {/* Camera Area */}
         <View style={styles.cameraContainer}>
           {!permission?.granted ? (
@@ -173,6 +176,7 @@ export default function QRScannerModal({ visible, onClose, onSuccess }: QRScanne
             </TouchableOpacity>
           </View>
         </View>
+        </KeyboardSafeView>
 
         {/* Confirmation Modal */}
         <QRLoginConfirmModal
@@ -194,6 +198,7 @@ export default function QRScannerModal({ visible, onClose, onSuccess }: QRScanne
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  keyboardArea: { flex: 1 },
   header: {
     height: 56,
     flexDirection: 'row',

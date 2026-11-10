@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
@@ -146,7 +147,7 @@ export default function InstructorRegisterScreen() {
           </Pressable>
         </View>
       ) : (
-        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardSafeView style={styles.flex}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
             <View style={[styles.column, { width: Math.min(width, CONTENT_MAX_WIDTH) }]}>
               <Text style={styles.intro}>Tell learners who you are and what you will teach. An administrator verifies every instructor before their courses can be published.</Text>
@@ -185,7 +186,7 @@ export default function InstructorRegisterScreen() {
               </Pressable>
             </View>
           </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardSafeView>
       )}
     </SafeAreaView>
   );

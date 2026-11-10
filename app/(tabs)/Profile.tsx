@@ -23,6 +23,7 @@ import AdminTab from '@/components/profile/AdminTab';
 import EditProfileModal from '@/components/profile/EditProfileModal';
 import ProfileCustomizationSheet from '@/components/profile/ProfileCustomizationSheet';
 import ProfileSkeleton from '@/components/profile/ProfileSkeleton';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppDrawer } from '@/lib/contexts/AppDrawerContext';
@@ -104,6 +105,8 @@ export default function ProfileScreen() {
       {isLoading ? (
         <ProfileSkeleton />
       ) : profile ? (
+        // KeyboardSafeView shrinks the page above the keyboard so inline inputs (Friends search) stay visible.
+        <KeyboardSafeView style={{ flex: 1 }}>
         <ScrollView
           scrollEnabled={drawerState === 'closed'}
           style={{ flex: 1, backgroundColor: colors.canvas }}
@@ -192,6 +195,7 @@ export default function ProfileScreen() {
           {activeTab === 'gallery' && <GalleryTab userId={profile.uid} />}
           {activeTab === 'admin' && <AdminTab profile={profile} />}
         </ScrollView>
+        </KeyboardSafeView>
       ) : (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           <Text style={{ fontSize: 16, color: colors.mutedText, fontWeight: '600', textAlign: 'center' }}>{error || 'Could not load profile'}</Text>

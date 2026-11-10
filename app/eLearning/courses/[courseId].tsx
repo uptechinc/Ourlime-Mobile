@@ -30,6 +30,7 @@ import {
 } from 'lucide-react-native';
 import UserAvatar from '@/components/ui/UserAvatar';
 import CourseReviews from '@/components/eLearning/CourseReviews';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { CourseDetailSkeleton } from '@/components/ui/Skeleton';
 import { useAppData } from '@/lib/contexts/AppDataContext';
@@ -169,7 +170,9 @@ export default function CourseDetailScreen() {
           ) : null}
         </View>
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        // KeyboardSafeView shrinks the page above the keyboard so inline inputs low in it stay visible.
+        <KeyboardSafeView style={{ flex: 1 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           {/* Hero Image */}
           <Image source={{ uri: course.image }} style={styles.heroImage} resizeMode="cover" />
 
@@ -365,6 +368,7 @@ export default function CourseDetailScreen() {
             ) : null}
           </View>
         </ScrollView>
+        </KeyboardSafeView>
       )}
 
       {/* Bottom CTA */}

@@ -28,6 +28,7 @@ import { courseService } from '@/lib/services/CourseService';
 import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
 import LessonQuiz from '@/components/eLearning/LessonQuiz';
 import LessonAssignment from '@/components/eLearning/LessonAssignment';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import type { Course, CourseModule, CourseLesson, Enrollment } from '@/lib/types/course';
 
 // Some lessons are typed "video" but hold a PDF or Word file; only real video files go to the player.
@@ -197,7 +198,9 @@ export default function LessonScreen() {
           ) : null}
         </View>
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        // KeyboardSafeView shrinks the page above the keyboard so inline inputs low in it stay visible.
+        <KeyboardSafeView style={{ flex: 1 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           {/* Video Placeholder / Player Box */}
           <View style={[styles.playerBox, { backgroundColor: isDark ? '#0f172a' : '#1e293b' }]}>
             {currentLesson.type === 'video' && isVideoFile(currentLesson.mediaUrl) ? (
@@ -285,6 +288,7 @@ export default function LessonScreen() {
             ) : null}
           </View>
         </ScrollView>
+        </KeyboardSafeView>
       )}
 
       {/* Bottom Navigation Controls */}

@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Save, Send, X, XCircle, Plus } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { toast } from 'sonner-native';
@@ -18,6 +19,7 @@ import { EventService } from '@/lib/services/EventService';
 import DateTimeField from '@/components/ui/DateTimeField';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import { useLocalFormDraft } from '@/lib/hooks/useLocalFormDraft';
 import SavedDraftBanner from '@/components/drafts/SavedDraftBanner';
@@ -70,6 +72,9 @@ function splitDateTime(value: Date): { date: string; time: string } {
 /* ─────────── Component ─────────── */
 export default function CreateEventModal({ visible, onClose, onCreated }: CreateEventModalProps) {
   const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  // The dialog sits in a transparent Modal, where Android doesn't resize for the keyboard: KeyboardSafeView lifts it.
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentTag, setCurrentTag] = useState('');
   const [currentMediaUrl, setCurrentMediaUrl] = useState('');
@@ -228,12 +233,14 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
   /* ───────── UI ───────── */
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
-      <View
+      <KeyboardSafeView
+        onKeyboardChange={setIsKeyboardOpen}
         style={{
           flex: 1,
           backgroundColor: colors.modalScrim,
           justifyContent: 'center',
           paddingHorizontal: 12,
+          paddingTop: isKeyboardOpen ? insets.top : 0,
         }}
       >
         <Animated.View
@@ -241,9 +248,11 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
             {
               backgroundColor: colors.surface,
               borderRadius: 20,
-              maxHeight: '92%',
               overflow: 'hidden',
             },
+            // Explicit values in both states (Reanimated doesn't reset a removed prop). Keyboard open: the dialog
+            // shrinks to the space above the keyboard and its body scrolls.
+            isKeyboardOpen ? { maxHeight: '100%', minHeight: 0, flexShrink: 1 } : { maxHeight: '92%', minHeight: 0, flexShrink: 0 },
             swipeDismiss.animatedStyle,
           ]}
         >
@@ -273,7 +282,7 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
           </View>
 
           {/* Body */}
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20 }}>
             {draft.savedDraft ? (
               <SavedDraftBanner
                 savedAt={draft.savedAt}
@@ -650,7 +659,7 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
             </TouchableOpacity>
           </View>
         </Animated.View>
-      </View>
+      </KeyboardSafeView>
       <DraftDiscardSheet
         visible={isDiscardSheetVisible}
         title="Leave event?"

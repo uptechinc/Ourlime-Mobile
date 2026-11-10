@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { X } from 'lucide-react-native';
 import { auth } from '@/lib/firebaseConfig';
 import { JobsService } from '@/lib/job/JobsService';
@@ -23,6 +25,9 @@ const jobsService = JobsService.getInstance();
 export default function JobCreationModal({ isOpen, onClose, onCreated }: JobCreationModalProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+  // Transparent Modal: Android doesn't resize it for the keyboard, so KeyboardSafeView lifts the sheet above it.
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [jobType, setJobType] = useState<CreateJobType>('professional');
   const [title, setTitle] = useState(''); const [description, setDescription] = useState(''); const [category, setCategory] = useState('');
   const [priceFrom, setPriceFrom] = useState(''); const [priceTo, setPriceTo] = useState(''); const [skills, setSkills] = useState('');
@@ -74,7 +79,7 @@ export default function JobCreationModal({ isOpen, onClose, onCreated }: JobCrea
     finally { setSubmitting(false); }
   };
 
-  return <Modal visible={isOpen} transparent animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}><View style={styles.backdrop}><Animated.View style={[styles.sheet, swipeDismiss.animatedStyle]}>
+  return <Modal visible={isOpen} transparent animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}><KeyboardSafeView onKeyboardChange={setIsKeyboardOpen} style={[styles.backdrop, { paddingTop: isKeyboardOpen ? insets.top : 0 }]}><Animated.View style={[styles.sheet, isKeyboardOpen ? styles.sheetWithKeyboard : styles.sheetResting, swipeDismiss.animatedStyle]}>
     <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close job creation" />
     <View style={styles.header}><Text style={styles.title}>Create an Opportunity</Text><TouchableOpacity onPress={swipeDismiss.dismissWithAnimation} style={styles.close} accessibilityLabel="Close job creation"><X size={22} color={colors.icon} /></TouchableOpacity></View>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -89,7 +94,7 @@ export default function JobCreationModal({ isOpen, onClose, onCreated }: JobCrea
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
     </ScrollView>
     <View style={styles.footer}><TouchableOpacity onPress={swipeDismiss.dismissWithAnimation} style={styles.cancel}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity><TouchableOpacity disabled={submitting} onPress={() => void handleSubmit('draft')} style={[styles.cancel, submitting && styles.disabled]} accessibilityLabel="Save as draft"><Text style={[styles.cancelText, { color: colors.accentText }]}>Save as draft</Text></TouchableOpacity><TouchableOpacity disabled={submitting} onPress={() => void handleSubmit()} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.submitText}>Publish</Text>}</TouchableOpacity></View>
-  </Animated.View></View>
+  </Animated.View></KeyboardSafeView>
     <DraftDiscardSheet
       visible={isDiscardSheetVisible}
       title="Leave this opportunity?"
@@ -111,5 +116,5 @@ function Field({ label, value, onChangeText, placeholder, multiline = false, key
 type ThemeColors = ReturnType<typeof useAppTheme>['colors'];
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: colors.modalScrim, justifyContent: 'flex-end' }, sheet: { maxHeight: '92%', backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' }, header: { flexDirection: 'row', alignItems: 'center', padding: 18, borderBottomWidth: 1, borderBottomColor: colors.border }, title: { flex: 1, color: colors.text, fontSize: 19, fontWeight: '900' }, close: { padding: 4 }, content: { padding: 18, gap: 14 }, label: { color: colors.secondaryText, fontSize: 13, fontWeight: '800', marginBottom: 6 }, typeRow: { flexDirection: 'row', gap: 10 }, typeButton: { flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, alignItems: 'center' }, typeButtonActive: { backgroundColor: colors.successSurface, borderColor: colors.accent }, typeText: { color: colors.mutedText, fontWeight: '800', fontSize: 12 }, typeTextActive: { color: colors.successText }, field: { flex: 1 }, input: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 11, color: colors.text, backgroundColor: colors.input }, textArea: { minHeight: 110, textAlignVertical: 'top' }, priceRow: { flexDirection: 'row', gap: 10 }, priceField: { flex: 1 }, error: { color: colors.destructiveText, backgroundColor: colors.destructiveSurface, borderRadius: 10, padding: 10 }, footer: { flexDirection: 'row', gap: 10, padding: 18, borderTopWidth: 1, borderTopColor: colors.border }, cancel: { flex: 1, minHeight: 46, borderRadius: 12, backgroundColor: colors.control, alignItems: 'center', justifyContent: 'center' }, cancelText: { color: colors.secondaryText, fontWeight: '800' }, submit: { flex: 1, minHeight: 46, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }, submitText: { color: colors.onAccent, fontWeight: '900' }, disabled: { opacity: 0.5 },
+  backdrop: { flex: 1, backgroundColor: colors.modalScrim, justifyContent: 'flex-end' }, sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' }, sheetResting: { maxHeight: '92%', flexShrink: 0 }, sheetWithKeyboard: { maxHeight: '100%', flexShrink: 1 }, header: { flexDirection: 'row', alignItems: 'center', padding: 18, borderBottomWidth: 1, borderBottomColor: colors.border }, title: { flex: 1, color: colors.text, fontSize: 19, fontWeight: '900' }, close: { padding: 4 }, content: { padding: 18, gap: 14 }, label: { color: colors.secondaryText, fontSize: 13, fontWeight: '800', marginBottom: 6 }, typeRow: { flexDirection: 'row', gap: 10 }, typeButton: { flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, alignItems: 'center' }, typeButtonActive: { backgroundColor: colors.successSurface, borderColor: colors.accent }, typeText: { color: colors.mutedText, fontWeight: '800', fontSize: 12 }, typeTextActive: { color: colors.successText }, field: { flex: 1 }, input: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 11, color: colors.text, backgroundColor: colors.input }, textArea: { minHeight: 110, textAlignVertical: 'top' }, priceRow: { flexDirection: 'row', gap: 10 }, priceField: { flex: 1 }, error: { color: colors.destructiveText, backgroundColor: colors.destructiveSurface, borderRadius: 10, padding: 10 }, footer: { flexDirection: 'row', gap: 10, padding: 18, borderTopWidth: 1, borderTopColor: colors.border }, cancel: { flex: 1, minHeight: 46, borderRadius: 12, backgroundColor: colors.control, alignItems: 'center', justifyContent: 'center' }, cancelText: { color: colors.secondaryText, fontWeight: '800' }, submit: { flex: 1, minHeight: 46, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }, submitText: { color: colors.onAccent, fontWeight: '900' }, disabled: { opacity: 0.5 },
 });

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, InteractionManager, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, InteractionManager, Keyboard, Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, CheckSquare, ChevronDown, ImagePlus, RefreshCw, Square, Trash2, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -10,6 +10,7 @@ import CustomModal from '@/components/ui/CustomModal';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 type CreateCommunityModalProps = {
   visible: boolean;
@@ -158,7 +159,7 @@ export default function CreateCommunityModal({ visible, onClose, onCreated, cate
         <SwipeDismissSurface visible={visible} onDismiss={handleClose} handleColor={colors.border} disabled={submitting} accessibilityLabel="Swipe down to close community creation" style={{ flex: 1, backgroundColor: colors.canvas }}>
         <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><Text style={{ flex: 1, fontSize: 20, fontWeight: '900', color: colors.text }}>Create community</Text><TouchableOpacity onPress={handleClose} accessibilityLabel="Close create community"><X size={24} color={colors.icon} /></TouchableOpacity></View>
-          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <KeyboardSafeView style={{ flex: 1 }}>
             <ScrollView key={`community-form-${validationScrollGeneration}`} ref={scrollRef} contentOffset={{ x: 0, y: validationScrollTarget }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 18, paddingBottom: 50 }}>
               <View onLayout={markField('title')}><Text style={{ color: colors.secondaryText, fontWeight: '800', marginBottom: 7 }}>Community name</Text>
               <TextInput ref={titleInputRef} autoFocus={!validation.valid && validation.field === 'title'} value={title} onChangeText={(value) => { setTitle(value); setValidation({ valid: true }); }} maxLength={80} placeholder="Give your community a name" placeholderTextColor={colors.mutedText} style={{ backgroundColor: colors.input, borderWidth: 1, borderColor: !validation.valid && validation.field === 'title' ? colors.destructive : colors.border, borderRadius: 14, padding: 13, color: colors.text }} />
@@ -205,7 +206,7 @@ export default function CreateCommunityModal({ visible, onClose, onCreated, cate
               {submitting && selectedBanner ? <View style={{ marginTop: 16 }}><Text style={{ color: colors.mutedText, fontSize: 12 }}>Uploading banner · {Math.round(uploadProgress * 100)}%</Text><View style={{ height: 5, marginTop: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: colors.disabled }}><View style={{ width: `${Math.round(uploadProgress * 100)}%`, height: '100%', backgroundColor: colors.accent }} /></View></View> : null}
               <TouchableOpacity disabled={submitting} onPress={() => void handleCreate()} style={{ marginTop: 24, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: colors.accent, opacity: submitting ? 0.5 : 1 }}>{submitting ? <ActivityIndicator color={colors.onAccent} /> : <Text style={{ color: colors.onAccent, fontWeight: '900', fontSize: 16 }}>Create community</Text>}</TouchableOpacity>
             </ScrollView>
-          </KeyboardAvoidingView>
+          </KeyboardSafeView>
         </SafeAreaView>
         </SwipeDismissSurface>
       </Modal>

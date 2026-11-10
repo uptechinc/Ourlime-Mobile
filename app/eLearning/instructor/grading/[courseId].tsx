@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Award, ClipboardCheck, FileText } from 'lucide-react-native';
@@ -82,7 +83,7 @@ export default function InstructorGradingScreen() {
       {isLoading ? (
         <ScrollView contentContainerStyle={styles.padded}><CourseDetailSkeleton /></ScrollView>
       ) : (
-        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardSafeView style={styles.flex}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => { setIsRefreshing(true); void load(); }} tintColor={colors.accent} />}>
             <View style={[styles.column, { width: Math.min(width, CONTENT_MAX_WIDTH) }]}>
               <Text style={styles.title} numberOfLines={2}>{typeof title === 'string' && title ? title : 'Course'}</Text>
@@ -126,7 +127,7 @@ export default function InstructorGradingScreen() {
               })}
             </View>
           </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardSafeView>
       )}
     </SafeAreaView>
   );

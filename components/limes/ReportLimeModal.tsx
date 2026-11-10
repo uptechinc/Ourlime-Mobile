@@ -10,6 +10,7 @@ import {
 	TextInput,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
 	CheckCircle,
 	ChevronLeft,
@@ -27,6 +28,7 @@ import {
 } from '@/lib/services/ModerationService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import ChildSafetyIntakeFields from '@/components/safety/ChildSafetyIntakeFields';
 import type { ChildSafetyDangerAnswer } from '@/lib/types/childSafety';
@@ -50,6 +52,9 @@ export default function ReportLimeModal({
 	const router = useRouter();
 	const { colors } = useAppTheme();
 	const styles = useMemo(() => createStyles(colors), [colors]);
+	const insets = useSafeAreaInsets();
+	// The sheet sits in a transparent Modal, where Android doesn't resize for the keyboard: KeyboardSafeView lifts it.
+	const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 	const [selectedReason, setSelectedReason] = useState<string | null>(null);
 	const [selectedCategory, setSelectedCategory] =
 		useState<ReportReasonCategory | null>(null);
@@ -122,13 +127,23 @@ export default function ReportLimeModal({
 			animationType="none"
 			onRequestClose={swipeDismiss.dismissWithAnimation}
 		>
+			<KeyboardSafeView
+				onKeyboardChange={setIsKeyboardOpen}
+				style={[styles.container, { paddingTop: isKeyboardOpen ? insets.top : 0 }]}
+			>
 			<View style={styles.backdrop} />
 			<TouchableOpacity
 				style={StyleSheet.absoluteFill}
 				activeOpacity={1}
 				onPress={handleClose}
 			/>
-			<Animated.View style={[styles.sheet, swipeDismiss.animatedStyle]}>
+			<Animated.View
+				style={[
+					styles.sheet,
+					isKeyboardOpen ? styles.sheetWithKeyboard : styles.sheetResting,
+					swipeDismiss.animatedStyle,
+				]}
+			>
 				<SwipeDismissHandle
 					gesture={swipeDismiss.gesture}
 					color={colors.border}
@@ -178,6 +193,7 @@ export default function ReportLimeModal({
 				) : (
 					<ScrollView
 						showsVerticalScrollIndicator={false}
+						keyboardShouldPersistTaps="handled"
 						contentContainerStyle={styles.formContent}
 					>
 						<Text style={styles.subtitle}>
@@ -308,6 +324,7 @@ export default function ReportLimeModal({
 					</ScrollView>
 				)}
 			</Animated.View>
+			</KeyboardSafeView>
 		</Modal>
 	);
 }
@@ -320,19 +337,32 @@ const createStyles = (colors: ThemeColors) =>
 			...StyleSheet.absoluteFill,
 			backgroundColor: 'rgba(0,0,0,0.6)',
 		},
+		// Fills the screen and keeps the sheet at its bottom, above the keyboard when it is open.
+		container: {
+			flex: 1,
+			justifyContent: 'flex-end',
+		},
 		sheet: {
-			position: 'absolute',
-			bottom: 0,
-			left: 0,
-			right: 0,
 			backgroundColor: colors.surface,
 			borderTopLeftRadius: 24,
 			borderTopRightRadius: 24,
 			paddingHorizontal: 20,
-			paddingBottom: 44,
 			borderTopWidth: 1,
 			borderColor: colors.border,
+		},
+		// Explicit values in both states: Reanimated doesn't reset a style prop that is simply removed.
+		sheetResting: {
 			maxHeight: '92%',
+			minHeight: 0,
+			flexShrink: 0,
+			paddingBottom: 44,
+		},
+		// Keyboard open: the sheet may use the whole space above the keyboard and shrinks (its form scrolls) to fit.
+		sheetWithKeyboard: {
+			maxHeight: '100%',
+			minHeight: 0,
+			flexShrink: 1,
+			paddingBottom: 12,
 		},
 		formContent: { paddingBottom: 4 },
 		handle: {

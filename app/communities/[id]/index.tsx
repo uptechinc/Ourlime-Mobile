@@ -58,6 +58,7 @@ import CommunityEventsWorkspace from '@/components/communities/detail/CommunityE
 import CommunityPollsWorkspace from '@/components/communities/detail/CommunityPollsWorkspace';
 import CommunityDashboardSheet from '@/components/communities/detail/CommunityDashboardSheet';
 import EditCommunityModal from '@/components/communities/detail/EditCommunityModal';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import CommunityMemberActionSheet from '@/components/communities/detail/CommunityMemberActionSheet';
 import CommunityDetailSkeleton from '@/components/communities/detail/CommunityDetailSkeleton';
 import { SkeletonPostCard } from '@/components/home/SkeletonLoaders';
@@ -809,6 +810,8 @@ export default function CommunityDetailScreen() {
 					</TouchableOpacity>
 				</View>
 			) : (
+				// Keeps inline forms (e.g. the events tab's host-an-event form) above the keyboard: the list shrinks.
+				<KeyboardSafeView style={{ flex: 1 }}>
 				<ScrollView
 					refreshControl={
 						<RefreshControl
@@ -817,6 +820,7 @@ export default function CommunityDetailScreen() {
 							tintColor={colors.accent}
 						/>
 					}
+					keyboardShouldPersistTaps="handled"
 					contentContainerStyle={{ paddingBottom: 48 }}
 				>
 					<CommunityDetailHeader
@@ -1230,6 +1234,7 @@ export default function CommunityDetailScreen() {
 						</>
 					)}
 				</ScrollView>
+				</KeyboardSafeView>
 			)}
 
 			{createPostVisible && profile && community ? (

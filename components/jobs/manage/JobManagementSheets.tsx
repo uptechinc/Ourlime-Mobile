@@ -22,6 +22,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import {
 	jobManagementService,
 	type EmployerNote,
@@ -142,6 +143,7 @@ export function JobManagementNotesSheet({
 						icon="notes"
 						onClose={onClose}
 					/>
+					<KeyboardSafeView style={styles.keyboardArea}>
 					<View style={styles.composer}>
 						<TextInput
 							value={content}
@@ -198,6 +200,7 @@ export function JobManagementNotesSheet({
 							)}
 						</ScrollView>
 					)}
+					</KeyboardSafeView>
 				</SafeAreaView>
 			</SwipeDismissSurface>
 		</Modal>
@@ -420,6 +423,7 @@ export function JobManagementInterviewSheet({
 						icon="interview"
 						onClose={onClose}
 					/>
+					<KeyboardSafeView style={styles.keyboardArea}>
 					<ScrollView
 						keyboardShouldPersistTaps="handled"
 						contentContainerStyle={styles.formContent}
@@ -510,6 +514,7 @@ export function JobManagementInterviewSheet({
 							)}
 						</TouchableOpacity>
 					</ScrollView>
+					</KeyboardSafeView>
 				</SafeAreaView>
 			</SwipeDismissSurface>
 		</Modal>
@@ -652,6 +657,7 @@ export function JobManagementEditSheet({
 						icon="edit"
 						onClose={onClose}
 					/>
+					<KeyboardSafeView style={styles.keyboardArea}>
 					<ScrollView
 						keyboardShouldPersistTaps="handled"
 						contentContainerStyle={styles.formContent}
@@ -832,6 +838,7 @@ export function JobManagementEditSheet({
 							)}
 						</TouchableOpacity>
 					</ScrollView>
+					</KeyboardSafeView>
 				</SafeAreaView>
 			</SwipeDismissSurface>
 		</Modal>
@@ -948,6 +955,7 @@ type ThemeColors = ReturnType<typeof useAppTheme>['colors'];
 const createStyles = (colors: ThemeColors) =>
 	StyleSheet.create({
 		safeArea: { flex: 1, backgroundColor: colors.canvas },
+		keyboardArea: { flex: 1 },
 		composer: {
 			padding: 16,
 			borderBottomWidth: 1,

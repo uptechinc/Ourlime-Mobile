@@ -26,6 +26,7 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import CachedImage from '@/components/ui/CachedImage';
 import CustomModal from '@/components/ui/CustomModal';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 type EditCommunityModalProps = {
 	visible: boolean;
@@ -218,6 +219,7 @@ export default function EditCommunityModal({
 							<X size={23} color={colors.icon} />
 						</TouchableOpacity>
 					</View>
+					<KeyboardSafeView style={{ flex: 1 }}>
 					<ScrollView
 						keyboardShouldPersistTaps="handled"
 						contentContainerStyle={{ padding: 18, paddingBottom: 46 }}
@@ -595,6 +597,7 @@ export default function EditCommunityModal({
 							</Text>
 						</TouchableOpacity>
 					</ScrollView>
+					</KeyboardSafeView>
 				</SafeAreaView>
 				</SwipeDismissSurface>
 			</Modal>

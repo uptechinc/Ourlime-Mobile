@@ -7,10 +7,10 @@ import {
   TextInput,
   ScrollView,
   ActivityIndicator,
-  Platform,
-  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { adminContentService } from '@/lib/services/AdminContentService';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
@@ -52,6 +52,9 @@ export default function AdminDeletionModal({
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Transparent Modal: Android doesn't resize for the keyboard, so KeyboardSafeView lifts the sheet above it.
+  const insets = useSafeAreaInsets();
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   const handleConfirm = useCallback(async () => {
     if (selectedCategory === 'custom' && !customReason.trim()) {
@@ -91,13 +94,14 @@ export default function AdminDeletionModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      <KeyboardSafeView
+        onKeyboardChange={setIsKeyboardOpen}
         className="flex-1 justify-end bg-black/60"
+        style={{ paddingTop: isKeyboardOpen ? insets.top : 0 }}
       >
         <View
-          style={{ backgroundColor: colors.surface }}
-          className="rounded-t-3xl border-t border-red-500/30 max-h-[90%] overflow-hidden"
+          style={{ backgroundColor: colors.surface, maxHeight: isKeyboardOpen ? '100%' : '90%', flexShrink: 1 }}
+          className="rounded-t-3xl border-t border-red-500/30 overflow-hidden"
         >
           <View className="w-full items-center pt-3 pb-1">
             <View className="w-10 h-1.5 rounded-full bg-zinc-400/40" />
@@ -255,7 +259,7 @@ export default function AdminDeletionModal({
             </View>
           </ScrollView>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </Modal>
   );
 }

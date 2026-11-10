@@ -8,9 +8,7 @@ import {
   Modal,
   StyleSheet,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Linking,
-  Platform,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { X, Send, Heart, CornerDownRight, Edit2, Trash2, Smile, ChevronDown, Flag } from 'lucide-react-native';
@@ -21,6 +19,7 @@ import { AuthService } from '@/lib/services/AuthService';
 import { limeService } from '@/lib/services/LimeService';
 import type { LimeComment, LimeCommentCursor } from '@/lib/types/lime';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
@@ -159,6 +158,8 @@ export default function CommentModal({
 }: CommentModalProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // The sheet sits in a transparent Modal, where Android doesn't resize for the keyboard: KeyboardSafeView lifts it.
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const { colors } = useAppTheme();
   const [comments, setComments] = useState<LimeComment[]>([]);
   const [commentText, setCommentText] = useState('');
@@ -691,8 +692,8 @@ export default function CommentModal({
 
   return (
     <Modal visible={isOpen} animationType="none" transparent onRequestClose={swipeDismiss.dismissWithAnimation}>
-      <View style={[styles.overlay, { backgroundColor: colors.modalScrim }]}>
-        <Animated.View style={[styles.modalCard, { backgroundColor: colors.surface, paddingBottom: Math.max(20, insets.bottom) }, swipeDismiss.animatedStyle]}>
+      <KeyboardSafeView onKeyboardChange={setIsKeyboardOpen} style={[styles.overlay, { backgroundColor: colors.modalScrim, paddingTop: isKeyboardOpen ? insets.top : 0 }]}>
+        <Animated.View style={[styles.modalCard, { backgroundColor: colors.surface, paddingBottom: isKeyboardOpen ? 12 : Math.max(20, insets.bottom) }, isKeyboardOpen ? styles.modalCardWithKeyboard : styles.modalCardResting, swipeDismiss.animatedStyle]}>
           {/* Top Drag Handle Bar */}
           <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.mutedText} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close Lime comments" />
 
@@ -765,7 +766,7 @@ export default function CommentModal({
           </View>
 
           {/* Input Footer */}
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View>
             {selectedMedia ? (
               <View style={styles.selectedMediaRow}>
                 <Image
@@ -826,9 +827,9 @@ export default function CommentModal({
                 )}
               </AnimatedActionButton>
             </View>
-          </KeyboardAvoidingView>
+          </View>
         </Animated.View>
-      </View>
+      </KeyboardSafeView>
 
       <GifPickerModal
         visible={gifPickerOpen}
@@ -887,10 +888,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    height: '84%',
     paddingTop: 8,
     paddingHorizontal: 20,
     paddingBottom: 20,
+  },
+  // Explicit values in both states: Reanimated doesn't reset a style prop that is simply removed.
+  modalCardResting: {
+    height: '84%',
+    minHeight: 0,
+    flexShrink: 0,
+  },
+  // Keyboard open: the sheet fills the space above the keyboard (the list shrinks) so every input stays visible.
+  modalCardWithKeyboard: {
+    height: '100%',
+    minHeight: 0,
+    flexShrink: 1,
   },
   dragHandleWrapper: {
     width: '100%',

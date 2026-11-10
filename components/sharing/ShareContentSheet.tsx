@@ -14,6 +14,7 @@ import { Check, Search, Send, Share2, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserAvatar from '@/components/ui/UserAvatar';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { contentShareService } from '@/lib/services/ContentShareService';
 import type { ConversationEntry } from '@/lib/messaging/MessagingService';
@@ -40,6 +41,8 @@ export default function ShareContentSheet({
   onShared,
 }: ShareContentSheetProps) {
   const insets = useSafeAreaInsets();
+  // The sheet sits in a transparent Modal, where Android doesn't resize for the keyboard: KeyboardSafeView lifts it.
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const { colors } = useAppTheme();
   const [recipients, setRecipients] = useState<ConversationEntry[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -150,6 +153,10 @@ export default function ShareContentSheet({
 
   return (
     <Modal visible={visible} transparent animationType="fade" presentationStyle="overFullScreen" onRequestClose={onClose}>
+      <KeyboardSafeView
+        onKeyboardChange={setIsKeyboardOpen}
+        style={[styles.container, { paddingTop: isKeyboardOpen ? insets.top : 0 }]}
+      >
       <Pressable style={[styles.backdrop, { backgroundColor: colors.modalScrim }]} onPress={onClose} />
       <SwipeDismissSurface
         visible={visible}
@@ -158,10 +165,11 @@ export default function ShareContentSheet({
         accessibilityLabel={`Swipe down to close ${contentLabel} sharing`}
         style={[
           styles.sheet,
+          isKeyboardOpen ? styles.sheetWithKeyboard : styles.sheetResting,
           {
             backgroundColor: colors.surface,
             borderColor: colors.border,
-            paddingBottom: Math.max(insets.bottom, 16),
+            paddingBottom: isKeyboardOpen ? 12 : Math.max(insets.bottom, 16),
           },
         ]}
       >
@@ -262,13 +270,20 @@ export default function ShareContentSheet({
           </Text>
         </TouchableOpacity>
       </SwipeDismissSurface>
+      </KeyboardSafeView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
-  sheet: { position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: '88%', borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: 1, paddingHorizontal: 18, paddingTop: 8 },
+  // Fills the screen and keeps the sheet at its bottom, above the keyboard when it is open.
+  container: { flex: 1, justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: 1, paddingHorizontal: 18, paddingTop: 8 },
+  // Explicit values in both states: Reanimated doesn't reset a style prop that is simply removed.
+  sheetResting: { maxHeight: '88%', minHeight: 0, flexShrink: 0 },
+  // Keyboard open: the sheet may use the whole space above the keyboard and shrinks (the chat list scrolls) to fit.
+  sheetWithKeyboard: { maxHeight: '100%', minHeight: 0, flexShrink: 1 },
   header: { flexDirection: 'row', alignItems: 'center', paddingTop: 8, paddingBottom: 14 },
   headerCopy: { flex: 1, paddingRight: 12 },
   title: { fontSize: 21, fontWeight: '900' },

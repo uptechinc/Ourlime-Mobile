@@ -10,6 +10,7 @@ import {
 	type AdminCategoryRecord,
 } from '@/lib/services/AdminWorkspaceService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 type AdminCategoryWorkspaceProps = {
 	kind: AdminCategoryKind;
@@ -260,114 +261,117 @@ export default function AdminCategoryWorkspace({
 						backgroundColor: 'rgba(15,23,42,0.72)',
 					}}
 				>
-					<View
-						style={{
-							borderRadius: 22,
-							backgroundColor: colors.elevated,
-							padding: 18,
-						}}
-					>
-						<View style={{ flexDirection: 'row', alignItems: 'center' }}>
+					{/* Transparent Modal: Android doesn't resize for the keyboard, so center the dialog above it. */}
+					<KeyboardSafeView style={{ flex: 1, justifyContent: 'center' }}>
+						<View
+							style={{
+								borderRadius: 22,
+								backgroundColor: colors.elevated,
+								padding: 18,
+							}}
+						>
+							<View style={{ flexDirection: 'row', alignItems: 'center' }}>
+								<Text
+									style={{
+										flex: 1,
+										fontSize: 19,
+										fontWeight: '900',
+										color: colors.text,
+									}}
+								>
+									{editing ? 'Edit category' : 'New category'}
+								</Text>
+								<TouchableOpacity onPress={() => setIsCreating(false)}>
+									<Icon name="x" size={22} color={colors.icon} />
+								</TouchableOpacity>
+							</View>
 							<Text
 								style={{
-									flex: 1,
-									fontSize: 19,
-									fontWeight: '900',
-									color: colors.text,
+									marginTop: 16,
+									marginBottom: 6,
+									color: colors.secondaryText,
+									fontWeight: '800',
 								}}
 							>
-								{editing ? 'Edit category' : 'New category'}
+								Name
 							</Text>
-							<TouchableOpacity onPress={() => setIsCreating(false)}>
-								<Icon name="x" size={22} color={colors.icon} />
-							</TouchableOpacity>
-						</View>
-						<Text
-							style={{
-								marginTop: 16,
-								marginBottom: 6,
-								color: colors.secondaryText,
-								fontWeight: '800',
-							}}
-						>
-							Name
-						</Text>
-						<TextInput
-							value={name}
-							onChangeText={setName}
-							placeholder="Category name"
-							placeholderTextColor={colors.mutedText}
-							style={{
-								borderRadius: 13,
-								borderWidth: 1,
-								borderColor: colors.border,
-								backgroundColor: colors.input,
-								padding: 12,
-								color: colors.text,
-							}}
-						/>
-						<Text
-							style={{
-								marginTop: 14,
-								marginBottom: 6,
-								color: colors.secondaryText,
-								fontWeight: '800',
-							}}
-						>
-							Description
-						</Text>
-						<TextInput
-							value={description}
-							onChangeText={setDescription}
-							placeholder="Category description"
-							placeholderTextColor={colors.mutedText}
-							multiline
-							style={{
-								minHeight: 88,
-								textAlignVertical: 'top',
-								borderRadius: 13,
-								borderWidth: 1,
-								borderColor: colors.border,
-								backgroundColor: colors.input,
-								padding: 12,
-								color: colors.text,
-							}}
-						/>
-						<TouchableOpacity
-							disabled={saving || !name.trim()}
-							onPress={() => void handleSave()}
-							style={{
-								marginTop: 17,
-								alignItems: 'center',
-								borderRadius: 14,
-								backgroundColor: colors.accent,
-								padding: 13,
-							}}
-						>
-							<Text style={{ color: colors.onAccent, fontWeight: '900' }}>
-								{saving ? 'Saving…' : 'Save category'}
-							</Text>
-						</TouchableOpacity>
-						{editing ? (
-							<TouchableOpacity
-								disabled={saving}
-								onPress={() => void handleDelete()}
+							<TextInput
+								value={name}
+								onChangeText={setName}
+								placeholder="Category name"
+								placeholderTextColor={colors.mutedText}
 								style={{
-									marginTop: 9,
+									borderRadius: 13,
+									borderWidth: 1,
+									borderColor: colors.border,
+									backgroundColor: colors.input,
+									padding: 12,
+									color: colors.text,
+								}}
+							/>
+							<Text
+								style={{
+									marginTop: 14,
+									marginBottom: 6,
+									color: colors.secondaryText,
+									fontWeight: '800',
+								}}
+							>
+								Description
+							</Text>
+							<TextInput
+								value={description}
+								onChangeText={setDescription}
+								placeholder="Category description"
+								placeholderTextColor={colors.mutedText}
+								multiline
+								style={{
+									minHeight: 88,
+									textAlignVertical: 'top',
+									borderRadius: 13,
+									borderWidth: 1,
+									borderColor: colors.border,
+									backgroundColor: colors.input,
+									padding: 12,
+									color: colors.text,
+								}}
+							/>
+							<TouchableOpacity
+								disabled={saving || !name.trim()}
+								onPress={() => void handleSave()}
+								style={{
+									marginTop: 17,
 									alignItems: 'center',
 									borderRadius: 14,
-									backgroundColor: colors.destructiveSurface,
+									backgroundColor: colors.accent,
 									padding: 13,
 								}}
 							>
-								<Text
-									style={{ color: colors.destructiveText, fontWeight: '900' }}
-								>
-									Delete category
+								<Text style={{ color: colors.onAccent, fontWeight: '900' }}>
+									{saving ? 'Saving…' : 'Save category'}
 								</Text>
 							</TouchableOpacity>
-						) : null}
-					</View>
+							{editing ? (
+								<TouchableOpacity
+									disabled={saving}
+									onPress={() => void handleDelete()}
+									style={{
+										marginTop: 9,
+										alignItems: 'center',
+										borderRadius: 14,
+										backgroundColor: colors.destructiveSurface,
+										padding: 13,
+									}}
+								>
+									<Text
+										style={{ color: colors.destructiveText, fontWeight: '900' }}
+									>
+										Delete category
+									</Text>
+								</TouchableOpacity>
+							) : null}
+						</View>
+					</KeyboardSafeView>
 				</SafeAreaView>
 			</Modal>
 			<CustomModal

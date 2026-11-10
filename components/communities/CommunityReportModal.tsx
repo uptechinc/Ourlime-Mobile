@@ -17,6 +17,7 @@ import {
 } from '@/lib/services/ModerationService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import ChildSafetyIntakeFields from '@/components/safety/ChildSafetyIntakeFields';
 import type {
 	ChildSafetyDangerAnswer,
@@ -167,7 +168,9 @@ export default function CommunityReportModal({
 							<X size={23} color={colors.icon} />
 						</TouchableOpacity>
 					</View>
+					<KeyboardSafeView style={{ flex: 1 }}>
 					<ScrollView
+						keyboardShouldPersistTaps="handled"
 						contentContainerStyle={{ padding: 18, paddingBottom: 42 }}
 					>
 						{!category ? (
@@ -397,6 +400,7 @@ export default function CommunityReportModal({
 							</TouchableOpacity>
 						</View>
 					) : null}
+					</KeyboardSafeView>
 				</SafeAreaView>
 			</SwipeDismissSurface>
 		</Modal>

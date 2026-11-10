@@ -15,6 +15,7 @@ import { auth } from '@/lib/firebaseConfig';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 type ChangePasswordModalProps = {
   visible: boolean;
@@ -99,7 +100,7 @@ export default function ChangePasswordModal({ visible, onClose, onSuccess }: Cha
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={swipeDismiss.dismissWithAnimation}>
-      <View style={styles.backdrop}>
+      <KeyboardSafeView style={styles.backdrop}>
         <Animated.View style={[styles.sheet, swipeDismiss.animatedStyle]}>
           <SwipeDismissHandle gesture={swipeDismiss.gesture} color={colors.border} animatedStyle={swipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close password update" />
           
@@ -186,7 +187,7 @@ export default function ChangePasswordModal({ visible, onClose, onSuccess }: Cha
             </TouchableOpacity>
           </View>
         </Animated.View>
-      </View>
+      </KeyboardSafeView>
     </Modal>
   );
 }

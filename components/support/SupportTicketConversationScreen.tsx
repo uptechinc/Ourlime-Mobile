@@ -2,14 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import {
 	ActivityIndicator,
 	Alert,
-	KeyboardAvoidingView,
-	Platform,
 	Text,
 	TextInput,
 	TouchableOpacity,
 	View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import * as ImagePicker from 'expo-image-picker';
@@ -217,10 +216,7 @@ export default function SupportTicketConversationScreen({
 					</Text>
 				</View>
 			</View>
-			<KeyboardAvoidingView
-				style={{ flex: 1 }}
-				behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-			>
+			<KeyboardSafeView style={{ flex: 1 }}>
 				<View
 					style={{
 						paddingHorizontal: 14,
@@ -458,7 +454,7 @@ export default function SupportTicketConversationScreen({
 						) : null}
 					</View>
 				) : null}
-			</KeyboardAvoidingView>
+			</KeyboardSafeView>
 		</SafeAreaView>
 	);
 }
