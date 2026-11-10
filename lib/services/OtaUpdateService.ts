@@ -50,6 +50,18 @@ export class OtaUpdateService {
     return Updates.isEmbeddedLaunch ? 'embedded' : Updates.updateId;
   }
 
+  /** The runtime this build accepts quick updates for (app version, runtime policy appVersion); null when unavailable. */
+  public getRuntimeVersion(): string | null {
+    return this.getModule()?.runtimeVersion ?? null;
+  }
+
+  /** The id of the quick update running now; null for the bundle built into the app. */
+  public getRunningUpdateIdOrNull(): string | null {
+    const Updates = this.getModule();
+    if (!Updates || Updates.isEmbeddedLaunch) return null;
+    return Updates.updateId ?? null;
+  }
+
   /** Logs how this launch went: an emergency launch means a downloaded update failed and the embedded one ran. */
   public logLaunchState(): void {
     const Updates = this.getModule();

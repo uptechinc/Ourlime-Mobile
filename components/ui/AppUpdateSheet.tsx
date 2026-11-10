@@ -13,7 +13,7 @@ import AppUpdatePanel from '@/components/ui/AppUpdatePanel';
 export default function AppUpdateSheet() {
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const { isSheetVisible, versionCheck, status, dismissSheet } = useAppUpdate();
+  const { isSheetVisible, versionCheck, status, sheetMode, isMandatory, dismissSheet } = useAppUpdate();
 
   useEffect(() => {
     appUpdateService.start();
@@ -21,8 +21,10 @@ export default function AppUpdateSheet() {
 
   // The blocking screen shows the same flow; never stack both.
   const isVisible = isSheetVisible && versionCheck.status !== 'update_required';
-  // While Android's installer takes over (or a download is being verified), the sheet can't be swiped away by accident.
-  const canDismiss = status !== 'installing' && status !== 'verifying';
+  // Updates are mandatory: an update this phone can install keeps the sheet up (no Later, back or tap-outside) until
+  // it's installed. "What's new" can always be closed.
+  const isBlocking = sheetMode === 'update' && isMandatory;
+  const canDismiss = !isBlocking && status !== 'installing' && status !== 'verifying';
 
   return (
     <Modal visible={isVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => { if (canDismiss) dismissSheet(); }}>
@@ -48,7 +50,7 @@ export default function AppUpdateSheet() {
           <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: 16 }} />
           {/* flexShrink lets the list stay inside the 85% cap and scroll, instead of growing past it and being cut off. */}
           <ScrollView style={{ flexShrink: 1 }} bounces={false} showsVerticalScrollIndicator={false}>
-            <AppUpdatePanel />
+            <AppUpdatePanel isBlocking={isBlocking} />
           </ScrollView>
         </View>
       </Pressable>

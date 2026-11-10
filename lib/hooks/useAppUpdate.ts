@@ -33,6 +33,7 @@ export function useAppUpdate() {
     installedVersion: store.installedVersion,
     installedVersionCode: store.installedVersionCode,
     canInstallInApp: store.canInstallInApp,
+    isMandatory: store.isMandatory,
   })));
   return { ...state, ...actions, sizeLabel: appUpdateService.describeSize(state.release) };
 }

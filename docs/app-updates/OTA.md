@@ -21,8 +21,8 @@ OTA updates replace only the JavaScript bundle and assets. Anything native needs
 ## What the app does
 
 1. On launch, and when it returns to the foreground (at most every 10 minutes), it calls `Updates.checkForUpdateAsync()`. It does the same when someone taps **Settings → App → Check for updates**.
-2. If an update exists, the sheet offers it ("An update is ready") with **Update now** and **Later**. Nothing is downloaded until **Update now** is tapped; then it downloads (`fetchUpdateAsync`) and restarts into it (`reloadAsync`).
-3. **Later** leaves the app as it is: nothing is downloaded, so nothing changes on the next launch. The offer comes back on a later check or from **Settings → App → Check for updates**. (Only an update the person already chose to download, but that waited out a call or upload, is applied on the next cold start.)
+2. If an update exists, the sheet offers it ("An update is ready") with **Update now**. Updates are mandatory: the sheet has no Later, and back or tapping outside does not close it. Nothing is downloaded until **Update now** is tapped; then it downloads (`fetchUpdateAsync`) and restarts into it (`reloadAsync`).
+3. The same applies to a Play release that Play already serves to this phone (or a downloadable APK). A release in siteConfig that Play does not offer this phone yet cannot be installed, so that sheet stays dismissible instead of locking the person out.
 4. Nothing restarts during a call or an upload. A tap on **Restart now** then explains why, and the prompt waits until you're done.
 5. If a downloaded update crashes on launch, expo-updates rolls back to the embedded bundle (an emergency launch). The app logs this through `DiagnosticLogService` (`OtaUpdateService launch:emergency`).
 6. Dev builds, Expo Go, and binaries built before `expo-updates` was added do nothing (`__DEV__` / `Updates.isEnabled`).
@@ -36,9 +36,17 @@ The binary must already contain `expo-updates`. The first APK built from this br
 npx eas-cli@latest login
 ```
 
+Use the publish script: it runs `eas update` on the production channel, then writes `siteConfig/mobileApp.latestOta`, which makes notifyAppUpdate push "Ourlime update available" to Android phones once per update group (phones on another version, or already on that update, ignore it).
+
 ```bash
-npx eas-cli@latest update --channel production --environment production --message "Fix feed video resume"
+set GOOGLE_APPLICATION_CREDENTIALS=C:\Users\aaron\keys\ourlime-admin.json.json
 ```
+
+```bash
+npm run ota:publish -- --message "Fix feed video resume"
+```
+
+To announce an update already published with plain `eas update`: `npm run ota:publish -- --group <update group id>`.
 
 - The update reaches only installs whose `version` matches the current `app.json` `version` (runtime `appVersion`).
 - To roll back, republish the previous update with `npx eas-cli@latest update:republish --group <groupId>` (find group IDs with `npx eas-cli@latest update:list --branch production`), or roll back to the embedded bundle with `npx eas-cli@latest update:roll-back-to-embedded --branch production --runtime-version <version>`.

@@ -154,6 +154,10 @@ export class PushNotificationService {
         import('./InAppNotificationService'),
       ]);
       if (appUpdateService.isStalePush(resolved.versionCode)) return;
+      const rawData = (content?.data ?? {}) as { runtimeVersion?: unknown; updateId?: unknown };
+      const runtimeVersion = typeof rawData.runtimeVersion === 'string' ? rawData.runtimeVersion : null;
+      const updateId = typeof rawData.updateId === 'string' ? rawData.updateId : null;
+      if (appUpdateService.isStaleOtaPush(runtimeVersion, updateId)) return;
       inAppNotificationService.showNotification({
         id: destination.notificationId || `app_update_${resolved.versionCode ?? 'latest'}`,
         kind: 'notification',

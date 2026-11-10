@@ -149,7 +149,7 @@ export default function AppUpdatePanel({ isBlocking = false }: AppUpdatePanelPro
         <View>
           {renderTitle('Update downloaded', 'Restart Ourlime to apply it.')}
           <Text style={{ color: colors.secondaryText, fontSize: 15, lineHeight: 21 }}>
-            It only takes a moment. If you pick Later, it&apos;s applied the next time you open Ourlime.
+            {isBlocking ? 'It only takes a moment.' : "It only takes a moment. If you pick Later, it's applied the next time you open Ourlime."}
           </Text>
           <PanelButton label="Restart now" onPress={() => void update.startUpdate()} />
           {closeLabel ? <PanelButton label={closeLabel} variant="secondary" onPress={update.dismissSheet} /> : null}

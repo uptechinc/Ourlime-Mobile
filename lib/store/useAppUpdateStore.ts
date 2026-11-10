@@ -17,6 +17,8 @@ type AppUpdateStoreState = AppUpdateState & {
   installedVersionCode: number | null;
   /** True on sideload builds with the native installer present (otherwise "Update now" opens the store). */
   canInstallInApp: boolean;
+  /** An update this phone can install right now (quick update, Play has it, or a downloadable APK): the sheet can't be closed. */
+  isMandatory: boolean;
 };
 
 // Presentation only: AppUpdateService owns every transition and writes here.
@@ -30,4 +32,5 @@ export const useAppUpdateStore = create<AppUpdateStoreState>(() => ({
   installedVersion: '',
   installedVersionCode: null,
   canInstallInApp: false,
+  isMandatory: false,
 }));

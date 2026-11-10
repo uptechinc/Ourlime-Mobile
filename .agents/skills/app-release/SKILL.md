@@ -82,11 +82,14 @@ When unsure, ship a Play release.
 
 ### OTA (same native build, JS only)
 1. Add an `"ota"` entry at the top of `lib/releaseHistory.json` with only this OTA's changes, run `npm run release:check`, then commit and push.
-2. The user runs it:
+2. The user runs it with the publish script (publishes, then announces: push to Android phones plus the mandatory update sheet):
    ```bash
-   npx eas-cli@latest update --channel production --environment production --message "<short summary>"
+   set GOOGLE_APPLICATION_CREDENTIALS=C:\Users\aaron\keys\ourlime-admin.json.json
    ```
-3. It reaches production installs whose `expo.version` matches (runtime `appVersion`). Apps check on launch and on foreground (at most every 10 minutes), download in the background, offer "Restart now", and apply the update on the next cold start anyway.
+   ```bash
+   npm run ota:publish -- --message "<short summary>"
+   ```
+3. It reaches production installs whose `expo.version` matches (runtime `appVersion`). Apps check on launch, on foreground (at most every 10 minutes) and when the push is tapped, then show a mandatory "An update is ready" sheet (no Later); it downloads on **Update now** and restarts into it.
 
 ## 5. Hand-off message
 

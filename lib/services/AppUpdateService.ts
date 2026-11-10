@@ -123,6 +123,21 @@ export class AppUpdateService {
       this.logger.info('AppUpdateService', 'status', { from: current.status, to: next.status, event: event.type, source: next.source ?? 'none' });
     }
     useAppUpdateStore.setState(next);
+    this.syncMandatory();
+  }
+
+  /**
+   * Updates are mandatory: once this phone can actually install one, the sheet stays up until it's done. A release
+   * Play doesn't serve to this phone yet (siteConfig ahead of the rollout) isn't installable, so it stays dismissible
+   * rather than locking the person out with nothing to install.
+   */
+  private syncMandatory(): void {
+    const state = useAppUpdateStore.getState();
+    const isInFlow = ['downloading', 'verifying', 'ready_to_restart', 'ready_to_install', 'installing'].includes(state.status);
+    const isInstallableOffer = (state.status === 'available' || state.status === 'error')
+      && (state.source === 'ota' || this.playUpdate !== null || (state.release !== null && this.canDownloadApk(state.release)));
+    const isMandatory = isInFlow || isInstallableOffer;
+    if (state.isMandatory !== isMandatory) useAppUpdateStore.setState({ isMandatory });
   }
 
   private setPrompt(prompt: AppUpdatePrompt): void {
@@ -206,6 +221,13 @@ export class AppUpdateService {
     return versionCode !== null && this.installed.versionCode !== null && this.installed.versionCode >= versionCode;
   }
 
+  /** A quick-update push for another runtime, or for the update already running, is ignored. */
+  public isStaleOtaPush(runtimeVersion: string | null, updateId: string | null): boolean {
+    const runningRuntime = otaUpdateService.getRuntimeVersion();
+    if (runtimeVersion && runningRuntime && runtimeVersion !== runningRuntime) return true;
+    return updateId !== null && updateId === otaUpdateService.getRunningUpdateIdOrNull();
+  }
+
   public openFromPush(versionCode: number | null): void {
     if (this.isStalePush(versionCode)) return;
     this.openSheet();
@@ -223,6 +245,11 @@ export class AppUpdateService {
   /** "Later" (or closing the sheet): the release is snoozed for 24 h; a newer release prompts again right away. */
   public dismissSheet(): void {
     const state = useAppUpdateStore.getState();
+    // A mandatory update can't be put off; "What's new" can always be closed.
+    if (state.sheetMode === 'update' && state.isMandatory) {
+      useAppUpdateStore.setState({ prompt: 'none' });
+      return;
+    }
     useAppUpdateStore.setState({ isSheetVisible: false, prompt: 'none' });
     if (state.sheetMode === 'update' && state.status === 'available' && state.release) {
       void writeStorage(this.snoozeKey(state.release), String(Date.now() + SNOOZE_MS));
@@ -246,8 +273,11 @@ export class AppUpdateService {
     const isRestartOffer = state.status === 'ready_to_restart';
     if (!isReleaseOffer && !isOtaOffer && !isRestartOffer) return;
     const promptKey = isOtaOffer || isRestartOffer ? 'ota' : `release:${state.release?.versionCode ?? state.release?.version}`;
-    if (this.promptedKeys.has(promptKey)) return;
-    if (isReleaseOffer && state.release && await this.isSnoozed(state.release)) return;
+    // Mandatory updates show every time; only a release this phone can't install yet is shown once and snoozable.
+    if (!state.isMandatory) {
+      if (this.promptedKeys.has(promptKey)) return;
+      if (isReleaseOffer && state.release && await this.isSnoozed(state.release)) return;
+    }
     if (this.isAppBusy()) {
       this.hasDeferredPrompt = true;
       return;

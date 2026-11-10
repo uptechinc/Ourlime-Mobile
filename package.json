@@ -7,6 +7,7 @@
     "dev": "expo start",
     "dev:full": "node scripts/start-with-api.cjs",
     "release:check": "node scripts/release-history.cjs",
+    "ota:publish": "node scripts/publish-ota.cjs",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
