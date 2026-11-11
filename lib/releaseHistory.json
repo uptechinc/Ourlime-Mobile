@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "id": "1.3.1-ota-2026-11-11-2",
+      "version": "1.3.1",
+      "versionCode": 10,
+      "kind": "ota",
+      "date": "2026-11-11",
+      "notes": [
+        "Updates: the download bar now moves while a quick update downloads, so you can see it working.",
+        "Updates: a download that stalls stops after 3 minutes and lets you try again, instead of waiting forever.",
+        "Updates: the download sheet now reads \"Downloading the update\" and says Ourlime restarts when it's ready."
+      ]
+    },
+    {
       "id": "1.3.1-ota-2026-11-11",
       "version": "1.3.1",
       "versionCode": 10,

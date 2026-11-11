@@ -92,13 +92,14 @@ async function main() {
 
   let updates;
   if (group) {
-    updates = parseUpdates(runEas(`npx eas-cli@latest update:view ${group} --json`));
+    updates = parseUpdates(runEas(`npx --yes eas-cli@latest update:view ${group} --json`));
   } else if (isDryRun) {
     console.log(`Would run: eas update --channel production --environment production --message "${message}"`);
     return;
   } else {
     const safeMessage = message.replace(/"/g, "'");
-    updates = parseUpdates(runEas(`npx eas-cli@latest update --channel production --environment production --message "${safeMessage}" --json --non-interactive`));
+    console.log('Publishing to EAS: bundling Android and iOS takes 5–15 minutes and prints nothing until it finishes. Leave this window open.');
+    updates = parseUpdates(runEas(`npx --yes eas-cli@latest update --channel production --environment production --message "${safeMessage}" --json --non-interactive`));
   }
 
   const latestOta = toLatestOta(updates, message);

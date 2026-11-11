@@ -1,4 +1,5 @@
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { ActivityIndicator, Animated, Easing, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -31,6 +32,22 @@ function PanelButton({ label, onPress, variant = 'primary' }: PanelButtonProps) 
         {label}
       </Text>
     </TouchableOpacity>
+  );
+}
+
+/** A sliding segment for downloads with no known size (quick updates), so the bar visibly moves. */
+function IndeterminateBar({ trackColor, barColor }: { trackColor: string; barColor: string }) {
+  const position = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.timing(position, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: false }));
+    loop.start();
+    return () => loop.stop();
+  }, [position]);
+  const left = position.interpolate({ inputRange: [0, 1], outputRange: ['-35%', '100%'] });
+  return (
+    <View style={{ height: 8, borderRadius: 4, backgroundColor: trackColor, overflow: 'hidden' }}>
+      <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, width: '35%', left, borderRadius: 4, backgroundColor: barColor }} />
+    </View>
   );
 }
 
@@ -127,16 +144,20 @@ export default function AppUpdatePanel({ isBlocking = false }: AppUpdatePanelPro
       const hasSize = update.totalBytes > 0;
       return (
         <View>
-          {renderTitle(isVerifying ? 'Checking the download…' : `Downloading ${versionLabel}`)}
-          <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.control, overflow: 'hidden' }}>
-            <View style={{ width: `${Math.round((isVerifying || !hasSize ? 1 : update.progress) * 100)}%`, height: '100%', backgroundColor: colors.accent, opacity: !hasSize && !isVerifying ? 0.35 : 1 }} />
-          </View>
+          {renderTitle(isVerifying ? 'Checking the download…' : `Downloading ${release?.version ? versionLabel : 'the update'}`)}
+          {!hasSize && !isVerifying ? (
+            <IndeterminateBar trackColor={colors.control} barColor={colors.accent} />
+          ) : (
+            <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.control, overflow: 'hidden' }}>
+              <View style={{ width: `${Math.round((isVerifying ? 1 : update.progress) * 100)}%`, height: '100%', backgroundColor: colors.accent }} />
+            </View>
+          )}
           <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 8 }}>
             {isVerifying
               ? 'Making sure the file is genuine and complete.'
               : hasSize
                 ? `${Math.round(update.progress * 100)}% · ${formatMegabytes(update.bytesReceived)} of ${formatMegabytes(update.totalBytes)}`
-                : 'Downloading in the background. You can keep using Ourlime.'}
+                : 'Downloading in the background. You can keep using Ourlime; it restarts when the update is ready.'}
           </Text>
           {update.source === 'apk' && !isVerifying ? <PanelButton label="Cancel" variant="secondary" onPress={() => void update.cancelDownload()} /> : null}
           {!isBlocking && update.source === 'ota' ? <PanelButton label="Hide" variant="secondary" onPress={update.dismissSheet} /> : null}

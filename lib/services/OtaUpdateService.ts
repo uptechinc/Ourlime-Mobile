@@ -5,6 +5,8 @@ type UpdatesModule = typeof import('expo-updates');
 
 export type OtaCheckResult = 'available' | 'none' | 'unavailable';
 
+/** A quick update is a few MB; give a slow connection room, but never leave the sheet waiting forever. */
+const DOWNLOAD_TIMEOUT_MS = 3 * 60 * 1000;
 /**
  * JavaScript-only updates over EAS Update (expo-updates). app.json sets checkAutomatically to NEVER, so nothing
  * downloads or reloads by surprise: this service checks on its own, but downloads only after the person taps
@@ -99,7 +101,14 @@ export class OtaUpdateService {
   public async download(): Promise<boolean> {
     const Updates = this.getModule();
     if (!Updates) return false;
-    const result = await Updates.fetchUpdateAsync();
+    // fetchUpdateAsync has no timeout of its own; a stalled connection would leave the download sheet up forever.
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error('The update download timed out.')), DOWNLOAD_TIMEOUT_MS);
+    });
+    const result = await Promise.race([Updates.fetchUpdateAsync(), timeout]).finally(() => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    });
     const isReady = result.isNew || result.isRollBackToEmbedded;
     if (isReady) this.hasDownloadedUpdate = true;
     this.logger.info('OtaUpdateService', 'download', { isNew: result.isNew, isRollBackToEmbedded: result.isRollBackToEmbedded });
