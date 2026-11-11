@@ -41,7 +41,8 @@ export type CourseLesson = {
   courseId: string;
   title: string;
   description?: string;
-  type: 'video' | 'text' | 'quiz' | 'assignment' | 'resource';
+  /** 'document' covers file lessons (document/pdf/image/audio/file on the server): they open their file link. */
+  type: 'video' | 'text' | 'quiz' | 'assignment' | 'resource' | 'document';
   /** Readable lesson text (the website stores it as HTML; tags are stripped). */
   content?: string;
   /** The lesson's video or file: contentUrl, attachedFile, or a URL stored in content. */
@@ -53,7 +54,16 @@ export type CourseLesson = {
   isRequired?: boolean;
   isPublished?: boolean;
   isFree?: boolean;
+  /** Assignment/quiz due date (ISO string). */
+  dueDate?: string;
+  /** Points for graded lessons (quizzes/assignments). */
+  points?: number;
+  allowLateSubmission?: boolean;
+  /** Reference files an instructor attached to an assignment. */
+  attachments?: AssignmentFile[];
 };
+
+export type CourseQuizQuestionType = 'multiple_choice' | 'true_false' | 'short_answer';
 
 export type CourseQuizQuestion = {
   id: string;
@@ -61,6 +71,9 @@ export type CourseQuizQuestion = {
   options: string[];
   correctIndex?: number;
   explanation?: string;
+  /** Decoded from the stored 'mcq' | 'tf' | 'short' (or the long names); short-answer questions have no options. */
+  type?: CourseQuizQuestionType;
+  points?: number;
 };
 
 export type CourseResource = {
@@ -119,7 +132,7 @@ export type CxcSubject = {
 };
 
 export type AssignmentFile = { name: string; url: string; size: number };
-export type AssignmentSubmission = { id: string; status: 'submitted' | 'graded'; textResponse: string; files: AssignmentFile[]; score?: number; maxScore?: number; feedback?: string; submittedAt?: string };
+export type AssignmentSubmission = { id: string; lessonId?: string; status: 'submitted' | 'graded'; textResponse: string; files: AssignmentFile[]; score?: number; maxScore?: number; feedback?: string; submittedAt?: string };
 export type CourseReview = { id: string; userId: string; reviewerName: string; rating: number; comment: string; createdAt?: string };
 export type CourseAnnouncement = { id: string; courseId: string; title: string; body: string; authorName: string; authorAvatar?: string; important: boolean; createdAt?: string };
 export type InstructorProfile = { id: string; name: string; avatar?: string; bio?: string; specialties: string[]; rating: number; totalStudents: number; totalCourses: number; isVerified: true };
@@ -128,3 +141,11 @@ export type CourseDiscussion = { id: string; courseId: string; authorId: string;
 export type CourseDiscussionReply = { id: string; discussionId: string; courseId: string; authorId: string; authorName?: string; body: string; createdAt?: string };
 export type DiscussionCursor = { createdAt: string; id: string };
 export type DiscussionPage = { items: CourseDiscussion[]; cursor: DiscussionCursor | null };
+
+/** Everything a learner's course workspace shows (web StudentCourseDashboard + modules/quizzes/assignments pages). */
+export type CourseWorkspace = { course: Course; enrollment: Enrollment | null; modules: CourseModule[]; submissions: Map<string, AssignmentSubmission> };
+export type LearningStats = { totalCourses: number; totalLearners: number; averageRating: number };
+export type CatalogSort = 'featured' | 'recent' | 'rating';
+export type CatalogPriceFilter = 'All' | 'Free' | 'Paid';
+export type MyLearningStatus = 'All' | 'In progress' | 'Not started' | 'Completed';
+export type MyLearningSort = 'recent' | 'progress';

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CheckCircle2, Circle, HelpCircle, XCircle } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import type { CourseQuizQuestion } from '@/lib/types/course';
@@ -7,15 +7,19 @@ import type { CourseQuizQuestion } from '@/lib/types/course';
 type LessonQuizProps = {
   questions: CourseQuizQuestion[];
   isCompleted: boolean;
-  /** Sends the answers (option index per question, -1 when skipped); resolves with the server's score, if any. */
+  /**
+   * Sends the answers aligned by question index like the website quiz page: the option index, or -1 when skipped or for
+   * a short-answer question (not auto-scored). Resolves with the server's score, if any.
+   */
   onSubmit: (answers: number[]) => Promise<number | null>;
 };
 
-/** Multiple-choice quiz for a lesson, like the website's quiz page: answer, submit, then see the score and the answers. */
+/** A lesson quiz like the website's quiz page (multiple choice, true/false, short answer): answer, submit, then see the score. */
 export default function LessonQuiz({ questions, isCompleted, onSubmit }: LessonQuizProps) {
   const { colors } = useAppTheme();
   const styles = createStyles(colors);
   const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [textAnswers, setTextAnswers] = useState<Record<number, string>>({});
   const [score, setScore] = useState<number | null>(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,8 +35,11 @@ export default function LessonQuiz({ questions, isCompleted, onSubmit }: LessonQ
     );
   }
 
-  const answeredCount = Object.keys(answers).length;
+  const isShortAnswer = (question: CourseQuizQuestion): boolean => question.type === 'short_answer' || question.options.length === 0;
+  const answeredCount = questions.filter((question, index) => isShortAnswer(question) ? Boolean(textAnswers[index]?.trim()) : answers[index] !== undefined).length;
   const correctCount = questions.filter((question, index) => question.correctIndex !== undefined && answers[index] === question.correctIndex).length;
+  const totalPoints = questions.reduce((total, question) => total + (question.points ?? 0), 0);
+  const hasShortAnswers = questions.some(isShortAnswer);
 
   const handleSelect = (questionIndex: number, optionIndex: number) => {
     if (isSubmitted) return;
@@ -43,7 +50,8 @@ export default function LessonQuiz({ questions, isCompleted, onSubmit }: LessonQ
     setIsSubmitting(true);
     setError(null);
     try {
-      const serverScore = await onSubmit(questions.map((_, index) => answers[index] ?? -1));
+      // Every question keeps its slot so the server scores answers[index] against the right question.
+      const serverScore = await onSubmit(questions.map((question, index) => isShortAnswer(question) ? -1 : answers[index] ?? -1));
       setScore(serverScore ?? Math.round((correctCount / questions.length) * 100));
       setIsSubmitted(true);
     } catch (submitError: unknown) {
@@ -56,6 +64,7 @@ export default function LessonQuiz({ questions, isCompleted, onSubmit }: LessonQ
 
   const handleRetake = () => {
     setAnswers({});
+    setTextAnswers({});
     setScore(null);
     setIsSubmitted(false);
   };
@@ -66,6 +75,7 @@ export default function LessonQuiz({ questions, isCompleted, onSubmit }: LessonQ
         <View style={[styles.card, styles.resultCard]}>
           <Text style={styles.resultScore}>{score}%</Text>
           <Text style={styles.resultLabel}>{correctCount} of {questions.length} correct</Text>
+          {hasShortAnswers ? <Text style={styles.muted}>Short answers are not scored automatically.</Text> : null}
           <Pressable accessibilityRole="button" onPress={handleRetake} style={styles.secondaryButton}>
             <Text style={styles.secondaryButtonText}>Retake quiz</Text>
           </Pressable>
@@ -73,11 +83,28 @@ export default function LessonQuiz({ questions, isCompleted, onSubmit }: LessonQ
       ) : isCompleted ? (
         <Text style={styles.muted}>You already completed this quiz. You can take it again to practise.</Text>
       ) : null}
+      {!isSubmitted ? <Text style={styles.muted}>{questions.length} {questions.length === 1 ? 'question' : 'questions'}{totalPoints > 0 ? ` · ${totalPoints} ${totalPoints === 1 ? 'point' : 'points'}` : ''}</Text> : null}
 
       {questions.map((question, questionIndex) => (
         <View key={question.id} style={styles.card}>
-          <Text style={styles.questionNumber}>Question {questionIndex + 1} of {questions.length}</Text>
+          <View style={styles.questionHeader}>
+            <Text style={styles.questionNumber}>Question {questionIndex + 1} of {questions.length}{question.type === 'true_false' ? ' · True or false' : isShortAnswer(question) ? ' · Short answer' : ''}</Text>
+            {question.points ? <Text style={styles.questionNumber}>{question.points} {question.points === 1 ? 'pt' : 'pts'}</Text> : null}
+          </View>
           <Text style={styles.questionTitle}>{question.title}</Text>
+          {isShortAnswer(question) ? (
+            <TextInput
+              value={textAnswers[questionIndex] ?? ''}
+              onChangeText={(text) => setTextAnswers((current) => ({ ...current, [questionIndex]: text }))}
+              editable={!isSubmitted}
+              placeholder="Type your answer…"
+              placeholderTextColor={colors.mutedText}
+              multiline
+              maxLength={2000}
+              accessibilityLabel={`Answer to question ${questionIndex + 1}`}
+              style={styles.textAnswer}
+            />
+          ) : null}
           <View style={styles.options}>
             {question.options.map((option, optionIndex) => {
               const isSelected = answers[questionIndex] === optionIndex;
@@ -130,6 +157,8 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   resultLabel: { color: colors.text, fontSize: 15, fontWeight: '700' },
   emptyTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
   muted: { color: colors.mutedText, fontSize: 13, lineHeight: 19 },
+  questionHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  textAnswer: { minHeight: 90, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 15, textAlignVertical: 'top' },
   questionNumber: { color: colors.mutedText, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
   questionTitle: { color: colors.text, fontSize: 17, fontWeight: '800', lineHeight: 24 },
   options: { gap: 8 },

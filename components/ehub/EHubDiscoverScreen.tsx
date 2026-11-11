@@ -6,7 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useEHubProviders } from '@/lib/hooks/useEHub';
 import { EHubChip, EHubEmptyState, EHubGridSkeleton, EHubNotice, EHubProviderCard, useEHubLayout } from '@/components/ehub/EHubParts';
-import type { EHubProviderKind } from '@/lib/types/ehubDiscovery';
+import type { EHubProvider, EHubProviderKind } from '@/lib/types/ehubDiscovery';
 
 type KindFilter = 'all' | EHubProviderKind;
 
@@ -38,7 +38,12 @@ export default function EHubDiscoverScreen() {
   const providerList = useMemo(() => providers.data ?? [], [providers.data]);
   const categories = useMemo(() => ['All categories', ...[...new Set([...providerList.flatMap((provider) => [...provider.categories, ...provider.services]), ...(category === 'All categories' ? [] : [category])])].sort()], [category, providerList]);
 
-  const handleOpenProvider = (providerId: string) => router.push(`/ehub/providers/${encodeURIComponent(providerId)}` as Href);
+  // Like the website: when the chosen category is one of the provider's services, the card opens its enquiry form about it.
+  const findSelectedService = (provider: EHubProvider) => provider.services.find((service) => service.toLowerCase() === category.toLowerCase());
+  const handleOpenProvider = (provider: EHubProvider) => {
+    const selectedService = findSelectedService(provider);
+    router.push(`/ehub/providers/${encodeURIComponent(provider.id)}${selectedService ? `?service=${encodeURIComponent(selectedService)}` : ''}` as Href);
+  };
 
   return (
     <View style={styles.screen}>
@@ -67,7 +72,7 @@ export default function EHubDiscoverScreen() {
           {providers.isLoading && !providers.data ? <EHubGridSkeleton count={layout.isTablet ? 4 : 2} width={layout.providerWidth} height={280} />
             : providerList.length ? <>
               <Text style={styles.count}>{providerList.length} {providerList.length === 1 ? 'provider' : 'providers'}</Text>
-              <View style={[styles.grid, { gap: layout.gap }]}>{providerList.map((provider) => <EHubProviderCard key={provider.id} provider={provider} width={layout.providerWidth} onOpen={handleOpenProvider} actionLabel="View profile & enquire" />)}</View>
+              <View style={[styles.grid, { gap: layout.gap }]}>{providerList.map((provider) => <EHubProviderCard key={provider.id} provider={provider} width={layout.providerWidth} onOpen={() => handleOpenProvider(provider)} actionLabel={findSelectedService(provider) ? `Enquire about ${category}` : 'View profile & enquire'} showRating />)}</View>
             </>
               : !providers.error ? <EHubEmptyState icon={<Building2 size={42} color={colors.mutedText} />} title="No matching providers yet" body="Try a broader category or location. Only active, real business profiles appear here." /> : null}
         </View>

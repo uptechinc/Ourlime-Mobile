@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Building2, Lock, Save, Star, Store } from 'lucide-react-native';
 import { useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
@@ -65,7 +66,7 @@ export default function BusinessAccountScreen() {
   return (
     <View style={styles.screen}>
       {header}
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardSafeView style={styles.flex}>
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={business.isRefreshing} onRefresh={() => void business.refresh()} tintColor={colors.accent} />} contentContainerStyle={styles.scrollContent}>
           <View style={[styles.body, { width: layout.contentWidth }]}>
             {business.error ? <EHubNotice tone="error" text={business.error} actionLabel={account ? undefined : 'Try again'} onAction={account ? undefined : () => void business.refresh()} /> : null}
@@ -82,10 +83,12 @@ export default function BusinessAccountScreen() {
                 <View style={styles.card}>
                   <Text style={styles.eyebrow}>Business account</Text>
                   <Text style={styles.title}>{account.profile.name || 'Your business'}</Text>
+                  {/* The website's four business metrics, two per row. */}
                   <View style={styles.stats}>
-                    <Stat styles={styles} value={String(account.metrics.totalProducts)} label="Products" />
-                    <Stat styles={styles} value={account.reviews.total > 0 ? account.rating.overall.toFixed(1) : '—'} label="Rating" icon={<Star size={14} color={colors.warningText} />} />
-                    <Stat styles={styles} value={String(account.reviews.total)} label="Reviews" />
+                    <Stat styles={styles} value={String(account.metrics.totalProducts)} label={account.metrics.totalProducts === 1 ? 'Total Product' : 'Total Products'} />
+                    <Stat styles={styles} value={String(account.metrics.totalSales)} label="Total Sales" />
+                    <Stat styles={styles} value={String(account.metrics.avgRating)} label="Average Rating" icon={<Star size={14} color={colors.warningText} />} />
+                    <Stat styles={styles} value={String(account.metrics.responseRate)} label="Response Rate" />
                   </View>
                   <SellerButton variant="secondary" label="Open Seller Center" icon={<Store size={17} color={colors.text} />} onPress={() => router.push('/ehub/seller' as Href)} />
                 </View>
@@ -109,7 +112,7 @@ export default function BusinessAccountScreen() {
               </> : null}
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </View>
   );
 }
@@ -130,8 +133,8 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   cardTitle: { color: colors.text, fontSize: 18, fontWeight: '900' },
   muted: { color: colors.mutedText, fontSize: 14, lineHeight: 20 },
   small: { color: colors.mutedText, fontSize: 12 },
-  stats: { flexDirection: 'row', gap: 10 },
-  stat: { flex: 1, padding: 12, gap: 2, borderRadius: 16, backgroundColor: colors.control },
+  stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  stat: { flexGrow: 1, flexBasis: '40%', minWidth: 120, padding: 12, gap: 2, borderRadius: 16, backgroundColor: colors.control },
   statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   statValue: { color: colors.text, fontSize: 20, fontWeight: '900' },
   grid: { gap: 16 },

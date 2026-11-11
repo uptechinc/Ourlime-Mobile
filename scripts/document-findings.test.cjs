@@ -5,13 +5,15 @@ const path = require('node:path');
 
 const read = (relativePath) => fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8');
 
-test('E-Hub products open the real Market detail workflow', () => {
+test('E-Hub keeps its own catalog; Market products open the detail route with discussion', () => {
   const hub = read('components/ehub/EHubScreen.tsx');
   const market = read('components/market/MarketplaceScreen.tsx');
-  assert.match(hub, /useMarketplaceCatalog/);
-  assert.match(hub, /\/market\?product=/);
-  assert.match(market, /marketplaceService\.product\(ownerId, productId\)/);
-  assert.match(market, /ListingDiscussion/);
+  const details = read('components/market/details/ProductDetailsScreen.tsx');
+  // The E-Hub concept keeps business catalogs separate from Market listings (web docs/ehub-concept-audit.md).
+  assert.doesNotMatch(hub, /useMarketplaceCatalog/);
+  assert.match(hub, /useEHubCatalog/);
+  assert.match(market, /router\.push\(`\/market\/\$\{encodeURIComponent\(product\.id\)\}`/);
+  assert.match(details, /ListingDiscussion/);
 });
 
 test('seller application contains the document fields without payout collection', () => {
@@ -22,17 +24,17 @@ test('seller application contains the document fields without payout collection'
   assert.doesNotMatch(application, /card number|bank account|routing number/i);
 });
 
-test('Market exposes durable cart, checkout preparation, discussion and support controls', () => {
+test('Market exposes durable cart, checkout, discussion and support controls', () => {
   const market = read('components/market/MarketplaceScreen.tsx');
-  const checkout = read('components/market/CheckoutPreparationModal.tsx');
-  for (const required of ['Save Cart / Retry sync', 'Prepare checkout', 'ListingDiscussion', 'Marketplace support']) {
-    assert.match(market, new RegExp(required));
-  }
-  for (const required of ['Full name', 'Email', 'International phone', 'Delivery address', 'Save contact and review items']) {
+  const cart = read('components/market/cart/MarketCartModal.tsx');
+  const checkout = read('components/market/checkout/MarketCheckoutScreen.tsx');
+  assert.match(cart, /Save Cart \/ Retry sync/);
+  assert.match(cart, /Proceed to checkout/);
+  assert.match(market, /Marketplace support/);
+  for (const required of ['Full name', 'Phone number', 'Buyer Acknowledgment', 'Place Order & Pay']) {
     assert.match(checkout, new RegExp(required));
   }
-  assert.match(checkout, /Payments are unavailable/);
-  assert.doesNotMatch(checkout, /credit card|place order|payment successful/i);
+  assert.doesNotMatch(checkout, /credit card|card number|payment successful/i);
 });
 
 test('E-Projects and Blogs do not advertise stale unavailable badges when enabled', () => {

@@ -23,7 +23,7 @@ function readError(error: unknown, fallback: string): string {
  * Seller Center state for one signed-in owner, mirroring the website's EHubSellerCenter: the workspace, the
  * storefront and product forms, and autosaved private drafts. Each draft type has its own timer and draft id (in
  * refs, so a save scheduled before the first save returned still reuses that draft), and a pending save is sent
- * straight away when the screen closes. Publishing retires the draft so Drafts lists only unfinished work.
+ * straight away when the screen closes. Publishing keeps the draft active, as on the website.
  */
 export function useEHubSellerCenter(ownerId: string | null) {
   const [workspace, setWorkspace] = useState<EHubSellerWorkspace | null>(null);
@@ -115,17 +115,25 @@ export function useEHubSellerCenter(ownerId: string | null) {
     });
   }, []);
 
-  /** Stops a pending autosave and moves the draft to Recently Deleted once its work is published. */
+  /**
+   * After publishing, the draft stays active like on the website (it is not moved to Recently Deleted). A pending
+   * autosave is sent now so the draft holds the published edits. The storefront keeps its draft; a product starts the
+   * next product on a fresh draft, as the website resets its product draft id.
+   */
   const finishDraft = useCallback(async (type: EHubDraftType): Promise<void> => {
     const pendingTimer = timers.current[type];
+    const pendingForm = pendingForms.current[type];
     if (pendingTimer) clearTimeout(pendingTimer);
     timers.current[type] = null;
     delete pendingForms.current[type];
-    const draftId = draftIds.current[type];
-    draftIds.current[type] = undefined;
-    setSaveStatus('idle');
-    if (draftId) await eHubSellerService.updateDraftStatus(draftId, 'delete').catch((error: unknown) => console.error('[useEHubSellerCenter.finishDraft] Error:', readError(error, 'Unknown error')));
-  }, []);
+    if (pendingTimer && pendingForm) {
+      await sendDraft(type, pendingForm).catch((error: unknown) => console.error('[useEHubSellerCenter.finishDraft] Error:', readError(error, 'Unknown error')));
+    }
+    if (type === 'product') {
+      draftIds.current.product = undefined;
+      setSaveStatus('idle');
+    }
+  }, [sendDraft]);
 
   const runAction = useCallback(async (action: () => Promise<void>, fallbackError: string): Promise<boolean> => {
     setIsWorking(true);

@@ -1,6 +1,26 @@
 {
   "releases": [
     {
+      "id": "1.3.1-ota-2026-11-11",
+      "version": "1.3.1",
+      "versionCode": 10,
+      "kind": "ota",
+      "date": "2026-11-11",
+      "notes": [
+        "E-Learning: a course home for enrolled students with Next up, a to-do list of quizzes and assignments, recent activity and resources, plus Modules, Quizzes and Assignments pages.",
+        "E-Learning: lessons open exactly where you tapped, Continue picks up at your next lesson, and Mark as Done moves you on.",
+        "E-Learning: filter courses by level and free or paid, sort by newest or top rated, and see which courses you're enrolled in.",
+        "E-Learning for instructors: create quizzes and assignments, save grades as drafts, and apply with the full instructor application.",
+        "E-Learning fixes: lessons added as documents now show up, and quizzes with short-answer questions are scored correctly.",
+        "E-Hub: save products, compare two side by side and keep a preparation cart, plus a new home with Shop, Hire, Discover and Grow.",
+        "E-Hub: ask a provider about a specific service, share provider profiles, read the E-Hub terms in the app, and delete an enquiry before it's read.",
+        "Market: product pages with colour and size options, reviews, related items, shipping details and Report listing.",
+        "Market: checkout with shipping or pickup, including each seller's pickup contacts, plus My orders to track, confirm and review.",
+        "Market for sellers: My listings to add, edit, unpublish and duplicate products, and seller orders to mark items shipped or ready for pickup.",
+        "Market: more filters (seller type, colour, size, in stock, newest), saved searches, save for later and a grid or list view."
+      ]
+    },
+    {
       "id": "1.3.1-ota-2026-11-10-2",
       "version": "1.3.1",
       "versionCode": 10,

@@ -20,10 +20,14 @@ import {
   type QueryConstraint,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import type { CatalogCursor, CatalogPage, MarketProduct, MarketProductCondition, MarketVariant, CartLine } from '@/lib/types/reliability';
+import type { CatalogCursor, CatalogPage, MarketContactItem, MarketContactType, MarketDimensions, MarketProduct, MarketProductCondition, MarketSellerType, MarketVariant, MarketWeight, CartLine } from '@/lib/types/reliability';
 import type { CheckoutContact } from '@/lib/types/ehub';
 import { privateProfileService } from './PrivateProfileService';
 
+export const MARKET_BASE_VARIANT_ID = 'base';
+const MARKET_CONTACT_TYPES: readonly MarketContactType[] = ['phone', 'email', 'website'];
+export type MarketCheckoutTotals = { subtotal: number; shipping: number; tax: number; total: number };
+export type MarketSellerGroup = { sellerId: string; sellerName: string; lines: CartLine[]; subtotal: number; shippingCost: number };
 export type CheckoutLineReview = { line: CartLine; currentPrice: number | null; reason: string | null; priceChanged: boolean };
 export type MarketSupportConfig = { email: string; helpUrl: string };
 export type MarketSupportDestination =
@@ -133,9 +137,9 @@ export class MarketplaceService {
         ? subImagesByProduct.then((namesByProduct) => namesByProduct.get(id) ?? [])
         : getDocs(query(collection(db, 'subImages'), where('productId', '==', id), limit(100))).then((snapshot) => snapshot.docs.map((document) => document.data().imageName)),
     ]);
-    const variantsSnapshot = publishedVariantsSnapshot.empty
-      ? await getDocs(query(collection(db, 'variants'), where('productId', '==', id), limit(401)))
-      : publishedVariantsSnapshot;
+    // Only published variants are readable (firestore.rules /variants). An unfiltered fallback query is refused for
+    // members and would fail the whole catalog batch, so a listing without readable variants uses its base price.
+    const variantsSnapshot = publishedVariantsSnapshot;
     const ownership = ownershipSnapshot.docs[0]?.data();
     const sellerId = directSellerId || (typeof ownership?.userId === 'string' ? ownership.userId : '');
     const storeSnapshot = sellerId ? await getDoc(doc(db, 'publicStores', sellerId)) : null;
@@ -164,8 +168,22 @@ export class MarketplaceService {
         colorCode: typeof color?.colorCode === 'string' ? color.colorCode : null,
         sizeName,
         sku: typeof variant.sku === 'string' ? variant.sku : null,
+        colorVariantId: typeof variant.colorVariantId === 'string' && variant.colorVariantId ? variant.colorVariantId : null,
+        sizeVariantId: typeof variant.sizeVariantId === 'string' && variant.sizeVariantId ? variant.sizeVariantId : null,
       };
     });
+    const finiteNumber = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null;
+    const text = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim() : null;
+    // Listings without variants are sold at salePrice ?? originalPrice with the web's default stock of 10, under the
+    // variant id 'base' (web MarketCartItem id `${productId}-default`).
+    if (!decodedVariants.length) {
+      const basePrice = finiteNumber(product.salePrice) ?? finiteNumber(product.originalPrice);
+      const baseCurrency = typeof product.currency === 'string' && /^[A-Z]{3}$/.test(product.currency) ? product.currency : '';
+      if (basePrice !== null && basePrice >= 0) decodedVariants.push({
+        id: MARKET_BASE_VARIANT_ID, productId: id, label: 'Standard', price: basePrice, currency: baseCurrency, stock: 10, available,
+        image: null, colorName: null, colorCode: null, sizeName: null, sku: text(product.sku), colorVariantId: null, sizeVariantId: null, isBase: true,
+      });
+    }
     const condition: MarketProductCondition = ['new', 'like_new', 'good', 'fair', 'refurbished'].includes(String(product.condition)) ? product.condition as MarketProductCondition : null;
     const storeName = typeof (store as { storeName?: string } | null)?.storeName === 'string' ? (store as { storeName: string }).storeName : null;
     const listedName = storeName ?? (typeof ownership?.userName === 'string' ? ownership.userName : typeof product.sellerName === 'string' ? product.sellerName : null);
@@ -173,8 +191,9 @@ export class MarketplaceService {
     const sellerProfile = !listedName && sellerId ? (await sharedDocumentReader.read(doc(db, 'users', sellerId)).catch(() => null))?.data() : undefined;
     const profileName = [sellerProfile?.firstName, sellerProfile?.lastName].filter((part): part is string => typeof part === 'string' && Boolean(part.trim())).join(' ')
       || (typeof sellerProfile?.userName === 'string' ? sellerProfile.userName : '');
-    const finiteNumber = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null;
-    const text = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim() : null;
+    const sellerType: MarketSellerType | null = ownership?.sellerType === 'business' || ownership?.sellerType === 'personal' ? ownership.sellerType : null;
+    const createdAt = product.createdAt as { toMillis?: () => number; seconds?: unknown } | undefined;
+    const createdAtMs = typeof createdAt?.toMillis === 'function' ? createdAt.toMillis() : typeof createdAt?.seconds === 'number' ? createdAt.seconds * 1000 : null;
     return {
       id,
       title: typeof product.title === 'string' ? product.title : 'Untitled listing',
@@ -207,7 +226,86 @@ export class MarketplaceService {
       returnsAllowed: typeof product.returnsAllowed === 'boolean' ? product.returnsAllowed : null,
       returnPolicy: text(product.returnPolicy),
       warranty: text(product.warranty),
+      contactInfo: this.contactItems(product.contactInfo),
+      shippingCost: finiteNumber(product.shippingCost),
+      estimatedShippingDays: finiteNumber(product.estimatedShippingDays),
+      refundPolicy: text(product.refundPolicy),
+      dimensions: this.dimensions(product.dimensions),
+      weight: this.weight(product.weight),
+      sellerType,
+      sellerProfileImage: typeof ownership?.profileImage === 'string' && /^https:\/\//.test(ownership.profileImage) ? ownership.profileImage : null,
+      createdAtMs,
     };
+  }
+
+  /** contactInfo entries in the web's order: phone, email, website (first non-empty of each). */
+  public contactItems(value: unknown): MarketContactItem[] {
+    const entries: unknown[] = Array.isArray(value) ? value : [];
+    return MARKET_CONTACT_TYPES.flatMap((type) => {
+      for (const entry of entries) {
+        if (!entry || typeof entry !== 'object') continue;
+        const item = entry as { type?: unknown; value?: unknown };
+        if (item.type === type && typeof item.value === 'string' && item.value.trim()) return [{ type, value: item.value.trim() }];
+      }
+      return [];
+    });
+  }
+
+  private dimensions(value: unknown): MarketDimensions | null {
+    if (!value || typeof value !== 'object') return null;
+    const entry = value as { length?: unknown; width?: unknown; height?: unknown; unit?: unknown };
+    const measure = (part: unknown) => typeof part === 'number' && Number.isFinite(part) && part > 0 ? part : null;
+    const dimensions = { length: measure(entry.length), width: measure(entry.width), height: measure(entry.height), unit: typeof entry.unit === 'string' ? entry.unit : null };
+    return dimensions.length || dimensions.width || dimensions.height ? dimensions : null;
+  }
+
+  private weight(value: unknown): MarketWeight | null {
+    if (!value || typeof value !== 'object') return null;
+    const entry = value as { value?: unknown; unit?: unknown };
+    return typeof entry.value === 'number' && Number.isFinite(entry.value) && entry.value > 0 ? { value: entry.value, unit: typeof entry.unit === 'string' ? entry.unit : null } : null;
+  }
+
+  /** Up to four other published listings in the same category (web "More in {category}"). */
+  public async related(product: MarketProduct): Promise<MarketProduct[]> {
+    if (!product.category) return [];
+    const page = await this.catalog(null, '', product.category);
+    return page.products.filter((entry) => entry.id !== product.id && entry.available).slice(0, 4);
+  }
+
+  /** Cart lines with the seller and fulfilment fields checkout needs, read from each live listing. */
+  public async enrichLines(ownerId: string, lines: CartLine[]): Promise<CartLine[]> {
+    const products = new Map<string, MarketProduct | null>();
+    await Promise.all([...new Set(lines.map((line) => line.productId))].map(async (productId) => {
+      products.set(productId, await this.product(ownerId, productId).catch(() => null));
+    }));
+    return lines.map((line) => {
+      const product = products.get(line.productId);
+      if (!product) return line;
+      return { ...line, sellerId: product.sellerId || 'seller', sellerName: product.sellerName, shippingCost: product.shippingCost ?? 0, deliveryAvailable: product.deliveryAvailable ?? true, pickupAvailable: product.pickupAvailable ?? true };
+    });
+  }
+
+  /** Web MarketCartContext totals: subtotal + per-line shipping (shipping only) + 5% tax on the subtotal. */
+  public totals(lines: CartLine[], deliveryMethod: 'shipping' | 'pickup'): MarketCheckoutTotals {
+    const active = lines.filter((line) => !line.removed);
+    const subtotal = Math.round(active.reduce((total, line) => total + line.price * line.quantity, 0) * 100) / 100;
+    const shipping = deliveryMethod === 'shipping' ? Math.round(active.reduce((total, line) => total + (line.shippingCost ?? 0), 0) * 100) / 100 : 0;
+    const tax = Math.round(subtotal * 0.05 * 100) / 100;
+    return { subtotal, shipping, tax, total: Math.round((subtotal + shipping + tax) * 100) / 100 };
+  }
+
+  /** Lines grouped by seller, in first-seen order (web sellerGroups). */
+  public sellerGroups(lines: CartLine[]): MarketSellerGroup[] {
+    const groups = new Map<string, MarketSellerGroup>();
+    lines.filter((line) => !line.removed).forEach((line) => {
+      const sellerId = line.sellerId ?? 'seller';
+      const group = groups.get(sellerId) ?? { sellerId, sellerName: line.sellerName ?? 'Seller', lines: [], subtotal: 0, shippingCost: 0 };
+      group.lines.push(line);
+      group.subtotal += line.price * line.quantity;
+      group.shippingCost += line.shippingCost ?? 0;
+      groups.set(sellerId, group);
+    });
+    return [...groups.values()];
   }
 
   public validateContact(contact: CheckoutContact): void {

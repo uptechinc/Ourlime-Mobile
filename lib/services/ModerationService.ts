@@ -17,7 +17,7 @@ export const REPORT_REASONS = {
 
 export type ReportReasonCategory = keyof typeof REPORT_REASONS;
 export const CHILD_SAFETY_REASON_CATEGORY: ReportReasonCategory = 'child_safety';
-export type ReportContentType = 'post' | 'user' | 'community' | 'lime' | 'event' | 'marketplace_listing' | 'course' | 'blog' | 'blog_comment' | 'comment' | 'reply' | 'message' | 'conversation' | 'media' | 'other';
+export type ReportContentType = 'post' | 'user' | 'community' | 'lime' | 'event' | 'marketplace_listing' | 'market_product' | 'course' | 'blog' | 'blog_comment' | 'comment' | 'reply' | 'message' | 'conversation' | 'media' | 'other';
 
 export type SubmitReportInput = {
   targetId: string;
@@ -188,6 +188,7 @@ export class ModerationService {
     if (contentType === 'lime') return `/limes?limeId=${targetId}`;
     if (contentType === 'event') return `/events?targetId=${targetId}`;
     if (contentType === 'marketplace_listing') return `/market?productId=${targetId}`;
+    if (contentType === 'market_product') return `/market/${targetId}`;
     if (contentType === 'course') return `/eLearning?courseId=${targetId}`;
     if (contentType === 'blog') return `/blogs/${targetId}`;
     return `/post/${targetId}`;
@@ -196,7 +197,7 @@ export class ModerationService {
   private getChildSafetyTargetType(contentType: ReportContentType): ChildSafetyTargetType {
     if (contentType === 'user') return 'profile';
     if (contentType === 'event') return 'event';
-    if (contentType === 'marketplace_listing') return 'marketplace_listing';
+    if (contentType === 'marketplace_listing' || contentType === 'market_product') return 'marketplace_listing';
     if (contentType === 'course') return 'course';
     if (contentType === 'blog') return 'blog';
     if (contentType === 'comment' || contentType === 'blog_comment') return 'comment';

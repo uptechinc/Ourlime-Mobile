@@ -38,17 +38,23 @@ test('E-Hub is a distinct real-data storefront that routes products into Market'
 });
 
 test('market screen exposes the web discovery controls and honest payment state', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../components/market/MarketplaceScreen.tsx'), 'utf8');
-  for (const label of ['Recently viewed', 'Filter and sort', 'Favorites only', 'Delivery available', 'Pickup available', 'Choose a variant']) assert.match(source, new RegExp(label));
-  assert.match(source, /Payments are unavailable/);
-  assert.doesNotMatch(source, /order (was|has been) placed|payment successful/i);
+  const read = (relative) => fs.readFileSync(path.resolve(__dirname, '..', relative), 'utf8');
+  const market = read('components/market/MarketplaceScreen.tsx');
+  const filters = read('components/market/filters/ProductFilter.tsx');
+  const detail = read('components/market/details/ProductDetailsScreen.tsx');
+  assert.match(market, /Recently viewed/);
+  assert.match(market, /Payments are unavailable/);
+  for (const label of ['Filter and sort', 'Favorites only', 'Delivery available', 'Pickup available', 'Verified shops', 'Maximum price ($)', 'Apply price']) assert.ok(filters.includes(label), label);
+  for (const label of ['Add to Cart', 'Buy Now', 'Final Sale', 'Report listing']) assert.ok(detail.includes(label), label);
+  assert.doesNotMatch(market, /order (was|has been) placed|payment successful/i);
 });
 
-test('market catalog keeps legacy approved web listings readable until migration', () => {
+test('market catalog reads only published listings and variants', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../lib/services/MarketplaceService.ts'), 'utf8');
-  assert.match(source, /if \(snapshot\.empty\)/);
   assert.match(source, /const status = typeof value\.status === 'string' \? value\.status : 'approved'/);
   assert.match(source, /status === 'approved' \|\| status === 'active'/);
-  assert.match(source, /publishedVariantsSnapshot\.empty/);
-  assert.match(source, /limit\(90\)/);
+  assert.match(source, /where\('publicationState', '==', 'published'\)/);
+  // The unfiltered variants fallback is refused by the rules for members and failed whole catalog batches.
+  assert.doesNotMatch(source, /publishedVariantsSnapshot\.empty/);
+  assert.match(source, /MARKET_BASE_VARIANT_ID/);
 });

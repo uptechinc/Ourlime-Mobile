@@ -82,6 +82,8 @@ export function useEHubProvider(providerId: string | undefined): EHubResource<EH
 
 export type EHubEnquiriesResource = EHubResource<EHubEnquiry[]> & {
   update: (enquiryId: string, status: EHubManageableEnquiryStatus, responseMessage?: string) => Promise<void>;
+  /** Deletes a sent enquiry the provider has not read yet. */
+  remove: (enquiryId: string) => Promise<void>;
 };
 
 /** The signed-in member's sent or received enquiries; nothing loads while signed out. */
@@ -89,14 +91,20 @@ export function useEHubEnquiries(userId: string | null, mode: EHubEnquiryMode): 
   const load = useCallback(() => eHubService.getEnquiries(mode), [mode]);
   const resource = useEHubResource(userId ? load : null, 'Unable to load enquiries.');
   const [updates, setUpdates] = useState<{ [enquiryId: string]: EHubEnquiry }>({});
+  const [removedIds, setRemovedIds] = useState<string[]>([]);
 
-  useEffect(() => { setUpdates({}); }, [resource.data]);
+  useEffect(() => { setUpdates({}); setRemovedIds([]); }, [resource.data]);
 
   const update = useCallback(async (enquiryId: string, status: EHubManageableEnquiryStatus, responseMessage?: string) => {
     const updatedEnquiry = await eHubService.updateEnquiry(enquiryId, status, responseMessage);
     setUpdates((current) => ({ ...current, [enquiryId]: updatedEnquiry }));
   }, []);
 
-  const data = resource.data ? resource.data.map((enquiry) => updates[enquiry.id] ?? enquiry) : null;
-  return { ...resource, data, update };
+  const remove = useCallback(async (enquiryId: string) => {
+    await eHubService.deleteEnquiry(enquiryId);
+    setRemovedIds((current) => [...current, enquiryId]);
+  }, []);
+
+  const data = resource.data ? resource.data.filter((enquiry) => !removedIds.includes(enquiry.id)).map((enquiry) => updates[enquiry.id] ?? enquiry) : null;
+  return { ...resource, data, update, remove };
 }

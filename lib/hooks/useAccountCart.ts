@@ -1,13 +1,16 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { cartSyncService } from '@/lib/services/CartSyncService';
+import { marketplaceService } from '@/lib/services/MarketplaceService';
+import { marketSavedForLaterService } from '@/lib/services/MarketSavedForLaterService';
 import { useMarketplaceStore } from '@/lib/store/useMarketplaceStore';
-import type { MarketProduct, MarketVariant } from '@/lib/types/reliability';
+import type { MarketProduct, MarketSavedItem, MarketVariant } from '@/lib/types/reliability';
 
 type CartLineToRemove = Parameters<typeof cartSyncService.remove>[1];
 
 export function useAccountCart(ownerId: string | null) {
   const state = useMarketplaceStore();
+  const [savedForLater, setSavedForLater] = useState<MarketSavedItem[]>([]);
   const flush = useCallback(async () => {
     if (!ownerId) return;
     try {
@@ -18,9 +21,12 @@ export function useAccountCart(ownerId: string | null) {
     }
   }, [ownerId]);
   useEffect(() => {
-    useMarketplaceStore.getState().reset(ownerId);
+    // Several Market screens use this hook at once (list, detail, checkout); only a new account clears the shared store.
+    if (useMarketplaceStore.getState().ownerId !== ownerId) useMarketplaceStore.getState().reset(ownerId);
+    setSavedForLater([]);
     if (!ownerId) return;
     let active = true;
+    void marketSavedForLaterService.read(ownerId).then((items) => { if (active) setSavedForLater(items); });
     void cartSyncService.load(ownerId).then((cart) => {
       if (!active) return;
       useMarketplaceStore.getState().setCart(ownerId, cart, 'saved_on_device');
@@ -52,5 +58,25 @@ export function useAccountCart(ownerId: string | null) {
       void flush();
     } catch (error: unknown) { useMarketplaceStore.getState().fail(ownerId, error instanceof Error ? error.message : 'Cart update failed.'); throw error; }
   }, [flush, ownerId]);
-  return { ...state, setQuantity, remove, flush, resolve };
+  /** Web saveForLaterAction: keep the item on this device and take it out of the synced cart. */
+  const saveForLater = useCallback(async (line: CartLineToRemove) => {
+    if (!ownerId) throw new Error('Sign in to save items for later.');
+    setSavedForLater(await marketSavedForLaterService.save(ownerId, line));
+    await remove(line);
+  }, [ownerId, remove]);
+  /** Web moveToCartAction, re-checked against the live listing so price and stock are current. */
+  const moveToCart = useCallback(async (item: MarketSavedItem) => {
+    if (!ownerId) throw new Error('Sign in to update a cart.');
+    const product = await marketplaceService.product(ownerId, item.productId);
+    const variant = product.variants.find((entry) => entry.id === item.variantId);
+    if (!variant?.available) throw new Error(`${item.title} is no longer available in this option.`);
+    const existing = useMarketplaceStore.getState().cart.lines.find((line) => !line.removed && line.productId === item.productId && line.variantId === item.variantId)?.quantity ?? 0;
+    await setQuantity(product, variant, Math.min(variant.stock, 99, existing + item.quantity));
+    setSavedForLater(await marketSavedForLaterService.remove(ownerId, item.productId, item.variantId));
+  }, [ownerId, setQuantity]);
+  const removeSaved = useCallback(async (item: MarketSavedItem) => {
+    if (!ownerId) return;
+    setSavedForLater(await marketSavedForLaterService.remove(ownerId, item.productId, item.variantId));
+  }, [ownerId]);
+  return { ...state, savedForLater, setQuantity, remove, flush, resolve, saveForLater, moveToCart, removeSaved };
 }

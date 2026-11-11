@@ -1,15 +1,16 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Building2, ChevronRight, Eye, FilePenLine, FileText, Inbox, LayoutDashboard, Lock, Package, Settings, Store, Trash2 } from 'lucide-react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import CustomModal from '@/components/ui/CustomModal';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useEHubSellerCenter } from '@/lib/hooks/useEHubSellerCenter';
-import { EHUB_SELLER_TERMS_URL } from '@/lib/services/EHubSellerService';
+import { getEHubTermsRoute } from '@/lib/services/EHubService';
 import type { EHubDraft, EHubPublicationState, EHubSellerProduct } from '@/lib/types/ehubSeller';
 import { EHubEmptyState, EHubNotice, useEHubLayout } from '@/components/ehub/EHubParts';
 import { SellerButton } from '@/components/ehub/EHubSellerFormParts';
@@ -114,7 +115,7 @@ export default function EHubSellerCenterScreen() {
   return (
     <View style={styles.screen}>
       {header}
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardSafeView style={styles.flex}>
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={center.isRefreshing} onRefresh={() => void center.refresh()} tintColor={colors.accent} />} contentContainerStyle={styles.scrollContent}>
           <View style={[styles.body, { width: layout.contentWidth }, layout.isWide ? styles.bodyWide : null]}>
             {navigation}
@@ -163,14 +164,14 @@ export default function EHubSellerCenterScreen() {
                   <Text style={styles.muted}>Seller eligibility, identity verification, and business ownership remain managed by your Ourlime account.</Text>
                   <View style={styles.buttonRow}>
                     <SellerButton label="Business account" icon={<Building2 size={17} color="#ffffff" />} onPress={() => router.push('/ehub/business-account' as Href)} />
-                    <SellerButton label="Seller terms" variant="secondary" onPress={() => void Linking.openURL(EHUB_SELLER_TERMS_URL)} />
+                    <SellerButton label="Seller terms" variant="secondary" onPress={() => router.push(getEHubTermsRoute('seller') as Href)} />
                   </View>
                 </View> : null}
               </>}
             </View>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
       <CustomModal visible={confirmation !== null} type={confirmCopy.type} title={confirmCopy.title} message={confirmCopy.message} confirmText={confirmCopy.confirmText} cancelText="Cancel"
         isLoading={center.isWorking} onConfirm={() => void handleConfirm()} onCancel={() => setConfirmation(null)} onClose={() => { if (!center.isWorking) setConfirmation(null); }} />
     </View>

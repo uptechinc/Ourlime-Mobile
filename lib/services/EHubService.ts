@@ -1,6 +1,6 @@
 import { appServerService, AppServerError } from './AppServerService';
 import type {
-  EHubCatalogProduct, EHubEnquiry, EHubEnquiryInput, EHubEnquiryMode, EHubManageableEnquiryStatus,
+  EHubCatalogProduct, EHubEnquiry, EHubEnquiryDraft, EHubEnquiryInput, EHubEnquiryMode, EHubManageableEnquiryStatus,
   EHubProductDetail, EHubProvider, EHubProviderDetail, EHubProviderFilters,
 } from '@/lib/types/ehubDiscovery';
 
@@ -20,6 +20,20 @@ export class EHubError extends Error {
 
 const CACHE_TTL_MS = 60_000;
 export const EHUB_BUYER_TERMS_URL = 'https://ourlime.com/ehub/terms#buyer';
+export const EHUB_PROVIDER_SHARE_BASE_URL = 'https://ourlime.com/ehub/providers/';
+
+/** The website's /ehub/terms anchors; the app's terms screen takes them as ?section=. */
+export type EHubTermsSection = 'seller' | 'provider' | 'catalog' | 'buyer' | 'moderation';
+const TERMS_SECTIONS: EHubTermsSection[] = ['seller', 'provider', 'catalog', 'buyer', 'moderation'];
+
+export function isEHubTermsSection(value: unknown): value is EHubTermsSection {
+  return typeof value === 'string' && TERMS_SECTIONS.includes(value as EHubTermsSection);
+}
+
+/** The in-app terms screen route, opened at a section like the website's /ehub/terms#buyer. */
+export function getEHubTermsRoute(section?: EHubTermsSection): string {
+  return section ? `/ehub/terms?section=${section}` : '/ehub/terms';
+}
 
 /**
  * The website's eHub buyer flows (catalog, product detail, provider discovery and profiles, enquiries) through the
@@ -30,6 +44,8 @@ export class EHubService {
   private static instance: EHubService;
   private catalogCache: CacheEntry<EHubCatalogProduct[]> | null = null;
   private providersCache: CacheEntry<EHubProvider[]> | null = null;
+  /** Unsent enquiry forms for this app run, like the website's sessionStorage drafts. */
+  private readonly enquiryDrafts = new Map<string, EHubEnquiryDraft>();
 
   private constructor() {}
 
@@ -78,6 +94,28 @@ export class EHubService {
 
   public async updateEnquiry(enquiryId: string, status: EHubManageableEnquiryStatus, responseMessage?: string): Promise<EHubEnquiry> {
     return this.request<EHubEnquiry>('PATCH', '/api/ehub/enquiries', { body: { enquiryId, status, ...(responseMessage ? { responseMessage } : {}) } });
+  }
+
+  /** Deletes an enquiry the caller sent while the provider has not read it yet (the website's DELETE /api/ehub/enquiries). */
+  public async deleteEnquiry(enquiryId: string): Promise<void> {
+    await this.request<undefined>('DELETE', '/api/ehub/enquiries', { query: `enquiryId=${encodeURIComponent(enquiryId)}`, allowEmpty: true });
+  }
+
+  /** One draft per provider and context (a product, a service, or "general"), like the website's ehub-enquiry-{provider}-{context} keys. */
+  public getEnquiryDraftKey(providerId: string, contextName: string): string {
+    return `ehub-enquiry-${providerId}-${encodeURIComponent(contextName || 'general')}`;
+  }
+
+  public getEnquiryDraft(key: string): EHubEnquiryDraft | null {
+    return this.enquiryDrafts.get(key) ?? null;
+  }
+
+  public saveEnquiryDraft(key: string, draft: EHubEnquiryDraft): void {
+    this.enquiryDrafts.set(key, draft);
+  }
+
+  public clearEnquiryDraft(key: string): void {
+    this.enquiryDrafts.delete(key);
   }
 
   /** Seller changes show on the public lists straight away instead of after the 60 s cache. */

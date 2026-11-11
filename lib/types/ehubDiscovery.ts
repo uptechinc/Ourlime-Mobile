@@ -59,6 +59,9 @@ export type EHubEnquiry = {
   quoteRequestId: null;
 };
 
+/** An unsent enquiry form kept while the member moves around the app (e.g. to sign in or read the buyer terms). */
+export type EHubEnquiryDraft = { type: EHubEnquiryType; message: string; isBuyerAcknowledgementAccepted: boolean };
+
 export type EHubEnquiryInput = { providerId: string; type: EHubEnquiryType; message: string; buyerAcknowledgementAccepted: true };
 
 export type EHubCatalogProduct = {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Award, CheckCircle2, FileText, Paperclip, X } from 'lucide-react-native';
@@ -12,6 +12,8 @@ type LessonAssignmentProps = {
   lessonId: string;
   /** Called after a successful hand-in so the lesson screen can refresh progress. */
   onSubmitted: () => void;
+  /** Reports the learner's current submission (or null) after each load, e.g. for the overdue badge. */
+  onSubmissionChange?: (submission: AssignmentSubmission | null) => void;
 };
 
 type PendingFile = { uri: string; name: string; mimeType?: string; size?: number };
@@ -22,7 +24,9 @@ const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const formatSize = (bytes: number): string => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 
 /** Hand in an assignment lesson: a written response and/or files, then see the grade and feedback (website parity). */
-export default function LessonAssignment({ userId, courseId, lessonId, onSubmitted }: LessonAssignmentProps) {
+export default function LessonAssignment({ userId, courseId, lessonId, onSubmitted, onSubmissionChange }: LessonAssignmentProps) {
+  const onSubmissionChangeRef = useRef(onSubmissionChange);
+  onSubmissionChangeRef.current = onSubmissionChange;
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [submission, setSubmission] = useState<AssignmentSubmission | null>(null);
@@ -38,6 +42,7 @@ export default function LessonAssignment({ userId, courseId, lessonId, onSubmitt
     try {
       const existing = await courseService.getMySubmission(userId, lessonId);
       setSubmission(existing);
+      onSubmissionChangeRef.current?.(existing);
       setIsEditing(!existing);
       setResponse(existing?.textResponse ?? '');
       setKeptFiles(existing?.files ?? []);

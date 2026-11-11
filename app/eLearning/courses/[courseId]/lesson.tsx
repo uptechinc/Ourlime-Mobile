@@ -19,15 +19,18 @@ import {
   FileText,
   HelpCircle,
   List,
+  Eye,
   X,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { LessonScreenSkeleton } from '@/components/ui/Skeleton';
-import { courseService } from '@/lib/services/CourseService';
+import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
 import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
 import LessonQuiz from '@/components/eLearning/LessonQuiz';
 import LessonAssignment from '@/components/eLearning/LessonAssignment';
+import AssignmentDetails from '@/components/eLearning/course/AssignmentDetails';
+import { lessonTypeLabel } from '@/components/eLearning/course/workspaceHelpers';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import type { Course, CourseModule, CourseLesson, Enrollment } from '@/lib/types/course';
 
@@ -41,8 +44,10 @@ const isVideoFile = (url: string | undefined): boolean => {
 
 export default function LessonScreen() {
   const router = useRouter();
-  const { courseId } = useLocalSearchParams<{ courseId: string }>();
-  const id = courseId as string;
+  // lessonId opens one lesson (web /lesson/[id], /quiz/[id], /assignment/[id]); without it the next unfinished lesson opens.
+  const { courseId, lessonId } = useLocalSearchParams<{ courseId: string; lessonId?: string }>();
+  const id = typeof courseId === 'string' ? courseId : '';
+  const requestedLessonId = typeof lessonId === 'string' && lessonId ? lessonId : null;
   const { colors, isDark } = useAppTheme();
   const { activeUserId } = useAppData();
 
@@ -54,6 +59,9 @@ export default function LessonScreen() {
   const [showDrawer, setShowDrawer] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingCompletion, setSavingCompletion] = useState(false);
+  // Not enrolled: only the course's preview lessons open, and progress is not saved.
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [isAssignmentSubmitted, setIsAssignmentSubmitted] = useState(false);
   const [dialogState, setDialogState] = useState<{
     visible: boolean;
     type: 'error' | 'warning' | 'info' | 'success';
@@ -87,20 +95,26 @@ export default function LessonScreen() {
         courseService.getCourse(id),
         activeUserId ? courseService.getEnrollmentStatus(activeUserId, id) : null,
       ]);
-      if (!enrollData) {
-        if (loadGeneration !== loadGenerationRef.current) return;
-        setCourse(courseData);
+      const isEnrolled = isActiveEnrollment(enrollData);
+      const modulesData = courseData ? await courseService.getCourseCurriculum(id, isEnrolled ? 'enrolled' : 'preview') : [];
+      if (loadGeneration !== loadGenerationRef.current) return;
+      const lessons = courseService.flattenLessons(modulesData);
+      const requestedIndex = requestedLessonId ? lessons.findIndex((lesson) => lesson.id === requestedLessonId) : -1;
+      setCourse(courseData);
+      setEnrollment(isEnrolled ? enrollData : null);
+      setIsPreviewMode(!isEnrolled);
+      if (!isEnrolled && (lessons.length === 0 || (requestedLessonId && requestedIndex < 0))) {
         setCurriculum([]);
-        setEnrollment(null);
-        setLoadError('Enroll in this course before opening its lessons.');
+        setLoadError(enrollData ? `Your enrollment is ${enrollData.status}. Lessons open again once it is active.` : 'Enroll in this course before opening its lessons.');
         return;
       }
-      const modulesData = await courseService.getCourseCurriculum(id, 'enrolled');
-
-      if (loadGeneration !== loadGenerationRef.current) return;
-      setCourse(courseData);
       setCurriculum(modulesData);
-      setEnrollment(enrollData);
+      const nextLessonId = courseService.nextLesson(modulesData, isEnrolled ? enrollData : null)?.lesson.id;
+      const resumeIndex = nextLessonId ? lessons.findIndex((lesson) => lesson.id === nextLessonId) : 0;
+      setCurrentLessonIndex(requestedIndex >= 0 ? requestedIndex : Math.max(0, resumeIndex));
+      if (requestedLessonId && requestedIndex < 0) {
+        setDialogState({ visible: true, type: 'info', title: 'Lesson unavailable', message: 'That lesson is not published or was removed. Showing your next lesson instead.' });
+      }
     } catch (err) {
       console.error('[LessonScreen] Error:', err);
       if (loadGeneration !== loadGenerationRef.current) return;
@@ -108,7 +122,7 @@ export default function LessonScreen() {
     } finally {
       if (loadGeneration === loadGenerationRef.current) setLoading(false);
     }
-  }, [id, activeUserId]);
+  }, [id, activeUserId, requestedLessonId]);
 
   useEffect(() => {
     void loadData();
@@ -121,6 +135,8 @@ export default function LessonScreen() {
     currentLesson && enrollment?.completedLessons?.includes(currentLesson.id)
   );
 
+  useEffect(() => { setIsAssignmentSubmitted(false); }, [currentLesson?.id]);
+
   const handleToggleComplete = async () => {
     if (!enrollment || !currentLesson || isCompleted || savingCompletion) return;
     setSavingCompletion(true);
@@ -128,6 +144,12 @@ export default function LessonScreen() {
       await courseService.markLessonCompleted(enrollment.id, currentLesson.id, allLessons.length);
       const updated = await courseService.getEnrollmentStatus(enrollment.userId, id);
       setEnrollment(updated);
+      // Like the website, completing a lesson moves on to the next one.
+      if (currentLessonIndex < allLessons.length - 1) {
+        setCurrentLessonIndex((index) => index + 1);
+      } else {
+        setDialogState({ visible: true, type: 'success', title: 'Course complete', message: 'You reached the last lesson. Check your progress and grades from the course home.' });
+      }
     } catch (error) {
       console.error('[LessonScreen] Completion failed:', error);
       setDialogState({
@@ -232,7 +254,7 @@ export default function LessonScreen() {
                 <Text style={styles.badgeText}>Lesson {currentLessonIndex + 1} of {allLessons.length}</Text>
               </View>
               {/* A quiz with questions is completed by submitting it; everything else is marked done by hand. */}
-              {currentLesson.type === 'quiz' && (currentLesson.quizQuestions?.length ?? 0) > 0 ? null : (
+              {isPreviewMode || (currentLesson.type === 'quiz' && (currentLesson.quizQuestions?.length ?? 0) > 0) ? null : (
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={handleToggleComplete}
@@ -258,8 +280,30 @@ export default function LessonScreen() {
             </View>
 
             <Text style={[styles.lessonTitle, { color: colors.text }]}>{currentLesson.title}</Text>
+            <Text style={[styles.lessonType, { color: colors.mutedText }]}>
+              {[lessonTypeLabel(currentLesson.type), currentLesson.duration ? `${currentLesson.duration} min` : null].filter(Boolean).join(' · ')}
+            </Text>
 
-            {currentLesson.type === 'quiz' ? (
+            {isPreviewMode ? (
+              <View style={[styles.previewBanner, { backgroundColor: colors.control }]}>
+                <Eye size={16} color={colors.accentText} />
+                <Text style={[styles.previewText, { color: colors.text }]}>Preview lesson. Enroll in this course to save progress and unlock every lesson.</Text>
+              </View>
+            ) : null}
+
+            {currentLesson.type === 'assignment' ? (
+              <AssignmentDetails
+                lesson={currentLesson}
+                isSubmitted={isAssignmentSubmitted || isCompleted}
+                onOpenError={() => setDialogState({ visible: true, type: 'error', title: 'Could not open', message: 'This file could not be opened on this device.' })}
+              />
+            ) : null}
+
+            {currentLesson.type === 'quiz' && isPreviewMode ? (
+              <View style={[styles.contentCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.contentText, { color: colors.text }]}>Enroll in this course to take this quiz.</Text>
+              </View>
+            ) : currentLesson.type === 'quiz' ? (
               <LessonQuiz key={currentLesson.id} questions={currentLesson.quizQuestions ?? []} isCompleted={isCompleted} onSubmit={handleSubmitQuiz} />
             ) : (
               <View style={[styles.contentCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -284,6 +328,7 @@ export default function LessonScreen() {
                 courseId={id}
                 lessonId={currentLesson.id}
                 onSubmitted={() => void courseService.getEnrollmentStatus(enrollment.userId, id).then(setEnrollment).catch(() => undefined)}
+                onSubmissionChange={(submission) => setIsAssignmentSubmitted(Boolean(submission))}
               />
             ) : null}
           </View>
@@ -491,6 +536,9 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     lineHeight: 28,
   },
+  lessonType: { fontSize: 13, fontWeight: '600', marginTop: -6 },
+  previewBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, borderRadius: 12 },
+  previewText: { flex: 1, fontSize: 13, lineHeight: 19, fontWeight: '600' },
   materialButton: { marginTop: 12, minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: 1 },
   materialButtonText: { flex: 1, fontSize: 15, fontWeight: '700' },
   contentCard: {

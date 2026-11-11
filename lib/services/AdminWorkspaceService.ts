@@ -155,10 +155,11 @@ export class AdminWorkspaceService {
     return snapshot.docs.map((document) => this.normalizeWorkspaceItem(kind, document.id, document.data() as AdminDocumentData));
   }
 
-  public async setWorkspaceStatus(kind: AdminWorkspaceKind, itemId: string, status: AdminWorkspaceStatus): Promise<void> {
+  /** For products, hiding decisions (rejected, disabled, archived) need a reason; it is shown to the seller like on the web. */
+  public async setWorkspaceStatus(kind: AdminWorkspaceKind, itemId: string, status: AdminWorkspaceStatus, reason?: string): Promise<void> {
     const administrator = await adminAccessService.requireAdmin();
     if (kind === 'products') {
-      await this.reviewProduct(itemId, status);
+      await this.reviewProduct(itemId, status, reason ?? '');
       return;
     }
     const statusFields = kind === 'stickers' || kind === 'sticker_packs'
@@ -378,10 +379,13 @@ export class AdminWorkspaceService {
    * Listing decisions go through the reviewProductListing callable (the rules let no client change a product):
    * active/approved publishes, rejected/disabled/archived hides the listing; other states are not review decisions.
    */
-  private async reviewProduct(productId: string, status: AdminWorkspaceStatus): Promise<void> {
+  private async reviewProduct(productId: string, status: AdminWorkspaceStatus, reason: string): Promise<void> {
     const decision = status === 'active' || status === 'approved' ? 'approved'
       : status === 'rejected' || status === 'disabled' || status === 'archived' ? 'rejected' : null;
     if (!decision) throw new Error('Listings can only be approved or rejected here.');
+    const trimmedReason = reason.trim();
+    if (decision === 'rejected' && !trimmedReason) throw new Error('Enter a reason for the seller before rejecting this listing.');
+    if (trimmedReason.length > 4000) throw new Error('Keep the reason under 4,000 characters.');
     const product = await getDoc(doc(db, 'products', productId));
     if (!product.exists()) throw new Error('Product not found.');
     const revision: unknown = product.data().revision;
@@ -390,7 +394,7 @@ export class AdminWorkspaceService {
       decision,
       expectedRevision: typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0 ? revision : 0,
       operationId: doc(collection(db, 'operationIds')).id,
-      ...(decision === 'rejected' ? { reason: status === 'rejected' ? 'Rejected by an administrator.' : `Listing ${status} by an administrator.` } : {}),
+      ...(decision === 'rejected' ? { reason: trimmedReason } : {}),
     });
   }
 

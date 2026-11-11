@@ -1,346 +1,122 @@
-import { Dispatch, SetStateAction, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
-import { Colors, Sizes } from '@/types/productTypes';
+import { useEffect, useState } from 'react';
+import { Pressable, Text, TextInput, View, type GestureResponderEvent } from 'react-native';
+import { Check } from 'lucide-react-native';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { MARKET_PRICE_CEILING, marketCatalogFilterService, type MarketCondition, type MarketFilters, type MarketSellerTypeFilter, type MarketSort } from '@/lib/services/MarketCatalogFilterService';
+import MarketFormModal, { MarketButton } from '../MarketFormModal';
 
 type ProductFilterProps = {
-    isMobileOpen: boolean;
-    onMobileClose: () => void;
-    selectedCategories: string[];
-    setSelectedCategories: Dispatch<SetStateAction<string[]>>;
-    selectedColors: string[];
-    setSelectedColors: Dispatch<SetStateAction<string[]>>;
-    selectedSizes: string[];
-    setSelectedSizes: Dispatch<SetStateAction<string[]>>;
-    priceRange: [number, number];
-    setPriceRange: (range: [number, number]) => void;
-    categories: string[];
-    colors: Colors[];
-    sizes: Sizes[];
+  filters: MarketFilters;
+  sort: MarketSort;
+  categories: string[];
+  colors: { name: string; code: string | null }[];
+  sizes: string[];
+  onChange: (filters: MarketFilters) => void;
+  onSortChange: (sort: MarketSort) => void;
+  onClose: () => void;
 };
 
-export default function ProductFilter({
-    isMobileOpen,
-    onMobileClose,
-    selectedCategories,
-    setSelectedCategories,
-    selectedColors,
-    setSelectedColors,
-    selectedSizes,
-    setSelectedSizes,
-    setPriceRange,
-    categories = [],
-    colors = [],
-    sizes = []
-}: ProductFilterProps) {
-    const [isDragging, setIsDragging] = useState(false);
-    const [newPercentage, setNewPercentage] = useState(0.5);
+export const MARKET_SORT_OPTIONS: { value: MarketSort; label: string }[] = [
+  { value: 'default', label: 'Featured' },
+  { value: 'newest', label: 'Newest Arrivals' },
+  { value: 'price-low-high', label: 'Price: Low to High' },
+  { value: 'price-high-low', label: 'Price: High to Low' },
+  { value: 'rating', label: 'Highest Rated' },
+  { value: 'popularity', label: 'Popularity / Most Viewed' },
+];
+const CONDITIONS: { value: MarketCondition; label: string }[] = [
+  { value: 'new', label: 'Brand New' }, { value: 'like_new', label: 'Like New' }, { value: 'good', label: 'Good Condition' },
+  { value: 'fair', label: 'Fair Condition' }, { value: 'refurbished', label: 'Refurbished' },
+];
+const SELLER_TYPES: { value: MarketSellerTypeFilter; label: string }[] = [
+  { value: 'all', label: 'All' }, { value: 'business', label: 'Verified shops' }, { value: 'personal', label: 'Individual' },
+];
 
-    useEffect(() => {
-        // Set default to 50% for React Native
-        setNewPercentage(0.5);
-    }, []);
+const toggle = <TValue,>(values: TValue[], value: TValue): TValue[] => values.includes(value) ? values.filter((entry) => entry !== value) : [...values, value];
 
-    // suppress unused-read lint: isDragging is used as a drag state flag via setIsDragging
-    void isDragging;
+/** Web components/market/filters/ProductFilter.tsx (after ad840e23) as the phone filter sheet. */
+export default function ProductFilter({ filters, sort, categories, colors: colorOptions, sizes, onChange, onSortChange, onClose }: ProductFilterProps) {
+  const { colors } = useAppTheme();
+  const [maxPriceInput, setMaxPriceInput] = useState(String(filters.maxPrice));
+  const parsedMax = marketCatalogFilterService.parseMaxPrice(maxPriceInput);
+  const isPriceValid = parsedMax !== null;
+  useEffect(() => { setMaxPriceInput(String(filters.maxPrice)); }, [filters.maxPrice]);
 
-    const resetFilters = () => {
-        setSelectedCategories([]);
-        setSelectedColors([]);
-        setSelectedSizes([]);
-        setPriceRange([0, 100000]);
-        setNewPercentage(0.5);
-    };
+  const update = (patch: Partial<MarketFilters>) => onChange({ ...filters, ...patch });
+  const handleApplyPrice = () => { if (parsedMax !== null) update({ maxPrice: parsedMax }); };
+  const reset = () => { onChange({ ...filters, categories: [], conditions: [], colors: [], sizes: [], sellerType: 'all', inStockOnly: false, deliveryOnly: false, pickupOnly: false, favoritesOnly: false, maxPrice: MARKET_PRICE_CEILING }); onSortChange('default'); };
 
-    const handleCategoryChange = (category: string) => {
-        if (category === 'all') {
-            setSelectedCategories([]);
-        } else {
-            const newCategories = selectedCategories.includes(category)
-                ? selectedCategories.filter(c => c !== category)
-                : [...selectedCategories, category];
-            setSelectedCategories(newCategories);
-        }
-    };
+  const heading = (label: string) => <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 }}>{label}</Text>;
+  const chip = (key: string, label: string, pressed: boolean, onPress: () => void, swatch?: string | null) => <Pressable key={key} accessibilityRole="button" accessibilityState={{ selected: pressed }} onPress={onPress}
+    style={{ minHeight: 42, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 12, borderWidth: 1, borderColor: pressed ? colors.accent : colors.border, backgroundColor: pressed ? colors.successSurface : colors.surface }}>
+    {swatch !== undefined ? <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: swatch ?? label.toLowerCase(), alignItems: 'center', justifyContent: 'center' }}>{pressed ? <Check size={11} color="#ffffff" /> : null}</View> : null}
+    <Text style={{ color: pressed ? colors.accentText : colors.secondaryText, fontSize: 12, fontWeight: '700' }}>{label}</Text>
+  </Pressable>;
+  const wrap = { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 };
 
-    const handleColorChange = (colorId: string) => {
-        const newColors = selectedColors.includes(colorId)
-            ? selectedColors.filter(c => c !== colorId)
-            : [...selectedColors, colorId];
-        setSelectedColors(newColors);
-    };
+  return <MarketFormModal visible title="Filter and sort" onClose={onClose}>
+    {heading('Sort by')}
+    <View style={wrap}>{MARKET_SORT_OPTIONS.map((option) => chip(option.value, option.label, sort === option.value, () => onSortChange(option.value)))}</View>
 
-    const handleSizeChange = (sizeId: string) => {
-        const newSizes = selectedSizes.includes(sizeId)
-            ? selectedSizes.filter(s => s !== sizeId)
-            : [...selectedSizes, sizeId];
-        setSelectedSizes(newSizes);
-    };
+    {heading('Availability & Shipping')}
+    <View style={wrap}>
+      {chip('stock', 'In stock only', filters.inStockOnly, () => update({ inStockOnly: !filters.inStockOnly }))}
+      {chip('delivery', 'Delivery available', filters.deliveryOnly, () => update({ deliveryOnly: !filters.deliveryOnly }))}
+      {chip('pickup', 'Pickup available', filters.pickupOnly, () => update({ pickupOnly: !filters.pickupOnly }))}
+      {chip('favorites', 'Favorites only', filters.favoritesOnly, () => update({ favoritesOnly: !filters.favoritesOnly }))}
+    </View>
 
-    const FilterContent = () => (
-        <View style={{ paddingVertical: 24 }}>
-            {/* Categories */}
-            <View style={{ borderBottomWidth: 1, borderBottomColor: '#e5e7eb', paddingBottom: 16 }}>
-                <Text style={{ fontWeight: '500', marginBottom: 12, fontSize: 16 }}>Categories</Text>
-                <View style={{ paddingVertical: 8 }}>
-                    <TouchableOpacity 
-                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}
-                        onPress={() => handleCategoryChange('all')}
-                    >
-                        <View style={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: 8,
-                            borderWidth: 2,
-                            borderColor: selectedCategories.length === 0 ? '#10b981' : '#d1d5db',
-                            backgroundColor: selectedCategories.length === 0 ? '#10b981' : 'transparent',
-                            marginRight: 8
-                        }} />
-                        <Text style={{ fontSize: 14 }}>All Categories</Text>
-                    </TouchableOpacity>
-                    {categories.map((category) => (
-                        <TouchableOpacity 
-                            key={category} 
-                            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}
-                            onPress={() => handleCategoryChange(category)}
-                        >
-                            <View style={{
-                                width: 16,
-                                height: 16,
-                                borderRadius: 8,
-                                borderWidth: 2,
-                                borderColor: selectedCategories.includes(category) ? '#10b981' : '#d1d5db',
-                                backgroundColor: selectedCategories.includes(category) ? '#10b981' : 'transparent',
-                                marginRight: 8
-                            }} />
-                            <Text style={{ fontSize: 14 }}>{category}</Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-            </View>
+    {heading('Seller Type')}
+    <View accessibilityLabel="Seller type" style={wrap}>{SELLER_TYPES.map((option) => chip(option.value, option.label, filters.sellerType === option.value, () => update({ sellerType: option.value })))}</View>
 
-            {/* Price Range Slider */}
-            <View style={{ borderBottomWidth: 1, borderBottomColor: '#e5e7eb', paddingBottom: 16 }}>
-                <Text style={{ fontWeight: '500', marginBottom: 12, fontSize: 16 }}>Price Range</Text>
-                <View style={{ paddingHorizontal: 8, paddingVertical: 16 }}>
-                    <View style={{ position: 'relative', width: '100%' }}>
-                        <View style={{
-                            position: 'relative',
-                            width: '100%',
-                            height: 12,
-                            backgroundColor: '#e5e7eb',
-                            borderRadius: 6
-                        }}>
-                            <View style={{
-                                position: 'absolute',
-                                height: '100%',
-                                backgroundColor: '#10b981',
-                                borderRadius: 6,
-                                width: `${newPercentage * 100}%`
-                            }} />
-                            <TouchableOpacity
-                                style={{
-                                    position: 'absolute',
-                                    left: `${newPercentage * 100}%`,
-                                    top: '50%',
-                                    transform: [{ translateX: -10 }, { translateY: -10 }],
-                                    width: 20,
-                                    height: 20,
-                                    backgroundColor: '#ffffff',
-                                    borderWidth: 2,
-                                    borderColor: '#10b981',
-                                    borderRadius: 10,
-                                    shadowColor: '#000',
-                                    shadowOffset: { width: 0, height: 2 },
-                                    shadowOpacity: 0.1,
-                                    shadowRadius: 3.84,
-                                    elevation: 5,
-                                }}
-                                onPressIn={() => setIsDragging(true)}
-                                onPressOut={() => setIsDragging(false)}
-                            />
-                        </View>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
-                        <Text style={{ fontSize: 14 }}>${Math.round(newPercentage * 100000).toLocaleString()}</Text>
-                        <Text style={{ fontSize: 14 }}>$100,000</Text>
-                    </View>
-                </View>
-            </View>
+    {heading(`Categories (${categories.length + 1})`)}
+    <View style={wrap}>
+      {chip('all', 'All categories', !filters.categories.length, () => update({ categories: [] }))}
+      {categories.map((category) => chip(category, category, filters.categories.includes(category), () => update({ categories: toggle(filters.categories, category) })))}
+    </View>
 
-            {/* Colors */}
-            <View style={{ borderBottomWidth: 1, borderBottomColor: '#e5e7eb', paddingBottom: 16 }}>
-                <Text style={{ fontWeight: '500', marginBottom: 12, fontSize: 16 }}>Colors</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {colors.map((color) => (
-                        <TouchableOpacity 
-                            key={color.id} 
-                            style={{ 
-                                flexDirection: 'row', 
-                                alignItems: 'center', 
-                                paddingVertical: 4,
-                                width: '48%'
-                            }}
-                            onPress={() => handleColorChange(color.id)}
-                        >
-                            <View style={{
-                                width: 16,
-                                height: 16,
-                                borderRadius: 8,
-                                borderWidth: 2,
-                                borderColor: selectedColors.includes(color.id) ? '#10b981' : '#d1d5db',
-                                backgroundColor: selectedColors.includes(color.id) ? '#10b981' : 'transparent',
-                                marginRight: 8
-                            }} />
-                            <Text style={{ fontSize: 14 }}>{color.colorName}</Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-            </View>
+    {heading('Condition')}
+    <View style={wrap}>{CONDITIONS.map((condition) => chip(condition.value, condition.label, filters.conditions.includes(condition.value), () => update({ conditions: toggle(filters.conditions, condition.value) })))}</View>
 
-            {/* Sizes */}
-            <View style={{ borderBottomWidth: 1, borderBottomColor: '#e5e7eb', paddingBottom: 16 }}>
-                <Text style={{ fontWeight: '500', marginBottom: 12, fontSize: 16 }}>Sizes</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {sizes.map((size) => (
-                        <TouchableOpacity
-                            key={size.id}
-                            style={{
-                                minWidth: 120,
-                                width: '48%',
-                                maxWidth: 200,
-                                paddingVertical: 4
-                            }}
-                            onPress={() => handleSizeChange(size.id)}
-                        >
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <View style={{
-                                    width: 16,
-                                    height: 16,
-                                    borderRadius: 8,
-                                    borderWidth: 2,
-                                    borderColor: selectedSizes.includes(size.id) ? '#10b981' : '#d1d5db',
-                                    backgroundColor: selectedSizes.includes(size.id) ? '#10b981' : 'transparent',
-                                    marginRight: 8
-                                }} />
-                                <Text style={{ fontSize: 14, color: '#374151' }} numberOfLines={1}>
-                                    {size.sizeName}
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-            </View>
-        </View>
-    );
+    {heading('Price range')}
+    <PriceSlider value={isPriceValid && parsedMax !== null ? parsedMax : filters.maxPrice} onChange={(value) => setMaxPriceInput(String(value))} />
+    <View style={{ gap: 6 }}>
+      <Text style={{ color: colors.text, fontWeight: '700' }}>Maximum price ($)</Text>
+      <TextInput accessibilityLabel="Maximum price ($)" value={maxPriceInput} onChangeText={setMaxPriceInput} keyboardType="number-pad" returnKeyType="done" onSubmitEditing={handleApplyPrice}
+        style={{ minHeight: 48, paddingHorizontal: 14, color: colors.text, borderRadius: 12, borderWidth: 1, borderColor: isPriceValid ? colors.border : colors.destructiveText, backgroundColor: colors.input }} />
+      <Text style={{ color: isPriceValid ? colors.mutedText : colors.destructiveText, fontSize: 12 }}>Enter a whole amount from 0 to 10,000.</Text>
+    </View>
+    <MarketButton label="Apply price" disabled={!isPriceValid} onPress={handleApplyPrice} />
 
-    return (
-        <>
-            {/* Mobile Filter */}
-            <View style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 50,
-                display: isMobileOpen ? 'flex' : 'none'
-            }}>
-                <TouchableOpacity 
-                    style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        backgroundColor: 'rgba(0, 0, 0, 0.5)'
-                    }} 
-                    onPress={onMobileClose} 
-                />
-                <View style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    bottom: 0,
-                    width: 320,
-                    backgroundColor: '#ffffff',
-                    padding: 24,
-                    paddingTop: 32
-                }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                        <Text style={{ fontSize: 20, fontWeight: 'bold' }}>Filters</Text>
-                        <TouchableOpacity
-                            onPress={onMobileClose}
-                            style={{ padding: 8 }}
-                        >
-                            <Text style={{ fontSize: 20 }}>✕</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <TouchableOpacity
-                        onPress={resetFilters}
-                        style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            padding: 12,
-                            backgroundColor: '#ffffff',
-                            borderRadius: 8,
-                            shadowColor: '#000',
-                            shadowOffset: { width: 0, height: 1 },
-                            shadowOpacity: 0.1,
-                            shadowRadius: 2,
-                            elevation: 2,
-                            marginBottom: 16,
-                            width: '100%'
-                        }}
-                    >
-                        <Text style={{ fontSize: 20, color: '#ef4444', marginRight: 8 }}>✕</Text>
-                        <Text style={{ fontSize: 14, color: '#374151' }}>Reset Filters</Text>
-                    </TouchableOpacity>
-                    <ScrollView showsVerticalScrollIndicator={false}>
-                        <FilterContent />
-                    </ScrollView>
-                </View>
-            </View>
+    {colorOptions.length ? <>{heading('Colors')}<View style={wrap}>{colorOptions.map((color) => chip(color.name, color.name, filters.colors.includes(color.name), () => update({ colors: toggle(filters.colors, color.name) }), color.code))}</View></> : null}
+    {sizes.length ? <>{heading('Sizes')}<View style={wrap}>{sizes.map((size) => chip(size, size, filters.sizes.includes(size), () => update({ sizes: toggle(filters.sizes, size) })))}</View></> : null}
 
-            {/* Desktop Filter - Hidden on mobile */}
-            <View style={{ display: 'none' }}>
-                <View style={{
-                    backgroundColor: '#ffffff',
-                    borderRadius: 12,
-                    padding: 16,
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 1 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 2,
-                    elevation: 2,
-                    width: 256,
-                    flexShrink: 0
-                }}>
-                    <Text style={{ fontWeight: '600', marginBottom: 24, fontSize: 16 }}>Filters</Text>
-                    <TouchableOpacity
-                        onPress={resetFilters}
-                        style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            padding: 12,
-                            backgroundColor: '#ffffff',
-                            borderRadius: 8,
-                            shadowColor: '#000',
-                            shadowOffset: { width: 0, height: 1 },
-                            shadowOpacity: 0.1,
-                            shadowRadius: 2,
-                            elevation: 2,
-                            marginBottom: 16,
-                            width: '100%'
-                        }}
-                    >
-                        <Text style={{ fontSize: 20, color: '#ef4444', marginRight: 8 }}>✕</Text>
-                        <Text style={{ fontSize: 14, color: '#374151' }}>Reset Filters</Text>
-                    </TouchableOpacity>
-                    <ScrollView showsVerticalScrollIndicator={false}>
-                        <FilterContent />
-                    </ScrollView>
-                </View>
-            </View>
-        </>
-    );
+    <MarketButton label="Show results" onPress={onClose} />
+    <Pressable accessibilityRole="button" onPress={reset} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.accentText, fontWeight: '800' }}>Reset All Filters</Text></Pressable>
+  </MarketFormModal>;
+}
+
+type PriceSliderProps = { value: number; onChange: (value: number) => void };
+/** Maximum-price slider, 0–10,000 in whole dollars (web range input). */
+function PriceSlider({ value, onChange }: PriceSliderProps) {
+  const { colors } = useAppTheme();
+  const [width, setWidth] = useState(1);
+  const ratio = Math.min(1, Math.max(0, value / MARKET_PRICE_CEILING));
+  const handleTouch = (event: GestureResponderEvent) => {
+    const next = Math.round(Math.min(1, Math.max(0, event.nativeEvent.locationX / width)) * MARKET_PRICE_CEILING);
+    onChange(next);
+  };
+  return <View style={{ gap: 4 }}>
+    <View accessible accessibilityRole="adjustable" accessibilityLabel="Maximum price slider" accessibilityValue={{ min: 0, max: MARKET_PRICE_CEILING, now: value, text: `$${value.toLocaleString()}` }}
+      accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+      onAccessibilityAction={(event) => onChange(Math.min(MARKET_PRICE_CEILING, Math.max(0, value + (event.nativeEvent.actionName === 'increment' ? 100 : -100))))}
+      onLayout={(event) => setWidth(Math.max(1, event.nativeEvent.layout.width))}
+      onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => true} onResponderTerminationRequest={() => false}
+      onResponderGrant={handleTouch} onResponderMove={handleTouch}
+      style={{ height: 44, justifyContent: 'center' }}>
+      <View pointerEvents="none" style={{ height: 6, borderRadius: 3, backgroundColor: colors.control, overflow: 'hidden' }}><View style={{ width: `${ratio * 100}%`, height: '100%', backgroundColor: colors.accent }} /></View>
+      <View pointerEvents="none" style={{ position: 'absolute', left: Math.max(0, ratio * width - 12), width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.accent, backgroundColor: colors.surface }} />
+    </View>
+    <Text style={{ color: colors.text, fontWeight: '800' }}>Up to ${value.toLocaleString()}</Text>
+  </View>;
 }

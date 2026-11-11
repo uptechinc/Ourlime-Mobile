@@ -208,7 +208,7 @@ export class DeepLinkService {
       if (section === 'seller') return this.screen('/profile/ehub/seller', '/ehub/seller');
       if (section === 'enquiries') return this.screen('/profile/ehub/enquiries', '/ehub/enquiries');
       if (section === 'business-account') return this.screen('/profile/business-account', '/ehub/business-account');
-      if (section === 'terms') return this.screen('/ehub/terms', '/ehub');
+      if (section === 'terms') return this.screen('/ehub/terms', '/ehub/terms');
       return { kind: 'ehub' };
     }
     if (first === 'elearning') return { kind: 'elearning', path: segments.slice(1).join('/') || undefined };

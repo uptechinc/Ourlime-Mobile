@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import CustomModal from '@/components/ui/CustomModal';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import AdminWorkspaceShell from './AdminWorkspaceShell';
 import {
@@ -30,6 +31,8 @@ type AdminCollectionWorkspaceProps = {
 };
 
 const workspaceService = AdminWorkspaceService.getInstance();
+/** Product decisions that hide a listing; the server requires a reason the seller sees (like the web reject dialog). */
+const PRODUCT_HIDING_STATUSES: readonly AdminWorkspaceStatus[] = ['rejected', 'disabled', 'archived'];
 const STATUS_FILTERS: readonly (AdminWorkspaceStatus | 'all')[] = [
 	'all',
 	'active',
@@ -57,6 +60,11 @@ export default function AdminCollectionWorkspace({
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [message, setMessage] = useState<string | null>(null);
+	const [reviewReason, setReviewReason] = useState('');
+
+	useEffect(() => {
+		setReviewReason('');
+	}, [selected?.id]);
 
 	const load = useCallback(
 		async (isRefresh = false) => {
@@ -105,9 +113,15 @@ export default function AdminCollectionWorkspace({
 
 	const handleStatus = async (nextStatus: AdminWorkspaceStatus) => {
 		if (!selected || busy) return;
+		const needsReason = kind === 'products' && PRODUCT_HIDING_STATUSES.includes(nextStatus);
+		if (needsReason && !reviewReason.trim()) {
+			setMessage('Enter a reason for the seller before rejecting this listing.');
+			return;
+		}
 		setBusy(true);
 		try {
-			await workspaceService.setWorkspaceStatus(kind, selected.id, nextStatus);
+			await workspaceService.setWorkspaceStatus(kind, selected.id, nextStatus, needsReason ? reviewReason.trim() : undefined);
+			if (needsReason) setReviewReason('');
 			setItems((current) =>
 				current.map((item) =>
 					item.id === selected.id
@@ -399,7 +413,9 @@ export default function AdminCollectionWorkspace({
 							</TouchableOpacity>
 						</View>
 						{selected ? (
+							<KeyboardSafeView style={{ flex: 1 }}>
 							<ScrollView
+								keyboardShouldPersistTaps="handled"
 								contentContainerStyle={{ padding: 18, paddingBottom: 50 }}
 							>
 								<Text style={{ color: colors.secondaryText, lineHeight: 20 }}>
@@ -430,6 +446,32 @@ export default function AdminCollectionWorkspace({
 								>
 									Moderation status
 								</Text>
+								{kind === 'products' ? (
+									<View style={{ marginBottom: 12 }}>
+										<Text style={{ marginBottom: 6, color: colors.secondaryText, fontSize: 12, fontWeight: '700' }}>
+											Reason for the seller (required to reject, disable or archive)
+										</Text>
+										<TextInput
+											value={reviewReason}
+											onChangeText={setReviewReason}
+											editable={!busy}
+											multiline
+											maxLength={4000}
+											placeholder="e.g. The cover photo does not show the item being sold."
+											placeholderTextColor={colors.mutedText}
+											style={{
+												minHeight: 84,
+												textAlignVertical: 'top',
+												padding: 12,
+												borderRadius: 14,
+												borderWidth: 1,
+												borderColor: colors.border,
+												backgroundColor: colors.input,
+												color: colors.text,
+											}}
+										/>
+									</View>
+								) : null}
 								{(
 									[
 										'active',
@@ -489,6 +531,7 @@ export default function AdminCollectionWorkspace({
 									</Text>
 								</TouchableOpacity>
 							</ScrollView>
+							</KeyboardSafeView>
 						) : null}
 					</SafeAreaView>
 				</SwipeDismissSurface>

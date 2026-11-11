@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { useRouter, type Href } from 'expo-router';
 import { Upload } from 'lucide-react-native';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
-import { EHUB_PROVIDER_TERMS_URL, EHUB_SELLER_TERMS_URL } from '@/lib/services/EHubSellerService';
+import { getEHubTermsRoute } from '@/lib/services/EHubService';
 import { EHUB_PROVIDER_DECLARATION_VERSION, EHUB_SELLER_AGREEMENT_VERSION } from '@/lib/types/ehubSeller';
 import type { EHubSellerCenter } from '@/lib/hooks/useEHubSellerCenter';
 import {
@@ -16,6 +17,7 @@ type StorefrontProps = { center: EHubSellerCenter; isTablet: boolean; onPublishe
 
 /** The website's guided storefront setup: five steps, autosaved as a private draft, published with the agreements. */
 export default function EHubSellerStorefront({ center, isTablet, onPublished }: StorefrontProps) {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [step, setStep] = useState(0);
@@ -27,6 +29,13 @@ export default function EHubSellerStorefront({ center, isTablet, onPublished }: 
   const needsProviderDeclaration = form.services.length > 0 && (!store || store.providerDeclarationVersion !== EHUB_PROVIDER_DECLARATION_VERSION);
   const agreementsAccepted = (!needsSellerAgreement || isSellerAgreementAccepted) && (!needsProviderDeclaration || isProviderDeclarationAccepted);
   const isPublishDisabled = Boolean(workspace?.eligibility.reason) || !agreementsAccepted || form.storeName.trim().length < 2 || form.description.trim().length < 20;
+  const completedSteps = [
+    form.storeName.trim().length >= 2 && form.description.trim().length >= 20 && form.categories.length > 0,
+    Boolean(form.logoUrl && form.coverUrl),
+    Boolean(form.businessHours && (form.services.length === 0 || form.serviceAreas.length > 0)),
+    Boolean(form.sellerPolicies && form.returnPolicy),
+    agreementsAccepted && !isPublishDisabled,
+  ];
 
   const handlePublish = async () => {
     if (await center.publishStore(isSellerAgreementAccepted, isProviderDeclarationAccepted)) {
@@ -40,7 +49,7 @@ export default function EHubSellerStorefront({ center, isTablet, onPublished }: 
       <View style={styles.flex}><Text style={styles.eyebrow}>My Storefront</Text><Text style={styles.title}>Guided storefront setup</Text></View>
       <SellerSaveIndicator status={center.saveStatus} savedAt={center.lastSavedAt} />
     </View>
-    <SellerStepHeader steps={STORE_STEPS} currentStep={step} onStepChange={setStep} />
+    <SellerStepHeader steps={STORE_STEPS} currentStep={step} completedSteps={completedSteps} onStepChange={setStep} />
     <View style={styles.body}>
       {step === 0 ? <>
         <SellerTextField label="Store name" required value={form.storeName} maxLength={120} onChangeText={(storeName) => onChange({ storeName })} />
@@ -72,10 +81,10 @@ export default function EHubSellerStorefront({ center, isTablet, onPublished }: 
         <Text style={styles.warning}>Publishing requires current seller agreements and existing eligibility checks. Autosaved drafts are never published automatically.</Text>
         {needsSellerAgreement || needsProviderDeclaration ? <View style={styles.agreements}>
           {needsSellerAgreement ? <SellerCheckRow checked={isSellerAgreementAccepted} onChange={setIsSellerAgreementAccepted} accessibilityLabel="I accept the current E-Hub Seller Agreement">
-            <Text style={styles.agreementText}>I accept the current <Text accessibilityRole="link" onPress={() => void Linking.openURL(EHUB_SELLER_TERMS_URL)} style={styles.link}>E-Hub Seller Agreement</Text>.</Text>
+            <Text style={styles.agreementText}>I accept the current <Text accessibilityRole="link" onPress={() => router.push(getEHubTermsRoute('seller') as Href)} style={styles.link}>E-Hub Seller Agreement</Text>.</Text>
           </SellerCheckRow> : null}
           {needsProviderDeclaration ? <SellerCheckRow checked={isProviderDeclarationAccepted} onChange={setIsProviderDeclarationAccepted} accessibilityLabel="I accept the current Provider Declaration">
-            <Text style={styles.agreementText}>I accept the current <Text accessibilityRole="link" onPress={() => void Linking.openURL(EHUB_PROVIDER_TERMS_URL)} style={styles.link}>Provider Declaration</Text>.</Text>
+            <Text style={styles.agreementText}>I accept the current <Text accessibilityRole="link" onPress={() => router.push(getEHubTermsRoute('provider') as Href)} style={styles.link}>Provider Declaration</Text>.</Text>
           </SellerCheckRow> : null}
         </View> : null}
         <SellerButton label={center.isWorking ? 'Publishing…' : 'Publish storefront'} icon={<Upload size={17} color="#ffffff" />} isLoading={center.isWorking} disabled={isPublishDisabled || center.isUploading} onPress={() => void handlePublish()} />

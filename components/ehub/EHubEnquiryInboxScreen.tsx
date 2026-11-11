@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Inbox, Lock, MessageSquareReply, XCircle } from 'lucide-react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Inbox, Lock, MessageSquareReply, Trash2, XCircle } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
+import CustomModal from '@/components/ui/CustomModal';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
@@ -35,6 +37,8 @@ export default function EHubEnquiryInboxScreen() {
   const [responseMessage, setResponseMessage] = useState('');
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EHubEnquiry | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleUpdate = async (enquiryId: string, status: EHubManageableEnquiryStatus, reply?: string) => {
     setPendingId(enquiryId);
@@ -47,6 +51,21 @@ export default function EHubEnquiryInboxScreen() {
       setActionError(error instanceof Error && error.message ? error.message : 'Unable to update enquiry.');
     } finally {
       setPendingId(null);
+    }
+  };
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    setActionError(null);
+    try {
+      await enquiries.remove(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (error: unknown) {
+      console.error('[EHubEnquiryInboxScreen.handleDelete] Error:', error instanceof Error ? error.message : 'Unknown error');
+      setActionError(error instanceof Error && error.message ? error.message : 'Unable to delete enquiry.');
+      setDeleteTarget(null);
+    } finally {
+      setIsDeleting(false);
     }
   };
   const handleModeChange = (nextMode: EHubEnquiryMode) => { setMode(nextMode); setReplyingTo(null); setActionError(null); };
@@ -62,7 +81,7 @@ export default function EHubEnquiryInboxScreen() {
   return (
     <View style={styles.screen}>
       {header}
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardSafeView style={styles.flex}>
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={enquiries.isRefreshing} onRefresh={() => void enquiries.refresh()} tintColor={colors.accent} />} contentContainerStyle={styles.scrollContent}>
           <View style={[styles.body, { width: layout.contentWidth }]}>
             <View>
@@ -103,11 +122,16 @@ export default function EHubEnquiryInboxScreen() {
                       <Pressable accessibilityRole="button" disabled={isPending} onPress={() => { setReplyingTo(enquiry.id); setResponseMessage(''); }} style={styles.primaryButton}><MessageSquareReply size={16} color="#ffffff" /><Text style={styles.primaryText}>Reply</Text></Pressable>
                       {enquiry.status !== 'closed' ? <Pressable accessibilityRole="button" disabled={isPending} onPress={() => void handleUpdate(enquiry.id, 'closed')} style={styles.secondaryButton}><XCircle size={16} color={colors.text} /><Text style={styles.secondaryText}>Close</Text></Pressable> : null}
                     </View>) : null}
+                    {mode === 'sent' && enquiry.status === 'new' ? <View style={styles.actions}>
+                      <Pressable accessibilityRole="button" onPress={() => setDeleteTarget(enquiry)} style={styles.dangerButton}><Trash2 size={16} color={colors.destructiveText} /><Text style={styles.dangerText}>Delete before it is read</Text></Pressable>
+                    </View> : null}
                   </View>;
                 })}</View>}
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
+      <CustomModal visible={deleteTarget !== null} type="danger" title="Delete this enquiry?" message="You can delete a sent enquiry only while it is still unread. This cannot be undone." confirmText="Delete enquiry" cancelText="Cancel"
+        isLoading={isDeleting} onConfirm={() => void handleDelete()} onCancel={() => setDeleteTarget(null)} onClose={() => { if (!isDeleting) setDeleteTarget(null); }} />
     </View>
   );
 }
@@ -147,5 +171,7 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   primaryText: { color: '#ffffff', fontSize: 13, fontWeight: '900' },
   secondaryButton: { minHeight: 42, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
   secondaryText: { color: colors.text, fontSize: 13, fontWeight: '800' },
+  dangerButton: { minHeight: 42, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 12, backgroundColor: colors.destructiveSurface },
+  dangerText: { color: colors.destructiveText, fontSize: 13, fontWeight: '900' },
   disabled: { opacity: 0.45 },
 });

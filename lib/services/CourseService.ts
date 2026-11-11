@@ -5,6 +5,7 @@ import {
   getDocs,
   limit,
   query,
+  startAfter,
   where,
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -14,13 +15,22 @@ import { app, auth, db, storage } from '@/lib/firebaseConfig';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import { nativeSessionService } from './NativeSessionService';
-import type { AssignmentFile, AssignmentSubmission, Course, CourseAnnouncement, CourseReview, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, Enrollment, InstructorProfile, CxcSubject } from '@/lib/types/course';
+import type { AssignmentFile, AssignmentSubmission, Course, CourseAnnouncement, CourseReview, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, CourseQuizQuestionType, CourseResource, CourseWorkspace, Enrollment, InstructorProfile, CxcSubject, LearningStats } from '@/lib/types/course';
 
 type Data = DocumentData;
 type QueryDocument = QueryDocumentSnapshot<Data>;
-export type LearningOverview = { courses: Course[]; announcements: CourseAnnouncement[]; instructors: InstructorProfile[]; categories: CourseCategory[] };
+export type LearningOverview = { courses: Course[]; announcements: CourseAnnouncement[]; instructors: InstructorProfile[]; categories: CourseCategory[]; stats: LearningStats };
 type MutationResponse = { id: string };
 type LessonCompletionResponse = { id: string; score?: number };
+
+const COURSE_PAGE_SIZE = 100;
+const MAX_COURSE_PAGES = 20;
+// Lesson types the server writes for file lessons (CourseAuthoringService LESSON_TYPES); the app opens them as files.
+const FILE_LESSON_TYPES = ['document', 'pdf', 'image', 'audio', 'file'];
+
+/** Only active and completed enrollments open a course (dropped/suspended ones do not), matching the Firestore rules. */
+export const isActiveEnrollment = (enrollment: Enrollment | null | undefined): boolean =>
+  Boolean(enrollment && (enrollment.status === 'active' || enrollment.status === 'completed'));
 
 export class CourseService {
   private static instance: CourseService;
@@ -39,14 +49,23 @@ export class CourseService {
       this.optional('categories', this.getCategories(), [] as CourseCategory[]),
     ]);
     nativeSessionService.assertOwner(userId);
-    return { courses, announcements, instructors, categories };
+    return { courses, announcements, instructors, categories, stats: this.getStats(courses) };
   }
 
+  /** Every published course, read in pages of 100 (the website loads the whole catalog too). */
   public async getCourses(category = 'All', searchQuery = ''): Promise<Course[]> {
     this.requireUserId();
-    const q = query(collection(this.database, 'courses'), where('status', '==', 'published'), limit(60));
-    const snapshot = await getDocs(q);
-    let docs = snapshot.docs;
+    let docs: QueryDocument[] = [];
+    let lastDocument: QueryDocument | undefined;
+    for (let page = 0; page < MAX_COURSE_PAGES; page += 1) {
+      const pageQuery = lastDocument
+        ? query(collection(this.database, 'courses'), where('status', '==', 'published'), startAfter(lastDocument), limit(COURSE_PAGE_SIZE))
+        : query(collection(this.database, 'courses'), where('status', '==', 'published'), limit(COURSE_PAGE_SIZE));
+      const snapshot = await getDocs(pageQuery);
+      docs = docs.concat(snapshot.docs);
+      lastDocument = snapshot.docs.at(-1);
+      if (snapshot.docs.length < COURSE_PAGE_SIZE || !lastDocument) break;
+    }
     if (category !== 'All') {
       docs = docs.filter((item) => (item.data() as { category?: string }).category?.toLowerCase() === category.toLowerCase());
     }
@@ -65,8 +84,12 @@ export class CourseService {
 
   public async getCourseCurriculum(courseId: string, access: 'preview' | 'enrolled'): Promise<CourseModule[]> {
     this.requireUserId();
-    const q = query(collection(this.database, 'courseModules'), where('courseId', '==', courseId), limit(100));
-    const snapshot = await getDocs(q);
+    // Unpublished modules stay hidden from learners, like the website's getCourseModules (isPublished == true).
+    const q = query(collection(this.database, 'courseModules'), where('courseId', '==', courseId), where('isPublished', '==', true), limit(100));
+    const [snapshot, resources] = await Promise.all([
+      getDocs(q),
+      access === 'enrolled' ? this.optional('resources', this.getCourseResources(courseId), [] as CourseResource[]) : Promise.resolve([] as CourseResource[]),
+    ]);
     const sortedDocs = [...snapshot.docs].sort((a, b) => this.integer(a.data().order) - this.integer(b.data().order));
     const values: (CourseModule | null)[] = await Promise.all(sortedDocs.map(async (moduleDocument): Promise<CourseModule | null> => {
       let lessonDocuments: QueryDocument[] = [];
@@ -83,14 +106,97 @@ export class CourseService {
       } else {
         lessonDocuments = await this.getPreviewLessonDocuments(courseId, moduleDocument.id);
       }
-      const decodedLessons = lessonDocuments.map((item) => this.lesson(item.id, item.data())).filter((item): item is CourseLesson => item !== null);
+      const decodedLessons = lessonDocuments.map((item) => this.lesson(item.id, item.data()))
+        .filter((item): item is CourseLesson => item !== null && item.isPublished !== false);
       const data = moduleDocument.data();
       return this.text(data.courseId) && this.text(data.title) ? {
         id: moduleDocument.id, courseId: this.text(data.courseId), title: this.text(data.title), description: this.optionalText(data.description),
         order: this.integer(data.order), isPublished: data.isPublished !== false, lessons: decodedLessons,
+        resources: resources.filter((resource) => resource.moduleId === moduleDocument.id),
       } satisfies CourseModule : null;
     }));
     return values.filter((item): item is CourseModule => item !== null);
+  }
+
+  /** A course's module resources (courseResources; readable once enrolled). One query by courseId so the rules can check it. */
+  public async getCourseResources(courseId: string): Promise<CourseResource[]> {
+    this.requireUserId();
+    const snapshot = await getDocs(query(collection(this.database, 'courseResources'), where('courseId', '==', courseId), limit(300)));
+    return snapshot.docs.map((item) => this.resource(item.id, item.data()))
+      .filter((item): item is CourseResource => item !== null)
+      .sort((left, right) => left.order - right.order);
+  }
+
+  /** The learner's course workspace: the course, their enrollment, its modules (lessons + resources) and their submissions. */
+  public async getCourseWorkspace(userId: string, courseId: string): Promise<CourseWorkspace | null> {
+    this.assertWebSession(userId);
+    const [course, enrollment] = await Promise.all([this.getCourse(courseId), this.getEnrollmentStatus(userId, courseId)]);
+    if (!course) return null;
+    const enrolled = isActiveEnrollment(enrollment);
+    const [modules, submissions] = await Promise.all([
+      this.getCourseCurriculum(courseId, enrolled ? 'enrolled' : 'preview'),
+      enrolled ? this.optional('submissions', this.getMySubmissions(userId, courseId), new Map<string, AssignmentSubmission>()) : Promise.resolve(new Map<string, AssignmentSubmission>()),
+    ]);
+    nativeSessionService.assertOwner(userId);
+    return { course, enrollment, modules, submissions };
+  }
+
+  /** The learner's assignment submissions in one course, keyed by lesson id. */
+  public async getMySubmissions(userId: string, courseId: string): Promise<Map<string, AssignmentSubmission>> {
+    this.assertWebSession(userId);
+    const snapshot = await getDocs(query(collection(this.database, 'assignmentSubmissions'), where('studentId', '==', userId), where('courseId', '==', courseId), limit(200)));
+    nativeSessionService.assertOwner(userId);
+    const submissions = new Map<string, AssignmentSubmission>();
+    snapshot.docs.forEach((item) => {
+      const submission = this.submission(item.id, item.data());
+      if (submission.lessonId) submissions.set(submission.lessonId, submission);
+    });
+    return submissions;
+  }
+
+  /** The learner's enrollments by course id, without loading the courses (for enrolled badges). */
+  public async getEnrollmentIndex(userId: string): Promise<Map<string, Enrollment>> {
+    this.assertWebSession(userId);
+    const snapshot = await getDocs(query(collection(this.database, 'enrollments'), where('userId', '==', userId), limit(200)));
+    nativeSessionService.assertOwner(userId);
+    const index = new Map<string, Enrollment>();
+    snapshot.docs.forEach((item) => {
+      const enrollment = this.enrollment(item.id, item.data());
+      // The deterministic {uid}_{courseId} document wins over an older auto-id duplicate.
+      if (enrollment && (!index.has(enrollment.courseId) || item.id === userId + '_' + enrollment.courseId)) index.set(enrollment.courseId, enrollment);
+    });
+    return index;
+  }
+
+  /** The course's lessons in syllabus order (module order, then lesson order). */
+  public flattenLessons(modules: CourseModule[]): CourseLesson[] {
+    return modules.flatMap((courseModule) => courseModule.lessons ?? []);
+  }
+
+  /** The first lesson the learner has not completed (the website's "Next Up"), or null when all are done. */
+  public nextLesson(modules: CourseModule[], enrollment: Enrollment | null): { lesson: CourseLesson; moduleTitle: string } | null {
+    const completed = new Set(enrollment?.completedLessons ?? []);
+    for (const courseModule of modules) {
+      const lesson = (courseModule.lessons ?? []).find((candidate) => !completed.has(candidate.id));
+      if (lesson) return { lesson, moduleTitle: courseModule.title };
+    }
+    return null;
+  }
+
+  /** Past its due date and not yet handed in or completed (web assignments/quizzes pages). */
+  public isOverdue(lesson: CourseLesson, isDone: boolean, now = Date.now()): boolean {
+    const due = lesson.dueDate ? Date.parse(lesson.dueDate) : NaN;
+    return !isDone && Number.isFinite(due) && due < now;
+  }
+
+  /** Hub numbers like the website's: published courses, learners across them and the average of rated courses. */
+  public getStats(courses: Course[]): LearningStats {
+    const rated = courses.filter((course) => course.rating > 0);
+    return {
+      totalCourses: courses.length,
+      totalLearners: courses.reduce((total, course) => total + course.enrolledStudents, 0),
+      averageRating: rated.length ? rated.reduce((total, course) => total + course.rating, 0) / rated.length : 0,
+    };
   }
 
   private async getPreviewLessonDocuments(courseId: string, moduleId: string): Promise<QueryDocument[]> {
@@ -193,17 +299,22 @@ export class CourseService {
     const snapshot = await getDocs(query(collection(this.database, 'assignmentSubmissions'), where('studentId', '==', userId), where('lessonId', '==', lessonId), limit(1)));
     nativeSessionService.assertOwner(userId);
     const item = snapshot.docs[0];
-    if (!item) return null;
-    const data = item.data();
-    const files = Array.isArray(data.files) ? data.files.flatMap((file: unknown): AssignmentFile[] => {
-      const value = this.object(file);
-      return value && this.text(value.url) ? [{ name: this.text(value.name) || 'Attachment', url: this.text(value.url), size: this.integer(value.size) }] : [];
-    }) : [];
+    return item ? this.submission(item.id, item.data()) : null;
+  }
+
+  private submission(id: string, data: Data): AssignmentSubmission {
     return {
-      id: item.id, status: data.status === 'graded' ? 'graded' : 'submitted', textResponse: this.text(data.textResponse), files,
+      id, lessonId: this.optionalText(data.lessonId), status: data.status === 'graded' ? 'graded' : 'submitted', textResponse: this.text(data.textResponse), files: this.files(data.files),
       score: typeof data.score === 'number' ? data.score : undefined, maxScore: typeof data.maxScore === 'number' ? data.maxScore : undefined,
       feedback: this.optionalText(data.feedback), submittedAt: this.timestamp(data.submittedAt ?? data.createdAt),
     };
+  }
+
+  private files(value: unknown): AssignmentFile[] {
+    return Array.isArray(value) ? value.flatMap((file: unknown): AssignmentFile[] => {
+      const entry = this.object(file);
+      return entry && this.text(entry.url) ? [{ name: this.text(entry.name) || 'Attachment', url: this.text(entry.url), size: this.integer(entry.size) }] : [];
+    }) : [];
   }
 
   /** Uploads one attachment to assignment-submissions/{uid}/{lessonId}/, the folder the server accepts attachments from. */
@@ -226,7 +337,10 @@ export class CourseService {
     nativeSessionService.assertOwner(userId);
   }
 
-  /** Submits quiz answers (option index per question, -1 when skipped); the server scores them and completes the lesson. */
+  /**
+   * Submits quiz answers aligned by question index, exactly like the website quiz page: the chosen option index, or -1
+   * when skipped or for a short-answer question (the server only scores questions with a correctIndex).
+   */
   public async submitQuiz(enrollmentId: string, lessonId: string, answers: number[]): Promise<number | null> {
     const userId = this.requireUserId();
     await nativeSessionService.ensure(userId);
@@ -247,8 +361,8 @@ export class CourseService {
   }
 
   public async getAnnouncements(userId: string): Promise<CourseAnnouncement[]> {
-    const enrollments = await this.getMyEnrollments(userId);
-    const courseIds = [...new Set(enrollments.filter((item) => item.status === 'active' || item.status === 'completed').map((item) => item.courseId))].slice(0, 10);
+    const enrollments = [...(await this.getEnrollmentIndex(userId)).values()];
+    const courseIds = [...new Set(enrollments.filter((item) => isActiveEnrollment(item)).map((item) => item.courseId))].slice(0, 10);
     if (!courseIds.length) return [];
     // One equality query per course: the rules can only prove access course by course, so a single `in` query is refused
     // as soon as one of the courses is not readable.
@@ -328,8 +442,10 @@ export class CourseService {
       certificateUrl: this.optionalText(data.certificateUrl) };
   }
   private lesson(id: string, data: Data): CourseLesson | null {
-    const allowed = ['video', 'text', 'quiz', 'assignment', 'resource'] as const;
-    const type = allowed.find((candidate) => candidate === data.type);
+    const allowed = ['video', 'text', 'quiz', 'assignment', 'resource', 'document'] as const;
+    // File lessons (document/pdf/image/audio/file, e.g. from the app's course creator) open their file like a resource.
+    const storedType: unknown = FILE_LESSON_TYPES.includes(this.text(data.type)) ? 'document' : data.type;
+    const type = allowed.find((candidate) => candidate === storedType);
     if (!type || !this.text(data.courseId) || !this.text(data.moduleId) || !this.text(data.title)) return null;
     // Same sources as the website lesson page: the media is contentUrl, attachedFile or a URL in content; content is HTML text.
     const content = this.text(data.content);
@@ -338,18 +454,37 @@ export class CourseService {
     return { id, courseId: this.text(data.courseId), moduleId: this.text(data.moduleId), title: this.text(data.title), description: this.optionalText(data.description),
       type, content: contentIsUrl ? undefined : this.plainText(content), mediaUrl, quizQuestions: this.quizQuestions(data.quizQuestions),
       duration: this.integer(data.duration), order: this.integer(data.order),
-      isRequired: data.isRequired === true, isPublished: data.isPublished !== false, isFree: data.isFree === true || data.isPreview === true };
+      isRequired: data.isRequired === true, isPublished: data.isPublished !== false, isFree: data.isFree === true || data.isPreview === true,
+      dueDate: this.timestamp(data.dueDate), points: typeof data.points === 'number' && Number.isFinite(data.points) ? Math.max(0, data.points) : undefined,
+      allowLateSubmission: data.allowLateSubmission === true, attachments: this.files(data.attachments) };
   }
+  /**
+   * Every stored question, in server order: the server scores answers[index] against quizQuestions[index], so dropping
+   * one (e.g. a short-answer question with no options) would shift every later answer.
+   */
   private quizQuestions(value: unknown): CourseQuizQuestion[] {
     if (!Array.isArray(value)) return [];
-    return value.flatMap((item: unknown, index): CourseQuizQuestion[] => {
-      const question = this.object(item);
-      if (!question || !this.text(question.title)) return [];
-      const options = this.textList(question.options);
-      if (options.length < 2) return [];
-      return [{ id: this.text(question.id) || 'question-' + index, title: this.text(question.title), options,
-        correctIndex: typeof question.correctIndex === 'number' ? question.correctIndex : undefined, explanation: this.optionalText(question.explanation) }];
+    return value.map((item: unknown, index): CourseQuizQuestion => {
+      const question: Data = this.object(item) ?? {};
+      const storedOptions = this.textList(question.options);
+      const type = this.questionType(question.type, storedOptions.length);
+      const options = type === 'short_answer' ? [] : type === 'true_false' && storedOptions.length < 2 ? ['True', 'False'] : storedOptions;
+      return { id: this.text(question.id) || 'question-' + index, title: this.text(question.title) || 'Question ' + (index + 1), options, type,
+        correctIndex: typeof question.correctIndex === 'number' ? question.correctIndex : undefined, explanation: this.optionalText(question.explanation),
+        points: typeof question.points === 'number' && Number.isFinite(question.points) ? Math.max(0, question.points) : 1 };
     });
+  }
+  private questionType(value: unknown, optionCount: number): CourseQuizQuestionType {
+    if (value === 'tf' || value === 'true_false') return 'true_false';
+    if (value === 'short' || value === 'short_answer') return 'short_answer';
+    return optionCount > 0 ? 'multiple_choice' : 'short_answer';
+  }
+  private resource(id: string, data: Data): CourseResource | null {
+    if (!this.text(data.moduleId) || !/^https?:\/\//i.test(this.text(data.url))) return null;
+    const type = data.type === 'link' || data.type === 'video' || data.type === 'document' ? data.type : 'file';
+    return { id, moduleId: this.text(data.moduleId), title: this.text(data.title) || 'Resource', type, url: this.text(data.url),
+      size: this.integer(data.size) || undefined, format: this.optionalText(data.format), description: this.optionalText(data.description),
+      order: this.integer(data.order), isRequired: data.isRequired === true };
   }
   private plainText(html: string): string | undefined {
     const text = html

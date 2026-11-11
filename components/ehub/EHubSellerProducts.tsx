@@ -97,6 +97,14 @@ function ProductEditor({ center, isTablet, onClose }: ProductEditorProps) {
   const { productForm: form, updateProductForm: onChange } = center;
   const canPublish = Boolean(center.workspace?.store) && !center.workspace?.eligibility.reason;
   const isComplete = form.title.trim().length >= 2 && form.description.trim().length >= 20 && Boolean(form.category.trim());
+  const completedSteps = [
+    isComplete,
+    Boolean(form.imageUrl),
+    Number.isFinite(form.price) && form.price >= 0 && Number.isSafeInteger(form.inventory) && form.inventory >= 0,
+    form.variants.length > 0 || form.sizes.length > 0 || form.colours.length > 0,
+    form.deliveryAvailable || form.pickupAvailable || Boolean(form.warrantyInformation.trim()),
+    canPublish,
+  ];
 
   const handleSave = async (state: EHubPublicationState) => {
     if (await center.saveProduct(state)) { setStep(0); onClose(); }
@@ -107,7 +115,7 @@ function ProductEditor({ center, isTablet, onClose }: ProductEditorProps) {
       <View style={styles.flex}><Text style={styles.eyebrow}>Products</Text><Text style={styles.title}>{form.productId ? 'Edit product' : 'Create product'}</Text></View>
       <SellerSaveIndicator status={center.saveStatus} savedAt={center.lastSavedAt} />
     </View>
-    <SellerStepHeader steps={PRODUCT_STEPS} currentStep={step} onStepChange={setStep} />
+    <SellerStepHeader steps={PRODUCT_STEPS} currentStep={step} completedSteps={completedSteps} onStepChange={setStep} />
     <View style={styles.body}>
       {step === 0 ? <>
         <SellerTextField label="Product name" required maxLength={160} value={form.title} onChangeText={(title) => onChange({ title })} />

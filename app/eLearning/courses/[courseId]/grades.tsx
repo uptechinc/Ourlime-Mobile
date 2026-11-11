@@ -7,7 +7,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { CourseDetailSkeleton } from '@/components/ui/Skeleton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
-import { courseService } from '@/lib/services/CourseService';
+import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
 import type { Course, CourseModule, Enrollment } from '@/lib/types/course';
 
 const CONTENT_MAX_WIDTH = 760;
@@ -45,8 +45,9 @@ export default function CourseGradesScreen() {
     try {
       const [courseData, enrollmentData] = await Promise.all([courseService.getCourse(id), courseService.getEnrollmentStatus(activeUserId, id)]);
       setCourse(courseData);
-      setEnrollment(enrollmentData);
-      if (!enrollmentData) return;
+      // Dropped or suspended enrollments do not open the course (only active/completed ones, like the rules).
+      setEnrollment(isActiveEnrollment(enrollmentData) ? enrollmentData : null);
+      if (!isActiveEnrollment(enrollmentData)) return;
       const [modules, lessonScores] = await Promise.all([
         courseService.getCourseCurriculum(id, 'enrolled'),
         courseService.getLessonScores(activeUserId, id).catch((scoreError: unknown) => {

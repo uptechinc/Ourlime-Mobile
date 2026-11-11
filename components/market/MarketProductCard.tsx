@@ -11,6 +11,8 @@ type MarketProductCardProps = {
   onOpen: (product: MarketProduct) => void;
   onToggleFavorite: (productId: string) => void;
   onQuickAdd: (product: MarketProduct) => void;
+  /** Web viewMode: 'grid' tiles two per row, 'list' is a full-width row. */
+  layout?: 'grid' | 'list';
 };
 
 function priceLabel(product: MarketProduct): string {
@@ -23,14 +25,15 @@ function priceLabel(product: MarketProduct): string {
   return `${prefix}${formatMarketPrice(currencies[0], minimum)}`;
 }
 
-export default function MarketProductCard({ product, favorite, onOpen, onToggleFavorite, onQuickAdd }: MarketProductCardProps) {
+export default function MarketProductCard({ product, favorite, onOpen, onToggleFavorite, onQuickAdd, layout = 'grid' }: MarketProductCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const handleFavorite = (event: GestureResponderEvent) => { event.stopPropagation(); onToggleFavorite(product.id); };
   const handleQuickAdd = (event: GestureResponderEvent) => { event.stopPropagation(); onQuickAdd(product); };
   const condition = product.condition?.replace('_', ' ');
-  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.title}`} onPress={() => onOpen(product)} style={styles.card} android_ripple={{ color: colors.control }}>
-    <View style={styles.imageFrame}>
+  const isList = layout === 'list';
+  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.title}`} onPress={() => onOpen(product)} style={isList ? styles.listCard : styles.card} android_ripple={{ color: colors.control }}>
+    <View style={isList ? styles.listImageFrame : styles.imageFrame}>
       {product.images[0] ? <Image source={{ uri: product.images[0] }} resizeMode="cover" style={styles.image} /> : <View style={styles.imageFallback}><ImageIcon color={colors.mutedText} size={28} /><Text style={styles.fallbackText}>Image unavailable</Text></View>}
       <Pressable accessibilityRole="button" accessibilityLabel={favorite ? `Remove ${product.title} from favorites` : `Save ${product.title} to favorites`} onPress={handleFavorite} hitSlop={8} style={styles.favoriteButton}>
         <Heart size={19} color={favorite ? '#dc2626' : colors.text} fill={favorite ? '#dc2626' : 'transparent'} />
@@ -38,7 +41,7 @@ export default function MarketProductCard({ product, favorite, onOpen, onToggleF
       {product.isOnSale ? <View style={styles.saleBadge}><Text style={styles.saleText}>SALE</Text></View> : null}
       {!product.available ? <View style={styles.unavailableBadge}><Text style={styles.unavailableText}>Unavailable</Text></View> : null}
     </View>
-    <View style={styles.body}>
+    <View style={isList ? styles.listBody : styles.body}>
       <Text numberOfLines={1} style={styles.category}>{product.category || 'Marketplace'}</Text>
       <Text numberOfLines={2} style={styles.title}>{product.title}</Text>
       {product.rating !== null ? <View style={styles.metadataRow}><Star size={13} color="#f59e0b" fill="#f59e0b" /><Text style={styles.metadataText}>{product.rating.toFixed(1)}{product.ratingCount ? ` (${product.ratingCount})` : ''}</Text></View> : <Text style={styles.metadataText}>No ratings yet</Text>}
@@ -60,6 +63,9 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   card: { flexBasis: '47%', flexGrow: 1, maxWidth: '49%', minWidth: 150, borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
   pressed: { opacity: 0.82 },
   imageFrame: { height: 158, backgroundColor: colors.control },
+  listCard: { width: '100%', flexDirection: 'row', borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
+  listImageFrame: { width: 132, minHeight: 150, backgroundColor: colors.control },
+  listBody: { flex: 1, padding: 11, gap: 5 },
   image: { width: '100%', height: '100%' },
   imageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
   fallbackText: { color: colors.mutedText, fontSize: 11 },

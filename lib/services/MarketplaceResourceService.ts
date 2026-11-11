@@ -38,8 +38,9 @@ export class MarketplaceResourceService {
     useMarketplaceStore.getState().setCatalog(queryKey, cached && data ? { data, status: 'ready', source: 'disk', updatedAt: cached.updatedAt, isStale: cached.isExpired || Date.now() - cached.updatedAt >= STALE_MS, error: null } : { ...current, status: 'idle' });
   }
   public async refresh(ownerId: string | null, search = '', category = '', force = false): Promise<void> {
+    // The disk cache keeps only the catalog card fields (no seller type, shipping or contacts), so it is always refreshed once.
     const queryKey = this.key(search, category); const requestKey = `refresh:${ownerId}:${queryKey}`; const existing = this.inFlight.get(requestKey); if (existing) return existing;
-    const current = this.state(queryKey); if (!force && current.data?.products.length && current.updatedAt && Date.now() - current.updatedAt < STALE_MS) return;
+    const current = this.state(queryKey); if (!force && current.source === 'network' && current.data?.products.length && current.updatedAt && Date.now() - current.updatedAt < STALE_MS) return;
     const generation = ++this.generation;
     useMarketplaceStore.getState().setCatalog(queryKey, { ...current, status: current.data ? 'refreshing' : 'hydrating', error: null });
     const request = (async () => {

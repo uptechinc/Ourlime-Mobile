@@ -99,14 +99,15 @@ export function SellerChipField({ label, values, onChange, placeholder, onDraftC
   </SellerField>;
 }
 
-type StepHeaderProps = { steps: string[]; currentStep: number; onStepChange: (step: number) => void };
+/** completedSteps ticks a step when its fields are valid (like the website's StepHeader), not because it comes before the current one. */
+type StepHeaderProps = { steps: string[]; currentStep: number; completedSteps: boolean[]; onStepChange: (step: number) => void };
 
-export function SellerStepHeader({ steps, currentStep, onStepChange }: StepHeaderProps) {
+export function SellerStepHeader({ steps, currentStep, completedSteps, onStepChange }: StepHeaderProps) {
   const { colors, styles } = useFormStyles();
   return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.steps}>
     {steps.map((step, index) => {
       const isCurrent = index === currentStep;
-      const isDone = index < currentStep;
+      const isDone = completedSteps[index] === true;
       return <Pressable key={step} accessibilityRole="button" accessibilityState={{ selected: isCurrent }} onPress={() => onStepChange(index)} style={[styles.step, isCurrent ? styles.stepCurrent : isDone ? styles.stepDone : null]}>
         <View style={[styles.stepNumber, isCurrent ? styles.stepNumberCurrent : null]}>{isDone ? <Check size={12} color={colors.accentText} /> : <Text style={[styles.stepNumberText, isCurrent ? styles.stepTextCurrent : null]}>{index + 1}</Text>}</View>
         <Text style={[styles.stepText, isCurrent ? styles.stepTextCurrent : isDone ? styles.stepTextDone : null]}>{step}</Text>

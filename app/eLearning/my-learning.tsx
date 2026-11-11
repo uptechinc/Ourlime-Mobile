@@ -16,12 +16,30 @@ import {
   Award,
   PlayCircle,
   TrendingUp,
+  Clock,
+  CheckCircle2,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { CourseCatalogSkeleton } from '@/components/ui/Skeleton';
 import { useAppData } from '@/lib/contexts/AppDataContext';
-import { courseService } from '@/lib/services/CourseService';
-import type { Enrollment } from '@/lib/types/course';
+import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
+import type { Enrollment, MyLearningSort, MyLearningStatus } from '@/lib/types/course';
+
+const STATUS_FILTERS: MyLearningStatus[] = ['All', 'In progress', 'Not started', 'Completed'];
+const SORTS: { value: MyLearningSort; label: string }[] = [{ value: 'recent', label: 'Most recent' }, { value: 'progress', label: 'Progress' }];
+
+/** Completed by enrollment status (like the website), otherwise in progress once any progress is recorded. */
+const progressStatus = (enrollment: Enrollment): Exclude<MyLearningStatus, 'All'> =>
+  enrollment.status === 'completed' ? 'Completed' : enrollment.progress > 0 ? 'In progress' : 'Not started';
+
+const toTime = (value: Enrollment['lastAccessed']): number => {
+  if (!value) return 0;
+  if (typeof value === 'string') return Date.parse(value) || 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value.toDate === 'function') return value.toDate().getTime();
+  return typeof value.seconds === 'number' ? value.seconds * 1000 : 0;
+};
+const lastActivity = (enrollment: Enrollment): number => toTime(enrollment.lastAccessed) || toTime(enrollment.enrolledAt);
 
 export default function MyLearningScreen() {
   const router = useRouter();
@@ -31,7 +49,8 @@ export default function MyLearningScreen() {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [tab, setTab] = useState<'in_progress' | 'completed'>('in_progress');
+  const [status, setStatus] = useState<MyLearningStatus>('All');
+  const [sort, setSort] = useState<MyLearningSort>('recent');
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadGenerationRef = useRef(0);
 
@@ -53,7 +72,8 @@ export default function MyLearningScreen() {
     try {
       const data = await courseService.getMyEnrollments(activeUserId);
       if (loadGeneration !== loadGenerationRef.current) return;
-      setEnrollments(data);
+      // Dropped or suspended enrollments no longer open the course, so they are not listed here.
+      setEnrollments(data.filter((enrollment) => isActiveEnrollment(enrollment)));
     } catch {
       if (loadGeneration !== loadGenerationRef.current) return;
       setLoadError('Your courses could not be loaded. Check your connection and try again.');
@@ -72,10 +92,10 @@ export default function MyLearningScreen() {
     };
   }, [loadEnrollments]);
 
-  const inProgressCourses = enrollments.filter((e) => (e.progress || 0) < 100);
-  const completedCourses = enrollments.filter((e) => (e.progress || 0) >= 100);
-
-  const displayedList = tab === 'in_progress' ? inProgressCourses : completedCourses;
+  const inProgressCourses = enrollments.filter((enrollment) => progressStatus(enrollment) === 'In progress');
+  const completedCourses = enrollments.filter((enrollment) => progressStatus(enrollment) === 'Completed');
+  const filtered = status === 'All' ? enrollments : enrollments.filter((enrollment) => progressStatus(enrollment) === status);
+  const displayedList = [...filtered].sort((left, right) => sort === 'progress' ? right.progress - left.progress : lastActivity(right) - lastActivity(left));
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.canvas }]}>
@@ -116,34 +136,33 @@ export default function MyLearningScreen() {
           </View>
         </View>
 
-        {/* Tab Toggle */}
-        <View style={[styles.tabBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <TouchableOpacity
-            onPress={() => setTab('in_progress')}
-            style={[styles.tabItem, tab === 'in_progress' && { backgroundColor: '#10b981' }]}
-          >
-            <Text
-              style={[
-                styles.tabItemText,
-                { color: tab === 'in_progress' ? '#ffffff' : colors.text },
-              ]}
+        {/* Status filter and sort (web My Learning selects) */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {STATUS_FILTERS.map((option) => (
+            <TouchableOpacity
+              key={option}
+              accessibilityRole="button"
+              accessibilityState={{ selected: status === option }}
+              onPress={() => setStatus(option)}
+              style={[styles.chip, status === option ? { backgroundColor: '#10b981', borderColor: '#10b981' } : { backgroundColor: colors.surface, borderColor: colors.border }]}
             >
-              In Progress ({inProgressCourses.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setTab('completed')}
-            style={[styles.tabItem, tab === 'completed' && { backgroundColor: '#10b981' }]}
-          >
-            <Text
-              style={[
-                styles.tabItemText,
-                { color: tab === 'completed' ? '#ffffff' : colors.text },
-              ]}
+              <Text style={[styles.chipText, { color: status === option ? '#ffffff' : colors.text }]}>{option}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <View style={styles.sortRow}>
+          <Text style={[styles.sortLabel, { color: colors.mutedText }]}>Sort</Text>
+          {SORTS.map((option) => (
+            <TouchableOpacity
+              key={option.value}
+              accessibilityRole="button"
+              accessibilityState={{ selected: sort === option.value }}
+              onPress={() => setSort(option.value)}
+              style={[styles.sortChip, sort === option.value && { backgroundColor: colors.control }]}
             >
-              Completed ({completedCourses.length})
-            </Text>
-          </TouchableOpacity>
+              <Text style={[styles.sortText, { color: sort === option.value ? colors.accentText : colors.mutedText }]}>{option.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* Course List */}
@@ -164,7 +183,7 @@ export default function MyLearningScreen() {
           <View style={styles.emptyContainer}>
             <BookOpen size={48} color={colors.mutedText} />
             <Text style={[styles.emptyTitle, { color: colors.text }]}>
-              {tab === 'in_progress' ? 'No active courses' : 'No completed courses yet'}
+              {status === 'All' ? 'No courses yet' : status === 'Completed' ? 'No completed courses yet' : `No ${status.toLowerCase()} courses`}
             </Text>
             <Text style={[styles.emptySubtitle, { color: colors.mutedText }]}>
               Explore our curriculum to start learning today.
@@ -186,7 +205,15 @@ export default function MyLearningScreen() {
                 style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
               >
                 {item.course?.image ? (
-                  <Image source={{ uri: item.course.image }} style={styles.cardImage} resizeMode="cover" />
+                  <View>
+                    <Image source={{ uri: item.course.image }} style={styles.cardImage} resizeMode="cover" />
+                    {lastActivity(item) ? (
+                      <View style={styles.dateBadge}>
+                        <Clock size={12} color="#ffffff" />
+                        <Text style={styles.dateBadgeText}>{new Date(lastActivity(item)).toLocaleDateString()}</Text>
+                      </View>
+                    ) : null}
+                  </View>
                 ) : null}
 
                 <View style={styles.cardInfo}>
@@ -198,7 +225,9 @@ export default function MyLearningScreen() {
                   {/* Progress Bar */}
                   <View style={styles.progressSection}>
                     <View style={styles.progressHeader}>
-                      <Text style={[styles.progressLabel, { color: colors.mutedText }]}>Progress</Text>
+                      <Text style={[styles.progressLabel, { color: colors.mutedText }]}>
+                        {progressStatus(item)}{!item.course?.image && lastActivity(item) ? ` · ${new Date(lastActivity(item)).toLocaleDateString()}` : ''}
+                      </Text>
                       <Text style={[styles.progressPercent, { color: '#10b981' }]}>
                         {item.progress || 0}%
                       </Text>
@@ -214,9 +243,9 @@ export default function MyLearningScreen() {
                     onPress={() => router.push(`/eLearning/courses/${item.courseId}/lesson` as Href)}
                     style={styles.resumeBtn}
                   >
-                    <PlayCircle size={16} color="#ffffff" />
+                    {item.status === 'completed' ? <CheckCircle2 size={16} color="#ffffff" /> : <PlayCircle size={16} color="#ffffff" />}
                     <Text style={styles.resumeBtnText}>
-                      {item.progress >= 100 ? 'Review Lessons' : 'Resume Learning'}
+                      {item.status === 'completed' ? 'Review' : item.progress > 0 ? 'Resume' : 'Start'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -274,6 +303,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  chips: { flexDirection: 'row', gap: 8 },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1 },
+  chipText: { fontSize: 13, fontWeight: '700' },
+  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sortLabel: { fontSize: 12, fontWeight: '700', marginRight: 4 },
+  sortChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  sortText: { fontSize: 13, fontWeight: '800' },
+  dateBadge: { position: 'absolute', right: 10, bottom: 10, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.6)' },
+  dateBadgeText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
   tabBar: {
     flexDirection: 'row',
     borderRadius: 14,

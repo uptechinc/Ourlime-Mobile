@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView, TextInput } from 'react-native';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import type { KeyboardTypeOptions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
@@ -16,9 +17,9 @@ export default function MarketFormModal({ visible, title, onClose, children, bus
         <Text style={{ color: colors.text, fontSize: 20, fontWeight: '800', flex: 1 }}>{title}</Text>
         <TouchableOpacity onPress={onClose} accessibilityLabel="Close" style={{ padding: 8 }}><X color={colors.text} size={24} /></TouchableOpacity>
       </View>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardSafeView style={{ flex: 1 }}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}>{children}</ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </SafeAreaView>
   </Modal></FormBusyContext.Provider>;
 }

@@ -1,18 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
-import { BookOpen, ClipboardCheck, Clock, GraduationCap, Plus, ShieldCheck, Star, Trash2, Users } from 'lucide-react-native';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { BookOpen, ClipboardCheck, Clock, Eye, FileText, GraduationCap, HelpCircle, Plus, ShieldCheck, Star, Trash2, Users } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
 import CustomModal from '@/components/ui/CustomModal';
 import { CourseDetailSkeleton } from '@/components/ui/Skeleton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
-import { instructorService, type InstructorCourse, type InstructorCourseStatus, type InstructorStatus } from '@/lib/services/InstructorService';
+import { instructorService, type InstructorCourse, type InstructorCourseStatus, type InstructorSettableStatus, type InstructorStatus } from '@/lib/services/InstructorService';
 
 const CONTENT_MAX_WIDTH = 900;
-const STATUS_LABEL: Record<InstructorCourseStatus, string> = { draft: 'Draft', published: 'Published', archived: 'Archived' };
+const STATUS_LABEL: Record<InstructorCourseStatus, string> = { draft: 'Draft', pending_review: 'Pending review', published: 'Published', archived: 'Archived' };
+const courseQuery = (course: InstructorCourse): string => `${encodeURIComponent(course.id)}?title=${encodeURIComponent(course.title)}`;
 
 /** Instructor dashboard: application status, the instructor's own courses (publish, unpublish, delete) and grading. */
 export default function InstructorDashboardScreen() {
@@ -45,9 +46,10 @@ export default function InstructorDashboardScreen() {
     }
   }, [activeUserId]);
 
-  useEffect(() => { void load(); }, [load]);
+  // Reload on focus so counts and statuses are current after creating a course, quiz or assignment.
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  const handleSetStatus = async (course: InstructorCourse, next: InstructorCourseStatus) => {
+  const handleSetStatus = async (course: InstructorCourse, next: InstructorSettableStatus) => {
     setWorkingCourseId(course.id);
     setError(null);
     try {
@@ -77,7 +79,7 @@ export default function InstructorDashboardScreen() {
     }
   };
 
-  const totalStudents = courses.reduce((sum, course) => sum + course.totalStudents, 0);
+  const totalStudents = courses.reduce((sum, course) => sum + course.enrolledStudents, 0);
   const publishedCount = courses.filter((course) => course.status === 'published').length;
   const isWide = width >= 640;
 
@@ -127,29 +129,51 @@ export default function InstructorDashboardScreen() {
                 {courses.length === 0 ? <Text style={styles.empty}>You have no courses yet.</Text> : null}
                 {courses.map((course) => (
                   <View key={course.id} style={styles.courseCard}>
-                    <View style={styles.courseTop}>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Open ${course.title}`} onPress={() => router.push(`/eLearning/instructor/course/${courseQuery(course)}` as Href)} style={styles.courseTop}>
                       {course.image ? <Image source={{ uri: course.image }} contentFit="cover" style={styles.thumb} /> : <View style={[styles.thumb, styles.thumbFallback]}><BookOpen size={22} color={colors.mutedText} /></View>}
                       <View style={styles.flex}>
                         <Text style={styles.courseTitle} numberOfLines={2}>{course.title}</Text>
+                        {course.category ? <Text style={styles.muted} numberOfLines={1}>{course.subcategory ? `${course.category} · ${course.subcategory}` : course.category}</Text> : null}
                         <View style={styles.metaRow}>
-                          <Text style={[styles.badge, course.status === 'published' ? styles.badgeLive : styles.badgeDraft]}>{STATUS_LABEL[course.status]}</Text>
-                          <Users size={13} color={colors.mutedText} /><Text style={styles.muted}>{course.totalStudents}</Text>
+                          <Text style={[styles.badge, course.status === 'published' ? styles.badgeLive : course.status === 'pending_review' ? styles.badgePending : styles.badgeDraft]}>{STATUS_LABEL[course.status]}</Text>
+                          <Users size={13} color={colors.mutedText} /><Text style={styles.muted}>{course.enrolledStudents} enrolled</Text>
                           <Star size={13} color="#f59e0b" /><Text style={styles.muted}>{course.rating.toFixed(1)} ({course.totalRatings})</Text>
                         </View>
+                        <View style={styles.metaRow}>
+                          <HelpCircle size={13} color="#8b5cf6" /><Text style={styles.muted}>{course.quizCount ?? '–'} quizzes</Text>
+                          <FileText size={13} color="#f97316" /><Text style={styles.muted}>{course.assignmentCount ?? '–'} assignments</Text>
+                        </View>
                       </View>
+                    </Pressable>
+                    <View style={styles.actions}>
+                      <Pressable accessibilityRole="button" onPress={() => router.push(`/eLearning/instructor/course/${courseQuery(course)}` as Href)} style={styles.actionButton}>
+                        <Eye size={16} color={colors.text} /><Text style={styles.actionText}>View</Text>
+                      </Pressable>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Add a quiz to ${course.title}`} onPress={() => router.push(`/eLearning/instructor/quiz/${courseQuery(course)}` as Href)} style={styles.actionButton}>
+                        <Plus size={15} color={colors.text} /><Text style={styles.actionText}>Quiz</Text>
+                      </Pressable>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Add an assignment to ${course.title}`} onPress={() => router.push(`/eLearning/instructor/assignment/${courseQuery(course)}` as Href)} style={styles.actionButton}>
+                        <Plus size={15} color={colors.text} /><Text style={styles.actionText}>Assignment</Text>
+                      </Pressable>
                     </View>
                     <View style={styles.actions}>
-                      <Pressable accessibilityRole="button" onPress={() => router.push(`/eLearning/instructor/grading/${encodeURIComponent(course.id)}?title=${encodeURIComponent(course.title)}` as Href)} style={styles.actionButton}>
+                      <Pressable accessibilityRole="button" onPress={() => router.push(`/eLearning/instructor/grading/${courseQuery(course)}` as Href)} style={styles.actionButton}>
                         <ClipboardCheck size={16} color={colors.text} /><Text style={styles.actionText}>Grade</Text>
                       </Pressable>
-                      <Pressable
-                        accessibilityRole="button"
-                        disabled={workingCourseId === course.id}
-                        onPress={() => void handleSetStatus(course, course.status === 'published' ? 'draft' : 'published')}
-                        style={[styles.actionButton, workingCourseId === course.id && styles.disabled]}
-                      >
-                        <Text style={styles.actionText}>{workingCourseId === course.id ? 'Saving…' : course.status === 'published' ? 'Unpublish' : 'Publish'}</Text>
-                      </Pressable>
+                      {course.status === 'pending_review' ? (
+                        <View style={[styles.actionButton, styles.pendingNote]}>
+                          <Clock size={15} color={colors.warningText} /><Text style={styles.pendingText}>Awaiting approval</Text>
+                        </View>
+                      ) : (
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={workingCourseId === course.id}
+                          onPress={() => void handleSetStatus(course, course.status === 'published' ? 'draft' : 'published')}
+                          style={[styles.actionButton, workingCourseId === course.id && styles.disabled]}
+                        >
+                          <Text style={styles.actionText}>{workingCourseId === course.id ? 'Saving…' : course.status === 'published' ? 'Unpublish' : 'Publish'}</Text>
+                        </Pressable>
+                      )}
                       <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${course.title}`} onPress={() => setCourseToDelete(course)} style={[styles.actionButton, styles.deleteButton]}>
                         <Trash2 size={16} color={colors.destructiveText} />
                       </Pressable>
@@ -206,10 +230,13 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   thumb: { width: 72, height: 72, borderRadius: 12 },
   thumbFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
   courseTitle: { color: colors.text, fontSize: 15, fontWeight: '800' },
-  metaRow: { marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
+  metaRow: { marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
   badge: { marginRight: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, overflow: 'hidden', fontSize: 11, fontWeight: '800' },
   badgeLive: { color: colors.successText, backgroundColor: colors.successSurface },
   badgeDraft: { color: colors.mutedText, backgroundColor: colors.control },
+  badgePending: { color: colors.warningText, backgroundColor: colors.warningSurface },
+  pendingNote: { borderColor: colors.warningSurface, backgroundColor: colors.warningSurface },
+  pendingText: { color: colors.warningText, fontSize: 12, fontWeight: '800' },
   actions: { flexDirection: 'row', gap: 8 },
   actionButton: { flex: 1, minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
   actionText: { color: colors.text, fontSize: 13, fontWeight: '800' },
