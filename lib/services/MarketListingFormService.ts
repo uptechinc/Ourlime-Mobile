@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import type {
-  ListingCategoryOption, ListingColorOption, ListingCondition, ListingDraft, ListingEditorStep, ListingFormState,
+  ListingCategoryOption, ListingColorOption, ListingCondition, ListingDraft, ListingEditorStep, ListingFormState, ListingImage,
   ListingSizeOption, ListingStepErrors, ListingVariantDraft, SellerListing,
 } from '@/lib/types/marketListing';
 
@@ -10,6 +10,15 @@ import type {
 export const LISTING_DRAFT_STORAGE_KEY = 'market_product_draft_v1';
 export const LISTING_STEPS = ['Basic info', 'Media', 'Pricing & details', 'Review'] as const;
 export const LISTING_MAX_GALLERY_IMAGES = 10;
+/** Server limits for gallery videos (MarketListingService): MP4, MOV or WebM, three per listing, 50 MB each. */
+export const LISTING_MAX_GALLERY_VIDEOS = 3;
+export const LISTING_MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+
+/** True for a gallery video: a chosen local video, or a saved one stored under the listing's video/ folder. */
+export const listingMediaIsVideo = (image: ListingImage): boolean => {
+  if (image.kind === 'local') return image.mediaType === 'video';
+  try { return decodeURIComponent(image.url).includes('/video/'); } catch { return image.url.includes('/video/'); }
+};
 export const LISTING_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const LISTING_MAX_PRICE = 100_000;
 
@@ -170,7 +179,8 @@ export class MarketListingFormService {
     const errors: string[] = [];
     if (!form.cover) errors.push('Cover image is required.');
     if (!isEditing && !form.gallery.length) errors.push('Please add at least one gallery image.');
-    if (form.gallery.length > LISTING_MAX_GALLERY_IMAGES) errors.push(`You can only upload up to ${LISTING_MAX_GALLERY_IMAGES} images in total.`);
+    if (form.gallery.length > LISTING_MAX_GALLERY_IMAGES) errors.push(`You can only upload up to ${LISTING_MAX_GALLERY_IMAGES} images/videos in total.`);
+    if (form.gallery.filter((image) => listingMediaIsVideo(image)).length > LISTING_MAX_GALLERY_VIDEOS) errors.push(`Add at most ${LISTING_MAX_GALLERY_VIDEOS} videos to a listing.`);
     return errors;
   }
 

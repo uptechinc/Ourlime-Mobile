@@ -12,8 +12,10 @@ type ProductGalleryProps = {
   badges: string[];
 };
 
-/** Same test as the web gallery: Storage video URLs contain "/video/". */
-export const isMarketVideo = (uri: string): boolean => uri.includes('/video/');
+/** Same test as the web gallery: listing videos live under a video/ folder (decoded, since download URLs encode the path). */
+export const isMarketVideo = (uri: string): boolean => {
+  try { return decodeURIComponent(uri).includes('/video/'); } catch { return uri.includes('/video/'); }
+};
 
 /** Web ProductDetailsContent gallery: a large preview (image or video) above a row of thumbnails. */
 export default function ProductGallery({ title, media, favorite, onToggleFavorite, badges }: ProductGalleryProps) {

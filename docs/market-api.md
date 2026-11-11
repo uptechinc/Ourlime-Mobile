@@ -230,7 +230,8 @@ type ListingProductData = {
   service message, e.g. `Administrator seller verification is required for new or republished listings.`,
   `Product ownership could not be verified.`, `Invalid operation ID.`, `Invalid listing payload.`,
   `Provide distinct product variants.`, `Every variant must reference a selected color and size.`,
-  `Accept the seller listing disclaimer.`, `A cover image is required.`, `Choose at most 10 listing images.`,
+  `Accept the seller listing disclaimer.`, `A cover image is required.`, `Choose at most 10 listing images.` · `Listing media must be JPEG, PNG or WebP photos up to 10 MB, or MP4, MOV or WebM videos up to 50 MB.` ·
+`Add at most 3 videos to a listing.` · `Video contents do not match the file type.`,
   `Listing images must be JPEG, PNG or WebP up to 10 MB.`, `Image contents do not match the file type.`,
   `This operation ID was already used for a different listing change.`, `Seller approval changed.`,
   `Listing ownership changed.`, `Invalid listing ID.`, plus the upload errors in §4.
@@ -276,8 +277,9 @@ Storage `products/` is closed to clients except one new owner-only staging folde
 ```
 products/{uid}/uploads/{uploadId}
   create only (no read/update/delete), signed-in owner, email verified, active account, not staff preview,
-  contentType image/jpeg | image/png | image/webp, 0 < size <= 10 MB,
-  uploadId matches [A-Za-z0-9_-]{8,128} optionally followed by .jpg/.jpeg/.png/.webp
+  contentType image/jpeg | image/png | image/webp with 0 < size <= 10 MB,
+    or video/mp4 | video/quicktime | video/webm with 0 < size <= 50 MB,
+  uploadId matches [A-Za-z0-9_-]{8,128} optionally followed by .jpg/.jpeg/.png/.webp/.mp4/.mov/.webm
 ```
 
 Steps:
@@ -292,6 +294,11 @@ Steps:
    the magic bytes, and stores it exactly like the web at
    `products/{uid}/pending/{operationId}/{cover|image-N}-{sha256}` with a public download token; `products.thumbnailImage`,
    `products.images` and `subImages.imageName` hold those download URLs.
+
+Gallery videos (`mediaUploads` only, never the cover) upload as they are: MP4, MOV or WebM up to 50 MB, at most three
+per save, with the matching content type and extension. The server checks the container signature (`ftyp` box or WebM
+header) and stores them at `products/{uid}/pending/{operationId}/video/image-N-{sha256}`; galleries treat a URL whose
+decoded path contains `/video/` as a video.
 6. After a successful save the server deletes the staged uploads. If the same `operationId` is retried after a success
    (e.g. response lost) and the uploads are already gone, the server returns the stored result of that operation
    (idempotent replay). If the save failed, the uploads remain, so retry with the same paths.

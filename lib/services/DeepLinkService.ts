@@ -206,9 +206,9 @@ export class DeepLinkService {
     if (first === 'events') return { kind: 'event', eventId: segments[1] ?? url.searchParams.get('targetId') };
     if (first === 'jobs') return { kind: 'job', jobId: segments[1] ?? url.searchParams.get('apply') };
     if (first === 'market') {
-      // /market/orders and /market/checkout are pages, not product ids.
+      // /market/orders, /market/checkout and /market/pets are pages, not product ids.
       const marketPage = segments[1]?.toLowerCase();
-      if (marketPage === 'orders' || marketPage === 'checkout') return this.screen(`/market/${marketPage}`, `/market/${marketPage}`);
+      if (marketPage === 'orders' || marketPage === 'checkout' || marketPage === 'pets') return this.screen(`/market/${marketPage}`, `/market/${marketPage}`);
       return { kind: 'market-product', productId: segments[1] ?? url.searchParams.get('product') };
     }
     if (first === 'admin' && segments[1]?.toLowerCase() === 'reports' && segments[2]) {

@@ -3,7 +3,7 @@ import { ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebaseConfig';
 import { appServerService } from './AppServerService';
 import {
-  DEFAULT_BASE_COLORS, DEFAULT_LISTING_CATEGORIES, LISTING_CONDITIONS, LISTING_MAX_IMAGE_BYTES, marketListingFormService,
+  DEFAULT_BASE_COLORS, DEFAULT_LISTING_CATEGORIES, LISTING_CONDITIONS, LISTING_MAX_IMAGE_BYTES, LISTING_MAX_VIDEO_BYTES, marketListingFormService,
 } from './MarketListingFormService';
 import type {
   ListingBaseOption, ListingCategoryOption, ListingColorOption, ListingCondition, ListingFormState, ListingImage, ListingMutationResult,
@@ -168,6 +168,39 @@ export class MarketListingClient {
       if (code === 'storage/retry-limit-exceeded' || code === 'storage/canceled') throw new Error('A photo did not finish uploading. Check your connection and try again.');
       throw new Error('Unable to upload this photo. Please try another one.');
     }
+  }
+
+  /**
+   * Gallery videos upload as they are (no re-encoding) to the same staging folder as photos. The function accepts MP4, MOV
+   * and WebM up to 50 MB and stores them under the listing's video/ folder.
+   */
+  public async uploadListingVideo(localUri: string, mimeType: string | null): Promise<string> {
+    const ownerId = auth.currentUser?.uid;
+    if (!ownerId) throw new Error('Please sign in to upload videos.');
+    const format = this.videoFormat(localUri, mimeType);
+    if (!format) throw new Error('Listing videos must be MP4, MOV or WebM.');
+    const blob = await (await fetch(localUri)).blob();
+    if (!blob.size || blob.size > LISTING_MAX_VIDEO_BYTES) throw new Error('Listing videos must be 50 MB or smaller. Trim the video and try again.');
+    const path = `products/${ownerId}/uploads/${marketListingFormService.createId()}${marketListingFormService.createId()}.${format.extension}`;
+    try {
+      await uploadBytes(ref(storage, path), blob, { contentType: format.contentType });
+      return path;
+    } catch (error: unknown) {
+      console.error('[MarketListingClient.uploadListingVideo] Error:', error instanceof Error ? error.message : 'Unknown error');
+      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+      if (code === 'storage/unauthorized') throw new Error('Listing videos could not be uploaded. Verify your email address and make sure your account is active, then try again.');
+      if (code === 'storage/retry-limit-exceeded' || code === 'storage/canceled') throw new Error('A video did not finish uploading. Check your connection and try again.');
+      throw new Error('Unable to upload this video. Please try another one.');
+    }
+  }
+
+  private videoFormat(localUri: string, mimeType: string | null): { contentType: string; extension: string } | null {
+    const type = (mimeType ?? '').toLowerCase();
+    const extension = localUri.split('?')[0].split('.').pop()?.toLowerCase() ?? '';
+    if (type === 'video/mp4' || (!type && extension === 'mp4')) return { contentType: 'video/mp4', extension: 'mp4' };
+    if (type === 'video/quicktime' || (!type && extension === 'mov')) return { contentType: 'video/quicktime', extension: 'mov' };
+    if (type === 'video/webm' || (!type && extension === 'webm')) return { contentType: 'video/webm', extension: 'webm' };
+    return null;
   }
 
   /** Admin categories (productCategories; customCategories when readable) first, then the web's built-in ones. */

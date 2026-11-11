@@ -44,7 +44,7 @@ export default function ListingReviewStep({ editor }: { editor: MarketListingEdi
       ['Brand', form.brand || '—'], ['SKU', form.sku || '—'], ['Tags', form.tags.join(', ') || '—'],
       ['Contact', marketListingFormService.buildContactInfo(form).map((entry) => entry.value).join(' · ') || '—'],
     ] },
-    { step: 1, rows: [['Cover image', form.cover ? 'Added' : 'Missing'], ['Gallery photos', String(form.gallery.length)]] },
+    { step: 1, rows: [['Cover image', form.cover ? 'Added' : 'Missing'], ['Gallery photos and videos', String(form.gallery.length)]] },
     { step: 2, rows: [
       ['Variants', `${form.variants.length} (${activeVariants.length} active)`], ['Total stock', String(stock)],
       ['Delivery', form.deliveryAvailable ? `Yes · ${formatMarketPrice(form.currency, form.shippingCost ?? 0)}${form.estimatedShippingDays !== null ? ` · ~${form.estimatedShippingDays} days` : ''}` : 'No'],

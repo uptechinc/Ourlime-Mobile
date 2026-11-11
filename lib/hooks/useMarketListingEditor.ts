@@ -3,7 +3,7 @@ import { auth } from '@/lib/firebaseConfig';
 import { marketListingClient } from '@/lib/services/MarketListingClient';
 import { LISTING_MAX_GALLERY_IMAGES, marketListingFormService } from '@/lib/services/MarketListingFormService';
 import type {
-  ListingBaseOption, ListingCategoryOption, ListingEditorStep, ListingFormState, ListingImage, ListingMutationResult, SellerListing,
+  ListingBaseOption, ListingCategoryOption, ListingEditorStep, ListingFormState, ListingImage, ListingMutationResult, ListingPickedMedia, SellerListing,
 } from '@/lib/types/marketListing';
 
 type EditorLoadState = 'loading' | 'ready' | 'error';
@@ -96,13 +96,13 @@ export function useMarketListingEditor(productId: string | null) {
   const setCurrency = useCallback((currency: string) => update({ currency: currency.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 3) }), [update]);
 
   const setCover = useCallback((uri: string) => {
-    update({ cover: { key: `cover-${marketListingFormService.createId()}`, kind: 'local', uri, uploadPath: null } });
+    update({ cover: { key: `cover-${marketListingFormService.createId()}`, kind: 'local', uri, uploadPath: null, mediaType: 'image', mimeType: null } });
   }, [update]);
 
-  const addGalleryImages = useCallback((uris: string[]) => {
+  const addGalleryMedia = useCallback((items: ListingPickedMedia[]) => {
     setForm((current) => {
       const room = LISTING_MAX_GALLERY_IMAGES - current.gallery.length;
-      const added: ListingImage[] = uris.slice(0, Math.max(0, room)).map((uri) => ({ key: `local-${marketListingFormService.createId()}`, kind: 'local', uri, uploadPath: null }));
+      const added: ListingImage[] = items.slice(0, Math.max(0, room)).map((item) => ({ key: `local-${marketListingFormService.createId()}`, kind: 'local', uri: item.uri, uploadPath: null, mediaType: item.mediaType, mimeType: item.mimeType }));
       return { ...current, gallery: [...current.gallery, ...added] };
     });
   }, []);
@@ -141,7 +141,7 @@ export function useMarketListingEditor(productId: string | null) {
       setProgress({ phase: 'uploading', uploaded: 0, total: pending.length });
       let working = current;
       for (const [index, image] of pending.entries()) {
-        const uploadPath = await marketListingClient.uploadListingImage(image.uri);
+        const uploadPath = image.mediaType === 'video' ? await marketListingClient.uploadListingVideo(image.uri, image.mimeType) : await marketListingClient.uploadListingImage(image.uri);
         const withPath = (entry: ListingImage | null): ListingImage | null => entry && entry.key === image.key && entry.kind === 'local' ? { ...entry, uploadPath } : entry;
         working = { ...working, cover: withPath(working.cover), gallery: working.gallery.map((entry) => withPath(entry) ?? entry) };
         setForm((latest) => ({ ...latest, cover: withPath(latest.cover), gallery: latest.gallery.map((entry) => withPath(entry) ?? entry) }));
@@ -166,7 +166,7 @@ export function useMarketListingEditor(productId: string | null) {
 
   return {
     isEditing, form, listing, loadState, loadError, reload: load, hasRestoredDraft, step, setStep, categories, baseColors, stepErrors,
-    update, updateVariant, setCurrency, setCover, addGalleryImages, removeGalleryImage, discardDraft, save, progress, saveError, clearSaveError: () => setSaveError(null),
+    update, updateVariant, setCurrency, setCover, addGalleryMedia, removeGalleryImage, discardDraft, save, progress, saveError, clearSaveError: () => setSaveError(null),
   };
 }
 

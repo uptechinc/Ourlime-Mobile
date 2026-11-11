@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { Bookmark, ChevronDown, ChevronRight, HelpCircle, LayoutGrid, List, Package, Search, ShieldCheck, ShoppingBag, SlidersHorizontal, Store, X } from 'lucide-react-native';
+import { Bookmark, ChevronDown, ChevronRight, HelpCircle, LayoutGrid, List, Package, PawPrint, Search, ShieldCheck, ShoppingBag, SlidersHorizontal, Store, X } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAccountCart } from '@/lib/hooks/useAccountCart';
@@ -141,6 +141,7 @@ export default function MarketplaceScreen({ entryPoint = 'market' }: Marketplace
         <View style={styles.services}>
           <Pressable onPress={() => ownerId && canMutate ? setSellerOpen(true) : router.push('/(auth)/login')} style={styles.serviceRow}><Store color={colors.accentText} size={21} /><View style={{ flex: 1 }}><Text style={styles.serviceTitle}>Sell on Ourlime</Text><Text style={styles.serviceText}>{ownerId ? 'Manage your seller application' : 'Sign in to apply as a seller'}</Text></View><ChevronRight color={colors.mutedText} size={20} /></Pressable>
           {ownerId ? <Pressable onPress={() => router.push('/market/seller' as Href)} style={styles.serviceRow}><ShoppingBag color={colors.accentText} size={21} /><View style={{ flex: 1 }}><Text style={styles.serviceTitle}>My listings</Text><Text style={styles.serviceText}>Add products, manage listings and fulfil orders</Text></View><ChevronRight color={colors.mutedText} size={20} /></Pressable> : null}
+          <Pressable onPress={() => router.push('/market/pets' as Href)} style={styles.serviceRow}><PawPrint color={colors.accentText} size={21} /><View style={{ flex: 1 }}><Text style={styles.serviceTitle}>Pets & Adoption</Text><Text style={styles.serviceText}>Adopt, rehome or find a pet near you</Text></View><ChevronRight color={colors.mutedText} size={20} /></Pressable>
           {ownerId ? <Pressable onPress={() => router.push('/market/orders' as Href)} style={styles.serviceRow}><Package color={colors.accentText} size={21} /><View style={{ flex: 1 }}><Text style={styles.serviceTitle}>My orders</Text><Text style={styles.serviceText}>Track shipments, confirm delivery and write reviews</Text></View><ChevronRight color={colors.mutedText} size={20} /></Pressable> : null}
           <Pressable onPress={() => void handleSupport()} style={styles.serviceRow}><HelpCircle color={colors.accentText} size={21} /><View style={{ flex: 1 }}><Text style={styles.serviceTitle}>Marketplace support</Text><Text style={styles.serviceText}>Get help with listings and saved carts</Text></View><ChevronRight color={colors.mutedText} size={20} /></Pressable>
         </View>

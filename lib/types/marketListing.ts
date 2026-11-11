@@ -64,7 +64,13 @@ export type ListingVariantDraft = {
 /** A listing image: already stored on the listing (remote) or picked on this device (local, uploaded on save). */
 export type ListingImage =
   | { key: string; kind: 'remote'; url: string; subImageId: string | null }
-  | { key: string; kind: 'local'; uri: string; uploadPath: string | null };
+  | { key: string; kind: 'local'; uri: string; uploadPath: string | null; mediaType: ListingMediaType; mimeType: string | null };
+
+/** Gallery entries may be photos or (at most LISTING_MAX_GALLERY_VIDEOS) videos; the cover is always a photo. */
+export type ListingMediaType = 'image' | 'video';
+
+/** A photo or video chosen from the device for the gallery. */
+export type ListingPickedMedia = { uri: string; mediaType: ListingMediaType; mimeType: string | null; fileSize: number | null };
 
 export type ListingFormState = {
   title: string;
