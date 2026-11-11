@@ -9,6 +9,9 @@
       "notes": [
         "E-Learning: a redesigned home that matches the website, with a welcome card, quick links, a rotating banner with search, swipeable course updates, and course cards you can filter by category and subcategory.",
         "E-Learning: Tutors now show each instructor's rating, with Show all for longer lists.",
+        "E-Learning: lesson text keeps its formatting (headings, lists, links), CXC past papers open with Study and the CXC hub has a subject search, and instructors get a Create Course button in the course catalog.",
+        "Market: share any listing straight from the catalog, and sellers can set one price and stock for every variant at once.",
+        "Links: ourlime.com links to Market orders and checkout, E-Hub searches, provider services and the E-Hub terms sections now open the right place in the app.",
         "Updates: the download bar now moves while a quick update downloads, so you can see it working.",
         "Updates: a download that stalls stops after 3 minutes and lets you try again, instead of waiting forever.",
         "Updates: the download sheet now reads \"Downloading the update\" and says Ourlime restarts when it's ready."

@@ -149,6 +149,15 @@ export class DeepLinkService {
     }
   }
 
+  /** The named query parameters, re-encoded, as "?a=1&b=2" (or "" when none are present). */
+  private pickQuery(url: URL, names: string[]): string {
+    const pairs = names
+      .map((name) => [name, url.searchParams.get(name)?.trim().slice(0, 200) ?? ''] as const)
+      .filter(([, value]) => value.length > 0)
+      .map(([name, value]) => `${name}=${encodeURIComponent(value)}`);
+    return pairs.length ? `?${pairs.join('&')}` : '';
+  }
+
   private parseUrl(input: string): URL | null {
     try {
       if (input.startsWith('/')) return new URL(input, this.webBaseUrl);
@@ -196,19 +205,36 @@ export class DeepLinkService {
     if ((first === 'limes' || first === 'lime') && segments[1]) return { kind: 'lime', limeId: segments[1] };
     if (first === 'events') return { kind: 'event', eventId: segments[1] ?? url.searchParams.get('targetId') };
     if (first === 'jobs') return { kind: 'job', jobId: segments[1] ?? url.searchParams.get('apply') };
-    if (first === 'market') return { kind: 'market-product', productId: segments[1] ?? url.searchParams.get('product') };
+    if (first === 'market') {
+      // /market/orders and /market/checkout are pages, not product ids.
+      const marketPage = segments[1]?.toLowerCase();
+      if (marketPage === 'orders' || marketPage === 'checkout') return this.screen(`/market/${marketPage}`, `/market/${marketPage}`);
+      return { kind: 'market-product', productId: segments[1] ?? url.searchParams.get('product') };
+    }
     if (first === 'admin' && segments[1]?.toLowerCase() === 'reports' && segments[2]) {
       return { kind: 'admin-report', reportId: segments[2] };
     }
     if (first === 'ehub') {
       const section = segments[1]?.toLowerCase();
-      if ((section === 'products' || section === 'providers') && segments[2]) return this.screen(`/ehub/${section}/${segments[2]}`, `/ehub/${section}/${segments[2]}`);
-      if (section === 'discover') return this.screen('/ehub/discover', '/ehub/discover');
+      // Keep the filters and enquiry context the website link carries (discover ?kind/&search, provider ?product/&service).
+      if (section === 'providers' && segments[2]) {
+        const query = this.pickQuery(url, ['product', 'service']);
+        return this.screen(`/ehub/providers/${segments[2]}${query}`, `/ehub/providers/${segments[2]}${query}`);
+      }
+      if (section === 'products' && segments[2]) return this.screen(`/ehub/products/${segments[2]}`, `/ehub/products/${segments[2]}`);
+      if (section === 'discover') {
+        const query = this.pickQuery(url, ['kind', 'search']);
+        return this.screen(`/ehub/discover${query}`, `/ehub/discover${query}`);
+      }
       // App-only E-Hub screens; on the website these live under /profile (business account under /profile too).
       if (section === 'seller') return this.screen('/profile/ehub/seller', '/ehub/seller');
       if (section === 'enquiries') return this.screen('/profile/ehub/enquiries', '/ehub/enquiries');
       if (section === 'business-account') return this.screen('/profile/business-account', '/ehub/business-account');
-      if (section === 'terms') return this.screen('/ehub/terms', '/ehub/terms');
+      if (section === 'terms') {
+        // /ehub/terms#buyer on the website opens at that section; the app scrolls to ?section=.
+        const anchor = url.hash.replace(/^#/, '').replace(/[^a-z-]/gi, '');
+        return this.screen(`/ehub/terms${url.hash}`, anchor ? `/ehub/terms?section=${anchor}` : '/ehub/terms');
+      }
       return { kind: 'ehub' };
     }
     if (first === 'elearning') return { kind: 'elearning', path: segments.slice(1).join('/') || undefined };
@@ -224,7 +250,13 @@ export class DeepLinkService {
   }
 
   private screen(webPath: string, appRoute: string): DeepLinkDestination {
-    const encode = (path: string) => path.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+    // Encode path segments only; a query or #anchor built by pickQuery (already encoded) is kept as it is.
+    const encode = (route: string) => {
+      const suffixStart = route.search(/[?#]/);
+      const path = suffixStart >= 0 ? route.slice(0, suffixStart) : route;
+      const suffix = suffixStart >= 0 ? route.slice(suffixStart) : '';
+      return path.split('/').map((segment) => encodeURIComponent(segment)).join('/') + suffix;
+    };
     return { kind: 'screen', webPath: encode(webPath), appRoute: encode(appRoute) };
   }
 

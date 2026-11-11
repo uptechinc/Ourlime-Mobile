@@ -1,3 +1,4 @@
+import RichBlogContent from '@/components/blog/RichBlogContent';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Linking,
@@ -307,9 +308,14 @@ export default function LessonScreen() {
               <LessonQuiz key={currentLesson.id} questions={currentLesson.quizQuestions ?? []} isCompleted={isCompleted} onSubmit={handleSubmitQuiz} />
             ) : (
               <View style={[styles.contentCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.contentText, { color: colors.text }]}>
-                  {currentLesson.content || currentLesson.description || (currentLesson.mediaUrl ? 'Open the lesson material below.' : 'No text content was provided for this lesson.')}
-                </Text>
+                {/* Instructors write lesson text in the web's rich editor, so it is HTML there (rendered with dangerouslySetInnerHTML). */}
+                {currentLesson.content && /<[a-z][\s\S]*>/i.test(currentLesson.content) ? (
+                  <RichBlogContent content={currentLesson.content} />
+                ) : (
+                  <Text style={[styles.contentText, { color: colors.text }]}>
+                    {currentLesson.content || currentLesson.description || (currentLesson.mediaUrl ? 'Open the lesson material below.' : 'No text content was provided for this lesson.')}
+                  </Text>
+                )}
               </View>
             )}
 

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import {
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -13,6 +15,7 @@ import {
   BookOpen,
   FileText,
   GraduationCap,
+  Search,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { CxcHubSkeleton } from '@/components/ui/Skeleton';
@@ -26,6 +29,19 @@ export default function CxcStudyCenterScreen() {
   const [selectedSubject, setSelectedSubject] = useState<CxcSubject | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  // Web cxc/page.tsx search: subjects by name or code.
+  const visibleSubjects = normalizedSearch
+    ? subjects.filter((subject) => [subject.title, subject.code, subject.level].some((value) => value.toLocaleLowerCase().includes(normalizedSearch)))
+    : subjects;
+
+  const handleOpenPaper = (url?: string) => {
+    if (!url) return;
+    void Linking.openURL(url).catch((openError: unknown) => {
+      console.warn('[CxcStudyCenterScreen.handleOpenPaper] Error:', openError instanceof Error ? openError.message : openError);
+    });
+  };
 
   useEffect(() => {
     let active = true;
@@ -69,13 +85,18 @@ export default function CxcStudyCenterScreen() {
 
         {/* Subjects Horizontal Picker */}
         {subjects.length > 0 ? <>
+        <View style={[styles.searchBox, { backgroundColor: colors.input, borderColor: colors.border }]}>
+          <Search size={18} color={colors.mutedText} />
+          <TextInput value={search} onChangeText={setSearch} placeholder="Search subjects" placeholderTextColor={colors.mutedText} returnKeyType="search" style={[styles.searchInput, { color: colors.text }]} />
+        </View>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Choose Subject</Text>
+        {visibleSubjects.length === 0 ? <Text style={{ color: colors.mutedText }}>No subjects match "{search.trim()}".</Text> : null}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.subjectList}
         >
-          {subjects.map((sub) => {
+          {visibleSubjects.map((sub) => {
             const isSelected = selectedSubject?.id === sub.id;
             return (
               <TouchableOpacity
@@ -144,8 +165,14 @@ export default function CxcStudyCenterScreen() {
                     {selectedSubject.level} • {paper.year}
                   </Text>
                 </View>
-                <TouchableOpacity style={styles.downloadBtn}>
-                  <Text style={styles.downloadBtnText}>Study</Text>
+                <TouchableOpacity
+                  accessibilityRole="link"
+                  accessibilityState={{ disabled: !paper.url }}
+                  disabled={!paper.url}
+                  onPress={() => handleOpenPaper(paper.url)}
+                  style={[styles.downloadBtn, !paper.url && { opacity: 0.45 }]}
+                >
+                  <Text style={styles.downloadBtnText}>{paper.url ? 'Study' : 'Soon'}</Text>
                 </TouchableOpacity>
               </View>
             ))}
@@ -159,6 +186,8 @@ export default function CxcStudyCenterScreen() {
 }
 
 const styles = StyleSheet.create({
+  searchBox: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 999, paddingHorizontal: 14 },
+  searchInput: { flex: 1, fontSize: 15, paddingVertical: 0 },
   container: {
     flex: 1,
   },

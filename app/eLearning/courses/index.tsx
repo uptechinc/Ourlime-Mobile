@@ -12,13 +12,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { ChevronLeft, Search, Star, Clock, Users, GraduationCap, CheckCircle2, X } from 'lucide-react-native';
+import { ChevronLeft, PenSquare, Search, Star, Clock, Users, GraduationCap, CheckCircle2, X } from 'lucide-react-native';
 import CustomModal from '@/components/ui/CustomModal';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { CourseCatalogSkeleton } from '@/components/ui/Skeleton';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
+import { instructorService } from '@/lib/services/InstructorService';
 import type { CatalogPriceFilter, CatalogSort, Course, Enrollment } from '@/lib/types/course';
 
 const LEVELS = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
@@ -40,6 +41,16 @@ export default function CoursesCatalogScreen() {
   const params = useLocalSearchParams<{ category?: string; q?: string; subcategory?: string }>();
   const { colors } = useAppTheme();
   const { activeUserId } = useAppData();
+  // Web courses/page.tsx shows "Create Course" to instructors.
+  const [isInstructor, setIsInstructor] = useState(false);
+  useEffect(() => {
+    if (!activeUserId) return;
+    let isActive = true;
+    void instructorService.getStatus(activeUserId)
+      .then((status) => { if (isActive) setIsInstructor(status !== 'none'); })
+      .catch(() => { if (isActive) setIsInstructor(false); });
+    return () => { isActive = false; };
+  }, [activeUserId]);
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [fallbackCategories, setFallbackCategories] = useState<string[]>([]);
@@ -165,7 +176,11 @@ export default function CoursesCatalogScreen() {
           <ChevronLeft size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Courses Catalog</Text>
-        <View style={{ width: 32 }} />
+        {isInstructor ? (
+          <TouchableOpacity onPress={() => router.push('/eLearning/instructor/create' as Href)} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Create course">
+            <PenSquare size={22} color="#10b981" />
+          </TouchableOpacity>
+        ) : <View style={{ width: 32 }} />}
       </View>
 
       <KeyboardSafeView style={styles.container}>

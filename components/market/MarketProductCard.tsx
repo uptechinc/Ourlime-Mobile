@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
-import { Heart, ImageIcon, MapPin, ShoppingBag, Star, Truck } from 'lucide-react-native';
+import { Image, Pressable, Share, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import { Heart, ImageIcon, MapPin, Share2, ShoppingBag, Star, Truck } from 'lucide-react-native';
+import { deepLinkService } from '@/lib/services/DeepLinkService';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import type { MarketProduct } from '@/lib/types/reliability';
 import { formatMarketPrice } from '@/lib/utils/formatMarketPrice';
@@ -30,6 +31,14 @@ export default function MarketProductCard({ product, favorite, onOpen, onToggleF
   const styles = useMemo(() => createStyles(colors), [colors]);
   const handleFavorite = (event: GestureResponderEvent) => { event.stopPropagation(); onToggleFavorite(product.id); };
   const handleQuickAdd = (event: GestureResponderEvent) => { event.stopPropagation(); onQuickAdd(product); };
+  // Web MarketProductCard share button: the listing's ourlime.com link.
+  const handleShare = (event: GestureResponderEvent) => {
+    event.stopPropagation();
+    void Share.share({ message: `${product.title}
+${deepLinkService.getMarketProductShareUrl(product.id)}` }).catch((error: unknown) => {
+      console.warn('[MarketProductCard.handleShare] Error:', error instanceof Error ? error.message : error);
+    });
+  };
   const condition = product.condition?.replace('_', ' ');
   const isList = layout === 'list';
   return <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.title}`} onPress={() => onOpen(product)} style={isList ? styles.listCard : styles.card} android_ripple={{ color: colors.control }}>
@@ -37,6 +46,9 @@ export default function MarketProductCard({ product, favorite, onOpen, onToggleF
       {product.images[0] ? <Image source={{ uri: product.images[0] }} resizeMode="cover" style={styles.image} /> : <View style={styles.imageFallback}><ImageIcon color={colors.mutedText} size={28} /><Text style={styles.fallbackText}>Image unavailable</Text></View>}
       <Pressable accessibilityRole="button" accessibilityLabel={favorite ? `Remove ${product.title} from favorites` : `Save ${product.title} to favorites`} onPress={handleFavorite} hitSlop={8} style={styles.favoriteButton}>
         <Heart size={19} color={favorite ? '#dc2626' : colors.text} fill={favorite ? '#dc2626' : 'transparent'} />
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Share ${product.title}`} onPress={handleShare} hitSlop={8} style={[styles.favoriteButton, styles.shareButton]}>
+        <Share2 size={17} color={colors.text} />
       </Pressable>
       {product.isOnSale ? <View style={styles.saleBadge}><Text style={styles.saleText}>SALE</Text></View> : null}
       {!product.available ? <View style={styles.unavailableBadge}><Text style={styles.unavailableText}>Unavailable</Text></View> : null}
@@ -69,6 +81,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   image: { width: '100%', height: '100%' },
   imageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
   fallbackText: { color: colors.mutedText, fontSize: 11 },
+  shareButton: { top: 55 },
   favoriteButton: { position: 'absolute', right: 9, top: 9, width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.elevated, borderWidth: 1, borderColor: colors.border },
   saleBadge: { position: 'absolute', left: 9, top: 9, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#dc2626' },
   saleText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },

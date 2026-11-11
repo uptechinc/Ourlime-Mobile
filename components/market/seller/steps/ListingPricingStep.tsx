@@ -34,6 +34,15 @@ export default function ListingPricingStep({ editor }: { editor: MarketListingEd
   const [colorText, setColorText] = useState('');
   const [sizeText, setSizeText] = useState('');
   const [optionError, setOptionError] = useState<string | null>(null);
+  // Web PricingDetails bulk edit: one price / stock applied to every combination at once.
+  const [bulkPrice, setBulkPrice] = useState<number | null>(null);
+  const [bulkQuantity, setBulkQuantity] = useState<number | null>(null);
+  const handleApplyToAll = () => {
+    form.variants.forEach((variant) => updateVariant(variant.id, {
+      ...(bulkPrice !== null ? { price: bulkPrice } : {}),
+      ...(bulkQuantity !== null ? { quantity: bulkQuantity } : {}),
+    }));
+  };
 
   const addColor = (name: string, baseId: string) => {
     setOptionError(null);
@@ -96,6 +105,16 @@ export default function ListingPricingStep({ editor }: { editor: MarketListingEd
     </ListingSection>
 
     <ListingSection title={`Variant pricing (${form.variants.length})`} description="Price must be above 0 and at most 100,000; stock is a whole number. Turn off a variant to stop selling it.">
+      {form.variants.length > 1 ? <View style={local.variant}>
+        <Text style={local.variantTitle}>Apply to all {form.variants.length} variants</Text>
+        <View style={styles.row}>
+          <View style={styles.flex}><SellerNumberField label={`Price (${form.currency || '—'})`} allowEmpty value={bulkPrice} onChangeValue={setBulkPrice} /></View>
+          <View style={styles.flex}><SellerNumberField label="Stock" isInteger allowEmpty value={bulkQuantity} onChangeValue={setBulkQuantity} /></View>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: bulkPrice === null && bulkQuantity === null }} disabled={bulkPrice === null && bulkQuantity === null} onPress={handleApplyToAll} style={[local.addButton, { alignItems: 'center' }, bulkPrice === null && bulkQuantity === null ? { opacity: 0.5 } : null]}>
+          <Text style={local.addText}>Apply to all</Text>
+        </Pressable>
+      </View> : null}
       {form.variants.map((variant) => <View key={variant.id} style={[local.variant, variant.status === 'inactive' ? { opacity: 0.6 } : null]}>
         <View style={local.variantHead}>
           <Text style={local.variantTitle}>{marketListingFormService.variantLabel(form, variant)}</Text>
