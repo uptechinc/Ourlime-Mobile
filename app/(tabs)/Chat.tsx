@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { AuthService, type UserProfile } from '@/lib/services/AuthService';
-import { SkeletonChatRow } from '@/components/home/SkeletonLoaders';
+import { ChatListSkeleton } from '@/components/chat/ChatSkeletons';
 import { messagingService, type ConversationEntry } from '@/lib/messaging/MessagingService';
 import { simpleChatMessageService } from '@/lib/services/SimpleChatMessageService';
 import { conversationResourceService } from '@/lib/services/ConversationResourceService';
@@ -490,13 +490,7 @@ export default function ChatTabScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
       >
         {isLoading ? (
-          <View>
-            <SkeletonChatRow />
-            <SkeletonChatRow />
-            <SkeletonChatRow />
-            <SkeletonChatRow />
-            <SkeletonChatRow />
-          </View>
+          <ChatListSkeleton count={6} />
         ) : loadError && conversations.length === 0 ? (
           <View style={{ paddingVertical: 80, alignItems: 'center' }}>
             <Feather name="alert-triangle" size={36} color="#c64d53" />

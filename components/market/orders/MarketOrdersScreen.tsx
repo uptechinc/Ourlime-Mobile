@@ -8,7 +8,7 @@ import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { marketOrderService } from '@/lib/services/MarketOrderService';
 import type { MarketOrder, MarketOrderStatus } from '@/lib/types/reliability';
 import { formatMarketPrice } from '@/lib/utils/formatMarketPrice';
-import { MarketplaceSkeleton } from '@/components/ui/Skeleton';
+import { MarketOrdersSkeleton } from '../MarketSkeletons';
 import { MarketButton } from '../MarketFormModal';
 import WriteReviewModal from '../reviews/WriteReviewModal';
 
@@ -73,7 +73,7 @@ export default function MarketOrdersScreen() {
       {!ownerId ? <View style={styles.empty}><Package size={42} color={colors.mutedText} /><Text style={styles.emptyTitle}>Sign in to View Orders</Text><MarketButton label="Sign In" onPress={() => router.push('/(auth)/login')} /></View> : null}
       {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
       {error ? <Pressable accessibilityRole="button" onPress={() => void load()} style={styles.errorBox}><Text style={{ color: colors.destructiveText }}>{error} Tap to retry.</Text></Pressable> : null}
-      {ownerId && loading && !orders.length ? <MarketplaceSkeleton /> : null}
+      {ownerId && loading && !orders.length ? <MarketOrdersSkeleton /> : null}
       {ownerId && !loading && !error && !orders.length ? <View style={styles.empty}>
         <Package size={46} color={colors.mutedText} />
         <Text style={styles.emptyTitle}>No orders placed yet</Text>

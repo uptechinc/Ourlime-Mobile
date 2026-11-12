@@ -14,6 +14,7 @@ import Animated from 'react-native-reanimated';
 import { X, Send, Heart, CornerDownRight, Edit2, Trash2, Smile, ChevronDown, Flag } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import UserAvatar from '@/components/ui/UserAvatar';
+import { Skeleton, SkeletonCircle } from '@/components/ui/Skeleton';
 import { dispatchMentionNotifications } from '@/lib/services/dispatchMentionNotifications';
 import { AuthService } from '@/lib/services/AuthService';
 import { limeService } from '@/lib/services/LimeService';
@@ -99,15 +100,29 @@ function safeParse(raw: unknown): LimeComment | null {
   }
 }
 
-function CommentSkeletonRow() {
-  const { colors } = useAppTheme();
+/** Mirrors renderComment: avatar 36, "@user · time" meta row, 13/18 content, Like / Reply actions. */
+function CommentSkeletonRow({ contentWidth }: { contentWidth: `${number}%` }) {
   return (
-    <View style={styles.skeletonRow}>
-      <View style={[styles.skeletonAvatar, { backgroundColor: colors.control }]} />
-      <View style={{ flex: 1, gap: 6 }}>
-        <View style={[styles.skeletonName, { backgroundColor: colors.control }]} />
-        <View style={[styles.skeletonText, { backgroundColor: colors.input }]} />
-        <View style={[styles.skeletonMeta, { backgroundColor: colors.control }]} />
+    <View style={styles.commentItem}>
+      <SkeletonCircle size={36} />
+      <View style={styles.commentBody}>
+        <View style={[styles.commentMetaRow, { height: 16 }]}>
+          <Skeleton width={92} height={11} borderRadius={4} />
+          <Skeleton width={28} height={9} borderRadius={4} />
+        </View>
+        <View style={{ height: 18, justifyContent: 'center' }}>
+          <Skeleton width={contentWidth} height={11} borderRadius={4} />
+        </View>
+        <View style={styles.actionsRow}>
+          <View style={styles.actionBtn}>
+            <Skeleton width={14} height={14} borderRadius={7} />
+            <Skeleton width={22} height={9} borderRadius={4} />
+          </View>
+          <View style={styles.actionBtn}>
+            <Skeleton width={14} height={14} borderRadius={4} />
+            <Skeleton width={28} height={9} borderRadius={4} />
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -710,10 +725,10 @@ export default function CommentModal({
           {/* Content */}
           {loading && comments.length === 0 ? (
             <View style={styles.skeletonContainer}>
-              <CommentSkeletonRow />
-              <CommentSkeletonRow />
-              <CommentSkeletonRow />
-              <CommentSkeletonRow />
+              <CommentSkeletonRow contentWidth="88%" />
+              <CommentSkeletonRow contentWidth="64%" />
+              <CommentSkeletonRow contentWidth="78%" />
+              <CommentSkeletonRow contentWidth="52%" />
             </View>
           ) : rootComments.length === 0 ? (
             <View style={styles.emptyBox}>
@@ -936,36 +951,6 @@ const styles = StyleSheet.create({
   skeletonContainer: {
     flex: 1,
     paddingTop: 12,
-  },
-  skeletonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 18,
-    paddingHorizontal: 4,
-  },
-  skeletonAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#f1f5f9',
-  },
-  skeletonName: {
-    width: 120,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#f1f5f9',
-  },
-  skeletonText: {
-    width: '85%',
-    height: 14,
-    borderRadius: 6,
-    backgroundColor: '#f8fafc',
-  },
-  skeletonMeta: {
-    width: '40%',
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#f1f5f9',
   },
   emptyBox: {
     flex: 1,

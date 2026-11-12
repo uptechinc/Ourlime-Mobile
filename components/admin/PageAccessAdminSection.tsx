@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
+import { PageAccessSectionSkeleton } from '@/components/admin/AdminSkeletons';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import {
 	adminPageAccessService,
@@ -276,15 +277,7 @@ export default function PageAccessAdminSection() {
 		}
 	};
 
-	if (loading)
-		return (
-			<View style={{ paddingVertical: 70, alignItems: 'center' }}>
-				<ActivityIndicator color="#10b981" />
-				<Text style={{ marginTop: 10, color: colors.mutedText }}>
-					Loading page access settings…
-				</Text>
-			</View>
-		);
+	if (loading) return <PageAccessSectionSkeleton />;
 
 	return (
 		<View style={{ flex: 1 }}>

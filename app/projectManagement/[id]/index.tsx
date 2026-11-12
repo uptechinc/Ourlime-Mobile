@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
 import PageHeader from '@/components/ui/PageHeader';
-import { ProjectBoardSkeleton } from '@/components/ui/Skeleton';
+import { ProjectBoardSkeleton } from '@/components/projectManagement/ProjectSkeletons';
 import CustomModal from '@/components/ui/CustomModal';
 import ProjectBoardSidebar from '@/components/projectManagement/ProjectBoardSidebar';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
@@ -415,7 +415,7 @@ export default function ProjectBoardScreen() {
     return (
       <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
         <PageHeader title="Project Details" onBackPress={() => router.back()} />
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+        <ScrollView showsVerticalScrollIndicator={false}>
           <ProjectBoardSkeleton />
         </ScrollView>
       </SafeAreaView>

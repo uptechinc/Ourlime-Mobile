@@ -8,7 +8,7 @@ import { PostService, type PostItem } from '@/lib/services/PostService';
 import PostCardSection from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection';
 import PollCardSection from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PollCardSection';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
-import { FeedSkeleton } from '@/components/ui/Skeleton';
+import { SkeletonPostCard } from '@/components/home/SkeletonLoaders';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const postService = PostService.getInstance();
@@ -65,8 +65,8 @@ export default function PostScreen() {
         <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginLeft: 10 }}>Post</Text>
       </View>
       {loading ? (
-        <ScrollView contentContainerStyle={{ padding: 16 }} showsVerticalScrollIndicator={false}>
-          <FeedSkeleton />
+        <ScrollView contentContainerStyle={{ padding: 16 }} showsVerticalScrollIndicator={false} scrollEnabled={false}>
+          <SkeletonPostCard />
         </ScrollView>
       ) : error || !post ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}>

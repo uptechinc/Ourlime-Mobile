@@ -94,7 +94,7 @@ export default function LimesTab({ userId, refreshKey }: LimesTabProps) {
   };
 
   if (isLoading) {
-    return <LimeGridSkeleton count={4} />;
+    return <LimeGridSkeleton count={4} showHeader={isOwnProfile} />;
   }
 
   return (

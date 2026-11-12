@@ -18,7 +18,7 @@ import {
   Search,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { CxcHubSkeleton } from '@/components/ui/Skeleton';
+import { CxcHubContentSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { courseService } from '@/lib/services/CourseService';
 import type { CxcSubject } from '@/lib/types/course';
 
@@ -79,7 +79,7 @@ export default function CxcStudyCenterScreen() {
           </View>
         </View>
 
-        {loading ? <CxcHubSkeleton /> : null}
+        {loading ? <CxcHubContentSkeleton /> : null}
         {error ? <Text style={[styles.sectionTitle, { color: colors.destructiveText }]}>{error}</Text> : null}
         {!loading && !error && subjects.length === 0 ? <View style={[styles.papersContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}><Text style={[styles.sectionTitle, { color: colors.text }]}>No CXC resources published</Text><Text style={{ color: colors.mutedText }}>Subjects and papers will appear here when administrators publish them.</Text></View> : null}
 

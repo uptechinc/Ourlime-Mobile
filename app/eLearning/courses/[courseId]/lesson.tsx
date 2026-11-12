@@ -25,7 +25,7 @@ import {
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
-import { LessonScreenSkeleton } from '@/components/ui/Skeleton';
+import { LessonContentSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
 import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
 import LessonQuiz from '@/components/eLearning/LessonQuiz';
@@ -209,7 +209,7 @@ export default function LessonScreen() {
 
       {loading ? (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          <LessonScreenSkeleton />
+          <LessonContentSkeleton />
         </ScrollView>
       ) : !currentLesson ? (
         <View style={styles.centerContainer}>

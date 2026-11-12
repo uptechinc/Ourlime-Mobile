@@ -19,7 +19,7 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 import { limeThumbnailService } from '@/lib/services/LimeThumbnailService';
 
-import { LimeGridSkeleton } from '@/components/limes/LimeCardSkeleton';
+import { ProfileRepostsSkeleton } from '@/components/profile/ProfileTabSkeletons';
 
 type ProfileRepostsTabProps = {
   userId: string;
@@ -109,7 +109,7 @@ export default function ProfileRepostsTab({ userId, refreshKey }: ProfileReposts
   const totalCount = repostedPosts.length + repostedLimes.length;
 
   if (isLoading) {
-    return <LimeGridSkeleton count={4} />;
+    return <ProfileRepostsSkeleton />;
   }
 
   return (

@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PageHeader from '@/components/ui/PageHeader';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
-import { ApplicationsSkeleton } from '@/components/ui/Skeleton';
+import { ApplicationsSkeleton } from '@/components/jobs/JobsSkeletons';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import { jobApplicationService, type JobApplicationStatus, type MyJobApplication } from '@/lib/services/JobApplicationService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';

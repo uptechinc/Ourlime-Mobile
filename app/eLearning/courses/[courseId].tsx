@@ -36,7 +36,7 @@ import LessonTypeIcon from '@/components/eLearning/course/LessonTypeIcon';
 import { formatDate, lessonHref, pluralize } from '@/components/eLearning/course/workspaceHelpers';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { CourseDetailSkeleton } from '@/components/ui/Skeleton';
+import { CourseDetailPageSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
 import { useCourseWorkspace } from '@/lib/hooks/useCourseWorkspace';
@@ -163,9 +163,7 @@ export default function CourseDetailScreen() {
       </View>
 
       {loading ? (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          <CourseDetailSkeleton />
-        </ScrollView>
+        <CourseDetailPageSkeleton />
       ) : !course ? (
         <View style={styles.centerContainer}>
           <Text style={[styles.errorText, { color: colors.text }]}>{loadError ?? 'Course not found.'}</Text>

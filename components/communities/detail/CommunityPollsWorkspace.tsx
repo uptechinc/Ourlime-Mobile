@@ -22,7 +22,7 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { CommunityPoll } from '@/lib/types/community';
 import type { ResourceState } from '@/lib/types/resourceState';
 import CustomModal from '@/components/ui/CustomModal';
-import { FeedSkeleton } from '@/components/ui/Skeleton';
+import { CommunityPollsWorkspaceSkeleton } from './CommunityWorkspaceSkeletons';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
@@ -100,11 +100,7 @@ export default function CommunityPollsWorkspace({
 		!resource.data &&
 		(resource.status === 'hydrating' || resource.status === 'idle')
 	)
-		return (
-			<View style={{ margin: 16 }}>
-				<FeedSkeleton />
-			</View>
-		);
+		return <CommunityPollsWorkspaceSkeleton canCreate={canCreate} />;
 	if (!resource.data && resource.status === 'error')
 		return (
 			<View style={{ padding: 28, alignItems: 'center' }}>

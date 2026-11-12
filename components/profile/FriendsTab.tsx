@@ -3,6 +3,7 @@ import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View 
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import UserAvatar from '@/components/ui/UserAvatar';
+import { FriendRowsSkeleton } from '@/components/profile/ProfileTabSkeletons';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { relationshipResourceService } from '@/lib/services/RelationshipResourceService';
 import { useRelationshipHub } from '@/lib/hooks/useRelationshipHub';
@@ -101,7 +102,7 @@ export default function FriendsTab({ userId }: FriendsTabProps) {
         <Ionicons name="search-outline" size={18} color={colors.mutedText} />
         <TextInput value={search} onChangeText={setSearch} placeholder={`Search ${section}`} placeholderTextColor={colors.mutedText} style={{ flex: 1, color: colors.text, paddingVertical: 12 }} />
       </View>
-      {resource.data === null && (resource.status === 'hydrating' || resource.status === 'idle') ? <View style={{ alignItems: 'center', paddingVertical: 28 }}><ActivityIndicator color="#10b981" /></View> : resource.error && resource.data === null ? <View style={{ margin: 16, alignItems: 'center', padding: 20, borderRadius: 18, backgroundColor: colors.surface }}><Text style={{ color: '#ef4444', textAlign: 'center', fontWeight: '700' }}>{resource.error.message}</Text><Action label="Retry" primary onPress={() => void refresh()} /></View> : visibleItems.length > 0 ? <View style={{ paddingHorizontal: 16, gap: 9 }}>{visibleItems.map((item) => {
+      {resource.data === null && (resource.status === 'hydrating' || resource.status === 'idle') ? <FriendRowsSkeleton count={5} /> : resource.error && resource.data === null ? <View style={{ margin: 16, alignItems: 'center', padding: 20, borderRadius: 18, backgroundColor: colors.surface }}><Text style={{ color: '#ef4444', textAlign: 'center', fontWeight: '700' }}>{resource.error.message}</Text><Action label="Retry" primary onPress={() => void refresh()} /></View> : visibleItems.length > 0 ? <View style={{ paddingHorizontal: 16, gap: 9 }}>{visibleItems.map((item) => {
         const displayName = `${item.firstName} ${item.lastName}`.trim() || item.userName || 'Ourlime user';
         return <TouchableOpacity key={`${section}-${item.id}`} onPress={() => router.push({ pathname: '/profile/[username]', params: { username: item.userName || item.id } })} style={{ flexDirection: 'row', alignItems: 'center', gap: 11, padding: 12, borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
           <View><UserAvatar profileImage={item.profileImage} firstName={item.firstName || displayName} size={48} />{item.presence.status === 'online' ? <View style={{ position: 'absolute', right: 0, bottom: 1, width: 13, height: 13, borderRadius: 7, backgroundColor: '#10b981', borderWidth: 2, borderColor: colors.surface }} /> : null}</View>

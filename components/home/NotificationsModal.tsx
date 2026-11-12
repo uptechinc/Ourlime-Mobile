@@ -21,7 +21,7 @@ import { useNotifications } from '@/lib/contexts/NotificationContext';
 import { notificationHelpers } from '@/lib/helpers/notificationHelpers';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { AuthService } from '@/lib/services/AuthService';
-import { SkeletonNotificationRow } from './SkeletonLoaders';
+import { SkeletonNotificationRow, SkeletonNotificationSectionHeader } from './SkeletonLoaders';
 import type { NotificationData } from '@/lib/types/notification';
 import { NotificationService } from '@/lib/services/NotificationService';
 import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
@@ -872,6 +872,8 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
           removeClippedSubviews
           ListEmptyComponent={isLoading ? (
             <View>
+              <SkeletonNotificationSectionHeader />
+              <SkeletonNotificationRow />
               <SkeletonNotificationRow />
               <SkeletonNotificationRow />
               <SkeletonNotificationRow />

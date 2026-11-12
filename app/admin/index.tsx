@@ -7,7 +7,7 @@ import {
 	ScrollView,
 	StyleSheet,
 } from 'react-native';
-import { AdminOverviewSkeleton } from '@/components/ui/Skeleton';
+import { AdminOverviewSkeleton } from '@/components/admin/AdminSkeletons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
@@ -166,7 +166,7 @@ export default function AdminPortalScreen() {
 			</View>
 
 			{accessLoading ? (
-				<AdminOverviewSkeleton />
+				<AdminOverviewSkeleton withSectionTabs />
 			) : !authorization.isAdmin ? (
 				<View style={styles.center}>
 					<Icon name="lock" size={38} color="#c64d53" />

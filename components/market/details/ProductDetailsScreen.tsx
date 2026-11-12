@@ -12,7 +12,7 @@ import { deepLinkService } from '@/lib/services/DeepLinkService';
 import { marketListingDetailService } from '@/lib/services/MarketListingDetailService';
 import type { MarketContactItem, MarketProduct, MarketVariant } from '@/lib/types/reliability';
 import { formatMarketPrice } from '@/lib/utils/formatMarketPrice';
-import { MarketplaceSkeleton } from '@/components/ui/Skeleton';
+import { ProductDetailsSkeleton } from '../MarketSkeletons';
 import ReportPostModal from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ReportPostModal';
 import ListingDiscussion from '../ListingDiscussion';
 import MarketProductCard from '../MarketProductCard';
@@ -124,7 +124,7 @@ export default function ProductDetailsScreen({ productId }: ProductDetailsScreen
     return <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
       {header}
       {detail.productError ? <View style={styles.empty}><ShoppingBag color={colors.mutedText} size={42} /><Text style={styles.emptyTitle}>Listing unavailable</Text><Text style={styles.emptyText}>{detail.productError}</Text><Pressable onPress={() => router.replace('/market')} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Back to Market</Text></Pressable></View>
-        : <View style={{ padding: 14 }}><MarketplaceSkeleton /></View>}
+        : <ProductDetailsSkeleton />}
     </SafeAreaView>;
   }
 

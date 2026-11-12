@@ -15,7 +15,7 @@ import { projectService } from '@/lib/services/ProjectService';
 import type { ProjectRecord, ProjectRole, ProjectStatus } from '@/lib/types/project';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import SessionRetryBanner from '@/components/projectManagement/SessionRetryBanner';
-import { ProjectManagementSkeleton } from '@/components/ui/Skeleton';
+import { ProjectManagementSkeleton } from '@/components/projectManagement/ProjectSkeletons';
 import { useProjectsResource } from '@/lib/hooks/useProjectsResource';
 
 type SortKey = 'activity' | 'name' | 'progress' | 'created';

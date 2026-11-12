@@ -12,6 +12,7 @@ import { AuthService } from '@/lib/services/AuthService';
 import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
+import { SkeletonLikeUserRow } from '@/components/home/SkeletonLoaders';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 
 type LikesModalProps = { visible: boolean; postId: string; origin: PostOrigin; onClose: () => void };
@@ -19,6 +20,7 @@ type LikesModalProps = { visible: boolean; postId: string; origin: PostOrigin; o
 const postService = PostService.getInstance();
 const relationshipService = RelationshipService.getInstance();
 const authService = AuthService.getInstance();
+const LIKE_SKELETON_ROWS = ['like-skeleton-1', 'like-skeleton-2', 'like-skeleton-3', 'like-skeleton-4', 'like-skeleton-5'] as const;
 
 export default function LikesModal({ visible, postId, origin, onClose }: LikesModalProps) {
   const router = useRouter();
@@ -123,7 +125,12 @@ export default function LikesModal({ visible, postId, origin, onClose }: LikesMo
             </View>
           ))}
           {!loading && users.length === 0 ? <View style={styles.empty}><Icon name="heart" size={38} color={colors.disabledText} /><Text style={styles.emptyText}>No likes yet</Text></View> : null}
-          {loading ? <ActivityIndicator style={styles.loader} color={colors.accent} /> : null}
+          {loading && users.length === 0 ? (
+            <View accessibilityLabel="Loading likes">
+              {LIKE_SKELETON_ROWS.map((rowId) => <SkeletonLikeUserRow key={rowId} />)}
+            </View>
+          ) : null}
+          {loading && users.length > 0 ? <ActivityIndicator style={styles.loader} color={colors.accent} /> : null}
           {hasMore && !loading ? <TouchableOpacity onPress={() => void load(cursor)} style={styles.loadMore}><Text style={styles.loadMoreText}>Load more</Text></TouchableOpacity> : null}
         </ScrollView>
       </SafeAreaView>

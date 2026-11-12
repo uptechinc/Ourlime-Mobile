@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { MessageSquare, ShieldCheck, Star } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { ProductReviewsSkeleton } from '../MarketSkeletons';
 import { marketReviewService } from '@/lib/services/MarketReviewService';
 import type { MarketReview } from '@/lib/types/reliability';
 import WriteReviewModal from './WriteReviewModal';
@@ -50,7 +51,7 @@ export default function ProductReviewsSection({ productId, productTitle, reviews
         <Text style={{ width: 28, textAlign: 'right', color: colors.mutedText, fontSize: 12, fontWeight: '700' }}>{starCount}</Text>
       </View>)}
     </View> : null}
-    {loading ? <Text style={{ color: colors.mutedText }}>Loading reviews…</Text> : null}
+    {loading && !reviews.length ? <ProductReviewsSkeleton /> : null}
     {error ? <Pressable accessibilityRole="button" onPress={onRetry} style={{ padding: 12, borderRadius: 12, backgroundColor: colors.destructiveSurface }}><Text style={{ color: colors.destructiveText }}>{error} Tap to retry.</Text></Pressable> : null}
     {!loading && !error && !reviews.length ? <View style={{ paddingVertical: 26, alignItems: 'center', gap: 6, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border }}>
       <MessageSquare size={30} color={colors.mutedText} />

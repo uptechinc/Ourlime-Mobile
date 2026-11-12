@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import PageHeader from '@/components/ui/PageHeader';
 import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
 import FilterBar from '@/components/ui/FilterBar';
-import { JobManagementSkeleton } from '@/components/ui/Skeleton';
+import { JobManagementSkeleton } from '@/components/jobs/JobsSkeletons';
 import { JobManagementAuditSheet, JobManagementEditSheet, JobManagementInterviewSheet, JobManagementNotesSheet } from '@/components/jobs/manage/JobManagementSheets';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import {

@@ -4,7 +4,6 @@ import { Building2, Check, Heart, MapPin, Package, Send, Share2, ShieldCheck, Sh
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
 import CachedImage from '@/components/ui/CachedImage';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useEHubProduct } from '@/lib/hooks/useEHub';
 import { getEHubTermsRoute } from '@/lib/services/EHubService';
@@ -12,6 +11,7 @@ import { getEHubCurrentPrice, normalizeEHubSalePrice } from '@/lib/services/EHub
 import { useEHubCommerce } from '@/lib/hooks/useEHubCommerce';
 import { EHubCartSheet, EHubHeaderActions } from '@/components/ehub/EHubCommerceParts';
 import { EHubEmptyState, EHubNotice, EHubProductCard, formatEHubPrice, useEHubLayout } from '@/components/ehub/EHubParts';
+import { EHubProductDetailSkeleton } from '@/components/ehub/EHubSkeletons';
 import type { EHubCatalogProduct } from '@/lib/types/ehubDiscovery';
 
 type OptionGroupProps = { label: string; values: string[]; selectedValue: string; onSelect: (value: string) => void };
@@ -75,7 +75,7 @@ export default function EHubProductDetailScreen() {
 
   const header = <PageHeader title={detail?.product.title ?? 'Product'} onBackPress={() => router.back()} rightComponent={<EHubHeaderActions onOpenCart={() => setIsCartOpen(true)} />} />;
   if (resource.isLoading && !detail) {
-    return <View style={styles.screen}>{header}<View style={[styles.body, { width: layout.contentWidth }]}><Skeleton width={layout.isWide ? layout.innerWidth / 2 : layout.innerWidth} height={layout.isWide ? layout.innerWidth / 2 : layout.innerWidth} borderRadius={24} /><Skeleton height={28} width="70%" /><Skeleton height={120} borderRadius={20} /></View></View>;
+    return <View style={styles.screen}>{header}<EHubProductDetailSkeleton /></View>;
   }
   if (!detail) {
     return <View style={styles.screen}>{header}<View style={[styles.body, { width: layout.contentWidth }]}>

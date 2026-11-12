@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CheckCircle2, ChevronDown, ChevronRight, Circle } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
 import CustomModal from '@/components/ui/CustomModal';
-import { CourseDetailSkeleton } from '@/components/ui/Skeleton';
+import { CourseModulesSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import LessonTypeIcon from '@/components/eLearning/course/LessonTypeIcon';
 import ModuleResources from '@/components/eLearning/course/ModuleResources';
 import WorkspaceScreenState from '@/components/eLearning/course/WorkspaceScreenState';
@@ -39,7 +39,7 @@ export default function CourseModulesScreen() {
     <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="Modules" onBackPress={() => router.back()} />
       {loading ? (
-        <ScrollView contentContainerStyle={styles.padded}><CourseDetailSkeleton /></ScrollView>
+        <ScrollView contentContainerStyle={styles.scroll}><CourseModulesSkeleton /></ScrollView>
       ) : !workspace || !isActiveEnrollment(enrollment) ? (
         <WorkspaceScreenState message={error ?? 'Enroll in this course to see its modules.'} actionLabel="Back to course" onAction={() => router.replace(courseHref(id))} />
       ) : (
@@ -95,7 +95,6 @@ export default function CourseModulesScreen() {
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
-  padded: { padding: 16 },
   scroll: { padding: 16, gap: 12, paddingBottom: 40 },
   title: { color: colors.text, fontSize: 22, fontWeight: '900' },
   muted: { color: colors.mutedText, fontSize: 13 },

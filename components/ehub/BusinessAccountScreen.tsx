@@ -5,7 +5,6 @@ import { Building2, Lock, Save, Star, Store } from 'lucide-react-native';
 import { useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useBusinessAccount } from '@/lib/hooks/useBusinessAccount';
@@ -13,6 +12,7 @@ import { businessAccountService } from '@/lib/services/BusinessAccountService';
 import type { BusinessAccountForm } from '@/lib/types/businessAccount';
 import { EHubEmptyState, EHubNotice, useEHubLayout } from '@/components/ehub/EHubParts';
 import { SellerButton, SellerChipField, SellerTextField } from '@/components/ehub/EHubSellerFormParts';
+import { BusinessAccountSkeleton } from '@/components/ehub/EHubSkeletons';
 
 /**
  * The website's /profile/business-account: request a business account, then edit its name, description,
@@ -57,7 +57,7 @@ export default function BusinessAccountScreen() {
   const header = <PageHeader title="Business account" onBackPress={() => router.back()} />;
   if (!profile) {
     return <View style={styles.screen}>{header}<View style={[styles.body, { width: layout.contentWidth }]}>
-      {profileLoading ? <Skeleton height={220} borderRadius={22} /> : <EHubEmptyState icon={<Lock size={38} color={colors.mutedText} />} title="Sign in to manage your business" actionLabel="Sign in" onAction={() => router.push('/(auth)/login')} />}
+      {profileLoading ? <BusinessAccountSkeleton /> : <EHubEmptyState icon={<Lock size={38} color={colors.mutedText} />} title="Sign in to manage your business" actionLabel="Sign in" onAction={() => router.push('/(auth)/login')} />}
     </View></View>;
   }
 
@@ -71,7 +71,7 @@ export default function BusinessAccountScreen() {
           <View style={[styles.body, { width: layout.contentWidth }]}>
             {business.error ? <EHubNotice tone="error" text={business.error} actionLabel={account ? undefined : 'Try again'} onAction={account ? undefined : () => void business.refresh()} /> : null}
             {savedNotice ? <EHubNotice tone="success" text={savedNotice} /> : null}
-            {business.isLoading ? <><Skeleton height={140} borderRadius={22} /><Skeleton height={320} borderRadius={22} /></>
+            {business.isLoading ? <BusinessAccountSkeleton />
               : !account ? (business.error ? null : <View style={styles.card}>
                 <View style={styles.iconCircle}><Building2 size={30} color={colors.accentText} /></View>
                 <Text style={styles.title}>Upgrade to Business Account</Text>

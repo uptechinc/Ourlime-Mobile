@@ -6,7 +6,6 @@ import {
   RefreshControl,
   TouchableOpacity,
   StatusBar,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +24,7 @@ import ProfileRepostsTab from '@/components/profile/ProfileRepostsTab';
 import AboutTab from '@/components/profile/AboutTab';
 import GalleryTab from '@/components/profile/GalleryTab';
 import ProfileSkeleton from '@/components/profile/ProfileSkeleton';
+import { DeletedPostCardsSkeleton } from '@/components/profile/ProfileTabSkeletons';
 import CachedImage from '@/components/ui/CachedImage';
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { profileResourceService } from '@/lib/services/ProfileResourceService';
@@ -310,7 +310,7 @@ export default function UserProfileScreen() {
       </View>
 
       {isLoading ? (
-        <ProfileSkeleton />
+        <ProfileSkeleton variant="public" />
       ) : !profile ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
           <Ionicons name="person-circle-outline" size={52} color="#94a3b8" />
@@ -524,10 +524,7 @@ export default function UserProfileScreen() {
                 </View>
 
                 {deletedPostsLoading ? (
-                  <View style={{ padding: 30, alignItems: 'center' }}>
-                    <ActivityIndicator color={colors.accent} />
-                    <Text style={{ color: colors.mutedText, fontSize: 12, marginTop: 8 }}>Loading deleted posts...</Text>
-                  </View>
+                  <DeletedPostCardsSkeleton count={2} />
                 ) : deletedPosts.length === 0 ? (
                   <View style={{ padding: 36, alignItems: 'center', backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
                     <Ionicons name="checkmark-circle-outline" size={40} color="#10b981" />

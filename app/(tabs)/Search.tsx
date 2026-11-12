@@ -16,7 +16,7 @@ import { useRouter } from 'expo-router';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { SearchService } from '@/lib/services/SearchService';
 import type { UserProfile } from '@/lib/services/AuthService';
-import { SkeletonChatRow } from '@/components/home/SkeletonLoaders';
+import { SkeletonSearchResults } from '@/components/home/SkeletonLoaders';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { AuthService } from '@/lib/services/AuthService';
@@ -223,11 +223,7 @@ export default function SearchScreen() {
         }
       >
         {isSearching ? (
-          <View style={{ paddingTop: 8 }}>
-            <SkeletonChatRow />
-            <SkeletonChatRow />
-            <SkeletonChatRow />
-          </View>
+          <SkeletonSearchResults />
         ) : searchQuery.trim().length === 0 ? (
           <View style={{ paddingVertical: 60, alignItems: 'center' }}>
             <Ionicons name="compass-outline" size={48} color={colors.icon} />

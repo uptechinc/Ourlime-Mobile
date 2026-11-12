@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactElement } from 'react';
 import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,7 +14,7 @@ import { useLearningOverview } from '@/lib/hooks/useLearningOverview';
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { AuthService } from '@/lib/services/AuthService';
 import { COURSE_MAIN_CATEGORIES, getSubcategories } from '@/lib/constants/courseCategories';
-import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
+import { ELearningHomeContentSkeleton, ELearningInlineStatsSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import type { Course, CourseAnnouncement, InstructorProfile } from '@/lib/types/course';
 
 /** Web app/eLearning/page.tsx as it renders on a phone: welcome card, hero + search, course updates, tabbed materials. */
@@ -139,7 +138,7 @@ export default function ELearningScreen() {
                     <InlineStat value={data.stats.totalLearners.toLocaleString()} label="Learners" styles={styles} />
                     <InlineStat value={data.stats.averageRating.toFixed(1)} label="Avg rating" styles={styles} />
                   </View>
-                ) : <Skeleton width={180} height={34} />}
+                ) : <ELearningInlineStatsSkeleton />}
                 {!loading && !isInstructor ? (
                   <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/eLearning/instructor' as Href)} style={styles.becomeInstructor}>
                     <GraduationCap size={16} color="#ffffff" />
@@ -179,7 +178,7 @@ export default function ELearningScreen() {
             </View>
           </View>
 
-          {loading ? <LoadingCards styles={styles} /> : null}
+          {loading ? <ELearningHomeContentSkeleton /> : null}
           {!loading && error ? (
             <View style={styles.errorCard}>
               <Text style={styles.cardTitle}>E-Learning could not load</Text>
@@ -408,30 +407,6 @@ function TutorList({ instructors, showAll, onToggleShowAll, styles, colors }: Tu
         </TouchableOpacity>
       ) : null}
     </View>
-  );
-}
-
-type LoadingCardsProps = { styles: Styles };
-function LoadingCards({ styles }: LoadingCardsProps): ReactElement {
-  return (
-    <>
-      <View style={styles.card}>
-        <Skeleton width={160} height={18} />
-        <SkeletonText lines={2} lineHeight={12} />
-      </View>
-      <View style={styles.chipRow}>
-        <Skeleton width={150} height={36} borderRadius={18} />
-        <Skeleton width={110} height={36} borderRadius={18} />
-        <Skeleton width={90} height={36} borderRadius={18} />
-      </View>
-      {[1, 2].map((item) => (
-        <View key={item} style={styles.card}>
-          <Skeleton width="100%" height={128} borderRadius={12} />
-          <Skeleton width="80%" height={16} />
-          <Skeleton width="40%" height={12} />
-        </View>
-      ))}
-    </>
   );
 }
 

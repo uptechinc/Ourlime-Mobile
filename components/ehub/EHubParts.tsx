@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-na
 import { ArrowRight, BriefcaseBusiness, CheckCircle2, Heart, MapPin, Package, SlidersHorizontal, Star, Store } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import CachedImage from '@/components/ui/CachedImage';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useEHubCommerce } from '@/lib/hooks/useEHubCommerce';
 import { getEHubCurrentPrice, normalizeEHubSalePrice } from '@/lib/services/EHubCommerceService';
@@ -158,11 +157,6 @@ export function EHubProviderCard({ provider, width, onOpen, actionLabel = 'View 
       <View style={styles.providerAction}><Text numberOfLines={1} style={styles.providerActionText}>{actionLabel}</Text><ArrowRight size={15} color={colors.successText} /></View>
     </View>
   </Pressable>;
-}
-
-export function EHubGridSkeleton({ count, width, height }: { count: number; width: number; height: number }) {
-  const { gap } = useEHubLayout();
-  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>{Array.from({ length: count }, (_, index) => <Skeleton key={index} width={width} height={height} borderRadius={18} />)}</View>;
 }
 
 type NoticeProps = { tone: 'error' | 'warning' | 'success'; text: string; actionLabel?: string; onAction?: () => void };

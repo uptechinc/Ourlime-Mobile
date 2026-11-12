@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
@@ -8,6 +8,7 @@ import { Building2, Check, Clock, GraduationCap, Lock, ShieldAlert, ShieldCheck,
 import PageHeader from '@/components/ui/PageHeader';
 import IdentityVerificationModal from '@/components/jobs/IdentityVerificationModal';
 import { CheckRow, ChoiceChips, ErrorList, FilePickRow, FormButton, FormField, FormSection, Segmented, TagInput, ToggleRow } from '@/components/eLearning/instructor/InstructorForm';
+import { InstructorApplicationSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { COURSE_MAIN_CATEGORIES, getUniqueSubcategories } from '@/lib/constants/courseCategories';
@@ -254,17 +255,22 @@ export default function InstructorRegisterScreen() {
     );
   }
 
-  if (gate.kind === 'loading' || gate.kind === 'error') {
+  if (gate.kind === 'loading') {
+    return (
+      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
+        <PageHeader title="Become an instructor" onBackPress={() => router.back()} />
+        <InstructorApplicationSkeleton />
+      </SafeAreaView>
+    );
+  }
+
+  if (gate.kind === 'error') {
     return (
       <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
         <PageHeader title="Become an instructor" onBackPress={() => router.back()} />
         <View style={styles.center}>
-          {gate.kind === 'loading' ? <ActivityIndicator color={colors.accent} /> : (
-            <>
-              <Text style={styles.centerText}>The application could not be loaded.</Text>
-              <FormButton label="Try again" onPress={() => void loadGate()} />
-            </>
-          )}
+          <Text style={styles.centerText}>The application could not be loaded.</Text>
+          <FormButton label="Try again" onPress={() => void loadGate()} />
         </View>
       </SafeAreaView>
     );

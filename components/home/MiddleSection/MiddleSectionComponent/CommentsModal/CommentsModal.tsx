@@ -37,6 +37,7 @@ import { getLocalStickerSource } from '@/assets/images/stickers/stickerMap';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import { SkeletonCommentRow } from '@/components/home/SkeletonLoaders';
 import RichTextContent from '@/components/ui/RichTextContent';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import CommunityReportModal from '@/components/communities/CommunityReportModal';
@@ -831,11 +832,12 @@ export default function CommentsModal({
 							</View>
 
 							{loading && comments.length === 0 ? (
-								<ActivityIndicator
-									color="#10b981"
-									size="large"
-									style={{ marginTop: 60 }}
-								/>
+								<View accessibilityLabel="Loading comments">
+									<SkeletonCommentRow />
+									<SkeletonCommentRow />
+									<SkeletonCommentRow />
+									<SkeletonCommentRow />
+								</View>
 							) : null}
 							{errorMessage && comments.length === 0 ? (
 								<View style={{ alignItems: 'center', paddingVertical: 55 }}>

@@ -29,7 +29,12 @@ const GIF_CATEGORIES = [
   { label: 'Sports', query: 'sports' },
 ] as const;
 
-const GIF_SKELETON_ITEMS = ['gif-skeleton-1', 'gif-skeleton-2', 'gif-skeleton-3', 'gif-skeleton-4'] as const;
+// Two-column rows like the FlatList (numColumns 2, columnWrapperStyle gap 8, tiles flex 1 x 148).
+const GIF_SKELETON_ROWS = [
+  ['gif-skeleton-1', 'gif-skeleton-2'],
+  ['gif-skeleton-3', 'gif-skeleton-4'],
+  ['gif-skeleton-5', 'gif-skeleton-6'],
+] as const;
 
 type GifPickerModalProps = {
   visible: boolean;
@@ -134,9 +139,15 @@ export default function GifPickerModal({ visible, onClose, onSelect }: GifPicker
           </ScrollView>
           <View style={styles.resultsRegion}>
             {loading ? (
-              <View accessibilityLabel="Loading GIFs" style={[styles.grid, styles.skeletonGrid]}>
-                {GIF_SKELETON_ITEMS.map((skeletonId) => (
-                  <Skeleton key={skeletonId} height={148} borderRadius={12} style={styles.skeletonTile} />
+              <View accessibilityLabel="Loading GIFs" style={styles.grid}>
+                {GIF_SKELETON_ROWS.map((skeletonRow) => (
+                  <View key={skeletonRow[0]} style={styles.row}>
+                    {skeletonRow.map((skeletonId) => (
+                      <View key={skeletonId} style={styles.skeletonTile}>
+                        <Skeleton height={148} borderRadius={12} />
+                      </View>
+                    ))}
+                  </View>
                 ))}
               </View>
             ) : error ? (
@@ -187,8 +198,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   gifList: { flex: 1 },
   error: { color: colors.destructiveText, padding: 18 },
   grid: { paddingHorizontal: 12, paddingBottom: 28 },
-  skeletonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  skeletonTile: { width: '48.7%' },
+  skeletonTile: { flex: 1, marginBottom: 8 },
   row: { gap: 8 },
   gifButton: { flex: 1, height: 148, marginBottom: 8, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.control },
   gif: { width: '100%', height: '100%' },

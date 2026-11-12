@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Award, BookOpen, CheckCircle2, Circle, TrendingUp } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
-import { CourseDetailSkeleton } from '@/components/ui/Skeleton';
+import { CourseGradesSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
@@ -82,7 +82,7 @@ export default function CourseGradesScreen() {
     <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="Progress & grades" onBackPress={() => router.back()} />
       {isLoading ? (
-        <ScrollView contentContainerStyle={styles.padded}><CourseDetailSkeleton /></ScrollView>
+        <ScrollView contentContainerStyle={styles.scroll}><CourseGradesSkeleton /></ScrollView>
       ) : !enrollment ? (
         <View style={styles.center}>
           <Text style={styles.centerText}>{error ?? 'Enroll in this course to track your progress and grades.'}</Text>
@@ -155,7 +155,6 @@ export default function CourseGradesScreen() {
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
-  padded: { padding: 16 },
   scroll: { alignItems: 'center', paddingBottom: 40 },
   column: { padding: 16, gap: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },

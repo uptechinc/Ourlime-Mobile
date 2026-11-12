@@ -6,7 +6,7 @@ import {
 	TouchableOpacity,
 	View,
 } from 'react-native';
-import { TicketListSkeleton } from '@/components/ui/Skeleton';
+import { TicketListSkeleton } from '@/components/help/HelpSkeletons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
@@ -138,7 +138,7 @@ export default function AdminSupportTicketsScreen({
 					</Text>
 				) : null}
 				{loading && !items.length ? (
-					<TicketListSkeleton />
+					<TicketListSkeleton variant="staff" />
 				) : null}
 				{!loading && !items.length ? (
 					<Text

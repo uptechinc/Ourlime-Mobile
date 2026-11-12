@@ -6,7 +6,6 @@ import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo
 import PageHeader from '@/components/ui/PageHeader';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import CustomModal from '@/components/ui/CustomModal';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useEHubSellerCenter } from '@/lib/hooks/useEHubSellerCenter';
@@ -14,6 +13,7 @@ import { getEHubTermsRoute } from '@/lib/services/EHubService';
 import type { EHubDraft, EHubPublicationState, EHubSellerProduct } from '@/lib/types/ehubSeller';
 import { EHubEmptyState, EHubNotice, useEHubLayout } from '@/components/ehub/EHubParts';
 import { SellerButton } from '@/components/ehub/EHubSellerFormParts';
+import { EHubSellerCenterSkeleton, EHubSellerSectionSkeleton } from '@/components/ehub/EHubSkeletons';
 import EHubSellerStorefront from '@/components/ehub/EHubSellerStorefront';
 import EHubSellerProducts from '@/components/ehub/EHubSellerProducts';
 import EHubSellerDrafts from '@/components/ehub/EHubSellerDrafts';
@@ -79,9 +79,9 @@ export default function EHubSellerCenterScreen() {
 
   const header = <PageHeader title="Seller Center" onBackPress={() => router.back()} />;
   if (!profile) {
-    return <View style={styles.screen}>{header}<View style={[styles.body, { width: layout.contentWidth }]}>
-      {profileLoading ? <Skeleton height={220} borderRadius={22} /> : <EHubEmptyState icon={<Lock size={38} color={colors.mutedText} />} title="Sign in to grow on E-Hub" body="Set up a storefront, list products and answer enquiries." actionLabel="Sign in" onAction={() => router.push('/(auth)/login')} />}
-    </View></View>;
+    return <View style={styles.screen}>{header}{profileLoading ? <EHubSellerCenterSkeleton section={section} /> : <View style={[styles.body, { width: layout.contentWidth }]}>
+      <EHubEmptyState icon={<Lock size={38} color={colors.mutedText} />} title="Sign in to grow on E-Hub" body="Set up a storefront, list products and answer enquiries." actionLabel="Sign in" onAction={() => router.push('/(auth)/login')} />
+    </View>}</View>;
   }
 
   const navigationItems: { id: SellerSection; label: string; icon: (color: string) => ReactNode }[] = [
@@ -129,7 +129,7 @@ export default function EHubSellerCenterScreen() {
                   <SellerButton compact label="Set up business account" icon={<Building2 size={16} color="#ffffff" />} onPress={() => router.push('/ehub/business-account' as Href)} />
                 </View> : null}
               </View> : null}
-              {center.isLoading ? <View style={styles.main}><Skeleton height={120} borderRadius={22} /><Skeleton height={260} borderRadius={22} /></View> : <>
+              {center.isLoading ? <EHubSellerSectionSkeleton section={section} /> : <>
                 {section === 'overview' ? <View style={styles.section}>
                   <View style={styles.top}>
                     <View style={styles.flex}>

@@ -4,26 +4,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { usePathname } from 'expo-router';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import {
-  BlogCatalogSkeleton,
-  EHubSkeleton,
-  ELearningSkeleton,
-  EventsSkeleton,
-  FeedSkeleton,
-  JobManagementSkeleton,
-  MarketplaceSkeleton,
-  ProjectManagementSkeleton,
-} from '@/components/ui/Skeleton';
+import { BlogCatalogPageSkeleton } from '@/components/blog/BlogCatalogSkeletons';
+import { EHubHomePageSkeleton } from '@/components/ehub/EHubSkeletons';
+import { ELearningPageSkeleton } from '@/components/eLearning/ELearningSkeletons';
+import { EventsPageSkeleton } from '@/components/events/EventSkeletons';
+import { FeedPageSkeleton } from '@/components/home/FeedSkeletons';
+import { JobsPageSkeleton } from '@/components/jobs/JobsSkeletons';
+import { MarketplacePageSkeleton } from '@/components/market/MarketSkeletons';
+import { ProjectsPageSkeleton } from '@/components/projectManagement/ProjectSkeletons';
 
-function renderPageSkeleton(pathname: string): ReactNode {
-  if (pathname.startsWith('/ehub')) return <EHubSkeleton />;
-  if (pathname.startsWith('/eLearning')) return <ELearningSkeleton />;
-  if (pathname.startsWith('/projectManagement')) return <ProjectManagementSkeleton />;
-  if (pathname.startsWith('/events')) return <EventsSkeleton />;
-  if (pathname.startsWith('/marketplace') || pathname.startsWith('/market')) return <MarketplaceSkeleton />;
-  if (pathname.startsWith('/blog') || pathname.startsWith('/blogs')) return <BlogCatalogSkeleton />;
-  if (pathname.startsWith('/jobs')) return <JobManagementSkeleton />;
-  return <FeedSkeleton />;
+/** Whole-page skeletons (header, safe area and sections) for each area while page access loads. */
+function renderPageSkeleton(pathname: string, signedIn: boolean): ReactNode {
+  if (pathname.startsWith('/ehub')) return <EHubHomePageSkeleton />;
+  if (pathname.startsWith('/eLearning')) return <ELearningPageSkeleton />;
+  if (pathname.startsWith('/projectManagement')) return <ProjectsPageSkeleton />;
+  if (pathname.startsWith('/events')) return <EventsPageSkeleton />;
+  if (pathname.startsWith('/marketplace') || pathname.startsWith('/market')) return <MarketplacePageSkeleton signedIn={signedIn} />;
+  if (pathname.startsWith('/blog') || pathname.startsWith('/blogs')) return <BlogCatalogPageSkeleton />;
+  if (pathname.startsWith('/jobs')) return <JobsPageSkeleton />;
+  return <FeedPageSkeleton />;
 }
 
 type PageAccessBoundaryProps = { children: ReactNode };
@@ -35,8 +34,8 @@ export default function PageAccessBoundary({ children }: PageAccessBoundaryProps
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.canvas, paddingHorizontal: 16, paddingTop: 16 }}>
-        {renderPageSkeleton(pathname)}
+      <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+        {renderPageSkeleton(pathname, Boolean(profile?.uid))}
       </View>
     );
   }

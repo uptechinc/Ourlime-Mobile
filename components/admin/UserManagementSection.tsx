@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import AdminUserContentWorkspace from '@/components/admin/AdminUserContentWorkspace';
 import UserAvatar from '@/components/ui/UserAvatar';
+import { UserManagementSectionSkeleton } from '@/components/admin/AdminSkeletons';
 import CustomModal from '@/components/ui/CustomModal';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import {
@@ -321,15 +322,7 @@ export default function UserManagementSection() {
 		});
 	};
 
-	if (loading)
-		return (
-			<View style={{ paddingVertical: 50, alignItems: 'center' }}>
-				<ActivityIndicator color={colors.accent} />
-				<Text style={{ marginTop: 8, color: colors.mutedText }}>
-					Loading users...
-				</Text>
-			</View>
-		);
+	if (loading) return <UserManagementSectionSkeleton />;
 	const capitalize = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
 	const filterGroups: FilterGroup[] = [
 		{ key: 'status', label: 'Status', options: STATUSES.map((status) => ({ value: status, label: status === 'all' ? 'Any status' : capitalize(status) })), value: statusFilter, defaultValue: 'all' },

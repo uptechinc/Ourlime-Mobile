@@ -5,11 +5,11 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
 import CustomModal from '@/components/ui/CustomModal';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useEHubEnquiries } from '@/lib/hooks/useEHub';
 import { EHubEmptyState, EHubNotice, useEHubLayout } from '@/components/ehub/EHubParts';
+import { EHubEnquiryInboxSkeleton, EHubEnquiryListSkeleton } from '@/components/ehub/EHubSkeletons';
 import type { EHubEnquiry, EHubEnquiryMode, EHubManageableEnquiryStatus } from '@/lib/types/ehubDiscovery';
 
 const MODES: { value: EHubEnquiryMode; label: string }[] = [
@@ -73,7 +73,7 @@ export default function EHubEnquiryInboxScreen() {
   const header = <PageHeader title="Enquiries" onBackPress={() => router.back()} />;
   if (!profile) {
     return <View style={styles.screen}>{header}<View style={[styles.body, { width: layout.contentWidth }]}>
-      {profileLoading ? <Skeleton height={200} borderRadius={22} /> : <EHubEmptyState icon={<Lock size={38} color={colors.mutedText} />} title="Sign in to manage enquiries" actionLabel="Sign in" onAction={() => router.push('/(auth)/login')} />}
+      {profileLoading ? <EHubEnquiryInboxSkeleton mode={mode} /> : <EHubEmptyState icon={<Lock size={38} color={colors.mutedText} />} title="Sign in to manage enquiries" actionLabel="Sign in" onAction={() => router.push('/(auth)/login')} />}
     </View></View>;
   }
 
@@ -96,7 +96,7 @@ export default function EHubEnquiryInboxScreen() {
             </View>
             {enquiries.error ? <EHubNotice tone="error" text={enquiries.error} actionLabel="Try again" onAction={() => void enquiries.refresh()} /> : null}
             {actionError ? <EHubNotice tone="error" text={actionError} /> : null}
-            {enquiries.isLoading ? <View style={styles.list}><Skeleton height={170} borderRadius={22} /><Skeleton height={170} borderRadius={22} /></View>
+            {enquiries.isLoading ? <EHubEnquiryListSkeleton mode={mode} />
               : list.length === 0 ? (!enquiries.error ? <EHubEmptyState icon={<Inbox size={42} color={colors.mutedText} />} title={`No enquiries ${mode}`} body={mode === 'received' ? 'New enquiries from your public provider profile will appear here.' : 'Enquiries you send to providers will appear here.'} actionLabel={mode === 'sent' ? 'Find providers' : undefined} onAction={mode === 'sent' ? () => router.push('/ehub/discover' as Href) : undefined} /> : null)
                 : <View style={styles.list}>{list.map((enquiry) => {
                   const isPending = pendingId === enquiry.id;

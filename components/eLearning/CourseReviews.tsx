@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Star } from 'lucide-react-native';
+import { CourseReviewsSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { courseService } from '@/lib/services/CourseService';
 import type { CourseReview } from '@/lib/types/course';
@@ -89,6 +90,7 @@ export default function CourseReviews({ courseId, currentUserId, canReview }: Co
         </View>
       ) : null}
 
+      {isLoading ? <CourseReviewsSkeleton /> : null}
       {!isLoading && reviews.length === 0 ? <Text style={styles.muted}>No reviews yet.</Text> : null}
       {reviews.map((review) => (
         <View key={review.id} style={styles.card}>

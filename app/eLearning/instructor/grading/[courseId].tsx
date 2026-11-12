@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Award, ChevronDown, ChevronRight, ClipboardCheck, FileText, HelpCircle, PencilLine } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
-import { CourseDetailSkeleton } from '@/components/ui/Skeleton';
+import { InstructorGradingSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { instructorService, type InstructorLesson, type InstructorSubmission } from '@/lib/services/InstructorService';
 
@@ -160,7 +160,7 @@ export default function InstructorGradingScreen() {
     <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="Grade submissions" onBackPress={() => router.back()} />
       {isLoading ? (
-        <ScrollView contentContainerStyle={styles.padded}><CourseDetailSkeleton /></ScrollView>
+        <ScrollView contentContainerStyle={styles.scroll}><InstructorGradingSkeleton /></ScrollView>
       ) : (
         <KeyboardSafeView style={styles.flex}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => { setIsRefreshing(true); void load(); }} tintColor={colors.accent} />}>
@@ -208,7 +208,6 @@ export default function InstructorGradingScreen() {
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
   flex: { flex: 1 },
-  padded: { padding: 16 },
   scroll: { alignItems: 'center', paddingBottom: 40 },
   column: { padding: 16, gap: 12 },
   title: { color: colors.text, fontSize: 20, fontWeight: '900' },

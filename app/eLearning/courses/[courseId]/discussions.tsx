@@ -8,6 +8,7 @@ import MentionText from '@/components/ui/MentionText';
 import MentionSuggestionList from '@/components/ui/MentionSuggestionList';
 import { useMentionAutocomplete } from '@/lib/hooks/useMentionAutocomplete';
 import { useAppData } from '@/lib/contexts/AppDataContext';
+import { CourseDiscussionsSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { courseInteractionService } from '@/lib/services/CourseInteractionService';
 import type { CourseDiscussion, CourseDiscussionReply, DiscussionCursor } from '@/lib/types/course';
@@ -146,18 +147,18 @@ export default function CourseDiscussionsScreen() {
     <View style={styles.container}>
       <PageHeader title="Course discussions" onBackPress={() => router.back()} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.content}>
-        {connecting ? <View style={styles.center}><ActivityIndicator color={colors.accent} /><Text style={styles.muted}>Connecting your secure learning session…</Text></View> : null}
+        {connecting ? <CourseDiscussionsSkeleton /> : null}
         {nativeSession.status === 'retryable_failure' ? <View style={styles.center}><Text style={styles.errorText}>The secure learning session could not connect.</Text><TouchableOpacity onPress={retryNativeSession} style={styles.retryButton}><Text style={styles.buttonText}>Try Again</Text></TouchableOpacity></View> : null}
         {!connecting && nativeSession.status !== 'retryable_failure' ? (
           <FlatList
             data={items}
             keyExtractor={(discussion) => discussion.id}
-            contentContainerStyle={items.length ? styles.list : styles.emptyList}
+            contentContainerStyle={items.length ? styles.list : loading ? undefined : styles.emptyList}
             refreshing={loading && items.length > 0}
             onRefresh={() => void loadPage(null, true)}
             onEndReached={() => { if (cursor && !loadingMore) void loadPage(cursor, false); }}
             onEndReachedThreshold={0.4}
-            ListEmptyComponent={loading ? <ActivityIndicator color={colors.accent} /> : <View style={styles.center}><MessageCircle size={42} color={colors.mutedText} /><Text style={styles.title}>{error ? 'Discussions unavailable' : 'No discussions yet'}</Text><Text style={styles.muted}>{error ?? 'Ask the first question about this course.'}</Text>{error ? <TouchableOpacity onPress={() => void loadPage(null, true)} style={styles.retryButton}><Text style={styles.buttonText}>Try Again</Text></TouchableOpacity> : null}</View>}
+            ListEmptyComponent={loading ? <CourseDiscussionsSkeleton /> : <View style={styles.center}><MessageCircle size={42} color={colors.mutedText} /><Text style={styles.title}>{error ? 'Discussions unavailable' : 'No discussions yet'}</Text><Text style={styles.muted}>{error ?? 'Ask the first question about this course.'}</Text>{error ? <TouchableOpacity onPress={() => void loadPage(null, true)} style={styles.retryButton}><Text style={styles.buttonText}>Try Again</Text></TouchableOpacity> : null}</View>}
             ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.accent} /> : null}
             extraData={{ expandedId, replies, loadingRepliesId, replyError }}
             renderItem={renderDiscussion}

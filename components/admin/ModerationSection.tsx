@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-	ActivityIndicator,
 	Text,
 	TextInput,
 	TouchableOpacity,
@@ -10,6 +9,7 @@ import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
 import CustomModal from '@/components/ui/CustomModal';
+import { ModerationSectionSkeleton } from '@/components/admin/AdminSkeletons';
 import {
 	AdminModerationService,
 	type AdminModerationReport,
@@ -128,15 +128,7 @@ export default function ModerationSection() {
 		);
 	}, [reports, search, severity, status]);
 
-	if (loading)
-		return (
-			<View style={{ paddingVertical: 50, alignItems: 'center' }}>
-				<ActivityIndicator color={colors.accent} />
-				<Text style={{ marginTop: 8, color: colors.mutedText }}>
-					Loading moderation workspace…
-				</Text>
-			</View>
-		);
+	if (loading) return <ModerationSectionSkeleton />;
 
 	return (
 		<>

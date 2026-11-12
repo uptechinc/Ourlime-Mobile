@@ -1,14 +1,9 @@
-import { useEffect, useRef } from 'react';
-import {
-  Animated,
-  Dimensions,
-  Image,
-  StyleSheet,
-  View,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import type { ReactNode } from 'react';
+import { Dimensions, StyleSheet, View } from 'react-native';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
+/* Same grid maths as the profile Limes / Reposts tabs. */
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const COLUMN_GAP = 8;
 const HORIZONTAL_PADDING = 12;
@@ -17,127 +12,83 @@ export const SKELETON_CARD_WIDTH =
   (SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - COLUMN_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
 export const SKELETON_CARD_HEIGHT = SKELETON_CARD_WIDTH * (16 / 9);
 
+/** Bars drawn on the card's dark caption overlay. */
+const OVERLAY_BAR_COLOR = 'rgba(255, 255, 255, 0.35)';
+
 type LimeCardSkeletonProps = {
   width?: number;
   height?: number;
+  /** Reposted Limes show a "Repost" badge in the top-left corner. */
+  showRepostBadge?: boolean;
 };
 
+/** One Lime thumbnail card: rounded 14 surface, thumbnail, bottom overlay with caption and like/comment counts. */
 export function LimeCardSkeleton({
   width = SKELETON_CARD_WIDTH,
   height = SKELETON_CARD_HEIGHT,
-}: LimeCardSkeletonProps) {
-  const { isDark, colors } = useAppTheme();
-  const animatedValue = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.timing(animatedValue, {
-        toValue: 1,
-        duration: 1500,
-        useNativeDriver: true,
-      })
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [animatedValue]);
-
-  const translateX = animatedValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-width * 1.5, width * 1.5],
-  });
-
-  const cardBackground = isDark ? '#0f172a' : '#f1f5f9';
-  const shimmerColors: [string, string, string, string, string] = isDark
-    ? [
-        'rgba(255, 255, 255, 0)',
-        'rgba(255, 255, 255, 0.03)',
-        'rgba(16, 185, 129, 0.16)',
-        'rgba(255, 255, 255, 0.03)',
-        'rgba(255, 255, 255, 0)',
-      ]
-    : [
-        'rgba(255, 255, 255, 0)',
-        'rgba(255, 255, 255, 0.4)',
-        'rgba(16, 185, 129, 0.25)',
-        'rgba(255, 255, 255, 0.4)',
-        'rgba(255, 255, 255, 0)',
-      ];
-
-  const placeholderElementColor = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)';
+  showRepostBadge = false,
+}: LimeCardSkeletonProps): ReactNode {
+  const { colors } = useAppTheme();
 
   return (
     <View
       style={[
-        styles.cardContainer,
-        {
-          width,
-          height,
-          backgroundColor: cardBackground,
-          borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
-        },
+        styles.card,
+        { width, height, backgroundColor: colors.surface, borderColor: colors.border },
       ]}
     >
-      {/* Center Subtle Ourlime Logo Glyph */}
-      <View style={styles.centerIconContainer}>
-        <Image
-          source={require('@/assets/images/logo.png')}
-          style={styles.centerLogo}
-          resizeMode="contain"
-        />
-      </View>
+      {/* Thumbnail */}
+      <Skeleton width="100%" height="100%" borderRadius={0} style={StyleSheet.absoluteFill} />
 
-      {/* Top Tag Placeholder */}
-      <View style={styles.topBadgeRow}>
-        <View style={[styles.topBadge, { backgroundColor: placeholderElementColor }]} />
-      </View>
+      {showRepostBadge ? (
+        <View style={styles.repostBadge}>
+          <Skeleton width={12} height={12} borderRadius={6} style={{ backgroundColor: OVERLAY_BAR_COLOR }} />
+          <Skeleton width={34} height={9} borderRadius={4} style={{ backgroundColor: OVERLAY_BAR_COLOR }} />
+        </View>
+      ) : null}
 
-      {/* Bottom Information Overlay */}
+      {/* Bottom overlay: caption (11pt) + heart/comment counts */}
       <View style={styles.bottomOverlay}>
-        {/* Creator Row Placeholder */}
-        <View style={styles.userRow}>
-          <View style={[styles.avatarCircle, { backgroundColor: placeholderElementColor }]} />
-          <View style={[styles.nameBar, { backgroundColor: placeholderElementColor }]} />
+        <View style={styles.captionLine}>
+          <Skeleton width="80%" height={9} borderRadius={4} style={{ backgroundColor: OVERLAY_BAR_COLOR }} />
         </View>
-
-        {/* Caption Bar */}
-        <View style={[styles.captionBar, { backgroundColor: placeholderElementColor }]} />
-
-        {/* Stats Row Placeholder */}
         <View style={styles.statsRow}>
-          <View style={[styles.statPill, { backgroundColor: placeholderElementColor }]} />
-          <View style={[styles.statPill, { backgroundColor: placeholderElementColor }]} />
+          <View style={styles.statItem}>
+            <Skeleton width={12} height={12} borderRadius={6} style={{ backgroundColor: OVERLAY_BAR_COLOR }} />
+            <Skeleton width={14} height={9} borderRadius={4} style={{ backgroundColor: OVERLAY_BAR_COLOR }} />
+          </View>
+          <View style={styles.statItem}>
+            <Skeleton width={11} height={11} borderRadius={5} style={{ backgroundColor: OVERLAY_BAR_COLOR }} />
+            <Skeleton width={10} height={9} borderRadius={4} style={{ backgroundColor: OVERLAY_BAR_COLOR }} />
+          </View>
         </View>
       </View>
-
-      {/* Sweeping Shimmer Glow Beam */}
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            transform: [{ translateX }],
-          },
-        ]}
-        pointerEvents="none"
-      >
-        <LinearGradient
-          colors={shimmerColors}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
     </View>
   );
 }
 
-export function LimeGridSkeleton({ count = 4 }: { count?: number }) {
-  const placeholders = Array.from({ length: count }, (_, i) => i);
+type LimeGridSkeletonProps = {
+  count?: number;
+  /** Own profile: the "Limes (n)" title and "Create Lime" button above the grid. */
+  showHeader?: boolean;
+};
 
+/** The profile Limes tab while it loads (12 padding, two columns, 8 gap). */
+export function LimeGridSkeleton({ count = 4, showHeader = false }: LimeGridSkeletonProps): ReactNode {
   return (
-    <View style={styles.gridContainer}>
+    <View style={styles.gridContainer} accessibilityLabel="Loading Limes">
+      {showHeader ? (
+        <View style={styles.headerRow}>
+          <View style={styles.headerTitleBox}>
+            <Skeleton width={84} height={14} borderRadius={4} />
+          </View>
+          {/* Create Lime pill: 14 x 7 padding, + icon 16, 13pt label */}
+          <Skeleton width={118} height={32} borderRadius={20} />
+        </View>
+      ) : null}
       <View style={styles.gridRow}>
-        {placeholders.map((key) => (
-          <LimeCardSkeleton key={key} />
+        {Array.from({ length: count }, (_, cardIndex) => (
+          <LimeCardSkeleton key={`lime-card-skeleton-${cardIndex}`} />
         ))}
       </View>
     </View>
@@ -149,71 +100,61 @@ const styles = StyleSheet.create({
     paddingHorizontal: HORIZONTAL_PADDING,
     paddingVertical: 12,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  headerTitleBox: {
+    height: 20,
+    justifyContent: 'center',
+  },
   gridRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: COLUMN_GAP,
   },
-  cardContainer: {
-    borderRadius: 16,
+  card: {
+    borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 1,
     marginBottom: COLUMN_GAP,
-    position: 'relative',
-    justifyContent: 'space-between',
   },
-  centerIconContainer: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerLogo: {
-    width: 44,
-    height: 44,
-    opacity: 0.18,
-  },
-  topBadgeRow: {
-    padding: 10,
+  repostBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
     flexDirection: 'row',
-  },
-  topBadge: {
-    width: 48,
-    height: 18,
-    borderRadius: 9,
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
   bottomOverlay: {
-    padding: 10,
-    gap: 6,
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  userRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  avatarCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-  },
-  nameBar: {
-    width: 60,
-    height: 10,
-    borderRadius: 5,
-  },
-  captionBar: {
-    width: '85%',
-    height: 8,
-    borderRadius: 4,
+  captionLine: {
+    height: 14,
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 2,
+    alignItems: 'center',
+    gap: 10,
+    height: 14,
   },
-  statPill: {
-    width: 32,
-    height: 12,
-    borderRadius: 6,
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
   },
 });

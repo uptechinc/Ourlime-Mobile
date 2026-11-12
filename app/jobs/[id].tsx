@@ -22,7 +22,7 @@ import {
 import UserAvatar from '@/components/ui/UserAvatar';
 import JobApplicationModal from '@/components/jobs/applyJobs/JobApplicationModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { JobDetailSkeleton } from '@/components/ui/Skeleton';
+import { JobDetailBottomBarSkeleton, JobDetailSkeleton } from '@/components/jobs/JobsSkeletons';
 import { AuthService } from '@/lib/services/AuthService';
 import { JobsService, type JobRecord } from '@/lib/job/JobsService';
 import { jobApplicationService } from '@/lib/services/JobApplicationService';
@@ -274,6 +274,7 @@ export default function JobDetailScreen() {
       )}
 
       {/* Bottom CTA Bar */}
+      {loading ? <JobDetailBottomBarSkeleton /> : null}
       {job && !isCreator ? (
         <View style={[styles.bottomBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
           <View style={styles.priceColumn}>

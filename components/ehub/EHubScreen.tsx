@@ -10,9 +10,10 @@ import { useEHubCatalog, useEHubProviders } from '@/lib/hooks/useEHub';
 import { useEHubCommerce } from '@/lib/hooks/useEHubCommerce';
 import { getEHubTermsRoute } from '@/lib/services/EHubService';
 import { getEHubCurrentPrice } from '@/lib/services/EHubCommerceService';
-import { EHubChip, EHubEmptyState, EHubGridSkeleton, EHubLinkButton, EHubNotice, EHubProductCard, EHubProviderCard, EHubSectionHeading, useEHubLayout } from '@/components/ehub/EHubParts';
+import { EHubChip, EHubEmptyState, EHubLinkButton, EHubNotice, EHubProductCard, EHubProviderCard, EHubSectionHeading, useEHubLayout } from '@/components/ehub/EHubParts';
 import { EHubCartSheet, EHubComparePanel, EHubHeaderActions } from '@/components/ehub/EHubCommerceParts';
 import { EHubScrollView, useEHubSectionScroll } from '@/components/ehub/EHubScrollView';
+import { EHubProductGridSkeleton, EHubProviderGridSkeleton } from '@/components/ehub/EHubSkeletons';
 
 type ProductSort = 'catalog' | 'price-low' | 'price-high' | 'name';
 type HomeSection = 'products' | 'saved' | 'professionals';
@@ -250,7 +251,7 @@ export default function EHubScreen() {
               </HorizontalRow>
             </View>
             {catalog.error ? <EHubNotice tone="warning" text={catalog.error} actionLabel="Try again" onAction={() => void catalog.refresh()} /> : null}
-            {catalog.isLoading && !catalog.data ? <EHubGridSkeleton count={layout.isTablet ? 6 : 4} width={layout.productWidth} height={layout.productWidth + 150} />
+            {catalog.isLoading && !catalog.data ? <EHubProductGridSkeleton />
               : visibleProducts.length ? renderProductGrid(visibleProducts)
                 : !catalog.error ? <EHubEmptyState icon={<Package size={40} color={colors.mutedText} />} title="No matching products" body="Try another search or category. Only real published listings appear here." actionLabel="Reset filters" onAction={handleResetFilters} /> : null}
             <EHubComparePanel products={comparedProducts} onClear={() => setCompareIds([])} onOpenProduct={handleOpenProduct} />
@@ -265,14 +266,14 @@ export default function EHubScreen() {
           <View style={styles.section}>
             <EHubSectionHeading eyebrow="Local businesses" title="Local storefronts" description="Explore active EHub business profiles and their published catalog information." action={<EHubLinkButton label="All storefronts" onPress={() => router.push('/ehub/discover?kind=business' as Href)} />} />
             {providers.error ? <EHubNotice tone="warning" text={providers.error} actionLabel="Try again" onAction={() => void providers.refresh()} /> : null}
-            {providers.isLoading && !providers.data ? <EHubGridSkeleton count={layout.isTablet ? 2 : 1} width={layout.providerWidth} height={300} />
+            {providers.isLoading && !providers.data ? <EHubProviderGridSkeleton />
               : storefronts.length ? <View style={[styles.grid, { gap: layout.gap }]}>{storefronts.map((provider) => <EHubProviderCard key={provider.id} provider={provider} width={layout.providerWidth} onOpen={handleOpenProvider} />)}</View>
                 : !providers.error ? <EHubEmptyState icon={<Store size={36} color={colors.mutedText} />} title="No active storefronts are available yet." /> : null}
           </View>
 
           <View onLayout={onSectionLayout('professionals')} style={styles.section}>
             <EHubSectionHeading eyebrow="Services" title="Discover professionals" description="Review real service profiles and send an enquiry. Online booking and payments are not currently available." action={<EHubLinkButton label="Directory" onPress={() => router.push('/ehub/discover?kind=professional' as Href)} />} />
-            {providers.isLoading && !providers.data ? <EHubGridSkeleton count={layout.isTablet ? 2 : 1} width={layout.providerWidth} height={300} />
+            {providers.isLoading && !providers.data ? <EHubProviderGridSkeleton />
               : professionals.length ? <View style={[styles.grid, { gap: layout.gap }]}>{professionals.map((provider) => <EHubProviderCard key={provider.id} provider={provider} width={layout.providerWidth} onOpen={handleOpenProvider} />)}</View>
                 : !providers.error ? <EHubEmptyState icon={<BriefcaseBusiness size={36} color={colors.mutedText} />} title="No active professional profiles are available yet." /> : null}
           </View>

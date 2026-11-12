@@ -8,7 +8,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import UserAvatar from '@/components/ui/UserAvatar';
 import CustomModal from '@/components/ui/CustomModal';
-import { EventsSkeleton } from '@/components/ui/Skeleton';
+import { EventDetailSkeleton } from '@/components/events/EventSkeletons';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { eventService, type EventAttendanceStatus, type EventComment, type EventOrganizer } from '@/lib/services/EventService';
@@ -165,7 +165,7 @@ export default function EventDetailScreen() {
       <PageHeader title="Event" onBackPress={() => router.back()} />
       <KeyboardSafeView style={styles.flex} onKeyboardChange={setIsKeyboardOpen}>
         {isLoading ? (
-          <ScrollView contentContainerStyle={styles.content}><EventsSkeleton /></ScrollView>
+          <EventDetailSkeleton />
         ) : !event ? (
           <View style={styles.center}>
             <CalendarDays size={40} color={colors.mutedText} />

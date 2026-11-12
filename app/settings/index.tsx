@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { SettingsSkeleton } from '@/components/ui/Skeleton';
+import { SettingsSkeleton } from '@/components/settings/SettingsSkeleton';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useRouter, type Href } from 'expo-router';

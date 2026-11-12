@@ -17,7 +17,7 @@ import CustomModal from '@/components/ui/CustomModal';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
-import { CourseCatalogSkeleton } from '@/components/ui/Skeleton';
+import { CourseCatalogResultsSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
 import { instructorService } from '@/lib/services/InstructorService';
 import type { CatalogPriceFilter, CatalogSort, Course, Enrollment } from '@/lib/types/course';
@@ -247,7 +247,7 @@ export default function CoursesCatalogScreen() {
             </TouchableOpacity>
           </View>
         ) : loading ? (
-          <CourseCatalogSkeleton />
+          <CourseCatalogResultsSkeleton />
         ) : filteredCourses.length === 0 ? (
           <View style={styles.emptyContainer}>
             <GraduationCap size={44} color={colors.mutedText} />

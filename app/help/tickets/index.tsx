@@ -8,7 +8,7 @@ import {
 	TouchableOpacity,
 	View,
 } from 'react-native';
-import { TicketListSkeleton } from '@/components/ui/Skeleton';
+import { TicketListSkeleton } from '@/components/help/HelpSkeletons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppTheme } from '@/lib/contexts/ThemeContext';

@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { LimesSkeleton } from '@/components/ui/Skeleton';
+import { LimesFeedSkeleton } from '@/components/limes/LimesFeedSkeleton';
 import Icon from 'react-native-vector-icons/Feather';
 import {
   Heart,
@@ -471,13 +471,17 @@ export default function LimesScreen() {
       <View style={{ flex: 1, backgroundColor: '#000000' }}>
         {/* Only while this tab is focused: tabs stay mounted, and a mounted StatusBar overrides every other screen. */}
         {isScreenFocused ? <StatusBar barStyle="light-content" backgroundColor="#000000" /> : null}
-        <LimesSkeleton />
+        <LimesFeedSkeleton
+          header={isSharedViewer ? 'sharedViewer' : 'feed'}
+          onBackPress={isSharedViewer ? () => router.back() : undefined}
+        />
       </View>
     );
   }
 
   const emptyFeed = isRefreshingEmptyFeed ? (
-    <LimesSkeleton />
+    // The real top bar is already drawn over the list, so only the reel body is a placeholder.
+    <LimesFeedSkeleton header="none" height={viewportHeight} />
   ) : (
     <View style={[styles.loadingScreen, styles.emptyFeed]}>
       <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '800', marginTop: 12 }}>

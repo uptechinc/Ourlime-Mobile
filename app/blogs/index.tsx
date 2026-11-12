@@ -21,7 +21,7 @@ import IdentityVerificationModal from '@/components/jobs/IdentityVerificationMod
 import CustomModal from '@/components/ui/CustomModal';
 import FilterSheet, { readMultiFilter, readSingleFilter, type AnyFilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
 import ShareContentSheet from '@/components/sharing/ShareContentSheet';
-import { BlogCatalogSkeleton } from '@/components/ui/Skeleton';
+import { BlogCatalogListSkeleton } from '@/components/blog/BlogCatalogSkeletons';
 import { BlogsAndArticlesService } from '@/lib/blogs&articles/BlogsAndArticlesService';
 import { DEFAULT_BLOG_QUERY } from '@/lib/services/BlogCatalogResourceService';
 import { AuthService, type UserProfile } from '@/lib/services/AuthService';
@@ -275,7 +275,7 @@ export default function BlogsScreen() {
         {catalog.data ? <Text style={[styles.resultsText, { color: colors.secondaryText }]}>{resultsLabel}</Text> : null}
 
         {isInitialLoading ? (
-          <BlogCatalogSkeleton />
+          <BlogCatalogListSkeleton />
         ) : catalog.status === 'error' && !catalog.data ? (
           <View style={[styles.errorBox, { backgroundColor: colors.destructiveSurface }]}>
             <Text style={{ color: colors.destructiveText, fontWeight: '700' }}>Failed to load blogs</Text>

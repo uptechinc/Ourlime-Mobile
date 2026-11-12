@@ -15,6 +15,7 @@ import { adminSecurityService } from '@/lib/services/AdminSecurityService';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import CustomModal from '@/components/ui/CustomModal';
+import { SecurityWorkspaceSkeleton } from '@/components/admin/AdminSkeletons';
 import {
   evaluateSecurityAccess,
   type SecurityEvaluationResult,
@@ -166,16 +167,7 @@ export default function AdminSecurityWorkspace() {
     await handleSave(updated);
   };
 
-  if (loading) {
-    return (
-      <View style={{ paddingVertical: 50, alignItems: 'center' }}>
-        <ActivityIndicator color={colors.accent} />
-        <Text style={{ marginTop: 8, color: colors.mutedText, fontSize: 12 }}>
-          Loading security controls…
-        </Text>
-      </View>
-    );
-  }
+  if (loading) return <SecurityWorkspaceSkeleton />;
 
   if (!settings) return null;
 

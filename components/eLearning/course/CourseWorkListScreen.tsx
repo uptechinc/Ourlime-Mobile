@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ClipboardList, HelpCircle } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
-import { CourseCatalogSkeleton } from '@/components/ui/Skeleton';
+import { CourseWorkListSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useCourseWorkspace } from '@/lib/hooks/useCourseWorkspace';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
@@ -35,7 +35,7 @@ export default function CourseWorkListScreen({ kind }: CourseWorkListScreenProps
     <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title={title} onBackPress={() => router.back()} />
       {loading ? (
-        <ScrollView contentContainerStyle={styles.scroll}><CourseCatalogSkeleton /></ScrollView>
+        <ScrollView contentContainerStyle={styles.scroll}><CourseWorkListSkeleton /></ScrollView>
       ) : !workspace || !isActiveEnrollment(enrollment) ? (
         <WorkspaceScreenState message={error ?? `Enroll in this course to see its ${title.toLowerCase()}.`} actionLabel="Back to course" onAction={() => router.replace(courseHref(id))} />
       ) : (

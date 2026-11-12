@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { ActivityService } from '@/lib/services/ActivityService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { SkeletonBox } from '@/components/ui/Skeleton';
+import { SkeletonTextLine } from '@/components/home/SkeletonLoaders';
 
 type ActivityStat = {
   icon: string;
@@ -17,6 +19,8 @@ type ActivityCardProps = {
 };
 
 const activityService = ActivityService.getInstance();
+// Label widths for "Likes Received", "Comments Received", "Posts This Week" at 14px.
+const ACTIVITY_SKELETON_LABEL_WIDTHS = [104, 128, 112] as const;
 
 export default function ActivityCard({ userId }: ActivityCardProps) {
   const { colors, isDark } = useAppTheme();
@@ -102,15 +106,15 @@ export default function ActivityCard({ userId }: ActivityCardProps) {
 
       {!isCollapsed && (
         isLoading ? (
-          // Skeleton
-          <View style={{ gap: 12 }}>
-            {[1, 2, 3].map(i => (
-              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: colors.control }} />
-                  <View style={{ width: 100, height: 14, borderRadius: 6, backgroundColor: colors.control }} />
+          // Skeleton: same rows as the stats list (38 icon tile, 14px label, 16px value, gap 10)
+          <View style={{ gap: 10 }}>
+            {ACTIVITY_SKELETON_LABEL_WIDTHS.map((labelWidth) => (
+              <View key={labelWidth} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <SkeletonBox width={38} height={38} borderRadius={10} style={{ marginRight: 12 }} />
+                  <SkeletonTextLine fontSize={14} lineHeight={19} width={labelWidth} />
                 </View>
-                <View style={{ width: 28, height: 20, borderRadius: 6, backgroundColor: colors.control }} />
+                <SkeletonTextLine fontSize={16} lineHeight={21} width={22} />
               </View>
             ))}
           </View>

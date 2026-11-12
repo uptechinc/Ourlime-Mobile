@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Award, CheckCircle2, FileText, Paperclip, X } from 'lucide-react-native';
+import { LessonAssignmentSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { courseService } from '@/lib/services/CourseService';
 import type { AssignmentFile, AssignmentSubmission } from '@/lib/types/course';
@@ -85,7 +86,7 @@ export default function LessonAssignment({ userId, courseId, lessonId, onSubmitt
     }
   };
 
-  if (isLoading) return <View style={styles.card}><Text style={styles.muted}>Loading your submission…</Text></View>;
+  if (isLoading) return <LessonAssignmentSkeleton />;
 
   if (submission && !isEditing) {
     const isGraded = submission.status === 'graded';

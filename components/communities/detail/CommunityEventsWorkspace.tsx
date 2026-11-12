@@ -9,7 +9,7 @@ import type { PostMediaDraft } from '@/lib/services/PostService';
 import type { Event, MediaItem } from '@/types/eventTypes';
 import type { ResourceState } from '@/lib/types/resourceState';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { EventsSkeleton } from '@/components/ui/Skeleton';
+import { CommunityEventsWorkspaceSkeleton } from './CommunityWorkspaceSkeletons';
 import { communityMediaService } from '@/lib/services/CommunityMediaService';
 import CachedImage from '@/components/ui/CachedImage';
 import CustomModal from '@/components/ui/CustomModal';
@@ -116,7 +116,7 @@ export default function CommunityEventsWorkspace({ resource, canCreate, canCreat
     finally { setBusy(false); }
   };
 
-  if (!resource.data && (resource.status === 'hydrating' || resource.status === 'idle')) return <View style={{ margin: 16 }}><EventsSkeleton /></View>;
+  if (!resource.data && (resource.status === 'hydrating' || resource.status === 'idle')) return <CommunityEventsWorkspaceSkeleton canCreate={canCreate} />;
   if (!resource.data && resource.status === 'error') return <View style={{ padding: 28, alignItems: 'center' }}><Text style={{ color: colors.destructiveText, textAlign: 'center' }}>{resource.error?.message ?? 'Events could not be loaded.'}</Text><TouchableOpacity onPress={onRetry} style={{ marginTop: 12, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontWeight: '800' }}>Retry</Text></TouchableOpacity></View>;
 
   const fields: { key: 'title' | 'summary' | 'location' | 'imageUrl'; label: string; placeholder: string; multiline?: boolean }[] = [

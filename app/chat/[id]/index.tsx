@@ -64,7 +64,7 @@ import { useTypingIndicator } from '@/lib/hooks/useTypingIndicator';
 import { useActivityStatuses } from '@/lib/hooks/useActivityStatuses';
 import TypingIndicator from '@/components/chat/TypingIndicator';
 import { useResourceStore } from '@/lib/store/useResourceStore';
-import { ChatConversationSkeleton } from '@/components/ui/Skeleton';
+import { ChatConversationSkeleton, ChatHeaderIdentitySkeleton } from '@/components/chat/ChatSkeletons';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { presenceService, ACTIVITY_STATUS_COLORS, ACTIVITY_STATUS_LABELS, type PresenceState } from '@/lib/services/PresenceService';
 import { useCallCoordinator } from '@/lib/contexts/CallContext';
@@ -693,6 +693,8 @@ export default function ChatPage() {
     const cachedFriend = useResourceStore((state) => state.conversations.data?.find((conversation) => conversation.uid === friendId) ?? null);
 
     const [friend, setFriend] = useState<UserProfile | null>(cachedFriend);
+    // True until the friend's profile lookup settles, so the header shows a placeholder instead of a blank gap.
+    const [friendLookupPending, setFriendLookupPending] = useState(!cachedFriend);
     const [friendPresence, setFriendPresence] = useState<PresenceState | null>(null);
     const {
         messages: loadedMessages,
@@ -895,10 +897,16 @@ export default function ChatPage() {
         if (!friendId) return;
         if (cachedFriend) {
             setFriend(cachedFriend);
+            setFriendLookupPending(false);
             return;
         }
+        setFriendLookupPending(true);
         authService.getUserProfileIfAvailable(friendId).then((profile) => {
             if (profile) setFriend(profile);
+        }).catch((error: unknown) => {
+            console.error('[ChatPage.loadFriend] Error:', error);
+        }).finally(() => {
+            setFriendLookupPending(false);
         });
     }, [cachedFriend, friendId]);
 
@@ -1407,6 +1415,8 @@ export default function ChatPage() {
                             </Text>
                         </View>
                     </TouchableOpacity>
+                ) : friendLookupPending ? (
+                    <ChatHeaderIdentitySkeleton />
                 ) : (
                     <View style={{ flex: 1 }} />
                 )}
@@ -1517,7 +1527,7 @@ export default function ChatPage() {
                     ) : null}
                     </View>
                     ) : isLoading ? (
-                        <ChatConversationSkeleton />
+                        <ChatConversationSkeleton transparent={Boolean(activeBg)} />
                     ) : (
                         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: activeBg ? 'transparent' : colors.canvas, paddingHorizontal: 32 }}>
                             {messageError ? (

@@ -5,13 +5,13 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
 import CachedImage from '@/components/ui/CachedImage';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useEHubProvider } from '@/lib/hooks/useEHub';
 import { eHubService, EHUB_PROVIDER_SHARE_BASE_URL, getEHubTermsRoute } from '@/lib/services/EHubService';
 import { EHubChip, EHubEmptyState, EHubNotice, formatEHubPrice, useEHubLayout } from '@/components/ehub/EHubParts';
 import { EHubScrollView } from '@/components/ehub/EHubScrollView';
+import { EHubProviderProfileSkeleton } from '@/components/ehub/EHubSkeletons';
 import type { EHubEnquiryType, EHubProviderDetail } from '@/lib/types/ehubDiscovery';
 
 type Notice = { tone: 'success' | 'error'; text: string };
@@ -136,7 +136,7 @@ export default function EHubProviderProfileScreen() {
   const header = <PageHeader title={provider?.name ?? 'Provider'} onBackPress={() => router.back()}
     rightComponent={provider ? <Pressable accessibilityRole="button" accessibilityLabel={`Share ${provider.name}`} onPress={handleShare} hitSlop={8} style={styles.headerButton}><Share2 size={21} color={colors.icon} /></Pressable> : undefined} />;
   if (resource.isLoading && !provider) {
-    return <View style={styles.screen}>{header}<View style={[styles.body, { width: layout.contentWidth }]}><Skeleton height={260} borderRadius={24} /><Skeleton height={180} borderRadius={24} /></View></View>;
+    return <View style={styles.screen}>{header}<EHubProviderProfileSkeleton /></View>;
   }
   if (!provider) {
     return <View style={styles.screen}>{header}<View style={[styles.body, { width: layout.contentWidth }]}>

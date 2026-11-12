@@ -20,7 +20,7 @@ import {
   CheckCircle2,
 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { CourseCatalogSkeleton } from '@/components/ui/Skeleton';
+import { MyLearningListSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
 import type { Enrollment, MyLearningSort, MyLearningStatus } from '@/lib/types/course';
@@ -167,7 +167,7 @@ export default function MyLearningScreen() {
 
         {/* Course List */}
         {loading ? (
-          <CourseCatalogSkeleton />
+          <MyLearningListSkeleton />
         ) : loadError ? (
           <View style={[styles.emptyContainer, { backgroundColor: colors.destructiveSurface }]}>
             <Text style={[styles.emptyTitle, { color: colors.text }]}>My Learning could not load</Text>

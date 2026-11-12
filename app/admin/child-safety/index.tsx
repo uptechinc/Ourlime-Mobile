@@ -6,7 +6,7 @@ import {
 	TouchableOpacity,
 	View,
 } from 'react-native';
-import { ChildSafetyListSkeleton } from '@/components/ui/Skeleton';
+import { ChildSafetyListSkeleton } from '@/components/admin/AdminSkeletons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';

@@ -20,7 +20,7 @@ import type { Reel } from '@/types/userTypes';
 import { limeService } from '@/lib/services/LimeService';
 import { AuthService } from '@/lib/services/AuthService';
 import { ReelItem, reelToPostItem } from '@/app/(tabs)/Limes';
-import { LimesSkeleton } from '@/components/ui/Skeleton';
+import { LimesFeedSkeleton } from '@/components/limes/LimesFeedSkeleton';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
 import ReportLimeModal from '@/components/limes/ReportLimeModal';
 import CustomModal from '@/components/ui/CustomModal';
@@ -207,9 +207,9 @@ export default function ProfileLimesScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#000000' }}>
+      <View style={{ flex: 1, backgroundColor: '#000000', paddingBottom: insets.bottom }}>
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-        <LimesSkeleton />
+        <LimesFeedSkeleton header="profile" onBackPress={() => router.back()} />
       </View>
     );
   }

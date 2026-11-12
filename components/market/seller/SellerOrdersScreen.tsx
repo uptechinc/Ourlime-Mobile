@@ -10,7 +10,8 @@ import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useSellerOrders } from '@/lib/hooks/useSellerOrders';
 import { formatMarketPrice } from '@/lib/utils/formatMarketPrice';
 import type { SellerOrder, SellerOrderStatus, ShipmentDetails } from '@/lib/types/marketListing';
-import SellerScreenFrame, { SellerLoading } from './SellerScreenFrame';
+import SellerScreenFrame from './SellerScreenFrame';
+import { SellerOrdersSkeleton } from './SellerSkeletons';
 import { ListingInput } from './ListingFormParts';
 
 type BadgeTone = 'success' | 'warning' | 'danger' | 'info' | 'muted';
@@ -59,7 +60,7 @@ export default function SellerOrdersScreen() {
   const badgeStyle = (tone: BadgeTone) => tone === 'success' ? styles.badgeSuccess : tone === 'warning' ? styles.badgeWarning : tone === 'danger' ? styles.badgeDanger : tone === 'info' ? styles.badgeInfo : styles.badgeMuted;
 
   return <SellerScreenFrame title="Order fulfilment" subtitle="Shipments, pickup readiness and order status" fallbackRoute="/market/seller">
-    {orders.isLoading ? <SellerLoading label="Loading orders…" /> : <ScrollView contentContainerStyle={styles.content}
+    {orders.isLoading ? <SellerOrdersSkeleton /> : <ScrollView contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={orders.isRefreshing} onRefresh={() => void orders.refresh()} tintColor={colors.accent} />}>
       {orders.error ? <Pressable onPress={() => void orders.refresh()} style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{orders.error} Tap to retry.</Text></Pressable> : null}
       {!orders.error && !orders.orders.length ? <View style={styles.empty}>

@@ -5,7 +5,8 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useEHubProviders } from '@/lib/hooks/useEHub';
-import { EHubChip, EHubEmptyState, EHubGridSkeleton, EHubNotice, EHubProviderCard, useEHubLayout } from '@/components/ehub/EHubParts';
+import { EHubChip, EHubEmptyState, EHubNotice, EHubProviderCard, useEHubLayout } from '@/components/ehub/EHubParts';
+import { EHubDiscoverResultsSkeleton } from '@/components/ehub/EHubSkeletons';
 import type { EHubProvider, EHubProviderKind } from '@/lib/types/ehubDiscovery';
 
 type KindFilter = 'all' | EHubProviderKind;
@@ -69,7 +70,7 @@ export default function EHubDiscoverScreen() {
           </View>
 
           {providers.error ? <EHubNotice tone="error" text={providers.error} actionLabel="Try again" onAction={() => void providers.refresh()} /> : null}
-          {providers.isLoading && !providers.data ? <EHubGridSkeleton count={layout.isTablet ? 4 : 2} width={layout.providerWidth} height={280} />
+          {providers.isLoading && !providers.data ? <EHubDiscoverResultsSkeleton />
             : providerList.length ? <>
               <Text style={styles.count}>{providerList.length} {providerList.length === 1 ? 'provider' : 'providers'}</Text>
               <View style={[styles.grid, { gap: layout.gap }]}>{providerList.map((provider) => <EHubProviderCard key={provider.id} provider={provider} width={layout.providerWidth} onOpen={() => handleOpenProvider(provider)} actionLabel={findSelectedService(provider) ? `Enquire about ${category}` : 'View profile & enquire'} showRating />)}</View>

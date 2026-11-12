@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { draftExpiryService } from '@/lib/services/DraftExpiryService';
 import { AppState, Text, View } from "react-native";
-import { FeedSkeleton } from "@/components/ui/Skeleton";
+import { FeedPageSkeleton } from "@/components/home/FeedSkeletons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as SplashScreen from 'expo-splash-screen';
 import MiddleSection from "@/components/home/MiddleSection";
@@ -71,18 +71,13 @@ export default function FeedsScreen() {
 
 
   if (!userProfile) {
+    if (!profileError) return <FeedPageSkeleton />;
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={['top', 'left', 'right']}>
-        {profileError ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
-            <Text style={{ color: colors.destructiveText, fontSize: 18, fontWeight: '700', textAlign: 'center' }}>Could not load your profile</Text>
-            <Text style={{ marginTop: 8, color: colors.secondaryText, textAlign: 'center' }}>{profileError}</Text>
-          </View>
-        ) : (
-          <View style={{ flex: 1, padding: 16 }}>
-            <FeedSkeleton />
-          </View>
-        )}
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }}>
+          <Text style={{ color: colors.destructiveText, fontSize: 18, fontWeight: '700', textAlign: 'center' }}>Could not load your profile</Text>
+          <Text style={{ marginTop: 8, color: colors.secondaryText, textAlign: 'center' }}>{profileError}</Text>
+        </View>
       </SafeAreaView>
     );
   }

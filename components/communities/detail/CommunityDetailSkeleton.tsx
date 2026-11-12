@@ -1,128 +1,102 @@
-import { ScrollView, View } from 'react-native';
-import { SkeletonBox, SkeletonCircle, SkeletonText } from '@/components/ui/Skeleton';
-import { SkeletonPostCard, SkeletonEventCard } from '@/components/home/SkeletonLoaders';
+import type { ReactNode } from 'react';
+import { ScrollView, View, useWindowDimensions } from 'react-native';
+import { Skeleton, SkeletonCircle } from '@/components/ui/Skeleton';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { CommunityTab } from '@/lib/types/community';
+import {
+  CommunityAboutWorkspaceSkeleton,
+  CommunityEventsWorkspaceSkeleton,
+  CommunityMembersWorkspaceSkeleton,
+  CommunityPollsWorkspaceSkeleton,
+  CommunityPostsSkeleton,
+  SkeletonLines,
+} from './CommunityWorkspaceSkeletons';
 
 type CommunityDetailSkeletonProps = {
   activeTab?: CommunityTab;
 };
 
-export default function CommunityDetailSkeleton({ activeTab = 'posts' }: CommunityDetailSkeletonProps) {
+// Posts, Events, Polls, About, Members pills: 15px padding each side + 14px heavy label.
+const TAB_WIDTHS = [71, 80, 68, 75, 92];
+
+/**
+ * Body of app/communities/[id] while the community loads (the top bar above stays live):
+ * CommunityDetailHeader (220px banner, title, badges, description, creator + date, stats, actions),
+ * the workspace tab strip and the active tab's workspace.
+ */
+export default function CommunityDetailSkeleton({ activeTab = 'posts' }: CommunityDetailSkeletonProps): ReactNode {
   const { colors } = useAppTheme();
+  const { width } = useWindowDimensions();
+  const isNarrow = width < 390;
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 48 }}>
-      {/* ── Banner Image Skeleton ── */}
-      <View style={{ height: 220, backgroundColor: colors.control }}>
-        <SkeletonBox width="100%" height="100%" borderRadius={0} />
+    <ScrollView scrollEnabled={false} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 48 }}>
+      <View style={{ height: 220, backgroundColor: colors.successSurface }}>
+        <Skeleton width="100%" height="100%" borderRadius={0} />
       </View>
 
-      {/* ── Header Metadata Skeleton ── */}
       <View style={{ backgroundColor: colors.surface, padding: 18, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        {/* Title & Badges */}
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <SkeletonText width="65%" height={26} />
-        </View>
-        <View style={{ flexDirection: 'row', gap: 7, marginTop: 10 }}>
-          <SkeletonBox width={70} height={20} borderRadius={999} />
-          <SkeletonBox width={60} height={20} borderRadius={999} />
+        <SkeletonLines fontSize={25} lineHeight={30} width="66%" />
+        <View style={{ flexDirection: 'row', gap: 7, marginTop: 9 }}>
+          <Skeleton width={78} height={23} borderRadius={999} />
+          <Skeleton width={66} height={23} borderRadius={999} />
         </View>
 
-        {/* Description */}
-        <View style={{ marginTop: 14 }}>
-          <SkeletonText width="95%" height={14} />
-          <SkeletonText width="75%" height={14} style={{ marginTop: 6 }} />
+        <View style={{ marginTop: 13 }}>
+          <SkeletonLines lines={2} fontSize={14} lineHeight={21} lastLineWidth="72%" />
         </View>
 
-        {/* Creator Row */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14 }}>
-          <SkeletonCircle size={34} />
-          <View style={{ marginLeft: 9, flex: 1 }}>
-            <SkeletonText width={55} height={10} />
-            <SkeletonText width={110} height={13} style={{ marginTop: 4 }} />
-          </View>
-          <SkeletonText width={80} height={12} />
-        </View>
-
-        {/* Stats Row (3 Columns) */}
-        <View style={{ flexDirection: 'row', marginTop: 17, padding: 13, borderRadius: 15, backgroundColor: colors.control }}>
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <SkeletonText width={35} height={18} />
-            <SkeletonText width={45} height={11} style={{ marginTop: 4 }} />
-          </View>
-          <View style={{ width: 1, backgroundColor: colors.border }} />
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <SkeletonText width={35} height={18} />
-            <SkeletonText width={35} height={11} style={{ marginTop: 4 }} />
-          </View>
-          <View style={{ width: 1, backgroundColor: colors.border }} />
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <SkeletonText width={35} height={18} />
-            <SkeletonText width={35} height={11} style={{ marginTop: 4 }} />
-          </View>
-        </View>
-
-        {/* Action Buttons */}
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-          <SkeletonBox width={44} height={44} borderRadius={13} />
-          <SkeletonBox width={44} height={44} borderRadius={13} />
-          <SkeletonBox width="100%" height={44} borderRadius={13} style={{ flex: 1 }} />
-        </View>
-      </View>
-
-      {/* ── Sticky Tab Bar Skeleton ── */}
-      <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 10, gap: 10 }}>
-        <SkeletonBox width={64} height={32} borderRadius={999} />
-        <SkeletonBox width={64} height={32} borderRadius={999} />
-        <SkeletonBox width={64} height={32} borderRadius={999} />
-        <SkeletonBox width={64} height={32} borderRadius={999} />
-        <SkeletonBox width={72} height={32} borderRadius={999} />
-      </View>
-
-      {/* ── Workspace / Tab Content Skeleton ── */}
-      <View style={{ padding: 16 }}>
-        {activeTab === 'events' ? (
-          <View style={{ gap: 14 }}>
-            <SkeletonEventCard />
-            <SkeletonEventCard />
-          </View>
-        ) : activeTab === 'members' ? (
-          <View style={{ gap: 14 }}>
-            {[1, 2, 3, 4, 5].map((item) => (
-              <View key={item} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}>
-                <SkeletonCircle size={44} />
-                <View style={{ marginLeft: 12, flex: 1 }}>
-                  <SkeletonText width={120} height={14} />
-                  <SkeletonText width={80} height={11} style={{ marginTop: 6 }} />
-                </View>
-                <SkeletonBox width={50} height={24} borderRadius={999} />
-              </View>
-            ))}
-          </View>
-        ) : activeTab === 'polls' ? (
-          <View style={{ backgroundColor: colors.surface, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
-            <SkeletonText width="80%" height={17} />
-            <View style={{ gap: 10, marginTop: 14 }}>
-              <SkeletonBox width="100%" height={38} borderRadius={10} />
-              <SkeletonBox width="100%" height={38} borderRadius={10} />
-              <SkeletonBox width="100%" height={38} borderRadius={10} />
+        <View style={{ flexDirection: isNarrow ? 'column' : 'row', alignItems: isNarrow ? 'flex-start' : 'center', marginTop: 13, gap: isNarrow ? 9 : 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: isNarrow ? undefined : 1 }}>
+            <SkeletonCircle size={34} />
+            <View style={{ marginLeft: 9 }}>
+              <SkeletonLines fontSize={11} lineHeight={14} width={56} />
+              <SkeletonLines fontSize={14} lineHeight={18} width={118} />
             </View>
           </View>
-        ) : activeTab === 'about' ? (
-          <View style={{ backgroundColor: colors.surface, padding: 18, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
-            <SkeletonText width={120} height={16} />
-            <SkeletonText width="95%" height={13} style={{ marginTop: 10 }} />
-            <SkeletonText width="85%" height={13} style={{ marginTop: 6 }} />
-            <SkeletonText width="60%" height={13} style={{ marginTop: 6 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: isNarrow ? 43 : 10 }}>
+            <Skeleton width={15} height={15} borderRadius={4} />
+            <Skeleton width={92} height={9} borderRadius={4} style={{ marginLeft: 5 }} />
           </View>
-        ) : (
-          <View style={{ gap: 14 }}>
-            <SkeletonPostCard />
-            <SkeletonPostCard />
-          </View>
-        )}
+        </View>
+
+        <View style={{ flexDirection: 'row', marginTop: 17, padding: 13, borderRadius: 15, backgroundColor: colors.control }}>
+          {[0, 1, 2].map((statIndex) => (
+            <View key={statIndex} style={{ flex: 1, flexDirection: 'row' }}>
+              {statIndex > 0 ? <View style={{ width: 1, backgroundColor: colors.border }} /> : null}
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <SkeletonLines fontSize={18} lineHeight={24} width={34} />
+                <SkeletonLines fontSize={11} lineHeight={14} width={statIndex === 0 ? 50 : 34} />
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+          <Skeleton width={44} height={44} borderRadius={13} />
+          <Skeleton width={44} height={44} borderRadius={13} />
+          <Skeleton width={44} height={44} borderRadius={13} />
+          <View style={{ flex: 1 }}><Skeleton height={44} borderRadius={13} /></View>
+        </View>
       </View>
+
+      <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' }}>
+        {TAB_WIDTHS.map((tabWidth, tabIndex) => (
+          <Skeleton key={tabIndex} width={tabWidth} height={37} borderRadius={999} style={{ marginHorizontal: 4 }} />
+        ))}
+      </View>
+
+      {activeTab === 'events' ? (
+        <CommunityEventsWorkspaceSkeleton />
+      ) : activeTab === 'members' ? (
+        <CommunityMembersWorkspaceSkeleton />
+      ) : activeTab === 'polls' ? (
+        <CommunityPollsWorkspaceSkeleton />
+      ) : activeTab === 'about' ? (
+        <CommunityAboutWorkspaceSkeleton />
+      ) : (
+        <CommunityPostsSkeleton />
+      )}
     </ScrollView>
   );
 }

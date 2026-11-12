@@ -10,7 +10,7 @@ import JobCreationModal from '@/components/jobs/createJobsModal/jobCreationModal
 import { JobsService, type JobRecord } from '@/lib/job/JobsService';
 import { jobCategoryPopularity } from '@/lib/job/JobCategoryPopularity';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { SkeletonJobCard } from '@/components/home/SkeletonLoaders';
+import { JobsListSkeleton } from '@/components/jobs/JobsSkeletons';
 
 type JobTab = 'professional' | 'quickTask';
 const jobsService = JobsService.getInstance();
@@ -69,12 +69,7 @@ export default function JobsPage() {
       {categories.length > 0 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}><TouchableOpacity onPress={() => setSelectedCategory(null)} style={[styles.chip, !selectedCategory && styles.chipActive]}><Text style={[styles.chipText, !selectedCategory && styles.chipTextActive]}>All</Text></TouchableOpacity>{categories.map(({ name, count }) => <TouchableOpacity key={name} onPress={() => setSelectedCategory(name)} style={[styles.chip, selectedCategory === name && styles.chipActive]}><Text style={[styles.chipText, selectedCategory === name && styles.chipTextActive]}>{name} ({count})</Text></TouchableOpacity>)}</ScrollView> : null}
       {error ? <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text><TouchableOpacity onPress={() => void loadJobs()}><Text style={styles.retryText}>Try again</Text></TouchableOpacity></View> : null}
       {loading ? (
-        <View style={{ paddingHorizontal: 18, gap: 10 }}>
-          <SkeletonJobCard />
-          <SkeletonJobCard />
-          <SkeletonJobCard />
-          <SkeletonJobCard />
-        </View>
+        <JobsListSkeleton variant={activeTab} />
       ) : activeTab === 'professional' ? <ProfessionalJobsList jobs={filteredJobs} /> : <QuickTasksList jobs={filteredJobs} />}
     </ScrollView>
     <JobCreationModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onCreated={() => void loadJobs()} />

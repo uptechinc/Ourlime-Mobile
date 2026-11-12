@@ -11,7 +11,8 @@ import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useMarketListings, useSellerEligibility } from '@/lib/hooks/useMarketListings';
 import { formatMarketPrice } from '@/lib/utils/formatMarketPrice';
 import type { ListingFilter, SellerListing } from '@/lib/types/marketListing';
-import SellerScreenFrame, { SellerLoading } from './SellerScreenFrame';
+import SellerScreenFrame from './SellerScreenFrame';
+import { SellerListingsSkeleton } from './SellerSkeletons';
 import SellerEligibilityNotice from './SellerEligibilityNotice';
 
 const FILTERS: readonly { value: ListingFilter; label: string }[] = [
@@ -108,7 +109,7 @@ export default function SellerListingsScreen() {
 
   return <SellerScreenFrame title="My listings" subtitle="Manage your catalogue, prices and orders"
     accessory={<Pressable accessibilityRole="button" accessibilityLabel="Fulfilment and orders" onPress={() => router.push('/market/seller/orders' as Href)} style={styles.headerButton}><Truck size={21} color={colors.text} /></Pressable>}>
-    {market.isLoading ? <SellerLoading label="Loading your listings…" /> : <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}
+    {market.isLoading ? <SellerListingsSkeleton /> : <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={market.isRefreshing} onRefresh={() => { void market.refresh(); void seller.refresh(); }} tintColor={colors.accent} />}>
       {seller.eligibility && !isApproved ? <SellerEligibilityNotice compact eligibility={seller.eligibility} onApplicationClosed={() => void seller.refresh()} /> : null}
       <View style={styles.actionsRow}>

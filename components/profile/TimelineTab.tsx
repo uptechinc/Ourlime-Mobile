@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
+import { ProfilePostListSkeleton } from '@/components/profile/ProfileTabSkeletons';
 import type { FeedFilter } from '@/lib/services/PostService';
 import { useFeedQuery } from '@/lib/hooks/useFeedQuery';
 import { feedResourceService } from '@/lib/services/FeedResourceService';
@@ -45,7 +46,7 @@ export default function TimelineTab({ userId }: TimelineTabProps) {
       </View>
 
       {isInitialLoading ? (
-        <View style={{ paddingVertical: 40, alignItems: 'center' }}><ActivityIndicator size="small" color="#10b981" /></View>
+        <ProfilePostListSkeleton count={2} />
       ) : resource.error && posts.length === 0 ? (
         <View style={{ paddingVertical: 40, alignItems: 'center', paddingHorizontal: 24 }}>
           <Text style={{ color: colors.destructiveText, textAlign: 'center' }}>{resource.error.message}</Text>

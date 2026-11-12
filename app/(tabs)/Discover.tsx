@@ -24,8 +24,8 @@ import type { DiscoverEvent, DiscoverResourceData } from '@/lib/types/discoverRe
 import {
   SkeletonUserCard,
   SkeletonCommunityCard,
-  SkeletonEventCard,
-  SkeletonJobCard,
+  SkeletonDiscoverEventCard,
+  SkeletonDiscoverJobCard,
 } from '@/components/home/SkeletonLoaders';
 import PostLocationMap from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostLocationMap';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
@@ -385,8 +385,8 @@ export default function DiscoverScreen() {
 
               {eventsState === 'loading' ? (
                 <>
-                  <SkeletonEventCard />
-                  <SkeletonEventCard />
+                  <SkeletonDiscoverEventCard />
+                  <SkeletonDiscoverEventCard />
                 </>
               ) : filteredEvents.length > 0 ? filteredEvents.map((evt) => {
                 const locationPresentation = linkPresentationService.presentLocation(evt.location);
@@ -447,8 +447,8 @@ export default function DiscoverScreen() {
 
               {jobsState === 'loading' ? (
                 <>
-                  <SkeletonJobCard />
-                  <SkeletonJobCard />
+                  <SkeletonDiscoverJobCard />
+                  <SkeletonDiscoverJobCard />
                 </>
               ) : filteredJobs.length > 0 ? filteredJobs.map((job) => (
                 <TouchableOpacity

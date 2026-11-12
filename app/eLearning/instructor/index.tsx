@@ -6,7 +6,7 @@ import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { BookOpen, ClipboardCheck, Clock, Eye, FileText, GraduationCap, HelpCircle, Plus, ShieldCheck, Star, Trash2, Users } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
 import CustomModal from '@/components/ui/CustomModal';
-import { CourseDetailSkeleton } from '@/components/ui/Skeleton';
+import { InstructorDashboardSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { instructorService, type InstructorCourse, type InstructorCourseStatus, type InstructorSettableStatus, type InstructorStatus } from '@/lib/services/InstructorService';
@@ -87,7 +87,7 @@ export default function InstructorDashboardScreen() {
     <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="Instructor" onBackPress={() => router.back()} />
       {isLoading ? (
-        <ScrollView contentContainerStyle={styles.padded}><CourseDetailSkeleton /></ScrollView>
+        <ScrollView contentContainerStyle={styles.scroll}><InstructorDashboardSkeleton /></ScrollView>
       ) : (
         <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => { setIsRefreshing(true); void load(); }} tintColor={colors.accent} />}>
           <View style={[styles.column, { width: Math.min(width, CONTENT_MAX_WIDTH) }]}>
@@ -204,7 +204,6 @@ export default function InstructorDashboardScreen() {
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
   flex: { flex: 1 },
-  padded: { padding: 16 },
   scroll: { alignItems: 'center', paddingBottom: 40 },
   column: { padding: 16, gap: 14 },
   error: { color: colors.destructiveText, backgroundColor: colors.destructiveSurface, borderRadius: 10, padding: 10 },

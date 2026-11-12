@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,6 +10,7 @@ import {
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { EMPTY_PET_FILTERS, PET_LOCATIONS, PET_TYPE_COUNTS, PET_TYPES, SAMPLE_PET_LISTINGS, petsService } from '@/lib/services/PetsService';
 import type { CreatePetInterestInput, CreatePetListingInput, PetListing, PetListingMode, PetType, PetsFilterValues } from '@/lib/types/pets';
+import { PetListingsSkeleton } from './PetsSkeletons';
 import { PetCreateListingSheet, PetDetailsSheet, PetFilterSheet, PetInterestSheet, PetSafetyGuideSheet, PetShelterSheet } from './PetsModals';
 
 const HERO = '#173f35';
@@ -178,10 +179,10 @@ export default function PetsScreen() {
         <Pressable accessibilityRole="button" onPress={resetFilters} style={styles.viewAll}><Text style={styles.viewAllText}>View all</Text><ArrowRight color={colors.accentText} size={15} /></Pressable>
       </View>
 
-      {loadState === 'loading' ? <View style={styles.loading}><ActivityIndicator color={colors.accent} /><Text style={styles.loadingText}>Loading listings…</Text></View> : null}
+      {loadState === 'loading' ? <PetListingsSkeleton /> : null}
       {loadState === 'error' ? <Text accessibilityRole="alert" style={styles.errorText}>{loadError}</Text> : null}
 
-      {visibleListings.length ? visibleListings.map((listing) => {
+      {loadState === 'loading' ? null : visibleListings.length ? visibleListings.map((listing) => {
         const isFavorite = favoritePetIds.includes(listing.id);
         return <Pressable key={listing.id} accessibilityRole="button" accessibilityLabel={`View ${listing.name}, ${listing.breed}`} onPress={() => setSelectedListing(listing)} style={styles.petCard}>
           <View style={styles.petImageWrap}>
@@ -308,8 +309,6 @@ const createStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.cre
   sectionTitle: { marginTop: 2, color: colors.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   viewAll: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 4 },
   viewAllText: { color: colors.accentText, fontSize: 13, fontWeight: '900' },
-  loading: { paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  loadingText: { color: colors.mutedText, fontSize: 13 },
   errorText: { padding: 12, borderRadius: 12, overflow: 'hidden', color: colors.destructiveText, backgroundColor: colors.destructiveSurface, fontSize: 13, lineHeight: 18 },
   petCard: { overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: colors.border, backgroundColor: isDark ? '#101817' : colors.surface },
   petImageWrap: { height: 230, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#17211f' : '#e2e8f0' },

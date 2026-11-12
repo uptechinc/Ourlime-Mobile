@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { BookOpen, ClipboardCheck, Clock, ExternalLink, FileText, HelpCircle, Plus, Star, Users, Video } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
-import { CourseDetailSkeleton } from '@/components/ui/Skeleton';
+import { InstructorCourseSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { instructorService, type InstructorCourseDetail, type InstructorCourseStatus, type InstructorCurriculum, type InstructorLesson } from '@/lib/services/InstructorService';
 
@@ -73,7 +73,7 @@ export default function InstructorCourseScreen() {
     <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="Course" onBackPress={() => router.back()} />
       {isLoading ? (
-        <ScrollView contentContainerStyle={styles.padded}><CourseDetailSkeleton /></ScrollView>
+        <ScrollView contentContainerStyle={styles.scroll}><InstructorCourseSkeleton /></ScrollView>
       ) : (
         <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => { setIsRefreshing(true); void load(); }} tintColor={colors.accent} />}>
           <View style={[styles.column, { width: Math.min(width, CONTENT_MAX_WIDTH) }]}>
@@ -167,7 +167,6 @@ export default function InstructorCourseScreen() {
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
   flex: { flex: 1 },
-  padded: { padding: 16 },
   scroll: { alignItems: 'center', paddingBottom: 40 },
   column: { padding: 16, gap: 12 },
   error: { color: colors.destructiveText, backgroundColor: colors.destructiveSurface, borderRadius: 10, padding: 10 },
