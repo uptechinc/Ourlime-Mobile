@@ -32,6 +32,11 @@ const SCREEN_ROUTES: { [firstSegment: string]: string } = {
   'verify-email': '/verify-email',
   'reset-password': '/reset-password',
   'forgot-password': '/forgot-password',
+  // Website pages with no id; these used to fall through to the 404 page.
+  profile: '/profile',
+  discover: '/Discover',
+  limes: '/Limes',
+  login: '/login',
 };
 /** Query parameters a SCREEN_ROUTES link keeps (verification/reset tokens, game mode). */
 const SCREEN_QUERY_KEEP: { [firstSegment: string]: string[] } = {
