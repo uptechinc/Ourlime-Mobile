@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePickerSheet from '@/components/ui/DateTimePickerSheet';
 import {
   AlertCircle, AlignLeft, ArrowLeft, ArrowRight, BookOpen, Check, CheckCircle, Clock, Eye,
   FileEdit, FileText, Hash, ImageIcon, Layers, Link2, Plus, Save, Shield, Sparkles, Trash2, X,
@@ -195,11 +195,13 @@ export default function CreateBlogModal({ isOpen, onClose, userId, onSuccess, ed
     updateField('sources', formData.sources.map((source, position) => position === index ? { ...source, [field]: value } : source));
   };
 
-  const handleSourceDateChange = (event: DateTimePickerEvent, date?: Date) => {
+  const handleSourceDateConfirm = (date: Date) => {
     const index = datePickerIndex;
     setDatePickerIndex(null);
-    if (event.type !== 'set' || !date || index === null) return;
-    updateSource(index, 'publishDate', date.toISOString().split('T')[0]);
+    if (index === null) return;
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    updateSource(index, 'publishDate', `${date.getFullYear()}-${month}-${day}`);
   };
 
   const handleSubmit = async (status: BlogSubmitStatus) => {
@@ -437,11 +439,14 @@ export default function CreateBlogModal({ isOpen, onClose, userId, onSuccess, ed
         <Plus size={16} color={colors.mutedText} /><Text style={[styles.smallButtonText, { color: colors.mutedText }]}>Add Source</Text>
       </Pressable>
       {datePickerIndex !== null ? (
-        <DateTimePicker
-          value={formData.sources[datePickerIndex]?.publishDate ? new Date(formData.sources[datePickerIndex].publishDate) : new Date()}
+        <DateTimePickerSheet
+          visible
+          title="Publish date"
           mode="date"
+          value={formData.sources[datePickerIndex]?.publishDate ? new Date(`${formData.sources[datePickerIndex].publishDate}T00:00:00`) : null}
           maximumDate={new Date()}
-          onChange={handleSourceDateChange}
+          onConfirm={handleSourceDateConfirm}
+          onClose={() => setDatePickerIndex(null)}
         />
       ) : null}
     </View>
