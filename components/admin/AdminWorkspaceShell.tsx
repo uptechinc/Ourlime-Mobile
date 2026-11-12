@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import {
-	ActivityIndicator,
 	RefreshControl,
 	ScrollView,
 	Text,
@@ -10,6 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
+import { AdminWorkspaceBodySkeleton } from '@/components/admin/AdminSkeletons';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
@@ -89,11 +89,7 @@ export default function AdminWorkspaceShell({
 			</View>
 
 			{accessLoading ? (
-				<View
-					style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-				>
-					<ActivityIndicator size="large" color="#10b981" />
-				</View>
+				<AdminWorkspaceBodySkeleton />
 			) : !authorization.isAdmin ? (
 				<View
 					style={{
@@ -128,14 +124,7 @@ export default function AdminWorkspaceShell({
 					</TouchableOpacity>
 				</View>
 			) : loading ? (
-				<View
-					style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-				>
-					<ActivityIndicator size="large" color={colors.accent} />
-					<Text style={{ marginTop: 11, color: colors.mutedText }}>
-						Loading {title.toLowerCase()}…
-					</Text>
-				</View>
+				<AdminWorkspaceBodySkeleton />
 			) : error ? (
 				<View
 					style={{

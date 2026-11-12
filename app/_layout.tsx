@@ -3,7 +3,7 @@ import '@/lib/shims/codegenNativeComponent';
 import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { ActivityIndicator, LogBox, View } from 'react-native';
+import { LogBox, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAuthGuard } from '@/lib/hooks/useAuthGuard';
 import './globals.css';
@@ -54,12 +54,10 @@ function AppRouteTree() {
     if (!isInitializing) void SplashScreen.hideAsync().catch(() => undefined);
   }, [isInitializing]);
 
+  // The native splash stays up until auth resolves (preventAutoHideAsync above, hideAsync in the
+  // effect), so this is never seen: a plain canvas avoids flashing a spinner or the wrong page.
   if (isInitializing) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.canvas, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#10b981" />
-      </View>
-    );
+    return <View style={{ flex: 1, backgroundColor: colors.canvas }} />;
   }
 
   return (

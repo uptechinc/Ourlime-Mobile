@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { HomeStartupSkeleton } from '@/components/home/FeedSkeletons';
+import { auth } from '@/lib/firebaseConfig';
 import { useAuthGuard } from '@/lib/hooks/useAuthGuard';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
@@ -50,21 +52,21 @@ export default function IndexScreen() {
     void resolveDestination();
   }, [hasNavigated, isInitializing, router, user]);
 
+  // Display only: the root layout has already resolved auth, so auth.currentUser is set before this
+  // screen's own listener reports it. A verified user is headed to the Home tab (the usual case);
+  // a signed-out user is replaced to login on the first effect, so they get the plain canvas.
+  const isSignedIn = user !== null || (isInitializing && auth.currentUser?.emailVerified === true);
+
   return (
     <View
-      style={{
-        flex: 1,
-        backgroundColor: colors.canvas,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
+      style={{ flex: 1, backgroundColor: colors.canvas }}
       onLayout={() => {
         if (!isInitializing && hasNavigated) {
           void SplashScreen.hideAsync().catch(() => undefined);
         }
       }}
     >
-      <ActivityIndicator size="large" color="#10b981" />
+      {isSignedIn ? <HomeStartupSkeleton /> : null}
     </View>
   );
 }

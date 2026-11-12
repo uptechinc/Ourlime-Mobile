@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-	ActivityIndicator,
 	Alert,
 	ScrollView,
 	Text,
@@ -28,6 +27,7 @@ import {
 	type ChildSafetyReportRecord,
 } from '@/lib/types/childSafety';
 import PrivateCaseAttachmentImage from '@/components/support/PrivateCaseAttachmentImage';
+import { ChildSafetyConversationSkeleton } from '@/components/help/HelpSkeletons';
 
 type ChildSafetyConversationScreenProps = {
 	reportId: string;
@@ -296,10 +296,7 @@ export default function ChildSafetyConversationScreen({
 			</View>
 			<KeyboardSafeView style={{ flex: 1 }}>
 				{busy && !report ? (
-					<ActivityIndicator
-						style={{ marginTop: 40 }}
-						color={colors.destructive}
-					/>
+					<ChildSafetyConversationSkeleton />
 				) : (
 					<FlashList
 						data={messages}

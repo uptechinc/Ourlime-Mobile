@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import CachedImage from '@/components/ui/CachedImage';
 import AdminDeletionModal from '@/components/moderation/AdminDeletionModal';
+import { AdminUserContentListSkeleton } from '@/components/admin/AdminSkeletons';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { adminContentService } from '@/lib/services/AdminContentService';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
@@ -279,10 +280,7 @@ export default function AdminUserContentWorkspace({
       ) : null}
 
       {loading ? (
-        <View style={{ paddingVertical: 44, alignItems: 'center' }}>
-          <ActivityIndicator color={colors.accent} />
-          <Text style={{ marginTop: 9, color: colors.mutedText }}>Loading user content…</Text>
-        </View>
+        <AdminUserContentListSkeleton />
       ) : visibleContent.length === 0 ? (
         <View style={{ marginTop: 14, padding: 24, alignItems: 'center', borderRadius: 15, backgroundColor: colors.elevated, borderWidth: 1, borderColor: colors.border }}>
           <Icon name="file-text" size={25} color={colors.icon} />

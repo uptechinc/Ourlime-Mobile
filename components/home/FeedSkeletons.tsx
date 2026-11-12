@@ -1,5 +1,5 @@
-import { Image, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image, Platform, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { SkeletonBox, SkeletonCircle } from '@/components/ui/Skeleton';
 import { SkeletonPostCard, SkeletonTextLine } from '@/components/home/SkeletonLoaders';
@@ -168,6 +168,84 @@ export function FeedPageSkeleton() {
       <View style={{ flex: 1, overflow: 'hidden' }}>
         <SkeletonFeedList />
       </View>
+    </View>
+  );
+}
+
+type HomeTabBarItem = { label: string; icon: 'grid' | 'compass-outline' | 'logo' | 'chatbubbles-outline' | 'person-outline' };
+
+/** The (tabs) bar items in order; Feeds is the focused tab on launch. */
+const HOME_TAB_BAR_ITEMS: readonly HomeTabBarItem[] = [
+  { label: 'Feeds', icon: 'grid' },
+  { label: 'Discover', icon: 'compass-outline' },
+  { label: 'Limes', icon: 'logo' },
+  { label: 'Chat', icon: 'chatbubbles-outline' },
+  { label: 'Profile', icon: 'person-outline' },
+];
+
+/**
+ * Mirrors the (tabs) bottom bar with Feeds focused: 56 px + bottom inset, navigation colours,
+ * PlayfulTabIcon pill (46 × 34, focused tint, lift and scale) and 11 px labels.
+ */
+export function SkeletonHomeTabBar() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 20);
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        height: 56 + bottomInset,
+        paddingTop: 6,
+        paddingBottom: bottomInset,
+        backgroundColor: colors.navigation,
+        borderTopWidth: 1,
+        borderTopColor: colors.navigationBorder,
+        elevation: 8,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+      }}
+    >
+      {HOME_TAB_BAR_ITEMS.map((tabItem, tabIndex) => {
+        const isFocused = tabIndex === 0;
+        const tintColor = isFocused ? colors.accent : colors.mutedText;
+        return (
+          <View key={tabItem.label} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <View
+              style={{
+                width: 46,
+                height: 34,
+                borderRadius: 17,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: isFocused ? 'rgba(16,185,129,0.14)' : 'transparent',
+                transform: isFocused ? [{ translateY: -2 }, { scale: 1.1 }] : [],
+              }}
+            >
+              {tabItem.icon === 'logo'
+                ? <Image source={require('@/assets/images/logo.png')} style={{ width: 26, height: 26, resizeMode: 'contain' }} />
+                : <Ionicons name={tabItem.icon} size={isFocused ? 23 : 22} color={tintColor} />}
+            </View>
+            <Text style={{ marginTop: 2, fontSize: 11, fontWeight: '600', color: tintColor }}>{tabItem.label}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * Launch placeholder for a signed-in user on their way to the Home tab: the full Home page
+ * skeleton above the bottom tab bar, so nothing moves when (tabs) mounts.
+ */
+export function HomeStartupSkeleton() {
+  const { colors } = useAppTheme();
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <FeedPageSkeleton />
+      <SkeletonHomeTabBar />
     </View>
   );
 }

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
@@ -34,14 +34,6 @@ export default function SellerScreenFrame({ title, subtitle, accessory, fallback
     </View>
     <KeyboardSafeView style={styles.body}>{children}</KeyboardSafeView>
   </SafeAreaView>;
-}
-
-export function SellerLoading({ label }: { label: string }) {
-  const { colors } = useAppTheme();
-  return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 30 }}>
-    <ActivityIndicator color={colors.accent} />
-    <Text style={{ color: colors.mutedText, fontSize: 13 }}>{label}</Text>
-  </View>;
 }
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({

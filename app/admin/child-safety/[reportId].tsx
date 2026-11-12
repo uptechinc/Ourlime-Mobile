@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-	ActivityIndicator,
 	Alert,
 	ScrollView,
 	Text,
@@ -22,6 +21,8 @@ import {
 	type ChildSafetyStatus,
 } from '@/lib/types/childSafety';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
+import { SkeletonLine } from '@/components/ui/WorkspaceSkeletonParts';
+import { ChildSafetyCaseDetailSkeleton } from '@/components/admin/AdminSkeletons';
 
 type ChildSafetyCaseDetailScreenProps = { queueRoute?: Href };
 
@@ -86,14 +87,25 @@ export default function ChildSafetyCaseDetailScreen({
 		return (
 			<SafeAreaView
 				edges={['top', 'bottom', 'left', 'right']}
-				style={{
-					flex: 1,
-					backgroundColor: colors.canvas,
-					alignItems: 'center',
-					justifyContent: 'center',
-				}}
+				style={{ flex: 1, backgroundColor: colors.canvas }}
 			>
-				<ActivityIndicator color={colors.accent} />
+				<View
+					style={{
+						flexDirection: 'row',
+						alignItems: 'center',
+						padding: 14,
+						borderBottomWidth: 1,
+						borderBottomColor: colors.border,
+					}}
+				>
+					<TouchableOpacity onPress={() => router.back()}>
+						<Ionicons name="chevron-back" size={26} color={colors.icon} />
+					</TouchableOpacity>
+					<View style={{ flex: 1, marginLeft: 10 }}>
+						<SkeletonLine fontSize={18} width={124} />
+					</View>
+				</View>
+				<ChildSafetyCaseDetailSkeleton />
 			</SafeAreaView>
 		);
 	return (

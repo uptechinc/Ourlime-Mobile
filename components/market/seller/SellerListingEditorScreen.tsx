@@ -10,7 +10,8 @@ import { useMarketListingEditor } from '@/lib/hooks/useMarketListingEditor';
 import { useSellerEligibility } from '@/lib/hooks/useMarketListings';
 import { LISTING_STEPS } from '@/lib/services/MarketListingFormService';
 import type { ListingEditorStep } from '@/lib/types/marketListing';
-import SellerScreenFrame, { SellerLoading } from './SellerScreenFrame';
+import SellerScreenFrame from './SellerScreenFrame';
+import { SellerListingEditorSkeleton } from './SellerSkeletons';
 import SellerEligibilityNotice from './SellerEligibilityNotice';
 import { ListingIssues } from './ListingFormParts';
 import ListingBasicInfoStep from './steps/ListingBasicInfoStep';
@@ -32,7 +33,7 @@ export default function SellerListingEditorScreen() {
 
   if (!seller.eligibility) {
     return <SellerScreenFrame title={title} subtitle="Lime Market seller" fallbackRoute="/market/seller">
-      {seller.error ? <View style={{ padding: 16 }}><SellerButton label="Retry" onPress={() => void seller.refresh()} /></View> : <SellerLoading label="Checking your seller status…" />}
+      {seller.error ? <View style={{ padding: 16 }}><SellerButton label="Retry" onPress={() => void seller.refresh()} /></View> : <SellerListingEditorSkeleton />}
     </SellerScreenFrame>;
   }
   if (seller.eligibility.status !== 'approved') {
@@ -76,7 +77,7 @@ function ListingEditor({ productId, title, canMutate }: { productId: string | nu
     if (result) setIsSaved(true);
   };
 
-  if (editor.loadState === 'loading') return <SellerScreenFrame title={title} subtitle="Lime Market seller" fallbackRoute="/market/seller"><SellerLoading label="Loading listing…" /></SellerScreenFrame>;
+  if (editor.loadState === 'loading') return <SellerScreenFrame title={title} subtitle="Lime Market seller" fallbackRoute="/market/seller"><SellerListingEditorSkeleton /></SellerScreenFrame>;
   if (editor.loadState === 'error') {
     return <SellerScreenFrame title={title} subtitle="Lime Market seller" fallbackRoute="/market/seller">
       <View style={styles.content}>

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-	ActivityIndicator,
 	Modal,
 	ScrollView,
 	Text,
@@ -18,6 +17,10 @@ import { db } from '@/lib/firebaseConfig';
 import CustomModal from '@/components/ui/CustomModal';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import UserAvatar from '@/components/ui/UserAvatar';
+import {
+	AdminReportReviewSkeleton,
+	ReportedContentPreviewSkeleton,
+} from '@/components/admin/AdminSkeletons';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
 import { PostService, type PostItem } from '@/lib/services/PostService';
 import { AuthService } from '@/lib/services/AuthService';
@@ -681,11 +684,7 @@ export default function AdminReportDetailRoute() {
 				</TouchableOpacity>
 			</View>
 			{accessLoading || loading ? (
-				<View
-					style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-				>
-					<ActivityIndicator size="large" color={colors.accent} />
-				</View>
+				<AdminReportReviewSkeleton />
 			) : !authorization.isAdmin ? (
 				<View
 					style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
@@ -796,12 +795,7 @@ export default function AdminReportDetailRoute() {
 
 						{/* Loading indicator */}
 						{targetContent?.loading ? (
-							<View style={{ paddingVertical: 20, alignItems: 'center' }}>
-								<ActivityIndicator size="small" color={colors.accent} />
-								<Text style={{ marginTop: 8, fontSize: 12, color: colors.mutedText }}>
-									Loading reported content…
-								</Text>
-							</View>
+							<ReportedContentPreviewSkeleton />
 						) : targetContent?.found ? (
 							<>
 								{/* Author Header Row */}
