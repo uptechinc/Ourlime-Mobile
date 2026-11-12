@@ -38,3 +38,17 @@ export type SecurityAccessSettings = {
   updatedAt?: string;
   updatedBy?: string;
 };
+
+export type SecurityAuditEntry = {
+  id: string;
+  action: string;
+  adminId: string;
+  targetUserId: string;
+  timestamp: string | null;
+};
+
+export type SecurityMonitoring = {
+  /** Live distributed rate-limit buckets; null when the app cannot read them (server-only collection). */
+  activeRateBuckets: number | null;
+  recentAudit: SecurityAuditEntry[];
+};

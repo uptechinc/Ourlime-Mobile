@@ -115,7 +115,7 @@ export default function MyJobApplicationsScreen() {
                 </View>
               </View>
               <View style={styles.metaRow}><Building2 size={15} color={colors.mutedText} /><Text numberOfLines={1} style={[styles.metaText, styles.flex]}>{application.employerName}</Text></View>
-              <View style={styles.metaRow}><CalendarDays size={15} color={colors.mutedText} /><Text style={styles.metaText}>Applied {formatDate(application.createdAtMs)}</Text></View>
+              <View style={styles.metaRow}><CalendarDays size={15} color={colors.mutedText} /><Text style={styles.metaText}>Applied {formatDate(application.createdAtMs)}{application.updatedAtMs && Math.floor(application.updatedAtMs / 1000) !== Math.floor(application.createdAtMs / 1000) ? ` · Updated ${formatDate(application.updatedAtMs)}` : ''}</Text></View>
               {application.coverLetter ? <Text numberOfLines={3} style={styles.coverLetter}>{application.coverLetter}</Text> : null}
               <View style={styles.actions}>
                 {application.resumeUrl ? (

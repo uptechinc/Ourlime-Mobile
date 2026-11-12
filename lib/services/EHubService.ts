@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { appServerService, AppServerError } from './AppServerService';
 import type {
   EHubCatalogProduct, EHubEnquiry, EHubEnquiryDraft, EHubEnquiryInput, EHubEnquiryMode, EHubManageableEnquiryStatus,
@@ -9,6 +10,8 @@ export type EHubRequestOptions = { query?: string; body?: object; allowEmpty?: b
 type GatewayResponse = { status: number; body: unknown };
 type RouteBody<TData> = { status?: string; data?: TData; message?: string };
 type CacheEntry<TValue> = { value: TValue; cachedAt: number };
+type StoredEnquiryDraft = EHubEnquiryDraft & { savedAt: number };
+type StoredEnquiryDrafts = { [key: string]: StoredEnquiryDraft };
 
 /** A failed eHub request; status is the website route's HTTP status (404 unpublished, 429 rate limited). */
 export class EHubError extends Error {
@@ -19,6 +22,17 @@ export class EHubError extends Error {
 }
 
 const CACHE_TTL_MS = 60_000;
+const ENQUIRY_DRAFTS_STORAGE_KEY = 'ehub-enquiry-drafts';
+/** Unsent enquiry forms older than this are dropped when the drafts are read back. */
+const ENQUIRY_DRAFT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const ENQUIRY_DRAFT_WRITE_DELAY_MS = 400;
+const ENQUIRY_TYPES: EHubEnquiryDraft['type'][] = ['service', 'availability', 'product', 'general'];
+
+function isStoredEnquiryDraft(value: unknown): value is StoredEnquiryDraft {
+  if (!value || typeof value !== 'object') return false;
+  const draft = value as Partial<StoredEnquiryDraft>;
+  return typeof draft.message === 'string' && typeof draft.savedAt === 'number' && ENQUIRY_TYPES.includes(draft.type as EHubEnquiryDraft['type']);
+}
 export const EHUB_BUYER_TERMS_URL = 'https://ourlime.com/ehub/terms#buyer';
 export const EHUB_PROVIDER_SHARE_BASE_URL = 'https://ourlime.com/ehub/providers/';
 
@@ -44,8 +58,15 @@ export class EHubService {
   private static instance: EHubService;
   private catalogCache: CacheEntry<EHubCatalogProduct[]> | null = null;
   private providersCache: CacheEntry<EHubProvider[]> | null = null;
-  /** Unsent enquiry forms for this app run, like the website's sessionStorage drafts. */
-  private readonly enquiryDrafts = new Map<string, EHubEnquiryDraft>();
+  /**
+   * Unsent enquiry forms, like the website's browser-stored drafts. Kept in memory and written to AsyncStorage
+   * (debounced), so a half-written enquiry survives closing the app.
+   */
+  private readonly enquiryDrafts = new Map<string, StoredEnquiryDraft>();
+  private enquiryDraftsLoad: Promise<void> | null = null;
+  /** Keys saved or cleared in this run before the stored drafts were read; the stored copies of these are stale. */
+  private readonly touchedEnquiryDraftKeys = new Set<string>();
+  private enquiryDraftsWriteTimer: ReturnType<typeof setTimeout> | null = null;
 
   private constructor() {}
 
@@ -106,16 +127,57 @@ export class EHubService {
     return `ehub-enquiry-${providerId}-${encodeURIComponent(contextName || 'general')}`;
   }
 
-  public getEnquiryDraft(key: string): EHubEnquiryDraft | null {
-    return this.enquiryDrafts.get(key) ?? null;
+  /** The saved unsent form for this key, read back from the device the first time. */
+  public async getEnquiryDraft(key: string): Promise<EHubEnquiryDraft | null> {
+    await this.loadEnquiryDrafts();
+    const draft = this.enquiryDrafts.get(key);
+    return draft ? { type: draft.type, message: draft.message, isBuyerAcknowledgementAccepted: draft.isBuyerAcknowledgementAccepted === true } : null;
   }
 
   public saveEnquiryDraft(key: string, draft: EHubEnquiryDraft): void {
-    this.enquiryDrafts.set(key, draft);
+    this.touchedEnquiryDraftKeys.add(key);
+    if (!draft.message.trim() && !draft.isBuyerAcknowledgementAccepted) this.enquiryDrafts.delete(key);
+    else this.enquiryDrafts.set(key, { ...draft, savedAt: Date.now() });
+    this.scheduleEnquiryDraftsWrite();
   }
 
   public clearEnquiryDraft(key: string): void {
+    this.touchedEnquiryDraftKeys.add(key);
     this.enquiryDrafts.delete(key);
+    this.scheduleEnquiryDraftsWrite();
+  }
+
+  private loadEnquiryDrafts(): Promise<void> {
+    if (!this.enquiryDraftsLoad) {
+      this.enquiryDraftsLoad = AsyncStorage.getItem(ENQUIRY_DRAFTS_STORAGE_KEY).then((stored) => {
+        if (!stored) return;
+        const parsed: unknown = JSON.parse(stored);
+        if (!parsed || typeof parsed !== 'object') return;
+        const oldestAllowed = Date.now() - ENQUIRY_DRAFT_MAX_AGE_MS;
+        Object.entries(parsed as StoredEnquiryDrafts).forEach(([key, draft]) => {
+          // A draft edited or sent in this run before the read finished is newer than the stored one.
+          if (isStoredEnquiryDraft(draft) && draft.savedAt >= oldestAllowed && !this.touchedEnquiryDraftKeys.has(key)) this.enquiryDrafts.set(key, draft);
+        });
+      }).catch((error: unknown) => {
+        console.error('[EHubService.loadEnquiryDrafts] Error:', error instanceof Error ? error.message : 'Unknown error');
+      });
+    }
+    return this.enquiryDraftsLoad;
+  }
+
+  private scheduleEnquiryDraftsWrite(): void {
+    if (this.enquiryDraftsWriteTimer) clearTimeout(this.enquiryDraftsWriteTimer);
+    this.enquiryDraftsWriteTimer = setTimeout(() => {
+      this.enquiryDraftsWriteTimer = null;
+      // Wait for the first read so drafts stored by an earlier run are not overwritten.
+      void this.loadEnquiryDrafts().then(() => {
+        const drafts: StoredEnquiryDrafts = {};
+        this.enquiryDrafts.forEach((draft, key) => { drafts[key] = draft; });
+        return Object.keys(drafts).length ? AsyncStorage.setItem(ENQUIRY_DRAFTS_STORAGE_KEY, JSON.stringify(drafts)) : AsyncStorage.removeItem(ENQUIRY_DRAFTS_STORAGE_KEY);
+      }).catch((error: unknown) => {
+        console.error('[EHubService.saveEnquiryDrafts] Error:', error instanceof Error ? error.message : 'Unknown error');
+      });
+    }, ENQUIRY_DRAFT_WRITE_DELAY_MS);
   }
 
   /** Seller changes show on the public lists straight away instead of after the 60 s cache. */

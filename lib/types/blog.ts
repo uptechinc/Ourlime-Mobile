@@ -122,6 +122,8 @@ export type BlogPostDetail = {
   updatedAt?: { seconds?: number; toDate?: () => Date } | string | Date;
   status: BlogPublicationStatus;
   contentLabels?: BlogContentLabel[];
+  /** blogsAndArticles/{id}.flags.trending (set by moderation; the web list shows these under "Trending Now"). */
+  isTrending?: boolean;
 };
 
 export type BlogSortOption = 'newest' | 'most_liked' | 'most_commented' | 'trending';
@@ -145,6 +147,7 @@ export type BlogListItem = {
   likesCount: number;
   commentsCount: number;
   viewsCount: number;
+  isTrending?: boolean;
 };
 
 /** Mirrors the web list query params (app/blogs/page.tsx → GET /api/blogs&articles). */

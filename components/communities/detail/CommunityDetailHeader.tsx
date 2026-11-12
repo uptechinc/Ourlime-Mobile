@@ -1,4 +1,4 @@
-import { CalendarDays, Edit3, Flag, Heart, Lock, Settings2, Share2, ShieldCheck, Users } from 'lucide-react-native';
+import { CalendarDays, Edit3, Flag, Heart, Lock, Settings2, Share2, ShieldCheck, Trash2, Users } from 'lucide-react-native';
 import { ActivityIndicator, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -14,6 +14,8 @@ type CommunityDetailHeaderProps = {
   onReport: () => void;
   onEdit: () => void;
   onDashboard: () => void;
+  /** Web "Delete Community": shown to the owner and Ourlime administrators. */
+  onDelete: () => void;
 };
 
 const membershipLabel = (community: CommunityCardModel): string => {
@@ -25,7 +27,7 @@ const membershipLabel = (community: CommunityCardModel): string => {
   return community.isPrivate ? 'Request access' : 'Join community';
 };
 
-export default function CommunityDetailHeader({ community, busyAction, onMembershipAction, onLeave, onLike, onShare, onReport, onEdit, onDashboard }: CommunityDetailHeaderProps) {
+export default function CommunityDetailHeader({ community, busyAction, onMembershipAction, onLeave, onLike, onShare, onReport, onEdit, onDashboard, onDelete }: CommunityDetailHeaderProps) {
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const isNarrow = width < 390;
@@ -168,6 +170,17 @@ export default function CommunityDetailHeader({ community, busyAction, onMembers
             </TouchableOpacity>
           )}
         </View>
+        {community.permissions.canDelete ? (
+          <TouchableOpacity
+            onPress={onDelete}
+            disabled={busyAction}
+            accessibilityRole="button"
+            style={{ flexDirection: 'row', minHeight: 44, marginTop: 8, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.destructiveSurface }}
+          >
+            <Trash2 size={16} color={colors.destructive} />
+            <Text style={{ marginLeft: 6, color: colors.destructiveText, fontWeight: '900' }}>Delete community</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );

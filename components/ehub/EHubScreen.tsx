@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ArrowLeft, ArrowRight, BriefcaseBusiness, Building2, ChevronDown, ChevronLeft, ChevronRight, Inbox, Package, Search, ShieldCheck, ShoppingBag, Store, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useEHubCatalog, useEHubProviders } from '@/lib/hooks/useEHub';
@@ -103,6 +103,8 @@ export default function EHubScreen() {
   const providers = useEHubProviders();
   const { favorites } = useEHubCommerce();
   const { scrollRef, scrollToSection, onContainerLayout, onSectionLayout } = useEHubSectionScroll<HomeSection>();
+  // ?section=products opens at the catalog (the website's /ehub#featured-products); jump changes on every tap of the Shop pill.
+  const params = useLocalSearchParams<{ section?: string; jump?: string }>();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [sort, setSort] = useState<ProductSort>('catalog');
@@ -110,6 +112,10 @@ export default function EHubScreen() {
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [openQuestion, setOpenQuestion] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (params.section === 'products' || params.section === 'professionals') scrollToSection(params.section);
+  }, [params.jump, params.section, scrollToSection]);
 
   useEffect(() => {
     const timer = setInterval(() => setHeroIndex((currentIndex) => (currentIndex + 1) % HERO_SLIDES.length), HERO_ROTATION_MS);

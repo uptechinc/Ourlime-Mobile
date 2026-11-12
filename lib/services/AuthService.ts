@@ -35,7 +35,7 @@ import { pushNotificationService } from './PushNotificationService';
 import { localCacheService } from './LocalCacheService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import { PostMediaService } from './PostMediaService';
-import { AuthServiceError } from '@/lib/auth/AuthErrors';
+import { AuthServiceError, getAuthErrorCode } from '@/lib/auth/AuthErrors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { presenceService } from './PresenceService';
 import { nativeCallService } from './NativeCallService';
@@ -198,7 +198,7 @@ export class AuthService {
           .catch((error: unknown) => this.logger.warn('AuthService', 'login:finish-registration', { error: error instanceof Error ? error.message : String(error) }));
       }
       if (!credential.user.emailVerified) {
-        await sendEmailVerification(credential.user).catch(() => undefined);
+        await sendEmailVerification(credential.user, this.emailVerificationSettings).catch(() => undefined);
         await signOut(auth);
         throw new AuthServiceError('EMAIL_NOT_VERIFIED', 'Verify your email before signing in. A new verification email was sent.');
       }
@@ -211,6 +211,34 @@ export class AuthService {
     } catch (error: unknown) {
       this.logger.error('AuthService', 'login', error, { emailDomain: normalizedEmail.split('@')[1] ?? 'unknown' });
       throw error;
+    }
+  }
+
+  /**
+   * Where Firebase's "email verified" page continues to: the website's success page, which offers to open the app.
+   * (The website's /verify-email expects its own ?token=&userId= link and shows "Verification Failed" without one.)
+   */
+  private readonly emailVerificationSettings = { url: 'https://ourlime.com/verify-email/success' };
+
+  /** The website's /forgot-password messages for a failed reset request. */
+  public getPasswordResetRequestErrorMessage(error: unknown): string {
+    switch (getAuthErrorCode(error)) {
+      case 'auth/invalid-email': return 'Invalid email address.';
+      case 'auth/user-not-found': return 'No account found with this email address.';
+      case 'auth/too-many-requests': return 'Too many requests. Please wait a moment and try again.';
+      case 'auth/network-request-failed': return 'No connection. Check your internet and try again.';
+      default: return 'Something went wrong. Please try again.';
+    }
+  }
+
+  /** The website's /reset-password messages for a failed password change. */
+  public getPasswordResetErrorMessage(error: unknown): string {
+    switch (getAuthErrorCode(error)) {
+      case 'auth/expired-action-code': return 'This reset link has expired. Please request a new one.';
+      case 'auth/invalid-action-code': return 'This reset link is invalid. Please request a new one.';
+      case 'auth/weak-password': return 'Password is too weak. Use at least 8 characters.';
+      case 'auth/network-request-failed': return 'No connection. Check your internet and try again.';
+      default: return error instanceof AuthServiceError ? error.message : 'Something went wrong. Please try again.';
     }
   }
 
@@ -233,7 +261,7 @@ export class AuthService {
   public async resendEmailVerification(email: string, password: string): Promise<void> {
     const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
     try {
-      if (!credential.user.emailVerified) await sendEmailVerification(credential.user);
+      if (!credential.user.emailVerified) await sendEmailVerification(credential.user, this.emailVerificationSettings);
     } finally {
       await signOut(auth);
     }
@@ -415,7 +443,7 @@ export class AuthService {
       }
 
       let verificationEmailSent = true;
-      await sendEmailVerification(user, { url: 'https://ourlime.com/verify-email' }).catch((error: unknown) => {
+      await sendEmailVerification(user, this.emailVerificationSettings).catch((error: unknown) => {
         verificationEmailSent = false;
         this.logger.warn('AuthService', 'register:verification-email', { error: error instanceof Error ? error.message : String(error) });
       });

@@ -17,6 +17,7 @@ const PUBLIC_ROUTES = new Set([
   '/privacy',
   '/policies',
   '/child-safety-standards',
+  '/delete-account',
   '/help',
   '/market',
   '/ehub',

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, ImageOff, X } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import CachedImage from '@/components/ui/CachedImage';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { profileMediaService, type ProfileImageItem, type ProfileImageUse } from '@/lib/services/ProfileMediaService';
 
@@ -85,7 +86,11 @@ export default function ProfileCustomizationSheet({ visible, userId, onClose, on
         </View>
         <ScrollView contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: 40 }}>
           <Text style={{ color: colors.text, fontWeight: '900', fontSize: 16 }}>Available Images</Text>
-          {loading ? <ActivityIndicator color={colors.accent} style={{ marginVertical: 30 }} /> : images.length === 0 ? (
+          {loading ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }} accessibilityLabel="Loading your images">
+              {['image-skeleton-1', 'image-skeleton-2', 'image-skeleton-3', 'image-skeleton-4', 'image-skeleton-5', 'image-skeleton-6'].map((skeletonId) => <Skeleton key={skeletonId} width={tileSize} height={tileSize} borderRadius={12} />)}
+            </View>
+          ) : images.length === 0 ? (
             <View style={{ alignItems: 'center', paddingVertical: 30, gap: 8 }}>
               <ImageOff size={34} color={colors.mutedText} />
               <Text style={{ color: colors.mutedText, textAlign: 'center' }}>No uploaded images yet. Upload a profile picture or cover from Edit Profile first.</Text>

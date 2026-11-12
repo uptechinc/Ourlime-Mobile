@@ -5,10 +5,14 @@ import { pageAccessService } from './PageAccessService';
 import { durableWorkService } from './DurableWorkService';
 import { contentDraftService } from './ContentDraftService';
 import { reliabilityDecoder as decode } from './ReliabilityDecoderService';
-import type { Task } from '@/lib/types/project';
-type TaskOperation = { action: 'update'; payload: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'assignee' | 'assignees' | 'dueDate' | 'estimatedTime' | 'tags'>> }
-  | { action: 'delete'; payload: { reason?: never } } | { action: 'add_subtask'; payload: { title: string } } | { action: 'toggle_subtask'; payload: { subtaskId: string } }
-  | { action: 'comment'; payload: { content: string } } | { action: 'time'; payload: { duration: number; description: string } };
+import type { FileAttachment, FullTaskInput, TaskFieldUpdate } from '@/lib/types/project';
+/** Every action functions/src/TaskMutationService.ts accepts (the same ones the website's /api/projects/tasks sends). */
+type TaskOperation = { action: 'update'; payload: TaskFieldUpdate }
+  | { action: 'create'; payload: { fields: FullTaskInput; subTasks: { title: string }[]; attachments: FileAttachment[] } }
+  | { action: 'delete' | 'archive' | 'restore'; payload: { reason?: never } } | { action: 'add_subtask'; payload: { title: string } } | { action: 'toggle_subtask'; payload: { subtaskId: string; completed?: boolean } }
+  | { action: 'comment'; payload: { content: string; mentions?: string[] } } | { action: 'time'; payload: { duration: number; description: string } }
+  | { action: 'edit_comment'; payload: { commentId: string; content: string } } | { action: 'delete_comment'; payload: { commentId: string } }
+  | { action: 'add_attachment'; payload: FileAttachment } | { action: 'delete_attachment'; payload: { attachmentId: string } };
 export class NativeTaskService {
   private readonly queues = new Map<string, Promise<void>>();
   private readonly inFlight = new Map<string, Promise<void>>();
@@ -31,7 +35,7 @@ export class NativeTaskService {
     await nativeSessionService.ensure(ownerId);
     const key = JSON.stringify(['task', projectId, taskId, operation]);
     const stored = await durableWorkService.read(ownerId, 'mutation', key, (value) => { const record = decode.object(value); return { id: decode.string(record.id), version: decode.integer(record.version) }; });
-    const task = stored ? null : await getDoc(doc(db, 'projects', projectId, 'tasks', taskId));
+    const task = stored || operation.action === 'create' ? null : await getDoc(doc(db, 'projects', projectId, 'tasks', taskId));
     const mutation = stored?.value ?? { id: await contentDraftService.newId(), version: decode.integer(task?.data()?.version ?? 0) };
     const revision = stored?.revision ?? await durableWorkService.write(ownerId, 'mutation', key, mutation, 0);
     const { getFunctions, httpsCallable } = await import('@react-native-firebase/functions');

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
-import { Copy, ExternalLink, FilePenLine, Package, Plus, Power, Search, Trash2, Truck, X } from 'lucide-react-native';
+import { ArrowUpDown, Copy, ExternalLink, FilePenLine, Package, Plus, Power, Search, Trash2, Truck, X } from 'lucide-react-native';
 import CachedImage from '@/components/ui/CachedImage';
 import CustomModal from '@/components/ui/CustomModal';
 import { SellerButton } from '@/components/ehub/EHubSellerFormParts';
@@ -37,6 +37,17 @@ const matchesFilter = (listing: SellerListing, filter: ListingFilter): boolean =
   return false;
 };
 
+// Website /profile/products/update table sort columns (title, category, variants, status).
+type ListingSortField = 'title' | 'category' | 'variants' | 'status';
+const SORT_FIELDS: readonly { value: ListingSortField; label: string }[] = [
+  { value: 'title', label: 'Name' }, { value: 'category', label: 'Category' }, { value: 'variants', label: 'Variants' }, { value: 'status', label: 'Status' },
+];
+const compareListings = (first: SellerListing, second: SellerListing, field: ListingSortField): number => {
+  if (field === 'variants') return first.variants.length - second.variants.length;
+  const valueOf = (listing: SellerListing) => (field === 'title' ? listing.title : field === 'category' ? listing.category : listing.status).toLowerCase();
+  return valueOf(first).localeCompare(valueOf(second));
+};
+
 type PendingConfirm = { kind: 'delete' | 'status'; listing: SellerListing } | null;
 
 /** Website /profile/products ("Seller Dashboard"): the seller's own listings with status filters and listing actions. */
@@ -51,6 +62,7 @@ export default function SellerListingsScreen() {
   const seller = useSellerEligibility(userId);
   const [filter, setFilter] = useState<ListingFilter>('all');
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<{ field: ListingSortField; direction: 'asc' | 'desc' } | null>(null);
   const [confirm, setConfirm] = useState<PendingConfirm>(null);
   const [notice, setNotice] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
   const isApproved = seller.eligibility?.status === 'approved';
@@ -72,8 +84,11 @@ export default function SellerListingsScreen() {
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return market.listings.filter((listing) => matchesFilter(listing, filter)).filter((listing) => !term || `${listing.title} ${listing.category} ${listing.shortDescription}`.toLowerCase().includes(term));
-  }, [filter, market.listings, search]);
+    const matches = market.listings.filter((listing) => matchesFilter(listing, filter)).filter((listing) => !term || `${listing.title} ${listing.category} ${listing.shortDescription}`.toLowerCase().includes(term));
+    if (!sort) return matches;
+    return [...matches].sort((first, second) => compareListings(first, second, sort.field) * (sort.direction === 'asc' ? 1 : -1));
+  }, [filter, market.listings, search, sort]);
+  const handleSort = (field: ListingSortField) => setSort((current) => current?.field === field ? { field, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { field, direction: 'asc' });
 
   const openEditor = (productId?: string) => router.push((productId ? `/market/seller/edit?id=${encodeURIComponent(productId)}` : '/market/seller/edit') as Href);
 
@@ -135,6 +150,15 @@ export default function SellerListingsScreen() {
           </Pressable>;
         })}
       </ScrollView>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
+        <View style={styles.sortLabel}><ArrowUpDown size={14} color={colors.mutedText} /><Text style={styles.filterText}>Sort</Text></View>
+        {SORT_FIELDS.map((option) => {
+          const selected = sort?.field === option.value;
+          return <Pressable key={option.value} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Sort by ${option.label}${selected ? (sort?.direction === 'asc' ? ', ascending' : ', descending') : ''}`} onPress={() => handleSort(option.value)} style={[styles.filter, selected ? styles.filterActive : null]}>
+            <Text style={[styles.filterText, selected ? styles.filterTextActive : null]}>{option.label}{selected ? (sort?.direction === 'asc' ? ' ↑' : ' ↓') : ''}</Text>
+          </Pressable>;
+        })}
+      </ScrollView>
       {market.error ? <Pressable onPress={() => void market.refresh()} style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{market.error} Tap to retry.</Text></Pressable> : null}
       {showDraft && draft ? <View style={styles.card}>
         <View style={styles.cardTop}>
@@ -157,6 +181,7 @@ export default function SellerListingsScreen() {
         <Package size={40} color={colors.mutedText} />
         <Text style={styles.emptyTitle}>{market.listings.length || draft ? 'No listings match' : 'No listings yet'}</Text>
         <Text style={styles.emptyText}>{market.listings.length || draft ? 'Try another search or status filter.' : 'Add your first product and submit it for review.'}</Text>
+        {!market.listings.length && !draft && isApproved && canMutate ? <SellerButton label="Add your first product" icon={<Plus size={17} color="#ffffff" />} onPress={() => openEditor()} /> : null}
       </View> : null}
     </ScrollView>}
     <CustomModal visible={Boolean(confirm)} type={confirm?.kind === 'delete' ? 'danger' : 'warning'}
@@ -193,7 +218,8 @@ function ListingCard({ listing, styles, colors, busy, canMutate, onEdit, onToggl
         <Text numberOfLines={1} style={styles.meta}>{listing.category || 'Uncategorised'} · {listing.condition.replace('_', ' ')}</Text>
         <View style={styles.metaRow}>
           <Text style={styles.price}>{priceOf(listing)}</Text>
-          <Text style={[styles.meta, stock <= 3 && listing.variants.length ? { color: colors.destructiveText, fontWeight: '800' } : null]}>{stock} in stock</Text>
+          <Text style={[styles.meta, stock <= 3 && listing.variants.length ? { color: colors.destructiveText, fontWeight: '800' } : null]}>{listing.variants.length && stock === 0 ? 'Sold out' : `${stock} in stock`}</Text>
+          <Text style={styles.meta}>{listing.variants.length} {listing.variants.length === 1 ? 'variant' : 'variants'}</Text>
           <Text style={[styles.badge, badge.style]}>{badge.label}</Text>
         </View>
       </View>
@@ -204,7 +230,8 @@ function ListingCard({ listing, styles, colors, busy, canMutate, onEdit, onToggl
       <IconAction label={`Edit ${listing.title}`} disabled={pending || !canMutate || busy} onPress={onEdit} styles={styles}><FilePenLine size={17} color={colors.text} /></IconAction>
       <IconAction label={`Duplicate ${listing.title}`} disabled={!canMutate} onPress={onDuplicate} styles={styles}><Copy size={17} color={colors.text} /></IconAction>
       {published ? <IconAction label={`View ${listing.title} in the market`} onPress={onView} styles={styles}><ExternalLink size={17} color={colors.text} /></IconAction> : null}
-      <SellerButton compact variant="secondary" label={published ? 'Unpublish' : 'Republish'} icon={<Power size={15} color={colors.text} />} isLoading={busy} disabled={!canMutate || pending} onPress={onToggle} />
+      {/* Web hides the active/inactive toggle while a listing is pending or rejected (edit it to resubmit). */}
+      {listing.status !== 'rejected' ? <SellerButton compact variant="secondary" label={published ? 'Unpublish' : 'Republish'} icon={<Power size={15} color={colors.text} />} isLoading={busy} disabled={!canMutate || pending} onPress={onToggle} /> : null}
       <IconAction label={`Delete ${listing.title}`} danger disabled={!canMutate || busy} onPress={onDelete} styles={styles}><Trash2 size={17} color={colors.destructiveText} /></IconAction>
     </View>
   </View>;
@@ -229,6 +256,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   searchInput: { flex: 1, color: colors.text, fontSize: 15 },
   filters: { gap: 8, paddingRight: 14 },
   filter: { minHeight: 40, paddingHorizontal: 15, alignItems: 'center', justifyContent: 'center', borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  sortLabel: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 4, paddingRight: 2 },
   filterActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   filterText: { color: colors.secondaryText, fontSize: 12, fontWeight: '700' },
   filterTextActive: { color: colors.onAccent },

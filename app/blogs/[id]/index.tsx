@@ -46,6 +46,8 @@ import BlogEngagementBar from '@/components/blog/BlogEngagementBar';
 import BlogCommentsSection from '@/components/blog/BlogCommentsSection';
 import BlogDetailSkeleton from '@/components/blog/BlogDetailSkeleton';
 import CreateBlogModal from '@/components/blogs/CreateBlogModal';
+import AdminDeletionModal from '@/components/moderation/AdminDeletionModal';
+import { adminAccessService } from '@/lib/services/AdminAccessService';
 import ReportPostModal, { type ReportTarget } from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ReportPostModal';
 import { stripHtml } from '@/lib/utils/htmlUtils';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
@@ -141,6 +143,9 @@ export default function BlogDetailScreen() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [readingProgress, setReadingProgress] = useState(0);
+  // Website AdminContentMenu: staff can remove any blog with a moderation reason.
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminDeleteVisible, setAdminDeleteVisible] = useState(false);
   const likePending = useRef(false);
   const bookmarkPending = useRef(false);
   const viewTracked = useRef(false);
@@ -148,6 +153,13 @@ export default function BlogDetailScreen() {
   const [interactionsReady, setInteractionsReady] = useState(false);
 
   const isOwner = Boolean(currentUserId && blog && currentUserId === blog.userId);
+
+  useEffect(() => {
+    if (!currentUserId) { setIsAdmin(false); return; }
+    let active = true;
+    adminAccessService.requireAdmin().then(() => { if (active) setIsAdmin(true); }).catch(() => { if (active) setIsAdmin(false); });
+    return () => { active = false; };
+  }, [currentUserId]);
 
   const reloadComments = useCallback(async () => {
     const latest = await blogService.getComments(blogId);
@@ -370,6 +382,11 @@ export default function BlogDetailScreen() {
               <Flag size={19} color={colors.text} />
             </TouchableOpacity>
           ) : null}
+          {blog && !notFound && isAdmin ? (
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setAdminDeleteVisible(true)} style={styles.headerBtn} accessibilityLabel="Admin delete blog">
+              <Shield size={19} color={colors.destructive} />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
       {/* Reading progress (web: fixed top bar) */}
@@ -562,6 +579,18 @@ export default function BlogDetailScreen() {
       ) : null}
 
       {reportTarget ? <ReportPostModal visible target={reportTarget} onClose={() => setReportTarget(null)} /> : null}
+
+      {blog && isAdmin && adminDeleteVisible ? (
+        <AdminDeletionModal
+          visible
+          contentType="blog"
+          contentId={blog.id}
+          contentTitle={blog.title}
+          authorName={blog.author.name || 'Ourlime author'}
+          onClose={() => setAdminDeleteVisible(false)}
+          onDeleted={() => { setAdminDeleteVisible(false); router.replace('/blogs'); }}
+        />
+      ) : null}
 
       {blog && isOwner ? (
         <CreateBlogModal

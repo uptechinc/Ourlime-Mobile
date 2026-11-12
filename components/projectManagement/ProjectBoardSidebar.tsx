@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, Text, TouchableOpacity, View } from 'react-native';
-import { Activity, Crown, MoreHorizontal, Shield, UserMinus, Users } from 'lucide-react-native';
+import { ActivityIndicator, Modal, Pressable, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Activity, Clock, Crown, Lock, MoreHorizontal, Shield, UserMinus, UserPlus, Users, X, Zap, ZapOff } from 'lucide-react-native';
+import { toast } from 'sonner-native';
+import { formatDuration } from '@/components/projectManagement/projectFormat';
 import UserAvatar from '@/components/ui/UserAvatar';
 import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import type { ProjectRole, Task, TeamMember } from '@/lib/types/project';
+import type { AutomationRule, ProjectRole, Task, TeamMember } from '@/lib/types/project';
 
 type ProjectBoardSidebarProps = {
   tasks: Task[];
@@ -15,6 +17,16 @@ type ProjectBoardSidebarProps = {
   onChangeRole: (member: TeamMember, role: ProjectRole) => Promise<void>;
   onRemove: (member: TeamMember) => Promise<void>;
   onTransfer: (member: TeamMember) => Promise<void>;
+  /** Website sidebar extras: time tracking, invite button and the (limited) automation rules. */
+  totalMinutes: number;
+  activeTimerTaskTitle: string | null;
+  canInvite: boolean;
+  onInvite: () => void;
+  automationRules: AutomationRule[];
+  isPremiumPlan: boolean;
+  canManageAutomation: boolean;
+  dueSoonCount: number;
+  onToggleAutomationRule: (ruleId: string) => void;
 };
 
 // Same labels as the website's auditConfig.ts.
@@ -42,7 +54,7 @@ function timeAgo(timestamp: string): string {
 type PendingAction = { kind: 'remove' | 'transfer'; member: TeamMember } | null;
 
 /** The website's project sidebar on mobile: Team Members (with owner actions) and Recent Activity. */
-export default function ProjectBoardSidebar({ tasks, teamMembers, currentUserId, isOwner, onChangeRole, onRemove, onTransfer }: ProjectBoardSidebarProps) {
+export default function ProjectBoardSidebar({ tasks, teamMembers, currentUserId, isOwner, onChangeRole, onRemove, onTransfer, totalMinutes, activeTimerTaskTitle, canInvite, onInvite, automationRules, isPremiumPlan, canManageAutomation, dueSoonCount, onToggleAutomationRule }: ProjectBoardSidebarProps) {
   const { colors } = useAppTheme();
   const [menuMember, setMenuMember] = useState<TeamMember | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
@@ -63,6 +75,7 @@ export default function ProjectBoardSidebar({ tasks, teamMembers, currentUserId,
       await operation();
     } catch (error: unknown) {
       console.error('[ProjectBoardSidebar.run] Error:', error);
+      toast.error(error instanceof Error ? error.message : 'The change could not be saved.');
     } finally {
       setBusy(false);
       setMenuMember(null);
@@ -77,7 +90,28 @@ export default function ProjectBoardSidebar({ tasks, teamMembers, currentUserId,
   return (
     <View style={{ gap: 14 }}>
       <View style={card}>
-        <View style={heading}><Users size={18} color={colors.accent} /><Text style={headingText}>Team Members ({acceptedMembers.length})</Text></View>
+        <View style={heading}><Clock size={18} color={colors.accent} /><Text style={headingText}>Time Tracking</Text></View>
+        <View style={{ alignItems: 'center', padding: 14, borderRadius: 12, backgroundColor: colors.control }}>
+          <Text style={{ color: colors.accent, fontSize: 24, fontWeight: '900' }}>{formatDuration(totalMinutes)}</Text>
+          <Text style={{ color: colors.mutedText, fontSize: 12 }}>Total Time</Text>
+        </View>
+        {activeTimerTaskTitle !== null ? (
+          <View style={{ padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#86efac', backgroundColor: colors.successSurface }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Clock size={14} color={colors.successText} /><Text style={{ color: colors.successText, fontWeight: '800' }}>Timer Active</Text></View>
+            <Text numberOfLines={1} style={{ color: colors.successText, fontSize: 12, marginTop: 2 }}>Task: {activeTimerTaskTitle}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={card}>
+        <View style={[heading, { justifyContent: 'space-between' }]}>
+          <View style={heading}><Users size={18} color={colors.accent} /><Text style={headingText}>Team Members ({acceptedMembers.length})</Text></View>
+          {canInvite ? (
+            <TouchableOpacity onPress={onInvite} accessibilityLabel="Invite team member" style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: colors.accent }}>
+              <UserPlus size={14} color={colors.onAccent} /><Text style={{ color: colors.onAccent, fontSize: 12, fontWeight: '800' }}>Invite</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
         {[...acceptedMembers, ...pendingMembers].map((member) => {
           const canManageMember = isOwner && !member.isOwner && member.id !== currentUserId;
           return (
@@ -96,9 +130,42 @@ export default function ProjectBoardSidebar({ tasks, teamMembers, currentUserId,
                   <MoreHorizontal size={18} color={colors.mutedText} />
                 </TouchableOpacity>
               ) : null}
+              {canManageMember && member.membershipStatus === 'pending' ? (
+                <TouchableOpacity accessibilityLabel={`Cancel invitation to ${member.name}`} hitSlop={8} onPress={() => setPendingAction({ kind: 'remove', member })} style={{ padding: 6 }}>
+                  <X size={18} color={colors.destructive} />
+                </TouchableOpacity>
+              ) : null}
             </View>
           );
         })}
+      </View>
+
+      <View style={card}>
+        <View style={heading}>
+          {automationRules.some((rule) => rule.enabled && (!rule.isPremium || isPremiumPlan)) ? <Zap size={18} color={colors.accent} /> : <ZapOff size={18} color={colors.mutedText} />}
+          <Text style={headingText}>{isPremiumPlan ? 'Automation' : 'Limited Automation'}</Text>
+        </View>
+        {dueSoonCount > 0 ? (
+          <Text style={{ color: colors.warningText, backgroundColor: colors.warningSurface, fontSize: 12, fontWeight: '700', padding: 8, borderRadius: 10, overflow: 'hidden' }}>{dueSoonCount} open task{dueSoonCount === 1 ? '' : 's'} due within 24 hours</Text>
+        ) : null}
+        {automationRules.map((rule) => {
+          const locked = rule.isPremium && !isPremiumPlan;
+          const switchedOn = rule.enabled && !locked;
+          const interactive = canManageAutomation || locked;
+          return (
+            <TouchableOpacity key={rule.id} activeOpacity={0.8} disabled={!interactive} onPress={() => onToggleAutomationRule(rule.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 12, backgroundColor: colors.control, opacity: interactive ? 1 : 0.7 }}>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <Text numberOfLines={1} style={{ color: colors.text, fontSize: 13, fontWeight: '800', flexShrink: 1 }}>{rule.name}</Text>
+                  {rule.isPremium ? <Lock size={11} color={colors.mutedText} /> : null}
+                </View>
+                <Text numberOfLines={1} style={{ color: colors.mutedText, fontSize: 11 }}>{rule.trigger} {'\u2192'} {rule.action}</Text>
+              </View>
+              <Switch value={switchedOn} disabled={!interactive} onValueChange={() => onToggleAutomationRule(rule.id)} trackColor={{ true: colors.accent, false: colors.border }} />
+            </TouchableOpacity>
+          );
+        })}
+        <Text style={{ color: colors.mutedText, fontSize: 11, textAlign: 'center' }}>{isPremiumPlan ? 'All automations unlocked' : 'Upgrade to unlock more automation features'}</Text>
       </View>
 
       <View style={card}>
@@ -136,9 +203,9 @@ export default function ProjectBoardSidebar({ tasks, teamMembers, currentUserId,
       <CustomModal
         visible={pendingAction !== null}
         type={pendingAction?.kind === 'remove' ? 'danger' : 'warning'}
-        title={pendingAction?.kind === 'remove' ? 'Remove member?' : 'Transfer ownership?'}
+        title={pendingAction?.kind === 'remove' ? (pendingAction.member.membershipStatus === 'pending' ? 'Cancel invitation?' : 'Remove member?') : 'Transfer ownership?'}
         message={pendingAction?.kind === 'remove'
-          ? `${pendingAction.member.name} will lose access to this project.`
+          ? (pendingAction.member.membershipStatus === 'pending' ? `Cancel the invitation sent to ${pendingAction.member.name}?` : `Remove ${pendingAction.member.name} from this project?`)
           : `${pendingAction?.member.name ?? 'This member'} will become the project owner.`}
         confirmText={pendingAction?.kind === 'remove' ? 'Remove' : 'Transfer'}
         cancelText="Cancel"

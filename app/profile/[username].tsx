@@ -38,6 +38,10 @@ import { adminContentService } from '@/lib/services/AdminContentService';
 import type { UserDeletedPostRecord } from '@/lib/types/adminContent';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import ShareContentSheet from '@/components/sharing/ShareContentSheet';
+import ReportPostModal from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/ReportPostModal';
+import ProfileImageViewer from '@/components/profile/ProfileImageViewer';
+import SocialLinksRow from '@/components/profile/SocialLinksRow';
+import { useProfileHeaderDetails } from '@/lib/hooks/useProfileHeaderDetails';
 
 const authService = AuthService.getInstance();
 const relationshipService = RelationshipService.getInstance();
@@ -75,6 +79,8 @@ export default function UserProfileScreen() {
   const [deletedPosts, setDeletedPosts] = useState<UserDeletedPostRecord[]>([]);
   const [deletedPostsLoading, setDeletedPostsLoading] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
+  const [reportVisible, setReportVisible] = useState(false);
+  const [avatarViewerVisible, setAvatarViewerVisible] = useState(false);
 
   const currentUser = authService.getCurrentUser();
   const currentUserId = currentUser?.uid;
@@ -168,6 +174,7 @@ export default function UserProfileScreen() {
   }, [loadRelationshipState]);
 
   const [tabRefreshKey, setTabRefreshKey] = useState(0);
+  const headerDetails = useProfileHeaderDetails(profileUserId, tabRefreshKey);
 
   const onRefresh = useCallback(() => {
     setTabRefreshKey((prev) => prev + 1);
@@ -270,6 +277,7 @@ export default function UserProfileScreen() {
       } else if (modal.action === 'unblock') {
         await relationshipService.unblockUser(profile.uid);
         setIsBlockedByMe(false);
+        void refreshProfile();
       } else {
         await moderationService.reportUser({ targetId: profile.uid, reasonCategory: 'account', reason: 'Suspicious account activity', routePath: `/profile/${profile.userName}` });
       }
@@ -317,8 +325,19 @@ export default function UserProfileScreen() {
           <Text style={{ color: colors.secondaryText, textAlign: 'center', lineHeight: 21, marginTop: 12 }}>{profileError || 'This profile is unavailable.'}</Text>
           <TouchableOpacity onPress={() => void refreshProfile()} style={{ backgroundColor: '#10b981', paddingHorizontal: 22, paddingVertical: 11, borderRadius: 999, marginTop: 16 }}><Text style={{ color: '#fff', fontWeight: '800' }}>Retry</Text></TouchableOpacity>
         </View>
-      ) : isBlockedByOther ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}><Text style={{ color: colors.secondaryText }}>This profile is unavailable.</Text></View>
+      ) : isBlockedByOther || isBlockedByMe ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
+          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.control, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="person-remove-outline" size={30} color={colors.mutedText} />
+          </View>
+          <Text style={{ color: colors.text, fontSize: 19, fontWeight: '800', marginTop: 14 }}>Profile Unavailable</Text>
+          <Text style={{ color: colors.secondaryText, textAlign: 'center', lineHeight: 20, marginTop: 6 }}>You can&apos;t view this profile because one of you has blocked the other.</Text>
+          {isBlockedByMe ? (
+            <TouchableOpacity onPress={() => setModal({ visible: true, type: 'warning', title: 'Unblock user?', message: `Allow @${profile.userName} to interact with you again?`, action: 'unblock' })} style={{ marginTop: 16, backgroundColor: colors.accent, paddingHorizontal: 22, paddingVertical: 11, borderRadius: 14 }}>
+              <Text style={{ color: colors.onAccent, fontWeight: '800' }}>Unblock User</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       ) : (
         <ScrollView
           style={{ flex: 1, backgroundColor: colors.canvas }}
@@ -338,10 +357,10 @@ export default function UserProfileScreen() {
           {/* ── Profile Header Body ── */}
           <View style={{ backgroundColor: colors.surface, paddingHorizontal: 20, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: -40, marginBottom: 12 }}>
-              <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.surface, padding: 3, elevation: 4 }}>
+              <TouchableOpacity activeOpacity={0.85} onPress={() => setAvatarViewerVisible(true)} accessibilityRole="imagebutton" accessibilityLabel={`View ${displayName}'s profile picture fullscreen`} style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.surface, padding: 3, elevation: 4 }}>
                 <UserAvatar profileImage={profile?.profilePicture} firstName={profile?.firstName || username} size={78} />
                 {presence && presence.status !== 'offline' ? <View accessibilityLabel={ACTIVITY_STATUS_LABELS[presence.status]} style={{ position: 'absolute', right: 2, bottom: 2, width: 16, height: 16, borderRadius: 8, backgroundColor: ACTIVITY_STATUS_COLORS[presence.status], borderWidth: 3, borderColor: colors.surface }} /> : null}
-              </View>
+              </TouchableOpacity>
 
               {/* Public Actions (Follow, Add Friend, Message) */}
               {!isOwnProfile && (
@@ -399,7 +418,14 @@ export default function UserProfileScreen() {
 
             <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text }}>{displayName}</Text>
             <Text style={{ fontSize: 14, color: colors.mutedText, marginTop: 2 }}>@{profile?.userName || username}</Text>
-            {profile.bio ? <Text style={{ fontSize: 14, color: colors.secondaryText, marginTop: 8, lineHeight: 20 }}>{profile.bio}</Text> : null}
+            {headerDetails.country || headerDetails.joinedAtMs ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 6 }}>
+                {headerDetails.country ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name="location-outline" size={14} color={colors.mutedText} /><Text style={{ color: colors.mutedText, fontSize: 13 }}>{headerDetails.country}</Text></View> : null}
+                {headerDetails.joinedAtMs ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name="calendar-outline" size={14} color={colors.mutedText} /><Text style={{ color: colors.mutedText, fontSize: 13 }}>Joined {new Date(headerDetails.joinedAtMs).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</Text></View> : null}
+              </View>
+            ) : null}
+            <Text style={{ fontSize: 14, color: profile.bio ? colors.secondaryText : colors.mutedText, marginTop: 8, lineHeight: 20 }}>{profile.bio || 'No bio available'}</Text>
+            <View style={{ marginTop: 10 }}><SocialLinksRow socialLinks={headerDetails.socialLinks} compact /></View>
 
             {/* Stats Bar */}
             <View style={{ flexDirection: 'row', marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border }}>
@@ -505,7 +531,7 @@ export default function UserProfileScreen() {
             )}
 
             {activeTab === 'about' && (
-              <AboutTab profile={profile ?? ({ uid: username, firstName: username, lastName: '', userName: username, email: '', accountType: 'regular' } as UserProfile)} />
+              <AboutTab profile={profile ?? ({ uid: username, firstName: username, lastName: '', userName: username, email: '', accountType: 'regular' } as UserProfile)} isOwnProfile={Boolean(isOwnProfile)} />
             )}
 
             {activeTab === 'gallery' && (
@@ -605,7 +631,7 @@ export default function UserProfileScreen() {
           </View> : null}
         </ScrollView>
       )}
-      {!isOwnProfile && profile ? <TouchableOpacity onPress={() => setModal({ visible: true, type: 'warning', title: 'Report this profile?', message: 'Submit this profile to Ourlime moderation for suspicious account activity.', action: 'report' })} style={{ position: 'absolute', right: 18, bottom: 24, backgroundColor: '#fff', borderWidth: 1, borderColor: '#fecaca', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 }}><Text style={{ color: '#b91c1c', fontWeight: '700' }}>Report</Text></TouchableOpacity> : null}
+      {!isOwnProfile && profile && !isBlockedByMe && !isBlockedByOther ? <TouchableOpacity onPress={() => setReportVisible(true)} style={{ position: 'absolute', right: 18, bottom: 24, backgroundColor: '#fff', borderWidth: 1, borderColor: '#fecaca', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 }}><Text style={{ color: '#b91c1c', fontWeight: '700' }}>Report</Text></TouchableOpacity> : null}
       <CustomModal
         visible={modal.visible}
         type={modal.type}
@@ -617,6 +643,14 @@ export default function UserProfileScreen() {
         onConfirm={modal.action ? () => void handleProfileModeration() : undefined}
         onClose={() => setModal((previous) => ({ ...previous, visible: false, action: undefined }))}
       />
+      {profile ? <ProfileImageViewer visible={avatarViewerVisible} imageUrl={isBlockedByOther ? null : profile.profilePicture} label={displayName} onClose={() => setAvatarViewerVisible(false)} /> : null}
+      {profile && reportVisible ? (
+        <ReportPostModal
+          visible
+          target={{ contentType: 'user', targetId: profile.uid, reportedUserId: profile.uid, routePath: `/profile/viewOtherProfile/${profile.userName}`, previewText: `@${profile.userName}`, label: 'Profile' }}
+          onClose={() => setReportVisible(false)}
+        />
+      ) : null}
       {profile ? (
         <ShareContentSheet
           visible={shareVisible}

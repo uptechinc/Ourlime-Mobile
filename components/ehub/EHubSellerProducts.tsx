@@ -6,6 +6,7 @@ import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import type { EHubSellerCenter } from '@/lib/hooks/useEHubSellerCenter';
 import type { EHubPublicationState, EHubSellerProduct } from '@/lib/types/ehubSeller';
 import { EHubChip, formatEHubPrice } from '@/components/ehub/EHubParts';
+import { getEHubCurrentPrice } from '@/lib/services/EHubCommerceService';
 import {
   SellerButton, SellerChipField, SellerImageField, SellerNumberField, SellerSaveIndicator, SellerStepHeader, SellerTextField, SellerToggleRow, formatSavedTime,
 } from '@/components/ehub/EHubSellerFormParts';
@@ -71,7 +72,7 @@ function ProductList({ products, isWorking, isTablet, onNew, onEdit, onPreview, 
             <Text numberOfLines={2} style={styles.productTitle}>{product.title}</Text>
             <Text style={styles.small}>Updated {formatSavedTime(product.updatedAt)}</Text>
             <View style={styles.meta}>
-              <Text style={styles.price}>{formatEHubPrice(product.salePrice ?? product.price)}</Text>
+              <Text style={styles.price}>{formatEHubPrice(getEHubCurrentPrice(product.price, product.salePrice))}</Text>
               <Text style={styles.small}>{product.inventory} in stock</Text>
               <Text style={[styles.status, isPublished ? styles.statusPublished : null]}>{isPublished ? 'Published' : 'Unpublished'}</Text>
             </View>
@@ -148,7 +149,7 @@ function ProductEditor({ center, isTablet, onClose }: ProductEditorProps) {
           <View style={styles.previewBody}>
             <Text style={styles.eyebrow}>{form.category || 'Category'}</Text>
             <Text style={styles.productTitle}>{form.title || 'Product title'}</Text>
-            <Text style={styles.previewPrice}>{formatEHubPrice(form.salePrice ?? form.price)}</Text>
+            <Text style={styles.previewPrice}>{formatEHubPrice(getEHubCurrentPrice(form.price, form.salePrice))}</Text>
             <Text style={styles.small}>{form.inventory} available</Text>
           </View>
         </View>

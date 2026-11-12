@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { withCleanup } from '@/lib/utils/withCleanup';
 // React's own JSX factory: NativeWind's Babel plugin rewrites JSX and createElement, but not direct calls to this.
 import { jsx as createNativeElement } from 'react/jsx-runtime';
 import {
@@ -901,11 +902,12 @@ export default function ChatPage() {
             return;
         }
         setFriendLookupPending(true);
-        authService.getUserProfileIfAvailable(friendId).then((profile) => {
+        // withCleanup, not .finally(): the runtime Promise can lack finally (lib/utils/withCleanup.ts).
+        void withCleanup(authService.getUserProfileIfAvailable(friendId).then((profile) => {
             if (profile) setFriend(profile);
         }).catch((error: unknown) => {
             console.error('[ChatPage.loadFriend] Error:', error);
-        }).finally(() => {
+        }), () => {
             setFriendLookupPending(false);
         });
     }, [cachedFriend, friendId]);

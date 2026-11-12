@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, serverTimestamp, limit } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, serverTimestamp, limit, orderBy, documentId } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
 import { AdminApiService } from '@/lib/services/AdminApiService';
 import { adminAccessService } from '@/lib/services/AdminAccessService';
@@ -12,6 +12,11 @@ import type {
   AdminUserContentFilter,
   AdminUserContentPage,
   AdminUserContentRecord,
+  BulkDeletionItem,
+  BulkDeletionResult,
+  DeletableContentType,
+  DeletedContentRecord,
+  PredefinedDeletionCategory,
 } from '@/lib/types/adminContent';
 import type { ModerationDeliveryResult } from '@/lib/types/moderationDelivery';
 
@@ -31,6 +36,7 @@ type UserContentDocument = {
 };
 
 const USER_CONTENT_SOURCES: UserContentSource[] = ['feedPosts', 'reels'];
+export const DELETABLE_CONTENT_TYPES: readonly DeletableContentType[] = ['post', 'comment', 'product', 'blog', 'project', 'community', 'lime'];
 const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null && !Array.isArray(value);
 const readString = (value: unknown): string => typeof value === 'string' ? value : '';
 const readTimestampMs = (value: unknown): number => {
@@ -344,6 +350,83 @@ export class AdminContentService {
         type: data.type || 'post',
       };
     });
+  }
+
+  /**
+   * The website's "All Deleted Content" list: the newest moderationAuditLog action per item, kept when it is a delete,
+   * with each author's account status. Administrators can read moderationAuditLog and users directly.
+   */
+  public async getDeletedContent(): Promise<DeletedContentRecord[]> {
+    await adminAccessService.requireAdmin();
+    const snapshot = await getDocs(query(collection(db, 'moderationAuditLog'), orderBy('timestamp', 'desc'), limit(500)));
+    const resolvedKeys = new Set<string>();
+    const records: DeletedContentRecord[] = [];
+    snapshot.docs.forEach((entry) => {
+      const data = entry.data();
+      const contentType = readString(data.contentType);
+      const contentId = readString(data.contentId);
+      if (!DELETABLE_CONTENT_TYPES.includes(contentType as DeletableContentType) || !contentId) return;
+      const key = `${contentType}:${contentId}`;
+      if (resolvedKeys.has(key)) return;
+      if (data.action !== 'delete' && data.action !== 'restore') return;
+      resolvedKeys.add(key);
+      if (data.action === 'restore') return;
+      records.push({
+        id: entry.id,
+        contentId,
+        contentType: contentType as DeletableContentType,
+        contentTitle: readString(data.contentTitle) || 'Untitled content',
+        authorId: readString(data.contentAuthorId),
+        adminName: readString(data.adminName) || 'Administrator',
+        reason: readString(data.reason) || 'No reason recorded',
+        category: readString(data.category) || 'custom',
+        deletedAt: readTimestampIso(data.timestamp),
+        authorStatus: 'unknown',
+        isAuthorBanned: false,
+      });
+    });
+
+    const authorIds = [...new Set(records.map((record) => record.authorId).filter(Boolean))];
+    const statusById = new Map<string, string>();
+    for (let start = 0; start < authorIds.length; start += 30) {
+      const batchIds = authorIds.slice(start, start + 30);
+      try {
+        const authors = await getDocs(query(collection(db, 'users'), where(documentId(), 'in', batchIds)));
+        authors.docs.forEach((author) => {
+          const value = author.data();
+          const status = typeof value.accountStatus === 'string' ? value.accountStatus.toLowerCase() : value.isBanned === true ? 'banned' : 'active';
+          statusById.set(author.id, status);
+        });
+      } catch (error: unknown) {
+        console.error('[AdminContentService.getDeletedContent] Error:', error instanceof Error ? error.message : 'Author lookup failed');
+      }
+    }
+    return records.map((record) => {
+      const authorStatus = statusById.get(record.authorId) || 'unknown';
+      return { ...record, authorStatus, isAuthorBanned: authorStatus === 'banned' };
+    });
+  }
+
+  /**
+   * The website's bulk deletion: every item gets the same mandatory reason, its own notification and audit entry.
+   * Runs the admin content delete route once per item and reports the ones that failed.
+   */
+  public async bulkDeleteContent(items: BulkDeletionItem[], category: PredefinedDeletionCategory, customReason?: string): Promise<BulkDeletionResult> {
+    await adminAccessService.requireAdmin();
+    if (items.length === 0) throw new Error('Missing items array or category.');
+    if (category === 'custom' && !customReason?.trim()) throw new Error('Invalid content item or deletion reason.');
+    const failed: BulkDeletionResult['failed'] = [];
+    let affectedCount = 0;
+    for (const item of items) {
+      try {
+        const result = await this.deleteContent({ contentType: item.contentType, contentId: item.contentId, category, ...(category === 'custom' ? { customReason: customReason?.trim() } : {}) });
+        if (result.success) affectedCount += 1;
+        else failed.push({ contentId: item.contentId, error: result.error || 'Failed to delete content.' });
+      } catch (error: unknown) {
+        failed.push({ contentId: item.contentId, error: error instanceof Error ? error.message : 'Failed to delete content.' });
+      }
+    }
+    return { affectedCount, failed };
   }
 
   public async getPendingAppeals(): Promise<ContentAppealRecord[]> {

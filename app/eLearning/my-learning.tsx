@@ -204,9 +204,9 @@ export default function MyLearningScreen() {
                 onPress={() => router.push(`/eLearning/courses/${item.courseId}` as Href)}
                 style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
               >
-                {item.course?.image ? (
+                {item.course?.image || item.course?.thumbnail ? (
                   <View>
-                    <Image source={{ uri: item.course.image }} style={styles.cardImage} resizeMode="cover" />
+                    <Image source={{ uri: item.course?.image || item.course?.thumbnail || '' }} style={styles.cardImage} resizeMode="cover" />
                     {lastActivity(item) ? (
                       <View style={styles.dateBadge}>
                         <Clock size={12} color="#ffffff" />
@@ -226,7 +226,7 @@ export default function MyLearningScreen() {
                   <View style={styles.progressSection}>
                     <View style={styles.progressHeader}>
                       <Text style={[styles.progressLabel, { color: colors.mutedText }]}>
-                        {progressStatus(item)}{!item.course?.image && lastActivity(item) ? ` · ${new Date(lastActivity(item)).toLocaleDateString()}` : ''}
+                        {progressStatus(item)}{!(item.course?.image || item.course?.thumbnail) && lastActivity(item) ? ` · ${new Date(lastActivity(item)).toLocaleDateString()}` : ''}
                       </Text>
                       <Text style={[styles.progressPercent, { color: '#10b981' }]}>
                         {item.progress || 0}%

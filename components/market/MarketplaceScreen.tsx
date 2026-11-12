@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { Bookmark, ChevronDown, ChevronRight, HelpCircle, LayoutGrid, List, Package, PawPrint, Search, ShieldCheck, ShoppingBag, SlidersHorizontal, Store, X } from 'lucide-react-native';
+import { Bookmark, ChevronDown, ChevronRight, Heart, HelpCircle, LayoutGrid, List, Package, PawPrint, Search, ShieldCheck, ShoppingBag, SlidersHorizontal, Store, X } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAccountCart } from '@/lib/hooks/useAccountCart';
@@ -11,7 +11,7 @@ import { useMarketplacePreferences } from '@/lib/hooks/useMarketplacePreferences
 import { useMarketSavedSearches } from '@/lib/hooks/useMarketSavedSearches';
 import { marketplaceService } from '@/lib/services/MarketplaceService';
 import { marketplaceResourceService } from '@/lib/services/MarketplaceResourceService';
-import { EMPTY_MARKET_FILTERS, marketCatalogFilterService, type MarketFilters, type MarketSort } from '@/lib/services/MarketCatalogFilterService';
+import { EMPTY_MARKET_FILTERS, MARKET_PRICE_CEILING, marketCatalogFilterService, type MarketFilters, type MarketSort } from '@/lib/services/MarketCatalogFilterService';
 import { useMarketplaceStore } from '@/lib/store/useMarketplaceStore';
 import type { MarketProduct } from '@/lib/types/reliability';
 import { formatMarketPrice } from '@/lib/utils/formatMarketPrice';
@@ -43,7 +43,7 @@ export default function MarketplaceScreen({ entryPoint = 'market' }: Marketplace
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
-  const params = useLocalSearchParams<{ product?: string; productId?: string; id?: string }>();
+  const params = useLocalSearchParams<{ product?: string; productId?: string; id?: string; categories?: string | string[] }>();
   const { profile, getDecision } = usePageAccess();
   const ownerId = profile?.uid ?? null;
   const canMutate = getDecision('/market').canMutate;
@@ -77,6 +77,14 @@ export default function MarketplaceScreen({ entryPoint = 'market' }: Marketplace
   const cartUnits = visibleLines.reduce((total, line) => total + line.quantity, 0);
   const activeFilterCount = marketCatalogFilterService.activeCount(filters);
 
+  // Web `/market?categories=` links (product breadcrumb, "View All") open the market filtered to that category.
+  const categoryParam = JSON.stringify(Array.isArray(params.categories) ? params.categories : params.categories ? [params.categories] : []);
+  useEffect(() => {
+    const requested = (JSON.parse(categoryParam) as string[]).filter(Boolean);
+    if (!requested.length) return;
+    setFilters((current) => ({ ...current, categories: requested }));
+  }, [categoryParam]);
+
   // Old `/market?product=` links (E-Hub, notifications, shares) open the product route.
   useEffect(() => {
     const productId = params.product || params.productId || params.id;
@@ -101,6 +109,22 @@ export default function MarketplaceScreen({ entryPoint = 'market' }: Marketplace
     } catch { setError('Support links could not be opened. Use Help from the main menu.'); }
   };
   const handleSaveSearch = () => { void savedSearches.save(search, filters.categories).catch((failure: unknown) => setError(failure instanceof Error ? failure.message : 'Search could not be saved.')); };
+  // Web ActiveFilterChips: one removable chip per active filter group, plus "Clear all".
+  const countLabel = (count: number, single: string, plural: string) => count === 1 ? single : `${count} ${plural}`;
+  const activeChips: { key: string; label: string; onRemove: () => void }[] = [
+    ...(filters.categories.length ? [{ key: 'categories', label: countLabel(filters.categories.length, filters.categories[0], 'categories'), onRemove: () => setFilters((current) => ({ ...current, categories: [] })) }] : []),
+    ...(filters.maxPrice < MARKET_PRICE_CEILING ? [{ key: 'price', label: `Up to $${filters.maxPrice}`, onRemove: () => setFilters((current) => ({ ...current, maxPrice: MARKET_PRICE_CEILING })) }] : []),
+    ...(filters.inStockOnly ? [{ key: 'inStock', label: 'In stock', onRemove: () => setFilters((current) => ({ ...current, inStockOnly: false })) }] : []),
+    ...(filters.deliveryOnly ? [{ key: 'delivery', label: 'Delivery', onRemove: () => setFilters((current) => ({ ...current, deliveryOnly: false })) }] : []),
+    ...(filters.pickupOnly ? [{ key: 'pickup', label: 'Pickup', onRemove: () => setFilters((current) => ({ ...current, pickupOnly: false })) }] : []),
+    ...(filters.conditions.length ? [{ key: 'conditions', label: countLabel(filters.conditions.length, filters.conditions[0].replace(/_/g, ' '), 'conditions'), onRemove: () => setFilters((current) => ({ ...current, conditions: [] })) }] : []),
+    ...(filters.sellerType !== 'all' ? [{ key: 'sellerType', label: filters.sellerType === 'business' ? 'Business sellers' : 'Personal sellers', onRemove: () => setFilters((current) => ({ ...current, sellerType: 'all' as const })) }] : []),
+    ...(filters.colors.length ? [{ key: 'colors', label: countLabel(filters.colors.length, '1 colour', 'colours'), onRemove: () => setFilters((current) => ({ ...current, colors: [] })) }] : []),
+    ...(filters.sizes.length ? [{ key: 'sizes', label: countLabel(filters.sizes.length, '1 size', 'sizes'), onRemove: () => setFilters((current) => ({ ...current, sizes: [] })) }] : []),
+    ...(filters.favoritesOnly ? [{ key: 'favorites', label: 'Favorites', onRemove: () => setFilters((current) => ({ ...current, favoritesOnly: false })) }] : []),
+    ...(sort !== 'default' ? [{ key: 'sort', label: MARKET_SORT_OPTIONS.find((option) => option.value === sort)?.label ?? sort, onRemove: () => setSort('default') }] : []),
+  ];
+  const clearAllFilters = () => { setFilters(EMPTY_MARKET_FILTERS); setSort('default'); };
   const toggleCategory = (category: string) => setFilters((current) => ({ ...current, categories: category ? (current.categories.includes(category) ? current.categories.filter((entry) => entry !== category) : [...current.categories, category]) : [] }));
 
   return <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
@@ -119,6 +143,12 @@ export default function MarketplaceScreen({ entryPoint = 'market' }: Marketplace
           <Pressable accessibilityRole="button" accessibilityLabel="Open filters" onPress={() => setFilterOpen(true)} style={[styles.filterButton, activeFilterCount > 0 && styles.filterButtonActive]}><SlidersHorizontal color={activeFilterCount ? colors.onAccent : colors.text} size={21} />{activeFilterCount ? <Text style={styles.filterCount}>{activeFilterCount}</Text> : null}</Pressable>
         </View>
         {error || preferences.error ? <View style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{error || preferences.error}</Text><Pressable accessibilityLabel="Dismiss" onPress={() => setError('')}><X size={18} color={colors.destructiveText} /></Pressable></View> : null}
+        {activeChips.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {activeChips.map((chip) => <Pressable key={chip.key} accessibilityRole="button" accessibilityLabel={`Remove filter ${chip.label}`} onPress={chip.onRemove} style={[styles.chip, styles.activeFilterChip]}>
+            <Text style={[styles.chipText, { color: colors.accentText, textTransform: 'capitalize' }]}>{chip.label}</Text><X size={13} color={colors.accentText} />
+          </Pressable>)}
+          {activeChips.length > 1 ? <Pressable accessibilityRole="button" accessibilityLabel="Clear all filters" onPress={clearAllFilters} style={styles.chip}><Text style={styles.chipText}>Clear all</Text></Pressable> : null}
+        </ScrollView> : null}
         {savedSearches.searches.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           <Text style={styles.savedLabel}>Saved:</Text>
           {savedSearches.searches.map((entry) => <View key={entry.id} style={styles.savedChip}>
@@ -131,6 +161,9 @@ export default function MarketplaceScreen({ entryPoint = 'market' }: Marketplace
         <View style={styles.sectionHeading}>
           <View style={{ flex: 1 }}><Text style={styles.sectionTitle}>{filters.categories.length === 1 ? filters.categories[0] : filters.favoritesOnly ? 'Saved products' : 'Marketplace'}</Text><Text style={styles.resultText}>{isCatalogLoading ? 'Loading listings…' : `${products.length} ${products.length === 1 ? 'product' : 'products'}`}</Text></View>
           {search.trim() || filters.categories.length ? <Pressable accessibilityRole="button" accessibilityLabel="Save this search" onPress={handleSaveSearch} style={styles.squareButton}><Bookmark color={colors.text} size={18} /></Pressable> : null}
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: filters.favoritesOnly }} accessibilityLabel={filters.favoritesOnly ? 'Show all products' : `Show only favorites (${preferences.favoriteIds.length})`} onPress={() => setFilters((current) => ({ ...current, favoritesOnly: !current.favoritesOnly }))} style={[styles.squareButton, filters.favoritesOnly ? { backgroundColor: colors.destructiveSurface, borderColor: colors.destructive } : null]}>
+            <Heart size={18} color={filters.favoritesOnly ? colors.destructiveText : colors.text} fill={filters.favoritesOnly ? colors.destructiveText : 'transparent'} />
+          </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={savedSearches.viewMode === 'grid' ? 'Show as list' : 'Show as grid'} onPress={() => void savedSearches.setViewMode(savedSearches.viewMode === 'grid' ? 'list' : 'grid')} style={styles.squareButton}>{savedSearches.viewMode === 'grid' ? <List color={colors.text} size={18} /> : <LayoutGrid color={colors.text} size={18} />}</Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Sort" onPress={() => setFilterOpen(true)} style={styles.sortButton}><Text style={styles.sortText}>{MARKET_SORT_OPTIONS.find((entry) => entry.value === sort)?.label}</Text><ChevronDown color={colors.mutedText} size={16} /></Pressable>
         </View>
@@ -158,6 +191,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas }, header: { minHeight: 68, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.navigation, borderBottomWidth: 1, borderBottomColor: colors.navigationBorder }, iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, backText: { color: colors.text, fontSize: 32, lineHeight: 35 }, headerTitle: { flex: 1 }, title: { color: colors.text, fontSize: 21, fontWeight: '900' }, subtitle: { color: colors.mutedText, fontSize: 11, marginTop: 1 }, cartHeaderButton: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control }, cartBadge: { position: 'absolute', right: -2, top: -4, minWidth: 20, height: 20, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#dc2626' }, cartBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
   content: { padding: 14, paddingBottom: 36, gap: 16 }, releaseNotice: { padding: 11, borderRadius: 13, flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: colors.successSurface, borderWidth: 1, borderColor: colors.accent }, releaseNoticeText: { flex: 1, color: colors.accentText, fontSize: 11, lineHeight: 16, fontWeight: '600' },
   searchRow: { flexDirection: 'row', gap: 10 }, searchBox: { flex: 1, minHeight: 50, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, searchInput: { flex: 1, color: colors.text, fontSize: 15 }, filterButton: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, filterButtonActive: { backgroundColor: colors.accent, borderColor: colors.accent }, filterCount: { position: 'absolute', right: -3, top: -5, minWidth: 19, height: 19, borderRadius: 10, textAlign: 'center', color: '#ffffff', backgroundColor: '#dc2626', fontSize: 10, fontWeight: '900', lineHeight: 19 },
+  activeFilterChip: { flexDirection: 'row', gap: 6, backgroundColor: colors.successSurface, borderColor: colors.accent },
   chips: { gap: 8, paddingRight: 14, alignItems: 'center' }, chip: { minHeight: 40, paddingHorizontal: 15, alignItems: 'center', justifyContent: 'center', borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, chipActive: { backgroundColor: colors.accent, borderColor: colors.accent }, chipText: { color: colors.secondaryText, fontSize: 12, fontWeight: '700' }, chipTextActive: { color: colors.onAccent },
   savedLabel: { color: colors.mutedText, fontSize: 11, fontWeight: '800' }, savedChip: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, backgroundColor: colors.successSurface, borderWidth: 1, borderColor: colors.accent },
   section: { gap: 10 }, sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }, sectionTitle: { color: colors.text, fontSize: 19, fontWeight: '900' }, resultText: { color: colors.mutedText, fontSize: 11, marginTop: 2 }, squareButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, sortButton: { minHeight: 40, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, maxWidth: 140 }, sortText: { color: colors.secondaryText, fontSize: 11, fontWeight: '700', flexShrink: 1 }, recentRow: { gap: 10 }, recentCard: { width: 235, padding: 9, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 15, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, recentImage: { width: 48, height: 48, borderRadius: 10 }, recentTitle: { color: colors.text, fontSize: 12, fontWeight: '800' }, recentPrice: { color: colors.accentText, fontSize: 11, fontWeight: '700', marginTop: 3 }, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

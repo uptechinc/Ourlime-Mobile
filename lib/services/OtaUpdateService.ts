@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { DiagnosticLogService } from './DiagnosticLogService';
+import { withCleanup } from '@/lib/utils/withCleanup';
 
 type UpdatesModule = typeof import('expo-updates');
 
@@ -106,7 +107,8 @@ export class OtaUpdateService {
     const timeout = new Promise<never>((_resolve, reject) => {
       timeoutHandle = setTimeout(() => reject(new Error('The update download timed out.')), DOWNLOAD_TIMEOUT_MS);
     });
-    const result = await Promise.race([Updates.fetchUpdateAsync(), timeout]).finally(() => {
+    // withCleanup, not .finally(): the runtime Promise can lack finally (lib/utils/withCleanup.ts).
+    const result = await withCleanup(Promise.race([Updates.fetchUpdateAsync(), timeout]), () => {
       if (timeoutHandle) clearTimeout(timeoutHandle);
     });
     const isReady = result.isNew || result.isRollBackToEmbedded;

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AuthFlowScreen from '@/components/auth/AuthFlowScreen';
@@ -12,14 +13,18 @@ export default function ForgotPasswordScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleSubmit = async () => {
     if (!email.trim()) return;
     setStatus('sending');
+    setErrorMessage('');
     try {
       await authService.requestPasswordReset(email);
       setStatus('sent');
-    } catch {
+    } catch (error: unknown) {
+      console.error('[ForgotPasswordScreen.handleSubmit] Error:', error instanceof Error ? error.message : error);
+      setErrorMessage(authService.getPasswordResetRequestErrorMessage(error));
       setStatus('error');
     }
   };
@@ -34,8 +39,15 @@ export default function ForgotPasswordScreen() {
             Check Your Email
           </Text>
           <Text style={{ fontSize: 14, color: '#94a3b8', textAlign: 'center', marginBottom: 20, lineHeight: 20 }}>
-            We've sent a password reset link to <Text style={{ color: '#10b981', fontWeight: '700' }}>{email}</Text>. Check your inbox or spam folder.
+            We've sent a password reset link to <Text style={{ color: '#10b981', fontWeight: '700' }}>{email}</Text>.
           </Text>
+
+          <View style={{ width: '100%', flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 14, marginBottom: 18, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.05)' }}>
+            <Ionicons name="alert-circle" size={20} color="#eab308" />
+            <Text style={{ flex: 1, color: '#94a3b8', fontSize: 13, lineHeight: 19 }}>
+              Didn't receive the email? Check your spam folder or make sure you entered the correct email address.
+            </Text>
+          </View>
 
           {/* Open Email Client Button (Gmail / Outlook / Yahoo / Apple Mail / Proton / Email) */}
           <TouchableOpacity
@@ -99,7 +111,7 @@ export default function ForgotPasswordScreen() {
           {status === 'error' ? (
             <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.18)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)', padding: 12, borderRadius: 12, marginBottom: 16 }}>
               <Text style={{ color: '#fca5a5', fontSize: 13, fontWeight: '600', textAlign: 'center' }}>
-                We could not send the reset email. Please make sure the email is correct and try again.
+                {errorMessage || 'Something went wrong. Please try again.'}
               </Text>
             </View>
           ) : null}
@@ -122,7 +134,7 @@ export default function ForgotPasswordScreen() {
             }}
           >
             {status === 'sending' ? (
-              <ActivityIndicator color="#ffffff" />
+              <Skeleton width={120} height={18} borderRadius={9} />
             ) : (
               <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 16 }}>Reset Password</Text>
             )}

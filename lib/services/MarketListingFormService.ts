@@ -40,7 +40,50 @@ export const DEFAULT_BASE_COLORS: readonly string[] = [
   'indigo', 'ivory', 'khaki', 'lavender', 'magenta', 'maroon', 'mint', 'mustard', 'navy', 'olive', 'orange', 'peach', 'pink', 'plum',
   'purple', 'red', 'ruby', 'salmon', 'sapphire', 'silver', 'teal', 'turquoise', 'white', 'yellow',
 ];
-export const QUICK_SIZES: readonly string[] = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+/** A group of one-tap variant presets shown for a listing category (website PricingDetails quick buttons). */
+export type QuickVariantGroup = { title: string; options: readonly string[] };
+/** Category-aware size/spec guidance and presets, mirroring the website's PricingDetails category modes. */
+export type CategoryVariantPresets = { hint: string; groups: readonly QuickVariantGroup[]; customLabel: string; customPlaceholder: string; usesStandardSizes: boolean };
+type PresetCategory = 'electronics' | 'fashion' | 'beauty' | 'books' | 'automotive';
+const CATEGORY_VARIANT_PRESETS: Readonly<Record<PresetCategory, CategoryVariantPresets>> = {
+  electronics: {
+    hint: 'Electronics: pick storage/memory specs (GB, TB) or screen sizes.',
+    groups: [
+      { title: 'Quick storage & memory specs', options: ['64 GB', '128 GB', '256 GB', '512 GB', '1 TB', '2 TB'] },
+      { title: 'Quick display / screen sizes', options: ['6.1-inch', '6.7-inch', '13.3-inch', '15.6-inch', '27-inch', '65-inch'] },
+    ],
+    customLabel: 'Add custom tech spec (RAM / storage / display)', customPlaceholder: 'e.g. 16GB RAM, 512GB SSD, 14-inch OLED', usesStandardSizes: false,
+  },
+  fashion: {
+    hint: 'Fashion: pick standard clothing sizes or enter shoe/waist sizes.',
+    groups: [{ title: 'Standard clothing sizes', options: ['Small (S)', 'Medium (M)', 'Large (L)', 'X-Large (XL)', '2X-Large (2XL)', '3X-Large (3XL)'] }],
+    customLabel: 'Add shoe or waist size', customPlaceholder: 'e.g. US 9, 32-inch Waist, EU 42', usesStandardSizes: false,
+  },
+  beauty: {
+    hint: 'Beauty: pick volume capacity (ml, fl oz) or net weight (g, oz).',
+    groups: [{ title: 'Quick volume & net weight', options: ['30 ml', '50 ml', '100 ml', '250 ml', '500 ml', '4 fl oz', '8 fl oz', '50 g', '100 g'] }],
+    customLabel: 'Add custom size', customPlaceholder: 'e.g. 75 ml, 2 oz', usesStandardSizes: false,
+  },
+  books: {
+    hint: 'Books: pick the edition format (hardcover, paperback, digital).',
+    groups: [{ title: 'Quick edition formats', options: ['Hardcover', 'Paperback', 'E-Book / Digital', 'Audiobook', 'Collector Edition'] }],
+    customLabel: 'Add custom format', customPlaceholder: 'e.g. Signed Edition', usesStandardSizes: false,
+  },
+  automotive: {
+    hint: 'Automotive: pick part fitment or rim/tire sizes.',
+    groups: [{ title: 'Quick fitment / rim sizes', options: ['Universal Fit', '15-inch', '16-inch', '17-inch', '18-inch', '19-inch', '20-inch'] }],
+    customLabel: 'Add custom fitment', customPlaceholder: 'e.g. 21-inch, 2015-2020 Civic', usesStandardSizes: false,
+  },
+};
+const DEFAULT_VARIANT_PRESETS: CategoryVariantPresets = {
+  hint: 'Pick a standard size (Small, Medium, Large) or enter a custom size name and value.',
+  groups: [], customLabel: 'Add custom size', customPlaceholder: 'e.g. Extra Extra Large, 3XL, Custom 10.5', usesStandardSizes: true,
+};
+export const STANDARD_SIZE_NAMES: readonly string[] = ['Small', 'Medium', 'Large'];
+export const QUICK_WEIGHT_UNITS: readonly { value: 'lbs' | 'kg'; label: string }[] = [{ value: 'lbs', label: 'Pounds (lbs)' }, { value: 'kg', label: 'Kilograms (kg)' }];
+export function getCategoryVariantPresets(category: string): CategoryVariantPresets {
+  return Object.prototype.hasOwnProperty.call(CATEGORY_VARIANT_PRESETS, category) ? CATEGORY_VARIANT_PRESETS[category as PresetCategory] : DEFAULT_VARIANT_PRESETS;
+}
 /** Size category ids the web uses for sizes and weights when the `sizes` collection has none. */
 export const SIZE_BASE_ID = 'default_size';
 export const WEIGHT_BASE_ID = 'default_pounds';
@@ -128,9 +171,10 @@ export class MarketListingFormService {
     return { id: this.createId(), name: trimmed.charAt(0).toUpperCase() + trimmed.slice(1), baseId };
   }
 
-  public createSize(name: string): ListingSizeOption {
+  /** Pass `baseId` to force a category (the web files every quick preset under `default_size`). */
+  public createSize(name: string, baseId?: string): ListingSizeOption {
     const trimmed = name.trim();
-    return { id: this.createId(), name: trimmed, baseId: WEIGHT_VALUE_PATTERN.test(trimmed) ? WEIGHT_BASE_ID : SIZE_BASE_ID };
+    return { id: this.createId(), name: trimmed, baseId: baseId ?? (WEIGHT_VALUE_PATTERN.test(trimmed) ? WEIGHT_BASE_ID : SIZE_BASE_ID) };
   }
 
   public validateStep(form: ListingFormState, step: ListingEditorStep, isEditing: boolean): string[] {

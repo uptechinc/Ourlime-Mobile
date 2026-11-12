@@ -26,6 +26,7 @@ import type {
 	SupportTicketMessage,
 } from '@/lib/types/support';
 import PrivateCaseAttachmentImage from './PrivateCaseAttachmentImage';
+import { SupportConversationSkeleton } from '@/components/help/HelpSkeletons';
 
 type SupportTicketConversationScreenProps = {
 	ticketId: string;
@@ -117,7 +118,11 @@ export default function SupportTicketConversationScreen({
 		assignedStaffId?: string
 	) => {
 		const actionReason =
-			action === 'claim' ? 'Claimed by support staff.' : reason;
+			action === 'claim'
+				? 'Claimed by support staff.'
+				: !staffMode && action === 'reopen'
+					? 'Requester reopened the ticket.'
+					: reason;
 		if (actionReason.trim().length < 3)
 			return Alert.alert('Reason required', 'Enter an internal reason first.');
 		setBusy(true);
@@ -237,11 +242,19 @@ export default function SupportTicketConversationScreen({
 					>
 						{ticket?.assignedStaff
 							? `${ticket.assignedStaff.displayName} · Ourlime Support`
-							: 'Waiting for claim'}
+							: 'Waiting for a support specialist to claim this ticket'}
 					</Text>
+					{ticket ? (
+						<Text
+							style={{ marginTop: 2, color: colors.mutedText, fontSize: 11 }}
+						>
+							Priority: {ticket.priority} · Opened{' '}
+							{new Date(ticket.createdAt).toLocaleString()}
+						</Text>
+					) : null}
 				</View>
 				{resource?.status === 'hydrating' && !messages.length ? (
-					<ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+					<SupportConversationSkeleton />
 				) : (
 					<FlashList
 						data={messages}
@@ -323,6 +336,33 @@ export default function SupportTicketConversationScreen({
 						{resource.error.message}
 					</Text>
 				) : null}
+				{!staffMode && ticket?.status === 'resolved' ? (
+					<View
+						style={{
+							padding: 10,
+							borderTopWidth: 1,
+							borderTopColor: colors.border,
+							backgroundColor: colors.surface,
+						}}
+					>
+						<TouchableOpacity
+							disabled={busy}
+							onPress={() => void handleAction('reopen')}
+							style={{
+								minHeight: 46,
+								alignItems: 'center',
+								justifyContent: 'center',
+								borderRadius: 14,
+								backgroundColor: colors.accent,
+								opacity: busy ? 0.6 : 1,
+							}}
+						>
+							<Text style={{ color: '#fff', fontWeight: '900' }}>
+								Reopen ticket
+							</Text>
+						</TouchableOpacity>
+					</View>
+				) : null}
 				{staffMode ? (
 					<View
 						style={{
@@ -351,16 +391,33 @@ export default function SupportTicketConversationScreen({
 								label="Claim"
 								onPress={() => void handleAction('claim')}
 								colors={colors}
+								disabled={busy}
+							/>
+							<SmallAction
+								label="Note"
+								onPress={() => void handleAction('internal_note')}
+								colors={colors}
+								disabled={busy}
 							/>
 							<SmallAction
 								label="Release"
 								onPress={() => void handleAction('release')}
 								colors={colors}
+								disabled={busy}
 							/>
+						</View>
+						<View style={{ flexDirection: 'row', gap: 6, marginTop: 7 }}>
 							<SmallAction
 								label="Resolve"
 								onPress={() => void handleAction('resolve')}
 								colors={colors}
+								disabled={busy}
+							/>
+							<SmallAction
+								label="Close"
+								onPress={() => void handleAction('close')}
+								colors={colors}
+								disabled={busy}
 							/>
 						</View>
 						<View style={{ flexDirection: 'row', gap: 7, marginTop: 7 }}>
@@ -380,8 +437,11 @@ export default function SupportTicketConversationScreen({
 							/>
 							<SmallAction
 								label="Transfer"
-								onPress={() => void handleAction('transfer', transferUserId)}
+								onPress={() =>
+									void handleAction('transfer', transferUserId.trim())
+								}
 								colors={colors}
+								disabled={busy || !transferUserId.trim()}
 							/>
 						</View>
 					</View>
@@ -446,11 +506,38 @@ export default function SupportTicketConversationScreen({
 							</TouchableOpacity>
 						</View>
 						{images.length ? (
-							<Text
-								style={{ marginTop: 5, color: colors.mutedText, fontSize: 11 }}
+							<View
+								style={{
+									flexDirection: 'row',
+									alignItems: 'center',
+									alignSelf: 'flex-start',
+									marginTop: 6,
+									paddingLeft: 10,
+									paddingRight: 4,
+									paddingVertical: 3,
+									borderRadius: 99,
+									backgroundColor: colors.successSurface,
+								}}
 							>
-								{images.length} image{images.length === 1 ? '' : 's'} selected
-							</Text>
+								<Text
+									style={{
+										color: colors.accentText,
+										fontSize: 11,
+										fontWeight: '700',
+									}}
+								>
+									{images.length} {images.length === 1 ? 'image' : 'images'}{' '}
+									selected
+								</Text>
+								<TouchableOpacity
+									accessibilityLabel="Remove selected images"
+									hitSlop={8}
+									onPress={() => setImages([])}
+									style={{ marginLeft: 4, padding: 3 }}
+								>
+									<Ionicons name="close" size={13} color={colors.accentText} />
+								</TouchableOpacity>
+							</View>
 						) : null}
 					</View>
 				) : null}
@@ -460,20 +547,20 @@ export default function SupportTicketConversationScreen({
 }
 
 type ThemeColors = ReturnType<typeof useAppTheme>['colors'];
-function SmallAction({
-	label,
-	onPress,
-	colors,
-}: {
+type SmallActionProps = {
 	label: string;
 	onPress: () => void;
 	colors: ThemeColors;
-}) {
+	disabled?: boolean;
+};
+function SmallAction({ label, onPress, colors, disabled = false }: SmallActionProps) {
 	return (
 		<TouchableOpacity
 			onPress={onPress}
+			disabled={disabled}
 			style={{
 				flex: 1,
+				opacity: disabled ? 0.5 : 1,
 				alignItems: 'center',
 				padding: 9,
 				borderRadius: 11,

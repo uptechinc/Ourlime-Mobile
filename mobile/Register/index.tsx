@@ -4,8 +4,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Image,
@@ -15,6 +13,7 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { authService, type RegistrationVerificationType } from '@/lib/services/AuthService';
 import { registrationDataService, type RegistrationMode } from '@/lib/services/RegistrationDataService';
 import * as ImagePicker from 'expo-image-picker';
@@ -29,7 +28,11 @@ import { COUNTRIES, isCaribbeanCountry } from '@/lib/helpers/countryData';
 import LocationPickerModal, { type LocationPickerItem } from '@/components/auth/LocationPickerModal';
 import VerificationSection from '@/components/auth/VerificationSection';
 import { dateOfBirthService } from '@/lib/services/DateOfBirthService';
-
+import { registrationDraftService } from '@/lib/services/RegistrationDraftService';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { BadgeCheck, Check, ChevronRight, PartyPopper, User } from 'lucide-react-native';
+import { GENDERS, MINIMUM_INTERESTS, REGISTRATION_INTERESTS, STUDENT_LEVELS } from './registrationOptions';
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GREEN = '#01eb53';
 const GREEN_DARK = '#10b981';
@@ -70,21 +73,14 @@ type FormData = {
 type RegistrationErrorField = keyof FormData | 'terms' | 'privacy' | 'childSafety' | 'interests' | 'global';
 type RegistrationErrors = Partial<Record<RegistrationErrorField, string>>;
 
-const INTERESTS = [
-  'Technology', 'Music', 'Sports', 'Art', 'Travel', 'Food', 'Gaming',
-  'Fitness', 'Photography', 'Fashion', 'Education', 'Business',
-  'Environment', 'Health', 'Science', 'Politics', 'Entertainment',
-];
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_TAKEN_MESSAGE = 'This email is already registered. Please log in instead.';
+const USERNAME_TAKEN_MESSAGE = 'Username is already taken.';
 
-const STUDENT_LEVELS = [
-  'Secondary / High School',
-  'Undergraduate / College',
-  'Postgraduate / Master\'s / PhD',
-  'Vocational / Trade School',
-  'Other Student',
-];
-
-const GENDERS = ['Male', 'Female', 'Non-binary', 'Prefer not to say', 'Other'];
+/** Preset avatars are saved as the website saves them: the SVG file name (e.g. cartoonAvatarBlackBoy.svg). */
+const presetAvatarValue = (avatarId: string): string => `${avatarId}.svg`;
+const isSamePresetAvatar = (profilePicture: string | null, avatarId: string): boolean =>
+  profilePicture === avatarId || profilePicture === presetAvatarValue(avatarId);
 
 export default function Register() {
   const router = useRouter();
@@ -97,6 +93,14 @@ export default function Register() {
   // Step state (0: Welcome, 1: Account Type, 2: Basic Info, 3: Demographics, 4: Location, 5: Avatar, 6: Interests, 7: Verification)
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Email reserved by a beta invitation link; the email field is locked to it, as on the website.
+  const [invitedEmail, setInvitedEmail] = useState('');
+  const [hasInvitation, setHasInvitation] = useState(false);
+  // Interests are confirmed on a "Your Lime Profile Is Ready!" preview before verification.
+  const [showInterestsPreview, setShowInterestsPreview] = useState(false);
+  const [isAdvancing, setIsAdvancing] = useState(false);
+  // The saved draft (or a pending email verification) is read before the form is shown and saved.
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
 
   // Modals & Availability
   const [isTermsOpen, setIsTermsOpen] = useState(false);
@@ -174,7 +178,6 @@ export default function Register() {
 
   // ── Beta Registration Access Check ───────────────────────────────────────
   // Effect events read the latest form helpers without re-running the effects that call them.
-  const applyInviteEmail = useEffectEvent((email: string) => updateField('email', email));
   useEffect(() => {
     let cancelled = false;
 
@@ -188,13 +191,10 @@ export default function Register() {
           setRegistrationAccess('closed');
           return;
         }
-        if (mode === 'open') {
-          setRegistrationAccess('allowed');
-          return;
-        }
 
+        // Like the website, an invitation link is still checked (and its badge shown) when sign-up is open.
         if (!referralToken) {
-          setRegistrationAccess('invite_required');
+          setRegistrationAccess(mode === 'open' ? 'allowed' : 'invite_required');
           return;
         }
 
@@ -205,9 +205,8 @@ export default function Register() {
           setRegistrationAccess(tokenRes.reason);
           return;
         }
-        if (tokenRes.email) {
-          applyInviteEmail(tokenRes.email);
-        }
+        setHasInvitation(true);
+        if (tokenRes.email) setInvitedEmail(tokenRes.email);
         setRegistrationAccess('allowed');
       } catch {
         if (!cancelled) {
@@ -222,6 +221,56 @@ export default function Register() {
     };
   }, [referralToken]);
 
+  // ── Saved Draft & Pending Verification ────────────────────────────────────
+  // Restores the website-style draft (7 days) or reopens the "verify your email" dialog (24 hours).
+  const restoreDraft = useEffectEvent(async () => {
+    try {
+      const pending = await registrationDraftService.loadPendingVerification();
+      if (pending) {
+        setRegisteredUserId(pending.userId);
+        setVerificationEmailSent(pending.verificationEmailSent);
+        setFormData(previous => ({ ...previous, email: pending.email }));
+        setShowSuccessModal(true);
+        return;
+      }
+      const draft = await registrationDraftService.loadDraft();
+      if (!draft) return;
+      const { step: savedStep, showInterestsPreview: savedPreview, ...savedFields } = draft;
+      setFormData(previous => ({ ...previous, ...savedFields, country: savedFields.country || previous.country }));
+      if (savedFields.phone) setHasPhoneNumber(true);
+      setShowInterestsPreview(savedPreview);
+      setStep(savedStep);
+      if (savedStep === 2 && savedFields.email) handleEmailChange(savedFields.email);
+    } finally {
+      setHasRestoredDraft(true);
+    }
+  });
+  useEffect(() => {
+    void restoreDraft();
+  }, []);
+
+  // The invitation's email wins over a restored draft, as on the website.
+  const applyInvitedEmail = useEffectEvent((email: string) => {
+    if (formData.email !== email) handleEmailChange(email);
+  });
+  useEffect(() => {
+    if (hasRestoredDraft && invitedEmail) applyInvitedEmail(invitedEmail);
+  }, [hasRestoredDraft, invitedEmail]);
+
+  useEffect(() => {
+    if (!hasRestoredDraft || showSuccessModal) return undefined;
+    const saveTimer = setTimeout(() => {
+      const { password: _password, confirmPassword: _confirmPassword, coverPhoto: _coverPhoto, verificationDocuments: _documents, idSubType: _idSubType, guardianRelation: _guardianRelation, ...draftFields } = formData;
+      void registrationDraftService.saveDraft({ ...draftFields, step, showInterestsPreview });
+    }, 400);
+    return () => clearTimeout(saveTimer);
+  }, [formData, hasRestoredDraft, showInterestsPreview, showSuccessModal, step]);
+
+  useEffect(() => () => {
+    if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current);
+    if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current);
+  }, []);
+
   // ── Real-time Email & Username Checks ─────────────────────────────────────
   const handleEmailChange = (val: string) => {
     updateField('email', val);
@@ -229,16 +278,17 @@ export default function Register() {
     if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current);
     const trimmed = val.trim();
     latestEmailCheckRef.current = trimmed;
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    if (EMAIL_PATTERN.test(trimmed)) {
       setIsCheckingEmail(true);
       emailDebounceRef.current = setTimeout(async () => {
         try {
           const available = await registrationDataService.isEmailAvailable(trimmed);
           if (latestEmailCheckRef.current === trimmed && !available) {
-            setEmailExistsError('This email is already registered.');
+            setEmailExistsError(EMAIL_TAKEN_MESSAGE);
           }
-        } catch {
-          // Ignore network failures gracefully
+        } catch (error: unknown) {
+          // A failed check is repeated when Continue is pressed.
+          console.error('[Register.handleEmailChange] Error:', error instanceof Error ? error.message : error);
         } finally {
           if (latestEmailCheckRef.current === trimmed) setIsCheckingEmail(false);
         }
@@ -260,10 +310,11 @@ export default function Register() {
         try {
           const available = await registrationDataService.isUsernameAvailable(trimmed);
           if (latestUsernameCheckRef.current === trimmed && !available) {
-            setUsernameExistsError('Username is already taken.');
+            setUsernameExistsError(USERNAME_TAKEN_MESSAGE);
           }
-        } catch {
-          // Ignore network failures gracefully
+        } catch (error: unknown) {
+          // A failed check is repeated when Continue is pressed.
+          console.error('[Register.handleUsernameChange] Error:', error instanceof Error ? error.message : error);
         } finally {
           if (latestUsernameCheckRef.current === trimmed) setIsCheckingUsername(false);
         }
@@ -432,7 +483,8 @@ export default function Register() {
       else if (usernameExistsError) newErrors.userName = usernameExistsError;
 
       if (!formData.email.trim()) newErrors.email = 'Email is required.';
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = 'Please enter a valid email address.';
+      else if (!EMAIL_PATTERN.test(formData.email.trim())) newErrors.email = 'Please enter a valid email address.';
+      else if (invitedEmail && formData.email.trim().toLowerCase() !== invitedEmail.trim().toLowerCase()) newErrors.email = 'Use the email address connected to this invitation.';
       else if (emailExistsError) newErrors.email = emailExistsError;
 
       if (formData.password.length < 8) newErrors.password = 'Password must be at least 8 characters.';
@@ -465,11 +517,11 @@ export default function Register() {
     }
 
     if (step === 6) {
-      if (formData.selectedInterests.length < 3) newErrors.interests = 'Please select at least 3 interests.';
+      if (formData.selectedInterests.length < MINIMUM_INTERESTS) newErrors.interests = `Please select at least ${MINIMUM_INTERESTS} interests`;
     }
 
     if (step === 7 && formData.verificationType === 'guardian') {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.guardianEmail.trim())) {
+      if (!EMAIL_PATTERN.test(formData.guardianEmail.trim())) {
         newErrors.guardianEmail = 'Enter a valid parent or guardian email address.';
       }
     }
@@ -481,12 +533,67 @@ export default function Register() {
     return true;
   };
 
-  const handleNext = () => {
-    if (validateStep()) setStep(s => Math.min(s + 1, TOTAL_STEPS));
+  /**
+   * The website confirms the email and username with the server before leaving the account details, since the
+   * as-you-type checks can be stale or have failed.
+   */
+  const confirmAccountDetailsAvailable = async (): Promise<boolean> => {
+    if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current);
+    if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current);
+    const email = formData.email.trim();
+    const userName = formData.userName.trim();
+    latestEmailCheckRef.current = email;
+    latestUsernameCheckRef.current = userName;
+    setIsCheckingEmail(true);
+    try {
+      const [isEmailAvailable, isUsernameAvailable] = await Promise.all([
+        registrationDataService.isEmailAvailable(email),
+        registrationDataService.isUsernameAvailable(userName),
+      ]);
+      setEmailExistsError(isEmailAvailable ? '' : EMAIL_TAKEN_MESSAGE);
+      setUsernameExistsError(isUsernameAvailable ? '' : USERNAME_TAKEN_MESSAGE);
+      if (!isEmailAvailable || !isUsernameAvailable) {
+        setErrors(previous => ({
+          ...previous,
+          ...(isEmailAvailable ? {} : { email: EMAIL_TAKEN_MESSAGE }),
+          ...(isUsernameAvailable ? {} : { userName: USERNAME_TAKEN_MESSAGE }),
+        }));
+        return false;
+      }
+      return true;
+    } catch (error: unknown) {
+      console.error('[Register.confirmAccountDetailsAvailable] Error:', error instanceof Error ? error.message : error);
+      setErrors(previous => ({ ...previous, global: error instanceof Error && error.message ? error.message : 'Unable to validate this email right now' }));
+      return false;
+    } finally {
+      setIsCheckingEmail(false);
+      setIsCheckingUsername(false);
+    }
+  };
+
+  const handleNext = async () => {
+    if (isAdvancing || !validateStep()) return;
+    setErrors(previous => ({ ...previous, global: undefined }));
+    if (step === 2) {
+      setIsAdvancing(true);
+      const isAvailable = await confirmAccountDetailsAvailable();
+      setIsAdvancing(false);
+      if (!isAvailable) return;
+    }
+    // Interests are confirmed on the profile preview first, as on the website.
+    if (step === 6 && !showInterestsPreview) {
+      setShowInterestsPreview(true);
+      return;
+    }
+    setStep(s => Math.min(s + 1, TOTAL_STEPS));
   };
 
   const handleBack = () => {
     setErrors({});
+    if (step === 6 && showInterestsPreview) {
+      setShowInterestsPreview(false);
+      return;
+    }
     setStep(s => Math.max(s - 1, 0));
   };
 
@@ -524,6 +631,12 @@ export default function Register() {
           privacy: isPrivacyAccepted,
           childSafety: isChildSafetyAccepted,
         },
+      });
+      await registrationDraftService.clearDraft();
+      await registrationDraftService.savePendingVerification({
+        userId: registrationResult.user.uid,
+        email: formData.email.trim(),
+        verificationEmailSent: registrationResult.verificationEmailSent,
       });
       setRegisteredUserId(registrationResult.user.uid);
       setVerificationEmailSent(registrationResult.verificationEmailSent);
@@ -568,12 +681,8 @@ export default function Register() {
   };
 
   // ── Render Guard ──────────────────────────────────────────────────────────
-  if (registrationAccess === 'loading') {
-    return (
-      <View style={{ flex: 1, backgroundColor: '#000000', justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#10b981" />
-      </View>
-    );
+  if (registrationAccess === 'loading' || !hasRestoredDraft) {
+    return <RegistrationSkeleton />;
   }
 
   if (registrationAccess !== 'allowed') {
@@ -585,11 +694,11 @@ export default function Register() {
   const progress = step > 0 ? step / TOTAL_STEPS : 0;
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#000000' }}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#000000' }}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* Top Header & Back Button */}
-      <View style={{ paddingTop: 50, paddingHorizontal: 20, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+      <View style={{ paddingTop: 10, paddingHorizontal: 20, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <TouchableOpacity
           onPress={step === 0 ? () => router.replace('/(auth)/login') : handleBack}
           style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 }}
@@ -614,9 +723,20 @@ export default function Register() {
         </View>
       )}
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <KeyboardSafeView style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 20, justifyContent: 'center' }} keyboardShouldPersistTaps="handled">
-          
+
+          {/* Beta invitation (the website's InvitationBadge) */}
+          {hasInvitation ? (
+            <View style={styles.invitationBadge}>
+              <BadgeCheck size={20} color={GREEN} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 14 }}>You have been invited to join the OurLime beta.</Text>
+                {invitedEmail ? <Text style={{ color: '#dcfce7', fontSize: 13, marginTop: 4 }}>This invitation is reserved for {invitedEmail}.</Text> : null}
+              </View>
+            </View>
+          ) : null}
+
           {/* Main Glass Card */}
           <View style={styles.glassCard}>
 
@@ -758,7 +878,7 @@ export default function Register() {
                         onChangeText={handleUsernameChange}
                         style={styles.input}
                       />
-                      {isCheckingUsername && <ActivityIndicator color={GREEN_DARK} size="small" style={{ position: 'absolute', right: 14, top: 14 }} />}
+                      {isCheckingUsername && <Skeleton width={56} height={10} borderRadius={5} style={{ position: 'absolute', right: 14, top: 19 }} />}
                     </View>
                     {errors.userName ? <Text style={styles.fieldError}>{errors.userName}</Text> : null}
                   </View>
@@ -773,9 +893,10 @@ export default function Register() {
                         autoCapitalize="none"
                         value={formData.email}
                         onChangeText={handleEmailChange}
-                        style={styles.input}
+                        editable={!invitedEmail}
+                        style={[styles.input, invitedEmail ? { opacity: 0.7 } : null]}
                       />
-                      {isCheckingEmail && <ActivityIndicator color={GREEN_DARK} size="small" style={{ position: 'absolute', right: 14, top: 14 }} />}
+                      {isCheckingEmail && <Skeleton width={56} height={10} borderRadius={5} style={{ position: 'absolute', right: 14, top: 19 }} />}
                     </View>
                     {errors.email ? <Text style={styles.fieldError}>{errors.email}</Text> : null}
                   </View>
@@ -851,8 +972,8 @@ export default function Register() {
                   </View>
                 </View>
 
-                <TouchableOpacity onPress={handleNext} style={[styles.primaryButton, { marginTop: 20 }]}>
-                  <Text style={styles.primaryButtonText}>Continue →</Text>
+                <TouchableOpacity onPress={handleNext} disabled={isAdvancing} style={[styles.primaryButton, { marginTop: 20 }, isAdvancing && { opacity: 0.7 }]}>
+                  {isAdvancing ? <Skeleton width={110} height={16} borderRadius={8} /> : <Text style={styles.primaryButtonText}>Continue →</Text>}
                 </TouchableOpacity>
               </View>
             )}
@@ -904,15 +1025,19 @@ export default function Register() {
                   <View>
                     <Text style={styles.label}>Gender</Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                      {GENDERS.map(g => (
-                        <TouchableOpacity
-                          key={g}
-                          onPress={() => updateField('gender', g)}
-                          style={[styles.chip, formData.gender === g && styles.chipActive]}
-                        >
-                          <Text style={[styles.chipText, formData.gender === g && styles.chipTextActive]}>{g}</Text>
-                        </TouchableOpacity>
-                      ))}
+                      {GENDERS.map(gender => {
+                        // Older app sign-ups saved the label ("Male"); the website saves the lowercase value.
+                        const isSelected = formData.gender.toLowerCase() === gender.value;
+                        return (
+                          <TouchableOpacity
+                            key={gender.value}
+                            onPress={() => updateField('gender', gender.value)}
+                            style={[styles.chip, { flex: 1, alignItems: 'center' }, isSelected && styles.chipActive]}
+                          >
+                            <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>{gender.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
                     {errors.gender ? <Text style={styles.fieldError}>{errors.gender}</Text> : null}
                   </View>
@@ -922,13 +1047,13 @@ export default function Register() {
                     <View style={{ marginTop: 6 }}>
                       <Text style={styles.label}>Student Level</Text>
                       <View style={{ gap: 8 }}>
-                        {STUDENT_LEVELS.map(lvl => (
+                        {STUDENT_LEVELS.map(level => (
                           <TouchableOpacity
-                            key={lvl}
-                            onPress={() => updateField('studentLevel', lvl)}
-                            style={[styles.chip, formData.studentLevel === lvl && styles.chipActive, { width: '100%', alignItems: 'center' }]}
+                            key={level}
+                            onPress={() => updateField('studentLevel', level)}
+                            style={[styles.chip, formData.studentLevel === level && styles.chipActive, { width: '100%', alignItems: 'center' }]}
                           >
-                            <Text style={[styles.chipText, formData.studentLevel === lvl && styles.chipTextActive]}>{lvl}</Text>
+                            <Text style={[styles.chipText, formData.studentLevel === level && styles.chipTextActive]}>{level}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -1059,13 +1184,14 @@ export default function Register() {
 
                 {/* Avatar Grid */}
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', marginBottom: 16 }}>
-                  {(activeTab === 'cartoon' ? cartoonAvatars : realisticAvatars).map((av) => (
+                  {(activeTab === 'cartoon' ? cartoonAvatars : realisticAvatars).map((avatar) => (
                     <TouchableOpacity
-                      key={av.id}
-                      onPress={() => updateField('profilePicture', av.id)}
-                      style={[styles.avatarOption, formData.profilePicture === av.id && styles.avatarOptionSelected]}
+                      key={avatar.id}
+                      accessibilityLabel={avatar.name}
+                      onPress={() => updateField('profilePicture', presetAvatarValue(avatar.id))}
+                      style={[styles.avatarOption, isSamePresetAvatar(formData.profilePicture, avatar.id) && styles.avatarOptionSelected]}
                     >
-                      <Image source={av.image} style={{ width: 68, height: 68, borderRadius: 34 }} resizeMode="cover" />
+                      <Image source={avatar.image} style={{ width: 68, height: 68, borderRadius: 34 }} resizeMode="cover" />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -1105,23 +1231,26 @@ export default function Register() {
             )}
 
             {/* ── STEP 6: Interests Selection ── */}
-            {step === 6 && (
+            {step === 6 && !showInterestsPreview && (
               <View>
-                <Text style={styles.stepTitle}>Select Your Interests</Text>
-                <Text style={styles.stepSubtitle}>Choose at least 3 topics you enjoy (Selected: {formData.selectedInterests.length}).</Text>
+                <Text style={styles.stepTitle}>What do you like?</Text>
+                <Text style={styles.stepSubtitle}>Select at least {MINIMUM_INTERESTS} interests to help us personalize your feed. (Selected: {formData.selectedInterests.length})</Text>
 
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 16 }}>
-                  {INTERESTS.map((interest) => {
-                    const isSelected = formData.selectedInterests.includes(interest);
+                  {REGISTRATION_INTERESTS.map((interest) => {
+                    const isSelected = formData.selectedInterests.includes(interest.name);
+                    const InterestIcon = interest.icon;
                     return (
                       <TouchableOpacity
-                        key={interest}
-                        onPress={() => toggleInterest(interest)}
-                        style={[styles.chip, isSelected && styles.chipActive]}
+                        key={interest.name}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isSelected }}
+                        onPress={() => toggleInterest(interest.name)}
+                        style={[styles.chip, styles.interestChip, isSelected && styles.chipActive]}
                       >
-                        <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>
-                          {isSelected ? '✓ ' : ''}{interest}
-                        </Text>
+                        <InterestIcon size={16} color={isSelected ? GREEN : '#cbd5e1'} />
+                        <Text style={[styles.chipText, isSelected ? styles.chipTextActive : { color: '#ffffff' }]}>{interest.name}</Text>
+                        {isSelected ? <Check size={14} color={GREEN} /> : null}
                       </TouchableOpacity>
                     );
                   })}
@@ -1129,8 +1258,44 @@ export default function Register() {
 
                 {errors.interests ? <Text style={styles.fieldError}>{errors.interests}</Text> : null}
 
-                <TouchableOpacity onPress={handleNext} disabled={formData.selectedInterests.length < 3} style={[styles.primaryButton, formData.selectedInterests.length < 3 && { opacity: 0.5 }]}>
-                  <Text style={styles.primaryButtonText}>Continue →</Text>
+                <TouchableOpacity onPress={handleNext} disabled={formData.selectedInterests.length < MINIMUM_INTERESTS} style={[styles.primaryButton, styles.buttonRow, formData.selectedInterests.length < MINIMUM_INTERESTS && { opacity: 0.5 }]}>
+                  <Text style={styles.primaryButtonText}>Preview Profile</Text>
+                  <ChevronRight size={18} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* ── STEP 6b: Profile preview (the website's "Your Lime Profile Is Ready!") ── */}
+            {step === 6 && showInterestsPreview && (
+              <View style={{ alignItems: 'center' }}>
+                <PartyPopper size={40} color="#facc15" />
+                <Text style={{ marginTop: 8, color: '#facc15', fontSize: 22, fontWeight: '800', textAlign: 'center' }}>🎉 Your Lime Profile Is Ready!</Text>
+                <Text style={{ marginTop: 6, color: '#cbd5e1', fontSize: 14, lineHeight: 20, textAlign: 'center' }}>
+                  We&apos;ll use these interests to connect you with people and communities you&apos;ll enjoy.
+                </Text>
+
+                <View style={styles.previewCard}>
+                  <RegistrationAvatarPreview profilePicture={formData.profilePicture} />
+                  <Text style={{ marginTop: 12, marginBottom: 14, color: '#ffffff', fontSize: 19, fontWeight: '800', textAlign: 'center' }}>{formData.firstName.trim() || 'User'}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 }}>
+                    {formData.selectedInterests.map((interestName) => {
+                      const InterestIcon = REGISTRATION_INTERESTS.find((interest) => interest.name === interestName)?.icon;
+                      return (
+                        <View key={interestName} style={styles.previewInterest}>
+                          {InterestIcon ? <InterestIcon size={14} color={GREEN} /> : null}
+                          <Text style={{ color: GREEN, fontSize: 13, fontWeight: '600' }}>{interestName}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <TouchableOpacity onPress={handleNext} style={[styles.primaryButton, styles.buttonRow]}>
+                  <Text style={styles.primaryButtonText}>Looks Great!</Text>
+                  <ChevronRight size={18} color="#ffffff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowInterestsPreview(false)} style={{ marginTop: 14, padding: 6 }}>
+                  <Text style={{ color: '#94a3b8', fontWeight: '600' }}>Go back to edit interests</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -1150,8 +1315,16 @@ export default function Register() {
 
           </View>
 
+          {step > 0 ? (
+            <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={{ marginTop: 20, alignSelf: 'center', padding: 6 }}>
+              <Text style={{ color: '#64748b', fontSize: 14, textAlign: 'center' }}>
+                Already have an account? <Text style={{ color: GREEN_DARK, fontWeight: '700' }}>Login instead</Text>
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
 
       {/* Terms & Privacy Modals */}
       <TermsModal isOpen={isTermsOpen} onClose={() => setIsTermsOpen(false)} onAccept={() => setIsTermsAccepted(true)} />
@@ -1214,13 +1387,21 @@ export default function Register() {
                 }}
                 style={[styles.primaryButton, { marginTop: 18, width: '100%' }]}
               >
-                {isRetryingVerificationEmail ? <ActivityIndicator color="#000000" /> : <Text style={styles.primaryButtonText}>Retry verification email</Text>}
+                {isRetryingVerificationEmail ? <Skeleton width={150} height={16} borderRadius={8} /> : <Text style={styles.primaryButtonText}>Retry verification email</Text>}
               </TouchableOpacity>
             ) : null}
+
+            <View style={{ width: '100%', flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 18, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.05)' }}>
+              <Ionicons name="alert-circle" size={20} color="#eab308" />
+              <Text style={{ flex: 1, color: '#94a3b8', fontSize: 13, lineHeight: 19 }}>
+                Please check your inbox and spam folder. Click the link in the email to activate your account and start liming!
+              </Text>
+            </View>
 
             <TouchableOpacity
               onPress={() => {
                 setShowSuccessModal(false);
+                void registrationDraftService.clearPendingVerification();
                 router.replace('/(auth)/login');
               }}
               style={[styles.primaryButton, { marginTop: 24, width: '100%' }]}
@@ -1265,12 +1446,104 @@ export default function Register() {
         onSelect={handleCitySelect}
         onClose={() => setIsCityModalOpen(false)}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
+type RegistrationAvatarPreviewProps = { profilePicture: string | null };
+
+/** The chosen preset avatar or uploaded photo on the interests preview card. */
+function RegistrationAvatarPreview({ profilePicture }: RegistrationAvatarPreviewProps) {
+  const presetAvatar = [...cartoonAvatars, ...realisticAvatars].find((avatar) => isSamePresetAvatar(profilePicture, avatar.id));
+  const source = presetAvatar?.image ?? (profilePicture && /^(file:|content:|https?:)/i.test(profilePicture) ? { uri: profilePicture } : null);
+  return (
+    <View style={styles.previewAvatar}>
+      {source ? <Image source={source} style={{ width: '100%', height: '100%' }} resizeMode="cover" /> : <User size={48} color="#94a3b8" />}
+    </View>
+  );
+}
+
+/** Loading state shaped like the sign-up card (progress header, title, fields and button). */
+function RegistrationSkeleton() {
+  return (
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#000000' }}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <View accessibilityLabel="Loading registration" style={{ paddingHorizontal: 20, paddingTop: 10 }}>
+        <Skeleton width={140} height={34} borderRadius={17} />
+      </View>
+      <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
+        <View style={styles.glassCard}>
+          <View style={{ alignItems: 'center' }}>
+            <Skeleton width={80} height={80} borderRadius={40} />
+            <Skeleton width="70%" height={26} style={{ marginTop: 16 }} />
+            <Skeleton width="85%" height={14} style={{ marginTop: 10 }} />
+          </View>
+          <Skeleton height={74} borderRadius={16} style={{ marginTop: 24 }} />
+          <Skeleton height={74} borderRadius={16} style={{ marginTop: 12 }} />
+          <Skeleton height={50} borderRadius={14} style={{ marginTop: 28 }} />
+          <Skeleton width="60%" height={14} style={{ marginTop: 20, alignSelf: 'center' }} />
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
 const styles = StyleSheet.create({
+  invitationBadge: {
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(1,235,83,0.3)',
+    backgroundColor: 'rgba(1,235,83,0.1)',
+  },
+  interestChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  previewCard: {
+    width: '100%',
+    marginTop: 20,
+    marginBottom: 24,
+    padding: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+  },
+  previewAvatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1f2937',
+    borderWidth: 4,
+    borderColor: 'rgba(16,185,129,0.6)',
+  },
+  previewInterest: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(16,185,129,0.2)',
+  },
   glassCard: {
     width: '100%',
     maxWidth: 520,

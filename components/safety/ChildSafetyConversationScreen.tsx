@@ -47,6 +47,7 @@ export default function ChildSafetyConversationScreen({
 	const [busy, setBusy] = useState(true);
 	const [note, setNote] = useState('');
 	const [transferId, setTransferId] = useState('');
+	const [loadError, setLoadError] = useState('');
 	const load = useCallback(
 		async (quiet = false) => {
 			if (!quiet) setBusy(true);
@@ -59,11 +60,11 @@ export default function ChildSafetyConversationScreen({
 				]);
 				setReport(caseRecord);
 				setMessages(page.items);
+				setLoadError('');
 			} catch (error: unknown) {
 				if (!quiet)
-					Alert.alert(
-						'Case unavailable',
-						error instanceof Error ? error.message : 'Please try again.'
+					setLoadError(
+						error instanceof Error ? error.message : 'Case could not be loaded.'
 					);
 			} finally {
 				if (!quiet) setBusy(false);
@@ -263,9 +264,17 @@ export default function ChildSafetyConversationScreen({
 							: 'Restricted case'}
 					</Text>
 					<Text style={{ color: colors.mutedText, fontSize: 11 }}>
-						{report?.reference || 'Loading…'} ·{' '}
-						{report?.status.replaceAll('_', ' ')}
+						{report?.reference || 'Loading…'}
+						{report ? ` · ${report.status.replaceAll('_', ' ')}` : ''}
 					</Text>
+					{report ? (
+						<Text
+							numberOfLines={1}
+							style={{ color: colors.mutedText, fontSize: 11, fontWeight: '700' }}
+						>
+							{report.assignedReviewerName || 'Awaiting restricted reviewer'}
+						</Text>
+					) : null}
 				</View>
 				{!reviewerMode && report ? (
 					<TouchableOpacity
@@ -295,7 +304,23 @@ export default function ChildSafetyConversationScreen({
 				) : null}
 			</View>
 			<KeyboardSafeView style={{ flex: 1 }}>
-				{busy && !report ? (
+				{!report && loadError ? (
+					<View style={{ flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center' }}>
+						<Ionicons name="lock-closed" size={30} color={colors.destructive} />
+						<Text style={{ marginTop: 10, color: colors.text, fontSize: 17, fontWeight: '900', textAlign: 'center' }}>
+							Case unavailable
+						</Text>
+						<Text style={{ marginTop: 6, color: colors.mutedText, textAlign: 'center', lineHeight: 20 }}>
+							{loadError}
+						</Text>
+						<TouchableOpacity
+							onPress={() => void load()}
+							style={{ marginTop: 14, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 13, backgroundColor: colors.destructive }}
+						>
+							<Text style={{ color: '#fff', fontWeight: '900' }}>Try again</Text>
+						</TouchableOpacity>
+					</View>
+				) : !report ? (
 					<ChildSafetyConversationSkeleton />
 				) : (
 					<FlashList
@@ -337,7 +362,7 @@ export default function ChildSafetyConversationScreen({
 						}
 					/>
 				)}
-				{reviewerMode ? (
+				{reviewerMode && report ? (
 					<View
 						style={{
 							padding: 9,
@@ -404,7 +429,7 @@ export default function ChildSafetyConversationScreen({
 						</View>
 					</View>
 				) : null}
-				{mayReply ? (
+				{!report ? null : mayReply ? (
 					<View
 						style={{
 							padding: 9,
@@ -498,9 +523,11 @@ export default function ChildSafetyConversationScreen({
 							backgroundColor: colors.warningSurface,
 						}}
 					>
-						{!report?.assignedReviewerId
+						{!report.assignedReviewerId
 							? 'Claim this case before replying.'
-							: 'The reporter has not enabled contact.'}
+							: report.assignedReviewerId !== auth.currentUser?.uid
+								? 'This case is assigned to another reviewer.'
+								: 'The reporter has not enabled contact. You may audit but cannot send a reporter-visible reply.'}
 					</Text>
 				)}
 			</KeyboardSafeView>

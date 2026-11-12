@@ -3,6 +3,7 @@ import { Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Tex
 import { Building2, Check, Heart, MapPin, Package, Send, Share2, ShieldCheck, ShoppingCart, Star, Store, Truck } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
+import EHubSectionNav from '@/components/ehub/EHubSectionNav';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useEHubProduct } from '@/lib/hooks/useEHub';
@@ -73,7 +74,10 @@ export default function EHubProductDetailScreen() {
     });
   };
 
-  const header = <PageHeader title={detail?.product.title ?? 'Product'} onBackPress={() => router.back()} rightComponent={<EHubHeaderActions onOpenCart={() => setIsCartOpen(true)} />} />;
+  const header = <>
+    <PageHeader title={detail?.product.title ?? 'Product'} onBackPress={() => router.back()} rightComponent={<EHubHeaderActions onOpenCart={() => setIsCartOpen(true)} />} />
+    <EHubSectionNav currentLabel={detail?.product.title ?? 'Product'} parentLabel="Shop" onParentPress={() => router.dismissTo(`/ehub?section=products&jump=${Date.now()}` as Href)} />
+  </>;
   if (resource.isLoading && !detail) {
     return <View style={styles.screen}>{header}<EHubProductDetailSkeleton /></View>;
   }

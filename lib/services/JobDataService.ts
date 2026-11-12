@@ -52,7 +52,7 @@ export type JobUpdateInput = {
   qualifications: string[];
   category_specific: DocumentData;
 };
-export type JobState = 'close' | 'archive' | 'reopen';
+export type JobState = 'close' | 'archive' | 'reopen' | 'publish';
 export type EmployerApplicationStatus = 'pending' | 'reviewing' | 'accepted' | 'rejected' | 'withdrawn' | 'interviewing' | 'offer';
 
 const APPLICANT_DISCLAIMER_VERSION = '1.0';
@@ -123,16 +123,20 @@ export class JobDataService {
     if (!input.jobId || !SUPPORTED_JOB_TYPES.has(input.jobType)) throw new Error('A valid Professional Job or Quick Task is required.');
     const jobRef = doc(db, 'jobs', input.jobId);
     const applicationRef = doc(db, 'jobApplications', `${input.jobId}_${user.userId}`);
+    // The read rule checks the stored application's applicant, so a missing application can't be read directly:
+    // look for an earlier one with the applicant query instead. A duplicate write would also be refused by the rules.
+    const earlierApplications = await getDocs(query(collection(db, 'jobApplications'), where('basic_info.userId', '==', user.userId), where('basic_info.jobId', '==', input.jobId), limit(1)))
+      .catch(() => getDocs(query(collection(db, 'jobApplications'), where('basic_info.userId', '==', user.userId))).then((snapshot) => ({ empty: !snapshot.docs.some((application) => application.data().basic_info?.jobId === input.jobId) })));
+    if (!earlierApplications.empty) throw new Error('You have already applied for this job.');
     await runTransaction(db, async (transaction) => {
-      const [job, existing] = await Promise.all([transaction.get(jobRef), transaction.get(applicationRef)]);
+      const job = await transaction.get(jobRef);
       if (!job.exists()) throw new Error('This job listing no longer exists.');
       const basicInfo = job.data().basic_info ?? {};
       if (basicInfo.status !== 'published') throw new Error('This job is not accepting applications.');
       if (!SUPPORTED_JOB_TYPES.has(readString(basicInfo.type))) throw new Error('This job type is not supported.');
       if (basicInfo.userId === user.userId) throw new Error('You cannot apply to your own job listing.');
-      const deadline = deadlineMillis(basicInfo.deadline ?? basicInfo.closingDate);
+      const deadline = deadlineMillis(basicInfo.deadline ?? basicInfo.closingDate ?? job.data().category_specific?.closingDate);
       if (deadline !== null && deadline < Date.now()) throw new Error('This job listing has expired.');
-      if (existing.exists()) throw new Error('You have already applied for this job.');
       transaction.set(applicationRef, {
         basic_info: { userId: user.userId, jobId: input.jobId, jobType: input.jobType, status: 'pending', createdAt: serverTimestamp(), updatedAt: serverTimestamp() },
         details: { coverLetter: input.coverLetter?.trim() || null, resumeUrl: input.resumeUrl || null, ...(input.portfolioLink ? { portfolioLink: input.portfolioLink } : {}) },
@@ -245,7 +249,9 @@ export class JobDataService {
   public async setJobState(jobId: string, action: JobState): Promise<void> {
     const userId = this.requireUserId();
     await this.requireOwnedJob(jobId, userId);
-    const status = action === 'close' ? 'closed' : action === 'archive' ? 'archived' : 'active';
+    // Reopening publishes the listing again so it is back on the Jobs page (the website's manage route writes
+    // 'active', which no Jobs list shows; its job editor's Reopen writes 'published').
+    const status = action === 'close' ? 'closed' : action === 'archive' ? 'archived' : 'published';
     await updateDoc(doc(db, 'jobs', jobId), { 'basic_info.status': status, 'basic_info.updatedAt': Timestamp.now() });
   }
 
@@ -263,12 +269,28 @@ export class JobDataService {
       'details.skills': input.skills,
       'details.requirements': input.requirements,
       'details.qualifications': input.qualifications,
-      category_specific: input.category_specific,
+      category_specific: this.mergeCategorySpecific(job.category_specific, input.category_specific),
     });
     if (previousCategory !== input.category) {
       if (previousCategory) await this.updateCategoryCount(previousCategory, false).catch(() => undefined);
       if (input.category) await this.updateCategoryCount(input.category, true).catch(() => undefined);
     }
+  }
+
+  /**
+   * The editor only knows the summary fields (company name, industry, size, urgency, duration, complexity); keep the
+   * rest of the listing's details (company profile, deliverables, payment terms, ...) and update the company profile
+   * the website's forms store under companyDetails / company.
+   */
+  private mergeCategorySpecific(existingValue: unknown, edited: DocumentData): DocumentData {
+    const existing: DocumentData = existingValue && typeof existingValue === 'object' ? existingValue as DocumentData : {};
+    const merged: DocumentData = { ...existing, ...edited };
+    (['companyDetails', 'company'] as const).forEach((key) => {
+      const profile = existing[key];
+      if (!profile || typeof profile !== 'object') return;
+      merged[key] = { ...profile, ...(edited.name ? { name: edited.name } : {}), ...(edited.industry ? { industry: edited.industry } : {}), ...(edited.size ? { size: edited.size } : {}) };
+    });
+    return merged;
   }
 
   /** Web JobsService.deleteJobWithCleanup: applications become job_withdrawn and lose their resume files. */

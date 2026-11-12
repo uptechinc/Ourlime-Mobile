@@ -10,6 +10,8 @@ import Icon from 'react-native-vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
 import CustomModal from '@/components/ui/CustomModal';
 import { ModerationSectionSkeleton } from '@/components/admin/AdminSkeletons';
+import AdminDeletedContentPanel from '@/components/admin/AdminDeletedContentPanel';
+import AdminBulkDeletionPanel from '@/components/admin/AdminBulkDeletionPanel';
 import {
 	AdminModerationService,
 	type AdminModerationReport,
@@ -43,7 +45,7 @@ const toFilterLabel = (value: string, allLabel: string): string => {
 export default function ModerationSection() {
 	const router = useRouter();
 	const { colors, isDark } = useAppTheme();
-	const [activeSubTab, setActiveSubTab] = useState<'reports' | 'appeals'>('reports');
+	const [activeSubTab, setActiveSubTab] = useState<'reports' | 'deleted' | 'appeals' | 'bulk'>('reports');
 	const [reports, setReports] = useState<AdminModerationReport[]>([]);
 	const [appeals, setAppeals] = useState<ContentAppealRecord[]>([]);
 	const [search, setSearch] = useState('');
@@ -132,40 +134,41 @@ export default function ModerationSection() {
 
 	return (
 		<>
-			{/* Sub-tab switcher */}
+			{/* Sub-tab switcher: the website's Reports / Deleted Content / Appeals / Bulk Actions */}
 			<View style={{ flexDirection: 'row', marginBottom: 14, backgroundColor: colors.control, borderRadius: 14, padding: 3 }}>
-				<TouchableOpacity
-					onPress={() => setActiveSubTab('reports')}
-					style={{
-						flex: 1,
-						paddingVertical: 9,
-						alignItems: 'center',
-						borderRadius: 12,
-						backgroundColor: activeSubTab === 'reports' ? colors.elevated : 'transparent',
-					}}
-				>
-					<Text style={{ fontSize: 12, fontWeight: '800', color: activeSubTab === 'reports' ? colors.text : colors.mutedText }}>
-						Reports ({reports.length})
-					</Text>
-				</TouchableOpacity>
-
-				<TouchableOpacity
-					onPress={() => setActiveSubTab('appeals')}
-					style={{
-						flex: 1,
-						paddingVertical: 9,
-						alignItems: 'center',
-						borderRadius: 12,
-						backgroundColor: activeSubTab === 'appeals' ? colors.elevated : 'transparent',
-					}}
-				>
-					<Text style={{ fontSize: 12, fontWeight: '800', color: activeSubTab === 'appeals' ? colors.text : colors.mutedText }}>
-						Appeals ({appeals.length})
-					</Text>
-				</TouchableOpacity>
+				{(
+					[
+						{ key: 'reports', label: `Reports (${reports.length})` },
+						{ key: 'deleted', label: 'Deleted' },
+						{ key: 'appeals', label: `Appeals (${appeals.length})` },
+						{ key: 'bulk', label: 'Bulk' },
+					] as const
+				).map((tab) => (
+					<TouchableOpacity
+						key={tab.key}
+						onPress={() => setActiveSubTab(tab.key)}
+						accessibilityRole="tab"
+						accessibilityState={{ selected: activeSubTab === tab.key }}
+						style={{
+							flex: 1,
+							paddingVertical: 9,
+							alignItems: 'center',
+							borderRadius: 12,
+							backgroundColor: activeSubTab === tab.key ? colors.elevated : 'transparent',
+						}}
+					>
+						<Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '800', color: activeSubTab === tab.key ? colors.text : colors.mutedText }}>
+							{tab.label}
+						</Text>
+					</TouchableOpacity>
+				))}
 			</View>
 
-			{activeSubTab === 'appeals' ? (
+			{activeSubTab === 'deleted' ? (
+				<AdminDeletedContentPanel />
+			) : activeSubTab === 'bulk' ? (
+				<AdminBulkDeletionPanel />
+			) : activeSubTab === 'appeals' ? (
 				<View className="space-y-3">
 					{appeals.length === 0 ? (
 						<View style={{ padding: 40, alignItems: 'center' }}>

@@ -6,8 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   StatusBar,
   Image,
   type TextStyle,
@@ -19,6 +17,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { authService, getAuthErrorCode } from '@/lib/services/AuthService';
 import { pageAccessService } from '@/lib/services/PageAccessService';
 import MobileQRLoginModal from '@/components/auth/MobileQRLoginModal';
+import { Skeleton } from '@/components/ui/Skeleton';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import type { Href } from 'expo-router';
 import Animated, {
   FadeInDown,
@@ -116,8 +116,9 @@ export default function LoginScreen() {
       }
     }
 
-    if (!password) {
-      setPasswordError('Password is required.');
+    // Same rule as the website: every Ourlime password has at least eight characters.
+    if (password.length < 8) {
+      setPasswordError(password ? 'Password should be at least 8 characters.' : 'Password is required.');
       valid = false;
     }
 
@@ -185,7 +186,7 @@ export default function LoginScreen() {
       </View>
 
       <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={{ flex: 1 }}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <KeyboardSafeView style={{ flex: 1 }}>
         <ScrollView
           contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
           keyboardShouldPersistTaps="handled"
@@ -265,7 +266,7 @@ export default function LoginScreen() {
                     style={{ alignSelf: 'flex-start', marginTop: 10, borderRadius: 10, backgroundColor: 'rgba(16,185,129,0.2)', paddingHorizontal: 12, paddingVertical: 9 }}
                   >
                     {isResendingVerification ? (
-                      <ActivityIndicator size="small" color={GREEN} />
+                      <Skeleton width={170} height={14} borderRadius={7} />
                     ) : (
                       <Text style={{ color: GREEN, fontWeight: '800' }}>Resend verification email</Text>
                     )}
@@ -493,7 +494,7 @@ export default function LoginScreen() {
             </Animated.View>
           </View>
         </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardSafeView>
       </SafeAreaView>
     </>
   );

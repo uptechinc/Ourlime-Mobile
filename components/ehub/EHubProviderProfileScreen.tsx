@@ -3,6 +3,7 @@ import { Linking, Platform, Pressable, RefreshControl, Share, StyleSheet, Text, 
 import { BadgeCheck, Building2, Check, Clock, Globe, MapPin, Package, Send, Share2, Star, UserRound } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
+import EHubSectionNav from '@/components/ehub/EHubSectionNav';
 import CachedImage from '@/components/ui/CachedImage';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
@@ -73,14 +74,20 @@ export default function EHubProviderProfileScreen() {
   // Once the provider is known, restore this context's unsent form or open with the website's context message.
   useEffect(() => {
     if (!provider) return;
-    const draft = eHubService.getEnquiryDraft(draftKey);
-    const restoredMessage = draft?.message.trim() ?? '';
-    const contextName = requestedProduct ?? requestedService;
-    setType(draft?.type ?? (requestedProduct ? 'product' : 'service'));
-    setMessage(restoredMessage || (contextName ? `I would like more information about ${contextName}.` : ''));
-    setIsAcknowledged(draft?.isBuyerAcknowledgementAccepted === true);
-    setNotice(null);
-    restoredDraftKey.current = draftKey;
+    let isActive = true;
+    restoredDraftKey.current = null;
+    // Drafts are kept on the device, so a half-written enquiry comes back after the app restarts.
+    void eHubService.getEnquiryDraft(draftKey).then((draft) => {
+      if (!isActive) return;
+      const restoredMessage = draft?.message.trim() ?? '';
+      const contextName = requestedProduct ?? requestedService;
+      setType(draft?.type ?? (requestedProduct ? 'product' : 'service'));
+      setMessage(restoredMessage || (contextName ? `I would like more information about ${contextName}.` : ''));
+      setIsAcknowledged(draft?.isBuyerAcknowledgementAccepted === true);
+      setNotice(null);
+      restoredDraftKey.current = draftKey;
+    });
+    return () => { isActive = false; };
   }, [draftKey, provider, requestedProduct, requestedService]);
 
   useEffect(() => {
@@ -133,8 +140,11 @@ export default function EHubProviderProfileScreen() {
 
   const handleOpenBuyerTerms = () => router.push(getEHubTermsRoute('buyer') as Href);
 
-  const header = <PageHeader title={provider?.name ?? 'Provider'} onBackPress={() => router.back()}
-    rightComponent={provider ? <Pressable accessibilityRole="button" accessibilityLabel={`Share ${provider.name}`} onPress={handleShare} hitSlop={8} style={styles.headerButton}><Share2 size={21} color={colors.icon} /></Pressable> : undefined} />;
+  const header = <>
+    <PageHeader title={provider?.name ?? 'Provider'} onBackPress={() => router.back()}
+      rightComponent={provider ? <Pressable accessibilityRole="button" accessibilityLabel={`Share ${provider.name}`} onPress={handleShare} hitSlop={8} style={styles.headerButton}><Share2 size={21} color={colors.icon} /></Pressable> : undefined} />
+    <EHubSectionNav currentLabel={provider?.name ?? 'Provider'} parentLabel="Discover" onParentPress={() => router.dismissTo('/ehub/discover' as Href)} />
+  </>;
   if (resource.isLoading && !provider) {
     return <View style={styles.screen}>{header}<EHubProviderProfileSkeleton /></View>;
   }

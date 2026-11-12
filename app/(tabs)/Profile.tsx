@@ -27,6 +27,8 @@ import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppDrawer } from '@/lib/contexts/AppDrawerContext';
+import { useProfileHeaderDetails } from '@/lib/hooks/useProfileHeaderDetails';
+import type { RelationshipHubSection } from '@/lib/types/relationshipHub';
 
 type ProfileTab = 'timeline' | 'limes' | 'reposts' | 'friends' | 'about' | 'gallery' | 'admin';
 
@@ -53,6 +55,9 @@ export default function ProfileScreen() {
   const isLoading = !currentUserId || (resource.data === null && (resource.status === 'idle' || resource.status === 'hydrating'));
   const refreshing = resource.status === 'refreshing';
   const [activeTab, setActiveTab] = useState<ProfileTab>('timeline');
+  // Website stat links open /profile/friends on the matching list (friends, following, followers).
+  const [friendsSection, setFriendsSection] = useState<RelationshipHubSection>('friends');
+  const [friendsOpenCount, setFriendsOpenCount] = useState(0);
   const [editModalOpen, setEditModalOpen] = useState(false);
   // Website "Profile Customization": choose which uploaded image is used where.
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -60,6 +65,12 @@ export default function ProfileScreen() {
   const error = resource.error?.message ?? null;
 
   const [tabRefreshKey, setTabRefreshKey] = useState(0);
+  const headerDetails = useProfileHeaderDetails(profile?.uid, tabRefreshKey);
+  const openFriendsSection = useCallback((section: RelationshipHubSection) => {
+    setFriendsSection(section);
+    setFriendsOpenCount((count) => count + 1);
+    setActiveTab('friends');
+  }, []);
 
   const onRefresh = useCallback(() => {
     setTabRefreshKey((prev) => prev + 1);
@@ -127,9 +138,13 @@ export default function ProfileScreen() {
             postsCount={stats.posts}
             friendsCount={stats.friends}
             followingCount={stats.following}
+            followersCount={stats.followers}
+            socialLinks={headerDetails.socialLinks}
             onEditProfile={() => setEditModalOpen(true)}
             onCustomize={() => setCustomizeOpen(true)}
-            onFriendsPress={() => setActiveTab('friends')}
+            onFriendsPress={() => openFriendsSection('friends')}
+            onFollowingPress={() => openFriendsSection('following')}
+            onFollowersPress={() => openFriendsSection('followers')}
           />
           {error ? <TouchableOpacity onPress={() => void refresh()} style={{ marginHorizontal: 16, marginTop: 10, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 14, backgroundColor: colors.warningSurface }}><Text style={{ color: colors.warningText, textAlign: 'center', fontSize: 12, fontWeight: '700' }}>Showing saved profile · Tap to retry</Text></TouchableOpacity> : null}
           <EditProfileModal
@@ -190,8 +205,8 @@ export default function ProfileScreen() {
           {activeTab === 'timeline' && <TimelineTab userId={profile.uid} />}
           {activeTab === 'limes' && <LimesTab userId={profile.uid} refreshKey={tabRefreshKey} />}
           {activeTab === 'reposts' && <ProfileRepostsTab userId={profile.uid} refreshKey={tabRefreshKey} />}
-          {activeTab === 'friends' && <FriendsTab userId={profile.uid} />}
-          {activeTab === 'about' && <AboutTab profile={profile} />}
+          {activeTab === 'friends' && <FriendsTab key={`friends-${friendsOpenCount}`} userId={profile.uid} initialSection={friendsSection} />}
+          {activeTab === 'about' && <AboutTab key={`about-${tabRefreshKey}`} profile={profile} isOwnProfile onEditBasicInfo={() => setEditModalOpen(true)} />}
           {activeTab === 'gallery' && <GalleryTab userId={profile.uid} />}
           {activeTab === 'admin' && <AdminTab profile={profile} />}
         </ScrollView>

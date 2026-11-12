@@ -537,7 +537,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
                         backgroundColor: visibility === option ? colors.selectedControl : colors.control,
                       }}
                     >
-                      <Text style={{ color: visibility === option ? colors.selectedText : colors.secondaryText, fontSize: 12, textTransform: 'capitalize' }}>{option}</Text>
+                      <Text style={{ color: visibility === option ? colors.selectedText : colors.secondaryText, fontSize: 12 }}>{option === 'public' ? 'Public' : option === 'friends' ? 'Friends' : 'Only me'}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>

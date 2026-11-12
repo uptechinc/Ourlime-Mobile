@@ -42,6 +42,10 @@ type AdminDocumentData = {
   packId?: unknown;
   isActive?: unknown;
   isPublished?: unknown;
+  enabled?: unknown;
+  keywords?: unknown;
+  icon?: unknown;
+  folder?: unknown;
   order?: unknown;
   createdAt?: FirebaseDateValue;
   updatedAt?: FirebaseDateValue;
@@ -77,6 +81,23 @@ export type AdminWorkspaceItem = {
   metricLabel: string | null;
   createdAtMs: number;
   isActive: boolean;
+  /** Product price (0 when unknown) and community member count / privacy, for the website's filters and stats. */
+  price: number;
+  memberCount: number;
+  privacy: string;
+  /** Editable sticker / sticker-pack fields (the website's sticker manager form); null for other kinds. */
+  stickerFields: AdminStickerFields | null;
+};
+/** Pack: name, description, icon, folder. Sticker: name, keywords, category, packId, imageUrl. */
+export type AdminStickerFields = {
+  name: string;
+  description: string;
+  icon: string;
+  folder: string;
+  keywords: string;
+  category: string;
+  packId: string;
+  imageUrl: string;
 };
 export type AdminCategoryRecord = {
   id: string;
@@ -163,10 +184,39 @@ export class AdminWorkspaceService {
       return;
     }
     const statusFields = kind === 'stickers' || kind === 'sticker_packs'
-      ? { isActive: status === 'active' || status === 'approved', isPublished: status === 'active' || status === 'approved', status }
+      // The website's sticker picker and manager read `enabled`.
+      ? { isActive: status === 'active' || status === 'approved', isPublished: status === 'active' || status === 'approved', enabled: status === 'active' || status === 'approved', status }
       : { status };
     await updateDoc(doc(db, getWorkspaceCollection(kind), itemId), { ...statusFields, updatedAt: serverTimestamp() });
     await this.writeAudit(administrator.userId, `admin_${kind}_status`, itemId, status);
+  }
+
+  /**
+   * Edits an existing sticker pack or sticker with the website manager's fields and validation. New packs and
+   * stickers are created by the server only (Firestore rules deny client creates).
+   */
+  public async updateStickerRecord(kind: 'stickers' | 'sticker_packs', itemId: string, fields: AdminStickerFields): Promise<void> {
+    const administrator = await adminAccessService.requireAdmin();
+    const name = fields.name.trim();
+    if (!name) throw new Error(kind === 'sticker_packs' ? 'Pack name is required' : 'Sticker name is required');
+    const update = kind === 'sticker_packs'
+      ? (() => {
+          if (!fields.folder.trim()) throw new Error('Folder name is required (must match public/images/stickers/ folder)');
+          return { name, description: fields.description.trim(), icon: fields.icon.trim(), folder: fields.folder.trim() };
+        })()
+      : (() => {
+          if (!fields.packId.trim()) throw new Error('Please select a pack');
+          if (!fields.imageUrl.trim()) throw new Error('Image URL is required (e.g. /stickers/reactions/thumbs-up.png)');
+          return {
+            name,
+            keywords: fields.keywords.split(',').map((keyword) => keyword.trim()).filter(Boolean),
+            category: fields.category.trim(),
+            packId: fields.packId.trim(),
+            imageUrl: fields.imageUrl.trim(),
+          };
+        })();
+    await updateDoc(doc(db, getWorkspaceCollection(kind), itemId), { ...update, updatedAt: serverTimestamp() });
+    await this.writeAudit(administrator.userId, `admin_${kind}_edit`, itemId, 'edited');
   }
 
   public async deleteWorkspaceItem(kind: AdminWorkspaceKind, itemId: string): Promise<void> {
@@ -306,16 +356,18 @@ export class AdminWorkspaceService {
     return adminApiService.request<AdminBetaInvitationResult>('/api/beta/admin/invitations', { method: 'POST', body: { fullName: fullName.trim(), email: email.trim(), notes: notes.trim() } });
   }
 
-  public async seedStickers(): Promise<void> {
+  /** Runs the website's sticker seed (upserts the default packs, adds missing stickers) and returns its summary. */
+  public async seedStickers(): Promise<string> {
     await adminAccessService.requireAdmin();
-    await adminApiService.request('/api/admin/stickers/seed', { method: 'POST' });
+    const response = await adminApiService.request<{ success?: boolean; message?: string }>('/api/admin/stickers/seed', { method: 'POST' });
+    return response.message || 'Done';
   }
 
   private normalizeWorkspaceItem(kind: AdminWorkspaceKind, id: string, value: AdminDocumentData): AdminWorkspaceItem {
     const title = readString(value.title) || readString(value.name) || 'Untitled';
     const ownerId = readString(value.creatorId) || readString(value.userId) || readString(value.ownerId) || null;
     const imageUrl = readString(value.imageUrl) || readString(value.imageURL) || readString(value.image) || readString(value.coverImage) || null;
-    const active = value.isActive !== false && value.isPublished !== false;
+    const active = value.isActive !== false && value.isPublished !== false && value.enabled !== false;
     const explicitStatus = readStatus(value.status);
     const status = explicitStatus === 'other' ? active ? 'active' : 'disabled' : explicitStatus;
     const memberCount = readNumber(value.membershipCount) || readNumber(value.members);
@@ -331,6 +383,21 @@ export class AdminWorkspaceService {
       metricLabel: kind === 'communities' ? `${memberCount} members` : kind === 'products' && readNumber(value.price) ? `$${readNumber(value.price).toLocaleString()}` : null,
       createdAtMs: readDateMs(value.createdAt),
       isActive: active,
+      price: readNumber(value.price),
+      memberCount,
+      privacy: kind === 'communities' ? readString(value.privacy) || 'public' : '',
+      stickerFields: kind === 'stickers' || kind === 'sticker_packs'
+        ? {
+            name: readString(value.name),
+            description: readString(value.description),
+            icon: readString(value.icon),
+            folder: readString(value.folder),
+            keywords: Array.isArray(value.keywords) ? value.keywords.filter((keyword): keyword is string => typeof keyword === 'string').join(', ') : '',
+            category: readString(value.category),
+            packId: readString(value.packId),
+            imageUrl: readString(value.imageUrl),
+          }
+        : null,
     };
   }
 

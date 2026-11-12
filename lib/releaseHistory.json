@@ -1,6 +1,27 @@
 {
   "releases": [
     {
+      "id": "1.3.1-ota-2026-11-12",
+      "version": "1.3.1",
+      "versionCode": 10,
+      "kind": "ota",
+      "date": "2026-11-12",
+      "notes": [
+        "Ads: the full Ads Marketplace is in the app. Browse ad spaces, book an offer with your ad materials, follow bookings, submit proof of delivery and leave reviews.",
+        "Ads: become a host as a business or influencer, create and publish offers, manage them from your host dashboard and track verification.",
+        "Jobs: a redesigned Jobs page with search, categories and full filters, the complete job and quick-task forms, save and share, and every job detail section.",
+        "Events: featured events, Upcoming Events and a Calendar, full filters, discussions, reviews and galleries on event pages, and event photos and categories now save.",
+        "E-Projects: project pages now have timeline, workload, files, milestones and timesheets, a full task sheet with comments, timers and files, and team settings.",
+        "E-Learning: plan your week in Schedule Work, see a course's quizzes and assignments before you enrol, and create courses with a file library and publish checklist.",
+        "Profile: edit work, education, interests, skills and phone numbers, see social links, a full Friends page with filters, and manage your block list in Settings.",
+        "Games: GeoGuesser has hints, skips, streak bonuses and a leaderboard, and Wordle has hints, a dictionary and Limey.",
+        "Market: quick variant presets for each category, a category breadcrumb, removable filter chips and a full receipt after checkout. E-Hub screens have section tabs.",
+        "Home: a Promoted card, find-and-add friends on the Friends feed, every notification filter, and appeals for removed content.",
+        "Sign-up and help: registration matches the website and saves your progress, the full policies are in the app, and help tickets and safety reports match the website.",
+        "Admin: Jobs, Game Content, Security and Seed Stickers pages, deleted-content review and bulk actions, and disabling a sticker now hides it."
+      ]
+    },
+    {
       "id": "1.3.1-ota-2026-11-11-2",
       "version": "1.3.1",
       "versionCode": 10,

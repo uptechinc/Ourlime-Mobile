@@ -179,7 +179,9 @@ export class CommunityService {
   public async fetchCommunityDetail(identifier: string): Promise<CommunityDetailResource> {
     const detail = await this.data.getCommunityDetail(identifier);
     if (!detail) throw new Error('Community not found.');
-    const community = this.normalizeCommunity(detail.isBanned ? { ...detail.card, membershipState: 'banned' } : detail.card);
+    const normalized = this.normalizeCommunity(detail.isBanned ? { ...detail.card, membershipState: 'banned' } : detail.card);
+    // Web header: an Ourlime administrator may delete any community (the rules allow it too).
+    const community = detail.isSiteAdmin ? { ...normalized, permissions: { ...normalized.permissions, canDelete: true } } : normalized;
     return { community, rules: detail.rules.map((rule) => rule.trim()).filter(Boolean) };
   }
 

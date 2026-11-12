@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Modal,
   View,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Save, Send, X, XCircle, Plus } from 'lucide-react-native';
+import { Save, Send, X, XCircle, Plus, Square, SquareCheck } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { toast } from 'sonner-native';
 import { AuthService } from '@/lib/services/AuthService';
@@ -24,6 +24,8 @@ import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import { useLocalFormDraft } from '@/lib/hooks/useLocalFormDraft';
 import SavedDraftBanner from '@/components/drafts/SavedDraftBanner';
 import DraftDiscardSheet from '@/components/drafts/DraftDiscardSheet';
+import { EVENT_CATEGORIES, EVENT_RECURRENCE_OPTIONS } from '@/components/events/eventPresentation';
+import type { Event } from '@/types/eventTypes';
 
 const authService = AuthService.getInstance();
 const eventService = EventService.getInstance();
@@ -33,10 +35,13 @@ type CreateEventModalProps = {
   visible: boolean;
   onClose: () => void;
   onCreated?: () => void;
+  /** Editing an existing event (the organiser's own): the form starts filled in and saves the editable fields. */
+  event?: Event;
 };
 type MediaSource = { url: string; type: 'image' | 'video'; isVerified: boolean };
 
 type CreateEventForm = {
+  coverMimeType?: string | null;
   title: string;
   date: string;
   time: string;
@@ -47,7 +52,7 @@ type CreateEventForm = {
   coverMedia: string | null;
   additionalMedia: MediaSource[];
   tags: string[];
-  recurrence: 'none' | 'daily' | 'weekly' | 'monthly';
+  recurrence: string;
   category: string;
 };
 
@@ -70,7 +75,8 @@ function splitDateTime(value: Date): { date: string; time: string } {
 }
 
 /* ─────────── Component ─────────── */
-export default function CreateEventModal({ visible, onClose, onCreated }: CreateEventModalProps) {
+export default function CreateEventModal({ visible, onClose, onCreated, event }: CreateEventModalProps) {
+  const isEditing = Boolean(event?.id);
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   // The dialog sits in a transparent Modal, where Android doesn't resize for the keyboard: KeyboardSafeView lifts it.
@@ -78,6 +84,7 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentTag, setCurrentTag] = useState('');
   const [currentMediaUrl, setCurrentMediaUrl] = useState('');
+  const [acceptedDisclaimer, setAcceptedDisclaimer] = useState(false);
   const [formData, setFormData] = useState<CreateEventForm>({
     title: '',
     date: '',
@@ -92,6 +99,21 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
     recurrence: 'none',
     category: '',
   });
+  useEffect(() => {
+    if (!visible || !event) return;
+    const start = new Date(event.startDate);
+    const end = new Date(event.endDate || event.startDate);
+    const startParts = Number.isNaN(start.getTime()) ? { date: '', time: '' } : splitDateTime(start);
+    const endParts = Number.isNaN(end.getTime()) ? { date: '', time: '' } : splitDateTime(end);
+    setFormData({
+      title: event.title, date: startParts.date, time: startParts.time, endDate: endParts.date, endTime: endParts.time,
+      location: event.location === 'Location TBD' ? '' : event.location, summary: event.summary || event.description || '',
+      coverMedia: event.image ?? null, coverMimeType: null,
+      additionalMedia: (event.media ?? []).filter((item) => item.url !== event.image).map((item) => ({ url: item.url, type: item.type, isVerified: true })),
+      tags: event.tags ?? [], recurrence: event.recurrence || 'none', category: event.category ?? '',
+    });
+  }, [event, visible]);
+
   // On-device draft (like the website): auto-saves the form, offers Restore next time.
   const hasFormContent = Boolean(formData.title.trim() || formData.summary.trim() || formData.location.trim() || formData.date
     || formData.coverMedia || formData.tags.length > 0 || formData.additionalMedia.length > 0 || formData.category.trim());
@@ -100,11 +122,11 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
     kind: 'event',
     data: formData,
     hasContent: hasFormContent,
-    enabled: visible,
+    enabled: visible && !isEditing,
   });
   const [isDiscardSheetVisible, setIsDiscardSheetVisible] = useState(false);
   const shouldDismissForm = (): boolean => {
-    if (isSubmitting || !hasFormContent) return true;
+    if (isSubmitting || !hasFormContent || isEditing) return true;
     setIsDiscardSheetVisible(true);
     return false;
   };
@@ -128,7 +150,7 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
         toast.error('File > 5 MB – pick a smaller one');
         return;
       }
-      setFormData(p => ({ ...p, coverMedia: f.uri }));
+      setFormData(p => ({ ...p, coverMedia: f.uri, coverMimeType: f.mimeType ?? null }));
     }
   };
   const removeCoverImage = () => setFormData(p => ({ ...p, coverMedia: null }));
@@ -161,17 +183,29 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
       additionalMedia: p.additionalMedia.filter((_, idx) => idx !== i),
     }));
 
-  const isValid =
-    !!formData.title && !!formData.date && !!formData.time && !!formData.coverMedia;
+  // The website's publish checks: title, start and end, cover image, category and the organiser disclaimer.
+  const publishIssues = [
+    !formData.title.trim() ? 'a title' : null,
+    !formData.date || !formData.time ? 'a start date and time' : null,
+    !formData.endDate || !formData.endTime ? 'an end date and time' : null,
+    !formData.coverMedia ? 'a cover image' : null,
+    !formData.category ? 'a category' : null,
+    !isEditing && !acceptedDisclaimer ? 'the Event Organizer Disclaimer agreement' : null,
+  ].filter((issue): issue is string => Boolean(issue));
+  const isValid = publishIssues.length === 0;
 
   const handleSubmit = async () => {
     if (!isValid) {
-      toast.error('Fill required fields first');
+      toast.error(`To publish, add or fix: ${publishIssues.join(', ')}`);
       return;
     }
     const startsAt = joinDateTime(formData.date, formData.time);
     const endsAt = joinDateTime(formData.endDate, formData.endTime);
-    if (startsAt && endsAt && endsAt <= startsAt) {
+    if (!startsAt || !endsAt) {
+      toast.error('Pick a start and end date and time');
+      return;
+    }
+    if (endsAt <= startsAt) {
       toast.error('The end must be after the start');
       return;
     }
@@ -179,17 +213,37 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
       setIsSubmitting(true);
       const user = authService.getCurrentUser();
       if (!user) throw new Error('Authentication required');
-      const profile = await authService.getUserProfile(user.uid);
-      await eventService.createEvent({
+      if (!isEditing && !(await eventService.isIdentityVerified(user.uid))) {
+        throw new Error('Verify your identity before publishing events. Go to Settings → Identity verification.');
+      }
+      const coverMedia = formData.coverMedia ?? '';
+      const image = /^https?:\/\//i.test(coverMedia) ? coverMedia : await eventService.uploadEventImage(coverMedia, formData.coverMimeType);
+      const media = formData.additionalMedia.map((item) => ({ type: item.type, url: item.url }));
+      const fields = {
         title: formData.title.trim(),
         description: formData.summary.trim(),
         summary: formData.summary.trim(),
-        startDate: formData.date,
+        startDate: startsAt.toISOString(),
         startTime: formData.time,
-        endDate: formData.endDate,
+        endDate: endsAt.toISOString(),
         endTime: formData.endTime,
         location: formData.location.trim() || 'Location TBD',
-        recurrence: formData.recurrence,
+        recurrence: formData.recurrence || 'none',
+        image,
+        media,
+        category: formData.category,
+        hashtags: formData.tags,
+      };
+      if (isEditing && event?.id) {
+        await eventService.updateEvent(event.id, fields);
+        toast.success('Event updated');
+        onCreated?.();
+        onClose();
+        return;
+      }
+      const profile = await authService.getUserProfile(user.uid);
+      await eventService.createEvent({
+        ...fields,
         creatorId: user.uid,
         userId: user.uid,
         user: {
@@ -201,7 +255,7 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
         },
       });
       onCreated?.();
-      toast.success('Event created!');
+      toast.success('Event created successfully!');
       void draft.clear();
       resetForm();
       onClose();
@@ -221,11 +275,13 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
       location: '',
       summary: '',
       coverMedia: null,
+      coverMimeType: null,
       additionalMedia: [],
       tags: [],
       recurrence: 'none',
       category: '',
     });
+    setAcceptedDisclaimer(false);
     setCurrentTag('');
     setCurrentMediaUrl('');
   };
@@ -270,10 +326,10 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
           >
             <View>
               <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>
-                Create New Event
+                {isEditing ? 'Edit Event' : 'Create New Event'}
               </Text>
               <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 2 }}>
-                Host a gathering, workshop, or celebration
+                {isEditing ? 'Update the details attendees see' : 'Host a gathering, workshop, or celebration'}
               </Text>
             </View>
             <TouchableOpacity onPress={swipeDismiss.dismissWithAnimation} hitSlop={12} accessibilityLabel="Close event creation">
@@ -283,7 +339,7 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
 
           {/* Body */}
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20 }}>
-            {draft.savedDraft ? (
+            {!isEditing && draft.savedDraft ? (
               <SavedDraftBanner
                 savedAt={draft.savedAt}
                 onRestore={() => {
@@ -347,28 +403,19 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
             </View>
 
             {/* Recurrence */}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 6 }}>
               Recurrence
             </Text>
-            <TextInput
-              placeholder="none | daily | weekly | monthly"
-              value={formData.recurrence}
-              onChangeText={v =>
-                setFormData(p => ({ ...p, recurrence: v as CreateEventForm['recurrence'] }))
-              }
-              placeholderTextColor={colors.mutedText}
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.input,
-                color: colors.text,
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: Platform.OS === 'ios' ? 12 : 8,
-                fontSize: 14,
-                marginBottom: 12,
-              }}
-            />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+              {EVENT_RECURRENCE_OPTIONS.map((option) => {
+                const selected = formData.recurrence === option.key;
+                return (
+                  <TouchableOpacity key={option.key} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => setFormData(p => ({ ...p, recurrence: option.key }))} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: selected ? colors.accent : colors.border, backgroundColor: selected ? colors.selectedControl : colors.control }}>
+                    <Text style={{ color: selected ? colors.selectedText : colors.secondaryText, fontSize: 13, fontWeight: '700' }}>{option.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
             {/* Location */}
             <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
@@ -586,26 +633,34 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
             </View>
 
             {/* Category */}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginTop: 12, marginBottom: 4 }}>
-              Category
+            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginTop: 12, marginBottom: 6 }}>
+              Category <Text style={{ color: '#ef4444' }}>*</Text>
             </Text>
-            <TextInput
-              placeholder="e.g. Cultural"
-              value={formData.category}
-              onChangeText={v => setFormData(p => ({ ...p, category: v }))}
-              placeholderTextColor={colors.mutedText}
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.input,
-                color: colors.text,
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: Platform.OS === 'ios' ? 12 : 8,
-                fontSize: 14,
-                marginBottom: 20,
-              }}
-            />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+              {[...EVENT_CATEGORIES, ...(formData.category && !EVENT_CATEGORIES.some((category) => category === formData.category) ? [formData.category] : [])].map((category) => {
+                const selected = formData.category === category;
+                return (
+                  <TouchableOpacity key={category} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => setFormData(p => ({ ...p, category }))} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: selected ? colors.accent : colors.border, backgroundColor: selected ? colors.selectedControl : colors.control }}>
+                    <Text style={{ color: selected ? colors.selectedText : colors.secondaryText, fontSize: 13, fontWeight: '700' }}>{category}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {!isEditing ? (
+              <View style={{ gap: 10, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control, marginBottom: 8 }}>
+                <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800' }}>Event Organizer Disclaimer</Text>
+                <Text style={{ color: colors.secondaryText, fontSize: 12, lineHeight: 18 }}>
+                  I confirm that this is a genuine event that I am authorized to organize or publish. The dates, location, pricing, capacity, accessibility details, refund terms, organizer information, and description are accurate to the best of my knowledge. I will not use this event for fraud, unlawful activity, harassment, discrimination, exploitation, or unsafe conduct. I understand that identity verification does not mean Ourlime endorses this event. I accept responsibility for event operations, attendee safety, permissions, payments, refunds, licenses, and applicable requirements.
+                </Text>
+                <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: acceptedDisclaimer }} onPress={() => setAcceptedDisclaimer((value) => !value)} style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+                  {acceptedDisclaimer ? <SquareCheck size={20} color={colors.accent} /> : <Square size={20} color={colors.mutedText} />}
+                  <Text style={{ flex: 1, color: colors.text, fontSize: 12, fontWeight: '600', lineHeight: 18 }}>
+                    I have read and agree to the Event Organizer Disclaimer, Events Policy, Community Guidelines, Privacy Policy, and Terms of Use.
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </ScrollView>
 
           {/* Footer */}
@@ -628,7 +683,7 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
               <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '500' }}>Cancel</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            {isEditing ? null : <TouchableOpacity
               onPress={() => void handleSaveProgress()}
               disabled={isSubmitting || !hasFormContent}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, opacity: hasFormContent ? 1 : 0.5 }}
@@ -636,11 +691,11 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
             >
               <Save size={16} color={colors.icon} />
               <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>Save progress</Text>
-            </TouchableOpacity>
+            </TouchableOpacity>}
 
             <TouchableOpacity
               onPress={handleSubmit}
-              disabled={!isValid || isSubmitting}
+              disabled={isSubmitting}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -649,12 +704,12 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Create
                 borderRadius: 8,
                 paddingVertical: 10,
                 paddingHorizontal: 16,
-                //opacity: !isValid || isSubmitting ? 0.6 : 1,
+                opacity: !isValid || isSubmitting ? 0.6 : 1,
               }}
             >
               {isSubmitting ? <Save size={18} color="#000" /> : <Send size={18} color="#fff" />}
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#fff' }}>
-                {isSubmitting ? 'Saving…' : 'Publish Event'}
+                {isSubmitting ? 'Saving…' : isEditing ? 'Save changes' : 'Publish Event'}
               </Text>
             </TouchableOpacity>
           </View>

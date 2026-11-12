@@ -112,3 +112,23 @@ export type AdminUserContentPage = {
   hasMore: boolean;
   nextCursor: string | null;
 };
+
+
+/** One item the website's "All Deleted Content" list shows (latest delete in moderationAuditLog not followed by a restore). */
+export type DeletedContentRecord = {
+  id: string;
+  contentId: string;
+  contentType: DeletableContentType;
+  contentTitle: string;
+  authorId: string;
+  adminName: string;
+  reason: string;
+  category: string;
+  deletedAt: string | null;
+  authorStatus: string;
+  isAuthorBanned: boolean;
+};
+
+export type BulkDeletionItem = { contentType: DeletableContentType; contentId: string };
+
+export type BulkDeletionResult = { affectedCount: number; failed: { contentId: string; error: string }[] };

@@ -9,9 +9,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
+	Ban,
 	ChevronLeft,
 	Flag,
 	Lock,
+	SearchX,
 	MessageCircle,
 	Plus,
 	Share2,
@@ -169,6 +171,7 @@ export default function CommunityDetailScreen() {
 		useState<ConfirmationState>(INITIAL_CONFIRMATION);
 	const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 	const [shareVisible, setShareVisible] = useState(false);
+	const [sharedEvent, setSharedEvent] = useState<Event | null>(null);
 	const [eventCreateRequestKey, setEventCreateRequestKey] = useState(0);
 	const [pollCreateRequestKey, setPollCreateRequestKey] = useState(0);
 	const handledDashboardTargetRef = useRef('');
@@ -703,6 +706,25 @@ export default function CommunityDetailScreen() {
 		setReportTarget(null);
 	};
 
+	const handleRequestDelete = (): void => {
+		if (!community) return;
+		showConfirmation(
+			'delete',
+			'Delete community?',
+			`${community.title} and its community data will be permanently removed.`
+		);
+	};
+
+	const handleOpenEvent = (event: Event): void => {
+		if (!event.id) return;
+		router.push({ pathname: '/events/[id]', params: { id: event.id } });
+	};
+
+	const handleExploreCommunities = (): void => {
+		if (router.canGoBack()) router.back();
+		else router.navigate('/communities');
+	};
+
 	const tabs: { value: CommunityTab; label: string }[] = [
 		{ value: 'posts', label: 'Posts' },
 		{ value: 'events', label: 'Events' },
@@ -715,6 +737,8 @@ export default function CommunityDetailScreen() {
 		!detail.data && (detail.status === 'idle' || detail.status === 'hydrating');
 	const errorMessage =
 		detail.error?.message ?? 'This community could not be loaded.';
+	const isNotFound = /not found/i.test(detail.error?.message ?? '');
+	const isBanned = community?.membershipState === 'banned';
 
 	return (
 		<SafeAreaView
@@ -791,11 +815,23 @@ export default function CommunityDetailScreen() {
 						padding: 28,
 					}}
 				>
-					<Text style={{ color: colors.destructiveText, textAlign: 'center' }}>
-						{errorMessage}
-					</Text>
+					{isNotFound ? (
+						<>
+							<SearchX size={44} color={colors.accent} />
+							<Text style={{ marginTop: 12, color: colors.text, fontSize: 20, fontWeight: '900', textAlign: 'center' }}>
+								Community not found
+							</Text>
+							<Text style={{ marginTop: 7, color: colors.mutedText, textAlign: 'center', lineHeight: 20 }}>
+								The community you are looking for does not exist, has been removed, or the link may be invalid.
+							</Text>
+						</>
+					) : (
+						<Text style={{ color: colors.destructiveText, textAlign: 'center' }}>
+							{errorMessage}
+						</Text>
+					)}
 					<TouchableOpacity
-						onPress={() => void refreshDetail()}
+						onPress={() => (isNotFound ? handleExploreCommunities() : void refreshDetail())}
 						style={{
 							marginTop: 14,
 							paddingHorizontal: 20,
@@ -805,7 +841,7 @@ export default function CommunityDetailScreen() {
 						}}
 					>
 						<Text style={{ color: colors.onAccent, fontWeight: '900' }}>
-							Retry
+							{isNotFound ? 'Explore communities' : 'Retry'}
 						</Text>
 					</TouchableOpacity>
 				</View>
@@ -839,9 +875,36 @@ export default function CommunityDetailScreen() {
 						onReport={() => setReportTarget({ kind: 'community' })}
 						onEdit={() => setEditVisible(true)}
 						onDashboard={handleOpenDashboard}
+						onDelete={handleRequestDelete}
 					/>
 
-					{!community.permissions.canView ? (
+					{isBanned ? (
+						<View
+							style={{
+								margin: 16,
+								padding: 26,
+								alignItems: 'center',
+								borderRadius: 19,
+								backgroundColor: colors.surface,
+								borderWidth: 1,
+								borderColor: colors.border,
+							}}
+						>
+							<Ban size={38} color={colors.destructive} />
+							<Text style={{ marginTop: 11, color: colors.destructiveText, fontSize: 18, fontWeight: '900' }}>
+								Access denied
+							</Text>
+							<Text style={{ marginTop: 6, color: colors.mutedText, textAlign: 'center' }}>
+								You have been banned from this community and cannot access its content.
+							</Text>
+							<TouchableOpacity
+								onPress={handleExploreCommunities}
+								style={{ marginTop: 14, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: colors.destructive }}
+							>
+								<Text style={{ color: '#ffffff', fontWeight: '900' }}>Return to communities</Text>
+							</TouchableOpacity>
+						</View>
+					) : !community.permissions.canView ? (
 						<View
 							style={{
 								margin: 16,
@@ -871,8 +934,8 @@ export default function CommunityDetailScreen() {
 									textAlign: 'center',
 								}}
 							>
-								An approved membership is required to view this community’s
-								workspaces.
+								You must request access and be accepted by the community
+								admins to view its posts, events, polls and members.
 							</Text>
 						</View>
 					) : (
@@ -1171,11 +1234,16 @@ export default function CommunityDetailScreen() {
 									onReport={(event) =>
 										setReportTarget({ kind: 'event', event })
 									}
+									onOpenEvent={handleOpenEvent}
+									onShareEvent={(event) => {
+										if (event.id) setSharedEvent(event);
+									}}
 								/>
 							) : null}
 							{activeTab === 'polls' ? (
 								<CommunityPollsWorkspace
 									resource={polls}
+									viewerId={viewerId}
 									canCreate={community.permissions.canCreatePoll}
 									createRequestKey={pollCreateRequestKey}
 									onRetry={() => void loadPolls(true)}
@@ -1213,7 +1281,16 @@ export default function CommunityDetailScreen() {
 								/>
 							) : null}
 							{activeTab === 'about' ? (
-								<CommunityAboutWorkspace detail={detailData} />
+								<CommunityAboutWorkspace
+									detail={detailData}
+									onOpenProfile={(person) =>
+										router.push({
+											pathname: '/profile/[username]',
+											params: { username: person.userName || person.userId },
+										})
+									}
+									onInvite={handleShare}
+								/>
 							) : null}
 							{activeTab === 'members' ? (
 								<CommunityMembersWorkspace
@@ -1270,6 +1347,7 @@ export default function CommunityDetailScreen() {
 					onReviewRequest={handleReviewRequest}
 					onManageMember={handleManageMember}
 					onModerateReport={handleModerateReport}
+					onOpenSettings={() => setEditVisible(true)}
 				/>
 			) : null}
 			{community && detailData ? (
@@ -1282,11 +1360,7 @@ export default function CommunityDetailScreen() {
 					onSave={handleUpdateCommunity}
 					onDelete={() => {
 						setEditVisible(false);
-						showConfirmation(
-							'delete',
-							'Delete community?',
-							`${community.title} and its community data will be permanently removed.`
-						);
+						handleRequestDelete();
 					}}
 				/>
 			) : null}
@@ -1367,6 +1441,18 @@ export default function CommunityDetailScreen() {
 					message={`Join ${community.title} on Ourlime:\n${deepLinkService.getCommunityShareUrl(community.slug || community.id)}`}
 					url={deepLinkService.getCommunityShareUrl(community.slug || community.id)}
 					onClose={() => setShareVisible(false)}
+				/>
+			) : null}
+			{sharedEvent?.id ? (
+				<ShareContentSheet
+					visible
+					currentUserId={viewerId}
+					contentLabel="Event"
+					title={sharedEvent.title}
+					message={`${sharedEvent.title}
+${deepLinkService.getEventShareUrl(sharedEvent.id)}`}
+					url={deepLinkService.getEventShareUrl(sharedEvent.id)}
+					onClose={() => setSharedEvent(null)}
 				/>
 			) : null}
 			<IdentityVerificationModal

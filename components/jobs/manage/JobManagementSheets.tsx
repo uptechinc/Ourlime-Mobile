@@ -23,6 +23,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
+import { ChoicePills } from '@/components/jobs/createJobsModal/JobFormParts';
+import {
+	COMPANY_SIZES, COMPLEXITY_OPTIONS, CONTACT_OPTIONS, CURRENCIES, EMPLOYMENT_TYPES, EXPERIENCE_LEVELS, JOB_POSTER_DISCLAIMER,
+	LOCATION_TYPES, PAYMENT_PERIODS, URGENCY_OPTIONS,
+} from '@/lib/job/JobFormOptions';
 import {
 	jobManagementService,
 	type EmployerNote,
@@ -548,6 +553,15 @@ export function JobManagementEditSheet({
 	const [companyName, setCompanyName] = useState('');
 	const [industry, setIndustry] = useState('');
 	const [duration, setDuration] = useState('');
+	const [address, setAddress] = useState('');
+	const [companySize, setCompanySize] = useState('');
+	const [urgency, setUrgency] = useState('');
+	const [complexity, setComplexity] = useState('');
+	const [employmentType, setEmploymentType] = useState('');
+	const [experienceLevel, setExperienceLevel] = useState('');
+	const [currency, setCurrency] = useState('');
+	const [paymentPeriod, setPaymentPeriod] = useState('');
+	const [contactPreference, setContactPreference] = useState('');
 	const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState('');
@@ -568,6 +582,15 @@ export function JobManagementEditSheet({
 		setCompanyName(job.categoryDetails.name);
 		setIndustry(job.categoryDetails.industry);
 		setDuration(job.categoryDetails.duration);
+		setAddress(job.locationDetails.address);
+		setCompanySize(job.categoryDetails.size);
+		setUrgency(job.categoryDetails.urgency);
+		setComplexity(job.categoryDetails.complexity);
+		setEmploymentType(job.categoryDetails.employmentType);
+		setExperienceLevel(job.categoryDetails.experienceLevel);
+		setCurrency(job.categoryDetails.currency || 'USD');
+		setPaymentPeriod(job.categoryDetails.paymentPeriod);
+		setContactPreference(job.categoryDetails.contactPreference);
 		setDisclaimerAccepted(false);
 		setError('');
 	}, [job]);
@@ -582,6 +605,11 @@ export function JobManagementEditSheet({
 		}
 		const from = Number(priceFrom);
 		const to = Number(priceTo);
+		const isPhysical = locationType === 'onsite' || locationType === 'hybrid';
+		if (isPhysical && (!address.trim() || !city.trim() || !country.trim())) {
+			setError('Location details are required for onsite or hybrid jobs.');
+			return;
+		}
 		if (!Number.isFinite(from) || !Number.isFinite(to)) {
 			setError('Enter a valid compensation range.');
 			return;
@@ -598,7 +626,7 @@ export function JobManagementEditSheet({
 			priceRange: { from, to },
 			location: {
 				type: locationType.trim() || 'remote',
-				address: job.locationDetails.address,
+				address: address.trim(),
 				city: city.trim(),
 				country: country.trim(),
 			},
@@ -609,7 +637,15 @@ export function JobManagementEditSheet({
 				...job.categoryDetails,
 				name: companyName.trim(),
 				industry: industry.trim(),
+				size: companySize,
 				duration: duration.trim(),
+				urgency,
+				complexity,
+				employmentType,
+				experienceLevel,
+				currency,
+				paymentPeriod,
+				contactPreference,
 			},
 			questions: job.questions,
 		};
@@ -712,14 +748,24 @@ export function JobManagementEditSheet({
 								/>
 							</View>
 						</View>
-						<FormLabel label="Location type" />
-						<TextInput
-							value={locationType}
-							onChangeText={setLocationType}
-							placeholder="remote, hybrid, on-site"
-							placeholderTextColor={colors.mutedText}
-							style={styles.input}
+						<ChoicePills
+							label="Work location"
+							options={LOCATION_TYPES}
+							value={locationType === 'on-site' ? 'onsite' : (locationType as 'remote' | 'onsite' | 'hybrid')}
+							onChange={setLocationType}
 						/>
+						{locationType !== 'remote' ? (
+							<>
+								<FormLabel label="Address" />
+								<TextInput
+									value={address}
+									onChangeText={setAddress}
+									placeholder="Street address"
+									placeholderTextColor={colors.mutedText}
+									style={styles.input}
+								/>
+							</>
+						) : null}
 						<View style={styles.twoColumn}>
 							<View style={styles.flexField}>
 								<FormLabel label="City" />
@@ -784,6 +830,12 @@ export function JobManagementEditSheet({
 									placeholderTextColor={colors.mutedText}
 									style={styles.input}
 								/>
+								<ChoicePills label="Company size" allowClear scrollable options={COMPANY_SIZES} value={companySize} onChange={setCompanySize} />
+								<ChoicePills label="Currency" scrollable options={CURRENCIES.map((entry) => ({ value: entry, label: entry }))} value={currency} onChange={setCurrency} />
+								<ChoicePills label="Payment period" allowClear options={PAYMENT_PERIODS} value={paymentPeriod} onChange={setPaymentPeriod} />
+								<ChoicePills label="Employment type" allowClear options={EMPLOYMENT_TYPES} value={employmentType} onChange={setEmploymentType} />
+								<ChoicePills label="Experience level" allowClear options={EXPERIENCE_LEVELS} value={experienceLevel} onChange={setExperienceLevel} />
+								<ChoicePills label="Contact preference" allowClear options={CONTACT_OPTIONS} value={contactPreference} onChange={setContactPreference} />
 							</>
 						) : (
 							<>
@@ -795,6 +847,9 @@ export function JobManagementEditSheet({
 									placeholderTextColor={colors.mutedText}
 									style={styles.input}
 								/>
+								<ChoicePills label="Urgency" allowClear options={URGENCY_OPTIONS} value={urgency} onChange={setUrgency} />
+								<ChoicePills label="Complexity" allowClear options={COMPLEXITY_OPTIONS} value={complexity} onChange={setComplexity} />
+								<ChoicePills label="Currency" scrollable options={CURRENCIES.map((entry) => ({ value: entry, label: entry }))} value={currency} onChange={setCurrency} />
 							</>
 						)}
 						<View style={styles.disclaimer}>
@@ -803,10 +858,7 @@ export function JobManagementEditSheet({
 									Job Poster Disclaimer
 								</Text>
 								<Text style={styles.disclaimerText}>
-									I confirm this is a genuine, lawful listing; its compensation,
-									location and requirements are accurate; and I will not request
-									fees, passwords, financial credentials, verification codes or
-									unrelated identity documents.
+									{JOB_POSTER_DISCLAIMER}
 								</Text>
 							</View>
 							<Switch

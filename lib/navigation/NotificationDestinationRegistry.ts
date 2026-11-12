@@ -270,6 +270,10 @@ export class NotificationDestinationRegistry {
 			);
 		}
 
+		// A removal notice opens Notifications with the appeal form for that content (website /notifications?removalId=).
+		if (type === 'content_deleted_by_admin' && data.contentId) {
+			return this.navigate(`/notifications?removalId=${encodeURIComponent(data.contentId)}`, fallbackRoute, data);
+		}
 		if (type === 'community_removed' || type === 'event_cancelled') {
 			return this.navigate(fallbackRoute, fallbackRoute, data);
 		}

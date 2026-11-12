@@ -417,6 +417,9 @@ export default function InstructorRegisterScreen() {
                   <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Type: </Text>{APPLICATION_TYPES.find((option) => option.value === applicationType)?.title}</Text>
                   <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Name: </Text>{`${firstName} ${lastName}`.trim()}</Text>
                   <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Role: </Text>{jobTitle} · {qualification}</Text>
+                  <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Expertise: </Text>{expertise.join(', ')}</Text>
+                  <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Experience: </Text>{years || '0'} {years === '1' ? 'year' : 'years'}</Text>
+                  {hasOrganization ? <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Organization: </Text>{orgName}</Text> : null}
                   <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Subjects: </Text>{subjects.join(', ')}</Text>
                   <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Documents: </Text>{[resume ? 'CV' : '', certificates.length ? `${certificates.length} certificate(s)` : '', sample ? 'sample lesson' : '', hasOrganization && proof ? 'proof of authorization' : ''].filter(Boolean).join(', ')}</Text>
                 </View>

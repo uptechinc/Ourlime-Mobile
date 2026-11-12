@@ -3,6 +3,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, Vie
 import { Inbox, Lock, MessageSquareReply, Trash2, XCircle } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
+import EHubSectionNav from '@/components/ehub/EHubSectionNav';
 import CustomModal from '@/components/ui/CustomModal';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
@@ -70,7 +71,7 @@ export default function EHubEnquiryInboxScreen() {
   };
   const handleModeChange = (nextMode: EHubEnquiryMode) => { setMode(nextMode); setReplyingTo(null); setActionError(null); };
 
-  const header = <PageHeader title="Enquiries" onBackPress={() => router.back()} />;
+  const header = <><PageHeader title="Enquiries" onBackPress={() => router.back()} /><EHubSectionNav currentLabel="Enquiries" parentLabel="Seller Center" onParentPress={() => router.dismissTo('/ehub/seller' as Href)} /></>;
   if (!profile) {
     return <View style={styles.screen}>{header}<View style={[styles.body, { width: layout.contentWidth }]}>
       {profileLoading ? <EHubEnquiryInboxSkeleton mode={mode} /> : <EHubEmptyState icon={<Lock size={38} color={colors.mutedText} />} title="Sign in to manage enquiries" actionLabel="Sign in" onAction={() => router.push('/(auth)/login')} />}

@@ -12,7 +12,7 @@ const activeBarStyle = { backgroundColor: 'rgba(255,255,255,0.55)' };
 const SECTION_TAB_LABEL_WIDTHS = [44, 30, 38, 32, 36, 42];
 const METRIC_LABEL_WIDTHS = [64, 62, 66, 42, 46];
 /** One row per entry in REMAINING_ADMIN_WORKSPACES (app/admin/index.tsx). */
-const WORKSPACE_ROW_WIDTHS: PercentWidth[] = ['46%', '40%', '52%', '38%', '56%', '34%', '48%', '42%', '50%', '36%'];
+const WORKSPACE_ROW_WIDTHS: PercentWidth[] = ['46%', '40%', '52%', '38%', '56%', '34%', '48%', '42%', '50%', '36%', '30%', '44%', '40%'];
 
 /* ------------------------------------------------------------------ */
 /* Admin portal (app/admin/index.tsx)                                  */

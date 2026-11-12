@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AuthFlowScreen from '@/components/auth/AuthFlowScreen';
@@ -15,6 +16,7 @@ export default function ResetPasswordScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [status, setStatus] = useState<'validating' | 'ready' | 'saving' | 'saved' | 'invalid' | 'error'>('validating');
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     if (!oobCode) {
@@ -24,13 +26,23 @@ export default function ResetPasswordScreen() {
     void authService.validatePasswordResetCode(oobCode).then(() => setStatus('ready')).catch(() => setStatus('invalid'));
   }, [oobCode]);
 
+  // After a successful reset the website returns to login after three seconds; so does the app.
+  useEffect(() => {
+    if (status !== 'saved') return undefined;
+    const loginTimer = setTimeout(() => router.replace('/(auth)/login'), 3000);
+    return () => clearTimeout(loginTimer);
+  }, [router, status]);
+
   const handleReset = async () => {
     if (!oobCode || password.length < 8 || password !== confirmation) return;
     setStatus('saving');
+    setErrorMessage('');
     try {
       await authService.resetPassword(oobCode, password);
       setStatus('saved');
-    } catch {
+    } catch (error: unknown) {
+      console.error('[ResetPasswordScreen.handleReset] Error:', error instanceof Error ? error.message : error);
+      setErrorMessage(authService.getPasswordResetErrorMessage(error));
       setStatus('error');
     }
   };
@@ -38,9 +50,12 @@ export default function ResetPasswordScreen() {
   return (
     <AuthFlowScreen iconName="lock-closed-outline" title="Set New Password" subtitle="Enter your new password below. Use at least eight characters.">
       {status === 'validating' ? (
-        <View style={{ paddingVertical: 20, alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#10b981" />
-          <Text style={{ color: '#94a3b8', marginTop: 12, fontSize: 14 }}>Validating reset link...</Text>
+        <View accessibilityLabel="Validating reset link" style={{ paddingVertical: 4 }}>
+          <Skeleton width={110} height={13} />
+          <Skeleton height={50} borderRadius={14} style={{ marginTop: 8, marginBottom: 16 }} />
+          <Skeleton width={150} height={13} />
+          <Skeleton height={50} borderRadius={14} style={{ marginTop: 8, marginBottom: 18 }} />
+          <Skeleton height={54} borderRadius={30} />
         </View>
       ) : null}
 
@@ -69,7 +84,7 @@ export default function ResetPasswordScreen() {
           </View>
           <Text style={{ fontSize: 18, fontWeight: '800', color: '#ffffff', textAlign: 'center', marginBottom: 6 }}>Password Reset Successful</Text>
           <Text style={{ color: '#94a3b8', textAlign: 'center', fontSize: 14, marginBottom: 20 }}>
-            Your password was updated. You can now sign in with your new password.
+            Your password was updated. Taking you to login…
           </Text>
           <TouchableOpacity
             onPress={() => router.replace('/(auth)/login')}
@@ -151,7 +166,7 @@ export default function ResetPasswordScreen() {
           {status === 'error' ? (
             <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.18)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)', padding: 12, borderRadius: 12, marginBottom: 14 }}>
               <Text style={{ color: '#fca5a5', fontSize: 13, textAlign: 'center' }}>
-                Password reset failed. Request a new link and try again.
+                {errorMessage || 'Something went wrong. Please try again.'}
               </Text>
             </View>
           ) : null}
@@ -174,7 +189,7 @@ export default function ResetPasswordScreen() {
             }}
           >
             {status === 'saving' ? (
-              <ActivityIndicator color="#ffffff" />
+              <Skeleton width={130} height={18} borderRadius={9} />
             ) : (
               <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 16 }}>Update Password</Text>
             )}

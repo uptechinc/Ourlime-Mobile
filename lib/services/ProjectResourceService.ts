@@ -105,7 +105,8 @@ export class ProjectResourceService {
 
   private fromCached(project: CachedProjectRecord): ProjectRecord {
     const updatedAt = new Date(project.updatedAt);
-    return { ...project, updatedAt: Number.isNaN(updatedAt.getTime()) ? new Date(0) : updatedAt };
+    // Records saved before plan tiers existed have no planTier / automationRules.
+    return { ...project, planTier: project.planTier === 'premium' ? 'premium' : 'free', automationRules: project.automationRules ?? {}, updatedAt: Number.isNaN(updatedAt.getTime()) ? new Date(0) : updatedAt };
   }
 
   private withState(current: ResourceState<ProjectRecord[]> | null | undefined, patch: Partial<ResourceState<ProjectRecord[]>>): ResourceState<ProjectRecord[]> {

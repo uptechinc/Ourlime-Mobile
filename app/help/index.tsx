@@ -10,14 +10,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
-import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { auth } from '@/lib/firebaseConfig';
 
 type ProtectedHelpRoute =
 	| '/help/tickets/new'
 	| '/help/tickets'
 	| '/help/child-safety/report'
-	| '/help/child-safety/reports';
+	| '/help/child-safety/reports'
+	| '/help/tickets/staff'
+	| '/help/child-safety/review';
 
 type ChildSafetyHelpParameters = {
 	targetType?: string;
@@ -43,7 +44,6 @@ function buildChildSafetyReportDestination(parameters: ChildSafetyHelpParameters
 export default function HelpRoute() {
 	const router = useRouter();
 	const { colors } = useAppTheme();
-	const { authorization } = usePageAccess();
 	const isSignedIn = auth.currentUser?.emailVerified === true;
 	const parameters = useLocalSearchParams<ChildSafetyHelpParameters>();
 	useEffect(() => {
@@ -127,8 +127,8 @@ export default function HelpRoute() {
 							lineHeight: 21,
 						}}
 					>
-						Find community rules, reporting guidance, policies, and the
-						confidential child-safety reporting channel.
+						Open a private support conversation, track an existing request, or
+						use Ourlime's restricted child-safety channel.
 					</Text>
 					{!isSignedIn ? (
 						<View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center' }}>
@@ -226,29 +226,29 @@ export default function HelpRoute() {
 						/>
 					</HelpGroup>
 
-					{authorization.isAdmin || authorization.isDeveloper ? (
-						<HelpGroup
-							title="Staff Workspaces"
-							detail="Restricted queues for authorized Ourlime staff."
+					{/* Shown to everyone like the website: the queues themselves enforce staff / reviewer authorization
+					    (support staff and child-safety reviewers are not necessarily admins). */}
+					<HelpGroup
+						title="Staff Workspaces"
+						detail="Restricted queues enforce staff and reviewer authorization."
+						colors={colors}
+					>
+						<HelpLink
+							title="Support Ticket Queue"
+							detail="Claim, transfer, and respond to tickets"
+							icon="headset"
+							onPress={() => handleProtectedNavigation('/help/tickets/staff')}
 							colors={colors}
-						>
-							<HelpLink
-								title="Support Ticket Queue"
-								detail="Claim, transfer, and respond to tickets"
-								icon="headset"
-								onPress={() => router.push('/help/tickets/staff' as Href)}
-								colors={colors}
-							/>
-							<HelpLink
-								title="Child Safety Review"
-								detail="Restricted case review and secure replies"
-								icon="lock-closed"
-								onPress={() => router.push('/help/child-safety/review' as Href)}
-								colors={colors}
-								danger
-							/>
-						</HelpGroup>
-					) : null}
+						/>
+						<HelpLink
+							title="Child Safety Review"
+							detail="Restricted case review and secure replies"
+							icon="lock-closed"
+							onPress={() => handleProtectedNavigation('/help/child-safety/review')}
+							colors={colors}
+							danger
+						/>
+					</HelpGroup>
 				</View>
 				<View
 					style={{
@@ -259,7 +259,7 @@ export default function HelpRoute() {
 					}}
 				>
 					<Text style={{ color: colors.destructiveText, fontWeight: '900' }}>
-						Immediate danger
+						If a child is in immediate danger
 					</Text>
 					<Text
 						style={{
@@ -268,7 +268,8 @@ export default function HelpRoute() {
 							lineHeight: 20,
 						}}
 					>
-						Contact local emergency services first. Never download, copy,
+						Contact local emergency services first. Ourlime reporting does not
+						replace emergency assistance. Never download, copy,
 						forward, email, upload, or redistribute suspected child sexual abuse
 						material.
 					</Text>

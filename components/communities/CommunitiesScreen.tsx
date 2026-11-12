@@ -107,10 +107,9 @@ export default function CommunitiesScreen() {
 	);
 	const { resource, categories, refresh, refreshCategories, loadMore, patchCommunity } =
 		useCommunitiesResource(activeUserId ?? '', directoryQuery);
-	const visibleCommunities = useMemo(
-		() => (resource.data?.items ?? []).filter((community) => community.id !== cachedHeroCommunity?.id),
-		[resource.data?.items, cachedHeroCommunity?.id]
-	);
+	// Like the website grid, the community of the week also stays in the list (a Joined or Mine filter would
+	// otherwise hide it, and the "x of y" count would not match the cards).
+	const visibleCommunities = useMemo(() => resource.data?.items ?? [], [resource.data?.items]);
 	const selectedCategory =
 		categories.data?.find((category) => category.id === selectedCategoryId) ??
 		null;

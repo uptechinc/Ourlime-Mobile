@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, PenSquare, Search, SlidersHorizontal, X } from 'lucide-react-native';
+import { ChevronLeft, PenSquare, Search, SlidersHorizontal, TrendingUp, X } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import CreateBlogModal from '@/components/blogs/CreateBlogModal';
@@ -200,6 +200,7 @@ export default function BlogsScreen() {
   const resultsLabel = total > 0
     ? `${total} ${query.type !== 'all' ? `${query.type}${total !== 1 ? 's' : ''}` : `blog${total !== 1 ? 's' : ''}`}${query.search ? ` for '${query.search}'` : ''}${query.tags.length ? ` tagged ${query.tags.join(', ')}` : ''}${query.category !== 'All' ? ` in ${query.category}` : ''} found`
     : 'No blogs found matching your filters';
+  const trendingBlogs = blogs.filter((blog) => blog.isTrending).slice(0, 4);
   const isInitialLoading = !catalog.data && (catalog.status === 'idle' || catalog.status === 'hydrating' || catalog.status === 'refreshing');
   const chipIdle = { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f1f5f9', borderColor: colors.border };
 
@@ -310,6 +311,27 @@ export default function BlogsScreen() {
             ) : null}
           </View>
         )}
+
+        {/* Website sidebar on phones: Trending Now (flags.trending posts on this page) and Share Your Knowledge. */}
+        {trendingBlogs.length > 0 ? (
+          <View style={[styles.sideCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.sideCardHeader}><TrendingUp size={18} color="#10b981" /><Text style={[styles.sideCardTitle, { color: colors.text }]}>Trending Now</Text></View>
+            {trendingBlogs.map((blog, index) => (
+              <TouchableOpacity key={blog.id} onPress={() => handleOpenBlog(blog)} style={[styles.trendingRow, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#f8fafc' }]}>
+                <Text style={styles.trendingRank}>#{index + 1}</Text>
+                <Text numberOfLines={2} style={[styles.trendingTitle, { color: colors.text }]}>{blog.title}</Text>
+                <Text style={[styles.trendingMeta, { color: colors.mutedText }]}>{blog.readTime || 0} min read</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+        <View style={styles.shareCard}>
+          <Text style={styles.shareCardTitle}>Share Your Knowledge</Text>
+          <Text style={styles.shareCardText}>Have something interesting to share with our community of writers and thinkers?</Text>
+          <TouchableOpacity onPress={() => void handleWritePress()} disabled={isCheckingAccess} style={styles.shareCardButton}>
+            <Text style={styles.shareCardButtonText}>Start Writing</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       <FilterSheet visible={isFilterSheetOpen} title="Sort & filter" groups={filterGroups} applyLabel="Show blogs" onApply={handleApplyFilters} onClose={() => setIsFilterSheetOpen(false)} />
@@ -394,4 +416,16 @@ const styles = StyleSheet.create({
   emptySubtitle: { fontSize: 13, textAlign: 'center' },
   primaryButton: { backgroundColor: '#10b981', paddingHorizontal: 18, paddingVertical: 11, borderRadius: 12, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
+  sideCard: { marginHorizontal: 16, marginTop: 20, padding: 16, borderRadius: 18, borderWidth: 1, gap: 10 },
+  sideCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sideCardTitle: { fontSize: 17, fontWeight: '800' },
+  trendingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 12 },
+  trendingRank: { color: '#10b981', fontSize: 13, fontWeight: '800' },
+  trendingTitle: { flex: 1, fontSize: 13, fontWeight: '600' },
+  trendingMeta: { fontSize: 11 },
+  shareCard: { marginHorizontal: 16, marginTop: 16, padding: 18, borderRadius: 18, backgroundColor: '#10b981', gap: 8 },
+  shareCardTitle: { color: '#ffffff', fontSize: 17, fontWeight: '800' },
+  shareCardText: { color: '#ecfdf5', fontSize: 13, lineHeight: 18 },
+  shareCardButton: { alignSelf: 'flex-start', marginTop: 4, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 12, backgroundColor: '#ffffff' },
+  shareCardButtonText: { color: '#047857', fontSize: 13, fontWeight: '800' },
 });

@@ -28,4 +28,48 @@ export type Event = {
     permissions?: EventPermissionSet;
     description?: string; // Detailed description of the event
     tags?: string[];
+    createdAt?: string;
+    status?: EventStatus;
+    publishAt?: string | null;
+    isVirtual?: boolean;
+    virtualLink?: string;
+    isFree?: boolean;
+    ticketPrice?: number | null;
+    accessibility?: string[];
+    address?: string;
+    lat?: number | null;
+    lng?: number | null;
+    capacity?: number | null;
+    ageRestriction?: number | null;
+    coOrganizers?: CoOrganizer[];
+    registrationQuestions?: RegistrationQuestion[];
+    isFeatured?: boolean;
+    /** Organiser display details (name, photo, identity verified), filled in for listings like the website's fetchEvents. */
+    organizer?: { name: string; userName: string | null; image: string | null; verified: boolean };
+};
+
+/** Same statuses as the website's types/eventTypes EventStatus. */
+export type EventStatus = 'draft' | 'scheduled' | 'published' | 'sold_out' | 'cancelled' | 'completed' | 'archived' | 'removed';
+
+export type RegistrationQuestionType = 'text' | 'radio' | 'checkbox' | 'select';
+
+export type RegistrationQuestion = {
+    id: string;
+    question: string;
+    type: RegistrationQuestionType;
+    required: boolean;
+    options?: string[];
+};
+
+export type RegistrationAnswerValue = string | string[] | boolean;
+export type RegistrationAnswers = { [questionId: string]: RegistrationAnswerValue };
+
+export type CoOrganizerPermission = 'manage_discussions' | 'manage_reviews' | 'manage_attendance';
+
+export type CoOrganizer = {
+    userId: string;
+    name?: string;
+    userName?: string;
+    image?: string;
+    permissions: CoOrganizerPermission[];
 };

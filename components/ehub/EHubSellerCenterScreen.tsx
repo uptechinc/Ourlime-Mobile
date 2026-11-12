@@ -4,6 +4,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { Building2, ChevronRight, Eye, FilePenLine, FileText, Inbox, LayoutDashboard, Lock, Package, Settings, Store, Trash2 } from 'lucide-react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
+import EHubSectionNav from '@/components/ehub/EHubSectionNav';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
@@ -77,7 +78,7 @@ export default function EHubSellerCenterScreen() {
     setConfirmation(null);
   };
 
-  const header = <PageHeader title="Seller Center" onBackPress={() => router.back()} />;
+  const header = <><PageHeader title="Seller Center" onBackPress={() => router.back()} /><EHubSectionNav currentLabel="Seller Center" /></>;
   if (!profile) {
     return <View style={styles.screen}>{header}{profileLoading ? <EHubSellerCenterSkeleton section={section} /> : <View style={[styles.body, { width: layout.contentWidth }]}>
       <EHubEmptyState icon={<Lock size={38} color={colors.mutedText} />} title="Sign in to grow on E-Hub" body="Set up a storefront, list products and answer enquiries." actionLabel="Sign in" onAction={() => router.push('/(auth)/login')} />

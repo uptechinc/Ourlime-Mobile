@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageCircle, Send, X } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
+import { Skeleton } from '@/components/ui/Skeleton';
 import MentionText from '@/components/ui/MentionText';
 import MentionSuggestionList from '@/components/ui/MentionSuggestionList';
 import { useMentionAutocomplete } from '@/lib/hooks/useMentionAutocomplete';
@@ -12,6 +14,14 @@ import { CourseDiscussionsSkeleton } from '@/components/eLearning/ELearningSkele
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { courseInteractionService } from '@/lib/services/CourseInteractionService';
 import type { CourseDiscussion, CourseDiscussionReply, DiscussionCursor } from '@/lib/types/course';
+
+/** The callable's refusal as the website words it (web discussions callableMessage). */
+const sendErrorMessage = (error: unknown): string => {
+  const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
+  if (code.endsWith('permission-denied')) return 'You must be enrolled in this course to post.';
+  if (code.endsWith('unauthenticated')) return 'Please verify your email address, then try again.';
+  return 'Your message was not confirmed. Your text is still here so you can retry.';
+};
 
 export default function CourseDiscussionsScreen() {
   const router = useRouter();
@@ -28,6 +38,7 @@ export default function CourseDiscussionsScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [replies, setReplies] = useState<Record<string, CourseDiscussionReply[]>>({});
   const [loadingRepliesId, setLoadingRepliesId] = useState<string | null>(null);
@@ -93,6 +104,7 @@ export default function CourseDiscussionsScreen() {
     const message = body.trim();
     if (!message || !courseId || sending) return;
     setSending(true);
+    setSendError(null);
     try {
       if (expandedId) {
         await courseInteractionService.createReply(expandedId, message, replyOperationIdRef.current);
@@ -106,9 +118,9 @@ export default function CourseDiscussionsScreen() {
         setBody('');
         await loadPage(null, true);
       }
-    } catch (sendError) {
-      console.error('[CourseDiscussionsScreen] Send failed:', sendError);
-      setError('Your message was not confirmed. Your text is still here so you can retry.');
+    } catch (sendFailure) {
+      console.error('[CourseDiscussionsScreen] Send failed:', sendFailure);
+      setSendError(sendErrorMessage(sendFailure));
     } finally {
       setSending(false);
     }
@@ -127,7 +139,16 @@ export default function CourseDiscussionsScreen() {
         <Text style={styles.replyCount}>{item.replyCount} {item.replyCount === 1 ? 'reply' : 'replies'}{isExpanded ? '' : ' · Tap to view'}</Text>
         {isExpanded ? (
           <View style={styles.replies}>
-            {loadingRepliesId === item.id ? <ActivityIndicator color={colors.accent} /> : null}
+            {loadingRepliesId === item.id ? (
+              <View style={styles.replySkeletons}>
+                {[0, 1].map((row) => (
+                  <View key={row} style={styles.reply}>
+                    <Skeleton width="40%" height={12} borderRadius={6} />
+                    <Skeleton width={row === 0 ? '85%' : '65%'} height={12} borderRadius={6} />
+                  </View>
+                ))}
+              </View>
+            ) : null}
             {loadingRepliesId !== item.id && replyError ? <Text style={styles.errorText}>{replyError}</Text> : null}
             {loadingRepliesId !== item.id && !replyError && discussionReplies.length === 0 ? <Text style={styles.muted}>No replies yet. Be the first to respond.</Text> : null}
             {discussionReplies.map((reply) => (
@@ -146,7 +167,7 @@ export default function CourseDiscussionsScreen() {
   return (
     <View style={styles.container}>
       <PageHeader title="Course discussions" onBackPress={() => router.back()} />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.content}>
+      <KeyboardSafeView style={styles.content}>
         {connecting ? <CourseDiscussionsSkeleton /> : null}
         {nativeSession.status === 'retryable_failure' ? <View style={styles.center}><Text style={styles.errorText}>The secure learning session could not connect.</Text><TouchableOpacity onPress={retryNativeSession} style={styles.retryButton}><Text style={styles.buttonText}>Try Again</Text></TouchableOpacity></View> : null}
         {!connecting && nativeSession.status !== 'retryable_failure' ? (
@@ -159,14 +180,15 @@ export default function CourseDiscussionsScreen() {
             onEndReached={() => { if (cursor && !loadingMore) void loadPage(cursor, false); }}
             onEndReachedThreshold={0.4}
             ListEmptyComponent={loading ? <CourseDiscussionsSkeleton /> : <View style={styles.center}><MessageCircle size={42} color={colors.mutedText} /><Text style={styles.title}>{error ? 'Discussions unavailable' : 'No discussions yet'}</Text><Text style={styles.muted}>{error ?? 'Ask the first question about this course.'}</Text>{error ? <TouchableOpacity onPress={() => void loadPage(null, true)} style={styles.retryButton}><Text style={styles.buttonText}>Try Again</Text></TouchableOpacity> : null}</View>}
-            ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.accent} /> : null}
+            ListFooterComponent={loadingMore ? <View style={styles.card}><Skeleton width="35%" height={12} borderRadius={6} /><Skeleton width="90%" height={14} borderRadius={7} /><Skeleton width="60%" height={14} borderRadius={7} /></View> : null}
             extraData={{ expandedId, replies, loadingRepliesId, replyError }}
             renderItem={renderDiscussion}
           />
         ) : null}
         {nativeSession.status === 'ready' && expandedDiscussion ? <View style={styles.replyingBar}><Text numberOfLines={1} style={styles.replyingText}>Replying to {expandedDiscussion.authorName ?? 'this discussion'}</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Stop replying" onPress={() => setExpandedId(null)} hitSlop={10}><X size={18} color={colors.mutedText} /></TouchableOpacity></View> : null}
+        {nativeSession.status === 'ready' && sendError ? <View style={styles.sendErrorBar}><Text style={styles.sendErrorText}>{sendError}</Text></View> : null}
         {nativeSession.status === 'ready' ? <><View style={{ paddingHorizontal: 12 }}><MentionSuggestionList suggestions={mention.suggestions} isSearching={mention.isSearching} onSelect={mention.handleSelectSuggestion} /></View><View style={[styles.composer, { paddingBottom: Math.max(12, insets.bottom) }]}><TextInput value={body} onChangeText={setBody} onFocus={mention.handleFocus} onBlur={mention.handleBlur} onSelectionChange={mention.handleSelectionChange} selection={mention.selection} editable={!sending} multiline maxLength={expandedDiscussion ? 2000 : 4000} placeholder={expandedDiscussion ? 'Write a reply' : 'Ask a question or start a discussion'} placeholderTextColor={colors.mutedText} style={styles.input} /><TouchableOpacity accessibilityRole="button" accessibilityLabel={expandedDiscussion ? 'Send reply' : 'Send discussion'} onPress={() => void handleSend()} disabled={!body.trim() || sending} style={[styles.sendButton, (!body.trim() || sending) && styles.disabled]}>{sending ? <ActivityIndicator color={colors.onAccent} /> : <Send size={20} color={colors.onAccent} />}</TouchableOpacity></View></> : null}
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </View>
   );
 }
@@ -175,7 +197,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas }, content: { flex: 1 }, list: { padding: 16, gap: 12, paddingBottom: 24 }, emptyList: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   center: { alignItems: 'center', justifyContent: 'center', gap: 10, padding: 20 }, title: { color: colors.text, fontSize: 18, fontWeight: '800', textAlign: 'center' }, muted: { color: colors.mutedText, fontSize: 13, lineHeight: 19, textAlign: 'center' }, errorText: { color: colors.destructiveText, textAlign: 'center' },
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 15, gap: 9 }, row: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 }, author: { color: colors.text, fontWeight: '800', flex: 1 }, date: { color: colors.mutedText, fontSize: 12 }, body: { color: colors.text, fontSize: 15, lineHeight: 22 }, replyCount: { color: colors.accentText, fontSize: 12, fontWeight: '700' },
-  cardExpanded: { borderColor: colors.accent }, discussionTitle: { color: colors.text, fontSize: 16, fontWeight: '800' }, replies: { gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border }, reply: { backgroundColor: colors.canvas, borderRadius: 12, padding: 11, gap: 4 }, replyAuthor: { color: colors.text, fontWeight: '700', fontSize: 13, flex: 1 }, replyBody: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  cardExpanded: { borderColor: colors.accent }, discussionTitle: { color: colors.text, fontSize: 16, fontWeight: '800' }, replySkeletons: { gap: 8 }, sendErrorBar: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: colors.destructiveSurface }, sendErrorText: { color: colors.destructiveText, fontSize: 13 }, replies: { gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border }, reply: { backgroundColor: colors.canvas, borderRadius: 12, padding: 11, gap: 4 }, replyAuthor: { color: colors.text, fontWeight: '700', fontSize: 13, flex: 1 }, replyBody: { color: colors.text, fontSize: 14, lineHeight: 20 },
   replyingBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 14, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface }, replyingText: { flex: 1, color: colors.accentText, fontSize: 12, fontWeight: '700' },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface }, input: { flex: 1, minHeight: 44, maxHeight: 120, color: colors.text, backgroundColor: colors.input, borderColor: colors.border, borderWidth: 1, borderRadius: 15, paddingHorizontal: 14, paddingVertical: 11 }, sendButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }, disabled: { opacity: 0.45 }, retryButton: { minHeight: 44, justifyContent: 'center', backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 18 }, buttonText: { color: colors.onAccent, fontWeight: '800' },
 });

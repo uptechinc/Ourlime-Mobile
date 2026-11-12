@@ -11,6 +11,8 @@ import {
 import {
 	BarChart3,
 	CheckSquare,
+	Eye,
+	EyeOff,
 	Flag,
 	Plus,
 	Trash2,
@@ -28,6 +30,8 @@ import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 type CommunityPollsWorkspaceProps = {
 	resource: ResourceState<CommunityPoll[]>;
+	/** The signed-in user; a poll's creator can see who voted for what. */
+	viewerId: string;
 	canCreate: boolean;
 	createRequestKey: number;
 	onRetry: () => void;
@@ -44,6 +48,7 @@ type CommunityPollsWorkspaceProps = {
 
 export default function CommunityPollsWorkspace({
 	resource,
+	viewerId,
 	canCreate,
 	createRequestKey,
 	onRetry,
@@ -60,6 +65,7 @@ export default function CommunityPollsWorkspace({
 	const [allowMultiple, setAllowMultiple] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [feedback, setFeedback] = useState<string | null>(null);
+	const [openResponsesPollId, setOpenResponsesPollId] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (createRequestKey > 0 && canCreate) setCreateVisible(true);
@@ -310,6 +316,17 @@ export default function CommunityPollsWorkspace({
 							{poll.totalVotes} total {poll.totalVotes === 1 ? 'vote' : 'votes'} · ends{' '}
 							{new Date(poll.expiresAt).toLocaleString()}
 						</Text>
+						{poll.creatorId && poll.creatorId === viewerId ? (
+							<PollResponses
+								poll={poll}
+								isOpen={openResponsesPollId === poll.id}
+								onToggle={() =>
+									setOpenResponsesPollId((current) =>
+										current === poll.id ? null : poll.id
+									)
+								}
+							/>
+						) : null}
 					</View>
 				))
 			) : (
@@ -542,6 +559,73 @@ export default function CommunityPollsWorkspace({
 				type="error"
 				onClose={() => setFeedback(null)}
 			/>
+		</View>
+	);
+}
+
+type PollResponsesProps = {
+	poll: CommunityPoll;
+	isOpen: boolean;
+	onToggle: () => void;
+};
+
+/** Web PollResponses: the poll's creator can list who chose each option. */
+function PollResponses({ poll, isOpen, onToggle }: PollResponsesProps) {
+	const { colors } = useAppTheme();
+	// Older cached polls may predate the responses field.
+	const responses = poll.responses ?? [];
+	return (
+		<View
+			style={{
+				marginTop: 12,
+				paddingTop: 10,
+				borderTopWidth: 1,
+				borderTopColor: colors.border,
+			}}
+		>
+			<TouchableOpacity
+				onPress={onToggle}
+				accessibilityRole="button"
+				style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingVertical: 4 }}
+			>
+				{isOpen ? (
+					<EyeOff size={15} color={colors.accent} />
+				) : (
+					<Eye size={15} color={colors.accent} />
+				)}
+				<Text style={{ marginLeft: 6, color: colors.accentText, fontWeight: '800', fontSize: 13 }}>
+					{isOpen ? 'Hide responses' : 'View responses'}
+				</Text>
+			</TouchableOpacity>
+			{isOpen
+				? poll.options.map((option, optionIndex) => {
+						const voters = responses.filter((response) =>
+							response.optionIndexes.includes(optionIndex)
+						);
+						return (
+							<View
+								key={option.id}
+								style={{
+									marginTop: 8,
+									padding: 11,
+									borderRadius: 12,
+									backgroundColor: colors.control,
+								}}
+							>
+								<Text style={{ color: colors.text, fontWeight: '800' }}>
+									{option.text}
+								</Text>
+								<Text style={{ marginTop: 3, color: colors.mutedText, fontSize: 12 }}>
+									{voters.length === 0
+										? 'No responses yet'
+										: voters
+												.map((voter) => (voter.userName ? `@${voter.userName}` : 'A member'))
+												.join(', ')}
+								</Text>
+							</View>
+						);
+					})
+				: null}
 		</View>
 	);
 }

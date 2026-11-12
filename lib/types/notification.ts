@@ -3,6 +3,7 @@ export const NOTIFICATION_TYPES = [
   'community_invite', 'community_join_request', 'project_invite', 'role_change', 'community_report', 'report_action',
   'community_accepted', 'community_rejected', 'community_removed', 'event_cancelled', 'beta_management',
   'child_safety_case', 'support_ticket',
+  'content_deleted_by_admin', 'content_restored_by_admin', 'appeal_approved', 'appeal_rejected',
 ] as const;
 
 export type NotificationType = typeof NOTIFICATION_TYPES[number];
@@ -113,6 +114,10 @@ export type NotificationMetadata = {
   communityTitle?: string;
   communityName?: string;
   contentTitle?: string;
+  /** content_deleted_by_admin: moderation reason, optional moderator note and whether the author may appeal. */
+  reason?: string;
+  moderatorMessage?: string | null;
+  canAppeal?: boolean;
   productImage?: string | null;
   productId?: string;
   productTitle?: string;

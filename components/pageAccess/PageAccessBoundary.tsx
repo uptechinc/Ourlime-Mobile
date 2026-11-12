@@ -18,7 +18,7 @@ function renderPageSkeleton(pathname: string, signedIn: boolean): ReactNode {
   if (pathname.startsWith('/ehub')) return <EHubHomePageSkeleton />;
   if (pathname.startsWith('/eLearning')) return <ELearningPageSkeleton />;
   if (pathname.startsWith('/projectManagement')) return <ProjectsPageSkeleton />;
-  if (pathname.startsWith('/events')) return <EventsPageSkeleton />;
+  if (pathname.startsWith('/events') || pathname.startsWith('/calendar')) return <EventsPageSkeleton />;
   if (pathname.startsWith('/marketplace') || pathname.startsWith('/market')) return <MarketplacePageSkeleton signedIn={signedIn} />;
   if (pathname.startsWith('/blog') || pathname.startsWith('/blogs')) return <BlogCatalogPageSkeleton />;
   if (pathname.startsWith('/jobs')) return <JobsPageSkeleton />;

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
 import { Skeleton, SkeletonCircle } from '@/components/ui/Skeleton';
@@ -32,33 +32,31 @@ function TextLines({ lines = 1, fontSize, lineHeight, width = '100%', lastLineWi
   );
 }
 
-/** One card from app/events/index.tsx (image, title + category, summary, date, location, attend button). */
+/** One EventCard (image, title, date, location, attending, summary, attend + action buttons). */
 function EventListCardSkeleton(): ReactNode {
   const { colors } = useAppTheme();
   return (
     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <Skeleton width="100%" height={185} borderRadius={0} />
+      <Skeleton width="100%" height={180} borderRadius={0} />
       <View style={styles.cardBody}>
-        <View style={styles.cardHeader}>
-          <View style={{ flex: 1 }}><TextLines fontSize={17} lineHeight={22} width="72%" /></View>
-          <Skeleton width={64} height={21} borderRadius={12} />
+        <TextLines fontSize={17} lineHeight={22} width="72%" />
+        {[150, 190, 90].map((lineWidth) => (
+          <View key={lineWidth} style={styles.meta}>
+            <Skeleton width={14} height={14} borderRadius={4} />
+            <TextLines fontSize={12} lineHeight={16} width={lineWidth} />
+          </View>
+        ))}
+        <TextLines lines={2} fontSize={13} lineHeight={19} lastLineWidth="62%" />
+        <View style={[styles.meta, { marginTop: 6, gap: 8 }]}>
+          <View style={{ flex: 1 }}><Skeleton height={40} borderRadius={12} /></View>
+          {[0, 1, 2, 3].map((buttonIndex) => <Skeleton key={buttonIndex} width={36} height={36} borderRadius={12} />)}
         </View>
-        <TextLines lines={3} fontSize={14} lineHeight={20} lastLineWidth="62%" />
-        <View style={styles.meta}>
-          <Skeleton width={15} height={15} borderRadius={4} />
-          <TextLines fontSize={12} lineHeight={16} width={150} />
-        </View>
-        <View style={styles.meta}>
-          <Skeleton width={15} height={15} borderRadius={4} />
-          <View style={{ flex: 1 }}><TextLines fontSize={12} lineHeight={16} width="70%" /></View>
-        </View>
-        <Skeleton width="100%" height={43} borderRadius={12} style={{ marginTop: 4 }} />
       </View>
     </View>
   );
 }
 
-/** Event cards shown in the Events list while events load (the hero, search and toggle above stay live). */
+/** Event cards shown in the events lists while events load (the controls above stay live). */
 export function EventListCardsSkeleton({ count = 3 }: { count?: number }): ReactNode {
   return (
     <View style={styles.cardList}>
@@ -67,29 +65,42 @@ export function EventListCardsSkeleton({ count = 3 }: { count?: number }): React
   );
 }
 
-/** Whole Events list page (header, hero, search, list/calendar toggle, cards) for the route-level boundary. */
+/** Whole Events page (featured hero, active count, upcoming strip, search row, cards) for the route-level boundary. */
 export function EventsPageSkeleton(): ReactNode {
   const router = useRouter();
   const { colors } = useAppTheme();
+  const surfaceCard = { backgroundColor: colors.surface, borderColor: colors.border };
   return (
     <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
       <PageHeader title="Events" onBackPress={() => router.back()} />
       <ScrollView scrollEnabled={false} contentContainerStyle={styles.listContent}>
-        <View style={styles.hero}>
-          <Skeleton width={30} height={30} borderRadius={8} />
-          <View style={{ flex: 1, gap: 3 }}>
-            <TextLines fontSize={20} lineHeight={26} width="78%" />
-            <TextLines fontSize={12} lineHeight={16} width="88%" />
+        <Skeleton width="100%" height={380} borderRadius={20} />
+        <Skeleton width={180} height={78} borderRadius={18} />
+        <View style={[styles.upcomingSection, surfaceCard]}>
+          <View style={styles.meta}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <TextLines fontSize={20} lineHeight={26} width="60%" />
+              <TextLines fontSize={12} lineHeight={16} width="80%" />
+            </View>
+            <Skeleton width={92} height={36} borderRadius={10} />
           </View>
-          <SkeletonCircle size={42} />
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            {[0, 1].map((cardIndex) => (
+              <View key={cardIndex} style={[styles.upcomingCard, surfaceCard]}>
+                <Skeleton width="100%" height={130} borderRadius={0} />
+                <View style={{ padding: 12, gap: 6 }}>
+                  <TextLines fontSize={15} lineHeight={20} width="80%" />
+                  <TextLines fontSize={12} lineHeight={16} width="70%" />
+                  <TextLines fontSize={12} lineHeight={16} width="55%" />
+                </View>
+              </View>
+            ))}
+          </View>
         </View>
-        <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Skeleton width={19} height={19} borderRadius={5} />
-          <Skeleton width="45%" height={13} borderRadius={4} />
-        </View>
-        <View style={[styles.viewToggle, { backgroundColor: colors.control }]}>
-          <View style={[styles.viewOption, { backgroundColor: colors.surface }]}><Skeleton width={30} height={11} borderRadius={4} /></View>
-          <View style={styles.viewOption}><Skeleton width={58} height={11} borderRadius={4} /></View>
+        <View style={styles.meta}>
+          <View style={{ flex: 1 }}><Skeleton height={44} borderRadius={22} /></View>
+          <SkeletonCircle size={44} />
+          <SkeletonCircle size={44} />
         </View>
         <EventListCardsSkeleton count={2} />
       </ScrollView>
@@ -97,125 +108,128 @@ export function EventsPageSkeleton(): ReactNode {
   );
 }
 
-/**
- * Body of app/events/[id].tsx while the event loads: hero, tags + title + summary, date/location card,
- * attend + share row, organiser card, About section and the discussion with its composer bar.
- */
-export function EventDetailSkeleton(): ReactNode {
+/** The /calendar page: month card with the 6-week grid, then the selected day's events. */
+export function EventsCalendarSkeleton(): ReactNode {
   const { colors } = useAppTheme();
-  const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const contentWidth = Math.min(width, 760);
   const surfaceCard = { backgroundColor: colors.surface, borderColor: colors.border };
   return (
-    <View style={{ flex: 1 }}>
-      <ScrollView scrollEnabled={false} style={{ flex: 1 }} contentContainerStyle={styles.detailScroll}>
-        <View style={[styles.detailColumn, { width: contentWidth }]}>
-          <View style={styles.detailHero}><Skeleton width="100%" height="100%" borderRadius={0} /></View>
-
-          <View style={styles.section}>
-            <View style={styles.tagRow}><Skeleton width={78} height={21} borderRadius={12} /></View>
-            <TextLines lines={2} fontSize={26} lineHeight={32} lastLineWidth="58%" />
-            <TextLines lines={2} fontSize={15} lineHeight={22} lastLineWidth="70%" />
-          </View>
-
-          <View style={[styles.infoCard, surfaceCard]}>
-            <View style={styles.infoRow}>
-              <Skeleton width={20} height={20} borderRadius={5} />
-              <View style={{ flex: 1 }}>
-                <TextLines fontSize={15} lineHeight={20} width="55%" />
-                <View style={styles.inline}>
-                  <Skeleton width={14} height={14} borderRadius={4} />
-                  <TextLines fontSize={13} lineHeight={19} width={120} />
-                </View>
-              </View>
-            </View>
-            <View style={{ height: 1, backgroundColor: colors.border }} />
-            <View style={styles.infoRow}>
-              <Skeleton width={20} height={20} borderRadius={5} />
-              <View style={{ flex: 1 }}>
-                <TextLines fontSize={15} lineHeight={20} width="65%" />
-                <TextLines fontSize={13} lineHeight={19} width="45%" />
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.actions}>
-            <View style={{ flex: 1 }}><Skeleton height={48} borderRadius={14} /></View>
-            <View style={[styles.iconButton, surfaceCard]}><Skeleton width={20} height={20} borderRadius={5} /></View>
-          </View>
-
-          <View style={[styles.organizer, surfaceCard]}>
-            <SkeletonCircle size={44} />
-            <View style={{ flex: 1 }}>
-              <TextLines fontSize={13} lineHeight={17} width={80} />
-              <TextLines fontSize={16} lineHeight={21} width="50%" />
-            </View>
-          </View>
-
-          <View style={styles.section}>
-            <TextLines fontSize={18} lineHeight={24} width={150} />
-            <TextLines lines={4} fontSize={15} lineHeight={23} lastLineWidth="55%" />
-          </View>
-
-          <View style={styles.section}>
-            <View style={[styles.inline, { marginTop: 0 }]}>
-              <Skeleton width={20} height={20} borderRadius={5} />
-              <TextLines fontSize={18} lineHeight={24} width={130} />
-            </View>
-            {[0, 1].map((commentIndex) => (
-              <View key={commentIndex} style={styles.comment}>
-                <SkeletonCircle size={36} />
-                <View style={[styles.commentBody, surfaceCard]}>
-                  <View style={styles.inlineTight}>
-                    <TextLines fontSize={14} lineHeight={18} width={96} />
-                    <TextLines fontSize={11} lineHeight={14} width={44} />
-                  </View>
-                  <TextLines lines={2} fontSize={14} lineHeight={20} lastLineWidth="60%" />
-                </View>
-              </View>
-            ))}
-          </View>
+    <View style={{ gap: 12 }}>
+      <View style={[styles.calendarCard, surfaceCard]}>
+        <View style={[styles.meta, { justifyContent: 'space-between', marginBottom: 8 }]}>
+          <SkeletonCircle size={40} />
+          <Skeleton width={140} height={16} borderRadius={4} />
+          <SkeletonCircle size={40} />
         </View>
-      </ScrollView>
-      <View style={[styles.composerBar, { paddingBottom: 10 + insets.bottom, backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-        <View style={[styles.composer, { width: contentWidth - 24 }]}>
-          <View style={[styles.composerInput, { backgroundColor: colors.input, borderColor: colors.border }]}>
-            <Skeleton width="55%" height={13} borderRadius={4} />
-          </View>
-          <SkeletonCircle size={44} />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+          {Array.from({ length: 49 }).map((_, cellIndex) => (
+            <View key={cellIndex} style={styles.calendarCell}>
+              <Skeleton width={cellIndex < 7 ? 24 : 30} height={cellIndex < 7 ? 10 : 30} borderRadius={cellIndex < 7 ? 4 : 15} />
+            </View>
+          ))}
         </View>
       </View>
+      <TextLines fontSize={16} lineHeight={22} width={200} />
+      {[0, 1].map((rowIndex) => (
+        <View key={rowIndex} style={[styles.calendarRow, surfaceCard]}>
+          <Skeleton width={64} height={30} borderRadius={10} />
+          <View style={{ flex: 1, gap: 4 }}>
+            <TextLines fontSize={15} lineHeight={20} width="75%" />
+            <TextLines fontSize={12} lineHeight={16} width="50%" />
+          </View>
+        </View>
+      ))}
     </View>
   );
 }
 
+/** Discussion or review cards while they load (avatar, name + time, two lines). */
+export function EventDiscussionSkeleton(): ReactNode {
+  const { colors } = useAppTheme();
+  return (
+    <View style={{ gap: 12 }}>
+      {[0, 1].map((commentIndex) => (
+        <View key={commentIndex} style={[styles.commentCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <SkeletonCircle size={36} />
+          <View style={{ flex: 1, gap: 3 }}>
+            <TextLines fontSize={14} lineHeight={18} width={110} />
+            <TextLines fontSize={11} lineHeight={14} width={90} />
+            <TextLines lines={2} fontSize={14} lineHeight={20} lastLineWidth="60%" />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Body of app/events/[id].tsx while the event loads: hero with its badges and title block, the action bar,
+ * the About / Discussions / Reviews tabs, the About text and the Event Information card.
+ */
+export function EventDetailSkeleton(): ReactNode {
+  const { colors } = useAppTheme();
+  const { width } = useWindowDimensions();
+  const contentWidth = Math.min(width, 760);
+  const surfaceCard = { backgroundColor: colors.surface, borderColor: colors.border };
+  return (
+    <ScrollView scrollEnabled={false} style={{ flex: 1 }} contentContainerStyle={styles.detailScroll}>
+      <View style={[styles.detailColumn, { width: contentWidth }]}>
+        <View style={styles.detailHero}>
+          <Skeleton width="100%" height="100%" borderRadius={0} />
+          <View style={styles.detailHeroOverlay}>
+            <TextLines lines={2} fontSize={24} lineHeight={30} width="80%" lastLineWidth="50%" />
+            <TextLines fontSize={13} lineHeight={18} width="70%" />
+            <TextLines fontSize={13} lineHeight={18} width="55%" />
+          </View>
+        </View>
+        <View style={[styles.actionBar, surfaceCard]}>
+          <Skeleton width={120} height={42} borderRadius={12} />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {[0, 1, 2, 3].map((buttonIndex) => <SkeletonCircle key={buttonIndex} size={40} />)}
+          </View>
+        </View>
+        <View style={[styles.tabs, surfaceCard]}>
+          {[56, 110, 90].map((tabWidth) => <Skeleton key={tabWidth} width={tabWidth} height={14} borderRadius={4} />)}
+        </View>
+        <View style={styles.section}>
+          <TextLines fontSize={19} lineHeight={25} width={170} />
+          <TextLines lines={4} fontSize={15} lineHeight={23} lastLineWidth="55%" />
+        </View>
+        <View style={[styles.infoCard, surfaceCard]}>
+          <TextLines fontSize={16} lineHeight={22} width={160} />
+          {[0, 1, 2].map((rowIndex) => (
+            <View key={rowIndex} style={styles.infoRow}>
+              <Skeleton width={20} height={20} borderRadius={5} />
+              <View style={{ flex: 1, gap: 3 }}>
+                <TextLines fontSize={14} lineHeight={19} width="40%" />
+                <TextLines fontSize={13} lineHeight={19} width="75%" />
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
 const styles = StyleSheet.create({
-  listContent: { padding: 18, paddingBottom: 48, gap: 14 },
+  listContent: { padding: 14, paddingBottom: 48, gap: 14 },
+  upcomingSection: { borderWidth: 1, borderRadius: 18, padding: 14, gap: 12 },
+  upcomingCard: { width: 260, borderWidth: 1, borderRadius: 18, overflow: 'hidden' },
+  calendarCard: { padding: 12, borderRadius: 18, borderWidth: 1 },
+  calendarCell: { width: `${100 / 7}%`, alignItems: 'center', justifyContent: 'center', minHeight: 44 },
+  calendarRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1 },
   cardList: { gap: 14 },
   card: { borderWidth: 1, borderRadius: 18, overflow: 'hidden' },
-  cardBody: { padding: 15, gap: 8 },
-  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  cardBody: { padding: 14, gap: 6 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  hero: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#34d399', borderRadius: 20, padding: 17 },
-  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 14, paddingHorizontal: 13, height: 46 },
-  viewToggle: { flexDirection: 'row', gap: 4, padding: 4, borderRadius: 14 },
-  viewOption: { flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
   detailScroll: { alignItems: 'center', paddingBottom: 28 },
   detailColumn: { gap: 16 },
-  detailHero: { width: '100%', aspectRatio: 16 / 9, maxHeight: 420 },
+  detailHero: { width: '100%', height: 300 },
+  detailHeroOverlay: { position: 'absolute', left: 16, right: 16, bottom: 16, gap: 4 },
+  actionBar: { marginHorizontal: 14, padding: 12, borderRadius: 16, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tabs: { marginHorizontal: 14, padding: 14, borderRadius: 16, borderWidth: 1, flexDirection: 'row', gap: 24 },
+  commentCard: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: 14, borderWidth: 1 },
   section: { paddingHorizontal: 18, gap: 10 },
-  tagRow: { flexDirection: 'row', gap: 8 },
-  infoCard: { marginHorizontal: 18, padding: 16, gap: 12, borderRadius: 18, borderWidth: 1 },
+  infoCard: { marginHorizontal: 14, padding: 16, gap: 14, borderRadius: 18, borderWidth: 1 },
   infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  inline: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
-  inlineTight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  actions: { flexDirection: 'row', gap: 10, paddingHorizontal: 18 },
-  iconButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1 },
-  organizer: { marginHorizontal: 18, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1 },
-  comment: { flexDirection: 'row', gap: 10, paddingVertical: 8 },
-  commentBody: { flex: 1, padding: 12, gap: 4, borderRadius: 14, borderWidth: 1 },
-  composerBar: { alignItems: 'center', paddingTop: 10, borderTopWidth: 1 },
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
-  composerInput: { flex: 1, height: 44, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 22, borderWidth: 1 },
 });

@@ -1,103 +1,116 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { Clock, Map, Medal, Trophy } from 'lucide-react-native';
-import PageHeader from '@/components/ui/PageHeader';
+import { Redirect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { ArrowLeft, Compass, Flame, MapPin, Play, Trophy } from 'lucide-react-native';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
-import { GEO_TIMER_SECONDS, GEO_TOTAL_ROUNDS, geoGuesserService, type GeoDifficulty, type GeoLeaderboardEntry } from '@/lib/services/GeoGuesserService';
+import { useProfileResource } from '@/lib/hooks/useProfileResource';
+import { GEO_DIFFICULTIES, type GeoDifficulty } from '@/lib/services/GeoGuesserService';
 
-const LEVELS: { mode: GeoDifficulty; title: string; detail: string; color: string }[] = [
-  { mode: 'easy', title: 'Easy', detail: 'Well-known landmarks, with a hint. Within 1 km for full points.', color: '#16a34a' },
-  { mode: 'medium', title: 'Medium', detail: 'Familiar places, no hints. Within 0.5 km for full points.', color: '#d97706' },
-  { mode: 'hard', title: 'Hard', detail: 'Hidden corners of T&T. Within 0.2 km for full points.', color: '#dc2626' },
-];
-const CONTENT_MAX_WIDTH = 760;
-const isDifficulty = (value: unknown): value is GeoDifficulty => value === 'easy' || value === 'medium' || value === 'hard';
+// The website's DIFFICULTY_CONFIG (app/triniGeoGuesser/page.tsx).
+const DIFFICULTY_CONFIG: Record<GeoDifficulty, { title: string; description: string; time: string; icon: string; badgeColor: string; details: string[] }> = {
+  easy: { title: 'Easy Mode', description: 'Relaxed timer with helpful hints for each famous local spot.', time: '5 mins', icon: '🌴', badgeColor: '#059669', details: ['10 Rounds', 'Hints enabled', 'Friendly scoring (< 5km)'] },
+  medium: { title: 'Medium Mode', description: 'Faster pace and no hints. Test your genuine island knowledge.', time: '3 mins', icon: '⚡', badgeColor: '#d97706', details: ['10 Rounds', 'No hints', 'Balanced scoring (< 2.5km)'] },
+  hard: { title: 'Hard Mode', description: 'Brisk countdown and razor-sharp distance tolerances.', time: '2 mins', icon: '🔥', badgeColor: '#e11d48', details: ['10 Rounds', 'Strict timer', 'Pinpoint scoring (< 1km)'] },
+};
 
-/** Trini GeoGuesser start page: choose a level, or read the leaderboard (website /triniGeoGuesser and /leaderboard). */
+const HOW_TO_PLAY = [
+  { title: '1. Drop Your Pin', text: 'Study the photo clue and tap anywhere on the Trinidad & Tobago map to drop your marker.', icon: MapPin, color: '#059669' },
+  { title: '2. Score Distance Points', text: 'The closer your guess to the target, the more points you earn. Stack 3 in a row for a streak bonus!', icon: Flame, color: '#d97706' },
+  { title: '3. Climb The Leaderboard', text: 'Compete across 10 rounds to lock in your personal best and top the national leaderboard.', icon: Trophy, color: '#0d9488' },
+] as const;
+
+/** Trini GeoGuesser hub (the website's /triniGeoGuesser): choose a difficulty and start, or open the leaderboard. */
 export default function GeoGuesserHomeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ tab?: string; mode?: string }>();
   const { colors } = useAppTheme();
   const { activeUserId } = useAppData();
+  const { resource } = useProfileResource({ kind: 'own', userId: activeUserId ?? '' });
   const { width } = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [tab, setTab] = useState<'play' | 'leaderboard'>(params.tab === 'leaderboard' ? 'leaderboard' : 'play');
-  const [boardMode, setBoardMode] = useState<GeoDifficulty>(isDifficulty(params.mode) ? params.mode : 'easy');
-  const [leaders, setLeaders] = useState<GeoLeaderboardEntry[]>([]);
-  const [isLoadingBoard, setIsLoadingBoard] = useState(false);
-  const [boardError, setBoardError] = useState<string | null>(null);
+  const [selectedMode, setSelectedMode] = useState<GeoDifficulty>('easy');
+  const isWide = width >= 640;
 
-  const loadBoard = useCallback(async () => {
-    setIsLoadingBoard(true);
-    setBoardError(null);
-    try {
-      setLeaders(await geoGuesserService.getLeaderboard(boardMode));
-    } catch (error: unknown) {
-      console.error('[GeoGuesserHomeScreen.loadBoard] Error:', error instanceof Error ? error.message : 'Unknown error');
-      setBoardError('The leaderboard could not be loaded. Pull down to try again.');
-    } finally {
-      setIsLoadingBoard(false);
-    }
-  }, [boardMode]);
+  // Older links opened the leaderboard as a tab of this screen.
+  if (params.tab === 'leaderboard') {
+    return <Redirect href={`/triniGeoGuesser/leaderboard${params.mode ? `?mode=${params.mode}` : ''}` as Href} />;
+  }
 
-  useEffect(() => { if (tab === 'leaderboard') void loadBoard(); }, [loadBoard, tab]);
+  const profile = activeUserId ? resource.data?.profile ?? null : null;
+  const fullName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ');
+  const playerName = fullName || profile?.firstName || profile?.userName || (activeUserId ? 'Explorer' : 'Guest Explorer');
 
   return (
-    <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
-      <PageHeader title="Trini GeoGuesser" onBackPress={() => router.back()} />
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        refreshControl={tab === 'leaderboard' ? <RefreshControl refreshing={isLoadingBoard} onRefresh={() => void loadBoard()} tintColor={colors.accent} /> : undefined}
-      >
-        <View style={[styles.column, { width: Math.min(width, CONTENT_MAX_WIDTH) }]}>
-          <View style={styles.hero}>
-            <Map size={30} color="#ffffff" />
-            <Text style={styles.heroTitle}>How well do you know T&T?</Text>
-            <Text style={styles.heroText}>Look at the photo, tap where it is on the map. {GEO_TOTAL_ROUNDS} rounds against the clock; closer guesses score more.</Text>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <View style={styles.topBar}>
+        <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} style={styles.topButton}>
+          <ArrowLeft size={16} color="#059669" />
+          <Text style={styles.topButtonText}>All Games</Text>
+        </TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/triniGeoGuesser/leaderboard' as Href)} style={styles.topButton}>
+          <Trophy size={16} color="#f59e0b" />
+          <Text style={[styles.topButtonText, styles.accentText]}>Leaderboard</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.column}>
+          <View style={styles.heroCard}>
+            <View style={styles.pill}>
+              <Compass size={13} color={colors.successText} />
+              <Text style={styles.pillText}>Interactive Geography Game</Text>
+            </View>
+            <Text style={styles.heroTitle}>Trini <Text style={styles.heroAccent}>GeoGuesser</Text> 🇹🇹</Text>
+            <Text style={styles.heroText}>Think you know Trinidad & Tobago? Inspect iconic clues, drop your pin on the map, and see how close your guess is to the actual landmark!</Text>
+
+            <View style={styles.playerChip}>
+              <UserAvatar profileImage={profile?.profilePicture ?? null} firstName={playerName} size={28} />
+              <View>
+                <Text style={styles.playerLabel}>Playing as</Text>
+                <Text style={styles.playerName} numberOfLines={1}>{playerName}</Text>
+              </View>
+              {!activeUserId ? <View style={styles.guestBadge}><Text style={styles.guestText}>Guest</Text></View> : null}
+            </View>
+
+            <Text style={styles.sectionLabel}>SELECT DIFFICULTY</Text>
+            <View style={[styles.levels, isWide && styles.levelsWide]}>
+              {GEO_DIFFICULTIES.map((mode) => {
+                const config = DIFFICULTY_CONFIG[mode];
+                const isSelected = selectedMode === mode;
+                return (
+                  <TouchableOpacity key={mode} accessibilityRole="radio" accessibilityState={{ selected: isSelected }} onPress={() => setSelectedMode(mode)} style={[styles.levelCard, isWide && styles.flex, isSelected && styles.levelCardSelected]}>
+                    <View style={styles.levelTop}>
+                      <Text style={styles.levelIcon}>{config.icon}</Text>
+                      <View style={[styles.timeBadge, { backgroundColor: config.badgeColor }]}><Text style={styles.timeBadgeText}>{config.time}</Text></View>
+                    </View>
+                    <Text style={styles.levelTitle}>{config.title}</Text>
+                    <Text style={styles.muted}>{config.description}</Text>
+                    {config.details.map((detail) => (
+                      <View key={detail} style={styles.detailRow}><View style={styles.detailDot} /><Text style={styles.detailText}>{detail}</Text></View>
+                    ))}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity accessibilityRole="button" onPress={() => router.push(`/triniGeoGuesser/game?mode=${selectedMode}` as Href)} style={styles.playButton}>
+              <Play size={18} color="#ffffff" fill="#ffffff" />
+              <Text style={styles.playButtonText}>Play {selectedMode.toUpperCase()} Mode</Text>
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.tabs} accessibilityRole="tablist">
-            {(['play', 'leaderboard'] as const).map((option) => (
-              <Pressable key={option} accessibilityRole="tab" accessibilityState={{ selected: tab === option }} onPress={() => setTab(option)} style={[styles.tab, tab === option && styles.tabActive]}>
-                <Text style={[styles.tabText, tab === option && styles.tabTextActive]}>{option === 'play' ? 'Play' : 'Leaderboard'}</Text>
-              </Pressable>
+          <View style={[styles.howTo, isWide && styles.levelsWide]}>
+            {HOW_TO_PLAY.map(({ title, text, icon: Icon, color }) => (
+              <View key={title} style={[styles.howToCard, isWide && styles.flex]}>
+                <View style={[styles.howToIcon, { backgroundColor: `${color}22` }]}><Icon size={20} color={color} /></View>
+                <Text style={styles.howToTitle}>{title}</Text>
+                <Text style={styles.muted}>{text}</Text>
+              </View>
             ))}
           </View>
-
-          {tab === 'play' ? LEVELS.map((level) => (
-            <Pressable key={level.mode} accessibilityRole="button" onPress={() => router.push(`/triniGeoGuesser/game?mode=${level.mode}` as Href)} style={styles.levelCard}>
-              <View style={[styles.levelBadge, { backgroundColor: level.color }]}><Text style={styles.levelBadgeText}>{level.title.charAt(0)}</Text></View>
-              <View style={styles.flex}>
-                <Text style={styles.levelTitle}>{level.title}</Text>
-                <Text style={styles.muted}>{level.detail}</Text>
-                <View style={styles.inline}><Clock size={13} color={colors.mutedText} /><Text style={styles.muted}>{GEO_TIMER_SECONDS[level.mode] / 60} minutes</Text></View>
-              </View>
-            </Pressable>
-          )) : (
-            <>
-              <View style={styles.modeRow}>
-                {LEVELS.map((level) => (
-                  <Pressable key={level.mode} accessibilityRole="button" accessibilityState={{ selected: boardMode === level.mode }} onPress={() => setBoardMode(level.mode)} style={[styles.modeChip, boardMode === level.mode && styles.modeChipActive]}>
-                    <Text style={[styles.modeChipText, boardMode === level.mode && styles.modeChipTextActive]}>{level.title}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              {boardError ? <Text style={styles.error}>{boardError}</Text> : null}
-              {!isLoadingBoard && !boardError && leaders.length === 0 ? <Text style={styles.empty}>No scores yet on this level. Be the first!</Text> : null}
-              {leaders.map((leader) => (
-                <View key={`${leader.rank}-${leader.userId ?? leader.username}`} style={[styles.leaderRow, leader.userId === activeUserId && styles.leaderRowMine]}>
-                  {leader.rank <= 3 ? <Medal size={22} color={['#f59e0b', '#94a3b8', '#b45309'][leader.rank - 1]} /> : <Text style={styles.rank}>{leader.rank}</Text>}
-                  <UserAvatar profileImage={leader.avatarUrl} firstName={leader.username} size={36} />
-                  <Text style={styles.leaderName} numberOfLines={1}>{leader.username}{leader.userId === activeUserId ? ' (you)' : ''}</Text>
-                  <View style={styles.inline}><Trophy size={14} color="#f59e0b" /><Text style={styles.leaderScore}>{leader.score}</Text></View>
-                </View>
-              ))}
-            </>
-          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -107,32 +120,41 @@ export default function GeoGuesserHomeScreen() {
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
   flex: { flex: 1 },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
+  topButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  topButtonText: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  accentText: { color: colors.accentText },
   scroll: { alignItems: 'center', paddingBottom: 40 },
-  column: { padding: 16, gap: 12 },
-  hero: { padding: 20, gap: 8, borderRadius: 20, backgroundColor: '#047857' },
-  heroTitle: { color: '#ffffff', fontSize: 22, fontWeight: '900' },
-  heroText: { color: 'rgba(255,255,255,0.88)', fontSize: 14, lineHeight: 20 },
-  tabs: { flexDirection: 'row', gap: 4, padding: 4, borderRadius: 14, backgroundColor: colors.control },
-  tab: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
-  tabActive: { backgroundColor: colors.surface },
-  tabText: { color: colors.mutedText, fontSize: 14, fontWeight: '800' },
-  tabTextActive: { color: colors.text },
-  levelCard: { padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  levelBadge: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-  levelBadgeText: { color: '#ffffff', fontSize: 20, fontWeight: '900' },
-  levelTitle: { color: colors.text, fontSize: 17, fontWeight: '900' },
+  column: { width: '100%', maxWidth: 900, padding: 16, gap: 16 },
+  heroCard: { padding: 20, gap: 12, borderRadius: 24, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center' },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.successSurface },
+  pillText: { color: colors.successText, fontSize: 11, fontWeight: '800' },
+  heroTitle: { color: colors.text, fontSize: 30, fontWeight: '900', textAlign: 'center' },
+  heroAccent: { color: '#10b981' },
+  heroText: { color: colors.secondaryText, fontSize: 14, lineHeight: 21, textAlign: 'center' },
+  playerChip: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control, maxWidth: '100%' },
+  playerLabel: { color: colors.mutedText, fontSize: 11 },
+  playerName: { color: colors.text, fontSize: 13, fontWeight: '800', maxWidth: 200 },
+  guestBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: colors.warningSurface },
+  guestText: { color: colors.warningText, fontSize: 10, fontWeight: '800' },
+  sectionLabel: { marginTop: 8, color: colors.mutedText, fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  levels: { alignSelf: 'stretch', gap: 12 },
+  levelsWide: { flexDirection: 'row' },
+  levelCard: { padding: 16, gap: 6, borderRadius: 18, borderWidth: 2, borderColor: colors.border, backgroundColor: colors.surface },
+  levelCardSelected: { borderColor: '#10b981', backgroundColor: colors.successSurface },
+  levelTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  levelIcon: { fontSize: 24 },
+  timeBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
+  timeBadgeText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
+  levelTitle: { color: colors.text, fontSize: 16, fontWeight: '900' },
   muted: { color: colors.mutedText, fontSize: 12, lineHeight: 18 },
-  inline: { marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  modeRow: { flexDirection: 'row', gap: 8 },
-  modeChip: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  modeChipActive: { borderColor: colors.accent, backgroundColor: colors.accent },
-  modeChipText: { color: colors.text, fontSize: 13, fontWeight: '800' },
-  modeChipTextActive: { color: colors.onAccent },
-  error: { color: colors.destructiveText, fontSize: 13 },
-  empty: { color: colors.mutedText, fontSize: 14, textAlign: 'center', paddingVertical: 24 },
-  leaderRow: { minHeight: 58, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  leaderRowMine: { borderColor: colors.accent },
-  rank: { width: 22, textAlign: 'center', color: colors.mutedText, fontSize: 14, fontWeight: '800' },
-  leaderName: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '700' },
-  leaderScore: { color: colors.text, fontSize: 15, fontWeight: '900' },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  detailDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10b981' },
+  detailText: { color: colors.secondaryText, fontSize: 12 },
+  playButton: { alignSelf: 'stretch', minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 6, borderRadius: 18, backgroundColor: '#059669' },
+  playButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '900' },
+  howTo: { gap: 12 },
+  howToCard: { padding: 16, gap: 6, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  howToIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  howToTitle: { color: colors.text, fontSize: 14, fontWeight: '900' },
 });

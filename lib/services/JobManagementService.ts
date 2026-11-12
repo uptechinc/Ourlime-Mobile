@@ -2,7 +2,7 @@ import { auth } from '@/lib/firebaseConfig';
 import { jobDataService } from '@/lib/services/JobDataService';
 import { localCacheService } from '@/lib/services/LocalCacheService';
 
-export type ManagedJobStatus = 'draft' | 'published' | 'active' | 'closed' | 'archived';
+export type ManagedJobStatus = 'draft' | 'pending_review' | 'published' | 'active' | 'paused' | 'closed' | 'archived' | 'rejected';
 export type ApplicationStatus = 'pending' | 'reviewing' | 'interviewing' | 'offer' | 'accepted' | 'rejected' | 'withdrawn' | 'job_withdrawn';
 export type InterviewType = 'video' | 'phone' | 'in-person';
 export type JobApplicationAnswer = string | string[];
@@ -62,6 +62,12 @@ export type ManagedJobCategoryDetails = {
   urgency: string;
   duration: string;
   complexity: string;
+  /** Kept in category_specific: the client rules only accept the core basic_info keys. */
+  employmentType: string;
+  experienceLevel: string;
+  currency: string;
+  paymentPeriod: string;
+  contactPreference: string;
 };
 
 export type ManagedJob = {
@@ -158,9 +164,14 @@ type ApiManagedJob = {
     location?: string | { type?: string; name?: string; address?: string; city?: string; country?: string };
     category?: string;
     priceRange?: { from?: number; to?: number };
+    employmentType?: string; experienceLevel?: string; currency?: string; paymentPeriod?: string; contactPreference?: string;
   };
   details?: { skills?: string[]; requirements?: string[]; qualifications?: string[] };
-  category_specific?: { name?: string; industry?: string; size?: string | number; urgency?: string; duration?: string; complexity?: string };
+  category_specific?: {
+    name?: string; industry?: string; size?: string | number; urgency?: string; duration?: string; expectedDuration?: string; complexity?: string;
+    companyDetails?: { name?: string; industry?: string; size?: string }; company?: { name?: string; industry?: string; size?: string };
+    employmentType?: string; experienceLevel?: string; currency?: string; paymentPeriod?: string; contactPreference?: string;
+  };
   questions?: { id?: string; question?: string; type?: string; answerType?: string; options?: string[] }[];
   applications?: ApiManagedApplication[];
 };
@@ -171,7 +182,7 @@ type ApplicationMutationContext = { jobId: string; previousStatus?: ApplicationS
 
 const CACHE_NAMESPACE = 'jobs-management';
 const CACHE_KEY = 'current-user-jobs';
-const CACHE_SCHEMA_VERSION = 2;
+const CACHE_SCHEMA_VERSION = 3;
 const CACHE_TTL_MS = 2 * 60 * 1000;
 
 export class JobManagementService {
@@ -205,12 +216,12 @@ export class JobManagementService {
     return jobs;
   }
 
-  public async changeJobState(jobId: string, action: 'close' | 'archive' | 'reopen'): Promise<void> {
+  public async changeJobState(jobId: string, action: 'close' | 'archive' | 'reopen' | 'publish'): Promise<void> {
     await jobDataService.setJobState(jobId, action);
     await this.logAudit({
       jobId,
       action: `job_${action}`,
-      details: `Job ${action === 'reopen' ? 'reopened' : `${action}d`}`,
+      details: `Job ${action === 'reopen' ? 'reopened' : action === 'publish' ? 'published' : `${action}d`}`,
     });
     await this.invalidateCache();
   }
@@ -349,8 +360,13 @@ export class JobManagementService {
       priceRange: { from: basicInfo?.priceRange?.from ?? 0, to: basicInfo?.priceRange?.to ?? 0 },
       skills: job.details?.skills ?? [], requirements: job.details?.requirements ?? [], qualifications: job.details?.qualifications ?? [],
       categoryDetails: {
-        name: categoryDetails?.name ?? '', industry: categoryDetails?.industry ?? '', size: String(categoryDetails?.size ?? ''),
-        urgency: categoryDetails?.urgency ?? '', duration: categoryDetails?.duration ?? '', complexity: categoryDetails?.complexity ?? '',
+        name: categoryDetails?.name || categoryDetails?.companyDetails?.name || categoryDetails?.company?.name || '',
+        industry: categoryDetails?.industry || categoryDetails?.companyDetails?.industry || categoryDetails?.company?.industry || '',
+        size: String(categoryDetails?.size || categoryDetails?.companyDetails?.size || categoryDetails?.company?.size || ''),
+        urgency: categoryDetails?.urgency ?? '', duration: categoryDetails?.duration || categoryDetails?.expectedDuration || '', complexity: categoryDetails?.complexity ?? '',
+        employmentType: categoryDetails?.employmentType || basicInfo?.employmentType || '', experienceLevel: categoryDetails?.experienceLevel || basicInfo?.experienceLevel || '',
+        currency: categoryDetails?.currency || basicInfo?.currency || '', paymentPeriod: categoryDetails?.paymentPeriod || basicInfo?.paymentPeriod || '',
+        contactPreference: categoryDetails?.contactPreference || basicInfo?.contactPreference || '',
       },
       questions: (job.questions ?? []).map((question) => ({
         id: question.id ?? '', question: question.question ?? '', answerType: this.readQuestionType(question.answerType ?? question.type), options: question.options ?? [],
@@ -393,7 +409,7 @@ export class JobManagementService {
   }
 
   private readJobStatus(value: unknown): ManagedJobStatus {
-    if (value === 'draft' || value === 'closed' || value === 'archived' || value === 'active') return value;
+    if (value === 'draft' || value === 'pending_review' || value === 'paused' || value === 'closed' || value === 'archived' || value === 'active' || value === 'rejected') return value;
     return 'published';
   }
 

@@ -118,7 +118,7 @@ export default function ManageJobsScreen() {
     });
   }, [filter, searchQuery, selectedJob, sort]);
 
-  const handleJobAction = async (jobId: string, action: 'close' | 'archive' | 'reopen' | 'delete') => {
+  const handleJobAction = async (jobId: string, action: 'close' | 'archive' | 'reopen' | 'publish' | 'delete') => {
     setWorkingId(jobId);
     setError('');
     try {
@@ -132,8 +132,19 @@ export default function ManageJobsScreen() {
     }
   };
 
+  // Web /profile/jobs/delete: a live listing is closed first so its applications are preserved; closed, draft and
+  // archived listings can then be deleted (applications become "Job withdrawn" and lose their resume files).
   const handleDeleteJob = (job: ManagedJob) => {
-    Alert.alert('Delete job?', `${job.title} and its associated data will be permanently deleted.`, [
+    const isLive = job.status === 'published' || job.status === 'pending_review' || job.status === 'active' || job.status === 'paused';
+    if (isLive) {
+      Alert.alert('Close this job first?', `${job.title} is live. It will be closed so it stops accepting applications and its applicant data is preserved. You can delete it once it is closed.`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Close job', style: 'destructive', onPress: () => void handleJobAction(job.id, 'close') },
+      ]);
+      return;
+    }
+    const applicationNote = job.applications.length > 0 ? ` ${job.applications.length} application(s) will be marked as job withdrawn and their resume files removed.` : '';
+    Alert.alert('Delete job permanently?', `${job.title} will be permanently deleted. This cannot be undone.${applicationNote}`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => void handleJobAction(job.id, 'delete') },
     ]);
@@ -206,8 +217,8 @@ export default function ManageJobsScreen() {
       {jobs.map((job) => <TouchableOpacity key={job.id} onPress={() => setSelectedJobId(job.id)} style={[styles.jobChip, selectedJobId === job.id && styles.jobChipActive]}><Text numberOfLines={1} style={[styles.jobChipText, selectedJobId === job.id && styles.jobChipTextActive]}>{job.title}</Text><Text style={[styles.jobChipCount, selectedJobId === job.id && styles.jobChipTextActive]}>{job.applications.length}</Text></TouchableOpacity>)}
     </ScrollView>
     {selectedJob ? <View style={styles.jobCard}>
-      <View style={styles.jobTitleRow}><View style={styles.flex}><Text style={styles.jobTitle}>{selectedJob.title}</Text><View style={styles.locationRow}><MapPin size={13} color={colors.mutedText} /><Text numberOfLines={1} ellipsizeMode="tail" style={[styles.meta, styles.flex]}>{linkPresentationService.compactUrlsInText(selectedJob.location)} · {selectedJob.type === 'quickTask' ? 'Quick Task' : 'Professional'} · {selectedJob.status}</Text></View></View><TouchableOpacity onPress={() => setAuditJob(selectedJob)} style={styles.iconButton}><History size={19} color={colors.successText} /></TouchableOpacity></View>
-      <View style={styles.actions}><TouchableOpacity onPress={() => setEditJob(selectedJob)} style={styles.editAction}><Edit3 size={15} color={colors.icon} /><Text style={styles.editActionText}>Edit</Text></TouchableOpacity>{selectedJob.status === 'closed' || selectedJob.status === 'archived' ? <Action label="Reopen" icon="reopen" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'reopen')} /> : <Action label="Close" icon="close" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'close')} />}<Action label="Archive" icon="archive" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'archive')} /><Action label="Delete" icon="delete" danger disabled={workingId === selectedJob.id} onPress={() => handleDeleteJob(selectedJob)} /></View>
+      <View style={styles.jobTitleRow}><View style={styles.flex}><Text style={styles.jobTitle}>{selectedJob.title}</Text><View style={styles.locationRow}><MapPin size={13} color={colors.mutedText} /><Text numberOfLines={1} ellipsizeMode="tail" style={[styles.meta, styles.flex]}>{linkPresentationService.compactUrlsInText(selectedJob.location)} · {selectedJob.type === 'quickTask' ? 'Quick Task' : 'Professional'} · {selectedJob.status.replace(/_/g, ' ')}</Text></View></View><TouchableOpacity onPress={() => setAuditJob(selectedJob)} style={styles.iconButton}><History size={19} color={colors.successText} /></TouchableOpacity></View>
+      <View style={styles.actions}><TouchableOpacity onPress={() => setEditJob(selectedJob)} style={styles.editAction}><Edit3 size={15} color={colors.icon} /><Text style={styles.editActionText}>Edit</Text></TouchableOpacity>{selectedJob.status === 'draft' ? <Action label="Publish" icon="reopen" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'publish')} /> : selectedJob.status === 'closed' || selectedJob.status === 'archived' || selectedJob.status === 'active' ? <Action label="Reopen" icon="reopen" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'reopen')} /> : null}{selectedJob.status !== 'closed' && selectedJob.status !== 'archived' && selectedJob.status !== 'draft' ? <Action label="Close" icon="close" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'close')} /> : null}{selectedJob.status !== 'archived' ? <Action label="Archive" icon="archive" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'archive')} /> : null}<Action label="Delete" icon="delete" danger disabled={workingId === selectedJob.id} onPress={() => handleDeleteJob(selectedJob)} /></View>
     </View> : null}
     <View style={styles.searchBox}><Search size={18} color={colors.mutedText} /><TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Search applicants, cover letters, answers…" placeholderTextColor={colors.mutedText} style={styles.searchInput} /></View>
     <View style={styles.filterBar}><FilterBar groups={filterGroups} onOpen={() => setFiltersOpen(true)} onClear={handleClearFilter} /></View>

@@ -118,6 +118,9 @@ const decodeCursor = (cursor: string | null): number => {
 };
 const personName = (user: DocumentData | undefined, fallback: string): string =>
   `${readString(user?.firstName)} ${readString(user?.lastName)}`.trim() || readString(user?.userName) || fallback;
+/** Content a moderator hid, under any of the flags the web and app have written. */
+const isModerationHidden = (data: DocumentData): boolean =>
+  data.hidden === true || data.isHidden === true || data.moderationVisibility === 'hidden';
 
 /**
  * Communities for the app, reading and writing Firestore directly. Each method ports the logic of
@@ -384,7 +387,7 @@ export class CommunityDataService {
   }
 
   /** Web fetch?type=community: the card (redacted when the viewer has no access) plus rules. */
-  public async getCommunityDetail(identifier: string): Promise<{ card: CommunityCardModel; rules: string[]; isBanned: boolean } | null> {
+  public async getCommunityDetail(identifier: string): Promise<{ card: CommunityCardModel; rules: string[]; isBanned: boolean; isSiteAdmin: boolean } | null> {
     const singleQuery = (communityId: string) => this.getDirectoryPage({ scope: 'all', visibility: 'all', categoryId: null, search: '', sort: 'popular', cursor: null, limit: 1, identifier: communityId });
     const [access, firstPage] = await Promise.all([this.resolveAccess(identifier), singleQuery(identifier)]);
     if (!access) return null;
@@ -394,7 +397,7 @@ export class CommunityDataService {
     const rules = access.hasAccess && Array.isArray(access.communityData.rules)
       ? access.communityData.rules.filter((rule: unknown): rule is string => typeof rule === 'string')
       : [];
-    return { card, rules, isBanned: access.isBanned };
+    return { card, rules, isBanned: access.isBanned, isSiteAdmin: access.isSiteAdmin };
   }
 
   private resolveRole(membership: DocumentData | undefined, isOwner: boolean): CommunityMemberRole {
@@ -580,11 +583,14 @@ export class CommunityDataService {
     await updateDoc(doc(db, 'communityVariant', access.communityId), updateData);
   }
 
-  /** Web POST /api/communities/delete + CommunityDeletionService cascade (owner only). */
+  /**
+   * Web POST /api/communities/delete + CommunityDeletionService cascade. The web also lets community admins delete,
+   * but the Firestore rules only allow the owner or a site administrator to delete the community document.
+   */
   public async deleteCommunity(communityId: string): Promise<number> {
     this.invalidateDirectory();
     const access = await this.requireAccess(communityId);
-    if (!access.viewerId || !access.isOwner) throw new Error('Community owner access required.');
+    if (!access.viewerId || (!access.isOwner && !access.isSiteAdmin)) throw new Error('Only the community owner or an Ourlime administrator can delete this community.');
     const id = access.communityId;
     const references = new Map<string, DocumentReference>();
     const add = (documents: QueryDocumentSnapshot[]) => documents.forEach((document) => references.set(document.ref.path, document.ref));
@@ -916,7 +922,8 @@ export class CommunityDataService {
       const target = await getDoc(targetRef);
       const targetCommunityId = target.data()?.communityId ?? target.data()?.communityVariantId;
       if (!target.exists() || targetCommunityId !== access.communityId) throw new Error('Reported content does not belong to this community.');
-      batch.set(targetRef, { hidden: true, hiddenBy: access.viewerId, hiddenAt: serverTimestamp() }, { merge: true });
+      // Web writes isHidden + moderationVisibility; older app readers check hidden. All are set so every reader hides it.
+      batch.set(targetRef, { hidden: true, isHidden: true, moderationVisibility: 'hidden', hiddenBy: access.viewerId, hiddenAt: serverTimestamp() }, { merge: true });
     }
     await batch.commit();
   }
@@ -938,11 +945,15 @@ export class CommunityDataService {
     const polls = await getDocs(query(collection(db, 'polls'), where('communityId', '==', access.communityId)));
     const viewerRole = access.viewerId ? await this.viewerRoleIn(access.communityId, access.viewerId) : 'none';
     const now = Date.now();
-    const items = polls.docs.filter((document) => document.data().hidden !== true).map((document): CommunityPoll => {
+    const items = polls.docs.filter((document) => !isModerationHidden(document.data())).map((document): CommunityPoll => {
       const data = document.data();
       const responses = data.responses && typeof data.responses === 'object' ? data.responses as { [userId: string]: unknown } : {};
+      const responseUserNames = data.responseUserNames && typeof data.responseUserNames === 'object' ? data.responseUserNames as { [userId: string]: unknown } : {};
+      const toIndexes = (selection: unknown): number[] => (Array.isArray(selection) ? selection.map(Number) : selection === undefined || selection === null ? [] : [Number(selection)]).filter((index) => Number.isInteger(index) && index >= 0);
       const selected = access.viewerId ? responses[access.viewerId] : undefined;
-      const selectedIndexes = Array.isArray(selected) ? selected.map(Number) : selected === undefined ? [] : [Number(selected)];
+      const selectedIndexes = toIndexes(selected);
+      // Web PollResponses: only the poll's creator sees who chose what.
+      const isCreator = Boolean(access.viewerId && data.createdBy === access.viewerId);
       const options: DocumentData[] = Array.isArray(data.options) ? data.options : [];
       const expiresAtMs = readTimestampMs(data.endTime) || readTimestampMs(data.expiresAt);
       const votes = (option: DocumentData) => Math.max(0, Math.trunc(readNonNegativeNumber(option.votes) ?? 0));
@@ -957,6 +968,9 @@ export class CommunityDataService {
         isExpired: expiresAtMs > 0 && expiresAtMs <= now,
         totalVotes: options.reduce((total, option) => total + votes(option), 0),
         allowMultiple: data.allowMultiple === true,
+        responses: isCreator
+          ? Object.entries(responses).map(([userId, selection]) => ({ userId, userName: readString(responseUserNames[userId]), optionIndexes: toIndexes(selection) })).filter((response) => response.optionIndexes.length > 0)
+          : [],
         permissions: {
           canVote: Boolean(access.viewerId && (!expiresAtMs || expiresAtMs > now)),
           canDelete: Boolean(access.viewerId && (data.createdBy === access.viewerId || viewerRole === 'owner' || viewerRole === 'admin' || viewerRole === 'moderator')),
@@ -989,6 +1003,8 @@ export class CommunityDataService {
     const access = await this.requireAccess(communityId);
     if (!access.hasAccess) throw new Error('Community access required.');
     const pollRef = doc(db, 'polls', pollId);
+    const viewer = await sharedDocumentReader.read(doc(db, 'users', viewerId)).catch(() => null);
+    const viewerUserName = readString(viewer?.data()?.userName);
     await runTransaction(db, async (transaction) => {
       const poll = await transaction.get(pollRef);
       if (!poll.exists() || poll.data().communityId !== access.communityId) throw new Error('Poll option not found.');
@@ -1010,7 +1026,10 @@ export class CommunityDataService {
         options[optionIndex].votes += 1;
         responses[viewerId] = String(optionIndex);
       }
-      transaction.update(pollRef, { options, responses, updatedAt: serverTimestamp() });
+      // Web PollList records the voter's username so the creator's "View responses" can name them.
+      const responseUserNames = data.responseUserNames && typeof data.responseUserNames === 'object' ? { ...(data.responseUserNames as { [userId: string]: string }) } : {};
+      if (viewerUserName) responseUserNames[viewerId] = viewerUserName;
+      transaction.update(pollRef, { options, responses, responseUserNames, updatedAt: serverTimestamp() });
     });
   }
 
@@ -1051,7 +1070,7 @@ export class CommunityDataService {
       if (access.viewerId && attendee.data().userId === access.viewerId) viewerEventIds.add(eventId);
     });
     const epoch = new Date(0).toISOString();
-    return snapshot.docs.filter((document) => document.data().hidden !== true && !document.data().accountLifecycleHiddenAt).map((document): CommunityEventRecord => {
+    return snapshot.docs.filter((document) => !isModerationHidden(document.data()) && !document.data().accountLifecycleHiddenAt).map((document): CommunityEventRecord => {
       const event = document.data();
       const userId = readString(event.userId) || readString(event.creatorId);
       const canManage = Boolean(access.viewerId && (userId === access.viewerId || access.canModerate));

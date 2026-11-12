@@ -18,6 +18,7 @@ import {
 	Flag,
 	RefreshCw,
 	Search,
+	Settings2,
 	Shield,
 	Users,
 	X,
@@ -70,6 +71,8 @@ type CommunityDashboardSheetProps = {
 		report: CommunityReportItem,
 		action: CommunityReportAction
 	) => Promise<void>;
+	/** Web "Community Settings": closes the dashboard and opens the edit form (shown to editors only). */
+	onOpenSettings?: () => void;
 };
 
 const TABS: { value: DashboardTab; label: string }[] = [
@@ -96,6 +99,7 @@ export default function CommunityDashboardSheet({
 	onReviewRequest,
 	onManageMember,
 	onModerateReport,
+	onOpenSettings,
 }: CommunityDashboardSheetProps) {
 	const router = useRouter();
 	const { colors } = useAppTheme();
@@ -275,6 +279,7 @@ export default function CommunityDashboardSheet({
 			{ label: 'Open reports', value: data?.openReportCount ?? 0, icon: Flag },
 		];
 		return (
+			<View>
 			<View
 				style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 }}
 			>
@@ -306,6 +311,32 @@ export default function CommunityDashboardSheet({
 						</View>
 					</View>
 				))}
+			</View>
+			{onOpenSettings && community.permissions.canEdit ? (
+				<TouchableOpacity
+					onPress={() => {
+						onClose();
+						onOpenSettings();
+					}}
+					accessibilityRole="button"
+					style={{
+						flexDirection: 'row',
+						alignItems: 'center',
+						justifyContent: 'center',
+						minHeight: 46,
+						marginTop: 10,
+						borderRadius: 14,
+						backgroundColor: colors.control,
+						borderWidth: 1,
+						borderColor: colors.border,
+					}}
+				>
+					<Settings2 size={17} color={colors.text} />
+					<Text style={{ marginLeft: 7, color: colors.text, fontWeight: '900' }}>
+						Community settings
+					</Text>
+				</TouchableOpacity>
+			) : null}
 			</View>
 		);
 	};

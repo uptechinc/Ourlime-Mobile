@@ -117,3 +117,39 @@ export function ChildSafetyConversationSkeleton(): ReactNode {
     </View>
   );
 }
+
+/**
+ * Support ticket conversation while it first loads: the "Original request" card, then message bubbles from the
+ * requester (surface, left) and Ourlime Support (accent, right), at the screen's padding 12 / radius 17 / max width 84%.
+ */
+export function SupportConversationSkeleton(): ReactNode {
+  const { colors } = useAppTheme();
+  const supportBar = { backgroundColor: 'rgba(255,255,255,0.45)' };
+  const bubbles: { support: boolean; lines: number }[] = [
+    { support: true, lines: 2 },
+    { support: false, lines: 1 },
+    { support: true, lines: 1 },
+  ];
+  return (
+    <View style={{ padding: 12 }}>
+      <View style={{ maxWidth: '84%', width: '84%', marginBottom: 8, padding: 12, borderRadius: 17, backgroundColor: colors.surface }}>
+        <SkeletonLine fontSize={11} width={112} />
+        <View style={{ marginTop: 4 }}>
+          <SkeletonLine fontSize={14} lineHeight={20} width="100%" />
+          <SkeletonLine fontSize={14} lineHeight={20} width="86%" />
+          <SkeletonLine fontSize={14} lineHeight={20} width="48%" />
+        </View>
+      </View>
+      {bubbles.map((bubble, bubbleIndex) => (
+        <View key={bubbleIndex} style={{ maxWidth: '84%', width: bubble.lines > 1 ? '74%' : '56%', alignSelf: bubble.support ? 'flex-end' : 'flex-start', marginVertical: 4, padding: 12, borderRadius: 17, borderBottomRightRadius: bubble.support ? 4 : 17, borderBottomLeftRadius: bubble.support ? 17 : 4, backgroundColor: bubble.support ? colors.accent : colors.surface }}>
+          <SkeletonLine fontSize={11} width={bubble.support ? 140 : 84} barStyle={bubble.support ? supportBar : undefined} />
+          <View style={{ marginTop: 4 }}>
+            {Array.from({ length: bubble.lines }).map((_, lineIndex) => (
+              <SkeletonLine key={lineIndex} fontSize={14} lineHeight={20} width={lineIndex === bubble.lines - 1 ? '70%' : '100%'} barStyle={bubble.support ? supportBar : undefined} />
+            ))}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}

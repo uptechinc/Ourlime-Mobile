@@ -32,6 +32,7 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import CourseReviews from '@/components/eLearning/CourseReviews';
 import StudentCourseDashboard from '@/components/eLearning/course/StudentCourseDashboard';
 import ModuleResources from '@/components/eLearning/course/ModuleResources';
+import CourseWorkPreview from '@/components/eLearning/course/CourseWorkPreview';
 import LessonTypeIcon from '@/components/eLearning/course/LessonTypeIcon';
 import { formatDate, lessonHref, pluralize } from '@/components/eLearning/course/workspaceHelpers';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
@@ -42,10 +43,10 @@ import { courseService, isActiveEnrollment } from '@/lib/services/CourseService'
 import { useCourseWorkspace } from '@/lib/hooks/useCourseWorkspace';
 import { OURLIME_SITE_URL } from '@/lib/constants/site';
 
-type CourseTab = 'home' | 'overview' | 'syllabus' | 'instructor';
+type CourseTab = 'home' | 'overview' | 'syllabus' | 'work' | 'reviews' | 'instructor';
 type DialogState = { visible: boolean; type: 'error' | 'warning' | 'info' | 'success'; title: string; message: string };
 
-const TAB_LABELS: Record<CourseTab, string> = { home: 'Home', overview: 'Overview', syllabus: 'Syllabus', instructor: 'Instructor' };
+const TAB_LABELS: Record<CourseTab, string> = { home: 'Home', overview: 'Overview', syllabus: 'Syllabus', work: 'Quizzes & Assignments', reviews: 'Reviews', instructor: 'Instructor' };
 
 /** The callable's error as a sentence the learner can act on (never just a console line). */
 const enrollErrorMessage = (error: unknown): string => {
@@ -76,7 +77,9 @@ export default function CourseDetailScreen() {
   const [enrolling, setEnrolling] = useState(false);
   const [dialogState, setDialogState] = useState<DialogState>({ visible: false, type: 'info', title: '', message: '' });
 
-  const tabs: CourseTab[] = isEnrolled ? ['home', 'overview', 'syllabus', 'instructor'] : ['overview', 'syllabus', 'instructor'];
+  // Visitors get the website's About / Curriculum / Quizzes & Assignments / Reviews tabs; enrolled learners reach their
+  // quizzes, assignments and the review form from the course home.
+  const tabs: CourseTab[] = isEnrolled ? ['home', 'overview', 'syllabus', 'instructor'] : ['overview', 'syllabus', 'work', 'reviews', 'instructor'];
   const lessonCount = curriculum.reduce((total, courseModule) => total + (courseModule.lessons?.length ?? 0), 0);
   const nextItem = courseService.nextLesson(curriculum, enrollment);
   const firstLesson = courseService.flattenLessons(curriculum)[0];
@@ -222,7 +225,7 @@ export default function CourseDetailScreen() {
               </View>
             ) : null}
 
-            <View style={[styles.tabBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabBar, { backgroundColor: colors.surface, borderColor: colors.border }]} contentContainerStyle={styles.tabBarContent}>
               {tabs.map((tab) => (
                 <TouchableOpacity
                   key={tab}
@@ -234,7 +237,7 @@ export default function CourseDetailScreen() {
                   <Text style={[styles.tabItemText, { color: activeTab === tab ? '#ffffff' : colors.text }]}>{TAB_LABELS[tab]}</Text>
                 </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
 
             {activeTab === 'home' && isEnrolled && enrollment && workspace ? (
               <StudentCourseDashboard
@@ -309,8 +312,23 @@ export default function CourseDetailScreen() {
                   ))}
                 </View>
 
-                {/* Enrolled learners rate the course from their course home. */}
-                {!isEnrolled ? <CourseReviews courseId={id} currentUserId={activeUserId} canReview={false} /> : null}
+              </View>
+            ) : null}
+
+            {activeTab === 'work' && !isEnrolled ? (
+              <View style={styles.tabContent}>
+                <CourseWorkPreview modules={curriculum} onOpenLesson={handleOpenLesson} />
+              </View>
+            ) : null}
+
+            {activeTab === 'reviews' && !isEnrolled ? (
+              <View style={styles.tabContent}>
+                {/* Enrolled learners rate the course from their course home; visitors read the reviews. */}
+                <View style={[styles.notice, { backgroundColor: colors.control }]}>
+                  <Info size={16} color={colors.mutedText} />
+                  <Text style={[styles.noticeText, { color: colors.mutedText }]}>Only enrolled students can rate or review this course.</Text>
+                </View>
+                <CourseReviews courseId={id} currentUserId={activeUserId} canReview={false} />
               </View>
             ) : null}
 
@@ -453,8 +471,9 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 13, fontWeight: '600' },
   notice: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, borderRadius: 12 },
   noticeText: { flex: 1, fontSize: 13, lineHeight: 19, fontWeight: '600' },
-  tabBar: { flexDirection: 'row', borderRadius: 14, borderWidth: 1, padding: 4, marginVertical: 6 },
-  tabItem: { flex: 1, paddingVertical: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
+  tabBar: { flexGrow: 0, borderRadius: 14, borderWidth: 1, marginVertical: 6 },
+  tabBarContent: { flexGrow: 1, padding: 4, gap: 4 },
+  tabItem: { flexGrow: 1, paddingVertical: 8, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
   tabItemText: { fontSize: 13, fontWeight: '800' },
   tabContent: { gap: 14, marginTop: 6 },
   sectionHeading: { fontSize: 18, fontWeight: '800' },

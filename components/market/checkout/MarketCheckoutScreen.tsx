@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
-import { CheckCircle2, Lock, MapPin, ShieldCheck, Truck } from 'lucide-react-native';
+import { CheckCircle2, FileText, Lock, MapPin, ShieldCheck, Truck } from 'lucide-react-native';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAccountCart } from '@/lib/hooks/useAccountCart';
-import { marketplaceService, type CheckoutLineReview } from '@/lib/services/MarketplaceService';
+import { marketplaceService, type CheckoutLineReview, type MarketCheckoutTotals } from '@/lib/services/MarketplaceService';
 import { marketOrderService, type MarketDeliveryMethod, type MarketPlacedOrder } from '@/lib/services/MarketOrderService';
 import type { CartLine, MarketShippingAddress } from '@/lib/types/reliability';
 import { formatMarketPrice } from '@/lib/utils/formatMarketPrice';
@@ -36,7 +36,8 @@ export default function MarketCheckoutScreen() {
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [completed, setCompleted] = useState<{ order: MarketPlacedOrder; lines: CartLine[]; total: number } | null>(null);
+  // Web success screen is a printable receipt: buyer, date, delivery method, address, items and the totals breakdown.
+  const [completed, setCompleted] = useState<CompletedReceipt | null>(null);
   const addressEdited = useRef(false);
   const linesRef = useRef(visibleLines);
   linesRef.current = visibleLines;
@@ -100,7 +101,7 @@ export default function MarketCheckoutScreen() {
       setReviews(checked);
       if (checked.some((item) => item.reason || item.priceChanged)) throw new Error('Some items changed. Review them above before placing your order.');
       const order = await marketOrderService.placeOrder({ lines, deliveryMethod, shippingAddress: address, acknowledged: accepted });
-      setCompleted({ order, lines, total: totals.total });
+      setCompleted({ order, lines, totals, currency, deliveryMethod, address: deliveryMethod === 'shipping' ? address : null, placedAtMs: Date.now() });
       for (const line of linesRef.current) await cart.remove(line).catch(() => undefined);
     } catch (failure: unknown) {
       setCheckoutError(failure instanceof Error ? failure.message : 'Checkout failed');
@@ -121,9 +122,30 @@ export default function MarketCheckoutScreen() {
   if (completed) {
     return <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>{header}
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.centerCard}><CheckCircle2 size={40} color={colors.accentText} /><Text style={styles.sectionTitle}>Order sent</Text>{completed.order.orderNumber ? <Text style={styles.muted}>Order Reference: {completed.order.orderNumber}</Text> : null}</View>
-        {completed.lines.map((line) => <Text key={line.id} style={styles.body}>{line.title} · Qty {line.quantity} · {formatMarketPrice(line.currency, line.price * line.quantity)}</Text>)}
-        <Text style={styles.sectionTitle}>Total {formatMarketPrice(currency, completed.total)}</Text>
+        <View style={styles.centerCard}><CheckCircle2 size={40} color={colors.accentText} /><Text style={styles.sectionTitle}>Order sent</Text>{completed.order.orderNumber ? <Text style={styles.muted}>Order Reference: <Text style={styles.cardSubtitle}>{completed.order.orderNumber}</Text></Text> : null}</View>
+        <View style={styles.card}>
+          {completed.address?.fullName ? <TotalRow label="Buyer" value={completed.address.fullName} colors={colors} /> : null}
+          <TotalRow label="Date" value={new Date(completed.placedAtMs).toLocaleDateString()} colors={colors} />
+          <TotalRow label="Delivery Method" value={completed.deliveryMethod === 'shipping' ? 'Shipping' : 'Pickup'} colors={colors} />
+          {completed.address ? <TotalRow label="Address" value={`${completed.address.addressLine1}, ${completed.address.city}`} colors={colors} /> : null}
+        </View>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Purchased Items</Text>
+          {completed.lines.map((line) => <View key={line.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {line.image ? <Image source={{ uri: line.image }} style={styles.thumb} /> : <View style={[styles.thumb, { backgroundColor: colors.control }]} />}
+            <View style={{ flex: 1 }}><Text numberOfLines={2} style={styles.cardSubtitle}>{line.title}</Text><Text style={styles.muted}>Qty: {line.quantity} • {formatMarketPrice(line.currency, line.price)} each</Text></View>
+            <Text style={styles.cardSubtitle}>{formatMarketPrice(line.currency, line.price * line.quantity)}</Text>
+          </View>)}
+        </View>
+        <View style={styles.card}>
+          <TotalRow label="Subtotal" value={formatMarketPrice(completed.currency, completed.totals.subtotal)} colors={colors} />
+          <TotalRow label="Shipping" value={formatMarketPrice(completed.currency, completed.totals.shipping)} colors={colors} />
+          <TotalRow label="Tax" value={formatMarketPrice(completed.currency, completed.totals.tax)} colors={colors} />
+          <TotalRow label="Total Paid" value={formatMarketPrice(completed.currency, completed.totals.total)} colors={colors} strong />
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Share receipt" onPress={() => void Share.share({ message: receiptText(completed) }).catch(() => undefined)} style={[styles.card, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }]}>
+          <FileText size={18} color={colors.text} /><Text style={styles.cardSubtitle}>Share Receipt</Text>
+        </Pressable>
         <MarketButton label="View Order History" onPress={() => router.replace('/market/orders' as Href)} />
       </ScrollView>
     </SafeAreaView>;
@@ -217,10 +239,29 @@ function ChoiceCard({ selected, onSelect, title, description, icon, colors }: Ch
 }
 
 type TotalRowProps = { label: string; value: string; colors: AppThemeColors; strong?: boolean };
+type CompletedReceipt = { order: MarketPlacedOrder; lines: CartLine[]; totals: MarketCheckoutTotals; currency: string; deliveryMethod: MarketDeliveryMethod; address: MarketShippingAddress | null; placedAtMs: number };
+
+/** Plain-text receipt for the share sheet (the phone counterpart of the web's Print Receipt). */
+function receiptText(receipt: CompletedReceipt): string {
+  return [
+    `Ourlime order ${receipt.order.orderNumber || receipt.order.orderId}`,
+    `Date: ${new Date(receipt.placedAtMs).toLocaleDateString()}`,
+    `Delivery: ${receipt.deliveryMethod === 'shipping' ? 'Shipping' : 'Pickup'}`,
+    ...(receipt.address ? [`Address: ${receipt.address.addressLine1}, ${receipt.address.city}`] : []),
+    '',
+    ...receipt.lines.map((line) => `${line.title} × ${line.quantity}: ${formatMarketPrice(line.currency, line.price * line.quantity)}`),
+    '',
+    `Subtotal: ${formatMarketPrice(receipt.currency, receipt.totals.subtotal)}`,
+    `Shipping: ${formatMarketPrice(receipt.currency, receipt.totals.shipping)}`,
+    `Tax: ${formatMarketPrice(receipt.currency, receipt.totals.tax)}`,
+    `Total paid: ${formatMarketPrice(receipt.currency, receipt.totals.total)}`,
+  ].join('\n');
+}
+
 function TotalRow({ label, value, colors, strong }: TotalRowProps) {
   return <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
     <Text style={{ color: strong ? colors.text : colors.mutedText, fontWeight: strong ? '900' : '600' }}>{label}</Text>
-    <Text style={{ color: colors.text, fontWeight: strong ? '900' : '700' }}>{value}</Text>
+    <Text style={{ flexShrink: 1, textAlign: 'right', color: colors.text, fontWeight: strong ? '900' : '700' }}>{value}</Text>
   </View>;
 }
 

@@ -16,6 +16,7 @@ import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackSe
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import CustomModal from '@/components/ui/CustomModal';
 import { SecurityWorkspaceSkeleton } from '@/components/admin/AdminSkeletons';
+import { Skeleton } from '@/components/ui/Skeleton';
 import {
   evaluateSecurityAccess,
   type SecurityEvaluationResult,
@@ -25,6 +26,7 @@ import type {
   RegionPolicyMode,
   IpRule,
   UserWhitelistEntry,
+  SecurityMonitoring,
 } from '@/lib/types/adminSecurity';
 
 const REGIONS = [
@@ -41,7 +43,9 @@ const REGIONS = [
 export default function AdminSecurityWorkspace() {
   const { colors, isDark } = useAppTheme();
   const [settings, setSettings] = useState<SecurityAccessSettings | null>(null);
-  const [activeTab, setActiveTab] = useState<'region' | 'ip' | 'whitelist' | 'ratelimit' | 'simulate'>('region');
+  const [activeTab, setActiveTab] = useState<'region' | 'ip' | 'whitelist' | 'ratelimit' | 'simulate' | 'monitoring'>('region');
+  const [monitoring, setMonitoring] = useState<SecurityMonitoring | null>(null);
+  const [monitoringLoading, setMonitoringLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -76,6 +80,18 @@ export default function AdminSecurityWorkspace() {
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  const loadMonitoring = useCallback(async () => {
+    setMonitoringLoading(true);
+    try {
+      setMonitoring(await adminSecurityService.getMonitoring());
+    } catch (monitoringError: unknown) {
+      console.error('[AdminSecurityWorkspace.loadMonitoring] Error:', monitoringError instanceof Error ? monitoringError.message : monitoringError);
+      setMessage(monitoringError instanceof Error ? monitoringError.message : 'Could not load security monitoring');
+    } finally {
+      setMonitoringLoading(false);
+    }
+  }, []);
 
   const handleSave = async (updated: Partial<SecurityAccessSettings>) => {
     try {
@@ -182,11 +198,15 @@ export default function AdminSecurityWorkspace() {
             { id: 'whitelist' as const, label: '⭐ Whitelist Bypass' },
             { id: 'ratelimit' as const, label: '⚡ Rate Limits' },
             { id: 'simulate' as const, label: '🧪 Test Rule' },
+            { id: 'monitoring' as const, label: '🛡️ Monitoring' },
           ]
         ).map((tab) => (
           <TouchableOpacity
             key={tab.id}
-            onPress={() => setActiveTab(tab.id)}
+            onPress={() => {
+              setActiveTab(tab.id);
+              if (tab.id === 'monitoring') void loadMonitoring();
+            }}
             style={{
               marginRight: 8,
               borderRadius: 14,
@@ -867,6 +887,31 @@ export default function AdminSecurityWorkspace() {
               />
             </View>
 
+            <View>
+              <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+                General API (per min / IP)
+              </Text>
+              <TextInput
+                value={String(settings.rateLimits.generalPerMinute)}
+                keyboardType="numeric"
+                onChangeText={(val) =>
+                  setSettings({
+                    ...settings,
+                    rateLimits: { ...settings.rateLimits, generalPerMinute: parseInt(val) || 120 },
+                  })
+                }
+                style={{
+                  backgroundColor: colors.input,
+                  borderColor: colors.border,
+                  borderWidth: 1,
+                  borderRadius: 12,
+                  padding: 10,
+                  color: colors.text,
+                  fontSize: 12,
+                }}
+              />
+            </View>
+
             <TouchableOpacity
               onPress={() => void handleSave(settings)}
               disabled={saving}
@@ -1037,6 +1082,56 @@ export default function AdminSecurityWorkspace() {
               </View>
             )}
           </View>
+        </View>
+      )}
+
+      {/* 6. Security Monitoring & Audit Log */}
+      {activeTab === 'monitoring' && (
+        <View style={{ backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>Security Monitoring & Audit Log</Text>
+            <TouchableOpacity onPress={() => void loadMonitoring()} accessibilityLabel="Refresh monitoring" style={{ padding: 6 }}>
+              <Ionicons name="refresh" size={18} color={colors.icon} />
+            </TouchableOpacity>
+          </View>
+          {monitoringLoading && !monitoring ? (
+            <View style={{ marginTop: 12 }}>
+              <Skeleton height={64} borderRadius={14} />
+              {[0, 1, 2].map((rowIndex) => (
+                <Skeleton key={rowIndex} height={52} borderRadius={12} style={{ marginTop: 8 }} />
+              ))}
+            </View>
+          ) : (
+            <>
+              <View style={{ marginTop: 12, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
+                <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>Active distributed rate buckets</Text>
+                <Text style={{ marginTop: 4, color: colors.text, fontSize: 22, fontWeight: '900' }}>
+                  {monitoring?.activeRateBuckets ?? '—'}
+                </Text>
+                {monitoring && monitoring.activeRateBuckets === null ? (
+                  <Text style={{ marginTop: 2, color: colors.mutedText, fontSize: 11 }}>Bucket counts are only visible on ourlime.com.</Text>
+                ) : null}
+              </View>
+              <View style={{ marginTop: 10 }}>
+                {!monitoring || monitoring.recentAudit.length === 0 ? (
+                  <Text style={{ color: colors.mutedText, fontSize: 12 }}>No recent security audit events.</Text>
+                ) : (
+                  monitoring.recentAudit.map((entry) => (
+                    <View key={entry.id} style={{ marginBottom: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
+                      <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13, textTransform: 'capitalize' }}>{entry.action.replace(/_/g, ' ')}</Text>
+                      <Text style={{ marginTop: 2, color: colors.mutedText, fontSize: 11 }} selectable>
+                        Admin: {entry.adminId || 'system'}
+                        {entry.targetUserId ? ` · Target: ${entry.targetUserId}` : ''}
+                      </Text>
+                      <Text style={{ marginTop: 2, color: colors.mutedText, fontSize: 11 }}>
+                        {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : 'Pending timestamp'}
+                      </Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            </>
+          )}
         </View>
       )}
 

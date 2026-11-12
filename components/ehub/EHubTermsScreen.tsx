@@ -1,7 +1,9 @@
 import { useEffect, useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ArrowLeft } from 'lucide-react-native';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
+import EHubSectionNav from '@/components/ehub/EHubSectionNav';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useEHubLayout } from '@/components/ehub/EHubParts';
 import { EHubScrollView, useEHubSectionScroll } from '@/components/ehub/EHubScrollView';
@@ -58,6 +60,12 @@ export default function EHubTermsScreen() {
   const styles = useMemo(() => createStyles(colors, layout.gutter), [colors, layout.gutter]);
   const { scrollRef, scrollToSection, onContainerLayout, onSectionLayout } = useEHubSectionScroll<EHubTermsSection>();
 
+  const canReturn = router.canGoBack();
+  const handleReturn = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/ehub' as Href);
+  };
+
   useEffect(() => {
     if (isEHubTermsSection(section)) scrollToSection(section, false);
   }, [scrollToSection, section]);
@@ -65,6 +73,7 @@ export default function EHubTermsScreen() {
   return (
     <View style={styles.screen}>
       <PageHeader title="Terms & safety" onBackPress={() => router.back()} />
+      <EHubSectionNav currentLabel="Terms & safety" />
       <EHubScrollView scrollRef={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View onLayout={onContainerLayout} style={[styles.article, { width: layout.contentWidth - layout.gutter * 2 }]}>
           <Text style={styles.eyebrow}>EHub terms & safety</Text>
@@ -75,6 +84,10 @@ export default function EHubTermsScreen() {
             {item.points ? item.points.map((point) => <View key={point} style={styles.point}><Text style={styles.bullet}>•</Text><Text style={styles.pointText}>{point}</Text></View>) : null}
             {item.body ? <Text style={styles.pointText}>{item.body}</Text> : null}
           </View>)}
+          {/* The website's return link: back to the E-Hub page that opened the terms, or the E-Hub home. */}
+          <TouchableOpacity accessibilityRole="button" activeOpacity={0.8} onPress={handleReturn} style={styles.returnButton}>
+            <ArrowLeft size={16} color="#ffffff" /><Text style={styles.returnText}>{canReturn ? 'Return to previous E-Hub page' : 'Return to E-Hub Home'}</Text>
+          </TouchableOpacity>
         </View>
       </EHubScrollView>
     </View>
@@ -94,4 +107,6 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   point: { flexDirection: 'row', gap: 8, paddingRight: 4 },
   bullet: { color: colors.mutedText, fontSize: 14, lineHeight: 21 },
   pointText: { flex: 1, color: colors.secondaryText, fontSize: 14, lineHeight: 21 },
+  returnButton: { marginTop: 28, alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 13, backgroundColor: '#059669' },
+  returnText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
 });

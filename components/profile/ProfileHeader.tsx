@@ -11,6 +11,9 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 import StatusPicker from './StatusPicker';
+import SocialLinksRow from './SocialLinksRow';
+import ProfileImageViewer from './ProfileImageViewer';
+import type { SocialLinks } from '@/lib/services/ProfileAboutService';
 
 const deepLinkService = DeepLinkService.getInstance();
 
@@ -19,9 +22,14 @@ type ProfileHeaderProps = {
   postsCount?: number;
   friendsCount?: number;
   followingCount?: number;
+  followersCount?: number;
+  socialLinks?: SocialLinks;
   onEditProfile?: () => void;
   onCustomize?: () => void;
+  /** Website stat links: Friends, Following and Followers open the matching friends list. */
   onFriendsPress?: () => void;
+  onFollowingPress?: () => void;
+  onFollowersPress?: () => void;
 };
 
 export default function ProfileHeader({
@@ -29,14 +37,19 @@ export default function ProfileHeader({
   postsCount = 0,
   friendsCount = 0,
   followingCount = 0,
+  followersCount = 0,
+  socialLinks = {},
   onEditProfile,
   onCustomize,
   onFriendsPress,
+  onFollowingPress,
+  onFollowersPress,
 }: ProfileHeaderProps) {
   const router = useRouter();
   const { colors } = useAppTheme();
   const { activeUserId: currentUserId } = useAppData();
   const [shareVisible, setShareVisible] = useState(false);
+  const [avatarViewerVisible, setAvatarViewerVisible] = useState(false);
   const displayName = `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() || profile.userName || 'Ourlime User';
   const handle = `@${profile.userName || 'user'}`;
   const isAdmin = profile.accountType === 'admin' || profile.isAdmin === true;
@@ -74,7 +87,7 @@ export default function ProfileHeader({
           marginTop: -40,
           marginBottom: 12,
         }}>
-          <View style={{
+          <TouchableOpacity activeOpacity={0.85} onPress={() => setAvatarViewerVisible(true)} accessibilityRole="imagebutton" accessibilityLabel="View profile picture fullscreen" style={{
             width: 84,
             height: 84,
             borderRadius: 42,
@@ -87,7 +100,7 @@ export default function ProfileHeader({
             elevation: 4,
           }}>
             <UserAvatar profileImage={profile.profilePicture} firstName={profile.firstName} size={78} />
-          </View>
+          </TouchableOpacity>
 
           {/* Action buttons row */}
           <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -172,6 +185,9 @@ export default function ProfileHeader({
           </Text>
         ) : null}
 
+        {/* Social links (website SocialLinksDisplay under the header) */}
+        <View style={{ marginTop: 10 }}><SocialLinksRow socialLinks={socialLinks} compact /></View>
+
         {/* ── Key Metrics Bar ── */}
         <View style={{
           flexDirection: 'row',
@@ -194,13 +210,19 @@ export default function ProfileHeader({
             <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText, marginTop: 1, fontWeight: '500' }}>Friends</Text>
           </TouchableOpacity>
           <View style={{ width: 1, height: '80%', backgroundColor: colors.border, alignSelf: 'center' }} />
-          <View style={{ alignItems: 'center' }}>
+          <TouchableOpacity onPress={onFollowingPress} disabled={!onFollowingPress} style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }}>{followingCount}</Text>
             <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText, marginTop: 1, fontWeight: '500' }}>Following</Text>
-          </View>
+          </TouchableOpacity>
+          <View style={{ width: 1, height: '80%', backgroundColor: colors.border, alignSelf: 'center' }} />
+          <TouchableOpacity onPress={onFollowersPress} disabled={!onFollowersPress} style={{ alignItems: 'center' }}>
+            <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }}>{followersCount}</Text>
+            <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText, marginTop: 1, fontWeight: '500' }}>Followers</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </View>
+    <ProfileImageViewer visible={avatarViewerVisible} imageUrl={profile.profilePicture} label={displayName} onClose={() => setAvatarViewerVisible(false)} />
     <ShareContentSheet
       visible={shareVisible}
       currentUserId={currentUserId ?? ''}

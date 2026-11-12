@@ -192,11 +192,17 @@ export class InstructorService {
    * the server copies it into the course's own folder).
    */
   public async uploadCourseFile(file: PickedUpload, type: StagedCourseFile['type']): Promise<StagedCourseFile> {
+    return (await this.stageCourseFile(file, type)).staged;
+  }
+
+  /** Same staging upload as uploadCourseFile, plus a download link so the course editor's file library can preview it. */
+  public async stageCourseFile(file: PickedUpload, type: StagedCourseFile['type']): Promise<{ staged: StagedCourseFile; url: string }> {
     const userId = this.requireUserId();
     const path = `instructors/${userId}/courseUploads/${Date.now()}_${this.safeName(file.name, 'file')}`;
     const blob = await (await fetch(file.uri)).blob();
-    await uploadBytes(ref(storage, path), blob, { contentType: file.mimeType || blob.type || 'application/octet-stream' });
-    return { path, name: file.name, type, size: file.size ?? blob.size };
+    const reference = ref(storage, path);
+    await uploadBytes(reference, blob, { contentType: file.mimeType || blob.type || 'application/octet-stream' });
+    return { staged: { path, name: file.name, type, size: file.size ?? blob.size }, url: await getDownloadURL(reference) };
   }
 
   /** Creates the course with its modules and lessons; verified instructors publish straight away, others go to review. */

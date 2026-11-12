@@ -22,7 +22,9 @@ import { notificationHelpers } from '@/lib/helpers/notificationHelpers';
 import { RelationshipService } from '@/lib/services/RelationshipService';
 import { AuthService } from '@/lib/services/AuthService';
 import { SkeletonNotificationRow, SkeletonNotificationSectionHeader } from './SkeletonLoaders';
-import type { NotificationData } from '@/lib/types/notification';
+import type { NotificationData, NotificationType } from '@/lib/types/notification';
+import type { DeletableContentType } from '@/lib/types/adminContent';
+import ContentAppealModal from '@/components/moderation/ContentAppealModal';
 import { NotificationService } from '@/lib/services/NotificationService';
 import { notificationDestinationRegistry } from '@/lib/navigation/NotificationDestinationRegistry';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -35,13 +37,46 @@ type NotificationsModalProps = {
   onClose: () => void;
   mode?: 'modal' | 'screen';
   initialNotificationId?: string;
+  /** Website parity for /notifications?removalId=: opens the appeal form for that removed content. */
+  initialRemovalId?: string;
 };
+
+const DELETABLE_CONTENT_TYPES: readonly DeletableContentType[] = ['post', 'comment', 'product', 'blog', 'project', 'community', 'lime'];
+const toDeletableContentType = (value: string | undefined): DeletableContentType =>
+  DELETABLE_CONTENT_TYPES.find((type) => type === value) ?? 'post';
+const isAppealableRemoval = (notification: NotificationData): boolean =>
+  notification.type === 'content_deleted_by_admin'
+  && Boolean(notification.metadata?.contentId)
+  && notification.metadata?.canAppeal !== false;
 
 const relationshipService = RelationshipService.getInstance();
 const authService = AuthService.getInstance();
 
 type SortMode = 'unread_first' | 'newest_first';
-type FilterCategory = 'all' | 'unread' | 'friend_request' | 'like' | 'comment' | 'mention' | 'community';
+type FilterCategory = 'all' | 'unread' | NotificationType;
+
+// Same type filters as the website's notification panel (plus Unread).
+const FILTER_OPTIONS: { id: FilterCategory; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'unread', label: 'Unread' },
+  { id: 'friend_request', label: 'Friend Requests' },
+  { id: 'friend_accepted', label: 'Friend Accepted' },
+  { id: 'friend_declined', label: 'Friend Declined' },
+  { id: 'follow', label: 'Follows' },
+  { id: 'like', label: 'Likes' },
+  { id: 'comment', label: 'Comments' },
+  { id: 'repost', label: 'Reposts' },
+  { id: 'mention', label: 'Mentions' },
+  { id: 'community_invite', label: 'Community Invites' },
+  { id: 'community_join_request', label: 'Community Join Requests' },
+  { id: 'community_accepted', label: 'Community Accepted' },
+  { id: 'community_rejected', label: 'Community Rejected' },
+  { id: 'community_removed', label: 'Community Removed' },
+  { id: 'community_report', label: 'Community Reports' },
+  { id: 'report_action', label: 'Report Updates' },
+  { id: 'event_cancelled', label: 'Cancelled Events' },
+  { id: 'project_invite', label: 'E-Project Invites' },
+];
 type NotificationSection = 'unread' | 'read';
 type NotificationListRow =
   | { kind: 'notification'; notification: NotificationData }
@@ -63,7 +98,7 @@ const getNotificationTime = (createdAt: NotificationData['createdAt']): number =
   return new Date(createdAt).getTime();
 };
 
-export default function NotificationsModal({ visible = true, onClose, mode = 'modal', initialNotificationId }: NotificationsModalProps) {
+export default function NotificationsModal({ visible = true, onClose, mode = 'modal', initialNotificationId, initialRemovalId }: NotificationsModalProps) {
   const router = useRouter();
   const { isDark, colors } = useAppTheme();
   const swipeDismiss = useSwipeDismiss({ visible: visible && mode === 'modal', onDismiss: onClose });
@@ -87,6 +122,17 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
   const loadingMoreRef = useRef(false);
   const paginationArmedRef = useRef(false);
   const lastPaginationKeyRef = useRef<string | null>(null);
+
+  // Removed-content notification whose appeal form is open (website ContentAppealModal).
+  const [appealNotification, setAppealNotification] = useState<NotificationData | null>(null);
+  const handledRemovalIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialRemovalId || handledRemovalIdRef.current === initialRemovalId) return;
+    const removal = notifications.find((notification) => notification.type === 'content_deleted_by_admin' && notification.metadata?.contentId === initialRemovalId);
+    if (!removal) return;
+    handledRemovalIdRef.current = initialRemovalId;
+    setAppealNotification(removal);
+  }, [initialRemovalId, notifications]);
 
   // Track resolved friend request notifications (Web Parity)
   const [resolvedRequestIds, setResolvedRequestIds] = useState<Set<string>>(new Set());
@@ -174,10 +220,6 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
     let list = needsCompleteList && completeList ? completeList : notifications;
     if (activeFilter === 'unread') {
       list = list.filter((n) => !isItemRead(n));
-    } else if (activeFilter === 'friend_request') {
-      list = list.filter((n) => n.type === 'friend_request' || n.type === 'friend_accepted');
-    } else if (activeFilter === 'community') {
-      list = list.filter((n) => n.type?.startsWith('community_'));
     } else if (activeFilter !== 'all') {
       list = list.filter((n) => n.type === activeFilter);
     }
@@ -384,6 +426,10 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
     if (item.id && !isItemRead(item)) {
       // Opening the notification shouldn't wait on (or be blocked by) marking it read.
       void markAsRead(item.id).catch((error: unknown) => console.warn('[NotificationsModal.handleItemPress] Error:', error instanceof Error ? error.message : String(error)));
+    }
+    if (isAppealableRemoval(item)) {
+      setAppealNotification(item);
+      return;
     }
     const username = item.userDetails?.userName || item.metadata?.sourceUserName;
     const destinationData = {
@@ -710,15 +756,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
         {/* Filter Categories Pill Bar */}
         <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10 }}>
-            {[
-              { id: 'all', label: 'All' },
-              { id: 'unread', label: 'Unread' },
-              { id: 'friend_request', label: 'Friends' },
-              { id: 'like', label: 'Likes' },
-              { id: 'comment', label: 'Comments' },
-              { id: 'mention', label: 'Mentions' },
-              { id: 'community', label: 'Communities' },
-            ].map((tab) => {
+            {FILTER_OPTIONS.map((tab) => {
               const isActive = activeFilter === tab.id;
               return (
                 <TouchableOpacity
@@ -726,7 +764,7 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
                   onPress={() => {
                     paginationArmedRef.current = false;
                     lastPaginationKeyRef.current = null;
-                    setActiveFilter(tab.id as FilterCategory);
+                    setActiveFilter(tab.id);
                   }}
                   style={{
                     paddingHorizontal: 14,
@@ -905,6 +943,16 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
               <Text style={{ color: '#ffffff', fontWeight: '700' }}>{feedback}</Text>
             </View>
           </View>
+        ) : null}
+        {appealNotification?.metadata?.contentId ? (
+          <ContentAppealModal
+            visible
+            onClose={() => setAppealNotification(null)}
+            contentId={appealNotification.metadata.contentId}
+            contentType={toDeletableContentType(appealNotification.metadata.contentType)}
+            contentTitle={appealNotification.metadata.contentTitle}
+            deletionReason={appealNotification.metadata.reason}
+          />
         ) : null}
       </SafeAreaView>
       </Animated.View>

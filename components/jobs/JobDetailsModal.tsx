@@ -1,478 +1,86 @@
-import { useState } from 'react';
-import {
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { useMemo, useState } from 'react';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  X,
-  MapPin,
-  DollarSign,
-  Clock,
-  CheckCircle2,
-  BadgeCheck,
-  Shield,
-  Send,
-  Sparkles,
-} from 'lucide-react-native';
-import UserAvatar from '@/components/ui/UserAvatar';
-import JobApplicationModal from './applyJobs/JobApplicationModal';
+import { CheckCircle2, Send, X } from 'lucide-react-native';
+import JobDetailsBody from './JobDetailsBody';
+import JobReportSheet from './JobReportSheet';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { AuthService } from '@/lib/services/AuthService';
-import type { JobRecord } from '@/lib/job/JobsService';
+import { auth } from '@/lib/firebaseConfig';
+import { JobsService, type JobRecord } from '@/lib/job/JobsService';
+import { formatJobPrice, getJobCompanyName } from '@/lib/job/JobPresentation';
 
 type JobDetailsModalProps = {
   isOpen: boolean;
   onClose: () => void;
   job: JobRecord | null;
-  jobType?: 'professional' | 'quickTask';
   isApplied?: boolean;
-  onApplySuccess?: () => void;
+  /** Opens the application (the list checks identity verification first). */
+  onApply: (job: JobRecord) => void;
 };
 
-const authService = AuthService.getInstance();
+const jobsService = JobsService.getInstance();
+/** iOS can't present the application sheet while this page sheet is still sliding away. */
+const APPLY_AFTER_CLOSE_MS = 400;
 
-const SAFETY_GUIDANCE = [
-  'Never pay an application, interview, training, or equipment fee.',
-  'Never share banking passwords, one-time codes, or sensitive identity documents.',
-  'Confirm compensation, responsibilities, and employer identity before starting work.',
-  'Keep agreements and communications recorded within the platform.',
-];
-
-export default function JobDetailsModal({
-  isOpen,
-  onClose,
-  job,
-  jobType = 'professional',
-  isApplied = false,
-  onApplySuccess,
-}: JobDetailsModalProps) {
-  const { colors, isDark } = useAppTheme();
-  const [applyModalOpen, setApplyModalOpen] = useState(false);
-
+/** Job details sheet with Report listing, Close and Apply now (web components/jobs/JobDetailsModal.tsx). */
+export default function JobDetailsModal({ isOpen, onClose, job, isApplied = false, onApply }: JobDetailsModalProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const [reportJob, setReportJob] = useState<JobRecord | null>(null);
   if (!isOpen || !job) return null;
-
-  const currentUserId = authService.getCurrentUser()?.uid;
-  const isCreator = currentUserId === job.basic_info.userId;
-  const isQuickTask = job.basic_info.type === 'quickTask';
-
-  const companyName = job.category_specific.name || job.creator?.name || 'Independent Employer';
-  const location =
-    job.basic_info.location.type === 'remote'
-      ? 'Remote'
-      : [job.basic_info.location.city, job.basic_info.location.country].filter(Boolean).join(', ') ||
-        'Location Flexible';
-
-  const priceFormatted = `$${job.basic_info.priceRange.from} – $${job.basic_info.priceRange.to}`;
-
-  const postedDate = job.basic_info.createdAt?.seconds
-    ? new Date(job.basic_info.createdAt.seconds * 1000).toLocaleDateString()
-    : 'Recently';
+  const isCreator = auth.currentUser?.uid === job.basic_info.userId;
+  const isOpenForApplications = jobsService.isAcceptingApplications(job);
 
   return (
     <Modal visible={isOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.canvas }]}>
-        {/* Modal Header */}
-        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <X size={24} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
-            {job.basic_info.title}
-          </Text>
-          <View style={{ width: 32 }} />
+      <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerCopy}>
+            <Text numberOfLines={2} style={styles.headerTitle}>{job.basic_info.title}</Text>
+            <Text numberOfLines={1} style={styles.headerSubtitle}>{getJobCompanyName(job)}</Text>
+          </View>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close job details" onPress={onClose} style={styles.closeBtn}><X size={22} color={colors.text} /></TouchableOpacity>
         </View>
-
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          {/* Employer Card */}
-          <View style={[styles.employerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <UserAvatar profileImage={job.creator?.profileImage} firstName={companyName} size={58} />
-            <View style={styles.employerInfo}>
-              <View style={styles.nameRow}>
-                <Text style={[styles.companyName, { color: colors.text }]} numberOfLines={1}>
-                  {companyName}
-                </Text>
-                {job.creator?.verificationStatus === 'verified' ? (
-                  <BadgeCheck size={18} color="#10b981" />
-                ) : null}
-              </View>
-              {job.category_specific.industry ? (
-                <Text style={[styles.industryText, { color: colors.mutedText }]}>
-                  {job.category_specific.industry}
-                </Text>
-              ) : null}
-              <Text style={[styles.postedText, { color: colors.mutedText }]}>Posted {postedDate}</Text>
-            </View>
-          </View>
-
-          {/* Job Overview */}
-          <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.jobTitle, { color: colors.text }]}>{job.basic_info.title}</Text>
-
-            <View style={styles.badgeRow}>
-              <View style={[styles.badge, { backgroundColor: isDark ? '#064e3b33' : '#ecfdf5', borderColor: '#10b981' }]}>
-                <Text style={styles.badgeText}>
-                  {isQuickTask ? 'Quick Task' : job.basic_info.jobType || 'Professional'}
-                </Text>
-              </View>
-              {job.basic_info.category ? (
-                <View style={[styles.badge, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9', borderColor: colors.border }]}>
-                  <Text style={[styles.badgeText, { color: colors.text }]}>{job.basic_info.category}</Text>
-                </View>
-              ) : null}
-            </View>
-
-            <View style={styles.metaGrid}>
-              <View style={styles.metaItem}>
-                <MapPin size={18} color="#10b981" />
-                <Text style={[styles.metaValue, { color: colors.text }]}>{location}</Text>
-              </View>
-              <View style={styles.metaItem}>
-                <DollarSign size={18} color="#10b981" />
-                <Text style={[styles.metaValue, { color: colors.text }]}>{priceFormatted}</Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Clock size={18} color="#10b981" />
-                <Text style={[styles.metaValue, { color: colors.text }]}>
-                  {job.category_specific.urgency ? `Urgency: ${job.category_specific.urgency}` : 'Standard schedule'}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Description */}
-          <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.sectionHeading, { color: colors.text }]}>About this role</Text>
-            <Text style={[styles.bodyText, { color: colors.text }]}>
-              {job.basic_info.description || 'No detailed description provided.'}
-            </Text>
-          </View>
-
-          {/* Skills Required */}
-          {job.details.skills && job.details.skills.length > 0 ? (
-            <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.sectionHeading, { color: colors.text }]}>Required Skills & Expertise</Text>
-              <View style={styles.chipCloud}>
-                {job.details.skills.map((skill) => (
-                  <View
-                    key={skill}
-                    style={[
-                      styles.skillChip,
-                      { backgroundColor: isDark ? '#064e3b33' : '#ecfdf5', borderColor: '#10b981' },
-                    ]}
-                  >
-                    <Text style={styles.skillChipText}>{skill}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          {/* Deliverables for Quick Tasks */}
-          {job.category_specific.deliverables && job.category_specific.deliverables.length > 0 ? (
-            <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.sectionHeading, { color: colors.text }]}>Task Deliverables</Text>
-              <View style={styles.deliverablesList}>
-                {job.category_specific.deliverables.map((item, idx) => (
-                  <View key={`del-${idx}`} style={styles.deliverableItem}>
-                    <CheckCircle2 size={16} color="#10b981" />
-                    <Text style={[styles.deliverableText, { color: colors.text }]}>
-                      {item.description} ({item.quantity} {item.unit})
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          {/* Company Benefits */}
-          {job.category_specific.benefits && job.category_specific.benefits.length > 0 ? (
-            <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.sectionHeading, { color: colors.text }]}>Perks & Benefits</Text>
-              <View style={styles.chipCloud}>
-                {job.category_specific.benefits.map((benefit) => (
-                  <View
-                    key={benefit}
-                    style={[
-                      styles.benefitChip,
-                      { backgroundColor: isDark ? '#1e3a8a33' : '#eff6ff', borderColor: '#3b82f6' },
-                    ]}
-                  >
-                    <Sparkles size={13} color="#3b82f6" />
-                    <Text style={styles.benefitChipText}>{benefit}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          {/* Safety Notice */}
-          <View
-            style={[
-              styles.safetyCard,
-              { backgroundColor: isDark ? '#78350f22' : '#fffbeb', borderColor: '#f59e0b' },
-            ]}
-          >
-            <View style={styles.safetyHeader}>
-              <Shield size={18} color="#f59e0b" />
-              <Text style={[styles.safetyTitle, { color: '#f59e0b' }]}>Ourlime Safety Tips</Text>
-            </View>
-            {SAFETY_GUIDANCE.map((tip, tIdx) => (
-              <View key={`tip-${tIdx}`} style={styles.tipRow}>
-                <Text style={{ color: '#f59e0b', fontWeight: '800' }}>•</Text>
-                <Text style={[styles.tipText, { color: colors.text }]}>{tip}</Text>
-              </View>
-            ))}
-          </View>
+          <JobDetailsBody job={job} onReport={isCreator ? undefined : () => setReportJob(job)} />
         </ScrollView>
-
-        {/* Bottom CTA Bar */}
-        {!isCreator ? (
-          <View style={[styles.bottomBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-            <View style={styles.priceColumn}>
-              <Text style={[styles.priceLabel, { color: colors.mutedText }]}>Compensation</Text>
-              <Text style={[styles.priceValue, { color: colors.text }]}>{priceFormatted}</Text>
-            </View>
-            {isApplied ? (
-              <View style={[styles.applyBtn, { backgroundColor: colors.control, borderColor: colors.border, borderWidth: 1 }]}>
-                <CheckCircle2 size={16} color={colors.mutedText} />
-                <Text style={[styles.applyBtnText, { color: colors.mutedText }]}>Applied</Text>
-              </View>
-            ) : (
-              <TouchableOpacity onPress={() => setApplyModalOpen(true)} style={styles.applyBtn}>
-                <Send size={16} color="#ffffff" />
-                <Text style={styles.applyBtnText}>Apply Now</Text>
-              </TouchableOpacity>
-            )}
+        <View style={styles.bottomBar}>
+          <View style={styles.priceColumn}>
+            <Text style={styles.priceLabel}>Compensation</Text>
+            <Text style={styles.priceValue}>{formatJobPrice(job)}</Text>
           </View>
-        ) : null}
-
-        {/* Apply Modal */}
-        {applyModalOpen ? (
-          <JobApplicationModal
-            isOpen={applyModalOpen}
-            onClose={() => setApplyModalOpen(false)}
-            onApplied={() => {
-              onApplySuccess?.();
-            }}
-            job={job}
-            jobType={isQuickTask ? 'quickTask' : 'professional'}
-          />
-        ) : null}
+          <TouchableOpacity accessibilityRole="button" onPress={onClose} style={styles.secondaryBtn}><Text style={styles.secondaryText}>Close</Text></TouchableOpacity>
+          {isCreator ? null : isApplied ? (
+            <View style={[styles.applyBtn, styles.appliedBtn]}><CheckCircle2 size={16} color={colors.mutedText} /><Text style={[styles.applyText, { color: colors.mutedText }]}>Applied</Text></View>
+          ) : isOpenForApplications ? (
+            <TouchableOpacity accessibilityRole="button" onPress={() => { onClose(); setTimeout(() => onApply(job), APPLY_AFTER_CLOSE_MS); }} style={styles.applyBtn}><Send size={16} color={colors.onAccent} /><Text style={styles.applyText}>Apply now</Text></TouchableOpacity>
+          ) : (
+            <View style={[styles.applyBtn, styles.appliedBtn]}><Text style={[styles.applyText, { color: colors.mutedText }]}>Closed</Text></View>
+          )}
+        </View>
+        <JobReportSheet job={reportJob} onClose={() => setReportJob(null)} />
       </SafeAreaView>
     </Modal>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  closeBtn: {
-    padding: 6,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    flex: 1,
-    textAlign: 'center',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 100,
-    gap: 14,
-  },
-  employerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 1,
-    gap: 14,
-  },
-  employerInfo: {
-    flex: 1,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  companyName: {
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  industryText: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-  postedText: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  sectionCard: {
-    padding: 18,
-    borderRadius: 18,
-    borderWidth: 1,
-    gap: 12,
-  },
-  jobTitle: {
-    fontSize: 22,
-    fontWeight: '900',
-    lineHeight: 28,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#10b981',
-  },
-  metaGrid: {
-    marginTop: 4,
-    gap: 8,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  metaValue: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  sectionHeading: {
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  bodyText: {
-    fontSize: 15,
-    lineHeight: 24,
-  },
-  chipCloud: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  skillChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  skillChipText: {
-    color: '#047857',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  benefitChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  benefitChipText: {
-    color: '#1d4ed8',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  deliverablesList: {
-    gap: 8,
-  },
-  deliverableItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  deliverableText: {
-    fontSize: 14,
-    lineHeight: 20,
-    flex: 1,
-  },
-  safetyCard: {
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 1,
-    gap: 8,
-  },
-  safetyHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  safetyTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  tipRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  tipText: {
-    fontSize: 13,
-    lineHeight: 18,
-    flex: 1,
-  },
-  bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderTopWidth: 1,
-  },
-  priceColumn: {},
-  priceLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  priceValue: {
-    fontSize: 17,
-    fontWeight: '900',
-  },
-  applyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#10b981',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 14,
-  },
-  applyBtnText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
+type ThemeColors = ReturnType<typeof useAppTheme>['colors'];
+
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.canvas },
+  header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
+  headerCopy: { flex: 1, minWidth: 0 },
+  headerTitle: { color: colors.text, fontSize: 17, fontWeight: '900' },
+  headerSubtitle: { color: colors.mutedText, fontSize: 13, marginTop: 2 },
+  closeBtn: { padding: 4 },
+  scrollContent: { padding: 16, paddingBottom: 30 },
+  bottomBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
+  priceColumn: { flex: 1, minWidth: 0 },
+  priceLabel: { color: colors.mutedText, fontSize: 11, fontWeight: '700' },
+  priceValue: { color: colors.text, fontSize: 15, fontWeight: '900' },
+  secondaryBtn: { minHeight: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: colors.control, alignItems: 'center', justifyContent: 'center' },
+  secondaryText: { color: colors.text, fontWeight: '800' },
+  applyBtn: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, borderRadius: 12, backgroundColor: colors.accent },
+  appliedBtn: { backgroundColor: colors.control, borderWidth: 1, borderColor: colors.border },
+  applyText: { color: colors.onAccent, fontWeight: '900' },
 });

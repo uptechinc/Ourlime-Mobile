@@ -18,6 +18,8 @@ export type MobileSettings = {
   activityStatus: boolean;
   searchVisibility: boolean;
   messagePermissions: MessagePermission;
+  /** Website "Show Email on Profile" (userPrivacySettings/privacy.showEmailOnProfile). */
+  showEmailOnProfile: boolean;
   allowDirectMessages: boolean;
   analyticsSharing: boolean;
   marketingSharing: boolean;
@@ -36,6 +38,8 @@ export type MobileSettings = {
 };
 
 export type MobileSettingsUpdate = Omit<MobileSettings, 'blockedUsers'>;
+/** The privacy fields the website reads from users/{uid}/userPrivacySettings/privacy. */
+export type WebPrivacySettings = Pick<MobileSettings, 'searchVisibility' | 'showEmailOnProfile' | 'messagePermissions'>;
 
 type SettingsDocument = {
   theme?: unknown;
@@ -43,6 +47,7 @@ type SettingsDocument = {
   activityStatus?: unknown;
   searchVisibility?: unknown;
   messagePermissions?: unknown;
+  showEmailOnProfile?: unknown;
   allowDirectMessages?: unknown;
   pushNotifications?: unknown;
   emailNotifications?: unknown;
@@ -85,13 +90,14 @@ export class SettingsService {
   }
 
   public async getMobileSettings(userId: string): Promise<MobileSettings> {
-    const [userSnapshot, accountSnapshot, notificationsSnapshot, appearanceSnapshot, privacySnapshot, securitySnapshot] = await Promise.all([
+    const [userSnapshot, accountSnapshot, notificationsSnapshot, appearanceSnapshot, privacySnapshot, securitySnapshot, webPrivacySnapshot] = await Promise.all([
       getDoc(doc(db, 'users', userId)),
       getDoc(doc(db, `users/${userId}/userSettings/account`)),
       getDoc(doc(db, `users/${userId}/userSettings/notifications`)),
       getDoc(doc(db, `users/${userId}/userSettings/appearance`)),
       getDoc(doc(db, `users/${userId}/userSettings/privacy`)),
       getDoc(doc(db, `users/${userId}/userSettings/security`)),
+      getDoc(doc(db, `users/${userId}/userPrivacySettings/privacy`)).catch(() => null),
     ]);
     if (!userSnapshot.exists()) throw new Error('User profile not found');
 
@@ -101,10 +107,11 @@ export class SettingsService {
     const appearance = asSettingsDocument(appearanceSnapshot.data());
     const privacy = asSettingsDocument(privacySnapshot.data());
     const security = asSettingsDocument(securitySnapshot.data());
+    // The website stores search visibility, email display and message permissions here; it wins when present.
+    const webPrivacy = asSettingsDocument(webPrivacySnapshot?.data());
     const visibilityValue = readString(privacy.profileVisibility) || readString(account.profileVisibility) || readString(user.visibility);
     const visibility: SettingsVisibility = visibilityValue === 'friends' || visibilityValue === 'private' ? visibilityValue : 'public';
-    const messagePermissionValue = readString(privacy.messagePermissions);
-    const messagePermissions: MessagePermission = messagePermissionValue === 'friends' || messagePermissionValue === 'nobody' ? messagePermissionValue : 'everyone';
+    const messagePermissions = this.readMessagePermission(webPrivacy.messagePermissions) ?? this.readMessagePermission(privacy.messagePermissions) ?? 'everyone';
     const themeValue = readString(appearance.theme);
     const theme: SettingsTheme = themeValue === 'light' || themeValue === 'dark' ? themeValue : 'system';
     const twoFactorMethodValue = readString(security.twoFactorMethod);
@@ -120,8 +127,9 @@ export class SettingsService {
       theme,
       visibility,
       activityStatus: readBoolean(privacy.activityStatus, readBoolean(account.activityStatus, true)),
-      searchVisibility: readBoolean(privacy.searchVisibility, true),
+      searchVisibility: readBoolean(webPrivacy.searchVisibility, readBoolean(privacy.searchVisibility, true)),
       messagePermissions,
+      showEmailOnProfile: readBoolean(webPrivacy.showEmailOnProfile, readBoolean(privacy.showEmailOnProfile, false)),
       allowDirectMessages: readBoolean(privacy.allowDirectMessages, readBoolean(user.allowDirectMessages, true)),
       analyticsSharing: readBoolean(privacy.dataSharing?.analytics, true),
       marketingSharing: readBoolean(privacy.dataSharing?.marketing, false),
@@ -172,6 +180,7 @@ export class SettingsService {
         activityStatus: settings.activityStatus,
         searchVisibility: settings.searchVisibility,
         messagePermissions: settings.messagePermissions,
+        showEmailOnProfile: settings.showEmailOnProfile,
         allowDirectMessages: settings.allowDirectMessages,
         dataSharing: { analytics: settings.analyticsSharing, marketing: settings.marketingSharing, thirdParty: settings.thirdPartySharing },
         updatedAt: serverTimestamp(),
@@ -186,6 +195,26 @@ export class SettingsService {
     ]);
     sharedDocumentReader.invalidate(`users/${userId}`);
     sharedDocumentReader.invalidate(`users/${userId}/userSettings/account`);
+  }
+
+  /**
+   * Mirrors the website-read privacy fields into users/{uid}/userPrivacySettings/privacy. The website saves them
+   * there through its server; Firestore rules currently reject client writes, so this throws until that is opened.
+   */
+  public async updateWebPrivacySettings(userId: string, settings: WebPrivacySettings): Promise<void> {
+    await setDoc(doc(db, `users/${userId}/userPrivacySettings/privacy`), {
+      searchVisibility: settings.searchVisibility,
+      showEmailOnProfile: settings.showEmailOnProfile,
+      // Website value for "No One" is 'none'; calls (userSettings/privacy) check 'nobody'.
+      messagePermissions: settings.messagePermissions === 'nobody' ? 'none' : settings.messagePermissions,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  }
+
+  private readMessagePermission(value: unknown): MessagePermission | null {
+    if (value === 'everyone' || value === 'friends' || value === 'nobody') return value;
+    if (value === 'none') return 'nobody';
+    return null;
   }
 
   public async updateTheme(userId: string, theme: SettingsTheme): Promise<void> {

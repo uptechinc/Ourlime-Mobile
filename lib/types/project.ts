@@ -1,4 +1,7 @@
 export type ProjectStatus = 'active' | 'completed' | 'on-hold' | 'archived';
+export type ProjectPlanTier = 'free' | 'premium';
+/** Website useProjectDetails ProjectLoadError. */
+export type ProjectLoadError = 'not-found' | 'permission-denied' | 'network-error' | 'unknown';
 export type ProjectRole = 'owner' | 'admin' | 'member' | 'viewer';
 
 export type ProjectMutationAction = 'create_project' | 'create_task' | 'invite' | 'add_subtask' | 'add_comment';
@@ -71,6 +74,10 @@ export type Task = {
   createdBy: string;
   startDate?: string;
   dueDate: string;
+  milestoneId?: string;
+  dependencies?: string[];
+  recurrence?: RecurrenceRule | null;
+  version?: number;
   createdAt: string;
   updatedAt: string;
   subTasks: SubTask[];
@@ -82,6 +89,58 @@ export type Task = {
   progress: number; // 0-100
   archived?: boolean;
   auditLog?: TaskAuditLogEntry[];
+};
+
+export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type RecurrenceEndMode = 'never' | 'date' | 'count';
+export type RecurrenceRule = {
+  frequency: RecurrenceFrequency;
+  interval: number;
+  endMode: RecurrenceEndMode;
+  endDate?: string;
+  endCount?: number;
+};
+
+/** projects/{id}/milestones/{milestoneId} (same fields the website writes). */
+export type Milestone = {
+  id: string;
+  name: string;
+  description?: string;
+  dueDate: string;
+  color: string;
+  completed: boolean;
+  createdBy: string;
+};
+
+/** projects/{id}/taskTemplates/{templateId} (same fields the website writes). */
+export type TaskTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  priority: Priority;
+  assignee: string;
+  assignees: string[];
+  assignedToAll: boolean;
+  dueDate: string;
+  estimatedTime: number;
+  tags: string[];
+  subTasks: { title: string }[];
+  createdBy: string;
+};
+
+export type TaskTemplateInput = Omit<TaskTemplate, 'id' | 'createdBy'>;
+
+/** users/{uid}.activeTimer (the website's persisted task timer). */
+export type ActiveTaskTimer = { taskId: string; projectId: string; startedAt: Date };
+
+/** Website project page automation rules (enabled flags persist in projects/{id}.automationRules). */
+export type AutomationRule = {
+  id: string;
+  name: string;
+  trigger: string;
+  action: string;
+  isPremium: boolean;
+  enabled: boolean;
 };
 
 export type TeamMember = {
@@ -125,6 +184,8 @@ export type ProjectRecord = {
   tags: string[];
   isOwner?: boolean;
   memberUids?: string[];
+  planTier: ProjectPlanTier;
+  automationRules: { [ruleId: string]: boolean };
 };
 
 export type ProjectVisibility = 'public' | 'private';
@@ -133,6 +194,7 @@ export type ProjectVisibility = 'public' | 'private';
 export type ProjectSettingsUpdate = {
   name?: string;
   description?: string;
+  color?: string;
   status?: ProjectStatus;
   dueDate?: string | null;
   visibility?: ProjectVisibility;
@@ -142,6 +204,7 @@ export type ProjectSettingsUpdate = {
 export type CreateProjectInput = {
   name: string;
   description: string;
+  color?: string;
   dueDate?: string | null;
   status?: ProjectStatus;
   visibility?: ProjectVisibility;
@@ -159,3 +222,27 @@ export type CreateTaskInput = {
   estimatedTime?: number;
   tags?: string[];
 };
+
+/** Every field of the website's TaskCreationModal (sent to mutateProjectTask "create"). */
+export type FullTaskInput = {
+  title: string;
+  description: string;
+  status: Status;
+  priority: Priority;
+  assignee: string;
+  assignees: string[];
+  assignedToAll: boolean;
+  startDate: string;
+  dueDate: string;
+  estimatedTime: number;
+  tags: string[];
+  dependencies: string[];
+  milestoneId: string;
+  recurrence?: RecurrenceRule;
+};
+
+/** Editable task fields accepted by mutateProjectTask "update" (functions/src/TaskFieldService.ts). */
+export type TaskFieldUpdate = Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'assignee' | 'assignees' | 'assignedToAll' | 'startDate' | 'dueDate' | 'estimatedTime' | 'tags' | 'dependencies' | 'milestoneId'>> & { recurrence?: RecurrenceRule | null };
+
+/** A file picked on the phone, waiting to be uploaded as a task attachment. */
+export type PickedTaskFile = { uri: string; name: string; size: number; mimeType: string };

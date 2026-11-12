@@ -62,10 +62,23 @@ export default function SupportTicketsScreen() {
 					My Tickets
 				</Text>
 				<TouchableOpacity
+					accessibilityLabel="Open ticket"
 					onPress={() => router.push('/help/tickets/new')}
-					style={{ padding: 8 }}
+					style={{
+						flexDirection: 'row',
+						alignItems: 'center',
+						paddingHorizontal: 10,
+						paddingVertical: 7,
+						borderRadius: 12,
+						backgroundColor: colors.accent,
+					}}
 				>
-					<Ionicons name="add" size={25} color={colors.accent} />
+					<Ionicons name="add" size={16} color="#fff" />
+					<Text
+						style={{ marginLeft: 3, color: '#fff', fontSize: 12, fontWeight: '900' }}
+					>
+						Open ticket
+					</Text>
 				</TouchableOpacity>
 			</View>
 			<ScrollView
@@ -78,6 +91,15 @@ export default function SupportTicketsScreen() {
 				}
 				contentContainerStyle={{ padding: 16, paddingBottom: 36 }}
 			>
+				<Text
+					style={{
+						marginBottom: 12,
+						color: colors.mutedText,
+						fontSize: 13,
+					}}
+				>
+					Replies and status changes appear here.
+				</Text>
 				{resource.error ? (
 					<Text
 						style={{

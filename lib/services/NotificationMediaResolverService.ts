@@ -116,6 +116,10 @@ export class NotificationMediaResolverService {
       type === 'child_safety_case' ||
       type === 'support_ticket' ||
       type === 'beta_management' ||
+      type === 'content_deleted_by_admin' ||
+      type === 'content_restored_by_admin' ||
+      type === 'appeal_approved' ||
+      type === 'appeal_rejected' ||
       type === 'report_action'
     ) {
       return 'system';
@@ -170,6 +174,13 @@ export class NotificationMediaResolverService {
         return { icon: 'book-open', bg: '#6366f1', color: '#ffffff' };
       case 'course':
         return { icon: 'book', bg: '#14b8a6', color: '#ffffff' };
+      case 'content_deleted_by_admin':
+        return { icon: 'shield-off', bg: '#ef4444', color: '#ffffff' };
+      case 'content_restored_by_admin':
+      case 'appeal_approved':
+        return { icon: 'shield', bg: '#10b981', color: '#ffffff' };
+      case 'appeal_rejected':
+        return { icon: 'shield-off', bg: '#64748b', color: '#ffffff' };
       case 'child_safety_case':
       case 'support_ticket':
       case 'beta_management':

@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, getDocs, limit, orderBy, query, setDoc, serverTimestamp, where, Timestamp } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebaseConfig';
 import { isValidIpRuleValue } from '@/lib/security/securityAccessEvaluator';
 import { adminAccessService } from '@/lib/services/AdminAccessService';
@@ -8,6 +8,7 @@ import type {
   IpRule,
   UserWhitelistEntry,
   RateLimitConfig,
+  SecurityMonitoring,
 } from '@/lib/types/adminSecurity';
 
 const DEFAULT_SETTINGS: SecurityAccessSettings = {
@@ -143,6 +144,33 @@ export class AdminSecurityService {
       ...current,
       userWhitelist: current.userWhitelist.filter((u) => u.userId !== userId),
     });
+  }
+
+  /**
+   * The website's "Security Monitoring & Audit Log": the 20 newest securityAuditLog entries and the number of live
+   * securityRateLimitBuckets. The buckets collection is server-only, so its count is null when the rules deny the read.
+   */
+  public async getMonitoring(): Promise<SecurityMonitoring> {
+    await adminAccessService.requireAdmin();
+    const [auditSnapshot, bucketSnapshot] = await Promise.all([
+      getDocs(query(collection(db, 'securityAuditLog'), orderBy('timestamp', 'desc'), limit(20))).catch((error: unknown) => {
+        console.error('[AdminSecurityService.getMonitoring] Error:', error instanceof Error ? error.message : 'Audit log read failed');
+        return null;
+      }),
+      getDocs(query(collection(db, 'securityRateLimitBuckets'), where('expiresAt', '>', Timestamp.now()), limit(100))).catch(() => null),
+    ]);
+    const recentAudit = auditSnapshot?.docs.map((entry) => {
+      const data = entry.data();
+      const timestamp = data.timestamp as { toDate?: () => Date } | undefined;
+      return {
+        id: entry.id,
+        action: typeof data.action === 'string' && data.action ? data.action : 'security_event',
+        adminId: typeof data.adminId === 'string' ? data.adminId : '',
+        targetUserId: typeof data.targetUserId === 'string' ? data.targetUserId : '',
+        timestamp: typeof timestamp?.toDate === 'function' ? timestamp.toDate().toISOString() : null,
+      };
+    }) ?? [];
+    return { activeRateBuckets: bucketSnapshot ? bucketSnapshot.size : null, recentAudit };
   }
 
   public async updateRateLimits(config: RateLimitConfig): Promise<SecurityAccessSettings> {

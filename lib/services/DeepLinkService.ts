@@ -28,6 +28,16 @@ const SCREEN_ROUTES: { [firstSegment: string]: string } = {
   chat: '/chat',
   messages: '/chat',
   settings: '/settings',
+  calendar: '/calendar',
+  'verify-email': '/verify-email',
+  'reset-password': '/reset-password',
+  'forgot-password': '/forgot-password',
+};
+/** Query parameters a SCREEN_ROUTES link keeps (verification/reset tokens, game mode). */
+const SCREEN_QUERY_KEEP: { [firstSegment: string]: string[] } = {
+  'verify-email': ['status', 'token', 'userId'],
+  'reset-password': ['oobCode', 'mode', 'apiKey', 'lang'],
+  trinigeoguesser: ['mode'],
 };
 /** Website /profile/... pages that are app screens rather than a username. */
 const PROFILE_SCREEN_ROUTES: { [secondSegment: string]: string } = {
@@ -35,6 +45,7 @@ const PROFILE_SCREEN_ROUTES: { [secondSegment: string]: string } = {
   admin: '/admin',
   // The website's business account page; the app's is in the E-Hub stack next to Seller Center.
   'business-account': '/ehub/business-account',
+  friends: '/profile/friends',
 };
 
 export class DeepLinkService {
@@ -185,7 +196,9 @@ export class DeepLinkService {
     if (profileScreen) {
       // /profile/admin/<page> on the website is /admin/<page> in the app.
       const rest = profileScreen === '/admin' ? segments.slice(2) : [];
-      return this.screen(`/${segments.join('/')}`, [profileScreen, ...rest].join('/'));
+      // /profile/friends?tab=requests keeps its tab.
+      const query = profileScreen === '/profile/friends' ? this.pickQuery(url, ['tab']) : '';
+      return this.screen(`/${segments.join('/')}${query}`, [profileScreen, ...rest].join('/') + query);
     }
     // The website's Seller Center and enquiry inbox live under /profile; the app's are /ehub/seller and /ehub/enquiries.
     if (first === 'profile' && segments[1]?.toLowerCase() === 'ehub' && segments[2]?.toLowerCase() === 'seller') {
@@ -204,7 +217,12 @@ export class DeepLinkService {
     if (first === 'blogs') return segments[1] ? { kind: 'blog', blogId: segments[1] } : { kind: 'blogs' };
     if ((first === 'limes' || first === 'lime') && segments[1]) return { kind: 'lime', limeId: segments[1] };
     if (first === 'events') return { kind: 'event', eventId: segments[1] ?? url.searchParams.get('targetId') };
-    if (first === 'jobs') return { kind: 'job', jobId: segments[1] ?? url.searchParams.get('apply') };
+    if (first === 'jobs') {
+      // /jobs?apply=<id> (the website's share link) opens the job with its application form.
+      const applyId = url.searchParams.get('apply');
+      if (!segments[1] && applyId) return this.screen(`/jobs?apply=${encodeURIComponent(applyId)}`, `/jobs/${encodeURIComponent(applyId)}?apply=1`);
+      return { kind: 'job', jobId: segments[1] ?? null };
+    }
     if (first === 'market') {
       // /market/orders, /market/checkout and /market/pets are pages, not product ids.
       const marketPage = segments[1]?.toLowerCase();
@@ -237,14 +255,21 @@ export class DeepLinkService {
       }
       return { kind: 'ehub' };
     }
-    if (first === 'elearning') return { kind: 'elearning', path: segments.slice(1).join('/') || undefined };
+    if (first === 'elearning') {
+      // The website's CXC forums, MCQ and past-papers pages are sample content; the app's CXC hub has the real resources.
+      if (segments[1]?.toLowerCase() === 'cxc') return { kind: 'elearning', path: 'cxc' };
+      return { kind: 'elearning', path: segments.slice(1).join('/') || undefined };
+    }
     if (first === 'projectmanagement' || first === 'projects') return { kind: 'projects', projectId: segments[1] };
     if (first === 'register') {
       const referralToken = url.searchParams.get('referralToken') || undefined;
       return { kind: 'register', referralToken };
     }
     const screenRoute = SCREEN_ROUTES[first];
-    if (screenRoute) return this.screen(`/${segments.join('/')}`, [screenRoute, ...segments.slice(1)].join('/'));
+    if (screenRoute) {
+      const query = this.pickQuery(url, SCREEN_QUERY_KEEP[first] ?? []);
+      return this.screen(`/${segments.join('/')}${query}`, [screenRoute, ...segments.slice(1)].join('/') + query);
+    }
     if (first === 'admin') return this.screen(`/${segments.join('/')}`, `/${segments.join('/')}`);
     return null;
   }

@@ -8,6 +8,7 @@ import {
   getDocs,
   increment,
   limit,
+  onSnapshot,
   orderBy,
   query,
   runTransaction,
@@ -21,6 +22,7 @@ import {
   type QueryConstraint,
   type QueryDocumentSnapshot,
   type QuerySnapshot,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { sharedDocumentReader } from './SharedDocumentReader';
@@ -261,7 +263,8 @@ export class PostService {
     const snapshot = await getDocs(query(collection(db, 'communityVariantDetails'), where('communityVariantId', '==', access.communityId)));
     const documents: DataDocument[] = snapshot.docs
       .map((document) => ({ id: document.id, data: isRecord(document.data()) ? document.data() : {} }))
-      .filter((document) => document.data.hidden !== true)
+      // Reported posts hidden by community staff use any of these three fields (website and app moderation).
+      .filter((document) => document.data.hidden !== true && document.data.isHidden !== true && document.data.moderationVisibility !== 'hidden')
       .sort((left, right) => timestampMillis(right.data.createdAt) - timestampMillis(left.data.createdAt));
     const postIds = documents.map((document) => document.id);
     const [mediaDocuments, viewerLikes, counters, users, legacyCounts, commentCounts] = await Promise.all([
@@ -972,6 +975,36 @@ export class PostService {
       pollVotes: {},
       location: input.location,
     };
+  }
+
+  /**
+   * Website post page parity: watches the feed post and reports when it is deleted, hidden by moderation, or
+   * restricted for this viewer, so an open post page stops showing it. Unreadable posts (friends-only) are left alone.
+   */
+  public watchPostAvailability(postId: string, viewerId: string, onUnavailable: (reason: 'deleted' | 'removed') => void): Unsubscribe {
+    // Community and legacy posts live in other collections: only a feed post that existed and then vanished counts as deleted.
+    let hasExisted = false;
+    return onSnapshot(
+      doc(db, 'feedPosts', postId),
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          if (hasExisted) onUnavailable('deleted');
+          return;
+        }
+        hasExisted = true;
+        const raw = snapshot.data();
+        const data = isRecord(raw) ? raw : {};
+        const hiddenUntilValue = data.hiddenUntil as { toMillis?: () => number; seconds?: number } | null | undefined;
+        const hiddenUntil = hiddenUntilValue?.toMillis?.() ?? (typeof hiddenUntilValue?.seconds === 'number' ? hiddenUntilValue.seconds * 1000 : 0);
+        const hiddenIsActive = (data.isHidden === true || data.moderationVisibility === 'hidden') && (!hiddenUntil || hiddenUntil > Date.now());
+        const restrictedForViewer = (data.isRestricted === true || data.moderationVisibility === 'restricted') && readString(data.userId) !== viewerId;
+        if (hiddenIsActive || restrictedForViewer) onUnavailable('removed');
+      },
+      (error) => {
+        if (error.code === 'permission-denied') return;
+        console.error('[PostService.watchPostAvailability] Error:', error.message);
+      },
+    );
   }
 
   public async fetchPost(postId: string): Promise<PostItem> {

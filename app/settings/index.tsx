@@ -25,6 +25,8 @@ import ChangePasswordModal from '@/components/settings/ChangePasswordModal';
 import ActiveSessionsSection from '@/components/settings/ActiveSessionsSection';
 import AppUpdateSettingsRow from '@/components/settings/AppUpdateSettingsRow';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
+import BlockListSection from '@/components/settings/BlockListSection';
+import type { WebPrivacySettings } from '@/lib/profile/settings/SettingsService';
 
 type SettingsTab = 'appearance' | 'account' | 'privacy' | 'notifications' | 'blocked' | 'security' | 'safety' | 'app';
 type SettingsModalState = { visible: boolean; type: CustomModalType; title: string; message: string; action?: 'logout' };
@@ -56,6 +58,9 @@ export default function SettingsScreen() {
   const [activityStatus, setActivityStatus] = useState(true);
   const [searchVisibility, setSearchVisibility] = useState(true);
   const [messagePermissions, setMessagePermissions] = useState<MessagePermission>('everyone');
+  const [showEmailOnProfile, setShowEmailOnProfile] = useState(false);
+  // Last values saved for the fields the website reads, so Save only re-syncs them when they change.
+  const [savedWebPrivacy, setSavedWebPrivacy] = useState<WebPrivacySettings | null>(null);
   const [analyticsSharing, setAnalyticsSharing] = useState(true);
   const [marketingSharing, setMarketingSharing] = useState(false);
   const [thirdPartySharing, setThirdPartySharing] = useState(false);
@@ -86,6 +91,8 @@ export default function SettingsScreen() {
         const settings = await settingsService.getMobileSettings(userId);
         setFirstName(settings.firstName); setLastName(settings.lastName); setUserName(settings.userName); setBio(settings.bio);
         setVisibility(settings.visibility); setAllowDirectMessages(settings.allowDirectMessages); setActivityStatus(settings.activityStatus); setSearchVisibility(settings.searchVisibility); setMessagePermissions(settings.messagePermissions);
+        setShowEmailOnProfile(settings.showEmailOnProfile);
+        setSavedWebPrivacy({ searchVisibility: settings.searchVisibility, showEmailOnProfile: settings.showEmailOnProfile, messagePermissions: settings.messagePermissions });
         setAnalyticsSharing(settings.analyticsSharing); setMarketingSharing(settings.marketingSharing); setThirdPartySharing(settings.thirdPartySharing);
         setPushEnabled(settings.pushEnabled); setEmailEnabled(settings.emailEnabled); setSmsEnabled(settings.smsEnabled); setMentionAlerts(settings.mentionAlerts); setNewMessageAlerts(settings.newMessageAlerts); setNewCommentAlerts(settings.newCommentAlerts);
         setLoginNotifications(settings.loginNotifications); setSuspiciousActivityAlerts(settings.suspiciousActivityAlerts); setTwoFactorEnabled(settings.twoFactorEnabled); setBlockedUsers(settings.blockedUsers);
@@ -117,28 +124,32 @@ export default function SettingsScreen() {
     setSaving(true);
     try {
       await settingsService.updateMobileSettings(userId, {
-        firstName, lastName, userName, bio, theme, visibility, activityStatus, searchVisibility, messagePermissions, allowDirectMessages,
+        firstName, lastName, userName, bio, theme, visibility, activityStatus, searchVisibility, messagePermissions, showEmailOnProfile, allowDirectMessages,
         analyticsSharing, marketingSharing, thirdPartySharing, pushEnabled, emailEnabled, smsEnabled, mentionAlerts, newMessageAlerts, newCommentAlerts,
         loginNotifications, suspiciousActivityAlerts, twoFactorEnabled, twoFactorMethod: twoFactorEnabled ? 'email' : null,
       });
 
+      const webPrivacy: WebPrivacySettings = { searchVisibility, showEmailOnProfile, messagePermissions };
+      const webPrivacyChanged = !savedWebPrivacy
+        || savedWebPrivacy.searchVisibility !== searchVisibility
+        || savedWebPrivacy.showEmailOnProfile !== showEmailOnProfile
+        || savedWebPrivacy.messagePermissions !== messagePermissions;
+      if (webPrivacyChanged) {
+        try {
+          await settingsService.updateWebPrivacySettings(userId, webPrivacy);
+          setSavedWebPrivacy(webPrivacy);
+        } catch (webPrivacyError: unknown) {
+          console.error('[Settings.handleSaveAccount] Web privacy sync error:', webPrivacyError);
+          setModal({ visible: true, type: 'warning', title: 'Settings partly saved', message: 'Your other settings were saved. Search visibility, Show Email on Profile and message permissions could not be updated from the app yet. Change them in Settings on ourlime.com for now.' });
+          return;
+        }
+      }
       setModal({ visible: true, type: 'success', title: 'Settings saved', message: 'Your profile and preference settings have been updated.' });
     } catch (err) {
       console.error('[Settings] Save error:', err);
       setModal({ visible: true, type: 'danger', title: 'Settings not saved', message: 'Could not save settings. Please try again.' });
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleUnblock = async (blockedId: string) => {
-    if (!userId) return;
-    try {
-      await settingsService.unblockUser(userId, blockedId);
-      setBlockedUsers((prev) => prev.filter((u) => u.id !== blockedId));
-      setModal({ visible: true, type: 'success', title: 'User unblocked', message: 'User has been removed from your block list.' });
-    } catch (unblockError: unknown) {
-      setModal({ visible: true, type: 'danger', title: 'User not unblocked', message: unblockError instanceof Error ? unblockError.message : 'Please try again.' });
     }
   };
 
@@ -269,9 +280,11 @@ export default function SettingsScreen() {
               <Switch value={allowDirectMessages} onValueChange={setAllowDirectMessages} trackColor={{ true: '#10b981' }} />
             </View>
             <View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={styles.switchLabel}>Activity Status</Text><Text style={styles.switchSubtext}>Show when you are active</Text></View><Switch value={activityStatus} onValueChange={setActivityStatus} trackColor={{ true: '#10b981' }} /></View>
-            <View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={styles.switchLabel}>Search Visibility</Text><Text style={styles.switchSubtext}>Allow people to find your profile</Text></View><Switch value={searchVisibility} onValueChange={setSearchVisibility} trackColor={{ true: '#10b981' }} /></View>
-            <Text style={styles.label}>Who can message you</Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>{(['everyone', 'friends', 'nobody'] as const).map((permission) => <TouchableOpacity key={permission} onPress={() => setMessagePermissions(permission)} style={[styles.visibilityOption, messagePermissions === permission && styles.visibilityOptionActive]}><Text style={[styles.visibilityText, messagePermissions === permission && styles.visibilityTextActive]}>{permission}</Text></TouchableOpacity>)}</View>
+            <View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={styles.switchLabel}>Show Email on Profile</Text><Text style={styles.switchSubtext}>Allow anyone viewing your profile to see your email address</Text></View><Switch value={showEmailOnProfile} onValueChange={setShowEmailOnProfile} trackColor={{ true: '#10b981' }} /></View>
+            <View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={styles.switchLabel}>Search Visibility</Text><Text style={styles.switchSubtext}>Allow others to find you by name or email</Text></View><Switch value={searchVisibility} onValueChange={setSearchVisibility} trackColor={{ true: '#10b981' }} /></View>
+            <Text style={styles.label}>Message Permissions</Text>
+            <Text style={styles.switchSubtext}>Who can send you direct messages</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>{([['everyone', 'Everyone'], ['friends', 'Friends Only'], ['nobody', 'No One']] as const).map(([permission, permissionLabel]) => <TouchableOpacity key={permission} onPress={() => setMessagePermissions(permission)} style={[styles.visibilityOption, messagePermissions === permission && styles.visibilityOptionActive]}><Text style={[styles.visibilityText, messagePermissions === permission && styles.visibilityTextActive]}>{permissionLabel}</Text></TouchableOpacity>)}</View>
             <Text style={styles.sectionTitle}>Data sharing</Text>
             <View style={styles.switchRow}><Text style={styles.switchLabel}>Product analytics</Text><Switch value={analyticsSharing} onValueChange={setAnalyticsSharing} trackColor={{ true: '#10b981' }} /></View>
             <View style={styles.switchRow}><Text style={styles.switchLabel}>Marketing personalization</Text><Switch value={marketingSharing} onValueChange={setMarketingSharing} trackColor={{ true: '#10b981' }} /></View>
@@ -312,19 +325,7 @@ export default function SettingsScreen() {
 
         {activeTab === 'blocked' && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Blocked Users</Text>
-            {blockedUsers.length === 0 ? (
-              <Text style={styles.emptyText}>Your blocked-users list is empty.</Text>
-            ) : (
-              blockedUsers.map((b) => (
-                <View key={b.id} style={styles.blockedRow}>
-                  <Text style={styles.blockedName}>@{b.userName || b.firstName}</Text>
-                  <TouchableOpacity onPress={() => handleUnblock(b.id)} style={styles.unblockBtn}>
-                    <Text style={styles.unblockText}>Unblock</Text>
-                  </TouchableOpacity>
-                </View>
-              ))
-            )}
+            <BlockListSection userId={userId} blockedUsers={blockedUsers} onBlockedUsersChange={setBlockedUsers} />
           </View>
         )}
 

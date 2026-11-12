@@ -24,6 +24,8 @@ import PostCardSection from './MiddleSectionComponent/PostCardSection/PostCardSe
 import SuggestedUsersSection from '@/components/home/SuggestedUsersSection';
 import ActivityCard from '@/components/home/ActivityCard';
 import GamesFeedCard from '@/components/home/GamesFeedCard';
+import PromotedContentCard from '@/components/home/PromotedContentCard';
+import FriendSearchPanel from '@/components/home/FriendSearchPanel';
 import { SkeletonPostCard } from '@/components/home/SkeletonLoaders';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppDrawer } from '@/lib/contexts/AppDrawerContext';
@@ -254,6 +256,7 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
                 activeFeedSource={activeFeedSource}
                 onFeedSourceChange={handleFeedSourceChange}
               />
+              {activeFeedSource === 'friends' ? <View style={{ marginTop: 10 }}><FriendSearchPanel /></View> : null}
             </View>
           );
 
@@ -381,7 +384,7 @@ export default function MiddleSection({ userProfile, onCreatePost }: MiddleSecti
         }
 
         case 'promoted':
-          return null;
+          return <View style={{ marginHorizontal: 16 }}><PromotedContentCard /></View>;
 
         case 'activity':
           return <View style={{ marginHorizontal: 16 }}><ActivityCard userId={userProfile.uid} /></View>;

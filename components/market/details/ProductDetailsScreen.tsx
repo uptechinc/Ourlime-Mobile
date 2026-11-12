@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
-import { ArrowRight, BadgeCheck, Flag, Globe, Mail, MapPin, Phone, RotateCcw, Share2, ShieldCheck, ShoppingBag, Store, Truck } from 'lucide-react-native';
+import { ArrowRight, BadgeCheck, ChevronRight, Flag, Globe, Mail, MapPin, Phone, RotateCcw, Share2, ShieldCheck, ShoppingBag, Store, Truck } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAccountCart } from '@/lib/hooks/useAccountCart';
@@ -150,15 +150,24 @@ export default function ProductDetailsScreen({ productId }: ProductDetailsScreen
   if (product.weight) specs.push(['Weight', `${product.weight.value ?? ''}${product.weight.unit ? ` ${product.weight.unit}` : ''}`]);
   specs.push(['Listed Date', product.createdAtMs ? new Date(product.createdAtMs).toLocaleDateString() : 'Recent']);
   const sellerImage = seller?.profileImage ?? product.sellerProfileImage ?? null;
+  // Web breadcrumb / "View All": `/market?categories=<category>`.
+  const openCategory = () => { if (product.category) router.push(`/market?categories=${encodeURIComponent(product.category)}` as Href); };
 
   return <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
     {header}
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+      <View style={styles.breadcrumb} accessibilityRole="header">
+        <Pressable accessibilityRole="link" accessibilityLabel="Marketplace" onPress={() => router.push('/market' as Href)} hitSlop={8}><Text style={styles.breadcrumbLink}>Marketplace</Text></Pressable>
+        {product.category ? <><ChevronRight size={12} color={colors.mutedText} />
+          <Pressable accessibilityRole="link" accessibilityLabel={`More in ${product.category}`} onPress={openCategory} hitSlop={8}><Text style={styles.breadcrumbLink}>{product.category}</Text></Pressable></> : null}
+        <ChevronRight size={12} color={colors.mutedText} />
+        <Text numberOfLines={1} style={styles.breadcrumbCurrent}>{product.title}</Text>
+      </View>
       <ProductGallery title={product.title} media={product.images} favorite={preferences.favoriteIds.includes(product.id)} onToggleFavorite={() => void preferences.toggleFavorite(product.id)} badges={badges} />
 
       <View style={{ gap: 8 }}>
         <View style={styles.rowBetween}>
-          <View style={styles.categoryChip}><Text style={styles.categoryText}>{product.category || 'Marketplace'}</Text></View>
+          <Pressable accessibilityRole="link" accessibilityLabel={`Browse ${product.category || 'Marketplace'}`} onPress={product.category ? openCategory : () => router.push('/market' as Href)} style={styles.categoryChip}><Text style={styles.categoryText}>{product.category || 'Marketplace'}</Text></Pressable>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable accessibilityRole="button" accessibilityLabel="Share listing" onPress={handleShare} style={styles.roundButton}><Share2 size={19} color={colors.text} /></Pressable>
             {ownerId ? <Pressable accessibilityRole="button" accessibilityLabel="Report listing" onPress={() => setReportOpen(true)} style={styles.roundButton}><Flag size={19} color={colors.destructiveText} /></Pressable> : null}
@@ -282,7 +291,10 @@ export default function ProductDetailsScreen({ productId }: ProductDetailsScreen
       {ownerId ? <ListingDiscussion ownerId={ownerId} productId={product.id} sellerId={product.sellerId} canMutate={canMutate} /> : <View style={styles.notice}><Text style={styles.noticeText}>Sign in to join the product discussion.</Text></View>}
 
       {detail.related.length ? <View style={{ gap: 10 }}>
-        <Text style={styles.sectionTitle}>More in {product.category}</Text>
+        <View style={styles.rowBetween}>
+          <Text style={[styles.sectionTitle, { flex: 1 }]} numberOfLines={1}>More in {product.category}</Text>
+          {product.category ? <Pressable accessibilityRole="link" accessibilityLabel={`View all in ${product.category}`} onPress={openCategory} hitSlop={8}><Text style={styles.breadcrumbLink}>View All</Text></Pressable> : null}
+        </View>
         <View style={styles.grid}>{detail.related.map((related: MarketProduct) => <MarketProductCard key={related.id} product={related} favorite={preferences.favoriteIds.includes(related.id)}
           onOpen={(entry) => router.push(`/market/${encodeURIComponent(entry.id)}` as Href)} onToggleFavorite={(id) => void preferences.toggleFavorite(id)} onQuickAdd={(entry) => router.push(`/market/${encodeURIComponent(entry.id)}` as Href)} />)}</View>
       </View> : null}
@@ -325,6 +337,9 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   sellerImage: { width: 48, height: 48, borderRadius: 13, backgroundColor: colors.control }, sellerName: { color: colors.text, fontSize: 15, fontWeight: '900' },
   verifiedChip: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: colors.successSurface }, verifiedText: { color: colors.accentText, fontSize: 10, fontWeight: '800' },
   contactRow: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 8 }, contactText: { color: colors.accentText, fontSize: 13, fontWeight: '700', flexShrink: 1 },
+  breadcrumb: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'nowrap' },
+  breadcrumbLink: { color: colors.accentText, fontSize: 12, fontWeight: '800' },
+  breadcrumbCurrent: { flexShrink: 1, color: colors.text, fontSize: 12, fontWeight: '700' },
   sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '900' }, body: { color: colors.secondaryText, fontSize: 14, lineHeight: 22 },
   specCard: { paddingHorizontal: 13, borderRadius: 16, backgroundColor: colors.surface }, specRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   specDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }, specLabel: { color: colors.mutedText, fontSize: 12 }, specValue: { color: colors.text, fontSize: 12, fontWeight: '800', textTransform: 'capitalize', flexShrink: 1, textAlign: 'right' },

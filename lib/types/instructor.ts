@@ -157,3 +157,21 @@ export type InstructorApplicant = {
 export type InstructorDocumentKind = 'resume' | 'certificate' | 'sample' | 'proof';
 
 export type PickedUpload = { uri: string; name: string; mimeType?: string; size?: number };
+
+export type CourseFileKind = 'video' | 'pdf' | 'document' | 'image';
+
+/**
+ * A file in the course editor's library (the website's Content step): uploaded straight away to the instructor's
+ * staging folder, then attached to lessons. `path` and `url` are set once the upload finishes.
+ */
+export type CourseLibraryFile = {
+  id: string;
+  name: string;
+  kind: CourseFileKind;
+  size: number;
+  status: 'uploading' | 'ready' | 'error';
+  path?: string;
+  url?: string;
+  /** Video length in whole minutes, when the picker reported it (fills in the lesson duration). */
+  durationMinutes?: number;
+};

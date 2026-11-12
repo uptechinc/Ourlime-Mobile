@@ -9,10 +9,12 @@ type CategoryBrowserProps = {
   courses: Course[];
   onOpenCategory: (category: string, subcategory?: string) => void;
   onOpenCxc: () => void;
+  /** "View all" opens the full catalog (web Resources panel header link). */
+  onViewAll?: () => void;
 };
 
 /** Browse by main category with live course counts, expanding to subcategories (web eLearning Resources panel). */
-export default function CategoryBrowser({ courses, onOpenCategory, onOpenCxc }: CategoryBrowserProps) {
+export default function CategoryBrowser({ courses, onOpenCategory, onOpenCxc, onViewAll }: CategoryBrowserProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -27,6 +29,11 @@ export default function CategoryBrowser({ courses, onOpenCategory, onOpenCxc }: 
       <View style={styles.header}>
         <BookOpen size={19} color={colors.accentText} />
         <Text style={styles.title}>Browse by category</Text>
+        {onViewAll ? (
+          <Pressable accessibilityRole="link" onPress={onViewAll} hitSlop={8} style={styles.viewAll}>
+            <Text style={styles.viewAllText}>View all</Text>
+          </Pressable>
+        ) : null}
       </View>
       {COURSE_MAIN_CATEGORIES.map((category) => {
         const count = counts.get(category.toLowerCase()) ?? 0;
@@ -78,7 +85,9 @@ export default function CategoryBrowser({ courses, onOpenCategory, onOpenCxc }: 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 17, padding: 14, gap: 2 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  title: { color: colors.text, fontSize: 16, fontWeight: '800' },
+  title: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '800' },
+  viewAll: { paddingVertical: 4, paddingHorizontal: 6 },
+  viewAllText: { color: colors.accentText, fontSize: 14, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center' },
   rowMain: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 6 },
   rowText: { flex: 1, color: colors.text, fontSize: 14, fontWeight: '600' },

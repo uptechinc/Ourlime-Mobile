@@ -16,6 +16,7 @@ import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import AdminWorkspaceShell from './AdminWorkspaceShell';
 import {
 	AdminWorkspaceService,
+	type AdminStickerFields,
 	type AdminWorkspaceItem,
 	type AdminWorkspaceKind,
 	type AdminWorkspaceStatus,
@@ -43,6 +44,53 @@ const STATUS_FILTERS: readonly (AdminWorkspaceStatus | 'all')[] = [
 	'disabled',
 ];
 
+type SortOption = 'newest' | 'oldest' | 'name' | 'most-members' | 'price-desc' | 'price-asc';
+type PriceFilter = 'all' | 'under50' | '50to200' | '200to500' | 'above500';
+type PrivacyFilter = 'all' | 'public' | 'private';
+
+const SORT_LABELS: { [option in SortOption]: string } = {
+	newest: 'Newest',
+	oldest: 'Oldest',
+	name: 'A-Z',
+	'most-members': 'Most members',
+	'price-desc': 'Price high-low',
+	'price-asc': 'Price low-high',
+};
+const PRICE_FILTERS: readonly { value: PriceFilter; label: string }[] = [
+	{ value: 'all', label: 'All Prices' },
+	{ value: 'under50', label: 'Under $50' },
+	{ value: '50to200', label: '$50 - $200' },
+	{ value: '200to500', label: '$200 - $500' },
+	{ value: 'above500', label: '$500+' },
+];
+const PRIVACY_FILTERS: readonly { value: PrivacyFilter; label: string }[] = [
+	{ value: 'all', label: 'All Privacy Types' },
+	{ value: 'public', label: 'Public' },
+	{ value: 'private', label: 'Private' },
+];
+
+const matchesPrice = (price: number, filter: PriceFilter): boolean => {
+	if (filter === 'under50') return price < 50;
+	if (filter === '50to200') return price >= 50 && price <= 200;
+	if (filter === '200to500') return price > 200 && price <= 500;
+	if (filter === 'above500') return price > 500;
+	return true;
+};
+
+type FilterChipProps = { label: string; selected: boolean; onPress: () => void };
+
+function FilterChip({ label, selected, onPress }: FilterChipProps) {
+	const { colors } = useAppTheme();
+	return (
+		<TouchableOpacity
+			onPress={onPress}
+			style={{ marginRight: 8, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: selected ? colors.accent : colors.border, backgroundColor: selected ? colors.successSurface : 'transparent' }}
+		>
+			<Text style={{ color: selected ? colors.successText : colors.secondaryText, fontSize: 12, fontWeight: '700' }}>{label}</Text>
+		</TouchableOpacity>
+	);
+}
+
 export default function AdminCollectionWorkspace({
 	kind,
 	title,
@@ -53,7 +101,15 @@ export default function AdminCollectionWorkspace({
 	const [items, setItems] = useState<AdminWorkspaceItem[]>([]);
 	const [query, setQuery] = useState('');
 	const [status, setStatus] = useState<AdminWorkspaceStatus | 'all'>('all');
-	const [sort, setSort] = useState<'newest' | 'oldest' | 'name'>('newest');
+	const [sort, setSort] = useState<SortOption>(kind === 'communities' ? 'most-members' : 'newest');
+	const [priceFilter, setPriceFilter] = useState<PriceFilter>('all');
+	const [privacyFilter, setPrivacyFilter] = useState<PrivacyFilter>('all');
+	const sortOptions: readonly SortOption[] =
+		kind === 'communities'
+			? ['most-members', 'newest', 'oldest', 'name']
+			: kind === 'products'
+				? ['newest', 'oldest', 'price-desc', 'price-asc']
+				: ['newest', 'oldest', 'name'];
 	const [selected, setSelected] = useState<AdminWorkspaceItem | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
@@ -62,9 +118,53 @@ export default function AdminCollectionWorkspace({
 	const [message, setMessage] = useState<string | null>(null);
 	const [reviewReason, setReviewReason] = useState('');
 
+	const [stickerFields, setStickerFields] = useState<AdminStickerFields | null>(null);
+
 	useEffect(() => {
 		setReviewReason('');
+		setStickerFields(selected?.stickerFields ?? null);
+		// Only reset when a different record opens, not when its status changes.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [selected?.id]);
+
+	const handleSaveStickerFields = async () => {
+		if (!selected || !stickerFields || busy || (kind !== 'stickers' && kind !== 'sticker_packs')) return;
+		setBusy(true);
+		try {
+			await workspaceService.updateStickerRecord(kind, selected.id, stickerFields);
+			const updated: AdminWorkspaceItem = {
+				...selected,
+				title: stickerFields.name.trim(),
+				subtitle: kind === 'stickers' ? stickerFields.packId.trim() || 'Unassigned pack' : selected.subtitle,
+				description: kind === 'sticker_packs' ? stickerFields.description.trim() : selected.description,
+				imageUrl: kind === 'stickers' ? stickerFields.imageUrl.trim() || selected.imageUrl : selected.imageUrl,
+				stickerFields,
+			};
+			setItems((current) => current.map((item) => (item.id === selected.id ? updated : item)));
+			setSelected(updated);
+			setMessage(kind === 'sticker_packs' ? 'Pack updated!' : 'Sticker updated!');
+		} catch (saveError: unknown) {
+			setMessage(saveError instanceof Error ? saveError.message : 'Changes could not be saved.');
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const stickerFieldList: readonly { key: keyof AdminStickerFields; label: string; placeholder: string }[] =
+		kind === 'sticker_packs'
+			? [
+					{ key: 'name', label: 'Pack name', placeholder: 'e.g. Reactions' },
+					{ key: 'description', label: 'Description', placeholder: 'Short description' },
+					{ key: 'icon', label: 'Icon', placeholder: '/images/stickers/reactions/Laughing.png' },
+					{ key: 'folder', label: 'Folder', placeholder: 'Must match public/images/stickers/ folder' },
+				]
+			: [
+					{ key: 'name', label: 'Sticker name', placeholder: 'e.g. Thumbs Up' },
+					{ key: 'packId', label: 'Pack ID', placeholder: 'e.g. reactions' },
+					{ key: 'imageUrl', label: 'Image URL', placeholder: '/images/stickers/reactions/thumbs-up.png' },
+					{ key: 'category', label: 'Category', placeholder: 'e.g. reaction' },
+					{ key: 'keywords', label: 'Keywords (comma separated)', placeholder: 'happy, smile, lol' },
+				];
 
 	const load = useCallback(
 		async (isRefresh = false) => {
@@ -95,6 +195,8 @@ export default function AdminCollectionWorkspace({
 		const normalizedQuery = query.trim().toLowerCase();
 		return items
 			.filter((item) => status === 'all' || item.status === status)
+			.filter((item) => kind !== 'products' || matchesPrice(item.price, priceFilter))
+			.filter((item) => kind !== 'communities' || privacyFilter === 'all' || item.privacy === privacyFilter)
 			.filter(
 				(item) =>
 					!normalizedQuery ||
@@ -102,14 +204,35 @@ export default function AdminCollectionWorkspace({
 						.toLowerCase()
 						.includes(normalizedQuery)
 			)
-			.sort((first, second) =>
-				sort === 'name'
-					? first.title.localeCompare(second.title)
-					: sort === 'oldest'
-						? first.createdAtMs - second.createdAtMs
-						: second.createdAtMs - first.createdAtMs
-			);
-	}, [items, query, sort, status]);
+			.sort((first, second) => {
+				if (sort === 'name') return first.title.localeCompare(second.title);
+				if (sort === 'oldest') return first.createdAtMs - second.createdAtMs;
+				if (sort === 'most-members') return second.memberCount - first.memberCount;
+				if (sort === 'price-desc') return second.price - first.price;
+				if (sort === 'price-asc') return first.price - second.price;
+				return second.createdAtMs - first.createdAtMs;
+			});
+	}, [items, kind, priceFilter, privacyFilter, query, sort, status]);
+
+	const statCards = useMemo(() => {
+		if (kind === 'products') {
+			return [
+				{ label: 'Total Products', value: items.length },
+				{ label: 'Pending Review', value: items.filter((item) => item.status === 'pending').length },
+				{ label: 'Approved', value: items.filter((item) => item.status === 'approved' || item.status === 'active').length },
+				{ label: 'Rejected', value: items.filter((item) => item.status === 'rejected').length },
+			];
+		}
+		if (kind === 'communities') {
+			return [
+				{ label: 'Total Communities', value: items.length },
+				{ label: 'Public Communities', value: items.filter((item) => item.privacy === 'public').length },
+				{ label: 'Private Communities', value: items.filter((item) => item.privacy === 'private').length },
+				{ label: 'Total Memberships', value: items.reduce((total, item) => total + item.memberCount, 0) },
+			];
+		}
+		return [];
+	}, [items, kind]);
 
 	const handleStatus = async (nextStatus: AdminWorkspaceStatus) => {
 		if (!selected || busy) return;
@@ -206,14 +329,9 @@ export default function AdminCollectionWorkspace({
 				</View>
 				<TouchableOpacity
 					onPress={() =>
-						setSort((current) =>
-							current === 'newest'
-								? 'oldest'
-								: current === 'oldest'
-									? 'name'
-									: 'newest'
-						)
+						setSort((current) => sortOptions[(sortOptions.indexOf(current) + 1) % sortOptions.length])
 					}
+					accessibilityLabel={`Sort: ${SORT_LABELS[sort]}`}
 					style={{
 						marginBottom: 8,
 						flexDirection: 'row',
@@ -229,15 +347,40 @@ export default function AdminCollectionWorkspace({
 					<Text
 						style={{
 							marginLeft: 7,
-							textTransform: 'capitalize',
 							color: colors.secondaryText,
 							fontWeight: '700',
 						}}
 					>
-						{sort}
+						{SORT_LABELS[sort]}
 					</Text>
 				</TouchableOpacity>
 			</View>
+			{statCards.length ? (
+				<View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+					{statCards.map((card) => (
+						<View key={card.label} style={{ width: '50%', padding: 4 }}>
+							<View style={{ padding: 12, borderRadius: 15, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
+								<Text numberOfLines={1} style={{ color: colors.mutedText, fontSize: 11 }}>{card.label}</Text>
+								<Text style={{ marginTop: 2, color: colors.text, fontSize: 19, fontWeight: '900' }}>{card.value.toLocaleString()}</Text>
+							</View>
+						</View>
+					))}
+				</View>
+			) : null}
+			{kind === 'products' ? (
+				<ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+					{PRICE_FILTERS.map((filter) => (
+						<FilterChip key={filter.value} label={filter.label} selected={priceFilter === filter.value} onPress={() => setPriceFilter(filter.value)} />
+					))}
+				</ScrollView>
+			) : null}
+			{kind === 'communities' ? (
+				<ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+					{PRIVACY_FILTERS.map((filter) => (
+						<FilterChip key={filter.value} label={filter.label} selected={privacyFilter === filter.value} onPress={() => setPrivacyFilter(filter.value)} />
+					))}
+				</ScrollView>
+			) : null}
 			<ScrollView
 				horizontal
 				showsHorizontalScrollIndicator={false}
@@ -436,6 +579,34 @@ export default function AdminCollectionWorkspace({
 								>
 									{selected.id}
 								</Text>
+								{stickerFields ? (
+									<View style={{ marginTop: 18 }}>
+										<Text style={{ marginBottom: 8, color: colors.text, fontWeight: '800' }}>
+											{kind === 'sticker_packs' ? 'Edit pack' : 'Edit sticker'}
+										</Text>
+										{stickerFieldList.map((field) => (
+											<View key={field.key} style={{ marginBottom: 10 }}>
+												<Text style={{ marginBottom: 5, color: colors.secondaryText, fontSize: 12, fontWeight: '700' }}>{field.label}</Text>
+												<TextInput
+													value={stickerFields[field.key]}
+													onChangeText={(value) => setStickerFields((current) => (current ? { ...current, [field.key]: value } : current))}
+													editable={!busy}
+													autoCapitalize={field.key === 'name' || field.key === 'description' ? 'sentences' : 'none'}
+													placeholder={field.placeholder}
+													placeholderTextColor={colors.mutedText}
+													style={{ padding: 11, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text }}
+												/>
+											</View>
+										))}
+										<TouchableOpacity
+											disabled={busy}
+											onPress={() => void handleSaveStickerFields()}
+											style={{ alignItems: 'center', padding: 13, borderRadius: 14, backgroundColor: colors.accent, opacity: busy ? 0.6 : 1 }}
+										>
+											<Text style={{ color: colors.onAccent, fontWeight: '900' }}>Save changes</Text>
+										</TouchableOpacity>
+									</View>
+								) : null}
 								<Text
 									style={{
 										marginTop: 18,

@@ -1,15 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Globe, Lock, Plus, X } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import DateTimeField from '@/components/ui/DateTimeField';
+import ProjectColorPicker from '@/components/projectManagement/ProjectColorPicker';
+import { DEFAULT_PROJECT_COLOR } from '@/components/projectManagement/projectColors';
 import type { ProjectRecord, ProjectStatus, ProjectVisibility } from '@/lib/types/project';
 import { useAndroidKeyboardInset } from '@/lib/hooks/useKeyboardHeight';
 
 export type ProjectFormValues = {
   name: string;
   description: string;
+  color: string;
   dueDate: string | null;
   status: ProjectStatus;
   visibility: ProjectVisibility;
@@ -22,6 +25,12 @@ type ProjectFormSheetProps = {
   project: ProjectRecord | null;
   onClose: () => void;
   onSubmit: (values: ProjectFormValues) => Promise<void>;
+  /** Header title override (the project page's settings use "Project settings"). */
+  title?: string;
+  /** Members without settings rights see the form read-only (website ProjectSettingsModal). */
+  readOnly?: boolean;
+  /** Extra sections under the form (team & roles, danger zone). */
+  footer?: ReactNode;
 };
 
 const STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
@@ -48,11 +57,12 @@ function parseDateString(value: string | null): Date | null {
 }
 
 /** Create / edit project form with the same fields as the website's project modal. */
-export default function ProjectFormSheet({ visible, project, onClose, onSubmit }: ProjectFormSheetProps) {
+export default function ProjectFormSheet({ visible, project, onClose, onSubmit, title, readOnly = false, footer }: ProjectFormSheetProps) {
   const { colors } = useAppTheme();
   const keyboardInset = useAndroidKeyboardInset();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [color, setColor] = useState<string>(DEFAULT_PROJECT_COLOR);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [status, setStatus] = useState<ProjectStatus>('active');
   const [visibility, setVisibility] = useState<ProjectVisibility>('private');
@@ -66,6 +76,7 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit }
     if (!visible) return;
     setName(project?.name ?? '');
     setDescription(project?.description ?? '');
+    setColor(project?.color || DEFAULT_PROJECT_COLOR);
     setDueDate(parseDateString(project?.dueDate ?? null));
     setStatus(project?.status ?? 'active');
     setVisibility(project?.visibility ?? 'private');
@@ -90,7 +101,7 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit }
     setIsSaving(true);
     setError('');
     try {
-      await onSubmit({ name: name.trim(), description: description.trim(), dueDate: dueDate ? toDateString(dueDate) : null, status, visibility, tags });
+      await onSubmit({ name: name.trim(), description: description.trim(), color, dueDate: dueDate ? toDateString(dueDate) : null, status, visibility, tags });
     } catch (submitError: unknown) {
       console.error('[ProjectFormSheet.handleSubmit] Error:', submitError);
       setError(submitError instanceof Error ? submitError.message : 'The project could not be saved.');
@@ -112,14 +123,18 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit }
       <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
           <TouchableOpacity onPress={onClose} disabled={isSaving} accessibilityLabel="Close" style={{ padding: 6 }}><X size={22} color={colors.text} /></TouchableOpacity>
-          <Text style={{ flex: 1, textAlign: 'center', color: colors.text, fontSize: 17, fontWeight: '900' }}>{project ? 'Edit project' : 'New project'}</Text>
-          <TouchableOpacity onPress={() => void handleSubmit()} disabled={isSaving} style={{ minWidth: 72, alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.accent, opacity: isSaving ? 0.7 : 1 }}>
-            {isSaving ? <ActivityIndicator size="small" color={colors.onAccent} /> : <Text style={{ color: colors.onAccent, fontWeight: '900' }}>{project ? 'Save' : 'Create'}</Text>}
-          </TouchableOpacity>
+          <Text style={{ flex: 1, textAlign: 'center', color: colors.text, fontSize: 17, fontWeight: '900' }}>{title ?? (project ? 'Edit project' : 'New project')}</Text>
+          {readOnly ? <View style={{ minWidth: 72 }} /> : (
+            <TouchableOpacity onPress={() => void handleSubmit()} disabled={isSaving} style={{ minWidth: 72, alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.accent, opacity: isSaving ? 0.7 : 1 }}>
+              {isSaving ? <ActivityIndicator size="small" color={colors.onAccent} /> : <Text style={{ color: colors.onAccent, fontWeight: '900' }}>{project ? 'Save' : 'Create'}</Text>}
+            </TouchableOpacity>
+          )}
         </View>
         <KeyboardAvoidingView style={{ flex: 1, paddingBottom: keyboardInset }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: 40 }}>
             {error ? <Text accessibilityRole="alert" style={{ color: colors.destructiveText, fontWeight: '700' }}>{error}</Text> : null}
+            {readOnly ? <Text style={{ color: colors.mutedText, fontSize: 12 }}>Only the project owner or an admin can edit project settings.</Text> : null}
+            <View pointerEvents={readOnly ? 'none' : 'auto'} style={{ gap: 18, opacity: readOnly ? 0.75 : 1 }}>
             <View style={{ gap: 6 }}>
               <Text style={label}>Project Name <Text style={{ color: '#ef4444' }}>*</Text></Text>
               <TextInput value={name} onChangeText={setName} maxLength={NAME_LIMIT} editable={!isSaving} placeholder="Enter project name" placeholderTextColor={colors.mutedText} style={input} />
@@ -130,6 +145,10 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit }
                 <Text style={label}>{description.length}/{DESCRIPTION_LIMIT}</Text>
               </View>
               <TextInput value={description} onChangeText={(value) => setDescription(value.slice(0, DESCRIPTION_LIMIT))} editable={!isSaving} multiline placeholder="Enter project description" placeholderTextColor={colors.mutedText} style={[input, { minHeight: 96, paddingVertical: 12, textAlignVertical: 'top' }]} />
+            </View>
+            <View style={{ gap: 8 }}>
+              <Text style={label}>Project Colour</Text>
+              <ProjectColorPicker value={color} onChange={setColor} disabled={isSaving} />
             </View>
             <DateTimeField label="Due Date" mode="date" placeholder="No due date" value={dueDate} minimumDate={project ? undefined : new Date()} onChange={setDueDate} onClear={() => setDueDate(null)} />
             <View style={{ gap: 8 }}>
@@ -177,6 +196,8 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit }
                 </View>
               ) : null}
             </View>
+            </View>
+            {footer}
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>

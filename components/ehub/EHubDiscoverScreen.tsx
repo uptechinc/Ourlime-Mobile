@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Building2, Search } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
+import EHubSectionNav from '@/components/ehub/EHubSectionNav';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useEHubProviders } from '@/lib/hooks/useEHub';
 import { EHubChip, EHubEmptyState, EHubNotice, EHubProviderCard, useEHubLayout } from '@/components/ehub/EHubParts';
@@ -30,6 +31,10 @@ export default function EHubDiscoverScreen() {
   const [category, setCategory] = useState('All categories');
   const [location, setLocation] = useState('All locations');
   const [kind, setKind] = useState<KindFilter>(params.kind === 'business' || params.kind === 'professional' ? params.kind : 'all');
+  // The Professionals pill sets ?kind= on this screen when it is already open.
+  useEffect(() => {
+    if (params.kind === 'business' || params.kind === 'professional') setKind(params.kind);
+  }, [params.kind]);
   const providers = useEHubProviders({
     search,
     category: category === 'All categories' ? undefined : category,
@@ -49,6 +54,7 @@ export default function EHubDiscoverScreen() {
   return (
     <View style={styles.screen}>
       <PageHeader title="Discover" onBackPress={() => router.back()} />
+      <EHubSectionNav currentLabel="Discover" />
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={providers.isRefreshing} onRefresh={() => void providers.refresh()} tintColor={colors.accent} />} contentContainerStyle={styles.scrollContent}>
         <View style={styles.hero}>
           <View style={{ width: layout.contentWidth, paddingHorizontal: layout.gutter + 4 }}>

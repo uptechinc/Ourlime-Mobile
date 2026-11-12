@@ -237,6 +237,7 @@ export class BlogsAndArticlesService {
       createdAt: createdMs ? new Date(createdMs).toISOString() : undefined,
       updatedAt: updatedMs ? new Date(updatedMs).toISOString() : undefined,
       status: this.readStatus(data.status),
+      isTrending: Boolean(data.flags && typeof data.flags === 'object' && (data.flags as { trending?: unknown }).trending === true),
     };
     const plainContent = typeof content === 'string' ? content.replace(/<[^>]*>/g, ' ') : '';
     const searchText = [detail.title, detail.excerpt, plainContent, author.name, categoryId, ...tags.map((tag) => tag.name)].join(' ').toLowerCase();
@@ -611,6 +612,7 @@ export class BlogsAndArticlesService {
       likesCount: metrics?.likesCount ?? 0,
       commentsCount: metrics?.commentsCount ?? 0,
       viewsCount: metrics?.viewsCount ?? 0,
+      isTrending: post.isTrending === true,
     };
   }
 }

@@ -1,14 +1,20 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { X } from 'lucide-react-native';
+import { HelpCircle, X } from 'lucide-react-native';
 import { SellerField, SellerNumberField, SellerToggleRow } from '@/components/ehub/EHubSellerFormParts';
-import { QUICK_SIZES, marketListingFormService } from '@/lib/services/MarketListingFormService';
+import { QUICK_WEIGHT_UNITS, SIZE_BASE_ID, STANDARD_SIZE_NAMES, WEIGHT_BASE_ID, getCategoryVariantPresets, marketListingFormService } from '@/lib/services/MarketListingFormService';
 import type { MarketListingEditor } from '@/lib/hooks/useMarketListingEditor';
 import type { ListingDimensionUnit, ListingWeightUnit } from '@/lib/types/marketListing';
 import { ListingInput, ListingSection, OptionChips, useListingStyles } from '../ListingFormParts';
 
 const DIMENSION_UNITS: readonly { value: ListingDimensionUnit; label: string }[] = [{ value: 'cm', label: 'cm' }, { value: 'in', label: 'in' }];
 const WEIGHT_UNITS: readonly { value: ListingWeightUnit; label: string }[] = [{ value: 'kg', label: 'kg' }, { value: 'lb', label: 'lb' }, { value: 'g', label: 'g' }];
+
+const GUIDE_STEPS: readonly { title: string; body: string }[] = [
+  { title: 'Select colours', body: 'Tap a base colour or type a custom colour name and tap Add. Every listing needs at least one colour.' },
+  { title: 'Select sizes', body: 'Use the quick presets for your category (sizes, storage, volumes, formats, rim sizes) or type a custom value and tap Add. Add weights with the Weight row.' },
+  { title: 'Set prices & inventory', body: 'Every colour × size combination becomes a variant. Enter a price and stock for each, or use Apply to all to fill them at once.' },
+];
 
 /**
  * Website PricingDetails: listing currency, colour and size/weight options with a price, stock and availability for
@@ -29,11 +35,25 @@ export default function ListingPricingStep({ editor }: { editor: MarketListingEd
     variantHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     variantTitle: { flex: 1, color: colors.text, fontSize: 14, fontWeight: '900', textTransform: 'capitalize' },
     small: { color: colors.mutedText, fontSize: 11, fontWeight: '700' },
+    guideToggle: { alignSelf: 'flex-start', minHeight: 40, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 20, backgroundColor: colors.successSurface },
+    guideToggleText: { color: colors.accentText, fontSize: 13, fontWeight: '800' },
+    guide: { padding: 14, gap: 10, borderRadius: 18, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.surface },
+    guideStep: { color: colors.accentText, fontSize: 13, fontWeight: '900' },
+    guideBody: { color: colors.secondaryText, fontSize: 13, lineHeight: 19 },
+    groupTitle: { color: colors.secondaryText, fontSize: 12, fontWeight: '800' },
+    selectedChip: { backgroundColor: colors.accent, borderColor: colors.accent },
+    selectedChipText: { color: '#ffffff' },
   }), [colors]);
   const { form, update, updateVariant, setCurrency, baseColors } = editor;
   const [colorText, setColorText] = useState('');
   const [sizeText, setSizeText] = useState('');
+  const [sizeNumber, setSizeNumber] = useState('');
+  const [standardSize, setStandardSize] = useState<string | null>(null);
+  const [weightUnit, setWeightUnit] = useState<'lbs' | 'kg'>('lbs');
+  const [weightText, setWeightText] = useState('');
+  const presets = getCategoryVariantPresets(form.category);
   const [optionError, setOptionError] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
   // Web PricingDetails bulk edit: one price / stock applied to every combination at once.
   const [bulkPrice, setBulkPrice] = useState<number | null>(null);
   const [bulkQuantity, setBulkQuantity] = useState<number | null>(null);
@@ -52,13 +72,30 @@ export default function ListingPricingStep({ editor }: { editor: MarketListingEd
     if (form.colors.length >= 30) { setOptionError('A listing supports at most 30 colours.'); return; }
     update({ colors: [...form.colors, marketListingFormService.createColor(trimmed.slice(0, 100), baseId)] });
   };
-  const addSize = (name: string) => {
+  const addSize = (name: string, baseId?: string): boolean => {
     setOptionError(null);
     const trimmed = name.trim();
-    if (!trimmed) return;
-    if (form.sizes.some((size) => size.name.toLowerCase() === trimmed.toLowerCase())) { setOptionError(`Size variant "${trimmed}" is already added.`); return; }
-    if (form.sizes.length >= 30) { setOptionError('A listing supports at most 30 sizes.'); return; }
-    update({ sizes: [...form.sizes, marketListingFormService.createSize(trimmed.slice(0, 100))] });
+    if (!trimmed) return false;
+    if (form.sizes.some((size) => size.name.toLowerCase() === trimmed.toLowerCase())) { setOptionError(`Size variant "${trimmed}" is already added.`); return false; }
+    if (form.sizes.length >= 30) { setOptionError('A listing supports at most 30 sizes.'); return false; }
+    update({ sizes: [...form.sizes, marketListingFormService.createSize(trimmed.slice(0, 100), baseId)] });
+    return true;
+  };
+  // Website handleAddStandardSize / handleAddCustomSize: "<name> (<number>)" when a size number is given.
+  const withNumber = (name: string) => `${name.trim()}${sizeNumber.trim() ? ` (${sizeNumber.trim()})` : ''}`;
+  const handleAddStandardSize = () => {
+    if (!standardSize) return;
+    if (addSize(withNumber(standardSize), SIZE_BASE_ID)) setSizeNumber('');
+  };
+  const handleAddCustomSize = () => {
+    if (!sizeText.trim()) { setOptionError('Please enter a custom size name.'); return; }
+    const name = presets.usesStandardSizes ? withNumber(sizeText) : sizeText;
+    if (addSize(name, presets.usesStandardSizes ? SIZE_BASE_ID : undefined)) { setSizeText(''); setSizeNumber(''); }
+  };
+  const handleAddWeight = () => {
+    const value = weightText.trim();
+    if (!value || !Number.isFinite(Number(value)) || Number(value) <= 0) { setOptionError(`Please enter a numerical weight value for ${weightUnit}.`); return; }
+    if (addSize(`${value} ${weightUnit}`, WEIGHT_BASE_ID)) setWeightText('');
   };
   const handleCustomColor = () => {
     const match = baseColors.find((color) => color.name === colorText.trim().toLowerCase());
@@ -68,6 +105,17 @@ export default function ListingPricingStep({ editor }: { editor: MarketListingEd
   const availableBaseColors = baseColors.filter((base) => !form.colors.some((color) => color.name.toLowerCase() === base.name));
 
   return <View style={{ gap: 16 }}>
+    {/* Website "How to Add Product Variants" quick guide. */}
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded: showGuide }} onPress={() => setShowGuide((current) => !current)} style={local.guideToggle}>
+      <HelpCircle size={17} color={colors.accentText} /><Text style={local.guideToggleText}>How to add product variants</Text>
+    </Pressable>
+    {showGuide ? <View style={local.guide}>
+      <View style={local.variantHead}><Text style={local.variantTitle}>Quick guide: variants & pricing</Text><Pressable accessibilityRole="button" accessibilityLabel="Close guide" hitSlop={8} onPress={() => setShowGuide(false)}><X size={17} color={colors.mutedText} /></Pressable></View>
+      {GUIDE_STEPS.map((step, index) => <View key={step.title} style={{ gap: 3 }}>
+        <Text style={local.guideStep}>{index + 1}. {step.title}</Text>
+        <Text style={local.guideBody}>{step.body}</Text>
+      </View>)}
+    </View> : null}
     <ListingSection title="Pricing" description="Set the listing currency and, optionally, a compare-at price.">
       <ListingInput label="Listing currency (three-letter code)" required autoCapitalize="characters" maxLength={3} value={form.currency} onChangeText={setCurrency} placeholder="e.g. TTD, USD, CAD" />
       <View style={styles.row}>
@@ -90,16 +138,38 @@ export default function ListingPricingStep({ editor }: { editor: MarketListingEd
       </View>
     </ListingSection>
 
-    <ListingSection title="Sizes & weights" description="Optional. Add clothing sizes, numeric sizes or weights (e.g. 5 lbs).">
+    <ListingSection title="Sizes & specifications" description={`Optional. ${presets.hint}`}>
       {form.sizes.length ? <View style={styles.chipWrap}>{form.sizes.map((size) => <Pressable key={size.id} accessibilityRole="button" accessibilityLabel={`Remove ${size.name}`} onPress={() => update({ sizes: form.sizes.filter((entry) => entry.id !== size.id) })} style={local.option}>
         <Text style={[local.optionText, { textTransform: 'none' }]}>{size.name}</Text><X size={13} color={colors.accentText} />
       </Pressable>)}</View> : null}
+      {presets.groups.map((group) => <View key={group.title} style={{ gap: 8 }}>
+        <Text style={local.groupTitle}>{group.title}</Text>
+        <View style={styles.chipWrap}>
+          {group.options.filter((option) => !form.sizes.some((entry) => entry.name.toLowerCase() === option.toLowerCase())).map((option) => <Pressable key={option} accessibilityRole="button" accessibilityLabel={`Add ${option}`} onPress={() => addSize(option, SIZE_BASE_ID)} style={local.baseChip}><Text style={[local.baseChipText, { textTransform: 'none' }]}>+ {option}</Text></Pressable>)}
+        </View>
+      </View>)}
+      {presets.usesStandardSizes ? <View style={{ gap: 8 }}>
+        <View style={styles.chipWrap}>
+          {STANDARD_SIZE_NAMES.map((name) => { const isSelected = standardSize === name; return <Pressable key={name} accessibilityRole="button" accessibilityState={{ selected: isSelected }} onPress={() => setStandardSize(isSelected ? null : name)} style={[local.baseChip, isSelected ? local.selectedChip : null]}><Text style={[local.baseChipText, isSelected ? local.selectedChipText : null]}>{name}</Text></Pressable>; })}
+        </View>
+        {standardSize ? <View style={local.addRow}>
+          <TextInput value={sizeNumber} onChangeText={setSizeNumber} keyboardType="numeric" placeholder="Size number (optional, e.g. 2, 10)" placeholderTextColor={colors.mutedText} accessibilityLabel={`${standardSize} size number`} style={local.addInput} />
+          <Pressable accessibilityRole="button" onPress={handleAddStandardSize} style={local.addButton}><Text style={local.addText}>Add {standardSize}</Text></Pressable>
+        </View> : null}
+      </View> : null}
+      <Text style={local.groupTitle}>{presets.customLabel}</Text>
+      <View style={local.addRow}>
+        <TextInput value={sizeText} onChangeText={setSizeText} onSubmitEditing={handleAddCustomSize} placeholder={presets.customPlaceholder} placeholderTextColor={colors.mutedText} accessibilityLabel={presets.customLabel} style={local.addInput} />
+        {presets.usesStandardSizes && !standardSize ? <TextInput value={sizeNumber} onChangeText={setSizeNumber} keyboardType="numeric" placeholder="Value" placeholderTextColor={colors.mutedText} accessibilityLabel="Custom size number (optional)" style={[local.addInput, { flex: 0, width: 72 }]} /> : null}
+        <Pressable accessibilityRole="button" onPress={handleAddCustomSize} style={local.addButton}><Text style={local.addText}>Add</Text></Pressable>
+      </View>
+      <Text style={local.groupTitle}>Weight</Text>
       <View style={styles.chipWrap}>
-        {QUICK_SIZES.filter((size) => !form.sizes.some((entry) => entry.name === size)).map((size) => <Pressable key={size} accessibilityRole="button" accessibilityLabel={`Add size ${size}`} onPress={() => addSize(size)} style={local.baseChip}><Text style={[local.baseChipText, { textTransform: 'none' }]}>+ {size}</Text></Pressable>)}
+        {QUICK_WEIGHT_UNITS.map((unit) => { const isSelected = weightUnit === unit.value; return <Pressable key={unit.value} accessibilityRole="button" accessibilityState={{ selected: isSelected }} onPress={() => setWeightUnit(unit.value)} style={[local.baseChip, isSelected ? local.selectedChip : null]}><Text style={[local.baseChipText, isSelected ? local.selectedChipText : null]}>{unit.label}</Text></Pressable>; })}
       </View>
       <View style={local.addRow}>
-        <TextInput value={sizeText} onChangeText={setSizeText} onSubmitEditing={() => { addSize(sizeText); setSizeText(''); }} placeholder="Custom size or weight (e.g. 42, 5 lbs)" placeholderTextColor={colors.mutedText} accessibilityLabel="Custom size or weight" style={local.addInput} />
-        <Pressable accessibilityRole="button" onPress={() => { addSize(sizeText); setSizeText(''); }} style={local.addButton}><Text style={local.addText}>Add</Text></Pressable>
+        <TextInput value={weightText} onChangeText={setWeightText} onSubmitEditing={handleAddWeight} keyboardType="decimal-pad" placeholder={`e.g. 2.5, 10, 50 (${weightUnit})`} placeholderTextColor={colors.mutedText} accessibilityLabel={`Weight value in ${weightUnit}`} style={local.addInput} />
+        <Pressable accessibilityRole="button" onPress={handleAddWeight} style={local.addButton}><Text style={local.addText}>Add {weightUnit.toUpperCase()}</Text></Pressable>
       </View>
       {optionError ? <Text accessibilityRole="alert" style={{ color: colors.destructiveText, fontSize: 12, fontWeight: '700' }}>{optionError}</Text> : null}
     </ListingSection>

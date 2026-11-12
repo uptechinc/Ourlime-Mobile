@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/Feather';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { AuthService } from '@/lib/services/AuthService';
 import { RelationshipService, type RelationshipSuggestion } from '@/lib/services/RelationshipService';
@@ -143,7 +143,8 @@ export default function DiscoverScreen() {
   }, [normalizedQuery, suggestedPeople, userSearchResults]);
 
   const filteredCommunities = useMemo(() => {
-    if (!normalizedQuery) return communities.slice(0, 6);
+    // Website shows every community it has loaded in a scrollable carousel.
+    if (!normalizedQuery) return communities;
     return communities.filter((c) => c.title.toLowerCase().includes(normalizedQuery));
   }, [communities, normalizedQuery]);
 
@@ -246,6 +247,9 @@ export default function DiscoverScreen() {
                   <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>Suggested Friends</Text>
                   <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 2 }}>People you may know & mutual connections</Text>
                 </View>
+                <TouchableOpacity onPress={() => router.push('/profile/friends?tab=suggestions' as Href)} accessibilityRole="button" accessibilityLabel="See all friends">
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#10b981' }}>See All</Text>
+                </TouchableOpacity>
               </View>
 
               {normalizedQuery && hasSearchError && filteredPeople.length > 0 ? (

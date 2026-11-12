@@ -17,7 +17,7 @@ export const REPORT_REASONS = {
 
 export type ReportReasonCategory = keyof typeof REPORT_REASONS;
 export const CHILD_SAFETY_REASON_CATEGORY: ReportReasonCategory = 'child_safety';
-export type ReportContentType = 'post' | 'user' | 'community' | 'lime' | 'event' | 'marketplace_listing' | 'market_product' | 'course' | 'blog' | 'blog_comment' | 'comment' | 'reply' | 'message' | 'conversation' | 'media' | 'other';
+export type ReportContentType = 'post' | 'user' | 'community' | 'lime' | 'event' | 'marketplace_listing' | 'market_product' | 'course' | 'blog' | 'blog_comment' | 'comment' | 'reply' | 'message' | 'conversation' | 'media' | 'job' | 'event_comment' | 'other';
 
 export type SubmitReportInput = {
   targetId: string;

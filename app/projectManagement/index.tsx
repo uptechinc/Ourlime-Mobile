@@ -17,6 +17,7 @@ import { useAppData } from '@/lib/contexts/AppDataContext';
 import SessionRetryBanner from '@/components/projectManagement/SessionRetryBanner';
 import { ProjectManagementSkeleton } from '@/components/projectManagement/ProjectSkeletons';
 import { useProjectsResource } from '@/lib/hooks/useProjectsResource';
+import { projectColorHex } from '@/components/projectManagement/projectColors';
 
 type SortKey = 'activity' | 'name' | 'progress' | 'created';
 type FormTarget = { mode: 'create' } | { mode: 'edit'; project: ProjectRecord } | null;
@@ -76,6 +77,9 @@ export default function ProjectManagementScreen() {
   const [formTarget, setFormTarget] = useState<FormTarget>(null);
   const [menuProject, setMenuProject] = useState<ProjectRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectRecord | null>(null);
+  // Website asks before archiving/unarchiving a project and before declining an invitation.
+  const [archiveTarget, setArchiveTarget] = useState<ProjectRecord | null>(null);
+  const [declineTarget, setDeclineTarget] = useState<ProjectRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
@@ -266,7 +270,7 @@ export default function ProjectManagementScreen() {
             <Text style={styles.inviter}>Invited by {project.invitedByName || 'Project owner'} · {project.role}</Text>
             <View style={styles.actions}>
               <TouchableOpacity disabled={!canMutate || !mutationReady || workingProjectId === project.id} onPress={() => void handleRespond(project.id, 'accept')} style={[styles.acceptButton, !mutationReady && styles.disabled]}><Check size={17} color="#ffffff" /><Text style={styles.acceptText}>Accept</Text></TouchableOpacity>
-              <TouchableOpacity disabled={!canMutate || !mutationReady || workingProjectId === project.id} onPress={() => void handleRespond(project.id, 'decline')} style={[styles.declineButton, !mutationReady && styles.disabled]}><X size={17} color={colors.destructiveText} /><Text style={styles.declineText}>Decline</Text></TouchableOpacity>
+              <TouchableOpacity disabled={!canMutate || !mutationReady || workingProjectId === project.id} onPress={() => setDeclineTarget(project)} style={[styles.declineButton, !mutationReady && styles.disabled]}><X size={17} color={colors.destructiveText} /><Text style={styles.declineText}>Decline</Text></TouchableOpacity>
             </View>
           </View>)}
         </View> : null}
@@ -293,7 +297,8 @@ export default function ProjectManagementScreen() {
                 style={[styles.card, project.id === projectId && styles.focusedCard, (openingProjectId === project.id || workingProjectId === project.id) && styles.openingCard]}
               >
                 <View style={styles.cardHeader}>
-                  <Text style={styles.cardTitle}>{project.name}</Text>
+                  <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: projectColorHex(project.color), alignItems: 'center', justifyContent: 'center' }}><FolderOpen size={16} color="#ffffff" /></View>
+                  <Text style={[styles.cardTitle, styles.flex]}>{project.name}</Text>
                   {canEdit ? <TouchableOpacity accessibilityLabel={`Options for ${project.name}`} hitSlop={8} onPress={() => setMenuProject(project)} style={styles.menuButton}><MoreHorizontal size={18} color={colors.mutedText} /></TouchableOpacity> : null}
                 </View>
                 <View style={styles.badges}>
@@ -331,7 +336,7 @@ export default function ProjectManagementScreen() {
           <Pressable style={styles.menuSheet}>
             <Text numberOfLines={1} style={styles.menuTitle}>{menuProject?.name}</Text>
             {menuCanEdit && menuProject ? <TouchableOpacity style={styles.menuItem} onPress={() => { const project = menuProject; setMenuProject(null); if (ensureCanChange()) setFormTarget({ mode: 'edit', project }); }}><Pencil size={18} color={colors.text} /><Text style={styles.menuText}>Edit</Text></TouchableOpacity> : null}
-            {menuCanEdit && menuProject ? <TouchableOpacity style={styles.menuItem} onPress={() => void handleToggleArchive(menuProject)}>{menuProject.status === 'archived' ? <ArchiveRestore size={18} color={colors.text} /> : <Archive size={18} color={colors.text} />}<Text style={styles.menuText}>{menuProject.status === 'archived' ? 'Unarchive' : 'Archive'}</Text></TouchableOpacity> : null}
+            {menuCanEdit && menuProject ? <TouchableOpacity style={styles.menuItem} onPress={() => { const project = menuProject; setMenuProject(null); setArchiveTarget(project); }}>{menuProject.status === 'archived' ? <ArchiveRestore size={18} color={colors.text} /> : <Archive size={18} color={colors.text} />}<Text style={styles.menuText}>{menuProject.status === 'archived' ? 'Unarchive' : 'Archive'}</Text></TouchableOpacity> : null}
             {menuProject?.isOwner ? <TouchableOpacity style={styles.menuItem} onPress={() => { const project = menuProject; setMenuProject(null); if (ensureCanChange()) setDeleteTarget(project); }}><Trash2 size={18} color={colors.destructive} /><Text style={[styles.menuText, { color: colors.destructiveText }]}>Delete</Text></TouchableOpacity> : null}
             <TouchableOpacity style={styles.menuCancel} onPress={() => setMenuProject(null)}><Text style={styles.menuText}>Cancel</Text></TouchableOpacity>
           </Pressable>
@@ -344,6 +349,28 @@ export default function ProjectManagementScreen() {
         project={formTarget?.mode === 'edit' ? formTarget.project : null}
         onClose={() => setFormTarget(null)}
         onSubmit={handleSubmitForm}
+      />
+      <CustomModal
+        visible={archiveTarget !== null}
+        type="warning"
+        title={archiveTarget?.status === 'archived' ? 'Unarchive project?' : 'Archive project?'}
+        message={archiveTarget?.status === 'archived' ? 'This project will be restored and set back to active.' : 'Archiving will move this project to the archived status. You can restore it later.'}
+        confirmText={archiveTarget?.status === 'archived' ? 'Unarchive' : 'Archive'}
+        cancelText="Cancel"
+        onConfirm={() => { const project = archiveTarget; setArchiveTarget(null); if (project) void handleToggleArchive(project); }}
+        onCancel={() => setArchiveTarget(null)}
+        onClose={() => setArchiveTarget(null)}
+      />
+      <CustomModal
+        visible={declineTarget !== null}
+        type="warning"
+        title="Decline invitation?"
+        message={`You will remove the invitation to ${declineTarget?.name ?? 'this project'}. The project owner can invite you again later.`}
+        confirmText="Decline"
+        cancelText="Cancel"
+        onConfirm={() => { const project = declineTarget; setDeclineTarget(null); if (project) void handleRespond(project.id, 'decline'); }}
+        onCancel={() => setDeclineTarget(null)}
+        onClose={() => setDeclineTarget(null)}
       />
       <CustomModal
         visible={deleteTarget !== null}

@@ -1,2 +1,6 @@
-import LegalDocumentScreen from '@/components/auth/LegalDocumentScreen';
-export default function PrivacyScreen() { return <LegalDocumentScreen title="Privacy Policy" url="https://ourlime.com/privacy-policy" />; }
+import PoliciesScreen from '@/components/policies/PoliciesScreen';
+
+/** The website's /privacy-policy serves the full policies page, which opens with the Privacy Policy. */
+export default function PrivacyPolicyRoute() {
+  return <PoliciesScreen title="Privacy Policy" />;
+}

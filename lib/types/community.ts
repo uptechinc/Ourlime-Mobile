@@ -163,6 +163,19 @@ export type CommunityPollOption = {
   selectedByViewer: boolean;
 };
 
+/** Like and comment totals shown on a community event card. */
+export type CommunityEventEngagement = {
+  liked: boolean;
+  likeCount: number;
+  commentCount: number;
+};
+
+export type CommunityPollResponse = {
+  userId: string;
+  userName: string;
+  optionIndexes: number[];
+};
+
 export type CommunityPoll = {
   id: string;
   communityId: string;
@@ -174,6 +187,8 @@ export type CommunityPoll = {
   isExpired: boolean;
   totalVotes: number;
   allowMultiple: boolean;
+  /** Who chose which options; filled only for the poll's creator (web PollResponses). */
+  responses: CommunityPollResponse[];
   permissions: { canVote: boolean; canDelete: boolean };
 };
 

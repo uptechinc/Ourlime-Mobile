@@ -1,207 +1,127 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { AlertCircle, ClipboardCheck, DollarSign, MapPin, Star, Timer, type LucideIcon } from 'lucide-react-native';
-import JobApplicationModal from './applyJobs/JobApplicationModal';
-import JobDetailsModal from './JobDetailsModal';
+import { AlertCircle, DollarSign, MapPin, Star, Timer, type LucideIcon } from 'lucide-react-native';
 import UserAvatar from '@/components/ui/UserAvatar';
+import { JobCardActions } from './JobCardActions';
+import type { JobListProps } from './ProfessionalJobsList';
 import type { JobRecord } from '@/lib/job/JobsService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { AuthService } from '@/lib/services/AuthService';
-import { jobApplicationService } from '@/lib/services/JobApplicationService';
+import { auth } from '@/lib/firebaseConfig';
+import { formatJobLocation, formatJobPostedDate, formatJobPrice } from '@/lib/job/JobPresentation';
 
-type QuickTasksListProps = {
-  jobs: JobRecord[];
-};
+type QuickTaskCardProps = Omit<JobListProps, 'jobs' | 'savedJobIds' | 'appliedJobIds'> & { task: JobRecord; isSaved: boolean; isApplied: boolean };
 
-type QuickTaskCardProps = {
-  task: JobRecord;
-  onApply: (task: JobRecord) => void;
-  onCardPress: (task: JobRecord) => void;
-  isApplied?: boolean;
-};
-
-type TaskBadgeProps = {
-  icon: LucideIcon;
-  label: string;
-};
-
-const authService = AuthService.getInstance();
-
-function TaskBadge({ icon: Icon, label }: TaskBadgeProps) {
+function TaskBadge({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return <View style={styles.badge}><Icon size={14} color={colors.icon} /><Text style={styles.badgeText}>{label}</Text></View>;
 }
 
-function QuickTaskCard({ task, onApply, onCardPress, isApplied = false }: QuickTaskCardProps) {
-  const { colors, isDark } = useAppTheme();
+function QuickTaskCard({ task, isSaved, isApplied, onToggleSave, onApply, onViewDetails }: QuickTaskCardProps) {
+  const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const isCreator = authService.getCurrentUser()?.uid === task.basic_info.userId;
+  const isCreator = auth.currentUser?.uid === task.basic_info.userId;
   const urgency = task.category_specific.urgency ?? 'medium';
-  const urgencyColor = urgency === 'high' ? colors.destructiveText : urgency === 'medium' ? colors.warningText : colors.successText;
-  const urgencySurface = urgency === 'high' ? colors.destructiveSurface : urgency === 'medium' ? colors.warningSurface : colors.successSurface;
-  const location = task.basic_info.location.type === 'remote'
-    ? 'Remote'
-    : [task.basic_info.location.city, task.basic_info.location.country].filter(Boolean).join(', ') || 'Location flexible';
+  const isUrgent = urgency === 'high' || urgency === 'critical';
+  const urgencyColor = isUrgent ? colors.destructiveText : urgency === 'medium' ? colors.warningText : colors.successText;
+  const urgencySurface = isUrgent ? colors.destructiveSurface : urgency === 'medium' ? colors.warningSurface : colors.successSurface;
 
   return (
-    <TouchableOpacity activeOpacity={0.9} onPress={() => onCardPress(task)} style={styles.card}>
+    <TouchableOpacity activeOpacity={0.9} onPress={() => onViewDetails(task)} style={styles.card}>
       <View style={styles.taskHeader}>
         <View style={styles.headerBadges}>
           <View style={styles.quickTaskBadge}><Text style={styles.quickTaskText}>Quick Task</Text></View>
-          <View style={[styles.urgencyBadge, { backgroundColor: urgencySurface }]}><Text style={[styles.urgencyText, { color: urgencyColor }]}>{urgency} priority</Text></View>
+          <View style={[styles.urgencyBadge, { backgroundColor: urgencySurface }]}><Text style={[styles.urgencyText, { color: urgencyColor }]}>{urgency} Priority</Text></View>
         </View>
         <View style={styles.creatorRow}>
-          <UserAvatar profileImage={task.creator?.profileImage} firstName={task.creator?.name || 'Task owner'} size={70} />
+          <UserAvatar profileImage={task.creator?.profileImage} firstName={task.creator?.name || 'Task owner'} size={64} />
           <View style={styles.ratingBadge}><Star size={14} color="#facc15" fill="#facc15" /><Text style={styles.ratingText}>4.8</Text></View>
         </View>
       </View>
 
       <View style={styles.cardBody}>
-        <Text style={styles.taskTitle}>{task.basic_info.title}</Text>
-        <Text numberOfLines={3} style={styles.description}>{task.basic_info.description}</Text>
+        <Text numberOfLines={2} style={styles.taskTitle}>{task.basic_info.title}</Text>
+        <Text numberOfLines={2} style={styles.description}>{task.basic_info.description}</Text>
         {task.details.skills.length ? <View style={styles.chipRow}>{task.details.skills.map((skill) => <View key={skill} style={styles.skillChip}><Text style={styles.skillText}>{skill}</Text></View>)}</View> : null}
         <View style={styles.badgeRow}>
           <TaskBadge icon={Timer} label={task.category_specific.duration || 'Flexible'} />
-          <TaskBadge icon={MapPin} label={location} />
-          <TaskBadge icon={DollarSign} label={`${task.basic_info.priceRange.from}–${task.basic_info.priceRange.to}`} />
+          <TaskBadge icon={MapPin} label={formatJobLocation(task)} />
+          <TaskBadge icon={DollarSign} label={formatJobPrice(task)} />
           <TaskBadge icon={AlertCircle} label={`${task.category_specific.complexity || 'Moderate'} complexity`} />
         </View>
         <View style={styles.footer}>
-          <Text style={styles.postedText}>Posted {task.basic_info.createdAt?.seconds ? new Date(task.basic_info.createdAt.seconds * 1000).toLocaleDateString() : 'Recently'}</Text>
+          <View style={styles.footerLeft}>
+            <Text style={styles.postedText}>Posted {formatJobPostedDate(task)}</Text>
+            <JobCardActions jobId={task.id} jobTitle={task.basic_info.title} isSaved={isSaved} onToggleSave={onToggleSave} />
+          </View>
           {!isCreator ? (
-            isApplied ? (
-              <View style={styles.appliedBadge}>
-                <Text style={styles.appliedText}>Applied</Text>
-              </View>
-            ) : (
-              <TouchableOpacity
-                onPress={() => {
-                  onApply(task);
-                }}
-                style={styles.applyButton}
-              >
-                <Text style={styles.applyText}>Apply Now</Text>
-              </TouchableOpacity>
-            )
-          ) : null}
+            <View style={styles.buttons}>
+              <TouchableOpacity accessibilityRole="button" onPress={() => onViewDetails(task)} style={styles.detailsButton}><Text style={styles.detailsText}>Details</Text></TouchableOpacity>
+              {isApplied ? (
+                <View style={styles.appliedBadge}><Text style={styles.appliedText}>Applied</Text></View>
+              ) : (
+                <TouchableOpacity accessibilityRole="button" onPress={() => onApply(task)} style={styles.applyButton}><Text style={styles.applyText}>Apply Now</Text></TouchableOpacity>
+              )}
+            </View>
+          ) : <Text style={styles.postedText}>Your task</Text>}
         </View>
       </View>
-      {isDark ? <View pointerEvents="none" style={styles.darkEdge} /> : null}
     </TouchableOpacity>
   );
 }
 
-export function QuickTasksList({ jobs }: QuickTasksListProps) {
+/** Quick task cards (web components/jobs/QuickTasksList.tsx). */
+export function QuickTasksList({ jobs, savedJobIds, appliedJobIds, onToggleSave, onApply, onViewDetails }: JobListProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const quickTasks = jobs.filter((job) => job.basic_info.type === 'quickTask');
-  const [selectedTask, setSelectedTask] = useState<JobRecord | null>(null);
-  const [detailTask, setDetailTask] = useState<JobRecord | null>(null);
-  const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    const userId = authService.getCurrentUser()?.uid;
-    if (!userId || quickTasks.length === 0) return;
-    let cancelled = false;
-
-    void jobApplicationService.getAppliedJobIds(userId).then((ids) => {
-      if (!cancelled) {
-        setAppliedJobIds(ids);
-      }
-    }).catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [quickTasks.length]);
-
-  const handleApply = (task: JobRecord) => {
-    setSelectedTask(task);
-  };
-
-  const handleCloseApplication = () => {
-    setSelectedTask(null);
-  };
-
-  if (!quickTasks.length) {
-    return <View style={styles.emptyState}><ClipboardCheck size={30} color={colors.mutedText} /><Text style={styles.emptyText}>No quick tasks available.</Text></View>;
-  }
-
   return (
-    <>
-      <View style={styles.list}>
-        {quickTasks.map((task) => (
-          <QuickTaskCard
-            key={task.id}
-            task={task}
-            isApplied={appliedJobIds.has(task.id)}
-            onApply={handleApply}
-            onCardPress={(selected) => setDetailTask(selected)}
-          />
-        ))}
-      </View>
-      {selectedTask ? (
-        <JobApplicationModal
-          isOpen
-          onClose={handleCloseApplication}
-          onApplied={() => {
-            if (selectedTask?.id) {
-              setAppliedJobIds((prev) => new Set(prev).add(selectedTask.id));
-            }
-          }}
-          job={selectedTask}
-          jobType="quickTask"
+    <View style={styles.list}>
+      {jobs.filter((job) => job.basic_info.type === 'quickTask').map((task) => (
+        <QuickTaskCard
+          key={task.id}
+          task={task}
+          isSaved={savedJobIds.has(task.id)}
+          isApplied={appliedJobIds.has(task.id)}
+          onToggleSave={onToggleSave}
+          onApply={onApply}
+          onViewDetails={onViewDetails}
         />
-      ) : null}
-      {detailTask ? (
-        <JobDetailsModal
-          isOpen
-          onClose={() => setDetailTask(null)}
-          job={detailTask}
-          jobType="quickTask"
-          isApplied={appliedJobIds.has(detailTask.id)}
-          onApplySuccess={() => {
-            if (detailTask?.id) {
-              setAppliedJobIds((prev) => new Set(prev).add(detailTask.id));
-            }
-          }}
-        />
-      ) : null}
-    </>
+      ))}
+    </View>
   );
 }
 
 type ThemeColors = ReturnType<typeof useAppTheme>['colors'];
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  list: { gap: 16, paddingHorizontal: 18 },
-  emptyState: { alignItems: 'center', gap: 9, paddingVertical: 42 },
-  emptyText: { color: colors.mutedText },
-  card: { position: 'relative', backgroundColor: colors.surface, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
-  taskHeader: { minHeight: 126, backgroundColor: colors.successSurface, padding: 14, justifyContent: 'flex-end' },
-  headerBadges: { position: 'absolute', top: 10, right: 10, left: 10, flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 6 },
-  quickTaskBadge: { backgroundColor: colors.elevated, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 4 },
+  list: { gap: 14, paddingHorizontal: 16 },
+  card: { backgroundColor: colors.surface, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+  taskHeader: { minHeight: 118, backgroundColor: colors.successSurface, padding: 14, justifyContent: 'flex-end' },
+  headerBadges: { position: 'absolute', top: 10, right: 10, left: 90, flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 6 },
+  quickTaskBadge: { backgroundColor: colors.elevated, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
   quickTaskText: { color: colors.successText, fontSize: 12, fontWeight: '800' },
-  urgencyBadge: { borderRadius: 999, paddingHorizontal: 11, paddingVertical: 4 },
+  urgencyBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
   urgencyText: { fontSize: 12, fontWeight: '800', textTransform: 'capitalize' },
-  creatorRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
-  ratingBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.elevated, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
+  creatorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  ratingBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.elevated, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
   ratingText: { color: colors.text, fontSize: 12, fontWeight: '700' },
-  cardBody: { padding: 16 },
-  taskTitle: { color: colors.text, fontSize: 18, fontWeight: '800', marginBottom: 6 },
-  description: { color: colors.mutedText, lineHeight: 20, marginBottom: 12 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  cardBody: { padding: 16, gap: 10 },
+  taskTitle: { color: colors.text, fontSize: 18, fontWeight: '900' },
+  description: { color: colors.mutedText, lineHeight: 20 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   skillChip: { backgroundColor: colors.control, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  skillText: { color: colors.secondaryText, fontSize: 12 },
-  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 },
+  skillText: { color: colors.secondaryText, fontSize: 12, fontWeight: '600' },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.control, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
-  badgeText: { color: colors.secondaryText, fontSize: 12 },
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 13 },
+  badgeText: { color: colors.secondaryText, fontSize: 12, textTransform: 'capitalize' },
+  footer: { gap: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 },
+  footerLeft: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   postedText: { color: colors.mutedText, fontSize: 12 },
-  applyButton: { backgroundColor: colors.accent, borderRadius: 999, paddingHorizontal: 20, paddingVertical: 9 },
-  applyText: { color: colors.onAccent, fontWeight: '800' },
-  appliedBadge: { minWidth: 82, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control, borderColor: colors.border, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999 },
+  buttons: { flexDirection: 'row', gap: 8 },
+  detailsButton: { flex: 1, alignItems: 'center', borderWidth: 2, borderColor: colors.accent, borderRadius: 999, paddingVertical: 8 },
+  detailsText: { color: colors.accentText, fontWeight: '800' },
+  applyButton: { flex: 1, alignItems: 'center', backgroundColor: colors.successSurface, borderRadius: 999, paddingVertical: 10 },
+  applyText: { color: colors.successText, fontWeight: '900' },
+  appliedBadge: { flex: 1, alignItems: 'center', backgroundColor: colors.control, borderColor: colors.border, borderWidth: 1, paddingVertical: 10, borderRadius: 999 },
   appliedText: { color: colors.mutedText, fontWeight: '700', fontSize: 13 },
-  darkEdge: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 18, borderWidth: 1, borderColor: colors.border },
 });

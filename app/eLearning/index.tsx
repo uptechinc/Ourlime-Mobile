@@ -3,12 +3,13 @@ import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, TextInpu
 import { useRouter, type Href } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  BookOpen, BookText, CheckCircle, ClipboardCheck, Clock, FolderOpen, GraduationCap, Library, Megaphone, MessageSquare,
+  BookOpen, BookText, Calendar, CheckCircle, ClipboardCheck, Clock, FolderOpen, GraduationCap, Library, Megaphone, MessageSquare,
   PenSquare, PlayCircle, Presentation, Search, Star, Users,
 } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import CategoryBrowser from '@/components/eLearning/course/CategoryBrowser';
+import ClassSchedule from '@/components/eLearning/schedule/ClassSchedule';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useLearningOverview } from '@/lib/hooks/useLearningOverview';
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
@@ -19,6 +20,7 @@ import type { Course, CourseAnnouncement, InstructorProfile } from '@/lib/types/
 
 /** Web app/eLearning/page.tsx as it renders on a phone: welcome card, hero + search, course updates, tabbed materials. */
 type LearningTab = 'materials' | 'resources' | 'tutors';
+type LearningSection = 'courseMaterials' | 'schedule';
 type Styles = ReturnType<typeof createStyles>;
 
 const GREEN = '#10b981';
@@ -35,6 +37,12 @@ const HERO_SLIDES = [
   { image: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=900&q=70', title: 'Learn from the Best', subtitle: 'Expert instructors to guide your path', gradient: ['rgba(22,163,74,0.9)', 'rgba(16,185,129,0.72)', 'rgba(74,222,128,0.63)'] },
   { image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=900&q=70', title: 'Grow Your Skills', subtitle: 'Discover new opportunities', gradient: ['rgba(16,185,129,0.9)', 'rgba(74,222,128,0.72)', 'rgba(134,239,172,0.54)'] },
 ] as const;
+
+// Web app/eLearning/page.tsx sections: course materials, or the learner's class schedule.
+const SECTIONS: { id: LearningSection; label: string; icon: typeof BookOpen }[] = [
+  { id: 'courseMaterials', label: 'Course Materials', icon: BookOpen },
+  { id: 'schedule', label: 'Schedule Work', icon: Calendar },
+];
 
 const TABS: { id: LearningTab; label: string; icon: typeof BookOpen }[] = [
   { id: 'materials', label: 'Learning Materials', icon: BookOpen },
@@ -75,6 +83,7 @@ export default function ELearningScreen() {
   const profile = profileResource.data?.profile;
   const isInstructor = instructorStatus !== 'none';
   const [search, setSearch] = useState('');
+  const [section, setSection] = useState<LearningSection>('courseMaterials');
   const [tab, setTab] = useState<LearningTab>('materials');
   const [category, setCategory] = useState('All');
   const [subcategory, setSubcategory] = useState('');
@@ -140,7 +149,7 @@ export default function ELearningScreen() {
                   </View>
                 ) : <ELearningInlineStatsSkeleton />}
                 {!loading && !isInstructor ? (
-                  <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/eLearning/instructor' as Href)} style={styles.becomeInstructor}>
+                  <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/eLearning/instructor/register' as Href)} style={styles.becomeInstructor}>
                     <GraduationCap size={16} color="#ffffff" />
                     <Text style={styles.becomeInstructorText}>Become an instructor</Text>
                   </TouchableOpacity>
@@ -191,6 +200,25 @@ export default function ELearningScreen() {
             <>
               <CourseUpdates announcements={data.announcements} cardWidth={(width - 64) * 0.85} onOpen={handleOpenCourse} styles={styles} colors={colors} />
 
+              <View accessibilityRole="tablist" style={styles.sectionSwitch}>
+                {SECTIONS.map(({ id, label, icon: Icon }) => {
+                  const isActive = section === id;
+                  return (
+                    <TouchableOpacity key={id} accessibilityRole="tab" accessibilityState={{ selected: isActive }} onPress={() => setSection(id)} style={[styles.sectionSwitchItem, isActive && styles.sectionSwitchItemActive]}>
+                      <Icon size={16} color={isActive ? '#ffffff' : colors.secondaryText} />
+                      <Text numberOfLines={1} style={[styles.sectionSwitchText, isActive && styles.sectionSwitchTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {section === 'schedule' ? (
+                <View style={styles.card}>
+                  <ClassSchedule userId={user?.uid ?? null} />
+                </View>
+              ) : null}
+
+              {section === 'courseMaterials' ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
                 {TABS.map(({ id, label, icon: Icon }) => {
                   const isActive = tab === id;
@@ -202,8 +230,9 @@ export default function ELearningScreen() {
                   );
                 })}
               </ScrollView>
+              ) : null}
 
-              {tab === 'materials' ? (
+              {section === 'courseMaterials' && tab === 'materials' ? (
                 <View style={[styles.card, styles.materialsCard]}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
                     {['All', ...COURSE_MAIN_CATEGORIES].map((item) => {
@@ -249,17 +278,18 @@ export default function ELearningScreen() {
                 </View>
               ) : null}
 
-              {tab === 'resources' ? (
+              {section === 'courseMaterials' && tab === 'resources' ? (
                 <View style={styles.card}>
                   <CategoryBrowser
                     courses={allCourses}
                     onOpenCategory={(nextCategory, nextSubcategory) => router.push(catalogHref({ category: nextCategory, subcategory: nextSubcategory }))}
                     onOpenCxc={() => router.push('/eLearning/cxc' as Href)}
+                    onViewAll={() => router.push('/eLearning/courses' as Href)}
                   />
                 </View>
               ) : null}
 
-              {tab === 'tutors' ? (
+              {section === 'courseMaterials' && tab === 'tutors' ? (
                 <TutorList instructors={data.instructors} showAll={showAllTutors} onToggleShowAll={() => setShowAllTutors((current) => !current)} styles={styles} colors={colors} />
               ) : null}
             </>
@@ -476,6 +506,11 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   importantPill: { alignSelf: 'flex-start', backgroundColor: '#fef3c7', color: '#b45309', fontSize: 11, fontWeight: '600', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
   updateTitle: { color: colors.text, fontSize: 14, fontWeight: '600' },
 
+  sectionSwitch: { flexDirection: 'row', gap: 4, borderRadius: 999, backgroundColor: colors.surface, padding: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  sectionSwitchItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 8 },
+  sectionSwitchItemActive: { backgroundColor: GREEN },
+  sectionSwitchText: { color: colors.secondaryText, fontSize: 14, fontWeight: '600' },
+  sectionSwitchTextActive: { color: '#ffffff' },
   tabChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   tabChipActive: { backgroundColor: colors.text, borderColor: colors.text },
   tabChipText: { color: colors.secondaryText, fontSize: 14, fontWeight: '500' },

@@ -86,6 +86,24 @@ const REMAINING_ADMIN_WORKSPACES = [
 		icon: 'users' as const,
 		route: '/admin/communities' as Href,
 	},
+	{
+		id: 'jobs',
+		title: 'Jobs',
+		icon: 'briefcase' as const,
+		route: '/admin/jobs' as Href,
+	},
+	{
+		id: 'game-content',
+		title: 'Game Content',
+		icon: 'map-pin' as const,
+		route: '/admin/game-content' as Href,
+	},
+	{
+		id: 'seed-stickers',
+		title: 'Seed Stickers',
+		icon: 'download-cloud' as const,
+		route: '/admin/seed-stickers' as Href,
+	},
 ] as const;
 
 export default function AdminPortalScreen() {

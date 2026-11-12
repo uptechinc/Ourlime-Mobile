@@ -5,26 +5,41 @@ import { contentDraftService } from './ContentDraftService';
 import { pageAccessService } from './PageAccessService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  addDoc,
   collection,
+  deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
   onSnapshot,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebaseConfig';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { auth, db, storage } from '@/lib/firebaseConfig';
 import { reliabilityDecoder } from './ReliabilityDecoderService';
 import { accountLifecycleVisibilityService } from '@/lib/services/AccountLifecycleVisibilityService';
 import type {
+  ActiveTaskTimer,
   Comment,
   CreateProjectInput,
   CreateTaskInput,
   FileAttachment,
+  FullTaskInput,
+  Milestone,
+  PickedTaskFile,
+  ProjectLoadError,
+  ProjectPlanTier,
+  RecurrenceRule,
+  TaskFieldUpdate,
+  TaskTemplate,
+  TaskTemplateInput,
   ProjectMembershipStatus,
   ProjectMutationAction,
   ProjectMutationCapability,
@@ -54,6 +69,9 @@ type ProjectDocument = {
   updatedAt?: unknown;
   createdAt?: unknown;
   dueDate?: unknown;
+  endDate?: unknown;
+  planTier?: unknown;
+  automationRules?: unknown;
   visibility?: unknown;
   tags?: unknown;
   teamMembers?: Record<string, { role?: unknown; membershipStatus?: unknown; invitedByName?: unknown }>;
@@ -201,6 +219,7 @@ export class ProjectService {
     this.projectCreations.set(identity, operation);
     const projectId = await operation;
     const extras: ProjectSettingsUpdate = {
+      ...(input.color ? { color: input.color } : {}),
       ...(input.dueDate ? { dueDate: input.dueDate } : {}),
       ...(input.status && input.status !== 'active' ? { status: input.status } : {}),
       ...(input.visibility ? { visibility: input.visibility } : {}),
@@ -239,11 +258,44 @@ export class ProjectService {
     await nativeSessionService.ensure(this.requireUserId());
     pageAccessService.assertMutation('/projectManagement');
     const projectReference = doc(this.database, 'projects', projectId);
+    const { dueDate, ...rest } = updates;
+    // The website stores a project's due date as endDate (a timestamp); keep the same field.
+    const dueDateFields = dueDate === undefined ? {} : { endDate: this.parseCalendarDate(dueDate) };
     await updateDoc(projectReference, {
-      ...updates,
+      ...rest,
+      ...dueDateFields,
       updatedAt: serverTimestamp(),
     });
   }
+
+  /** Plan tier and automation rules are server-managed (website: mutateProjectMembership "settings"). */
+  public async updateProjectPlan(projectId: string, updates: { planTier?: ProjectPlanTier; automationRules?: { [ruleId: string]: boolean } }): Promise<void> {
+    await this.membershipMutation({ action: 'settings', projectId, ...updates });
+  }
+
+  /** Same classification as the website's useProjectDetails (not-found / permission-denied / network-error). */
+  public classifyLoadError(error: unknown): ProjectLoadError {
+    const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
+    const message = error instanceof Error ? error.message : '';
+    if (code === 'not-found' || /not found|no longer available/i.test(message)) return 'not-found';
+    if (code === 'permission-denied' || message.includes('permission-denied')) return 'permission-denied';
+    if (['unavailable', 'network-error', 'deadline-exceeded', 'reset'].includes(code) || /network|unavailable/i.test(message)) return 'network-error';
+    return 'unknown';
+  }
+
+  private parseCalendarDate(value: string | null): Date | null {
+    const match = value ? /^(\d{4})-(\d{2})-(\d{2})/.exec(value) : null;
+    return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12) : null;
+  }
+
+  private toCalendarDate(value: unknown): string {
+    if (typeof value === 'string') return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : value;
+    const date = this.readDate(value);
+    if (date.getTime() === 0) return '';
+    const pad = (part: number): string => String(part).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+
 
   public async deleteProject(projectId: string): Promise<void> {
     await this.membershipMutation({ action: 'delete_project', projectId });
@@ -291,32 +343,223 @@ export class ProjectService {
     return (await contentDraftService.publish(draft)).destinationId;
   }
   public async updateTaskStatus(projectId: string, taskId: string, status: Status): Promise<void> {
-    await nativeSessionService.ensure(this.requireUserId());
-    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'update', payload: { status } });
+    await this.taskMutation(projectId, taskId, { action: 'update', payload: { status } });
   }
-  public async updateTask(projectId: string, taskId: string, updates: Partial<Task>): Promise<void> {
-    await nativeSessionService.ensure(this.requireUserId());
-    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'update', payload: updates });
+  public async updateTask(projectId: string, taskId: string, updates: TaskFieldUpdate): Promise<void> {
+    await this.taskMutation(projectId, taskId, { action: 'update', payload: updates });
   }
   public async deleteTask(projectId: string, taskId: string): Promise<void> {
-    await nativeSessionService.ensure(this.requireUserId());
-    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'delete', payload: {} });
+    await this.taskMutation(projectId, taskId, { action: 'delete', payload: {} });
+    await this.clearTimerFor(projectId, taskId);
+  }
+  public async archiveTask(projectId: string, taskId: string): Promise<void> {
+    await this.taskMutation(projectId, taskId, { action: 'archive', payload: {} });
+    await this.clearTimerFor(projectId, taskId);
   }
   public async addSubTask(projectId: string, taskId: string, title: string): Promise<void> {
-    await nativeSessionService.ensure(this.requireUserId());
-    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'add_subtask', payload: { title } });
+    await this.taskMutation(projectId, taskId, { action: 'add_subtask', payload: { title } });
   }
-  public async toggleSubTask(projectId: string, taskId: string, subtaskId: string): Promise<void> {
-    await nativeSessionService.ensure(this.requireUserId());
-    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'toggle_subtask', payload: { subtaskId } });
+  public async toggleSubTask(projectId: string, taskId: string, subtaskId: string, completed?: boolean): Promise<void> {
+    await this.taskMutation(projectId, taskId, { action: 'toggle_subtask', payload: completed === undefined ? { subtaskId } : { subtaskId, completed } });
   }
-  public async addComment(projectId: string, taskId: string, content: string): Promise<void> {
-    await nativeSessionService.ensure(this.requireUserId());
-    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'comment', payload: { content } });
+  public async addComment(projectId: string, taskId: string, content: string, mentions: string[] = []): Promise<void> {
+    await this.taskMutation(projectId, taskId, { action: 'comment', payload: mentions.length ? { content, mentions } : { content } });
+  }
+  public async editComment(projectId: string, taskId: string, commentId: string, content: string): Promise<void> {
+    await this.taskMutation(projectId, taskId, { action: 'edit_comment', payload: { commentId, content } });
+  }
+  public async deleteComment(projectId: string, taskId: string, commentId: string): Promise<void> {
+    await this.taskMutation(projectId, taskId, { action: 'delete_comment', payload: { commentId } });
   }
   public async addTimeEntry(projectId: string, taskId: string, duration: number, description = ''): Promise<void> {
-    await nativeSessionService.ensure(this.requireUserId());
-    await nativeTaskService.mutate(this.requireUserId(), projectId, taskId, { action: 'time', payload: { duration, description } });
+    await this.taskMutation(projectId, taskId, { action: 'time', payload: { duration, description } });
+  }
+
+  /** Website ProjectTaskClientService.attach: upload to projects/{p}/tasks/{t}/, then add_attachment. */
+  public async addAttachment(projectId: string, taskId: string, file: PickedTaskFile): Promise<void> {
+    const attachment = await this.uploadAttachment(projectId, taskId, file);
+    await this.taskMutation(projectId, taskId, { action: 'add_attachment', payload: attachment });
+  }
+  public async deleteAttachment(projectId: string, taskId: string, attachmentId: string): Promise<void> {
+    await this.taskMutation(projectId, taskId, { action: 'delete_attachment', payload: { attachmentId } });
+  }
+
+  /** A new task id, generated once per form so a retried create is the same operation. */
+  public async newTaskId(): Promise<string> {
+    return contentDraftService.newId();
+  }
+
+  /**
+   * Website useProjectDetails.createTask: every TaskCreationModal field, uploaded attachments and subtasks in one
+   * mutateProjectTask "create". Applies the "Auto-assign to team lead" automation (rule 1) like the website.
+   */
+  public async createFullTask(project: ProjectRecord, teamMembers: TeamMember[], taskId: string, fields: FullTaskInput, files: PickedTaskFile[] = [], subTasks: { title: string }[] = [], onUploaded?: (fileName: string) => void): Promise<void> {
+    if (project.role === 'viewer') throw new Error('Viewers cannot create tasks.');
+    const autoAssign = project.automationRules['1'] !== false;
+    const hasAssignee = Boolean(fields.assignee) || fields.assignees.length > 0 || fields.assignedToAll;
+    let effective = fields;
+    if (autoAssign && !hasAssignee) {
+      const leadId = project.ownerId || teamMembers.find((member) => member.isOwner || member.role === 'admin' || member.role === 'owner')?.id || '';
+      if (leadId) effective = { ...fields, assignee: leadId, assignees: [leadId] };
+    }
+    const attachments: FileAttachment[] = [];
+    for (const file of files) {
+      attachments.push(await this.uploadAttachment(project.id, taskId, file));
+      onUploaded?.(file.name);
+    }
+    const payload: FullTaskInput = { ...effective };
+    if (!payload.recurrence) delete payload.recurrence;
+    await this.taskMutation(project.id, taskId, { action: 'create', payload: { fields: payload, subTasks, attachments } });
+  }
+
+  /** Website duplicateTask: same fields, "(copy)" title, back to To Do. */
+  public async duplicateTask(project: ProjectRecord, teamMembers: TeamMember[], task: Task): Promise<void> {
+    const taskId = await this.newTaskId();
+    await this.createFullTask(project, teamMembers, taskId, {
+      title: `${task.title} (copy)`.slice(0, 200), description: task.description, status: 'todo', priority: task.priority,
+      assignee: task.assignee, assignees: task.assignees ?? (task.assignee ? [task.assignee] : []), assignedToAll: task.assignedToAll === true,
+      startDate: task.startDate ?? '', dueDate: task.dueDate, estimatedTime: task.estimatedTime, tags: task.tags,
+      dependencies: task.dependencies ?? [], milestoneId: task.milestoneId ?? '', ...(task.recurrence ? { recurrence: task.recurrence } : {}),
+    });
+  }
+
+  private async uploadAttachment(projectId: string, taskId: string, file: PickedTaskFile): Promise<FileAttachment> {
+    const ownerId = this.requireUserId();
+    await nativeSessionService.ensure(ownerId);
+    pageAccessService.assertMutation('/projectManagement');
+    if (!file.size || file.size > 10 * 1024 * 1024) throw new Error('Choose a nonempty attachment up to 10 MB.');
+    const id = await contentDraftService.newId();
+    const path = `projects/${projectId}/tasks/${taskId}/${id}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const blob = await (await fetch(file.uri)).blob();
+    const reference = ref(storage, path);
+    await uploadBytes(reference, blob, { contentType: file.mimeType || blob.type || 'application/octet-stream' });
+    const url = await getDownloadURL(reference);
+    nativeSessionService.assertOwner(ownerId);
+    return { id, name: file.name, size: file.size, type: file.mimeType || 'application/octet-stream', url, uploadedBy: ownerId, uploadedAt: new Date().toISOString() };
+  }
+
+  private async taskMutation(projectId: string, taskId: string, operation: Parameters<typeof nativeTaskService.mutate>[3]): Promise<void> {
+    const ownerId = this.requireUserId();
+    await nativeSessionService.ensure(ownerId);
+    await nativeTaskService.mutate(ownerId, projectId, taskId, operation);
+  }
+
+  // ── Milestones & task templates (direct Firestore writes, same as the website) ──
+
+  public subscribeToMilestones(projectId: string, onUpdate: (milestones: Milestone[]) => void, onError?: (error: Error) => void): () => void {
+    this.requireUserId();
+    return onSnapshot(collection(this.database, 'projects', projectId, 'milestones'), (snapshot) => {
+      onUpdate(snapshot.docs.map((document) => {
+        const data = document.data();
+        return {
+          id: document.id,
+          name: this.readString(data.name),
+          description: this.readString(data.description) || undefined,
+          dueDate: this.toCalendarDate(data.dueDate),
+          color: this.readString(data.color) || 'bg-blue-500',
+          completed: data.completed === true,
+          createdBy: this.readString(data.createdBy),
+        };
+      }));
+    }, (error) => onError?.(error));
+  }
+
+  public async createMilestone(projectId: string, input: { name: string; dueDate?: string; color?: string }): Promise<void> {
+    const ownerId = this.requireUserId();
+    pageAccessService.assertMutation('/projectManagement');
+    const name = input.name.trim();
+    if (!name) throw new Error('Milestone title is required');
+    await addDoc(collection(this.database, 'projects', projectId, 'milestones'), {
+      name, description: '', dueDate: input.dueDate || '', color: input.color || 'bg-blue-500', completed: false,
+      createdAt: serverTimestamp(), createdBy: ownerId,
+    });
+  }
+
+  public async setMilestoneCompleted(projectId: string, milestoneId: string, completed: boolean): Promise<void> {
+    pageAccessService.assertMutation('/projectManagement');
+    await updateDoc(doc(this.database, 'projects', projectId, 'milestones', milestoneId), { completed, updatedAt: serverTimestamp() });
+  }
+
+  public async deleteMilestone(projectId: string, milestoneId: string): Promise<void> {
+    pageAccessService.assertMutation('/projectManagement');
+    await deleteDoc(doc(this.database, 'projects', projectId, 'milestones', milestoneId));
+  }
+
+  public subscribeToTaskTemplates(projectId: string, onUpdate: (templates: TaskTemplate[]) => void, onError?: (error: Error) => void): () => void {
+    this.requireUserId();
+    return onSnapshot(collection(this.database, 'projects', projectId, 'taskTemplates'), (snapshot) => {
+      onUpdate(snapshot.docs.map((document) => {
+        const data = document.data();
+        const priority = data.priority === 'low' || data.priority === 'high' || data.priority === 'urgent' ? data.priority : 'medium';
+        const readList = (value: unknown): string[] => (Array.isArray(value) ? value.map((entry: unknown) => this.readString(entry)).filter(Boolean) : []);
+        const subTasks = Array.isArray(data.subTasks)
+          ? data.subTasks.map((entry: unknown) => ({ title: this.readString(entry && typeof entry === 'object' ? (entry as { title?: unknown }).title : '') })).filter((entry: { title: string }) => entry.title)
+          : [];
+        return {
+          id: document.id,
+          name: this.readString(data.name),
+          description: this.readString(data.description),
+          priority,
+          assignee: this.readString(data.assignee),
+          assignees: readList(data.assignees),
+          assignedToAll: data.assignedToAll === true,
+          dueDate: this.readString(data.dueDate),
+          estimatedTime: this.readNumber(data.estimatedTime),
+          tags: readList(data.tags),
+          subTasks,
+          createdBy: this.readString(data.createdBy),
+        };
+      }));
+    }, (error) => onError?.(error));
+  }
+
+  public async saveTaskTemplate(projectId: string, template: TaskTemplateInput): Promise<void> {
+    const ownerId = this.requireUserId();
+    pageAccessService.assertMutation('/projectManagement');
+    await addDoc(collection(this.database, 'projects', projectId, 'taskTemplates'), { ...template, createdBy: ownerId, createdAt: serverTimestamp() });
+  }
+
+  public async deleteTaskTemplate(projectId: string, templateId: string): Promise<void> {
+    pageAccessService.assertMutation('/projectManagement');
+    await deleteDoc(doc(this.database, 'projects', projectId, 'taskTemplates', templateId));
+  }
+
+  // ── Task timer (users/{uid}.activeTimer, shared with the website) ──
+
+  public subscribeToActiveTimer(onUpdate: (timer: ActiveTaskTimer | null) => void): () => void {
+    const userId = this.requireUserId();
+    return onSnapshot(doc(this.database, 'users', userId), (snapshot) => {
+      const timer = snapshot.data()?.activeTimer as { taskId?: unknown; projectId?: unknown; startedAt?: unknown } | undefined;
+      const startedAt = timer ? this.readDate(timer.startedAt) : null;
+      if (!timer || typeof timer.taskId !== 'string' || typeof timer.projectId !== 'string' || !startedAt || startedAt.getTime() === 0) { onUpdate(null); return; }
+      onUpdate({ taskId: timer.taskId, projectId: timer.projectId, startedAt });
+    }, () => onUpdate(null));
+  }
+
+  /** Website startTimer: persist the timer and move a To Do task to In Progress. */
+  public async startTimer(projectId: string, task: Task): Promise<void> {
+    const userId = this.requireUserId();
+    pageAccessService.assertMutation('/projectManagement');
+    await setDoc(doc(this.database, 'users', userId), { activeTimer: { taskId: task.id, projectId, startedAt: serverTimestamp() } }, { merge: true });
+    if (task.status === 'todo') await this.updateTaskStatus(projectId, task.id, 'in-progress');
+  }
+
+  /** Website stopTimer: log the elapsed whole minutes as "Timer session" and clear the timer. */
+  public async stopTimer(projectId: string, taskId: string, startedAt: Date | null): Promise<number> {
+    const userId = this.requireUserId();
+    const minutes = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 60000)) : 0;
+    if (minutes > 0) await this.addTimeEntry(projectId, taskId, Math.min(minutes, 1440), 'Timer session');
+    await setDoc(doc(this.database, 'users', userId), { activeTimer: deleteField() }, { merge: true });
+    return minutes;
+  }
+
+  private async clearTimerFor(projectId: string, taskId: string): Promise<void> {
+    const userId = this.requireUserId();
+    const snapshot = await getDoc(doc(this.database, 'users', userId)).catch(() => null);
+    const timer = snapshot?.data()?.activeTimer as { taskId?: unknown; projectId?: unknown } | undefined;
+    if (timer?.taskId === taskId && timer.projectId === projectId) {
+      await setDoc(doc(this.database, 'users', userId), { activeTimer: deleteField() }, { merge: true }).catch(() => undefined);
+    }
   }
 
   public async inviteMember(projectId: string, emailOrUserId: string, role: ProjectRole): Promise<void> {
@@ -342,7 +585,7 @@ export class ProjectService {
   public async transferOwnership(projectId: string, newOwnerId: string): Promise<void> {
     await this.membershipMutation({ action: 'transfer', projectId, targetId: newOwnerId });
   }
-  private async membershipMutation(input: { action: 'claim' | 'accept' | 'decline' | 'invite' | 'cancel' | 'resend' | 'role' | 'remove' | 'leave' | 'transfer' | 'create' | 'delete_project'; fields?: { name: string; description: string }; projectId?: string; targetId?: string; recipient?: string; role?: ProjectRole }): Promise<{ claimed?: unknown }> {
+  private async membershipMutation(input: { action: 'claim' | 'accept' | 'decline' | 'invite' | 'cancel' | 'resend' | 'role' | 'remove' | 'leave' | 'transfer' | 'create' | 'delete_project' | 'settings'; fields?: { name: string; description: string }; projectId?: string; targetId?: string; recipient?: string; role?: ProjectRole; planTier?: ProjectPlanTier; automationRules?: { [ruleId: string]: boolean } }): Promise<{ claimed?: unknown }> {
     pageAccessService.assertMutation('/projectManagement');
     const ownerId = this.requireUserId();
     await nativeSessionService.ensure(ownerId);
@@ -364,11 +607,16 @@ export class ProjectService {
       assignees: Array.isArray(data.assignees) ? data.assignees.map((id) => this.readString(id)).filter(Boolean) : [],
       assignedToAll: data.assignedToAll === true,
       createdBy: this.readString(data.createdBy),
-      dueDate: this.readString(data.dueDate),
+      startDate: this.toCalendarDate(data.startDate),
+      dueDate: this.toCalendarDate(data.dueDate),
+      milestoneId: this.readString(data.milestoneId),
+      dependencies: Array.isArray(data.dependencies) ? data.dependencies.map((id) => this.readString(id)).filter(Boolean) : [],
+      recurrence: this.readRecurrence(data.recurrence),
+      version: this.readNumber(data.version),
       createdAt: this.readString(data.createdAt),
       updatedAt: this.readString(data.updatedAt),
       subTasks: Array.isArray(data.subTasks) ? (data.subTasks as SubTask[]) : [],
-      comments: Array.isArray(data.comments) ? (data.comments as Comment[]) : [],
+      comments: Array.isArray(data.comments) ? (data.comments as Comment[]).map((comment) => ({ ...comment, author: comment.userId || comment.author })) : [],
       attachments: Array.isArray(data.attachments) ? (data.attachments as FileAttachment[]) : [],
       timeEntries: Array.isArray(data.timeEntries) ? (data.timeEntries as TimeEntry[]) : [],
       estimatedTime: this.readNumber(data.estimatedTime, 1),
@@ -383,6 +631,26 @@ export class ProjectService {
         return [{ id: this.readString(record.id) || timestamp, action: this.readString(record.action), detail: this.readString(record.detail), userId: this.readString(record.userId), timestamp }];
       }) : [],
     };
+  }
+
+  private readRecurrence(value: unknown): RecurrenceRule | null {
+    if (!value || typeof value !== 'object') return null;
+    const rule = value as Record<string, unknown>;
+    const frequency = rule.frequency === 'daily' || rule.frequency === 'weekly' || rule.frequency === 'monthly' || rule.frequency === 'yearly' ? rule.frequency : null;
+    if (!frequency) return null;
+    const endMode = rule.endMode === 'date' || rule.endMode === 'count' ? rule.endMode : 'never';
+    return {
+      frequency,
+      interval: Math.max(1, this.readNumber(rule.interval, 1)),
+      endMode,
+      ...(typeof rule.endDate === 'string' ? { endDate: rule.endDate } : {}),
+      ...(typeof rule.endCount === 'number' ? { endCount: rule.endCount } : {}),
+    };
+  }
+
+  private readAutomationRules(value: unknown): { [ruleId: string]: boolean } {
+    if (!value || typeof value !== 'object') return {};
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean'));
   }
 
   private requireUserId(): string {
@@ -415,7 +683,9 @@ export class ProjectService {
       color: this.readString(data.color) || 'bg-emerald-500',
       updatedAt: this.readDate(data.updatedAt),
       createdAt: this.readDate(data.createdAt ?? data.updatedAt),
-      dueDate: this.readString(data.dueDate) || null,
+      dueDate: this.toCalendarDate(data.endDate) || this.toCalendarDate(data.dueDate) || null,
+      planTier: data.planTier === 'premium' ? 'premium' : 'free',
+      automationRules: this.readAutomationRules(data.automationRules),
       visibility: data.visibility === 'public' ? 'public' : 'private',
       tags: Array.isArray(data.tags) ? data.tags.map((tag) => this.readString(tag)).filter(Boolean) : [],
       memberUids: data.memberUids ?? [],
