@@ -197,7 +197,7 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
                 <TouchableOpacity onPress={() => setMenuOpen(true)} accessibilityLabel="Task actions" style={{ padding: 4 }}><MoreVertical size={20} color={colors.text} /></TouchableOpacity>
               ) : null}
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 6 }}>
               {PRIORITY_OPTIONS.map((option) => (
                 <TouchableOpacity key={option.value} disabled={!canWrite || busy !== null} onPress={() => { if (option.value !== task.priority) void update('priority', { priority: option.value }); }} style={chip(task.priority === option.value, option.color)}>
                   <Text style={{ color: task.priority === option.value ? '#ffffff' : colors.secondaryText, fontSize: 11, fontWeight: '800' }}>{option.label}</Text>
@@ -224,7 +224,7 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
 
           {/* Tabs */}
           <View style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 8 }}>
               {TABS.map(({ id, label, Icon }) => {
                 const selected = tab === id;
                 return (
