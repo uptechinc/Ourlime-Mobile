@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { ArrowLeft, ArrowRight, BriefcaseBusiness, Building2, ChevronDown, ChevronLeft, ChevronRight, Inbox, Package, Search, ShieldCheck, ShoppingBag, Store, X } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, BriefcaseBusiness, Building2, ChevronDown, ChevronLeft, ChevronRight, Inbox, Package, Search, ShieldCheck, ShoppingBag, Store, Wrench, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import CachedImage from '@/components/ui/CachedImage';
@@ -36,6 +36,7 @@ const PATH_CARDS: PathCard[] = [
   { icon: ShoppingBag, eyebrow: 'Shop', title: 'Browse local products', description: 'Search published catalogs from active business storefronts.', target: { section: 'products' } },
   { icon: BriefcaseBusiness, eyebrow: 'Hire', title: 'Find a professional', description: 'Review services, location, availability, and provider details.', target: { route: '/ehub/discover?kind=professional' } },
   { icon: Building2, eyebrow: 'Discover', title: 'Explore storefronts', description: 'Open real business profiles and see their current catalogs.', target: { route: '/ehub/discover?kind=business' } },
+  { icon: Wrench, eyebrow: 'Work', title: 'Offer your services', description: 'Plumber, mason, web or graphic designer? Register as a service professional and get enquiries.', target: { route: '/ehub/seller?intent=services' } },
   { icon: Store, eyebrow: 'Grow', title: 'Manage your seller account', description: 'Create a storefront, manage products, drafts, and enquiries.', target: { route: '/ehub/seller' } },
 ];
 
@@ -278,7 +279,10 @@ export default function EHubScreen() {
           </View>
 
           <View onLayout={onSectionLayout('professionals')} style={styles.section}>
-            <EHubSectionHeading eyebrow="Services" title="Discover professionals" description="Review real service profiles and send an enquiry. Online booking and payments are not currently available." action={<EHubLinkButton label="Directory" onPress={() => router.push('/ehub/discover?kind=professional' as Href)} />} />
+            <EHubSectionHeading eyebrow="Services" title="Discover professionals" description="Review real service profiles and send an enquiry. Online booking and payments are not currently available." action={<View style={styles.headingActions}>
+              <EHubLinkButton label="Join as a pro" onPress={() => router.push('/ehub/seller?intent=services' as Href)} />
+              <EHubLinkButton label="Directory" onPress={() => router.push('/ehub/discover?kind=professional' as Href)} />
+            </View>} />
             {providers.isLoading && !providers.data ? <EHubProviderGridSkeleton />
               : professionals.length ? <View style={[styles.grid, { gap: layout.gap }]}>{professionals.map((provider) => <EHubProviderCard key={provider.id} provider={provider} width={layout.providerWidth} onOpen={handleOpenProvider} />)}</View>
                 : !providers.error ? <EHubEmptyState icon={<BriefcaseBusiness size={36} color={colors.mutedText} />} title="No active professional profiles are available yet." /> : null}
@@ -348,6 +352,7 @@ function HorizontalRow({ styles, children }: RowProps) {
 const createStyles = (colors: AppThemeColors, gutter: number, isTablet: boolean) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
   flex: { flex: 1, minWidth: 0 },
+  headingActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 },
   fill: { width: '100%', height: '100%' },
   muted: { color: colors.mutedText, fontSize: 12, lineHeight: 17 },
   header: { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },

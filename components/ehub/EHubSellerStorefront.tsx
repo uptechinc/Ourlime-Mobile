@@ -61,6 +61,7 @@ export default function EHubSellerStorefront({ center, isTablet, onPublished }: 
         <View style={styles.flex}><SellerImageField label="Cover image" imageUrl={form.coverUrl} aspect={[16, 9]} isUploading={center.isUploading} onPick={(uri) => void center.uploadImage(uri, 'storefront', 'coverUrl')} /></View>
       </View> : null}
       {step === 2 ? <>
+        <Text style={styles.muted}>Offer a trade or service, such as plumbing, masonry, or web or graphic design? Add each one here, with the areas you cover, to be listed in E-Hub's professionals directory.</Text>
         <SellerChipField label="Services" values={form.services} onChange={(services) => onChange({ services })} placeholder="Add a service" />
         <SellerChipField label="Service areas" values={form.serviceAreas} onChange={(serviceAreas) => onChange({ serviceAreas })} placeholder="Add an area" />
         <SellerTextField label="Business hours" value={form.businessHours} maxLength={300} placeholder="Mon–Fri 8am–5pm" onChangeText={(businessHours) => onChange({ businessHours })} />

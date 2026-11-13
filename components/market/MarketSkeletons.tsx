@@ -124,7 +124,7 @@ type MarketplacePageSkeletonProps = {
  * The whole Market home page while page access (or the screen) loads: header with title, subtitle,
  * orders and cart buttons; promotion slider; release notice; search + filter; category chips;
  * Marketplace heading with view toggle and sort; product grid (or list, per the saved view mode);
- * and the services card. Rendered inside its own SafeAreaView with the real screen's edges.
+ * with the shortcut tiles (sell, listings, orders, pets, support) at the top. Rendered inside its own SafeAreaView with the real screen's edges.
  */
 export function MarketplacePageSkeleton({ signedIn = true }: MarketplacePageSkeletonProps): ReactNode {
   const { colors } = useAppTheme();
@@ -132,7 +132,7 @@ export function MarketplacePageSkeleton({ signedIn = true }: MarketplacePageSkel
   const { width } = useWindowDimensions();
   const { viewMode } = useMarketSavedSearches();
   const promotionWidth = Math.min(Math.max(width - 52, 260), 420);
-  const serviceRows = signedIn ? 5 : 3;
+  const shortcutCount = signedIn ? 5 : 3;
 
   return <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
     <View style={styles.header}>
@@ -145,6 +145,14 @@ export function MarketplacePageSkeleton({ signedIn = true }: MarketplacePageSkel
       <View style={styles.headerButton}><SkeletonIcon size={22} /></View>
     </View>
     <ScrollView scrollEnabled={false} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <View style={styles.shortcutTrack}>
+        {Array.from({ length: shortcutCount }, (_, shortcutIndex) => <View key={shortcutIndex} style={styles.shortcut}>
+          <SkeletonBox width={34} height={34} borderRadius={11} style={{ marginBottom: 4 }} />
+          <SkeletonLine fontSize={13} width="80%" />
+          <SkeletonLine fontSize={11} lineHeight={15} width="95%" />
+          <SkeletonLine fontSize={11} lineHeight={15} width="55%" />
+        </View>)}
+      </View>
       <View style={styles.promotionTrack}>
         {[0, 1].map((promotionIndex) => <SkeletonBox key={promotionIndex} width={promotionWidth} height={132} borderRadius={20} />)}
       </View>
@@ -170,16 +178,6 @@ export function MarketplacePageSkeleton({ signedIn = true }: MarketplacePageSkel
         <View style={styles.sortButton}><SkeletonLine fontSize={11} width={48} /><SkeletonIcon size={16} /></View>
       </View>
       <MarketCatalogSkeleton layout={viewMode} />
-      <View style={styles.services}>
-        {Array.from({ length: serviceRows }, (_, rowIndex) => <View key={rowIndex} style={styles.serviceRow}>
-          <SkeletonIcon size={21} />
-          <View style={{ flex: 1 }}>
-            <SkeletonLine fontSize={14} width="45%" />
-            <SkeletonLine fontSize={11} lineHeight={16} width="80%" style={{ marginTop: 2 }} />
-          </View>
-          <SkeletonIcon size={20} />
-        </View>)}
-      </View>
     </ScrollView>
   </SafeAreaView>;
 }
@@ -197,8 +195,8 @@ const createPageStyles = (colors: AppThemeColors) => StyleSheet.create({
   sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   squareButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   sortButton: { minHeight: 40, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, maxWidth: 140 },
-  services: { borderRadius: 18, overflow: 'hidden', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  serviceRow: { minHeight: 68, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  shortcutTrack: { marginRight: -14, flexDirection: 'row', gap: 10, overflow: 'hidden' },
+  shortcut: { width: 128, padding: 12, gap: 4, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
 });
 
 // ---------------------------------------------------------------------------------------------

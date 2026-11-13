@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Building2, ChevronRight, Eye, FilePenLine, FileText, Inbox, LayoutDashboard, Lock, Package, Settings, Store, Trash2 } from 'lucide-react-native';
+import { Building2, ChevronRight, Wrench, Eye, FilePenLine, FileText, Inbox, LayoutDashboard, Lock, Package, Settings, Store, Trash2 } from 'lucide-react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
 import EHubSectionNav from '@/components/ehub/EHubSectionNav';
@@ -38,7 +38,7 @@ function readSection(value: string | undefined): SellerSection {
  */
 export default function EHubSellerCenterScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ section?: string }>();
+  const params = useLocalSearchParams<{ section?: string; intent?: string }>();
   const { colors } = useAppTheme();
   const { profile, loading: profileLoading } = usePageAccess();
   const layout = useEHubLayout();
@@ -55,6 +55,9 @@ export default function EHubSellerCenterScreen() {
     if (hasFocused.current && profile?.uid) void refresh();
     hasFocused.current = true;
   }, [profile?.uid, refresh]));
+  // Arriving from "Offer your services" shows how a plumber, designer or other professional gets listed.
+  const [isServicesGuideOpen, setIsServicesGuideOpen] = useState(params.intent === 'services');
+  const hasBusiness = workspace?.eligibility.hasBusiness ?? false;
   const activeDrafts = workspace?.drafts.filter((draft) => draft.status === 'active') ?? [];
   const deletedDrafts = workspace?.drafts.filter((draft) => draft.status === 'deleted') ?? [];
   const publishedProducts = workspace?.products.filter((product) => product.publicationState === 'published') ?? [];
@@ -123,10 +126,33 @@ export default function EHubSellerCenterScreen() {
             <View style={styles.main}>
               {center.notice ? <EHubNotice tone={center.notice.tone} text={center.notice.text} actionLabel="Dismiss" onAction={() => center.setNotice(null)} /> : null}
               {center.loadError ? <EHubNotice tone="error" text={center.loadError} actionLabel="Try again" onAction={() => void center.refresh()} /> : null}
+              {isServicesGuideOpen ? <View style={styles.servicesGuide}>
+                <View style={styles.servicesGuideTop}>
+                  <View style={styles.servicesGuideIcon}><Wrench size={18} color={colors.successText} /></View>
+                  <View style={styles.flex}>
+                    <Text style={styles.servicesGuideTitle}>Register as a service professional</Text>
+                    <Text style={styles.servicesGuideText}>Plumbers, masons, electricians, web and graphic designers and other pros are listed in E-Hub's professionals directory, where people can send you enquiries.</Text>
+                  </View>
+                </View>
+                {[
+                  { label: 'Set up your business account. A sole trader or freelancer counts.', isDone: hasBusiness },
+                  { label: 'Open Storefront. Under Business information, add each service you offer (for example Plumbing) and the areas you cover.', isDone: false },
+                  { label: 'Accept the Provider Declaration and publish. If you list services and no products, you appear under Professionals.', isDone: false },
+                ].map((item, index) => <View key={item.label} style={styles.servicesGuideStep}>
+                  <Text style={[styles.servicesGuideNumber, item.isDone ? styles.servicesGuideNumberDone : null]}>{item.isDone ? '✓' : index + 1}</Text>
+                  <Text style={styles.servicesGuideStepText}>{item.label}</Text>
+                </View>)}
+                <View style={styles.servicesGuideActions}>
+                  {hasBusiness
+                    ? <SellerButton compact label="Open storefront setup" icon={<Store size={16} color="#ffffff" />} onPress={() => handleSectionChange('storefront')} />
+                    : <SellerButton compact label="Set up business account" icon={<Building2 size={16} color="#ffffff" />} onPress={() => router.push('/ehub/business-account' as Href)} />}
+                  <SellerButton compact variant="secondary" label="Hide" onPress={() => setIsServicesGuideOpen(false)} />
+                </View>
+              </View> : null}
               {workspace?.eligibility.reason ? <View style={styles.eligibility}>
                 <Text style={styles.eligibilityTitle}>Seller eligibility required</Text>
                 <Text style={styles.eligibilityText}>{workspace.eligibility.reason}</Text>
-                {!workspace.eligibility.hasBusiness && !workspace.eligibility.isRestricted ? <View style={styles.eligibilityAction}>
+                {!workspace.eligibility.hasBusiness && !workspace.eligibility.isRestricted && !isServicesGuideOpen ? <View style={styles.eligibilityAction}>
                   <SellerButton compact label="Set up business account" icon={<Building2 size={16} color="#ffffff" />} onPress={() => router.push('/ehub/business-account' as Href)} />
                 </View> : null}
               </View> : null}
@@ -210,6 +236,16 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   navItemActive: { backgroundColor: '#059669', borderColor: '#059669' },
   navText: { color: colors.secondaryText, fontSize: 14, fontWeight: '800' },
   navTextActive: { color: '#ffffff' },
+  servicesGuide: { padding: 16, gap: 12, borderRadius: 18, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.successSurface },
+  servicesGuideTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  servicesGuideIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  servicesGuideTitle: { color: colors.text, fontSize: 16, fontWeight: '900' },
+  servicesGuideText: { marginTop: 3, color: colors.secondaryText, fontSize: 13, lineHeight: 19 },
+  servicesGuideStep: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  servicesGuideNumber: { width: 24, height: 24, borderRadius: 12, overflow: 'hidden', textAlign: 'center', lineHeight: 24, fontSize: 12, fontWeight: '900', color: colors.accentText, backgroundColor: colors.surface },
+  servicesGuideNumberDone: { color: colors.onAccent, backgroundColor: colors.accent },
+  servicesGuideStepText: { flex: 1, color: colors.secondaryText, fontSize: 13, lineHeight: 19 },
+  servicesGuideActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   eligibility: { padding: 16, gap: 4, borderRadius: 18, borderWidth: 1, borderColor: colors.warningText, backgroundColor: colors.warningSurface },
   eligibilityTitle: { color: colors.warningText, fontSize: 15, fontWeight: '900' },
   eligibilityText: { color: colors.warningText, fontSize: 14, lineHeight: 20 },

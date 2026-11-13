@@ -203,7 +203,7 @@ function ChipSkeleton({ textWidth }: { textWidth: number }) {
 
 const HOME_NAV_TEXT_WIDTHS = [34, 29, 60, 36];
 const HOME_SORT_CHIP_TEXT_WIDTHS = [88, 116, 118, 38];
-const HOME_PATH_DESCRIPTION_CHARS = [59, 63, 59, 59];
+const HOME_PATH_DESCRIPTION_CHARS = [59, 63, 59, 96, 59];
 const HOME_FAQ_QUESTION_CHARS = [31, 28, 23];
 const HOME_FOOTER_LINK_WIDTHS = [[60, 74, 84], [108, 64, 82], [80, 70, 88]];
 
