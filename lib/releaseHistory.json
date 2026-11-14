@@ -10,7 +10,8 @@
         "Pets for Adoption: submit a pet with up to 6 photos, its temperament, health and adoption requirements, and pick its town from a list. Breed is optional.",
         "Pets for Adoption: each pet has its own page with all its photos and details, and carers can mark a pet adoption pending or adopted.",
         "Pets for Adoption: carers review and answer adoption enquiries under Manage enquiries, and the Adoption Programme page explains how it works.",
-        "Pets for Adoption is now adoption only, the same as the website: pets are never sold, and there is no checkout or payment."
+        "Pets for Adoption is now adoption only, the same as the website: pets are never sold, and there is no checkout or payment.",
+        "Fixes: pet forms stay on screen while you type, instead of sliding the field you are typing in out of view."
       ]
     },
     {

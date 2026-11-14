@@ -114,7 +114,7 @@ export function PetsErrorText({ message }: { message: string }) {
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
   scrim: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.modalScrim },
-  sheet: { maxHeight: '92%', borderTopLeftRadius: 26, borderTopRightRadius: 26, backgroundColor: colors.canvas },
+  sheet: { maxHeight: '92%', flexShrink: 1, borderTopLeftRadius: 26, borderTopRightRadius: 26, backgroundColor: colors.canvas },
   handle: { alignSelf: 'center', width: 42, height: 5, marginTop: 8, borderRadius: 3, backgroundColor: colors.border },
   header: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 10, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   title: { color: colors.text, fontSize: 20, fontWeight: '900' },
