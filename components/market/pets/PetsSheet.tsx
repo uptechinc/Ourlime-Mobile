@@ -52,14 +52,47 @@ export function PetsButton({ label, onPress, variant = 'primary', disabled = fal
   </TouchableOpacity>;
 }
 
-type PetsFieldProps = { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; multiline?: boolean; editable?: boolean; keyboardType?: KeyboardTypeOptions; maxLength?: number };
-export function PetsField({ label, value, onChangeText, placeholder, multiline = false, editable = true, keyboardType, maxLength }: PetsFieldProps) {
+type PetsFieldProps = { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; multiline?: boolean; editable?: boolean; keyboardType?: KeyboardTypeOptions; maxLength?: number; optional?: boolean };
+export function PetsField({ label, value, onChangeText, placeholder, multiline = false, editable = true, keyboardType, maxLength, optional = false }: PetsFieldProps) {
   const { colors } = useAppTheme();
   return <View style={{ gap: 6 }}>
-    <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{label} <Text style={{ color: colors.destructiveText }}>*</Text></Text>
+    <PetsLabel label={label} optional={optional} />
     <TextInput accessibilityLabel={label} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.mutedText}
       multiline={multiline} editable={editable} keyboardType={keyboardType} maxLength={maxLength} textAlignVertical={multiline ? 'top' : 'center'}
       style={{ minHeight: multiline ? 104 : 48, paddingHorizontal: 14, paddingVertical: multiline ? 12 : 0, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 15 }} />
+  </View>;
+}
+
+/** A form label: a red star for required fields, "(optional)" for optional ones. */
+export function PetsLabel({ label, optional = false }: { label: string; optional?: boolean }) {
+  const { colors } = useAppTheme();
+  return <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>
+    {label} {optional ? <Text style={{ color: colors.mutedText, fontWeight: '500' }}>(optional)</Text> : <Text style={{ color: colors.destructiveText }}>*</Text>}
+  </Text>;
+}
+
+type PetsChoiceRowProps<TValue extends string> = {
+  label: string;
+  options: readonly { value: TValue; label: string }[];
+  value: TValue | '';
+  onChange: (value: TValue) => void;
+  disabled?: boolean;
+  optional?: boolean;
+};
+/** Wrapping chips for a single choice (the website's select fields), e.g. animal type, sex or location. */
+export function PetsChoiceRow<TValue extends string>({ label, options, value, onChange, disabled = false, optional = false }: PetsChoiceRowProps<TValue>) {
+  const { colors } = useAppTheme();
+  return <View style={{ gap: 6 }}>
+    <PetsLabel label={label} optional={optional} />
+    <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {options.map((option) => {
+        const selected = option.value === value;
+        return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ selected, disabled }} disabled={disabled} onPress={() => onChange(option.value)}
+          style={{ minHeight: 38, paddingHorizontal: 13, justifyContent: 'center', borderRadius: 19, borderWidth: 1, borderColor: selected ? colors.accent : colors.border, backgroundColor: selected ? colors.accent : colors.surface }}>
+          <Text style={{ color: selected ? colors.onAccent : colors.secondaryText, fontSize: 12, fontWeight: '700' }}>{option.label}</Text>
+        </Pressable>;
+      })}
+    </View>
   </View>;
 }
 

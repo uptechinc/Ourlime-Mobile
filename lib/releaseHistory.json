@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "id": "1.3.1-ota-2026-11-13-2",
+      "version": "1.3.1",
+      "versionCode": 10,
+      "kind": "ota",
+      "date": "2026-11-13",
+      "notes": [
+        "Pets for Adoption: submit a pet with up to 6 photos, its temperament, health and adoption requirements, and pick its town from a list. Breed is optional.",
+        "Pets for Adoption: each pet has its own page with all its photos and details, and carers can mark a pet adoption pending or adopted.",
+        "Pets for Adoption: carers review and answer adoption enquiries under Manage enquiries, and the Adoption Programme page explains how it works.",
+        "Pets for Adoption is now adoption only, the same as the website: pets are never sold, and there is no checkout or payment."
+      ]
+    },
+    {
       "id": "1.3.1-ota-2026-11-13",
       "version": "1.3.1",
       "versionCode": 10,

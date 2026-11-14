@@ -213,6 +213,10 @@ export class DeepLinkService {
       const mode = url.searchParams.get('mode') === 'sent' ? '?mode=sent' : '';
       return { kind: 'screen', webPath: `/profile/ehub/enquiries${mode}`, appRoute: `/ehub/enquiries${mode}` };
     }
+    // The website's adoption enquiries page (/profile/pets/adoption) is /market/pets/enquiries in the app.
+    if (first === 'profile' && segments[1]?.toLowerCase() === 'pets' && segments[2]?.toLowerCase() === 'adoption') {
+      return this.screen('/profile/pets/adoption', '/market/pets/enquiries');
+    }
     if (first === 'profile' && segments[1]?.toLowerCase() === 'viewotherprofile' && segments[2]) {
       return { kind: 'profile', username: this.normalizeUsername(segments[2]) };
     }
@@ -231,6 +235,11 @@ export class DeepLinkService {
     if (first === 'market') {
       // /market/orders, /market/checkout and /market/pets are pages, not product ids.
       const marketPage = segments[1]?.toLowerCase();
+      // /market/pets/<id> is an adoption listing; /market/pets/programme is the Adoption Programme page.
+      if (marketPage === 'pets' && segments[2]) {
+        const petPage = segments[2].toLowerCase() === 'programme' ? 'programme' : encodeURIComponent(segments[2]);
+        return this.screen(`/market/pets/${petPage}`, `/market/pets/${petPage}`);
+      }
       if (marketPage === 'orders' || marketPage === 'checkout' || marketPage === 'pets') return this.screen(`/market/${marketPage}`, `/market/${marketPage}`);
       return { kind: 'market-product', productId: segments[1] ?? url.searchParams.get('product') };
     }
