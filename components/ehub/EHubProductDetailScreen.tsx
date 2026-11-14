@@ -14,6 +14,7 @@ import { EHubCartSheet, EHubHeaderActions } from '@/components/ehub/EHubCommerce
 import { EHubEmptyState, EHubNotice, EHubProductCard, formatEHubPrice, useEHubLayout } from '@/components/ehub/EHubParts';
 import { EHubProductDetailSkeleton } from '@/components/ehub/EHubSkeletons';
 import type { EHubCatalogProduct } from '@/lib/types/ehubDiscovery';
+import SellerCouriersPanel from '@/components/market/couriers/SellerCouriersPanel';
 
 type OptionGroupProps = { label: string; values: string[]; selectedValue: string; onSelect: (value: string) => void };
 
@@ -145,6 +146,7 @@ export default function EHubProductDetailScreen() {
                 <Text style={styles.description}>{product.description}</Text>
                 <View style={styles.detailGrid}>{detailItems.map((item) => <View key={item.label} style={[styles.detailItem, layout.isTablet && styles.detailItemHalf]}><Text style={styles.detailLabel}>{item.label}</Text><Text style={styles.detailValue}>{item.value}</Text></View>)}</View>
               </View>
+              {product.deliveryAvailable ? <SellerCouriersPanel sellerId={product.storeId} /> : null}
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Policies and buyer information</Text>
                 <Text style={styles.description}>{store.sellerPolicies ? <><Text style={styles.strong}>Seller policies: </Text>{store.sellerPolicies}</> : 'The seller has not added general policies.'}</Text>

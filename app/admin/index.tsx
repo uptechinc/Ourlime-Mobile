@@ -87,6 +87,12 @@ const REMAINING_ADMIN_WORKSPACES = [
 		route: '/admin/communities' as Href,
 	},
 	{
+		id: 'couriers',
+		title: 'Couriers',
+		icon: 'truck' as const,
+		route: '/admin/couriers' as Href,
+	},
+	{
 		id: 'jobs',
 		title: 'Jobs',
 		icon: 'briefcase' as const,

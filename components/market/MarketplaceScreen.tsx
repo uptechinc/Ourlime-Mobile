@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { Bookmark, ChevronDown, ChevronRight, Heart, HelpCircle, LayoutGrid, List, Package, PawPrint, Search, ShieldCheck, ShoppingBag, SlidersHorizontal, Store, X } from 'lucide-react-native';
+import { Bookmark, ChevronDown, ChevronRight, Heart, HelpCircle, LayoutGrid, List, Package, PawPrint, Search, ShieldCheck, ShoppingBag, SlidersHorizontal, Store, Truck, X } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAccountCart } from '@/lib/hooks/useAccountCart';
@@ -124,12 +124,13 @@ export default function MarketplaceScreen({ entryPoint = 'market' }: Marketplace
     ...(filters.favoritesOnly ? [{ key: 'favorites', label: 'Favorites', onRemove: () => setFilters((current) => ({ ...current, favoritesOnly: false })) }] : []),
     ...(sort !== 'default' ? [{ key: 'sort', label: MARKET_SORT_OPTIONS.find((option) => option.value === sort)?.label ?? sort, onRemove: () => setSort('default') }] : []),
   ];
-  // Seller, orders, pets and support shortcuts sit at the top so they stay one tap away however many products load.
+  // Seller, orders, pets, couriers and support shortcuts sit at the top so they stay one tap away however many products load.
   const quickActions: { key: string; title: string; subtitle: string; icon: typeof Store; onPress: () => void }[] = [
     { key: 'sell', title: 'Sell on Ourlime', subtitle: ownerId ? 'Your seller application' : 'Sign in to apply', icon: Store, onPress: () => ownerId && canMutate ? setSellerOpen(true) : router.push('/(auth)/login') },
     ...(ownerId ? [{ key: 'listings', title: 'My listings', subtitle: 'Products and orders to fulfil', icon: ShoppingBag, onPress: () => router.push('/market/seller' as Href) }] : []),
     ...(ownerId ? [{ key: 'orders', title: 'My orders', subtitle: 'Track, confirm and review', icon: Package, onPress: () => router.push('/market/orders' as Href) }] : []),
     { key: 'pets', title: 'Pets & Adoption', subtitle: 'Adopt or rehome a pet', icon: PawPrint, onPress: () => router.push('/market/pets' as Href) },
+    { key: 'couriers', title: 'Couriers', subtitle: 'Find or register a courier', icon: Truck, onPress: () => router.push('/market/couriers' as Href) },
     { key: 'support', title: 'Support', subtitle: 'Help with listings and carts', icon: HelpCircle, onPress: () => void handleSupport() },
   ];
   const clearAllFilters = () => { setFilters(EMPTY_MARKET_FILTERS); setSort('default'); };

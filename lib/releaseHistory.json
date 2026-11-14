@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "id": "1.3.1-ota-2026-11-14",
+      "version": "1.3.1",
+      "versionCode": 10,
+      "kind": "ota",
+      "date": "2026-11-14",
+      "notes": [
+        "Couriers: delivery businesses can register their courier service from the new Couriers tile in Lime Market, with the areas they cover, their vehicles, delivery options and a starting price. Ourlime reviews each one before it is listed.",
+        "Couriers: browse approved couriers by area and call, WhatsApp or email them straight from the directory.",
+        "Sellers can pick up to five preferred couriers (My listings → Preferred couriers, or E-Hub Seller Center → Settings). They show on the seller's Lime Market and E-Hub products.",
+        "Checkout: when you choose Standard shipping you can optionally pick a courier, starting with the seller's preferred ones.",
+        "Admins review courier registrations under Admin → Couriers: approve, decline with a reason, or suspend."
+      ]
+    },
+    {
       "id": "1.3.1-ota-2026-11-13-2",
       "version": "1.3.1",
       "versionCode": 10,

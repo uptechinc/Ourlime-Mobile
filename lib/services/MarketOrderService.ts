@@ -8,6 +8,8 @@ export type MarketDeliveryMethod = 'shipping' | 'pickup';
 export type MarketCheckoutRequest = {
   lines: CartLine[]; deliveryMethod: MarketDeliveryMethod;
   shippingAddress: MarketShippingAddress; acknowledged: boolean;
+  /** Optional approved courier the buyer picked for a shipped order. */
+  courierId?: string;
 };
 export type MarketPlacedOrder = { orderId: string; orderNumber: string };
 
@@ -71,6 +73,7 @@ export class MarketOrderService {
         })),
         deliveryMethod: request.deliveryMethod,
         shippingAddress: request.deliveryMethod === 'shipping' ? request.shippingAddress : undefined,
+        courierId: request.deliveryMethod === 'shipping' && request.courierId ? request.courierId : undefined,
         buyerAcknowledgment: { accepted: true, timestamp, version: BUYER_ACKNOWLEDGMENT_VERSION },
       },
     });

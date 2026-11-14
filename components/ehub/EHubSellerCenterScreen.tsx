@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Building2, ChevronRight, Wrench, Eye, FilePenLine, FileText, Inbox, LayoutDashboard, Lock, Package, Settings, Store, Trash2 } from 'lucide-react-native';
+import { Building2, ChevronRight, Wrench, Eye, FilePenLine, FileText, Inbox, LayoutDashboard, Lock, Package, Settings, Store, Trash2, Truck } from 'lucide-react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
 import EHubSectionNav from '@/components/ehub/EHubSectionNav';
@@ -192,6 +192,11 @@ export default function EHubSellerCenterScreen() {
                   <View style={styles.buttonRow}>
                     <SellerButton label="Business account" icon={<Building2 size={17} color="#ffffff" />} onPress={() => router.push('/ehub/business-account' as Href)} />
                     <SellerButton label="Seller terms" variant="secondary" onPress={() => router.push(getEHubTermsRoute('seller') as Href)} />
+                  </View>
+                  <Text style={styles.cardTitle}>Preferred couriers</Text>
+                  <Text style={styles.muted}>Optional. Pick up to five couriers you trust; buyers see them on your products and can still choose another.</Text>
+                  <View style={styles.buttonRow}>
+                    <SellerButton label="Choose couriers" variant="secondary" icon={<Truck size={17} color={colors.text} />} onPress={() => router.push('/market/couriers/preferences' as Href)} />
                   </View>
                 </View> : null}
               </>}

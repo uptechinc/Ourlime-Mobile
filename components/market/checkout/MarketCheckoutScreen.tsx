@@ -13,6 +13,7 @@ import type { CartLine, MarketShippingAddress } from '@/lib/types/reliability';
 import { formatMarketPrice } from '@/lib/utils/formatMarketPrice';
 import { MarketButton, MarketField } from '../MarketFormModal';
 import MarketPickupContact from './MarketPickupContact';
+import CheckoutCourierPicker from '@/components/market/couriers/CheckoutCourierPicker';
 
 const EMPTY_ADDRESS: MarketShippingAddress = { fullName: '', phone: '', addressLine1: '', addressLine2: '', city: '', state: '', postalCode: '', country: 'Trinidad and Tobago' };
 const ACKNOWLEDGMENT = 'I have reviewed the product description, condition, price, seller information, shipping or pickup method, return policy, and total charges. I understand that seller identity verification does not mean Ourlime endorses the seller or guarantees the product. I will use the approved payment process and report suspicious requests, misleading listings, counterfeit products, or unsafe activity.';
@@ -30,6 +31,8 @@ export default function MarketCheckoutScreen() {
   const visibleLines = useMemo(() => cart.cart.lines.filter((line) => !line.removed), [cart.cart.lines]);
   const [enriched, setEnriched] = useState<Map<string, CartLine>>(new Map());
   const [deliveryMethod, setDeliveryMethod] = useState<MarketDeliveryMethod>('shipping');
+  // Optional courier for a shipped order (an approved courier's id); empty leaves delivery to the seller.
+  const [courierId, setCourierId] = useState('');
   const [address, setAddress] = useState<MarketShippingAddress>(EMPTY_ADDRESS);
   const [accepted, setAccepted] = useState(false);
   const [reviews, setReviews] = useState<CheckoutLineReview[] | null>(null);
@@ -100,7 +103,7 @@ export default function MarketCheckoutScreen() {
       const checked = await marketplaceService.review(ownerId ?? '', linesRef.current);
       setReviews(checked);
       if (checked.some((item) => item.reason || item.priceChanged)) throw new Error('Some items changed. Review them above before placing your order.');
-      const order = await marketOrderService.placeOrder({ lines, deliveryMethod, shippingAddress: address, acknowledged: accepted });
+      const order = await marketOrderService.placeOrder({ lines, deliveryMethod, shippingAddress: address, acknowledged: accepted, courierId });
       setCompleted({ order, lines, totals, currency, deliveryMethod, address: deliveryMethod === 'shipping' ? address : null, placedAtMs: Date.now() });
       for (const line of linesRef.current) await cart.remove(line).catch(() => undefined);
     } catch (failure: unknown) {
@@ -172,6 +175,7 @@ export default function MarketCheckoutScreen() {
               {[...new Map(group.lines.map((line) => [line.productId, line])).values()].map((line) => <MarketPickupContact key={line.productId} ownerId={ownerId} productId={line.productId} productTitle={line.title} />)}
             </View>)}
           </View> : null}
+          {deliveryMethod === 'shipping' ? <CheckoutCourierPicker sellerIds={groups.map((group) => group.sellerId)} value={courierId} onChange={setCourierId} /> : null}
         </View>
 
         {deliveryMethod === 'shipping' ? <View style={styles.card}>

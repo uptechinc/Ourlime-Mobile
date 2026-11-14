@@ -240,6 +240,11 @@ export class DeepLinkService {
         const petPage = segments[2].toLowerCase() === 'programme' ? 'programme' : encodeURIComponent(segments[2]);
         return this.screen(`/market/pets/${petPage}`, `/market/pets/${petPage}`);
       }
+      // /market/couriers is the courier directory; /market/couriers/register is courier registration.
+      if (marketPage === 'couriers') {
+        const courierPage = segments[2]?.toLowerCase() === 'register' ? '/market/couriers/register' : '/market/couriers';
+        return this.screen(courierPage, courierPage);
+      }
       if (marketPage === 'orders' || marketPage === 'checkout' || marketPage === 'pets') return this.screen(`/market/${marketPage}`, `/market/${marketPage}`);
       return { kind: 'market-product', productId: segments[1] ?? url.searchParams.get('product') };
     }

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
-import { ArrowUpDown, Copy, ExternalLink, FilePenLine, Package, Plus, Power, Search, Trash2, Truck, X } from 'lucide-react-native';
+import { ArrowUpDown, Copy, ExternalLink, FilePenLine, Package, Plus, Power, Search, Navigation, Trash2, Truck, X } from 'lucide-react-native';
 import CachedImage from '@/components/ui/CachedImage';
 import CustomModal from '@/components/ui/CustomModal';
 import { SellerButton } from '@/components/ehub/EHubSellerFormParts';
@@ -131,6 +131,7 @@ export default function SellerListingsScreen() {
         <View style={styles.flex}><SellerButton label="Add product" icon={<Plus size={17} color="#ffffff" />} disabled={!isApproved || !canMutate} onPress={() => openEditor()} /></View>
         <View style={styles.flex}><SellerButton variant="secondary" label="Orders" icon={<Truck size={17} color={colors.text} />} onPress={() => router.push('/market/seller/orders' as Href)} /></View>
       </View>
+      <SellerButton variant="secondary" label="Preferred couriers" icon={<Navigation size={17} color={colors.text} />} onPress={() => router.push('/market/couriers/preferences' as Href)} />
       <View style={styles.stats}>
         <Stat label="Total listings" value={counts.total} color={colors.text} styles={styles} />
         <Stat label="Active in market" value={counts.published} color={colors.successText} styles={styles} />

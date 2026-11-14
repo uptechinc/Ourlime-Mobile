@@ -20,6 +20,7 @@ import QuantityStepper from '../QuantityStepper';
 import MarketCartModal from '../cart/MarketCartModal';
 import ProductReviewsSection from '../reviews/ProductReviewsSection';
 import ProductGallery from './ProductGallery';
+import SellerCouriersPanel from '../couriers/SellerCouriersPanel';
 
 type ProductDetailsScreenProps = { productId: string };
 type PickerOption = { id: string; name: string; code: string | null };
@@ -253,6 +254,7 @@ export default function ProductDetailsScreen({ productId }: ProductDetailsScreen
       </View>
       {product.pickupAvailable ? <View style={styles.inlineRow}><MapPin size={16} color={colors.accentText} /><Text style={styles.infoText}>Direct pickup is available from the seller.</Text></View> : null}
       {product.refundPolicy ? <View style={styles.inlineRow}><ShieldCheck size={16} color={colors.icon} /><Text style={styles.infoText}>Refund policy: {product.refundPolicy}</Text></View> : null}
+      {product.deliveryAvailable !== false ? <SellerCouriersPanel sellerId={product.sellerId || undefined} /> : null}
 
       <View style={styles.sellerCard}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
