@@ -1,7 +1,9 @@
-import { AppServerError, appServerService } from '@/lib/services/AppServerService';
+import { AppServerError, appServerService, type AppServerErrorCode } from '@/lib/services/AppServerService';
 import type {
   CreatePetInterestInput, CreatePetListingInput, PetAdoptionStatus, PetEnquiry, PetEnquiryStatus, PetHealthStatus, PetListing, PetPhotoPick,
 } from '@/lib/types/pets';
+
+const EXPECTED_REFUSALS = new Set<AppServerErrorCode>(['permission-denied', 'invalid-argument', 'failed-precondition', 'already-exists', 'not-found', 'unauthenticated']);
 
 export const MAX_PET_PHOTOS = 6;
 /** Longest side of a photo after resizing; keeps six photos well inside the callable's request limit. */
@@ -100,7 +102,13 @@ export class PetsService {
     try {
       return await appServerService.call<TResult>('petsApi', data, timeoutMs);
     } catch (error: unknown) {
-      console.error('[PetsService.call] Error:', error instanceof Error ? error.message : 'Unknown error');
+      // A server rule saying no (your own listing, a missing reason, no access) is an answer shown to the person,
+      // not a fault: it is logged quietly. Only failures of the call itself (network, timeout, server error) are errors.
+      if (error instanceof AppServerError && EXPECTED_REFUSALS.has(error.code)) {
+        console.log(`[PetsService.call] Refused (${error.code}): ${error.message}`);
+      } else {
+        console.error('[PetsService.call] Error:', error instanceof Error ? error.message : 'Unknown error');
+      }
       // Server checks send a sentence; a bare code ("not-found", "internal") means the call itself failed.
       const message = error instanceof Error ? error.message.trim() : '';
       const isSentence = message.includes(' ') && !(error instanceof AppServerError && message === error.code);

@@ -1,5 +1,7 @@
-import { AppServerError, appServerService } from '@/lib/services/AppServerService';
+import { AppServerError, appServerService, type AppServerErrorCode } from '@/lib/services/AppServerService';
 import type { Courier, CourierProfileInput, CourierStatus, SellerCourierPreferences } from '@/lib/types/couriers';
+
+const EXPECTED_REFUSALS = new Set<AppServerErrorCode>(['permission-denied', 'invalid-argument', 'failed-precondition', 'already-exists', 'not-found', 'unauthenticated']);
 
 const CALL_TIMEOUT_MS = 30_000;
 
@@ -65,7 +67,13 @@ export class CourierService {
     try {
       return await appServerService.call<TResult>('courierApi', data, CALL_TIMEOUT_MS);
     } catch (error: unknown) {
-      console.error('[CourierService.call] Error:', error instanceof Error ? error.message : 'Unknown error');
+      // A server rule saying no (your own listing, a missing reason, no access) is an answer shown to the person,
+      // not a fault: it is logged quietly. Only failures of the call itself (network, timeout, server error) are errors.
+      if (error instanceof AppServerError && EXPECTED_REFUSALS.has(error.code)) {
+        console.log(`[CourierService.call] Refused (${error.code}): ${error.message}`);
+      } else {
+        console.error('[CourierService.call] Error:', error instanceof Error ? error.message : 'Unknown error');
+      }
       // Server checks send a sentence; a bare code ("not-found", "internal") means the call itself failed.
       const message = error instanceof Error ? error.message.trim() : '';
       const isSentence = message.includes(' ') && !(error instanceof AppServerError && message === error.code);
