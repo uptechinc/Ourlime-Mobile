@@ -8,6 +8,8 @@
     "dev:full": "node scripts/start-with-api.cjs",
     "release:check": "node scripts/release-history.cjs",
     "ota:publish": "node scripts/publish-ota.cjs",
+    "notify": "node scripts/publish-android-release.cjs",
+    "set": "node scripts/admin-credentials.cjs",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "expo run:ios",

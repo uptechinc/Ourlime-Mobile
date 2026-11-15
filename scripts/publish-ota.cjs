@@ -17,6 +17,8 @@
 const path = require('path');
 const { execSync } = require('child_process');
 const releaseHistory = require('./release-history.cjs');
+// Finds the admin key on its own when GOOGLE_APPLICATION_CREDENTIALS isn't set (scripts/admin-credentials.cjs).
+require('./admin-credentials.cjs').useAdminCredentials();
 
 const projectRoot = path.resolve(__dirname, '..');
 

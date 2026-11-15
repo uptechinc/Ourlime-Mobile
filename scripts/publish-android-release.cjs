@@ -27,6 +27,8 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const releaseHistory = require('./release-history.cjs');
+// Finds the admin key on its own when GOOGLE_APPLICATION_CREDENTIALS isn't set (scripts/admin-credentials.cjs).
+require('./admin-credentials.cjs').useAdminCredentials();
 
 const projectRoot = path.resolve(__dirname, '..');
 const PACKAGE_NAME = 'com.ourlime.app';

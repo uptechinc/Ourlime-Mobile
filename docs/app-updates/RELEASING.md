@@ -18,10 +18,11 @@ Every native release is a production build for the Play app. There are no tester
 3. **Build locally:** `npm run build:local` builds `Ourlime-<version>-vc<code>.aab` for `com.ourlime.mobile`, signed with the Play upload key from `credentials.json`. The script stops if the key is missing or the SHA-1 isn't `BB:67:C0:81…`. For a test install of the same production build, use `npm run build:local:apk`.
    - First time only: run `npx eas-cli credentials -p android`, then **production** → **credentials.json** → **Download credentials from EAS to credentials.json**. `credentials.json` and `credentials/` are git-ignored.
 4. **Upload the .aab in Play Console** (a new Production release), paste the notes, and roll it out.
-5. **Once Play shows the update as live, announce it:**
+5. **Once Play shows the update as live, notify users:**
    ```bash
-   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json node scripts/publish-android-release.cjs
+   bun notify
    ```
+   `bun notify` is `node scripts/publish-android-release.cjs`; `bun notify --dry-run` shows what it would write. It finds the admin key on its own (`~/keys/ourlime-admin.json.json`, or `GOOGLE_APPLICATION_CREDENTIALS` / `OURLIME_ADMIN_KEY`); `bun set` saves `GOOGLE_APPLICATION_CREDENTIALS` for your Windows user once, if you want it in every terminal. It refuses a versionCode that is already announced, so running it twice is harmless.
    This uploads nothing. It writes `latestVersion`, `latestVersionCode`, `releaseNotes`, `releasedAt`, `androidStoreUrl` (the Play listing) and `sideloadUpdates: false`. Open apps show "Update available" and the button opens Play. `notifyAppUpdate` sends the push once per versionCode. Run `--dry-run` first.
 
 ## Legacy: sideload APK release (not used)

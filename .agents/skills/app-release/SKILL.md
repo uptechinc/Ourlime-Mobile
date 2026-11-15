@@ -70,10 +70,11 @@ When unsure, ship a Play release.
 2. Delete old APK/AAB files, then `npm run build:local`. Check that the printed SHA-1 is the upload key.
 3. Test the same production build on the emulator with `npm run build:local:apk` and `adb install`. It installs as `com.ourlime.mobile`, next to the dev client.
 4. Open Play Console (account Uptech Incorporated, app `com.ourlime.mobile`), create a Production release, upload the .aab and add the notes. Show the user the version, versionCode, package and SHA-1. **The user clicks "Save and publish".**
-5. After Play shows it live, the user announces it. This uploads nothing:
+5. After Play shows it live, the user notifies users with one command. This uploads nothing:
    ```bash
-   GOOGLE_APPLICATION_CREDENTIALS=<key> node scripts/publish-android-release.cjs
+   bun notify
    ```
+   **A Play release is not announced until `bun notify` runs.** Play's own update check lags by hours, so without it nobody gets the pop-up or the push. `bun notify` = `node scripts/publish-android-release.cjs` (`bun notify --dry-run` to preview). It finds the admin key itself; `bun set` (once) saves `GOOGLE_APPLICATION_CREDENTIALS` for the Windows user. It refuses a versionCode already announced, so a second run is harmless.
    It sets `latestVersion` / `latestVersionCode`, the notes, `androidStoreUrl` (the Play listing) and `sideloadUpdates: false`. What users see:
    - Open apps show "Update available" within seconds, and "Update now" opens Play.
    - Everyone else sees it on the next launch or foreground.
@@ -82,15 +83,20 @@ When unsure, ship a Play release.
 
 ### OTA (same native build, JS only)
 1. Add an `"ota"` entry at the top of `lib/releaseHistory.json` with only this OTA's changes, run `npm run release:check`, then commit and push.
-2. The user runs it with the publish script (publishes, then announces: push to Android phones plus the mandatory update sheet):
+2. The user runs it with the publish script (publishes, then announces: push to Android phones plus the mandatory update sheet). No `set` step: it finds the admin key itself.
    ```bash
-   set GOOGLE_APPLICATION_CREDENTIALS=C:\Users\aaron\keys\ourlime-admin.json.json
-   ```
-   ```bash
-   npm run ota:publish -- --message "<short summary>"
+   bun run ota:publish -- --message "<short summary>"
    ```
 3. It reaches production installs whose `expo.version` matches (runtime `appVersion`). Apps check on launch, on foreground (at most every 10 minutes) and when the push is tapped, then show a mandatory "An update is ready" sheet (no Later); it downloads on **Update now** and restarts into it.
 
 ## 5. Hand-off message
 
 Tell the user the version and versionCode, the notes as bullets (they also appear in Settings → Release notes), the .aab path and SHA-1, what is ready in Play Console, the announce command, and what users will see.
+
+## Quick commands (run from `Ourlime-Mobile`)
+
+| Command | What it does |
+|---|---|
+| `bun notify` | After a Play release is live: tells installed apps and Android phones (pop-up + push). Uploads nothing. |
+| `bun run ota:publish -- --message "…"` | Publishes a quick update and announces it. |
+| `bun set` | Once per PC: saves `GOOGLE_APPLICATION_CREDENTIALS` for the Windows user. Optional; the two commands above find the key anyway. |

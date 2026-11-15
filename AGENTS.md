@@ -94,7 +94,12 @@ Ourlime-Mobile/
 ```bash
 cmd /c "node_modules\.bin\tsc --noEmit" # TypeScript verification
 npx expo start                          # Start Metro bundler
+bun notify                              # After a Play release is live: notify users (pop-up + push); uploads nothing
+bun run ota:publish -- --message "…"    # Publish and announce a quick update (OTA)
+bun set                                 # Once per PC: save GOOGLE_APPLICATION_CREDENTIALS (optional)
 ```
+
+A Play release reaches people only after `bun notify`: Play's own update check lags by hours. See the `app-release` skill.
 
 ---
 

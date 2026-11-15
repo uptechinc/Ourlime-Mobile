@@ -39,12 +39,10 @@ npx eas-cli@latest login
 Use the publish script: it runs `eas update` on the production channel, then writes `siteConfig/mobileApp.latestOta`, which makes notifyAppUpdate push "Ourlime update available" to Android phones once per update group (phones on another version, or already on that update, ignore it).
 
 ```bash
-set GOOGLE_APPLICATION_CREDENTIALS=C:\Users\aaron\keys\ourlime-admin.json.json
+bun run ota:publish -- --message "Fix feed video resume"
 ```
 
-```bash
-npm run ota:publish -- --message "Fix feed video resume"
-```
+It finds the admin key on its own (`~/keys/ourlime-admin.json.json`); `bun set` saves `GOOGLE_APPLICATION_CREDENTIALS` for your Windows user if you'd rather have it set in every terminal.
 
 To announce an update already published with plain `eas update`: `npm run ota:publish -- --group <update group id>`.
 
