@@ -33,7 +33,7 @@ export function SkeletonHomeAppHeader() {
         }}
       >
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-start' }}>
-          <Image source={require('@/assets/images/logo.png')} style={{ height: 32, width: 32, resizeMode: 'contain' }} />
+          <Image source={require('@/assets/transparentLogo.png')} style={{ height: 32, width: 32, resizeMode: 'contain' }} />
           <Image source={require('@/assets/images/logo-long.png')} style={{ height: 32, width: 120, resizeMode: 'contain' }} />
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -225,7 +225,7 @@ export function SkeletonHomeTabBar() {
               }}
             >
               {tabItem.icon === 'logo'
-                ? <Image source={require('@/assets/images/logo.png')} style={{ width: 26, height: 26, resizeMode: 'contain' }} />
+                ? <Image source={require('@/assets/transparentLogo.png')} style={{ width: 26, height: 26, resizeMode: 'contain' }} />
                 : <Ionicons name={tabItem.icon} size={isFocused ? 23 : 22} color={tintColor} />}
             </View>
             <Text style={{ marginTop: 2, fontSize: 11, fontWeight: '600', color: tintColor }}>{tabItem.label}</Text>

@@ -132,7 +132,7 @@ const TabLayout = () => {
           tabBarIcon: ({ focused }) => (
             <PlayfulTabIcon focused={focused}>
             <Image
-              source={require('@/assets/images/logo.png')}
+              source={require('@/assets/transparentLogo.png')}
               style={{
                 width: focused ? 30 : 26,
                 height: focused ? 30 : 26,

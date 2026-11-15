@@ -49,7 +49,7 @@ export default function AppHeader({
                     alignItems: 'flex-start',
                 }}>
                     <Image
-                        source={require('@/assets/images/logo.png')}
+                        source={require('@/assets/transparentLogo.png')}
                         style={{
                             height: 32,
                             width: 32,
@@ -80,7 +80,7 @@ export default function AppHeader({
         } else {
             return (
                 <Image
-                    source={require('@/assets/images/logo.png')}
+                    source={require('@/assets/transparentLogo.png')}
                     style={{
                         height: 28,
                         width: 28,
