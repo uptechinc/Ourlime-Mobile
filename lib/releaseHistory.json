@@ -14,7 +14,8 @@
         "Admins review courier registrations under Admin → Couriers: approve, decline with a reason, or suspend.",
         "Become an instructor: your application is saved on your phone as you fill it in. If Android closes Ourlime while you pick your resume or certificates, everything you typed and attached is back when you reopen the form.",
         "Pets for Adoption: choosing Phone or Email as your preferred enquiry method now asks for the number or address, and signed-in members can call or email you from the pet's page.",
-        "Pets for Adoption: admins get a notification when a pet is submitted and can approve or decline it under Admin → Pet Adoption. Carers are notified when their pet is approved or declined, and when someone sends an adoption enquiry."
+        "Pets for Adoption: admins get a notification when a pet is submitted and can approve or decline it under Admin → Pet Adoption. Carers are notified when their pet is approved or declined, and when someone sends an adoption enquiry.",
+        "Limes opens faster: its For You feed now loads in the background when the app starts, like Home and Communities, so the first visit no longer waits on the network."
       ]
     },
     {

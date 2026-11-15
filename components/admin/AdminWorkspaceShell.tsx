@@ -146,8 +146,12 @@ export default function AdminWorkspaceShell({
 						{error}
 					</Text>
 					<TouchableOpacity
+						accessibilityRole="button"
+						accessibilityState={{ busy: refreshing, disabled: refreshing }}
+						disabled={refreshing}
 						onPress={onRefresh}
 						style={{
+							opacity: refreshing ? 0.6 : 1,
 							marginTop: 16,
 							borderRadius: 999,
 							backgroundColor: colors.accent,
@@ -156,7 +160,7 @@ export default function AdminWorkspaceShell({
 						}}
 					>
 						<Text style={{ color: colors.onAccent, fontWeight: '800' }}>
-							Retry
+							{refreshing ? 'Retrying…' : 'Retry'}
 						</Text>
 					</TouchableOpacity>
 				</View>

@@ -1,6 +1,7 @@
 import { FeedResourceService } from './FeedResourceService';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { LimeMediaPreloadService } from './LimeMediaPreloadService';
+import { LimeResourceService } from './LimeResourceService';
 import { ProjectResourceService } from './ProjectResourceService';
 import { CommunitiesResourceService } from './CommunitiesResourceService';
 
@@ -8,6 +9,7 @@ export class AppPreloadService {
   private static instance: AppPreloadService;
   private readonly feedService = FeedResourceService.getInstance();
   private readonly limeMediaService = LimeMediaPreloadService.getInstance();
+  private readonly limeResourceService = LimeResourceService.getInstance();
   private readonly projectResourceService = ProjectResourceService.getInstance();
   private readonly communitiesResourceService = CommunitiesResourceService.getInstance();
   private readonly logger = DiagnosticLogService.getInstance();
@@ -56,6 +58,17 @@ export class AppPreloadService {
     await this.feedService.seedDerivedFilters(userId, 'home');
     this.logger.success('AppPreloadService', 'home-feed:complete', { userId });
     if (generation !== this.generation) return;
+
+    // Limes is a main tab: warm its default For You feed (the same query the tab opens with) so it opens filled
+    // instead of waiting about two seconds for the network on the first visit.
+    const limeQuery = { userId, category: undefined, scope: 'forYou' as const };
+    await this.limeResourceService.hydrate(limeQuery);
+    if (generation !== this.generation) return;
+    await this.limeResourceService.refresh(limeQuery).catch((error: unknown) => {
+      this.logger.warn('AppPreloadService', 'limes-feed:failed', { error: error instanceof Error ? error.message : String(error) });
+    });
+    if (generation !== this.generation) return;
+    this.logger.success('AppPreloadService', 'limes-feed:complete', { userId });
 
     const communityQuery = { userId, scope: 'communities' as const, filter: 'all' as const };
     await this.feedService.hydrate(communityQuery);
