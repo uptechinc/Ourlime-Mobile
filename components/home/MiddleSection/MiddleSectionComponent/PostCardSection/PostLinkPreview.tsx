@@ -5,6 +5,7 @@ import { extractDomain, openGraphService, type LinkPreviewData } from '@/lib/ser
 import { useDeepLinkNavigation } from '@/lib/hooks/useDeepLinkNavigation';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { linkPresentationService } from '@/lib/services/LinkPresentationService';
+import { extractYouTubeVideoId } from '@/components/ui/RichTextContent';
 
 type PostLinkPreviewProps = {
   url: string;
@@ -14,9 +15,12 @@ export default function PostLinkPreview({ url }: PostLinkPreviewProps) {
   const { openLink } = useDeepLinkNavigation();
   const { colors } = useAppTheme();
   const [preview, setPreview] = useState<LinkPreviewData | null>(null);
-  const [loading, setLoading] = useState(true);
+  // A YouTube video already shows its own player under the post text, so a second preview card would repeat it.
+  const isYouTubeVideo = extractYouTubeVideoId(url) !== null;
+  const [loading, setLoading] = useState(!isYouTubeVideo);
 
   useEffect(() => {
+    if (isYouTubeVideo) return;
     let active = true;
     setLoading(true);
     void openGraphService.fetchPreview(url).then((result) => {
@@ -27,7 +31,9 @@ export default function PostLinkPreview({ url }: PostLinkPreviewProps) {
     return () => {
       active = false;
     };
-  }, [url]);
+  }, [isYouTubeVideo, url]);
+
+  if (isYouTubeVideo) return null;
 
   const domain = extractDomain(url);
   const isYouTube = domain.includes('youtube') || domain.includes('youtu.be');
