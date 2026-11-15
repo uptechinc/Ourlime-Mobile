@@ -179,6 +179,11 @@ export class AppUpdateService {
       // A JavaScript-only update is offered when there's no new APK to install for this device. It is only downloaded
       // after the person taps "Update now": a downloaded update would otherwise be applied on the next cold start.
       if (otaResult === 'available' && state.status === 'up_to_date') this.dispatch({ type: 'ota_found' });
+      // A quick-update check that got no answer must not read as "You're up to date" when someone asked to check.
+      else if (otaResult === 'failed' && isManual && state.status === 'up_to_date') {
+        const reason = otaUpdateService.lastCheckError ? ` (${otaUpdateService.lastCheckError.slice(0, 160)})` : '';
+        this.dispatch({ type: 'failed', message: `Could not check for quick updates. Check your connection and try again.${reason}` });
+      }
       await this.maybePromptAutomatically();
     } catch (error: unknown) {
       console.warn('[AppUpdateService.refresh] Error:', error instanceof Error ? error.message : error);

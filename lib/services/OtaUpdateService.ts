@@ -4,7 +4,8 @@ import { withCleanup } from '@/lib/utils/withCleanup';
 
 type UpdatesModule = typeof import('expo-updates');
 
-export type OtaCheckResult = 'available' | 'none' | 'unavailable';
+/** 'unavailable': this build has no quick updates (dev client); 'failed': the check itself didn't get an answer. */
+export type OtaCheckResult = 'available' | 'none' | 'unavailable' | 'failed';
 
 /** A quick update is a few MB; give a slow connection room, but never leave the sheet waiting forever. */
 const DOWNLOAD_TIMEOUT_MS = 3 * 60 * 1000;
@@ -85,16 +86,21 @@ export class OtaUpdateService {
     return this.hasDownloadedUpdate;
   }
 
+  /** Why the last check got no answer, shown to the person so a failed check can be reported. */
+  public lastCheckError: string | null = null;
+
   public async check(): Promise<OtaCheckResult> {
     const Updates = this.getModule();
     if (!Updates) return 'unavailable';
+    this.lastCheckError = null;
     try {
       const result = await Updates.checkForUpdateAsync();
       // A roll-back to the embedded build is applied like an update (it's what the server asks for).
       return result.isAvailable || result.isRollBackToEmbedded ? 'available' : 'none';
     } catch (error: unknown) {
-      this.logger.warn('OtaUpdateService', 'check:failed', { reason: error instanceof Error ? error.message : String(error) });
-      return 'unavailable';
+      this.lastCheckError = error instanceof Error ? error.message : String(error);
+      this.logger.warn('OtaUpdateService', 'check:failed', { reason: this.lastCheckError });
+      return 'failed';
     }
   }
 
