@@ -32,6 +32,8 @@ export default function AdminCouriersWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [activeCourierId, setActiveCourierId] = useState<string | null>(null);
   const [reasons, setReasons] = useState<{ [courierId: string]: string }>({});
+  // A refused decision is shown on its own card; the page-level error is only for loading the list.
+  const [decisionErrors, setDecisionErrors] = useState<{ [courierId: string]: string }>({});
 
   const loadCouriers = useCallback(async () => {
     try {
@@ -51,14 +53,14 @@ export default function AdminCouriersWorkspace() {
     const reason = reasons[courier.id]?.trim() ?? '';
     if (status !== 'approved' && !reason) return;
     setActiveCourierId(courier.id);
-    setError(null);
+    setDecisionErrors((current) => ({ ...current, [courier.id]: '' }));
     try {
       const updatedCourier = await courierService.updateCourierStatus(courier.id, status, reason || undefined);
       setCouriers((current) => (filter === 'all'
         ? current.map((entry) => (entry.id === courier.id ? updatedCourier : entry))
         : current.filter((entry) => entry.id !== courier.id)));
     } catch (decisionError: unknown) {
-      setError(decisionError instanceof Error ? decisionError.message : 'Could not save the decision.');
+      setDecisionErrors((current) => ({ ...current, [courier.id]: decisionError instanceof Error ? decisionError.message : 'Could not save the decision.' }));
     } finally {
       setActiveCourierId(null);
     }
@@ -97,6 +99,7 @@ export default function AdminCouriersWorkspace() {
             <Icon name={courier.status === 'approved' ? 'slash' : 'x'} size={16} color={colors.destructiveText} /><Text style={[styles.buttonText, { color: colors.destructiveText }]}>{courier.status === 'approved' ? 'Suspend' : 'Decline'}</Text>
           </TouchableOpacity>
         </> : null}
+        {decisionErrors[courier.id] ? <Text accessibilityRole="alert" style={styles.decisionError}>{decisionErrors[courier.id]}</Text> : null}
       </View>;
     }) : <Text style={styles.empty}>{filter === 'pending' ? 'No courier services are waiting for review.' : 'No courier services here.'}</Text>}
   </AdminWorkspaceShell>;
@@ -117,5 +120,6 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   reason: { minHeight: 64, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 14, textAlignVertical: 'top' },
   button: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 10 },
   buttonText: { fontSize: 14, fontWeight: '800' },
+  decisionError: { color: colors.destructiveText, fontSize: 13, fontWeight: '700' },
   empty: { padding: 24, textAlign: 'center', color: colors.mutedText, fontSize: 14 },
 });

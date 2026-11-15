@@ -22,6 +22,8 @@ export default function AdminPetsWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [activeListingId, setActiveListingId] = useState<string | null>(null);
   const [reasons, setReasons] = useState<{ [listingId: string]: string }>({});
+  // A refused decision is shown on its own card; the page-level error is only for loading the list.
+  const [decisionErrors, setDecisionErrors] = useState<{ [listingId: string]: string }>({});
 
   const loadListings = useCallback(async () => {
     try {
@@ -41,12 +43,12 @@ export default function AdminPetsWorkspace() {
     const reason = reasons[listing.id]?.trim() ?? '';
     if (decision === 'rejected' && !reason) return;
     setActiveListingId(listing.id);
-    setError(null);
+    setDecisionErrors((current) => ({ ...current, [listing.id]: '' }));
     try {
       await petsService.moderateListing(listing.id, decision, reason || undefined);
       setListings((current) => current.filter((entry) => entry.id !== listing.id));
     } catch (decisionError: unknown) {
-      setError(decisionError instanceof Error ? decisionError.message : 'Could not save the decision.');
+      setDecisionErrors((current) => ({ ...current, [listing.id]: decisionError instanceof Error ? decisionError.message : 'Could not save the decision.' }));
     } finally {
       setActiveListingId(null);
     }
@@ -75,6 +77,7 @@ export default function AdminPetsWorkspace() {
           style={[styles.button, { backgroundColor: colors.destructiveSurface, opacity: isBusy || !reason.trim() ? 0.5 : 1 }]}>
           <Icon name="x" size={16} color={colors.destructiveText} /><Text style={[styles.buttonText, { color: colors.destructiveText }]}>Decline</Text>
         </TouchableOpacity>
+        {decisionErrors[listing.id] ? <Text accessibilityRole="alert" style={styles.decisionError}>{decisionErrors[listing.id]}</Text> : null}
       </View>;
     }) : <Text style={styles.empty}>No pet listings are waiting for review.</Text>}
   </AdminWorkspaceShell>;
@@ -91,5 +94,6 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   reason: { minHeight: 64, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 14, textAlignVertical: 'top' },
   button: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 10 },
   buttonText: { fontSize: 14, fontWeight: '800' },
+  decisionError: { color: colors.destructiveText, fontSize: 13, fontWeight: '700' },
   empty: { padding: 24, textAlign: 'center', color: colors.mutedText, fontSize: 14 },
 });
