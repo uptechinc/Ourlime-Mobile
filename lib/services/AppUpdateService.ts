@@ -354,11 +354,10 @@ export class AppUpdateService {
   }
 
   /**
-   * No APK installer (iOS, Play builds, older binaries): Google Play's own update screen when Play has the build,
-   * else the APK link on sideload builds, else the store.
+   * No APK installer (iOS, Play builds, older binaries): Ourlime's page in the Play Store (or the App Store link),
+   * where the person taps Update; the APK link on sideload builds.
    */
   public async openExternalUpdate(release: AppRelease | null): Promise<void> {
-    if (await this.startPlayUpdate()) return;
     const state = useAppUpdateStore.getState();
     const storeUrl = state.versionCheck.status === 'supported' ? (Platform.OS === 'android' ? ANDROID_STORE_URL : 'https://ourlime.com') : state.versionCheck.storeUrl;
     const isSideload = nativeAppUpdateService.getDistribution() === 'sideload';
@@ -372,20 +371,6 @@ export class AppUpdateService {
       } catch (error: unknown) {
         console.warn('[AppUpdateService.openExternalUpdate] Error:', error instanceof Error ? error.message : error);
       }
-    }
-  }
-
-  /** True when Play's update screen took over (installing, or the person backed out of it). */
-  private async startPlayUpdate(): Promise<boolean> {
-    if (Platform.OS !== 'android' || !nativeAppUpdateService.isPlayUpdateAvailable()) return false;
-    if (!this.playUpdate) await this.refreshPlayUpdate();
-    if (!this.playUpdate) return false;
-    try {
-      await nativeAppUpdateService.startPlayUpdate();
-      return true;
-    } catch (error: unknown) {
-      console.warn('[AppUpdateService.startPlayUpdate] Error:', error instanceof Error ? error.message : error);
-      return false;
     }
   }
 

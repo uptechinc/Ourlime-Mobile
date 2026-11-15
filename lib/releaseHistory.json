@@ -7,7 +7,8 @@
       "kind": "ota",
       "date": "2026-11-14",
       "notes": [
-        "Settings → Check for updates now says when the update check could not reach the update server, with the reason, instead of showing \"You're up to date\"."
+        "Settings → Check for updates now says when the update check could not reach the update server, with the reason, instead of showing \"You're up to date\".",
+        "When a new version is on the Play Store, Update now opens Ourlime in the Play Store so you can update it there."
       ]
     },
     {
