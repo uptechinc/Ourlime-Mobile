@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,8 @@ import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { COURSE_MAIN_CATEGORIES, getUniqueSubcategories } from '@/lib/constants/courseCategories';
 import { instructorService, type InstructorStatus } from '@/lib/services/InstructorService';
+import { instructorApplicationDraftService, type InstructorApplicationDraft } from '@/lib/services/InstructorApplicationDraftService';
+import { memoryPressureService } from '@/lib/services/MemoryPressureService';
 import type { ApplicationType, CourseAvailability, CourseVisibility, PickedUpload } from '@/lib/types/instructor';
 
 // The website's instructor application (app/eLearning/instructor/register): same steps, choices and checks.
@@ -58,6 +60,9 @@ const CONTENT_MAX_WIDTH = 720;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type Gate = { kind: 'loading' } | { kind: 'error' } | { kind: 'existing'; status: Exclude<InstructorStatus, 'none'> } | { kind: 'unverified'; status: string | null } | { kind: 'form' };
+
+const DRAFT_SAVE_DELAY_MS = 400;
+const isAgreementId = (value: string): value is AgreementId => AGREEMENTS.some((agreement) => agreement.id === value);
 
 const toggleValue = (list: string[], value: string): string[] => (list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
 
@@ -114,12 +119,32 @@ export default function InstructorRegisterScreen() {
   // Sample + agreements
   const [sample, setSample] = useState<PickedUpload | null>(null);
   const [agreed, setAgreed] = useState<AgreementId[]>([]);
+  // The application is kept on the phone while it's filled in: Android may close the app behind the file picker.
+  const [isDraftReady, setIsDraftReady] = useState(false);
+  const [restoredNotice, setRestoredNotice] = useState<string | null>(null);
 
   const expertiseSuggestions = useMemo(() => getUniqueSubcategories(), []);
   const hasOrganization = applicationType === 'school' || applicationType === 'training_company';
   const steps = STEPS.filter((step) => step.id !== 'organization' || hasOrganization);
   const step = steps[Math.min(stepIndex, steps.length - 1)];
   const isLastStep = stepIndex >= steps.length - 1;
+
+  const restoreDraft = useCallback(async (userId: string) => {
+    const draft = await instructorApplicationDraftService.load(userId);
+    if (draft) {
+      setStepIndex(draft.stepIndex); setApplicationType(draft.applicationType);
+      setFirstName(draft.firstName); setLastName(draft.lastName); setEmail(draft.email); setJobTitle(draft.jobTitle);
+      setQualification(draft.qualification); setExpertise(draft.expertise); setYears(draft.years); setLanguages(draft.languages);
+      setBio(draft.bio); setPreviousTeaching(draft.previousTeaching); setResume(draft.resume); setCertificates(draft.certificates);
+      setWebsite(draft.website); setLinkedin(draft.linkedin); setSubjects(draft.subjects); setLevels(draft.levels); setMethods(draft.methods);
+      setAvailability(draft.availability); setIntended(draft.intended); setOrgName(draft.orgName); setOrgEmail(draft.orgEmail);
+      setOrgWebsite(draft.orgWebsite); setOrgType(draft.orgType); setOrgRegistration(draft.orgRegistration); setProof(draft.proof);
+      setTeachers(draft.teachers); setStudents(draft.students); setPrivatePortal(draft.privatePortal); setPortalFeatures(draft.portalFeatures);
+      setVisibility(draft.visibility); setSample(draft.sample); setAgreed(draft.agreed.filter(isAgreementId));
+      setRestoredNotice('We kept what you filled in last time. Check your attached files before you continue.');
+    }
+    setIsDraftReady(true);
+  }, []);
 
   const loadGate = useCallback(async () => {
     if (!activeUserId) return;
@@ -131,16 +156,42 @@ export default function InstructorRegisterScreen() {
       setEmail((current) => current || applicant.email);
       // Members who already applied see their status instead of the form (as on the website).
       if (status !== 'none') { setGate({ kind: 'existing', status }); return; }
+      if (applicant.verificationStatus === 'verified') await restoreDraft(activeUserId);
       setGate(applicant.verificationStatus === 'verified' ? { kind: 'form' } : { kind: 'unverified', status: applicant.verificationStatus });
     } catch (error: unknown) {
       console.error('[InstructorRegisterScreen.loadGate] Error:', error instanceof Error ? error.message : 'Unknown error');
       setGate({ kind: 'error' });
     }
-  }, [activeUserId]);
+  }, [activeUserId, restoreDraft]);
 
   useEffect(() => { void loadGate(); }, [loadGate]);
 
+  const draft = useMemo<InstructorApplicationDraft>(() => ({
+    stepIndex, applicationType, firstName, lastName, email, jobTitle, qualification, expertise, years, languages, bio, previousTeaching,
+    resume, certificates, website, linkedin, subjects, levels, methods, availability, intended, orgName, orgEmail, orgWebsite, orgType,
+    orgRegistration, proof, teachers, students, privatePortal, portalFeatures, visibility, sample, agreed,
+  }), [stepIndex, applicationType, firstName, lastName, email, jobTitle, qualification, expertise, years, languages, bio, previousTeaching,
+    resume, certificates, website, linkedin, subjects, levels, methods, availability, intended, orgName, orgEmail, orgWebsite, orgType,
+    orgRegistration, proof, teachers, students, privatePortal, portalFeatures, visibility, sample, agreed]);
+  const latestDraft = useRef(draft);
+  latestDraft.current = draft;
+
+  const saveDraftNow = useCallback(async () => {
+    if (!activeUserId || !isDraftReady || isDone) return;
+    await instructorApplicationDraftService.save(activeUserId, latestDraft.current)
+      .catch((error: unknown) => console.error('[InstructorRegisterScreen.saveDraftNow] Error:', error instanceof Error ? error.message : 'Unknown error'));
+  }, [activeUserId, isDone, isDraftReady]);
+
+  useEffect(() => {
+    if (gate.kind !== 'form' || !isDraftReady || isDone) return;
+    const timer = setTimeout(() => { void saveDraftNow(); }, DRAFT_SAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [draft, gate.kind, isDone, isDraftReady, saveDraftNow]);
+
   const pickDocument = async (types: string[], multiple: boolean): Promise<PickedUpload[]> => {
+    // Saved before the picker opens, and memory freed, in case Android closes Ourlime while the picker is showing.
+    await saveDraftNow();
+    memoryPressureService.releaseBeforeExternalActivity();
     const picked = await DocumentPicker.getDocumentAsync({ type: types, multiple, copyToCacheDirectory: true });
     if (picked.canceled) return [];
     const tooLarge = picked.assets.filter((asset) => (asset.size ?? 0) > MAX_DOCUMENT_BYTES);
@@ -225,6 +276,7 @@ export default function InstructorRegisterScreen() {
         } : {}),
       });
       setIsDone(true);
+      if (activeUserId) await instructorApplicationDraftService.clear(activeUserId).catch(() => {});
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : '';
       console.error('[InstructorRegisterScreen.handleSubmit] Error:', message || 'Unknown error');
@@ -329,6 +381,13 @@ export default function InstructorRegisterScreen() {
               {steps.map((item, index) => <View key={item.id} style={[styles.progressBar, index <= stepIndex && styles.progressBarActive]} />)}
             </View>
             <Text style={styles.stepCount}>Step {stepIndex + 1} of {steps.length} · {step.label}</Text>
+            {restoredNotice ? (
+              <View accessibilityRole="alert" style={styles.restoredBox}>
+                <Check size={16} color={colors.successText} />
+                <Text style={[styles.restoredText, styles.flex]}>{restoredNotice}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="Dismiss" onPress={() => setRestoredNotice(null)} hitSlop={10}><Text style={styles.restoredDismiss}>OK</Text></Pressable>
+              </View>
+            ) : null}
 
             {step.id === 'type' ? (
               <FormSection title="Select application type" description="Choose the registration profile that matches your role best.">
@@ -456,6 +515,9 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   centerTitle: { color: colors.text, fontSize: 21, fontWeight: '900', textAlign: 'center' },
   centerText: { color: colors.secondaryText, fontSize: 15, lineHeight: 22, textAlign: 'center' },
   gateCard: { padding: 20, gap: 12, alignItems: 'center', borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  restoredBox: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, backgroundColor: colors.successSurface },
+  restoredText: { color: colors.successText, fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  restoredDismiss: { color: colors.successText, fontSize: 13, fontWeight: '900' },
   reviewBox: { padding: 12, flexDirection: 'row', gap: 10, borderRadius: 14, backgroundColor: colors.warningSurface },
   reviewTitle: { color: colors.warningText, fontSize: 14, fontWeight: '800' },
   reviewText: { color: colors.warningText, fontSize: 12, lineHeight: 18 },

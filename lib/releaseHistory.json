@@ -11,7 +11,10 @@
         "Couriers: browse approved couriers by area and call, WhatsApp or email them straight from the directory.",
         "Sellers can pick up to five preferred couriers (My listings → Preferred couriers, or E-Hub Seller Center → Settings). They show on the seller's Lime Market and E-Hub products.",
         "Checkout: when you choose Standard shipping you can optionally pick a courier, starting with the seller's preferred ones.",
-        "Admins review courier registrations under Admin → Couriers: approve, decline with a reason, or suspend."
+        "Admins review courier registrations under Admin → Couriers: approve, decline with a reason, or suspend.",
+        "Become an instructor: your application is saved on your phone as you fill it in. If Android closes Ourlime while you pick your resume or certificates, everything you typed and attached is back when you reopen the form.",
+        "Pets for Adoption: choosing Phone or Email as your preferred enquiry method now asks for the number or address, and signed-in members can call or email you from the pet's page.",
+        "Pets for Adoption: admins get a notification when a pet is submitted and can approve or decline it under Admin → Pet Adoption. Carers are notified when their pet is approved or declined, and when someone sends an adoption enquiry."
       ]
     },
     {

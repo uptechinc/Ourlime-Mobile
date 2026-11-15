@@ -45,7 +45,15 @@ export class MemoryPressureService {
     }, BACKGROUND_RELEASE_DELAY_MS);
   }
 
-  private async releaseTransientMemory(reason: 'background' | 'memory-warning'): Promise<void> {
+  /**
+   * Frees image and link-preview caches straight away, before handing the screen to another app (a file or photo
+   * picker): Android closes background apps that hold a lot of memory, and that would lose the form being filled in.
+   */
+  public releaseBeforeExternalActivity(): void {
+    void this.releaseTransientMemory('external-activity');
+  }
+
+  private async releaseTransientMemory(reason: 'background' | 'memory-warning' | 'external-activity'): Promise<void> {
     openGraphService.clearMemoryCache();
     const didClearImageCache = await Image.clearMemoryCache().catch(() => false);
     this.logger.info('MemoryPressureService', 'release', { reason, didClearImageCache });

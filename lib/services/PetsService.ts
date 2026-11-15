@@ -73,6 +73,17 @@ export class PetsService {
     await this.call<{ updated: true }>({ action: 'updateAdoptionStatus', petId, status }, 'Could not update the adoption status.');
   }
 
+  /** Listings waiting for approval (administrators; the website's GET /api/admin/pets). */
+  public async fetchModerationListings(): Promise<PetListing[]> {
+    const result = await this.call<{ listings: PetListing[] }>({ action: 'adminList' }, 'Could not load listings to review.');
+    return result.listings;
+  }
+
+  /** Approves, declines or removes a listing; declining and removing need a reason (PATCH /api/admin/pets/[petId]). */
+  public async moderateListing(petId: string, status: 'approved' | 'rejected' | 'removed', reason?: string): Promise<void> {
+    await this.call<{ updated: true }>({ action: 'moderate', petId, status, reason }, 'Could not save the decision.');
+  }
+
   /** Resizes to at most 1600 px and re-encodes as JPEG, so every photo passes the server's type and size checks. */
   private async preparePhoto(photo: PetPhotoPick): Promise<InlinePhoto> {
     const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');

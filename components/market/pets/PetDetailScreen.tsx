@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { CheckCircle2, Heart, MapPin, PawPrint, ShieldCheck, Syringe, type LucideIcon } from 'lucide-react-native';
+import { CheckCircle2, Heart, Mail, MapPin, PawPrint, Phone, ShieldCheck, Syringe, type LucideIcon } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { PET_ADOPTION_STATUS_LABELS, PET_HEALTH_LABELS, petsService } from '@/lib/services/PetsService';
@@ -113,6 +113,15 @@ export default function PetDetailScreen() {
         <DetailSection title="Temperament" value={listing.temperament} styles={styles} />
         <DetailSection title="Adoption requirements" value={listing.adoptionRequirements} styles={styles} />
         {listing.healthNotes ? <DetailSection title="Health notes" value={listing.healthNotes} styles={styles} /> : null}
+        {listing.contactPreference !== 'ourlime' && listing.contactDetail ? <View style={{ gap: 6 }}>
+          <Text style={styles.sectionTitle}>The carer prefers {listing.contactPreference === 'phone' ? 'a phone call' : 'email'}</Text>
+          <Pressable accessibilityRole="link" accessibilityLabel={`${listing.contactPreference === 'phone' ? 'Call' : 'Email'} ${listing.contactDetail}`}
+            onPress={() => void Linking.openURL(listing.contactPreference === 'phone' ? `tel:${listing.contactDetail?.replace(/[^+\d]/g, '')}` : `mailto:${listing.contactDetail}`).catch(() => undefined)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {listing.contactPreference === 'phone' ? <Phone color={colors.accentText} size={16} /> : <Mail color={colors.accentText} size={16} />}
+            <Text style={{ color: colors.accentText, fontSize: 15, fontWeight: '800' }}>{listing.contactDetail}</Text>
+          </Pressable>
+        </View> : null}
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <StatusTile icon={Syringe} label="Vaccinations" value={PET_HEALTH_LABELS[listing.vaccinationStatus]} styles={styles} colors={colors} />
           <StatusTile icon={CheckCircle2} label="Sterilised" value={PET_HEALTH_LABELS[listing.sterilisationStatus]} styles={styles} colors={colors} />

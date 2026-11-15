@@ -93,6 +93,12 @@ const REMAINING_ADMIN_WORKSPACES = [
 		route: '/admin/couriers' as Href,
 	},
 	{
+		id: 'pet-adoption',
+		title: 'Pet Adoption',
+		icon: 'heart' as const,
+		route: '/admin/pet-adoption' as Href,
+	},
+	{
 		id: 'jobs',
 		title: 'Jobs',
 		icon: 'briefcase' as const,

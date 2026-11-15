@@ -64,13 +64,14 @@ export function PetCreateListingSheet({ visible, onCreate, onClose }: PetCreateL
     const missing = [
       !form.name.trim() && 'pet name', !form.age.trim() && 'approximate age', !form.location && 'location',
       !form.description.trim() && 'description', !form.temperament.trim() && 'temperament', !form.adoptionRequirements.trim() && 'adoption requirements',
+      form.contactPreference !== 'ourlime' && !form.contactDetail?.trim() && (form.contactPreference === 'phone' ? 'phone number' : 'email address'),
     ].filter((field): field is string => Boolean(field));
     if (missing.length) { setError(`Fill in the ${missing.join(', ')}.`); return; }
     if (!photos.length) { setError('Add at least one clear photograph of the pet.'); return; }
     setIsSubmitting(true);
     setError('');
     try {
-      await onCreate({ ...form, breed: form.breed?.trim() || undefined, healthNotes: form.healthNotes?.trim() || undefined }, photos);
+      await onCreate({ ...form, breed: form.breed?.trim() || undefined, healthNotes: form.healthNotes?.trim() || undefined, contactDetail: form.contactPreference === 'ourlime' ? undefined : form.contactDetail?.trim() }, photos);
       setIsCreated(true);
       setForm(INITIAL_FORM);
       setPhotos([]);
@@ -101,6 +102,11 @@ export function PetCreateListingSheet({ visible, onCreate, onClose }: PetCreateL
     <PetsField label="Health information" optional multiline value={form.healthNotes ?? ''} onChangeText={(value) => updateField('healthNotes', value)} editable={!isSubmitting} maxLength={1500} />
     <PetsField label="Adoption requirements" multiline value={form.adoptionRequirements} onChangeText={(value) => updateField('adoptionRequirements', value)} editable={!isSubmitting} maxLength={2000} />
     <PetsChoiceRow label="Preferred enquiry method" options={CONTACT_OPTIONS} value={form.contactPreference} onChange={(value) => updateField('contactPreference', value)} disabled={isSubmitting} />
+    {form.contactPreference !== 'ourlime' ? <View style={{ gap: 4 }}>
+      <PetsField label={form.contactPreference === 'phone' ? 'Phone number for adopters' : 'Email address for adopters'} value={form.contactDetail ?? ''} onChangeText={(value) => updateField('contactDetail', value)}
+        keyboardType={form.contactPreference === 'phone' ? 'phone-pad' : 'email-address'} placeholder={form.contactPreference === 'phone' ? 'e.g. 868 555 1234' : 'name@example.com'} maxLength={form.contactPreference === 'phone' ? 30 : 200} editable={!isSubmitting} />
+      <Text style={{ color: colors.mutedText, fontSize: 12 }}>Shown on your listing to signed-in members once it is approved.</Text>
+    </View> : null}
     <View style={{ gap: 6 }}>
       <PetsLabel label={`Photographs (1–${MAX_PET_PHOTOS})`} />
       <Text style={{ color: colors.mutedText, fontSize: 12 }}>The first photo is the cover.</Text>

@@ -29,6 +29,8 @@ export type PetListing = {
   healthNotes?: string;
   adoptionRequirements: string;
   contactPreference: PetContactPreference;
+  /** The carer's email address or phone number when they prefer to be contacted that way; shown to signed-in members only. */
+  contactDetail?: string;
   imageUrls: string[];
   adoptionStatus: PetAdoptionStatus;
   moderationStatus: PetModerationStatus;
@@ -41,7 +43,7 @@ export type PetListing = {
 
 export type CreatePetListingInput = Pick<PetListing,
   'name' | 'petType' | 'breed' | 'age' | 'sex' | 'location' | 'description' | 'temperament'
-  | 'vaccinationStatus' | 'sterilisationStatus' | 'healthNotes' | 'adoptionRequirements' | 'contactPreference'
+  | 'vaccinationStatus' | 'sterilisationStatus' | 'healthNotes' | 'adoptionRequirements' | 'contactPreference' | 'contactDetail'
 >;
 
 export type CreatePetInterestInput = { name: string; contact: string; message: string };
