@@ -1,0 +1,32 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "APPLE_TEAM_ID.com.ourlime.app"
+        ],
+        "components": [
+          { "/": "/post/*" },
+          { "/": "/profile/*" },
+          { "/": "/communities/*" },
+          { "/": "/blogs/*" },
+          { "/": "/limes/*" },
+          { "/": "/events/*" },
+          { "/": "/jobs/*" },
+          { "/": "/market/*" },
+          { "/": "/ehub/*" },
+          { "/": "/register*" },
+          { "/": "/help/*" },
+          { "/": "/privacy-policy" },
+          { "/": "/terms-and-conditions" },
+          { "/": "/delete-account" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "APPLE_TEAM_ID.com.ourlime.app"
+    ]
+  }
+}

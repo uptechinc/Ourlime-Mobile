@@ -21,13 +21,21 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.ourlime.app",
+      "buildNumber": "1",
+      "deploymentTarget": "15.1",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "supportsTablet": true,
       "associatedDomains": [
         "applinks:ourlime.com"
       ],
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
-        "NSCameraUsageDescription": "Ourlime requires camera access for video calls.",
+        "NSCameraUsageDescription": "Ourlime uses the camera for video calls and when you choose to capture profile, listing, verification, or post media.",
         "NSMicrophoneUsageDescription": "Ourlime requires microphone access for voice and video calls and to record voice notes in chat.",
+        "NSPhotoLibraryUsageDescription": "Ourlime lets you choose photos and videos for your profile, posts, listings, storefronts, messages, and verification submissions.",
+        "NSLocationWhenInUseUsageDescription": "Ourlime uses your location only when you choose location-aware discovery or add a location to content.",
         "UIBackgroundModes": [
           "audio",
           "voip",
@@ -159,17 +167,25 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#10b981"
+          "color": "#10b981",
+          "enableRemoteNotifications": true,
+          "enableBackgroundRemoteNotifications": true
         }
       ],
       "@react-native-firebase/app",
+      "@react-native-firebase/app-check",
       "@react-native-firebase/crashlytics",
+      "@react-native-firebase/messaging",
       "./plugins/withOurlimeCalling.cjs",
       "./plugins/withOurlimeMedia.cjs",
       "./plugins/withOurlimeAppUpdate.cjs",
       [
         "expo-build-properties",
         {
+          "ios": {
+            "useFrameworks": "static",
+            "privacyManifestAggregationEnabled": true
+          },
           "android": {
             "usesCleartextTraffic": true,
             "newArchEnabled": false,

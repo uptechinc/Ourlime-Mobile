@@ -3,7 +3,6 @@ const path = require('path');
 const {
   withAndroidManifest,
   withDangerousMod,
-  withEntitlementsPlist,
   withInfoPlist,
   withMainActivity,
   withMainApplication,
@@ -26,14 +25,6 @@ function withCallingInfo(config) {
     const modes = new Set(result.modResults.UIBackgroundModes || []);
     ['audio', 'voip', 'remote-notification'].forEach((mode) => modes.add(mode));
     result.modResults.UIBackgroundModes = [...modes];
-    result.modResults.NSContactsUsageDescription ||= 'Ourlime can identify people you call.';
-    return result;
-  });
-}
-
-function withCallingEntitlements(config) {
-  return withEntitlementsPlist(config, (result) => {
-    result.modResults['aps-environment'] ||= 'development';
     return result;
   });
 }
@@ -265,7 +256,7 @@ module.exports = function withOurlimeCalling(config) {
     withCallingAndroidSources(
       withCallingMainActivity(
         withCallingMainApplication(
-          withCallingAndroid(withCallingEntitlements(withCallingInfo(config))),
+          withCallingAndroid(withCallingInfo(config)),
         ),
       ),
     ),

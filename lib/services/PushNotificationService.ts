@@ -262,11 +262,15 @@ export class PushNotificationService {
       await appServerService.call('registerNativePush', { token, transport, platform: Platform.OS, deviceId }, 10_000);
       await AsyncStorage.setItem(DEVICE_TOKEN_KEY, token);
     };
-    if (Platform.OS === 'android' && platformEnvironmentService.hasNativeFirebaseMessaging()) {
+    if (platformEnvironmentService.hasNativeFirebaseMessaging()) {
       const messaging = await import('@react-native-firebase/messaging');
-      const token = await messaging.getToken(messaging.getMessaging());
+      const nativeMessaging = messaging.getMessaging();
+      if (Platform.OS === 'ios') {
+        await messaging.registerDeviceForRemoteMessages(nativeMessaging);
+      }
+      const token = await messaging.getToken(nativeMessaging);
       await register(token, 'fcm');
-      this.unsubscribeToken = messaging.onTokenRefresh(messaging.getMessaging(), (next) => { void register(next, 'fcm').catch(() => {}); });
+      this.unsubscribeToken = messaging.onTokenRefresh(nativeMessaging, (next) => { void register(next, 'fcm').catch(() => {}); });
       return token;
     }
     if (expoToken) await register(expoToken, 'expo');
@@ -282,7 +286,7 @@ export class PushNotificationService {
         await appServerService.call('registerNativePush', { token, remove: true }, 10_000);
       }
     } finally {
-      if (Platform.OS === 'android' && platformEnvironmentService.hasNativeFirebaseMessaging()) {
+      if (platformEnvironmentService.hasNativeFirebaseMessaging()) {
         const messaging = await import('@react-native-firebase/messaging');
         await messaging.deleteToken(messaging.getMessaging()).catch(() => {});
       }
