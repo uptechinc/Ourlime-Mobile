@@ -13,7 +13,9 @@ import {
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
-import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import type { NativeScrollEvent, NativeSyntheticEvent, ScrollViewProps } from 'react-native';
+import type { ReactElement, RefObject } from 'react';
+import { jsx as createNativeElement } from 'react/jsx-runtime';
 import { usePlaybackInteraction } from '@/lib/hooks/usePlaybackInteraction';
 import { PlaybackSeekBar } from '@/components/media/PlaybackSeekBar';
 import CachedImage from '@/components/ui/CachedImage';
@@ -343,6 +345,17 @@ function VideoPostItem({
   );
 }
 
+type MediaScrollViewProps = ScrollViewProps & { scrollRef: RefObject<ScrollView | null> };
+
+/**
+ * The carousel's ScrollView, created with the plain JSX runtime: NativeWind's wrapper drops ScrollView refs in this
+ * app, so the arrows' scrollTo did nothing and the counter changed while the photo stayed the same (same workaround as
+ * the chat list and EHubScrollView).
+ */
+function MediaScrollView({ scrollRef, ...props }: MediaScrollViewProps) {
+  return createNativeElement(ScrollView, { ...props, ref: scrollRef }) as ReactElement<ScrollViewProps>;
+}
+
 export default function ImageAndVideoPostSection({
   media,
   isParentVisible = false,
@@ -377,8 +390,8 @@ export default function ImageAndVideoPostSection({
 
   return (
     <View onLayout={(event) => setMediaWidth(event.nativeEvent.layout.width)} style={{ borderRadius: 0, overflow: 'hidden', backgroundColor: '#111827', position: 'relative' }}>
-      <ScrollView
-        ref={scrollRef}
+      <MediaScrollView
+        scrollRef={scrollRef}
         horizontal
         scrollEnabled={!seeking}
         pagingEnabled
@@ -413,7 +426,7 @@ export default function ImageAndVideoPostSection({
             ) : null}
           </View>
         ))}
-      </ScrollView>
+      </MediaScrollView>
 
       {/* Left Arrow Button */}
       {media.length > 1 && activeIndex > 0 ? (

@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-20",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-20",
+      "notes": [
+        "Fixes: in posts with several photos, the arrows now move to the next photo. Before, the counter changed but the first photo stayed on screen."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-15",
       "version": "1.3.2",
       "versionCode": 11,
