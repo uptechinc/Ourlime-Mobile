@@ -7,7 +7,8 @@
       "kind": "ota",
       "date": "2026-11-20",
       "notes": [
-        "Fixes: in posts with several photos, the arrows now move to the next photo. Before, the counter changed but the first photo stayed on screen."
+        "Fixes: in posts with several photos, the arrows now move to the next photo. Before, the counter changed but the first photo stayed on screen.",
+        "Fixes: photos in a post show in the order they were picked, the same as on the website."
       ]
     },
     {

@@ -285,6 +285,7 @@ export class PostService {
         type: document.data.type === 'video' ? 'video' : 'image',
         typeUrl,
         fileName: readString(document.data.fileName),
+        displayOrder: typeof document.data.displayOrder === 'number' ? document.data.displayOrder : undefined,
         thumbnailUrl: readString(document.data.thumbnailUrl) || undefined,
       }]);
     });
@@ -424,6 +425,7 @@ export class PostService {
           type: document.data.type === 'video' ? 'video' : 'image',
           typeUrl,
           fileName: readString(document.data.fileName),
+          displayOrder: typeof document.data.displayOrder === 'number' ? document.data.displayOrder : undefined,
           thumbnailUrl: readString(document.data.thumbnailUrl) || undefined,
           trimStartSeconds: typeof document.data.trimStartSeconds === 'number' ? document.data.trimStartSeconds : undefined,
           trimEndSeconds: typeof document.data.trimEndSeconds === 'number' ? document.data.trimEndSeconds : undefined,
@@ -557,6 +559,7 @@ export class PostService {
         type: document.data.type === 'video' ? 'video' : 'image',
         typeUrl,
         fileName: readString(document.data.fileName),
+        displayOrder: typeof document.data.displayOrder === 'number' ? document.data.displayOrder : undefined,
         thumbnailUrl: readString(document.data.thumbnailUrl) || undefined,
         trimStartSeconds: typeof document.data.trimStartSeconds === 'number' ? document.data.trimStartSeconds : undefined,
         trimEndSeconds: typeof document.data.trimEndSeconds === 'number' ? document.data.trimEndSeconds : undefined,
@@ -1068,6 +1071,7 @@ export class PostService {
           type: (readString(d.data.type) === 'video' ? 'video' : 'image') as PostMediaType,
           typeUrl: readString(d.data.typeUrl),
           fileName: readString(d.data.fileName),
+          displayOrder: typeof d.data.displayOrder === 'number' ? d.data.displayOrder : undefined,
           thumbnailUrl: readString(d.data.thumbnailUrl) || undefined,
           trimStartSeconds: typeof d.data.trimStartSeconds === 'number' ? d.data.trimStartSeconds : undefined,
           trimEndSeconds: typeof d.data.trimEndSeconds === 'number' ? d.data.trimEndSeconds : undefined,
@@ -1680,7 +1684,8 @@ export class PostService {
       })(),
       visibility,
       hashtags: readStringArray(record.hashtags).map((tag) => tag.replace(/^#/, '')),
-      media,
+      // The order the photos were picked in; the records otherwise come back in random id order.
+      media: [...media].sort((left, right) => (left.displayOrder ?? Number.MAX_SAFE_INTEGER) - (right.displayOrder ?? Number.MAX_SAFE_INTEGER)),
       stats: {
         likes: readNumber(counts.likeCount),
         comments: readNumber(counts.commentCount),
