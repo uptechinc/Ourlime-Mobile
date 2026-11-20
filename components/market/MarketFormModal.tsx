@@ -24,13 +24,13 @@ export default function MarketFormModal({ visible, title, onClose, children, bus
   </Modal></FormBusyContext.Provider>;
 }
 
-type MarketFieldProps = { label: string; value: string; onChangeText: (value: string) => void; error?: string; keyboardType?: KeyboardTypeOptions; multiline?: boolean };
-export function MarketField({ label, value, onChangeText, error, keyboardType, multiline }: MarketFieldProps) {
+type MarketFieldProps = { label: string; value: string; onChangeText: (value: string) => void; error?: string; keyboardType?: KeyboardTypeOptions; multiline?: boolean; placeholder?: string };
+export function MarketField({ label, value, onChangeText, error, keyboardType, multiline, placeholder }: MarketFieldProps) {
   const { colors } = useAppTheme();
-  const busy = useContext(FormBusyContext);
+  // Inputs stay editable while the form is busy: switching them off makes Android move focus and jump the scroll.
   return <View style={{ gap: 6 }}>
     <Text style={{ color: colors.text, fontWeight: '700' }}>{label}</Text>
-    <TextInput editable={!busy} accessibilityLabel={label} value={value} onChangeText={onChangeText} keyboardType={keyboardType}
+    <TextInput accessibilityLabel={label} value={value} onChangeText={onChangeText} keyboardType={keyboardType} placeholder={placeholder} placeholderTextColor={colors.mutedText}
       autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'} multiline={multiline}
       style={{ padding: 14, color: colors.text, backgroundColor: colors.surface, borderWidth: 1, borderColor: error ? '#c64d53' : colors.border, borderRadius: 12, minHeight: multiline ? 90 : 48 }} />
     {error ? <Text style={{ color: '#c64d53' }}>{error}</Text> : null}
@@ -49,15 +49,15 @@ export function MarketButton({ label, onPress, disabled }: MarketButtonProps) {
 }
 
 // Keep separators while typing; normalized array values must not erase a trailing comma.
-type MarketListFieldProps = { label: string; values: string[]; onChange: (values: string[]) => void };
-export function MarketListField({ label, values, onChange }: MarketListFieldProps) {
+type MarketListFieldProps = { label: string; values: string[]; onChange: (values: string[]) => void; error?: string; placeholder?: string };
+export function MarketListField({ label, values, onChange, error, placeholder }: MarketListFieldProps) {
   const [text, setText] = useState(values.join(', '));
   const lastEmitted = useRef(JSON.stringify(values));
   const serialized = JSON.stringify(values);
   useEffect(() => {
     if (serialized !== lastEmitted.current) { setText((JSON.parse(serialized) as string[]).join(', ')); lastEmitted.current = serialized; }
   }, [serialized]);
-  return <MarketField label={label} value={text} onChangeText={(next) => {
+  return <MarketField label={label} value={text} error={error} placeholder={placeholder} onChangeText={(next) => {
     setText(next);
     const entries = next.split(',').map((entry) => entry.trim()).filter(Boolean);
     lastEmitted.current = JSON.stringify(entries);

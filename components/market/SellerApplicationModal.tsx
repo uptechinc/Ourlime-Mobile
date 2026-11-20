@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Linking, Text, View, AppState } from 'react-native';
+import { Linking, Text, TouchableOpacity, View, AppState, type KeyboardTypeOptions } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import MarketFormModal, { MarketButton, MarketField, MarketListField } from './MarketFormModal';
-import { sellerVerificationService } from '@/lib/services/SellerVerificationService';
+import { sellerVerificationService, type SellerApplicationErrors } from '@/lib/services/SellerVerificationService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import type { SellerApplication, SellerFileKind } from '@/lib/types/reliability';
@@ -16,6 +16,17 @@ const SELLER_FIELD_LABELS: Record<SellerTextField, string> = {
   storeName: 'Store name',
   description: 'Store description',
 };
+const SELLER_FIELD_INPUT: Record<SellerTextField, { keyboardType?: KeyboardTypeOptions; placeholder?: string }> = {
+  name: { placeholder: 'As it appears on your ID' },
+  email: { keyboardType: 'email-address', placeholder: 'name@example.com' },
+  phone: { keyboardType: 'phone-pad', placeholder: '868-710-4296' },
+  storeName: {},
+  description: { placeholder: 'What do you sell?' },
+};
+const SELLER_TYPES = [
+  { isBusiness: false, title: 'Individual seller', body: 'You sell as yourself. Needs your government ID and proof of address.' },
+  { isBusiness: true, title: 'Registered business', body: 'You sell as a registered company. Also needs your business registration certificate.' },
+];
 const SELLER_FILE_LABELS: Record<SellerFileKind, string> = {
   governmentId: 'Government ID',
   proofOfAddress: 'Proof of address',
@@ -39,6 +50,9 @@ export default function SellerApplicationModal({ onClose }: SellerApplicationMod
   const [busy, setBusy] = useState(false);
   const [terms, setTerms] = useState(false);
   const [pending, setPending] = useState<{ kind: SellerFileKind; name: string }[]>([]);
+  // Field errors appear once Submit was tried, and each clears as soon as its field is fixed.
+  const [isCheckShown, setIsCheckShown] = useState(false);
+  const fieldErrors: SellerApplicationErrors = isCheckShown && form ? sellerVerificationService.validate(form) : {};
   const queue = useRef<Promise<void>>(Promise.resolve());
   const save = (application: SellerApplication) => {
     current.current = application; setForm(application); setStatus('Saving');
@@ -86,9 +100,26 @@ export default function SellerApplicationModal({ onClose }: SellerApplicationMod
     {form ? <>
       <Text style={{ color: colors.text }}>Application status: {formatApplicationStatus(form.status)} · Revision {form.revision}</Text>
       {editable ? <>
-        {SELLER_TEXT_FIELDS.map((field) => <MarketField key={field} label={SELLER_FIELD_LABELS[field]}value={form[field]} multiline={field === 'description'} onChangeText={(value) => { void save({ ...form, [field]: value }).catch(() => {}); }} />)}
-        <MarketListField label="Categories (comma separated)" values={form.categories} onChange={(categories) => { void save({ ...form, categories }).catch(() => {}); }} />
-        <MarketButton label={form.isBusiness ? 'Registered business' : 'Individual seller'} onPress={() => { void save({ ...form, isBusiness: !form.isBusiness }).catch(() => {}); }} />
+        {SELLER_TEXT_FIELDS.map((field) => <MarketField key={field} label={SELLER_FIELD_LABELS[field]} value={form[field]} multiline={field === 'description'} error={fieldErrors[field]}
+          keyboardType={SELLER_FIELD_INPUT[field].keyboardType} placeholder={SELLER_FIELD_INPUT[field].placeholder} onChangeText={(value) => { void save({ ...form, [field]: value }).catch(() => {}); }} />)}
+        <MarketListField label="Categories (comma separated)" placeholder="Books, Stationery" error={fieldErrors.categories} values={form.categories} onChange={(categories) => { void save({ ...form, categories }).catch(() => {}); }} />
+        <View style={{ gap: 8 }}>
+          <Text style={{ color: colors.text, fontWeight: '700' }}>How do you sell?</Text>
+          {SELLER_TYPES.map((type) => {
+            const isSelected = form.isBusiness === type.isBusiness;
+            return <TouchableOpacity key={type.title} accessibilityRole="radio" accessibilityState={{ selected: isSelected }} disabled={busy}
+              onPress={() => { if (!isSelected) void save({ ...form, isBusiness: type.isBusiness }).catch(() => {}); }}
+              style={{ flexDirection: 'row', gap: 12, padding: 14, borderRadius: 12, borderWidth: 2, borderColor: isSelected ? colors.accent : colors.border, backgroundColor: colors.surface }}>
+              <View style={{ width: 20, height: 20, marginTop: 2, borderRadius: 10, borderWidth: 2, borderColor: isSelected ? colors.accent : colors.mutedText, alignItems: 'center', justifyContent: 'center' }}>
+                {isSelected ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent }} /> : null}
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: colors.text, fontWeight: '800' }}>{type.title}</Text>
+                <Text style={{ color: colors.secondaryText }}>{type.body}</Text>
+              </View>
+            </TouchableOpacity>;
+          })}
+        </View>
         {(['governmentId', 'proofOfAddress', ...(form.isBusiness ? ['businessRegistration' as const] : []), 'logo'] as SellerFileKind[]).map((kind) => <View key={kind} style={{ gap: 8 }}>
           <Text style={{ color: colors.text }}>{SELLER_FILE_LABELS[kind]}: {form.files.find((file) => file.kind === kind)?.name ?? 'No file selected'}</Text>
           {pending.find((entry) => entry.kind === kind) ? <>
@@ -103,12 +134,19 @@ export default function SellerApplicationModal({ onClose }: SellerApplicationMod
             <MarketButton label="Remove pending upload" onPress={() => void action(() => sellerVerificationService.discardUpload(ownerId, kind))} />
           </> : null}
           <MarketButton label={`Choose / replace ${SELLER_FILE_LABELS[kind]}`} disabled={busy} onPress={() => void action(() => pick(kind))} />
+          {fieldErrors[kind] ? <Text style={{ color: colors.destructive }}>{fieldErrors[kind]}</Text> : null}
           {form.files.find((file) => file.kind === kind) ? <MarketButton label="Remove file" onPress={() => { void save({ ...form, files: form.files.filter((file) => file.kind !== kind) }).catch(() => {}); }} /> : null}
         </View>)}
         <MarketButton label="Read seller terms" onPress={() => setTerms(!terms)} />
         {terms ? <><Text style={{ color: colors.text }}>Provide accurate information and lawful listings. Your identity documents are private and are deleted 30 days after a final approval or rejection. Re-review requires fresh documents. Payments and payouts are not available in this release.</Text><MarketButton label="Open full terms" onPress={() => { void Linking.openURL('https://ourlime.com/terms-and-conditions').catch(() => setError('Open ourlime.com/terms-and-conditions in your browser. Your application is saved.')); }} /></> : null}
         <MarketButton label={form.acceptedTerms ? 'Terms accepted (tap to undo)' : 'Accept seller terms'} onPress={() => { void save({ ...form, acceptedTerms: !form.acceptedTerms }).catch(() => {}); }} />
-        <MarketButton label="Submit for review" disabled={busy} onPress={() => void action(async () => { await queue.current; const submitted = await sellerVerificationService.submit(form); current.current = submitted; setForm(submitted); setStatus('Submitted'); })} />
+        {fieldErrors.acceptedTerms ? <Text style={{ color: colors.destructive }}>{fieldErrors.acceptedTerms}</Text> : null}
+        {/* Shown beside Submit as well as at the top, so the reason is on screen where the button was tapped. */}
+        {error ? <Text accessibilityRole="alert" style={{ color: colors.destructive }}>{error}</Text> : null}
+        <MarketButton label="Submit for review" disabled={busy} onPress={() => void action(async () => {
+          const problems = Object.values(sellerVerificationService.validate(form));
+          if (problems.length) { setIsCheckShown(true); throw new Error(problems.length === 1 ? problems[0] : `${problems.length} things to fix before submitting. Each is marked in red above.`); }
+          await queue.current; const submitted = await sellerVerificationService.submit(form); current.current = submitted; setForm(submitted); setStatus('Submitted'); })} />
       </> : <>
         <Text style={{ color: colors.text }}>Submitted revisions are locked. You will receive an in-app update when the review changes.</Text>
         <MarketButton label="Refresh review status" onPress={() => void action(async () => { const remote = await sellerVerificationService.remote(ownerId); if (remote) { current.current = remote; setForm(remote); } })} />

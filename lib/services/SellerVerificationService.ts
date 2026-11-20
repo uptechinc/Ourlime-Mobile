@@ -10,6 +10,9 @@ import type { SellerApplication, SellerFile, SellerFileKind, SellerReviewDecisio
 
 type PendingSellerUpload = { kind: SellerFileKind; uri: string; name: string; size: number; contentType: string; id: string | null; path: string | null; uploaded: boolean };
 type SavedApplication = { application: SellerApplication; operationId: string };
+export type SellerApplicationField = 'name' | 'email' | 'phone' | 'storeName' | 'description' | 'categories' | SellerFileKind | 'acceptedTerms';
+export type SellerApplicationErrors = Partial<{ [field in SellerApplicationField]: string }>;
+
 export class SellerVerificationService {
   private static instance: SellerVerificationService;
   public static getInstance(): SellerVerificationService { return this.instance ??= new SellerVerificationService(); }
@@ -131,6 +134,23 @@ export class SellerVerificationService {
     }
     if (!ready) throw new Error('File is uploaded and awaiting private processing. Retry the saved upload shortly.');
     return { id: upload.id, path: upload.path, kind, name: upload.name, size: upload.size, contentType: upload.contentType };
+  }
+  /** The same checks the server makes before it accepts an application, worded per field so each can be shown under its field. */
+  public validate(application: SellerApplication): SellerApplicationErrors {
+    const errors: SellerApplicationErrors = {};
+    if (!application.name.trim()) errors.name = 'Enter your full name.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(application.email.trim())) errors.email = 'Enter a valid email address, like name@example.com.';
+    // Local numbers (710-4296, 868-710-4296) and international ones (+1 868 710 4296) are both accepted.
+    if (!/^\+?\d{7,15}$/.test(application.phone.replace(/[\s().-]/g, ''))) errors.phone = 'Enter a phone number with 7 to 15 digits, like 868-710-4296.';
+    if (!application.storeName.trim()) errors.storeName = 'Enter your store name.';
+    if (!application.description.trim()) errors.description = 'Describe what your store sells.';
+    if (!application.categories.length) errors.categories = 'Add at least one category.';
+    const kinds = new Set(application.files.map((file) => file.kind));
+    if (!kinds.has('governmentId')) errors.governmentId = 'Add a photo or PDF of your government ID.';
+    if (!kinds.has('proofOfAddress')) errors.proofOfAddress = 'Add a proof of address, such as a utility bill.';
+    if (application.isBusiness && !kinds.has('businessRegistration')) errors.businessRegistration = 'Add your business registration certificate.';
+    if (!application.acceptedTerms) errors.acceptedTerms = 'Accept the seller terms.';
+    return errors;
   }
   public async submit(application: SellerApplication): Promise<SellerApplication> {
     pageAccessService.assertMutation('/market');
