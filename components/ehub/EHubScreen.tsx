@@ -94,7 +94,7 @@ const FOOTER_GROUPS: FooterGroup[] = [
   ] },
 ];
 
-/** The website's /ehub home: hero, ways to use E-Hub, catalog with cart, saved and compare, storefronts, professionals, FAQ and footer. */
+/** The website's /ehub home: hero, ways to use E-Hub, catalog with cart, saved and compare, professionals, FAQ and footer. Storefronts are in Discover. */
 export default function EHubScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
@@ -141,7 +141,6 @@ export default function EHubScreen() {
     })
     .map(({ product }) => product), [normalizedSearch, products, selectedCategory, sort]);
   const matchingProviders = useMemo(() => !normalizedSearch ? [] : providerList.filter((provider) => [provider.name, provider.description, provider.location, ...provider.categories, ...provider.services].some((value) => value.toLowerCase().includes(normalizedSearch))).slice(0, 5), [normalizedSearch, providerList]);
-  const storefronts = providerList.filter((provider) => provider.kind === 'business').slice(0, 4);
   const professionals = providerList.filter((provider) => provider.kind === 'professional').slice(0, 4);
   const comparedProducts = products.filter((product) => compareIds.includes(product.id));
   const savedProducts = products.filter((product) => favorites.includes(product.id));
@@ -270,19 +269,13 @@ export default function EHubScreen() {
               : <View style={styles.dashedNote}><Text style={styles.dashedNoteText}>Your saved products are not currently published. You can remove them with the heart button when they become available again.</Text></View>}
           </View> : null}
 
-          <View style={styles.section}>
-            <EHubSectionHeading eyebrow="Local businesses" title="Local storefronts" description="Explore active EHub business profiles and their published catalog information." action={<EHubLinkButton label="All storefronts" onPress={() => router.push('/ehub/discover?kind=business' as Href)} />} />
-            {providers.error ? <EHubNotice tone="warning" text={providers.error} actionLabel="Try again" onAction={() => void providers.refresh()} /> : null}
-            {providers.isLoading && !providers.data ? <EHubProviderGridSkeleton />
-              : storefronts.length ? <View style={[styles.grid, { gap: layout.gap }]}>{storefronts.map((provider) => <EHubProviderCard key={provider.id} provider={provider} width={layout.providerWidth} onOpen={handleOpenProvider} />)}</View>
-                : !providers.error ? <EHubEmptyState icon={<Store size={36} color={colors.mutedText} />} title="No active storefronts are available yet." /> : null}
-          </View>
-
+          {/* Storefronts live in Discover ("Explore storefronts" above), not under the product list. */}
           <View onLayout={onSectionLayout('professionals')} style={styles.section}>
             <EHubSectionHeading eyebrow="Services" title="Discover professionals" description="Review real service profiles and send an enquiry. Online booking and payments are not currently available." action={<View style={styles.headingActions}>
               <EHubLinkButton label="Join as a pro" onPress={() => router.push('/ehub/seller?intent=services' as Href)} />
               <EHubLinkButton label="Directory" onPress={() => router.push('/ehub/discover?kind=professional' as Href)} />
             </View>} />
+            {providers.error ? <EHubNotice tone="warning" text={providers.error} actionLabel="Try again" onAction={() => void providers.refresh()} /> : null}
             {providers.isLoading && !providers.data ? <EHubProviderGridSkeleton />
               : professionals.length ? <View style={[styles.grid, { gap: layout.gap }]}>{professionals.map((provider) => <EHubProviderCard key={provider.id} provider={provider} width={layout.providerWidth} onOpen={handleOpenProvider} />)}</View>
                 : !providers.error ? <EHubEmptyState icon={<BriefcaseBusiness size={36} color={colors.mutedText} />} title="No active professional profiles are available yet." /> : null}
