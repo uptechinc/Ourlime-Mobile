@@ -24,6 +24,7 @@ import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import { useLocalFormDraft } from '@/lib/hooks/useLocalFormDraft';
 import SavedDraftBanner from '@/components/drafts/SavedDraftBanner';
 import DraftDiscardSheet from '@/components/drafts/DraftDiscardSheet';
+import IdentityVerificationModal from '@/components/jobs/IdentityVerificationModal';
 import { EVENT_CATEGORIES, EVENT_RECURRENCE_OPTIONS } from '@/components/events/eventPresentation';
 import {
   cleanRegistrationQuestions, CustomRecurrenceFields, EventAccessibilityChips, EventAgeField, EventCoOrganizersField, EventFormSection,
@@ -111,6 +112,8 @@ export default function CreateEventModal({ visible, onClose, onCreated, event, c
   const [currentTag, setCurrentTag] = useState('');
   const [currentMediaUrl, setCurrentMediaUrl] = useState('');
   const [acceptedDisclaimer, setAcceptedDisclaimer] = useState(false);
+  // Unverified organisers are offered identity verification right here, like the website's "Verify now" panel.
+  const [isVerificationOpen, setIsVerificationOpen] = useState(false);
   const [formData, setFormData] = useState<CreateEventForm>(EMPTY_FORM);
   const updateForm = (changes: Partial<CreateEventForm>) => setFormData((previous) => ({ ...previous, ...changes }));
   useEffect(() => {
@@ -249,7 +252,8 @@ export default function CreateEventModal({ visible, onClose, onCreated, event, c
       const user = authService.getCurrentUser();
       if (!user) throw new Error('Authentication required');
       if (!isEditing && !(await eventService.isIdentityVerified(user.uid))) {
-        throw new Error('Verify your identity before creating events. Go to Settings → Identity verification.');
+        setIsVerificationOpen(true);
+        return;
       }
       const coverMedia = formData.coverMedia ?? '';
       const image = !coverMedia ? '' : /^https?:\/\//i.test(coverMedia) ? coverMedia : await eventService.uploadEventImage(coverMedia, formData.coverMimeType);
@@ -758,6 +762,11 @@ export default function CreateEventModal({ visible, onClose, onCreated, event, c
           </View>
         </Animated.View>
       </KeyboardSafeView>
+      <IdentityVerificationModal
+        isOpen={isVerificationOpen}
+        onClose={() => setIsVerificationOpen(false)}
+        message="Verify your identity to create events. Your form stays here, so you can publish once you are verified."
+      />
       <DraftDiscardSheet
         visible={isDiscardSheetVisible}
         title="Leave event?"
