@@ -5,7 +5,7 @@ import { Upload } from 'lucide-react-native';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { getEHubTermsRoute } from '@/lib/services/EHubService';
-import { EHUB_PROVIDER_DECLARATION_VERSION, EHUB_SELLER_AGREEMENT_VERSION } from '@/lib/types/ehubSeller';
+import { EHUB_NEW_STORE_ID, EHUB_PROVIDER_DECLARATION_VERSION, EHUB_SELLER_AGREEMENT_VERSION } from '@/lib/types/ehubSeller';
 import type { EHubSellerCenter } from '@/lib/hooks/useEHubSellerCenter';
 import {
   SellerButton, SellerCheckRow, SellerChipField, SellerImageField, SellerSaveIndicator, SellerStepHeader, SellerTextField,
@@ -46,7 +46,7 @@ export default function EHubSellerStorefront({ center, isTablet, onPublished }: 
 
   return <View style={styles.card}>
     <View style={styles.top}>
-      <View style={styles.flex}><Text style={styles.eyebrow}>My Storefront</Text><Text style={styles.title}>Guided storefront setup</Text></View>
+      <View style={styles.flex}><Text style={styles.eyebrow}>{workspace?.selectedStoreId === EHUB_NEW_STORE_ID ? 'New storefront' : 'My Storefront'}</Text><Text style={styles.title}>Guided storefront setup</Text></View>
       <SellerSaveIndicator status={center.saveStatus} savedAt={center.lastSavedAt} />
     </View>
     <SellerStepHeader steps={STORE_STEPS} currentStep={step} completedSteps={completedSteps} onStepChange={setStep} />

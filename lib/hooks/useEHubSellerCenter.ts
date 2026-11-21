@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { EMPTY_EHUB_PRODUCT, EMPTY_EHUB_STORE, eHubSellerService } from '@/lib/services/EHubSellerService';
+import { EHUB_NEW_STORE_ID } from '@/lib/types/ehubSeller';
 import type {
   EHubDraft, EHubDraftType, EHubImageScope, EHubProductDraftPayload, EHubPublicationState, EHubSellerProduct,
   EHubSellerWorkspace, EHubStoreDraftPayload,
@@ -24,6 +25,9 @@ function readError(error: unknown, fallback: string): string {
  * storefront and product forms, and autosaved private drafts. Each draft type has its own timer and draft id (in
  * refs, so a save scheduled before the first save returned still reuses that draft), and a pending save is sent
  * straight away when the screen closes. Publishing keeps the draft active, as on the website.
+ *
+ * An owner can run several storefronts under one business account. The workspace shows one at a time (its products
+ * and drafts); every save names that storefront, and switching storefronts starts the forms afresh.
  */
 export function useEHubSellerCenter(ownerId: string | null) {
   const [workspace, setWorkspace] = useState<EHubSellerWorkspace | null>(null);
@@ -41,16 +45,33 @@ export function useEHubSellerCenter(ownerId: string | null) {
   const timers = useRef<PerDraftType<ReturnType<typeof setTimeout> | null>>({ storefront: null, product: null });
   const draftIds = useRef<PerDraftType<string | undefined>>({ storefront: undefined, product: undefined });
   const pendingForms = useRef<Partial<DraftForms>>({});
+  // The storefront being shown; null lets the server pick the owner's first storefront.
+  const selectedStoreId = useRef<string | null>(null);
 
-  const loadWorkspace = useCallback(async (): Promise<EHubSellerWorkspace> => {
-    const data = await eHubSellerService.getWorkspace();
-    setWorkspace(data);
+  /** storeId switches storefronts (undefined keeps the current one); resetForms starts its forms and drafts afresh. */
+  const loadWorkspace = useCallback(async (storeId?: string | null, resetForms = false): Promise<EHubSellerWorkspace> => {
+    if (storeId !== undefined) selectedStoreId.current = storeId;
+    const data = await eHubSellerService.getWorkspace(selectedStoreId.current);
+    // Before the server knew about several storefronts it sent neither field; treat that as the one storefront.
+    const workspaceData: EHubSellerWorkspace = { ...data, stores: data.stores ?? [], selectedStoreId: data.selectedStoreId ?? data.store?.id ?? null };
+    selectedStoreId.current = workspaceData.selectedStoreId;
+    setWorkspace(workspaceData);
     setLoadError(null);
-    if (!hasLoadedForms.current) {
-      if (data.store) setStoreForm(eHubSellerService.toStoreDraftPayload(data.store));
+    if (!hasLoadedForms.current || resetForms) {
+      (['storefront', 'product'] as const).forEach((type) => {
+        const pendingTimer = timers.current[type];
+        if (pendingTimer) clearTimeout(pendingTimer);
+        timers.current[type] = null;
+      });
+      pendingForms.current = {};
+      draftIds.current = { storefront: undefined, product: undefined };
+      setStoreForm(workspaceData.store ? eHubSellerService.toStoreDraftPayload(workspaceData.store) : EMPTY_EHUB_STORE);
+      setProductForm(EMPTY_EHUB_PRODUCT);
+      setSaveStatus('idle');
+      setLastSavedAt(null);
       hasLoadedForms.current = true;
     }
-    return data;
+    return workspaceData;
   }, []);
 
   useEffect(() => {
@@ -77,7 +98,7 @@ export function useEHubSellerCenter(ownerId: string | null) {
     const isStorefront = type === 'storefront';
     const title = isStorefront ? (form as EHubStoreDraftPayload).storeName || 'Storefront setup' : (form as EHubProductDraftPayload).title || 'Untitled product';
     const completion = isStorefront ? eHubSellerService.calculateStoreCompletion(form as EHubStoreDraftPayload) : eHubSellerService.calculateProductCompletion(form as EHubProductDraftPayload);
-    const draft = await eHubSellerService.saveDraft({ draftId: draftIds.current[type], type, title, payload: form, completion, clientUpdatedAt: Date.now() });
+    const draft = await eHubSellerService.saveDraft({ draftId: draftIds.current[type], storeId: selectedStoreId.current ?? undefined, type, title, payload: form, completion, clientUpdatedAt: Date.now() });
     draftIds.current[type] = draft.id;
     setLastSavedAt(draft.updatedAt);
     setSaveStatus('saved');
@@ -110,7 +131,7 @@ export function useEHubSellerCenter(ownerId: string | null) {
       timers.current[type] = null;
       const completion = type === 'storefront' ? eHubSellerService.calculateStoreCompletion(pendingForm as EHubStoreDraftPayload) : eHubSellerService.calculateProductCompletion(pendingForm as EHubProductDraftPayload);
       const title = type === 'storefront' ? (pendingForm as EHubStoreDraftPayload).storeName || 'Storefront setup' : (pendingForm as EHubProductDraftPayload).title || 'Untitled product';
-      eHubSellerService.saveDraft({ draftId: draftIds.current[type], type, title, payload: pendingForm, completion, clientUpdatedAt: Date.now() })
+      eHubSellerService.saveDraft({ draftId: draftIds.current[type], storeId: selectedStoreId.current ?? undefined, type, title, payload: pendingForm, completion, clientUpdatedAt: Date.now() })
         .catch((error: unknown) => console.error('[useEHubSellerCenter.flush] Error:', readError(error, 'Unknown error')));
     });
   }, []);
@@ -178,14 +199,22 @@ export function useEHubSellerCenter(ownerId: string | null) {
   };
 
   const publishStore = (sellerAgreementAccepted: boolean, providerDeclarationAccepted: boolean): Promise<boolean> => runAction(async () => {
-    await eHubSellerService.saveStore({ ...storeForm, sellerAgreementAccepted, providerDeclarationAccepted });
     await finishDraft('storefront');
-    await loadWorkspace();
-    setNotice({ tone: 'success', text: 'Storefront published successfully.' });
+    const isNewStore = selectedStoreId.current === EHUB_NEW_STORE_ID;
+    const savedStore = await eHubSellerService.saveStore({ ...storeForm, storeId: selectedStoreId.current ?? undefined, sellerAgreementAccepted, providerDeclarationAccepted });
+    await loadWorkspace(savedStore.id, isNewStore);
+    setNotice({ tone: 'success', text: isNewStore ? `${savedStore.storeName} is published. Add its products under Products.` : 'Storefront published successfully.' });
   }, 'Unable to publish storefront.');
 
+  /** Shows another of the owner's storefronts, or EHUB_NEW_STORE_ID to set up a new one. A pending autosave is sent first. */
+  const selectStore = (storeId: string): Promise<boolean> => runAction(async () => {
+    if (storeId === selectedStoreId.current) return;
+    await Promise.all((['storefront', 'product'] as const).map((type) => finishDraft(type)));
+    await loadWorkspace(storeId, true);
+  }, 'Unable to open that storefront.');
+
   const saveProduct = (publicationState: EHubPublicationState): Promise<boolean> => runAction(async () => {
-    await eHubSellerService.saveProduct({ ...productForm, publicationState });
+    await eHubSellerService.saveProduct({ ...productForm, storeId: selectedStoreId.current ?? undefined, publicationState });
     await finishDraft('product');
     await loadWorkspace();
     setProductForm(EMPTY_EHUB_PRODUCT);
@@ -241,7 +270,7 @@ export function useEHubSellerCenter(ownerId: string | null) {
   return {
     workspace, isLoading, isRefreshing, loadError, refresh,
     storeForm, productForm, saveStatus, lastSavedAt, isWorking, isUploading, notice, setNotice,
-    updateStoreForm, updateProductForm, uploadImage, publishStore, saveProduct, setProductState, deleteProduct,
+    updateStoreForm, updateProductForm, uploadImage, publishStore, selectStore, saveProduct, setProductState, deleteProduct,
     startNewProduct, editProduct, resumeDraft, deleteDraft, restoreDraft,
   };
 }

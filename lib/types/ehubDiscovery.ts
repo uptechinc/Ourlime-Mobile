@@ -93,6 +93,8 @@ export type EHubCatalogProduct = {
 export type EHubPublicStoreSummary = {
   id: string;
   businessId: string;
+  /** The id of the seller's public storefront page. Older servers leave it out; fall back to businessId. */
+  providerId?: string;
   storeName: string;
   description: string;
   logoUrl: string | null;

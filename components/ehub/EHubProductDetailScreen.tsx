@@ -50,7 +50,7 @@ export default function EHubProductDetailScreen() {
     if (!detail) return;
     const options = [selectedVariant, selectedSize, selectedColour].filter(Boolean).join(', ');
     const productLabel = options ? `${detail.product.title} (${options})` : detail.product.title;
-    router.push(`/ehub/providers/${encodeURIComponent(detail.store.businessId)}?product=${encodeURIComponent(productLabel)}` as Href);
+    router.push(`/ehub/providers/${encodeURIComponent(detail.store.providerId || detail.store.businessId)}?product=${encodeURIComponent(productLabel)}` as Href);
   };
   const handleAddToCart = () => {
     if (!detail || detail.product.inventory <= 0) return;
@@ -155,7 +155,7 @@ export default function EHubProductDetailScreen() {
               </View>
             </View>
 
-            <Pressable accessibilityRole="button" accessibilityLabel={`View ${store.storeName}`} onPress={() => router.push(`/ehub/providers/${encodeURIComponent(store.businessId)}` as Href)} style={[styles.card, layout.isWide && styles.sellerWide]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`View ${store.storeName}`} onPress={() => router.push(`/ehub/providers/${encodeURIComponent(store.providerId || store.businessId)}` as Href)} style={[styles.card, layout.isWide && styles.sellerWide]}>
               <View style={styles.sellerTop}>
                 <View style={styles.sellerLogo}>{store.logoUrl ? <CachedImage uri={store.logoUrl} style={styles.fill} accessibilityLabel={`${store.storeName} logo`} /> : <Building2 size={26} color={colors.mutedText} />}</View>
                 <View style={styles.flex}>

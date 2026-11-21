@@ -18,6 +18,8 @@ import { EHubSellerCenterSkeleton, EHubSellerSectionSkeleton } from '@/component
 import EHubSellerStorefront from '@/components/ehub/EHubSellerStorefront';
 import EHubSellerProducts from '@/components/ehub/EHubSellerProducts';
 import EHubSellerDrafts from '@/components/ehub/EHubSellerDrafts';
+import EHubSellerStoreSwitcher from '@/components/ehub/EHubSellerStoreSwitcher';
+import { EHUB_NEW_STORE_ID } from '@/lib/types/ehubSeller';
 
 type SellerSection = 'overview' | 'storefront' | 'products' | 'drafts' | 'settings';
 type Confirmation =
@@ -71,6 +73,10 @@ export default function EHubSellerCenterScreen() {
     center.resumeDraft(draft);
     if (draft.type === 'product') { setProductsStartEditing(true); setProductsKey((key) => key + 1); }
     setSection(draft.type === 'storefront' ? 'storefront' : 'products');
+  };
+
+  const handleSelectStore = async (storeId: string) => {
+    if (await center.selectStore(storeId)) setSection(storeId === EHUB_NEW_STORE_ID ? 'storefront' : 'overview');
   };
 
   const handleConfirm = async () => {
@@ -156,6 +162,9 @@ export default function EHubSellerCenterScreen() {
                   <SellerButton compact label="Set up business account" icon={<Building2 size={16} color="#ffffff" />} onPress={() => router.push('/ehub/business-account' as Href)} />
                 </View> : null}
               </View> : null}
+              {!center.isLoading && workspace && (workspace.stores.length > 0 || workspace.selectedStoreId === EHUB_NEW_STORE_ID)
+                ? <EHubSellerStoreSwitcher workspace={workspace} isWorking={center.isWorking} canAddStore={!workspace.eligibility.reason} onSelect={(storeId) => void handleSelectStore(storeId)} />
+                : null}
               {center.isLoading ? <EHubSellerSectionSkeleton section={section} /> : <>
                 {section === 'overview' ? <View style={styles.section}>
                   <View style={styles.top}>
@@ -164,7 +173,7 @@ export default function EHubSellerCenterScreen() {
                       <Text style={styles.pageTitle}>Manage your business</Text>
                       <Text style={styles.muted}>Storefront, catalog, drafts, and enquiries in one focused workspace.</Text>
                     </View>
-                    {workspace?.store ? <SellerButton compact variant="secondary" label="View public storefront" icon={<Eye size={16} color={colors.text} />} onPress={() => router.push(`/ehub/providers/${encodeURIComponent(workspace.store?.businessId ?? '')}` as Href)} /> : null}
+                    {workspace?.store ? <SellerButton compact variant="secondary" label="View public storefront" icon={<Eye size={16} color={colors.text} />} onPress={() => router.push(`/ehub/providers/${encodeURIComponent(workspace.store?.providerId || workspace.store?.businessId || '')}` as Href)} /> : null}
                   </View>
                   <View style={[styles.metrics, layout.isTablet ? styles.metricsRow : null]}>
                     <Metric styles={styles} icon={<Package size={20} color={colors.accentText} />} value={String(publishedProducts.length)} label="Published" />
@@ -179,7 +188,7 @@ export default function EHubSellerCenterScreen() {
                     <Destination styles={styles} colors={colors} icon={<Trash2 size={20} color={colors.accentText} />} title="Recently Deleted" description={`${deletedDrafts.length} recoverable draft${deletedDrafts.length === 1 ? '' : 's'}`} onPress={() => handleSectionChange('drafts')} />
                   </View>
                 </View> : null}
-                {section === 'storefront' ? <EHubSellerStorefront center={center} isTablet={layout.isTablet} onPublished={() => setSection('overview')} /> : null}
+                {section === 'storefront' ? <EHubSellerStorefront key={workspace?.selectedStoreId ?? 'first'} center={center} isTablet={layout.isTablet} onPublished={() => setSection('overview')} /> : null}
                 {section === 'products' ? <EHubSellerProducts key={productsKey} center={center} isTablet={layout.isTablet} startEditing={productsStartEditing}
                   onPreview={(productId) => router.push(`/ehub/products/${encodeURIComponent(productId)}` as Href)}
                   onRequestStateChange={(product, state) => setConfirmation({ kind: 'productState', product, state })}

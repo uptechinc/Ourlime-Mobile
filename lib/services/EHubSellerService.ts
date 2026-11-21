@@ -34,8 +34,9 @@ export class EHubSellerService {
     return EHubSellerService.instance;
   }
 
-  public getWorkspace(): Promise<EHubSellerWorkspace> {
-    return eHubService.request<EHubSellerWorkspace>('GET', '/api/ehub/seller');
+  /** storeId picks one of the owner's storefronts (EHUB_NEW_STORE_ID for one being set up); without it, their first. */
+  public getWorkspace(storeId?: string | null): Promise<EHubSellerWorkspace> {
+    return eHubService.request<EHubSellerWorkspace>('GET', '/api/ehub/seller', storeId ? { query: `storeId=${encodeURIComponent(storeId)}` } : undefined);
   }
 
   public saveDraft(input: EHubDraftInput): Promise<EHubDraft> {
@@ -65,7 +66,7 @@ export class EHubSellerService {
 
   /** Publishes or unpublishes a saved product; the route saves the whole product, so every field is sent back. */
   public setPublicationState(product: EHubSellerProduct, publicationState: EHubPublicationState): Promise<EHubSellerProduct> {
-    return this.saveProduct({ ...this.toDraftPayload(product), publicationState });
+    return this.saveProduct({ ...this.toDraftPayload(product), storeId: product.storeId, publicationState });
   }
 
   public async deleteProduct(productId: string): Promise<void> {
