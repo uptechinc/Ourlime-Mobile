@@ -1,5 +1,6 @@
 import { auth } from '@/lib/firebaseConfig';
 import { jobDataService } from '@/lib/services/JobDataService';
+import { appServerService } from '@/lib/services/AppServerService';
 import { localCacheService } from '@/lib/services/LocalCacheService';
 
 export type ManagedJobStatus = 'draft' | 'pending_review' | 'published' | 'active' | 'paused' | 'closed' | 'archived' | 'rejected';
@@ -62,13 +63,27 @@ export type ManagedJobCategoryDetails = {
   urgency: string;
   duration: string;
   complexity: string;
-  /** Kept in category_specific: the client rules only accept the core basic_info keys. */
+};
+/** Listing details stored on basic_info (jobs the app posted before kept them in category_specific). */
+export type ManagedJobListingDetails = {
   employmentType: string;
   experienceLevel: string;
   currency: string;
   paymentPeriod: string;
   contactPreference: string;
+  /** null when the job stays open until it is closed by hand. */
+  closingDateMs: number | null;
 };
+/** The website job editor's major changes (app/profile/jobs/update detectChanges); applicants are told about them. */
+export type JobMajorChange = 'compensation' | 'duties' | 'location' | 'company' | 'type';
+export const JOB_MAJOR_CHANGE_LABELS: { [change in JobMajorChange]: string } = {
+  compensation: 'Compensation',
+  duties: 'Duties / Description',
+  location: 'Work Location',
+  company: 'Company Information',
+  type: 'Employment Type',
+};
+export type JobStateAction = 'close' | 'archive' | 'reopen' | 'publish' | 'pause' | 'resume';
 
 export type ManagedJob = {
   id: string;
@@ -85,6 +100,7 @@ export type ManagedJob = {
   requirements: string[];
   qualifications: string[];
   categoryDetails: ManagedJobCategoryDetails;
+  listingDetails: ManagedJobListingDetails;
   questions: ManagedJobQuestion[];
   applications: ManagedJobApplication[];
 };
@@ -99,6 +115,7 @@ export type UpdateManagedJobInput = {
   requirements: string[];
   qualifications: string[];
   categoryDetails: ManagedJobCategoryDetails;
+  listingDetails: ManagedJobListingDetails;
   questions: ManagedJobQuestion[];
 };
 
@@ -164,13 +181,15 @@ type ApiManagedJob = {
     location?: string | { type?: string; name?: string; address?: string; city?: string; country?: string };
     category?: string;
     priceRange?: { from?: number; to?: number };
-    employmentType?: string; experienceLevel?: string; currency?: string; paymentPeriod?: string; contactPreference?: string;
+    employmentType?: string | null; experienceLevel?: string | null; currency?: string; paymentPeriod?: string; contactPreference?: string;
+    closingDate?: ApiTimestamp | null;
   };
   details?: { skills?: string[]; requirements?: string[]; qualifications?: string[] };
   category_specific?: {
     name?: string; industry?: string; size?: string | number; urgency?: string; duration?: string; expectedDuration?: string; complexity?: string;
     companyDetails?: { name?: string; industry?: string; size?: string }; company?: { name?: string; industry?: string; size?: string };
     employmentType?: string; experienceLevel?: string; currency?: string; paymentPeriod?: string; contactPreference?: string;
+    closingDate?: ApiTimestamp;
   };
   questions?: { id?: string; question?: string; type?: string; answerType?: string; options?: string[] }[];
   applications?: ApiManagedApplication[];
@@ -182,7 +201,7 @@ type ApplicationMutationContext = { jobId: string; previousStatus?: ApplicationS
 
 const CACHE_NAMESPACE = 'jobs-management';
 const CACHE_KEY = 'current-user-jobs';
-const CACHE_SCHEMA_VERSION = 3;
+const CACHE_SCHEMA_VERSION = 4;
 const CACHE_TTL_MS = 2 * 60 * 1000;
 
 export class JobManagementService {
@@ -216,13 +235,10 @@ export class JobManagementService {
     return jobs;
   }
 
-  public async changeJobState(jobId: string, action: 'close' | 'archive' | 'reopen' | 'publish'): Promise<void> {
+  public async changeJobState(jobId: string, action: JobStateAction): Promise<void> {
     await jobDataService.setJobState(jobId, action);
-    await this.logAudit({
-      jobId,
-      action: `job_${action}`,
-      details: `Job ${action === 'reopen' ? 'reopened' : action === 'publish' ? 'published' : `${action}d`}`,
-    });
+    const pastTense: { [state in JobStateAction]: string } = { close: 'closed', archive: 'archived', reopen: 'reopened', publish: 'published', pause: 'paused', resume: 'resumed' };
+    await this.logAudit({ jobId, action: `job_${action}`, details: `Job ${pastTense[action]}` });
     await this.invalidateCache();
   }
 
@@ -276,10 +292,43 @@ export class JobManagementService {
       skills: input.skills,
       requirements: input.requirements,
       qualifications: input.qualifications,
+      listing: {
+        currency: input.listingDetails.currency,
+        paymentPeriod: input.listingDetails.paymentPeriod,
+        contactPreference: input.listingDetails.contactPreference,
+        employmentType: input.listingDetails.employmentType,
+        experienceLevel: input.listingDetails.experienceLevel,
+        closingDate: input.listingDetails.closingDateMs ? new Date(input.listingDetails.closingDateMs) : null,
+      },
       category_specific: input.categoryDetails,
+      questions: input.questions,
     });
     await this.logAudit({ jobId, action: 'job_updated', details: 'Job listing details updated' });
     await this.invalidateCache();
+  }
+
+  /** Website detectChanges: the edits applicants must hear about. The listing type can't be changed in the app. */
+  public detectMajorChanges(original: ManagedJob, edited: UpdateManagedJobInput): JobMajorChange[] {
+    const changes: JobMajorChange[] = [];
+    if (original.priceRange.from !== edited.priceRange.from || original.priceRange.to !== edited.priceRange.to) changes.push('compensation');
+    if (original.description.trim() !== edited.description.trim()) changes.push('duties');
+    const before = original.locationDetails;
+    const after = edited.location;
+    if (before.type !== after.type || before.address.trim() !== after.address.trim() || before.city.trim() !== after.city.trim() || before.country.trim() !== after.country.trim()) changes.push('location');
+    if (original.type === 'professional') {
+      const company = original.categoryDetails;
+      const editedCompany = edited.categoryDetails;
+      if (company.name.trim() !== editedCompany.name.trim() || company.industry.trim() !== editedCompany.industry.trim() || company.size !== editedCompany.size) changes.push('company');
+    }
+    return changes;
+  }
+
+  /** Emails applicants still in the process about major listing changes (website /api/jobs/email majorChange). */
+  public notifyApplicantsOfMajorChanges(job: ManagedJob, changes: JobMajorChange[]): void {
+    const hasActiveApplicants = job.applications.some((application) => application.status !== 'withdrawn' && application.status !== 'job_withdrawn' && application.status !== 'rejected');
+    if (changes.length === 0 || !hasActiveApplicants) return;
+    void appServerService.call('sendJobNotificationEmail', { kind: 'listingChanged', jobId: job.id, changeTypes: changes })
+      .catch((error: unknown) => console.error('[JobManagementService.notifyApplicantsOfMajorChanges] Error:', error));
   }
 
   public async scheduleInterview(input: ScheduleInterviewInput): Promise<void> {
@@ -364,9 +413,13 @@ export class JobManagementService {
         industry: categoryDetails?.industry || categoryDetails?.companyDetails?.industry || categoryDetails?.company?.industry || '',
         size: String(categoryDetails?.size || categoryDetails?.companyDetails?.size || categoryDetails?.company?.size || ''),
         urgency: categoryDetails?.urgency ?? '', duration: categoryDetails?.duration || categoryDetails?.expectedDuration || '', complexity: categoryDetails?.complexity ?? '',
-        employmentType: categoryDetails?.employmentType || basicInfo?.employmentType || '', experienceLevel: categoryDetails?.experienceLevel || basicInfo?.experienceLevel || '',
-        currency: categoryDetails?.currency || basicInfo?.currency || '', paymentPeriod: categoryDetails?.paymentPeriod || basicInfo?.paymentPeriod || '',
-        contactPreference: categoryDetails?.contactPreference || basicInfo?.contactPreference || '',
+      },
+      // basic_info first (the website's shape), then where the app used to keep them.
+      listingDetails: {
+        employmentType: basicInfo?.employmentType || categoryDetails?.employmentType || '', experienceLevel: basicInfo?.experienceLevel || categoryDetails?.experienceLevel || '',
+        currency: basicInfo?.currency || categoryDetails?.currency || '', paymentPeriod: basicInfo?.paymentPeriod || categoryDetails?.paymentPeriod || '',
+        contactPreference: basicInfo?.contactPreference || categoryDetails?.contactPreference || '',
+        closingDateMs: this.readTimestampMs(basicInfo?.closingDate ?? categoryDetails?.closingDate ?? undefined) || null,
       },
       questions: (job.questions ?? []).map((question) => ({
         id: question.id ?? '', question: question.question ?? '', answerType: this.readQuestionType(question.answerType ?? question.type), options: question.options ?? [],

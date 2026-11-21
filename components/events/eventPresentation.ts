@@ -9,7 +9,26 @@ export const EVENT_RECURRENCE_OPTIONS = [
   { key: 'weekly', label: 'Weekly' },
   { key: 'monthly', label: 'Monthly' },
   { key: 'yearly', label: 'Yearly' },
+  { key: 'custom', label: 'Custom' },
 ] as const;
+
+const RECURRENCE_UNIT_NAMES = { day: 'day', week: 'week', month: 'month', year: 'year' } as const;
+const WEEKDAY_NAMES: { [key: string]: string } = { sun: 'Sun', mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat' };
+
+/** How often an event repeats, in words ("Repeats every 2 weeks on Mon, Wed until Dec 31, 2026"), or null when it doesn't. */
+export function describeEventRecurrence(event: Pick<Event, 'recurrence' | 'recurrenceInterval' | 'recurrenceUnit' | 'recurrenceDays' | 'recurrenceEndMode' | 'recurrenceEndDate' | 'recurrenceCount'>): string | null {
+  if (!event.recurrence || event.recurrence === 'none') return null;
+  if (event.recurrence !== 'custom') return `Repeats ${event.recurrence}`;
+  const unit = event.recurrenceUnit ?? 'week';
+  const interval = Math.max(1, event.recurrenceInterval ?? 1);
+  const every = interval === 1 ? `every ${RECURRENCE_UNIT_NAMES[unit]}` : `every ${interval} ${RECURRENCE_UNIT_NAMES[unit]}s`;
+  const days = unit === 'week' && event.recurrenceDays?.length ? ` on ${event.recurrenceDays.map((day) => WEEKDAY_NAMES[day] ?? day).join(', ')}` : '';
+  const endDate = event.recurrenceEndDate ? new Date(`${event.recurrenceEndDate}T00:00:00`) : null;
+  const ending = event.recurrenceEndMode === 'date' && endDate && !Number.isNaN(endDate.getTime())
+    ? ` until ${endDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+    : event.recurrenceEndMode === 'count' && event.recurrenceCount ? `, ${event.recurrenceCount} times` : '';
+  return `Repeats ${every}${days}${ending}`;
+}
 
 export const ACCESSIBILITY_OPTIONS = [
   { value: 'wheelchair-access', label: 'Wheelchair accessible' },

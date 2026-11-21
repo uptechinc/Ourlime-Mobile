@@ -2,7 +2,6 @@ import { AuthService } from './AuthService';
 import { postAuthorizationService } from './PostAuthorizationService';
 import { PostService, type PostItem } from './PostService';
 import { isCancellationError } from './PostMediaService';
-import { EventService } from './EventService';
 import { FeedResourceService } from './FeedResourceService';
 import { CommunityFeedResourceService } from './CommunityFeedResourceService';
 import { ProfileResourceService } from './ProfileResourceService';
@@ -19,7 +18,6 @@ type SubmissionTask = {
   startedAt: number;
   lastProgressAt: number;
   publishAttempted: boolean;
-  eventCreated: boolean;
   /** Draft saved after a failed upload, so the post survives the app being closed. */
   savedDraftId?: string;
 };
@@ -64,12 +62,12 @@ export class PostSubmissionService {
     const post = draft.post;
     this.task = {
       id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      draft: { event: draft.event ? { ...draft.event, user: { ...draft.event.user } } : undefined, post: {
+      draft: { post: {
         ...post, user: { ...post.user }, media: post.media.map((item) => ({ ...item })),
         hashtags: [...post.hashtags], mentions: [...post.mentions], friendReferences: [...post.friendReferences],
         pollOptions: post.pollOptions?.map((option) => ({ ...option })), location: post.location ? { ...post.location } : undefined,
       } },
-      controller: new AbortController(), startedAt: Date.now(), lastProgressAt: Date.now(), publishAttempted: false, eventCreated: false,
+      controller: new AbortController(), startedAt: Date.now(), lastProgressAt: Date.now(), publishAttempted: false,
     };
     this.launch(this.task);
   }
@@ -126,13 +124,6 @@ export class PostSubmissionService {
   private async run(task: SubmissionTask): Promise<void> {
     this.logger.info('PostSubmissionService', 'start', { submissionId: task.id, mediaCount: task.draft.post.media.length });
     try {
-      if (task.draft.event && !task.eventCreated) {
-        task.publishAttempted = true;
-        this.patch(task, { stage: 'publishing', canCancel: false, message: 'Creating event…' });
-        await EventService.getInstance().createEvent(task.draft.event);
-        task.eventCreated = true;
-        task.publishAttempted = false;
-      }
       if (task.controller.signal.aborted || this.task !== task) throw new Error('Post submission cancelled.');
       const post = await PostService.getInstance().createPost({
         ...task.draft.post, signal: task.controller.signal,
@@ -184,7 +175,7 @@ export class PostSubmissionService {
   /** Keeps a failed regular post in Drafts (same store as the website), so retry survives an app restart. */
   private async saveFailedAsDraft(task: SubmissionTask): Promise<void> {
     const post = task.draft.post;
-    if (post.communityId || task.draft.event || post.type === 'poll') return;
+    if (post.communityId || post.type === 'poll') return;
     try {
       task.savedDraftId = await creationDraftService.save(post.userId, 'post', {
         caption: post.caption, visibility: post.visibility, location: post.location, hashtags: post.hashtags, media: post.media,

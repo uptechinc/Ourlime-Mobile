@@ -18,6 +18,8 @@ type EventCardProps = {
   isBookmarked?: boolean;
   isTargeted?: boolean;
   isWorking?: boolean;
+  /** The viewer helps run this event: the website's "Co-organizer" badge. */
+  isCoOrganizer?: boolean;
   /** Owner or staff: shows Edit (owner only), Archive and Cancel. */
   canManage?: boolean;
   canEdit?: boolean;
@@ -37,7 +39,7 @@ type EventCardProps = {
 
 /** An event in a listing: the website's events-page card laid out for phones. */
 export default function EventCard({
-  event, variant, attendeeCount, isAttending, waitlistPosition, isLiked, isBookmarked, isTargeted, isWorking, canManage, canEdit, showDaysLeft, compactActions,
+  event, variant, attendeeCount, isAttending, waitlistPosition, isLiked, isBookmarked, isTargeted, isWorking, isCoOrganizer, canManage, canEdit, showDaysLeft, compactActions,
   onOpen, onAttend, onLike, onBookmark, onShare, onReport, onEdit, onArchive, onCancel,
 }: EventCardProps) {
   const { colors } = useAppTheme();
@@ -72,6 +74,7 @@ export default function EventCard({
             {status && toneColors ? <Text style={[styles.statusBadge, { backgroundColor: toneColors[0], color: toneColors[1] }]}>{status.label}</Text> : null}
           </View>
         ) : null}
+        {!isList && event.isFeatured && !(showDaysLeft && days >= 0) ? <Text style={styles.trendingBadge}>⚡ TRENDING</Text> : null}
         {!isList && showDaysLeft && days >= 0 ? (
           <Text style={[styles.daysBadge, days <= 3 ? styles.daysUrgent : days <= 7 ? styles.daysSoon : null]}>{daysLeftLabel(days)}</Text>
         ) : null}
@@ -82,6 +85,12 @@ export default function EventCard({
             {event.category ? <Text style={styles.categoryInline} numberOfLines={1}>{event.category}</Text> : null}
             {status && toneColors ? <Text style={[styles.statusBadge, { backgroundColor: toneColors[0], color: toneColors[1] }]}>{status.label}</Text> : null}
             {showDaysLeft && days >= 0 ? <Text style={styles.statusBadge}>{daysLeftLabel(days)}</Text> : null}
+          </View>
+        ) : null}
+        {isCoOrganizer || (isList && event.isFeatured) ? (
+          <View style={styles.badgeRow}>
+            {isList && event.isFeatured ? <Text style={styles.trendingInline}>⚡ TRENDING</Text> : null}
+            {isCoOrganizer ? <Text style={styles.coOrganizerBadge}>Co-organizer</Text> : null}
           </View>
         ) : null}
         <Text style={styles.title} numberOfLines={2}>{event.title}</Text>
@@ -137,6 +146,9 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   daysSoon: { backgroundColor: '#f97316' },
   body: { flex: 1, padding: 14, gap: 6 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  trendingBadge: { position: 'absolute', top: 10, right: 10, backgroundColor: '#22c55e', color: '#ffffff', fontSize: 11, fontWeight: '900', borderRadius: 12, paddingHorizontal: 9, paddingVertical: 4, overflow: 'hidden' },
+  trendingInline: { backgroundColor: '#22c55e', color: '#ffffff', fontSize: 10, fontWeight: '900', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
+  coOrganizerBadge: { backgroundColor: '#ede9fe', color: '#6d28d9', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
   title: { color: colors.text, fontSize: 17, fontWeight: '900' },
   verified: { color: colors.successText, fontSize: 12, fontWeight: '700' },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 6 },

@@ -110,6 +110,7 @@ export default function UpcomingEventsPage() {
                 <EventCard
                   key={eventId || event.title}
                   event={event}
+                  isCoOrganizer={Boolean(activeUserId && event.coOrganizers?.some((coOrganizer) => coOrganizer.userId === activeUserId))}
                   variant={view === 'list' ? 'list' : 'grid'}
                   attendeeCount={actions.attendance[eventId]?.attendeeCount ?? 0}
                   isAttending={Boolean(actions.attendance[eventId]?.isAttending)}

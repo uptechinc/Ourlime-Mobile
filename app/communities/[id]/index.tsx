@@ -47,7 +47,7 @@ import type {
 } from '@/lib/types/community';
 import type { ResourceState } from '@/lib/types/resourceState';
 import type { PostItem } from '@/lib/services/PostService';
-import type { CommunityEventDraft } from '@/components/communities/detail/CommunityEventsWorkspace';
+import CreateEventModal from '@/components/events/createEventModal/CreateEventModal';
 import type { Event } from '@/types/eventTypes';
 import PostCardSection from '@/components/home/MiddleSection/MiddleSectionComponent/PostCardSection/PostCardSection';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
@@ -339,60 +339,8 @@ export default function CommunityDetailScreen() {
 		void feedService.removePosts((post) => post.id === postId);
 	};
 
-	const handleCreateEvent = async (
-		draft: CommunityEventDraft
-	): Promise<void> => {
-		if (!community || !profile)
-			throw new Error('Your verified profile is still loading.');
-		const start = new Date(draft.startDate);
-		const end = new Date(draft.endDate);
-		if (
-			Number.isNaN(start.getTime()) ||
-			Number.isNaN(end.getTime()) ||
-			end <= start
-		)
-			throw new Error('Enter valid start and end dates.');
-		await eventService.createCommunityEvent({
-			title: draft.title.trim(),
-			description: draft.summary.trim(),
-			summary: draft.summary.trim(),
-			startDate: start.toISOString(),
-			startTime: start.toLocaleTimeString(),
-			endDate: end.toISOString(),
-			endTime: end.toLocaleTimeString(),
-			location: draft.location.trim() || 'Online',
-			recurrence: draft.recurrence,
-			creatorId: viewerId,
-			userId: viewerId,
-			user: {
-				id: viewerId,
-				firstName: profile.firstName,
-				lastName: profile.lastName,
-				userName: profile.userName,
-				profileImage: profile.profilePicture ?? null,
-			},
-			communityVariantId: community.id,
-			image: draft.imageUrl.trim() || undefined,
-			media: draft.media,
-		});
-		await loadEvents(true);
-		if (draft.poll && community.permissions.canCreatePoll) {
-			// The event exists already; a failed poll is reported without undoing the event.
-			const hoursUntilStart = (start.getTime() - Date.now()) / (60 * 60 * 1000);
-			try {
-				await detailService.createPoll(viewerId, {
-					communityId: community.id,
-					question: draft.poll.question,
-					options: draft.poll.options,
-					durationHours: Math.min(Math.max(hoursUntilStart, 1), 24 * 30),
-					allowMultiple: false,
-				});
-			} catch (error: unknown) {
-				console.error('[CommunityDetail.handleCreateEvent] Error:', error instanceof Error ? error.message : 'Poll could not be created');
-				setFeedback('The event was created, but its poll could not be added. You can add it from the Polls tab.');
-			}
-		}
-	};
+	// Hosting and editing open the full event form (the website's community page uses the same CreateEventModal).
+	const [eventFormTarget, setEventFormTarget] = useState<{ mode: 'create' } | { mode: 'edit'; event: Event } | null>(null);
 
 	const handleReviewRequest = async (
 		request: CommunityJoinRequest,
@@ -1195,10 +1143,10 @@ export default function CommunityDetailScreen() {
 								<CommunityEventsWorkspace
 									resource={events}
 									canCreate={community.permissions.canHostEvent}
-									canCreatePoll={community.permissions.canCreatePoll}
 									createRequestKey={eventCreateRequestKey}
 									onRetry={() => void loadEvents(true)}
-									onCreate={handleCreateEvent}
+									onHost={() => setEventFormTarget({ mode: 'create' })}
+									onEdit={(event) => setEventFormTarget({ mode: 'edit', event })}
 									onToggleAttendance={async (eventId) => {
 										await eventService.toggleCommunityAttendance(
 											community.id,
@@ -1206,29 +1154,8 @@ export default function CommunityDetailScreen() {
 										);
 										await loadEvents(true);
 									}}
-									onUpdate={async (eventId, draft) => {
-										await eventService.updateCommunityEvent(
-											community.id,
-											eventId,
-											{
-												title: draft.title,
-												description: draft.summary,
-												summary: draft.summary,
-												startDate: draft.startDate,
-												endDate: draft.endDate,
-												location: draft.location,
-												recurrence: draft.recurrence,
-												image: draft.imageUrl || undefined,
-												media: draft.media,
-											}
-										);
-										await loadEvents(true);
-									}}
 									onDelete={async (eventId) => {
-										await eventService.deleteCommunityEvent(
-											community.id,
-											eventId
-										);
+										await eventService.deleteEvent(eventId);
 										await loadEvents(true);
 									}}
 									onReport={(event) =>
@@ -1461,6 +1388,18 @@ ${deepLinkService.getEventShareUrl(sharedEvent.id)}`}
 				verificationStatus={profile?.verificationStatus}
 				message={POST_VERIFICATION_REQUIRED_MESSAGE}
 			/>
+			{community ? (
+				<CreateEventModal
+					visible={eventFormTarget !== null}
+					communityVariantId={community.id}
+					event={eventFormTarget?.mode === 'edit' ? eventFormTarget.event : undefined}
+					onClose={() => setEventFormTarget(null)}
+					onCreated={() => {
+						setEventFormTarget(null);
+						void loadEvents(true);
+					}}
+				/>
+			) : null}
 		</SafeAreaView>
 	);
 }

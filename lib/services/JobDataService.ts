@@ -10,6 +10,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   Timestamp,
   updateDoc,
   where,
@@ -41,6 +42,19 @@ export type JobInterviewInput = {
   location?: string;
   notes?: string;
 };
+/** Listing details the website stores on basic_info (JobsServerService.createJob). */
+export type JobListingDetailsInput = {
+  currency: string;
+  paymentPeriod: string;
+  contactPreference: string;
+  employmentType: string;
+  experienceLevel: string;
+  /** null keeps the job open until it is closed by hand. */
+  closingDate: Date | null;
+};
+export type JobQuestionAnswerType = 'input' | 'single' | 'multiple' | 'checkbox' | 'dropdown';
+/** A screening question; an empty id is a new question. */
+export type JobQuestionUpdate = { id: string; question: string; answerType: JobQuestionAnswerType; options: string[] };
 export type JobUpdateInput = {
   title: string;
   description: string;
@@ -50,9 +64,11 @@ export type JobUpdateInput = {
   skills: string[];
   requirements: string[];
   qualifications: string[];
+  listing: JobListingDetailsInput;
   category_specific: DocumentData;
+  questions: JobQuestionUpdate[];
 };
-export type JobState = 'close' | 'archive' | 'reopen' | 'publish';
+export type JobState = 'close' | 'archive' | 'reopen' | 'publish' | 'pause' | 'resume';
 export type EmployerApplicationStatus = 'pending' | 'reviewing' | 'accepted' | 'rejected' | 'withdrawn' | 'interviewing' | 'offer';
 
 const APPLICANT_DISCLAIMER_VERSION = '1.0';
@@ -66,6 +82,9 @@ const EMPLOYER_TRANSITIONS: { [status: string]: string[] } = {
   offer: ['accepted', 'rejected'],
 };
 const APPLICANT_WITHDRAWAL_STATUSES = new Set(['pending', 'reviewing']);
+/** basic_info keys the website writes for a listing; jobs the app posted before kept them in category_specific. */
+const JOB_LISTING_FIELDS = ['currency', 'paymentPeriod', 'contactPreference', 'employmentType', 'experienceLevel', 'educationRequirement', 'closingDate'] as const;
+const readObject = (value: unknown): DocumentData => (value && typeof value === 'object' && !Array.isArray(value) ? value as DocumentData : {});
 
 const readString = (value: unknown): string => (typeof value === 'string' ? value : '');
 const deadlineMillis = (value: unknown): number | null => {
@@ -80,7 +99,7 @@ const deadlineMillis = (value: unknown): number | null => {
 
 /**
  * Jobs for the app, reading and writing Firestore directly with the same logic as the website's /api/jobs/* routes.
- * Emails go through the app's own functions (sendJobStatusEmail, sendJobWithdrawnEmail).
+ * Emails go through the app's own functions (sendJobStatusEmail, sendJobWithdrawnEmail, sendJobNotificationEmail).
  */
 export class JobDataService {
   private static instance: JobDataService;
@@ -152,6 +171,9 @@ export class JobDataService {
         },
       });
     });
+    // Website /api/jobs/email: tell the employer about the new application. The email never blocks applying.
+    void appServerService.call('sendJobNotificationEmail', { kind: 'applicationReceived', applicationId: applicationRef.id })
+      .catch((error: unknown) => console.error('[JobDataService.submitApplication] Error: new application email', error));
     return applicationRef.id;
   }
 
@@ -249,16 +271,34 @@ export class JobDataService {
   public async setJobState(jobId: string, action: JobState): Promise<void> {
     const userId = this.requireUserId();
     await this.requireOwnedJob(jobId, userId);
-    // Reopening publishes the listing again so it is back on the Jobs page (the website's manage route writes
-    // 'active', which no Jobs list shows; its job editor's Reopen writes 'published').
-    const status = action === 'close' ? 'closed' : action === 'archive' ? 'archived' : 'published';
-    await updateDoc(doc(db, 'jobs', jobId), { 'basic_info.status': status, 'basic_info.updatedAt': Timestamp.now() });
+    // Reopening and resuming publish the listing again so it is back on the Jobs page (the website's manage route
+    // writes 'active', which no Jobs list shows; its job editor's Reopen and Pause write 'published' / 'paused').
+    const status = action === 'close' ? 'closed' : action === 'archive' ? 'archived' : action === 'pause' ? 'paused' : 'published';
+    await updateDoc(doc(db, 'jobs', jobId), { 'basic_info.status': status, 'basic_info.updatedAt': serverTimestamp() });
   }
 
+  /**
+   * Saves the job editor in the shape the website writes: listing details on basic_info (moving any the app used to
+   * keep in category_specific), the rest of category_specific merged, and the screening questions updated in place
+   * so applicants' answers, which are keyed by question id, stay attached to their questions.
+   */
   public async updateJob(jobId: string, input: JobUpdateInput): Promise<void> {
     const { userId } = await this.requireVerifiedUser('posting a job');
     const job = await this.requireOwnedJob(jobId, userId);
-    const previousCategory = readString(job.basic_info?.category);
+    const basicInfo = readObject(job.basic_info);
+    const legacyDetails = readObject(job.category_specific);
+    const previousCategory = readString(basicInfo.category);
+    const listingUpdate: DocumentData = {};
+    JOB_LISTING_FIELDS.forEach((field) => { listingUpdate[`basic_info.${field}`] = basicInfo[field] ?? legacyDetails[field] ?? null; });
+    listingUpdate['basic_info.currency'] = input.listing.currency || 'USD';
+    listingUpdate['basic_info.paymentPeriod'] = input.listing.paymentPeriod || 'fixed';
+    listingUpdate['basic_info.contactPreference'] = input.listing.contactPreference || 'in_app';
+    listingUpdate['basic_info.employmentType'] = input.listing.employmentType || null;
+    listingUpdate['basic_info.experienceLevel'] = input.listing.experienceLevel || null;
+    listingUpdate['basic_info.closingDate'] = input.listing.closingDate ? Timestamp.fromDate(input.listing.closingDate) : null;
+    // A disclaimer acceptance the app stored in category_specific moves to the top level, where the website keeps it.
+    const legacyAcknowledgment = readObject(legacyDetails.disclaimerAcknowledgment);
+    const shouldMoveAcknowledgment = !job.disclaimerAcknowledgment && Object.keys(legacyAcknowledgment).length > 0;
     await updateDoc(doc(db, 'jobs', jobId), {
       'basic_info.title': input.title,
       'basic_info.description': input.description,
@@ -266,15 +306,38 @@ export class JobDataService {
       'basic_info.updatedAt': Timestamp.now(),
       'basic_info.priceRange': input.priceRange,
       'basic_info.location': input.location,
+      ...listingUpdate,
       'details.skills': input.skills,
       'details.requirements': input.requirements,
       'details.qualifications': input.qualifications,
-      category_specific: this.mergeCategorySpecific(job.category_specific, input.category_specific),
+      category_specific: this.mergeCategorySpecific(legacyDetails, input.category_specific),
+      ...(shouldMoveAcknowledgment ? { disclaimerAcknowledgment: legacyAcknowledgment } : {}),
     });
+    await this.saveQuestions(jobId, input.questions);
     if (previousCategory !== input.category) {
       if (previousCategory) await this.updateCategoryCount(previousCategory, false).catch(() => undefined);
       if (input.category) await this.updateCategoryCount(input.category, true).catch(() => undefined);
     }
+  }
+
+  /** Updates kept questions in place, adds new ones and deletes the ones the poster removed. */
+  private async saveQuestions(jobId: string, questions: JobQuestionUpdate[]): Promise<void> {
+    const questionsCollection = collection(db, 'jobs', jobId, 'questions');
+    const existing = await getDocs(questionsCollection);
+    const kept = questions.filter((question) => question.question.trim());
+    const keptIds = new Set(kept.map((question) => question.id).filter(Boolean));
+    const existingIds = new Set(existing.docs.map((questionDocument) => questionDocument.id));
+    const toRecord = (question: JobQuestionUpdate): DocumentData => ({
+      question: question.question.trim(),
+      type: question.answerType,
+      options: question.answerType !== 'input' ? question.options.map((option) => option.trim()).filter(Boolean) : [],
+    });
+    await Promise.all([
+      ...existing.docs.filter((questionDocument) => !keptIds.has(questionDocument.id)).map((questionDocument) => deleteDoc(questionDocument.ref)),
+      ...kept.map((question) => (question.id && existingIds.has(question.id)
+        ? setDoc(doc(questionsCollection, question.id), toRecord(question))
+        : addDoc(questionsCollection, toRecord(question)).then(() => undefined))),
+    ]);
   }
 
   /**
@@ -282,9 +345,10 @@ export class JobDataService {
    * rest of the listing's details (company profile, deliverables, payment terms, ...) and update the company profile
    * the website's forms store under companyDetails / company.
    */
-  private mergeCategorySpecific(existingValue: unknown, edited: DocumentData): DocumentData {
-    const existing: DocumentData = existingValue && typeof existingValue === 'object' ? existingValue as DocumentData : {};
+  private mergeCategorySpecific(existing: DocumentData, edited: DocumentData): DocumentData {
     const merged: DocumentData = { ...existing, ...edited };
+    // Listing details and the disclaimer acceptance live outside category_specific (see updateJob).
+    [...JOB_LISTING_FIELDS, 'disclaimerAcknowledgment'].forEach((field) => { delete merged[field]; });
     (['companyDetails', 'company'] as const).forEach((key) => {
       const profile = existing[key];
       if (!profile || typeof profile !== 'object') return;

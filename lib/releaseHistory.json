@@ -1,6 +1,22 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-20-4",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-20",
+      "notes": [
+        "Events: the event form now matches the website: online or in person, venue on the map, ticket price, accessibility, minimum age, co-organizers, registration questions, custom repeats, drafts and scheduling.",
+        "Events: published events appear in the home feed, and \"Event\" in Create post opens the full event form.",
+        "Events: hosting or editing a community event uses the same full form. The host can cancel an event from its post in the feed.",
+        "Jobs: employers get an email when someone applies, and applicants are emailed when a listing changes in a big way.",
+        "Jobs: pause and resume a listing, edit its closing date and screening questions, and pick interview times with a date picker.",
+        "Jobs: check your application on a review screen before sending it. Quick tasks no longer ask screening questions.",
+        "Fixes: tags and extra photos added in the app now show on the website, and jobs posted from the app show their type, experience and closing date there. Tapping a job in Discover opens that job."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-20-3",
       "version": "1.3.2",
       "versionCode": 11,

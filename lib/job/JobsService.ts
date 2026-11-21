@@ -10,6 +10,7 @@ import {
     updateDoc,
     deleteDoc,
     setDoc,
+    serverTimestamp,
     Firestore,
     limit,
     Timestamp,
@@ -158,33 +159,17 @@ export class JobsService {
     }
 
     /**
-     * Creates a Professional Job or Quick Task the way the website's POST /api/jobs does. The client rules only
-     * accept the listing's core basic_info keys and the 'published' / 'draft' statuses, so the extra listing
-     * details (currency, pay period, employment type, closing date, ...) and the poster's disclaimer acceptance are
-     * kept in category_specific, where the app and the website's detail views read them.
+     * Creates a Professional Job or Quick Task in the shape the website's POST /api/jobs writes
+     * (JobsServerService.createJob): the listing details (currency, pay period, contact preference, employment type,
+     * experience, education, closing date) live on basic_info, and the poster's disclaimer acceptance is a top-level
+     * disclaimerAcknowledgment carrying their identity verification status.
      */
     public async createJob(jobData: CreateJobInput): Promise<string> {
         try {
             if (jobData.publicationStatus !== 'draft' && !jobData.disclaimerAccepted) {
                 throw new Error('You must acknowledge the current job poster disclaimer.');
             }
-            const listingDetails: DocumentData = {
-                currency: jobData.currency || 'USD',
-                paymentPeriod: jobData.paymentPeriod || 'fixed',
-                contactPreference: jobData.contactPreference || 'in_app',
-                ...(jobData.employmentType ? { employmentType: jobData.employmentType } : {}),
-                ...(jobData.experienceLevel ? { experienceLevel: jobData.experienceLevel } : {}),
-                ...(jobData.educationRequirement ? { educationRequirement: jobData.educationRequirement } : {}),
-                ...(jobData.closingDate ? { closingDate: Timestamp.fromDate(new Date(jobData.closingDate)) } : {}),
-                ...(jobData.publicationStatus !== 'draft' ? {
-                    disclaimerAcknowledgment: {
-                        userId: jobData.userId,
-                        disclaimerVersion: JOB_POSTER_DISCLAIMER_VERSION,
-                        policyVersion: JOBS_POLICY_VERSION,
-                        acceptedAt: Timestamp.now(),
-                    },
-                } : {}),
-            };
+            const identityVerificationStatus = jobData.publicationStatus !== 'draft' ? this.normalizeVerificationStatus(await this.getVerificationStatus(jobData.userId)) : '';
 
             const jobRef = await addDoc(collection(this.db, 'jobs'), {
                 basic_info: {
@@ -200,7 +185,14 @@ export class JobsService {
                         from: Number(jobData.priceRange.from) || 0,
                         to: Number(jobData.priceRange.to) || 0,
                     },
+                    currency: jobData.currency || 'USD',
+                    paymentPeriod: jobData.paymentPeriod || 'fixed',
+                    contactPreference: jobData.contactPreference || 'in_app',
                     location: jobData.location,
+                    employmentType: jobData.employmentType || null,
+                    experienceLevel: jobData.experienceLevel || null,
+                    educationRequirement: jobData.educationRequirement || null,
+                    closingDate: jobData.closingDate ? Timestamp.fromDate(new Date(jobData.closingDate)) : null,
                 },
                 details: {
                     skills: jobData.skills ?? [],
@@ -208,7 +200,16 @@ export class JobsService {
                     deliverables: jobData.deliverables ?? [],
                     qualifications: [],
                 },
-                category_specific: { ...(jobData.category_specific ?? {}), ...listingDetails },
+                category_specific: jobData.category_specific ?? {},
+                ...(jobData.publicationStatus !== 'draft' ? {
+                    disclaimerAcknowledgment: {
+                        userId: jobData.userId,
+                        disclaimerVersion: JOB_POSTER_DISCLAIMER_VERSION,
+                        policyVersion: JOBS_POLICY_VERSION,
+                        acceptedAt: serverTimestamp(),
+                        identityVerificationStatus,
+                    },
+                } : {}),
             });
 
             const questions = (jobData.questions ?? []).filter((question) => question.question.trim());
@@ -454,6 +455,11 @@ export class JobsService {
             console.error('[JobsService.getVerificationStatus] Error:', error);
             return 'not_started';
         }
+    }
+
+    /** Web JobsAuthorizationService: anything outside the known statuses counts as not_started. */
+    private normalizeVerificationStatus(status: string): string {
+        return ['pending', 'verified', 'rejected', 'expired'].includes(status) ? status : 'not_started';
     }
 
     /** Web JobsService.toggleSaveJob: users/{uid}/savedJobs/{jobId}. */

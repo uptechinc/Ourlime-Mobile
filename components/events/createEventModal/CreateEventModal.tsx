@@ -25,7 +25,11 @@ import { useLocalFormDraft } from '@/lib/hooks/useLocalFormDraft';
 import SavedDraftBanner from '@/components/drafts/SavedDraftBanner';
 import DraftDiscardSheet from '@/components/drafts/DraftDiscardSheet';
 import { EVENT_CATEGORIES, EVENT_RECURRENCE_OPTIONS } from '@/components/events/eventPresentation';
-import type { Event } from '@/types/eventTypes';
+import {
+  cleanRegistrationQuestions, CustomRecurrenceFields, EventAccessibilityChips, EventAgeField, EventCoOrganizersField, EventFormSection,
+  EventLocationFields, EventPricingFields, EventPublishingFields, EventRegistrationQuestionsField, type CustomRecurrenceValue,
+} from '@/components/events/createEventModal/EventFormSections';
+import type { CoOrganizer, Event, EventFormFields, RegistrationQuestion } from '@/types/eventTypes';
 
 const authService = AuthService.getInstance();
 const eventService = EventService.getInstance();
@@ -35,8 +39,10 @@ type CreateEventModalProps = {
   visible: boolean;
   onClose: () => void;
   onCreated?: () => void;
-  /** Editing an existing event (the organiser's own): the form starts filled in and saves the editable fields. */
+  /** Editing an existing event: the form starts filled in, and the server checks who may change it. */
   event?: Event;
+  /** Creating the event inside a community (the website's community events use this same form). */
+  communityVariantId?: string;
 };
 type MediaSource = { url: string; type: 'image' | 'video'; isVerified: boolean };
 
@@ -53,8 +59,28 @@ type CreateEventForm = {
   additionalMedia: MediaSource[];
   tags: string[];
   recurrence: string;
+  customRecurrence: CustomRecurrenceValue;
   category: string;
+  isVirtual: boolean;
+  isFree: boolean;
+  ticketPrice: string;
+  accessibility: string[];
+  lat: number | null;
+  lng: number | null;
+  status: EventFormFields['status'];
+  publishAt: string | null;
+  ageRestriction: number | null;
+  coOrganizers: CoOrganizer[];
+  registrationQuestions: RegistrationQuestion[];
 };
+
+const DEFAULT_CUSTOM_RECURRENCE: CustomRecurrenceValue = { recurrenceInterval: 1, recurrenceUnit: 'week', recurrenceDays: [], recurrenceEndMode: 'never', recurrenceEndDate: '', recurrenceCount: 10 };
+const EMPTY_FORM: CreateEventForm = {
+  title: '', date: '', time: '', endDate: '', endTime: '', location: '', summary: '', coverMedia: null, coverMimeType: null, additionalMedia: [], tags: [],
+  recurrence: 'none', customRecurrence: DEFAULT_CUSTOM_RECURRENCE, category: '', isVirtual: false, isFree: true, ticketPrice: '', accessibility: [],
+  lat: null, lng: null, status: 'published', publishAt: null, ageRestriction: null, coOrganizers: [], registrationQuestions: [],
+};
+const FORM_STATUSES: EventFormFields['status'][] = ['draft', 'scheduled', 'published'];
 
 const DEFAULT_EVENT_LENGTH_MS = 2 * 60 * 60 * 1000;
 const padTwo = (value: number): string => String(value).padStart(2, '0');
@@ -75,7 +101,7 @@ function splitDateTime(value: Date): { date: string; time: string } {
 }
 
 /* ─────────── Component ─────────── */
-export default function CreateEventModal({ visible, onClose, onCreated, event }: CreateEventModalProps) {
+export default function CreateEventModal({ visible, onClose, onCreated, event, communityVariantId }: CreateEventModalProps) {
   const isEditing = Boolean(event?.id);
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -85,20 +111,8 @@ export default function CreateEventModal({ visible, onClose, onCreated, event }:
   const [currentTag, setCurrentTag] = useState('');
   const [currentMediaUrl, setCurrentMediaUrl] = useState('');
   const [acceptedDisclaimer, setAcceptedDisclaimer] = useState(false);
-  const [formData, setFormData] = useState<CreateEventForm>({
-    title: '',
-    date: '',
-    time: '',
-    endDate: '',
-    endTime: '',
-    location: '',
-    summary: '',
-    coverMedia: null,
-    additionalMedia: [],
-    tags: [],
-    recurrence: 'none',
-    category: '',
-  });
+  const [formData, setFormData] = useState<CreateEventForm>(EMPTY_FORM);
+  const updateForm = (changes: Partial<CreateEventForm>) => setFormData((previous) => ({ ...previous, ...changes }));
   useEffect(() => {
     if (!visible || !event) return;
     const start = new Date(event.startDate);
@@ -111,15 +125,25 @@ export default function CreateEventModal({ visible, onClose, onCreated, event }:
       coverMedia: event.image ?? null, coverMimeType: null,
       additionalMedia: (event.media ?? []).filter((item) => item.url !== event.image).map((item) => ({ url: item.url, type: item.type, isVerified: true })),
       tags: event.tags ?? [], recurrence: event.recurrence || 'none', category: event.category ?? '',
+      customRecurrence: {
+        recurrenceInterval: event.recurrenceInterval ?? 1, recurrenceUnit: event.recurrenceUnit ?? 'week', recurrenceDays: event.recurrenceDays ?? [],
+        recurrenceEndMode: event.recurrenceEndMode ?? 'never', recurrenceEndDate: event.recurrenceEndDate ?? '', recurrenceCount: event.recurrenceCount ?? 10,
+      },
+      isVirtual: event.isVirtual === true, isFree: event.isFree !== false, ticketPrice: typeof event.ticketPrice === 'number' ? String(event.ticketPrice) : '',
+      accessibility: event.accessibility ?? [], lat: event.lat ?? null, lng: event.lng ?? null,
+      status: FORM_STATUSES.find((status) => status === event.status) ?? 'published', publishAt: event.publishAt ?? null,
+      ageRestriction: event.ageRestriction ?? null, coOrganizers: event.coOrganizers ?? [], registrationQuestions: event.registrationQuestions ?? [],
     });
   }, [event, visible]);
 
   // On-device draft (like the website): auto-saves the form, offers Restore next time.
   const hasFormContent = Boolean(formData.title.trim() || formData.summary.trim() || formData.location.trim() || formData.date
-    || formData.coverMedia || formData.tags.length > 0 || formData.additionalMedia.length > 0 || formData.category.trim());
+    || formData.coverMedia || formData.tags.length > 0 || formData.additionalMedia.length > 0 || formData.category.trim()
+    || formData.coOrganizers.length > 0 || formData.registrationQuestions.length > 0);
   const draft = useLocalFormDraft<CreateEventForm>({
     ownerId: authService.getCurrentUser()?.uid,
     kind: 'event',
+    scopeId: communityVariantId,
     data: formData,
     hasContent: hasFormContent,
     enabled: visible && !isEditing,
@@ -183,29 +207,40 @@ export default function CreateEventModal({ visible, onClose, onCreated, event }:
       additionalMedia: p.additionalMedia.filter((_, idx) => idx !== i),
     }));
 
-  // The website's publish checks: title, start and end, cover image, category and the organiser disclaimer.
+  // The website's checks: publishing (or scheduling) needs title, start and end, cover, category and the organiser
+  // disclaimer; a draft only needs a title. Custom repeats need a weekday (weekly) and a sensible end date.
+  const isPublishing = formData.status !== 'draft';
+  const custom = formData.customRecurrence;
+  const recurrenceIssue = formData.recurrence !== 'custom' ? null
+    : custom.recurrenceUnit === 'week' && custom.recurrenceDays.length === 0 ? 'at least one weekday for the weekly repeat'
+      : custom.recurrenceEndMode === 'date' && (!custom.recurrenceEndDate || (formData.date && custom.recurrenceEndDate < formData.date)) ? 'a repeat end date on or after the start date'
+        : null;
   const publishIssues = [
     !formData.title.trim() ? 'a title' : null,
-    !formData.date || !formData.time ? 'a start date and time' : null,
-    !formData.endDate || !formData.endTime ? 'an end date and time' : null,
-    !formData.coverMedia ? 'a cover image' : null,
-    !formData.category ? 'a category' : null,
-    !isEditing && !acceptedDisclaimer ? 'the Event Organizer Disclaimer agreement' : null,
+    isPublishing && (!formData.date || !formData.time) ? 'a start date and time' : null,
+    isPublishing && (!formData.endDate || !formData.endTime) ? 'an end date and time' : null,
+    isPublishing && !formData.coverMedia ? 'a cover image' : null,
+    isPublishing && !formData.category ? 'a category' : null,
+    isPublishing && !formData.summary.trim() ? 'a summary' : null,
+    formData.status === 'scheduled' && !formData.publishAt ? 'when to publish' : null,
+    !formData.isFree && !(Number(formData.ticketPrice) > 0) ? 'a ticket price' : null,
+    recurrenceIssue,
+    isPublishing && !isEditing && !acceptedDisclaimer ? 'the Event Organizer Disclaimer agreement' : null,
   ].filter((issue): issue is string => Boolean(issue));
   const isValid = publishIssues.length === 0;
 
   const handleSubmit = async () => {
     if (!isValid) {
-      toast.error(`To publish, add or fix: ${publishIssues.join(', ')}`);
+      toast.error(`${isPublishing ? 'To publish' : 'To save'}, add or fix: ${publishIssues.join(', ')}`);
       return;
     }
     const startsAt = joinDateTime(formData.date, formData.time);
     const endsAt = joinDateTime(formData.endDate, formData.endTime);
-    if (!startsAt || !endsAt) {
-      toast.error('Pick a start and end date and time');
+    if ((startsAt && !endsAt) || (!startsAt && endsAt)) {
+      toast.error('Pick both a start and an end date and time');
       return;
     }
-    if (endsAt <= startsAt) {
+    if (startsAt && endsAt && endsAt <= startsAt) {
       toast.error('The end must be after the start');
       return;
     }
@@ -214,48 +249,54 @@ export default function CreateEventModal({ visible, onClose, onCreated, event }:
       const user = authService.getCurrentUser();
       if (!user) throw new Error('Authentication required');
       if (!isEditing && !(await eventService.isIdentityVerified(user.uid))) {
-        throw new Error('Verify your identity before publishing events. Go to Settings → Identity verification.');
+        throw new Error('Verify your identity before creating events. Go to Settings → Identity verification.');
       }
       const coverMedia = formData.coverMedia ?? '';
-      const image = /^https?:\/\//i.test(coverMedia) ? coverMedia : await eventService.uploadEventImage(coverMedia, formData.coverMimeType);
-      const media = formData.additionalMedia.map((item) => ({ type: item.type, url: item.url }));
-      const fields = {
+      const image = !coverMedia ? '' : /^https?:\/\//i.test(coverMedia) ? coverMedia : await eventService.uploadEventImage(coverMedia, formData.coverMimeType);
+      const isCustom = formData.recurrence === 'custom';
+      const fields: EventFormFields = {
         title: formData.title.trim(),
-        description: formData.summary.trim(),
         summary: formData.summary.trim(),
-        startDate: startsAt.toISOString(),
-        startTime: formData.time,
-        endDate: endsAt.toISOString(),
-        endTime: formData.endTime,
-        location: formData.location.trim() || 'Location TBD',
-        recurrence: formData.recurrence || 'none',
+        startDate: startsAt ? startsAt.toISOString() : '',
+        endDate: endsAt ? endsAt.toISOString() : '',
         image,
-        media,
+        location: formData.location.trim(),
+        recurrence: formData.recurrence || 'none',
+        recurrenceInterval: isCustom ? custom.recurrenceInterval : 1,
+        recurrenceUnit: isCustom ? custom.recurrenceUnit : null,
+        recurrenceDays: isCustom && custom.recurrenceUnit === 'week' ? custom.recurrenceDays : [],
+        recurrenceEndMode: isCustom ? custom.recurrenceEndMode : 'never',
+        recurrenceEndDate: isCustom && custom.recurrenceEndMode === 'date' ? custom.recurrenceEndDate || null : null,
+        recurrenceCount: isCustom && custom.recurrenceEndMode === 'count' ? custom.recurrenceCount : null,
+        tags: formData.tags,
+        additionalMedia: formData.additionalMedia.map((item) => ({ url: item.url, type: item.type, isVerified: item.isVerified })),
         category: formData.category,
-        hashtags: formData.tags,
+        isVirtual: formData.isVirtual,
+        isFree: formData.isFree,
+        ticketPrice: !formData.isFree && formData.ticketPrice ? Number(formData.ticketPrice) : null,
+        accessibility: formData.accessibility,
+        lat: formData.isVirtual ? null : formData.lat,
+        lng: formData.isVirtual ? null : formData.lng,
+        status: formData.status,
+        publishAt: formData.status === 'scheduled' ? formData.publishAt : null,
+        ageRestriction: formData.ageRestriction,
+        coOrganizers: formData.coOrganizers,
+        registrationQuestions: cleanRegistrationQuestions(formData.registrationQuestions),
+        ...(communityVariantId && !isEditing ? { communityVariantId } : {}),
       };
       if (isEditing && event?.id) {
-        await eventService.updateEvent(event.id, fields);
+        // A sold-out, cancelled or completed event keeps its status unless the organiser picks another one here.
+        const keepsStatus = !FORM_STATUSES.some((status) => status === event.status) && formData.status === 'published';
+        const { status, publishAt, ...unchangedStatusFields } = fields;
+        await eventService.updateEvent(event.id, keepsStatus ? unchangedStatusFields : { ...unchangedStatusFields, status, publishAt });
         toast.success('Event updated');
         onCreated?.();
         onClose();
         return;
       }
-      const profile = await authService.getUserProfile(user.uid);
-      await eventService.createEvent({
-        ...fields,
-        creatorId: user.uid,
-        userId: user.uid,
-        user: {
-          id: user.uid,
-          firstName: profile?.firstName || user.displayName?.split(' ')[0] || 'User',
-          lastName: profile?.lastName || '',
-          userName: profile?.userName || user.email?.split('@')[0] || 'user',
-          profileImage: profile?.profilePicture || user.photoURL || null,
-        },
-      });
+      await eventService.createEvent(fields);
       onCreated?.();
-      toast.success('Event created successfully!');
+      toast.success(formData.status === 'draft' ? 'Draft saved. Only you can see it.' : formData.status === 'scheduled' ? 'Event scheduled' : 'Event created successfully!');
       void draft.clear();
       resetForm();
       onClose();
@@ -266,21 +307,7 @@ export default function CreateEventModal({ visible, onClose, onCreated, event }:
     }
   };
   const resetForm = () => {
-    setFormData({
-      title: '',
-      date: '',
-      time: '',
-      endDate: '',
-      endTime: '',
-      location: '',
-      summary: '',
-      coverMedia: null,
-      coverMimeType: null,
-      additionalMedia: [],
-      tags: [],
-      recurrence: 'none',
-      category: '',
-    });
+    setFormData(EMPTY_FORM);
     setAcceptedDisclaimer(false);
     setCurrentTag('');
     setCurrentMediaUrl('');
@@ -344,7 +371,7 @@ export default function CreateEventModal({ visible, onClose, onCreated, event }:
                 savedAt={draft.savedAt}
                 onRestore={() => {
                   const restored = draft.restore();
-                  if (restored) setFormData(restored);
+                  if (restored) setFormData({ ...EMPTY_FORM, ...restored, customRecurrence: { ...DEFAULT_CUSTOM_RECURRENCE, ...restored.customRecurrence } });
                 }}
                 onDiscard={() => void draft.discard()}
               />
@@ -417,31 +444,33 @@ export default function CreateEventModal({ visible, onClose, onCreated, event }:
               })}
             </View>
 
-            {/* Location */}
-            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
-              Location
-            </Text>
-            <TextInput
-              placeholder="Venue or online link"
-              value={formData.location}
-              onChangeText={v => setFormData(p => ({ ...p, location: v }))}
-              placeholderTextColor={colors.mutedText}
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.input,
-                color: colors.text,
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: Platform.OS === 'ios' ? 12 : 8,
-                fontSize: 14,
-                marginBottom: 12,
-              }}
-            />
+            {formData.recurrence === 'custom' ? (
+              <View style={{ marginBottom: 12 }}>
+                <CustomRecurrenceFields value={formData.customRecurrence} eventStartDate={joinDateTime(formData.date, formData.time)} onChange={(customRecurrence) => updateForm({ customRecurrence })} />
+              </View>
+            ) : null}
+
+            {/* Format, location and map position */}
+            <View style={{ marginBottom: 12 }}>
+              <EventLocationFields isVirtual={formData.isVirtual} location={formData.location} lat={formData.lat} lng={formData.lng} onChange={updateForm} />
+            </View>
+
+            {/* Price */}
+            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 6 }}>Tickets</Text>
+            <View style={{ marginBottom: 12 }}>
+              <EventPricingFields isFree={formData.isFree} ticketPrice={formData.ticketPrice} onChange={updateForm} />
+            </View>
+
+            {/* Accessibility */}
+            <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 6 }}>Accessibility</Text>
+            <View style={{ marginBottom: 12 }}>
+              <EventAccessibilityChips selected={formData.accessibility}
+                onToggle={(key) => setFormData((previous) => ({ ...previous, accessibility: previous.accessibility.includes(key) ? previous.accessibility.filter((item) => item !== key) : [...previous.accessibility, key] }))} />
+            </View>
 
             {/* Summary */}
             <Text style={{ fontSize: 12, fontWeight: '500', color: colors.secondaryText, marginBottom: 4 }}>
-              Summary
+              Summary <Text style={{ color: '#ef4444' }}>*</Text>
             </Text>
             <TextInput
               placeholder="Quick summary"
@@ -647,7 +676,21 @@ export default function CreateEventModal({ visible, onClose, onCreated, event }:
               })}
             </View>
 
-            {!isEditing ? (
+            <EventFormSection title="Visibility & scheduling" description="Publish now, schedule it, or keep it as a draft.">
+              <EventPublishingFields status={formData.status} publishAt={formData.publishAt ? new Date(formData.publishAt) : null}
+                onChange={(changes) => updateForm({ ...(changes.status ? { status: changes.status } : {}), ...(changes.publishAt !== undefined ? { publishAt: changes.publishAt ? changes.publishAt.toISOString() : null } : {}) })} />
+            </EventFormSection>
+            <EventFormSection title="Minimum age">
+              <EventAgeField value={formData.ageRestriction} onChange={(ageRestriction) => updateForm({ ageRestriction })} />
+            </EventFormSection>
+            <EventFormSection title="Co-organizers" description="People who help run this event and what they can manage.">
+              <EventCoOrganizersField ownerId={event?.userId ?? authService.getCurrentUser()?.uid ?? null} coOrganizers={formData.coOrganizers} onChange={(coOrganizers) => updateForm({ coOrganizers })} />
+            </EventFormSection>
+            <EventFormSection title="Registration questions" description="Ask attendees for anything you need when they register.">
+              <EventRegistrationQuestionsField questions={formData.registrationQuestions} onChange={(registrationQuestions) => updateForm({ registrationQuestions })} />
+            </EventFormSection>
+
+            {!isEditing && isPublishing ? (
               <View style={{ gap: 10, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control, marginBottom: 8 }}>
                 <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800' }}>Event Organizer Disclaimer</Text>
                 <Text style={{ color: colors.secondaryText, fontSize: 12, lineHeight: 18 }}>
@@ -709,7 +752,7 @@ export default function CreateEventModal({ visible, onClose, onCreated, event }:
             >
               {isSubmitting ? <Save size={18} color="#000" /> : <Send size={18} color="#fff" />}
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#fff' }}>
-                {isSubmitting ? 'Saving…' : isEditing ? 'Save changes' : 'Publish Event'}
+                {isSubmitting ? 'Saving…' : isEditing ? 'Save changes' : formData.status === 'draft' ? 'Save draft' : formData.status === 'scheduled' ? 'Schedule event' : 'Publish Event'}
               </Text>
             </TouchableOpacity>
           </View>

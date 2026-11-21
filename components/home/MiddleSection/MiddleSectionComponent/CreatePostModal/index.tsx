@@ -43,6 +43,7 @@ import { usePostSubmissionStore } from '@/lib/store/usePostSubmissionStore';
 import VideoThumbnailPicker from '@/components/media/VideoThumbnailPicker';
 import DraftDiscardSheet from '@/components/drafts/DraftDiscardSheet';
 import DraftsSheet from '@/components/drafts/DraftsSheet';
+import CreateEventModal from '@/components/events/createEventModal/CreateEventModal';
 import { creationDraftService, DraftLimitError, MAX_DRAFTS_PER_KIND, type CreationDraft, type CreationDraftContent } from '@/lib/services/CreationDraftService';
 import { diagnosticLogService } from '@/lib/services/DiagnosticLogService';
 import {
@@ -176,20 +177,14 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
     setCaptionSelection({ start: next.cursor, end: next.cursor });
   };
 
-  const [eventTitle, setEventTitle] = useState('');
-  const [eventStartDate, setEventStartDate] = useState(new Date().toISOString().slice(0, 10));
-  const [eventStartTime, setEventStartTime] = useState('18:00');
-  const [eventEndDate, setEventEndDate] = useState(new Date().toISOString().slice(0, 10));
-  const [eventEndTime, setEventEndTime] = useState('20:00');
-  const [eventRecurrence, setEventRecurrence] = useState<'none' | 'weekly' | 'monthly' | 'yearly'>('none');
+  // "Event" opens the full event form, as the website's composer does; the event gets its own linked feed post.
+  const [isEventFormOpen, setIsEventFormOpen] = useState(false);
 
   const validPollOptions = pollOptions.filter((option) => option.text.trim());
-  const hasNonMentionContent = caption.replace(/@[\w.-]+/g, '').trim().length > 0 || eventTitle.trim().length > 0;
+  const hasNonMentionContent = caption.replace(/@[\w.-]+/g, '').trim().length > 0;
   const isAnotherUploadRunning = usePostSubmissionStore((state) => state.submission?.status === 'running');
   const isPostDisabled = isSubmitting || isAnotherUploadRunning || cropQueue.length > 0 || trimQueue.length > 0 || (postType === 'poll'
     ? validPollOptions.length < 2 || !hasNonMentionContent
-    : postType === 'event'
-    ? !eventTitle.trim() && !hasNonMentionContent
     : !hasNonMentionContent && media.length === 0);
 
   // ── Drafts (shared with the website): up to 5 post drafts, each deleted 7 days after it was created.
@@ -212,8 +207,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
   const baselineSignatureRef = useRef(draftSignature({ caption: '', visibility: 'public', location: undefined, hashtags: [], media: [] }));
   const currentSignature = draftSignature({ caption, visibility, location, hashtags, media });
   const hasUnsavedChanges = currentSignature !== baselineSignatureRef.current
-    || (postType === 'poll' && pollOptions.some((option) => option.text.trim().length > 0))
-    || (postType === 'event' && eventTitle.trim().length > 0);
+    || (postType === 'poll' && pollOptions.some((option) => option.text.trim().length > 0));
   const canSaveDraft = canUseDrafts && postType === 'regular';
 
   const refreshDrafts = async (): Promise<void> => {
@@ -418,26 +412,6 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
     setIsSubmitting(true);
     try {
       postSubmissionService.start({
-        event: postType === 'event' ? {
-          title: eventTitle.trim() || caption.trim(),
-          description: description.trim(),
-          summary: caption.trim(),
-          startDate: eventStartDate,
-          startTime: eventStartTime,
-          endDate: eventEndDate,
-          endTime: eventEndTime,
-          location: location?.name || location?.address || 'Location TBD',
-          recurrence: eventRecurrence,
-          creatorId: userProfile.uid,
-          userId: userProfile.uid,
-          user: {
-            id: userProfile.uid,
-            firstName: userProfile.firstName,
-            lastName: userProfile.lastName,
-            userName: userProfile.userName,
-            profileImage: userProfile.profilePicture ?? null,
-          },
-        } : undefined,
         post: {
         userId: userProfile.uid,
         user: {
@@ -449,7 +423,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
           verificationStatus: userProfile.verificationStatus,
         },
         type: postType,
-        caption: postType === 'event' && eventTitle.trim() ? `📅 Event: ${eventTitle.trim()}\n\n${caption.trim()}` : caption.trim(),
+        caption: caption.trim(),
         description: description.trim(),
         visibility,
         hashtags,
@@ -458,7 +432,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
         friendReferences: mentions.map((mention) => `@${mention}`),
         pollOptions: postType === 'poll' ? validPollOptions : undefined,
         pollDuration: postType === 'poll' ? getPollDurationHours() : undefined,
-        location: postType === 'regular' || postType === 'event' ? location : undefined,
+        location: postType === 'regular' ? location : undefined,
         communityId,
         communityName,
         },
@@ -549,7 +523,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
                 <TouchableOpacity
                   key={option}
                   activeOpacity={1}
-                  onPress={() => setPostType(option)}
+                  onPress={() => (option === 'event' ? setIsEventFormOpen(true) : setPostType(option))}
                   style={{
                     flex: 1,
                     paddingVertical: 10,
@@ -564,75 +538,6 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
                 </TouchableOpacity>
               ))}
             </View>
-
-            {postType === 'event' ? (
-              <View style={{ marginBottom: 16, padding: 14, borderRadius: 16, backgroundColor: colors.successSurface, borderWidth: 1, borderColor: colors.border, gap: 10 }}>
-                <Text style={{ fontSize: 14, fontWeight: '800', color: colors.successText }}>Event Details</Text>
-                <TextInput
-                  value={eventTitle}
-                  onChangeText={setEventTitle}
-                  placeholder="Event Title (e.g. Lime Party @ Maracas)"
-                  placeholderTextColor={colors.mutedText}
-                  style={{ backgroundColor: colors.input, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: colors.border, color: colors.text, fontWeight: '600' }}
-                />
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.secondaryText, marginBottom: 4 }}>Start Date</Text>
-                    <TextInput
-                      value={eventStartDate}
-                      onChangeText={setEventStartDate}
-                      placeholder="YYYY-MM-DD"
-                      placeholderTextColor={colors.mutedText}
-                      style={{ backgroundColor: colors.input, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: colors.border, fontSize: 13, color: colors.text }}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.secondaryText, marginBottom: 4 }}>Start Time</Text>
-                    <TextInput
-                      value={eventStartTime}
-                      onChangeText={setEventStartTime}
-                      placeholder="HH:MM"
-                      placeholderTextColor={colors.mutedText}
-                      style={{ backgroundColor: colors.input, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: colors.border, fontSize: 13, color: colors.text }}
-                    />
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.secondaryText, marginBottom: 4 }}>End Date</Text>
-                    <TextInput
-                      value={eventEndDate}
-                      onChangeText={setEventEndDate}
-                      placeholder="YYYY-MM-DD"
-                      placeholderTextColor={colors.mutedText}
-                      style={{ backgroundColor: colors.input, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: colors.border, fontSize: 13, color: colors.text }}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.secondaryText, marginBottom: 4 }}>End Time</Text>
-                    <TextInput
-                      value={eventEndTime}
-                      onChangeText={setEventEndTime}
-                      placeholder="HH:MM"
-                      placeholderTextColor={colors.mutedText}
-                      style={{ backgroundColor: colors.input, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: colors.border, fontSize: 13, color: colors.text }}
-                    />
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.secondaryText }}>Recurrence:</Text>
-                  {(['none', 'weekly', 'monthly', 'yearly'] as const).map((r) => (
-                    <TouchableOpacity
-                      key={r}
-                      onPress={() => setEventRecurrence(r)}
-                      style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: eventRecurrence === r ? colors.selectedControl : colors.control }}
-                    >
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: eventRecurrence === r ? colors.selectedText : colors.secondaryText, textTransform: 'capitalize' }}>{r}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            ) : null}
 
             <View>
               <TextInput ref={captionInputRef} value={caption} onChangeText={setCaption} selection={captionSelection} onSelectionChange={(event) => setCaptionSelection(event.nativeEvent.selection)} placeholder="Tell us what's on your mind (use @ to mention friends)" placeholderTextColor={colors.mutedText} multiline maxLength={2200} style={{ minHeight: 112, padding: 16, paddingRight: 48, borderRadius: 16, backgroundColor: colors.input, color: colors.text, fontSize: 17, textAlignVertical: 'top', borderWidth: 1, borderColor: colors.border }} />
@@ -843,6 +748,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
         onClose={() => { setIsDraftsSheetVisible(false); setDraftsNotice(null); }}
       />
       <CustomModal visible={Boolean(composerFeedback)} title={composerFeedback?.title ?? 'Create post'} message={composerFeedback?.message ?? ''} type="error" onClose={() => setComposerFeedback(null)} />
+      <CreateEventModal visible={isEventFormOpen} onClose={() => setIsEventFormOpen(false)} onCreated={() => { setIsEventFormOpen(false); setTogglePostForm(false); }} />
       </Animated.View>
     </Modal>
   );

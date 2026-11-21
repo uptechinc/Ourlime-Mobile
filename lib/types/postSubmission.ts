@@ -1,10 +1,8 @@
 import type { CreatePostInput } from '@/lib/services/PostService';
-import type { CreateEventInput } from '@/lib/services/EventService';
 import type { PostUploadStage } from '@/lib/services/PostMediaService';
 
 export type PostSubmissionDraft = {
   post: Omit<CreatePostInput, 'signal' | 'onUploadProgress' | 'onStage'>;
-  event?: CreateEventInput;
 };
 
 export type PostSubmissionSnapshot = {

@@ -18,7 +18,7 @@ import EventReviewsSection from '@/components/events/detail/EventReviewsSection'
 import EventGalleryViewer from '@/components/events/detail/EventGalleryViewer';
 import { RegistrationsDialog } from '@/components/events/EventDialogs';
 import { useEventActions } from '@/components/events/useEventActions';
-import { STATUS_BADGES, accessibilityLabel, daysRemaining, formatEventLong } from '@/components/events/eventPresentation';
+import { STATUS_BADGES, accessibilityLabel, daysRemaining, describeEventRecurrence, formatEventLong } from '@/components/events/eventPresentation';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
@@ -96,7 +96,7 @@ export default function EventDetailScreen() {
   const heroImage = event?.image ?? event?.media?.find((item) => item.type === 'image')?.url;
   const gallery = (event?.media ?? []).filter((item) => item.type === 'image' && item.url !== event?.image).map((item) => item.url);
   const days = event ? daysRemaining(event.startDate) : 0;
-  const canEdit = event ? eventService.canEdit(event, activeUserId) : false;
+  const canEdit = event ? eventService.canEdit(event, activeUserId, authorization.isAdmin) : false;
   const canDelete = event ? eventService.canManage(event, activeUserId, isStaff) : false;
   const canSeeRegistrations = Boolean(event && (event.registrationQuestions?.length ?? 0) > 0 && eventService.hasPermission(event, activeUserId, 'manage_attendance'));
   const handleCommentCount = useCallback((count: number) => setCommentCount(count), []);
@@ -235,7 +235,7 @@ export default function EventDetailScreen() {
                 <Text style={styles.infoTitle}>Date & Time</Text>
                 <Text style={styles.infoDetail}>{formatEventLong(event.startDate, event.endDate)}</Text>
                 {days > 0 ? <Text style={styles.infoAccent}>{days} {days === 1 ? 'day' : 'days'} remaining</Text> : null}
-                {event.recurrence && event.recurrence !== 'none' ? <View style={styles.inline}><Repeat size={13} color={colors.mutedText} /><Text style={styles.infoDetail}>Repeats {event.recurrence}</Text></View> : null}
+                {describeEventRecurrence(event) ? <View style={styles.inline}><Repeat size={13} color={colors.mutedText} /><Text style={styles.infoDetail}>{describeEventRecurrence(event)}</Text></View> : null}
               </View>
             </View>
             <TouchableOpacity accessibilityRole={isOnline ? undefined : 'link'} disabled={isOnline} onPress={handleOpenLocation} style={styles.infoRow}>

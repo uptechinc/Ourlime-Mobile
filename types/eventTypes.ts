@@ -20,6 +20,13 @@ export type Event = {
     userId: string;
     likeCount: number;
     recurrence: string;
+    /** Custom recurrence (recurrence 'custom'), as the website stores it. */
+    recurrenceInterval?: number;
+    recurrenceUnit?: EventRecurrenceUnit | null;
+    recurrenceDays?: string[];
+    recurrenceEndMode?: EventRecurrenceEndMode;
+    recurrenceEndDate?: string | null;
+    recurrenceCount?: number | null;
     category?: string; // Category of the event
     communityVariantId?: string; // ID of the community if this is a community event
     media?: MediaItem[]; // Media items for the event
@@ -46,6 +53,44 @@ export type Event = {
     isFeatured?: boolean;
     /** Organiser display details (name, photo, identity verified), filled in for listings like the website's fetchEvents. */
     organizer?: { name: string; userName: string | null; image: string | null; verified: boolean };
+};
+
+export type EventRecurrenceUnit = 'day' | 'week' | 'month' | 'year';
+export type EventRecurrenceEndMode = 'never' | 'date' | 'count';
+
+/**
+ * What the event form sends to the server (the website's create and edit allowlist). The server checks each field,
+ * so an event made in the app is stored exactly like one made on the website.
+ */
+export type EventFormFields = {
+    title: string;
+    summary: string;
+    startDate: string;
+    endDate: string;
+    image: string;
+    location: string;
+    recurrence: string;
+    recurrenceInterval: number;
+    recurrenceUnit: EventRecurrenceUnit | null;
+    recurrenceDays: string[];
+    recurrenceEndMode: EventRecurrenceEndMode;
+    recurrenceEndDate: string | null;
+    recurrenceCount: number | null;
+    tags: string[];
+    additionalMedia: { url: string; type: 'image' | 'video'; isVerified: boolean }[];
+    category: string;
+    isVirtual: boolean;
+    isFree: boolean;
+    ticketPrice: number | null;
+    accessibility: string[];
+    lat: number | null;
+    lng: number | null;
+    status: 'draft' | 'scheduled' | 'published';
+    publishAt: string | null;
+    ageRestriction: number | null;
+    coOrganizers: CoOrganizer[];
+    registrationQuestions: RegistrationQuestion[];
+    communityVariantId?: string;
 };
 
 /** Same statuses as the website's types/eventTypes EventStatus. */

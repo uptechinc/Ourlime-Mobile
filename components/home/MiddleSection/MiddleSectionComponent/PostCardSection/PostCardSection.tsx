@@ -129,6 +129,14 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
     if (!post.eventId) return;
     setEventAttendanceLoading(true);
     try {
+      // Events that ask registration questions are joined on the event page, where the questions are answered.
+      if (!eventAttendance?.isAttending) {
+        const details = await eventService.fetchEvent(post.eventId);
+        if (details?.event.registrationQuestions?.length) {
+          router.push(`/events/${post.eventId}`);
+          return;
+        }
+      }
       setEventAttendance(await eventService.toggleAttendance(post.eventId));
     } catch (error: unknown) {
       setFeedback({ title: 'RSVP not updated', message: error instanceof Error ? error.message : 'Please try again' });

@@ -4,7 +4,7 @@ import * as Location from 'expo-location';
 import { db, storage } from '../firebaseConfig';
 import { AuthService } from './AuthService';
 import { appServerService, AppServerError } from './AppServerService';
-import type { CoOrganizer, CoOrganizerPermission, Event, EventStatus, MediaItem, RegistrationQuestion } from '@/types/eventTypes';
+import type { CoOrganizer, CoOrganizerPermission, Event, EventFormFields, EventRecurrenceEndMode, EventRecurrenceUnit, EventStatus, MediaItem, RegistrationQuestion } from '@/types/eventTypes';
 import { accountLifecycleVisibilityService } from './AccountLifecycleVisibilityService';
 import { communityDataService } from './CommunityDataService';
 import { firestoreBatchReadService } from './FirestoreBatchReadService';
@@ -193,9 +193,12 @@ export class EventService {
     return getDownloadURL(upload.ref);
   }
 
-  /** Who may edit (the organiser), manage (organiser or staff) and use each co-organiser permission, as on the website. */
-  public canEdit(event: Event, userId: string | null | undefined): boolean {
-    return Boolean(userId && userId === event.userId);
+  /**
+   * Who may edit: the organiser or Ourlime staff (and, for community events, the community's staff, which the server
+   * checks) — the website's canDeleteEvent. Manage covers the same people; co-organisers get only their permissions.
+   */
+  public canEdit(event: Event, userId: string | null | undefined, isStaff = false): boolean {
+    return Boolean(userId && (userId === event.userId || isStaff));
   }
 
   public canManage(event: Event, userId: string | null | undefined, isStaff: boolean): boolean {
@@ -217,10 +220,18 @@ export class EventService {
     return event.status ?? 'published';
   }
 
-  /** Edits the organiser's own event (only the fields the rules let the organiser change). */
-  public async updateEvent(eventId: string, updates: Partial<EventEditableFields>): Promise<void> {
+  /**
+   * Saves changes through the eventApi callable (the website's PATCH /api/events/[id]): organiser, community staff or
+   * administrator; the server also updates the event's feed posts and removes a replaced cover.
+   */
+  public async updateEvent(eventId: string, updates: Partial<EventFormFields>): Promise<void> {
     if (updates.title !== undefined && !updates.title.trim()) throw new Error('The event needs a title.');
-    await updateDoc(doc(db, 'events', eventId), { ...updates, updatedAt: new Date().toISOString() });
+    await appServerService.call('eventApi', { action: 'update', eventId, event: updates });
+  }
+
+  /** Deletes an event and its likes, comments and attendees through the eventApi callable (website DELETE /api/events/[id]). */
+  public async deleteEvent(eventId: string): Promise<void> {
+    await appServerService.call('eventApi', { action: 'delete', eventId });
   }
 
   /**
@@ -378,6 +389,12 @@ export class EventService {
       userId: typeof event.userId === 'string' ? event.userId : typeof event.creatorId === 'string' ? event.creatorId : '',
       likeCount: typeof event.likeCount === 'number' ? event.likeCount : 0,
       recurrence: typeof event.recurrence === 'string' ? event.recurrence : 'none',
+      recurrenceInterval: typeof event.recurrenceInterval === 'number' ? event.recurrenceInterval : undefined,
+      recurrenceUnit: (['day', 'week', 'month', 'year'] as const).find((unit): unit is EventRecurrenceUnit => unit === event.recurrenceUnit) ?? null,
+      recurrenceDays: this.stringList(event.recurrenceDays),
+      recurrenceEndMode: (['never', 'date', 'count'] as const).find((mode): mode is EventRecurrenceEndMode => mode === event.recurrenceEndMode),
+      recurrenceEndDate: typeof event.recurrenceEndDate === 'string' ? event.recurrenceEndDate : null,
+      recurrenceCount: this.numberOrNull(event.recurrenceCount),
       image: typeof event.image === 'string' && event.image ? event.image : undefined,
       media,
       category: typeof event.category === 'string' && event.category ? event.category : undefined,
@@ -402,16 +419,13 @@ export class EventService {
     };
   }
 
-  /** Creates the event directly in Firestore (the fields the rules allow) and signs the organiser up, as the website does. */
-  public async createEvent(input: CreateEventInput): Promise<string> {
-    const event = await addDoc(collection(db, 'events'), { ...input, likeCount: 0, createdAt: new Date().toISOString() });
-    // The creator auto-attends, as on the website.
-    try {
-      await setDoc(doc(db, 'eventAttendees', `${event.id}_${input.userId}`), { eventId: event.id, userId: input.userId, createdAt: new Date().toISOString() });
-    } catch (error: unknown) {
-      console.error('[EventService.createEvent] Auto-attend error:', error instanceof Error ? error.message : 'Unknown error');
-    }
-    return event.id;
+  /**
+   * Creates the event through the eventApi callable (the website's POST /api/events): the server checks the organiser
+   * (identity verified, Events not suspended), signs them up, and gives a published event its home-feed post.
+   */
+  public async createEvent(fields: EventFormFields): Promise<string> {
+    const result = await appServerService.call<{ id: string; feedPostId: string | null }>('eventApi', { action: 'create', event: fields });
+    return result.id;
   }
 
   /** Community events read and written directly in Firestore (same logic as the website's community events route). */

@@ -457,7 +457,7 @@ export default function DiscoverScreen() {
               ) : filteredJobs.length > 0 ? filteredJobs.map((job) => (
                 <TouchableOpacity
                   key={job.id}
-                  onPress={() => router.push('/jobs')}
+                  onPress={() => router.push({ pathname: '/jobs/[id]', params: { id: job.id } })}
                   style={{
                     flexDirection: 'row',
                     backgroundColor: colors.surface,

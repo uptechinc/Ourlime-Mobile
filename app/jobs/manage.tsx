@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Linking, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Archive, Briefcase, CalendarClock, CheckSquare, ChevronDown, ChevronUp, Edit3, ExternalLink, FileText, History, MapPin, RotateCcw, Search, Square, StickyNote, Trash2, XCircle } from 'lucide-react-native';
+import { FlatList, Linking, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Archive, Briefcase, CalendarClock, CheckSquare, ChevronDown, ChevronUp, Edit3, ExternalLink, FileText, History, MapPin, PauseCircle, PlayCircle, RotateCcw, Search, Square, StickyNote, Trash2, XCircle } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PageHeader from '@/components/ui/PageHeader';
 import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
 import FilterBar from '@/components/ui/FilterBar';
 import { JobManagementSkeleton } from '@/components/jobs/JobsSkeletons';
+import JobDeleteModal, { type JobDeleteMode } from '@/components/jobs/manage/JobDeleteModal';
 import { JobManagementAuditSheet, JobManagementEditSheet, JobManagementInterviewSheet, JobManagementNotesSheet } from '@/components/jobs/manage/JobManagementSheets';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import {
   jobManagementService,
   type ApplicationStatus,
+  type JobStateAction,
   type ManagedJob,
   type ManagedJobApplication,
 } from '@/lib/services/JobManagementService';
@@ -59,6 +61,7 @@ export default function ManageJobsScreen() {
   const [interviewApplication, setInterviewApplication] = useState<ManagedJobApplication | null>(null);
   const [auditJob, setAuditJob] = useState<ManagedJob | null>(null);
   const [editJob, setEditJob] = useState<ManagedJob | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ job: ManagedJob; mode: JobDeleteMode } | null>(null);
 
   const applyJobs = useCallback((nextJobs: ManagedJob[]) => {
     setJobs(nextJobs);
@@ -118,36 +121,34 @@ export default function ManageJobsScreen() {
     });
   }, [filter, searchQuery, selectedJob, sort]);
 
-  const handleJobAction = async (jobId: string, action: 'close' | 'archive' | 'reopen' | 'publish' | 'delete') => {
+  const handleJobAction = async (jobId: string, action: JobStateAction | 'delete'): Promise<boolean> => {
     setWorkingId(jobId);
     setError('');
     try {
       if (action === 'delete') await jobManagementService.deleteJob(jobId);
       else await jobManagementService.changeJobState(jobId, action);
       await load();
+      return true;
     } catch (actionError: unknown) {
+      console.error('[ManageJobsScreen.handleJobAction] Error:', actionError);
       setError(actionError instanceof Error ? actionError.message : 'The job could not be updated.');
+      return false;
     } finally {
       setWorkingId(null);
     }
   };
 
   // Web /profile/jobs/delete: a live listing is closed first so its applications are preserved; closed, draft and
-  // archived listings can then be deleted (applications become "Job withdrawn" and lose their resume files).
+  // archived listings can then be deleted once their title is typed (applications become "Job withdrawn").
   const handleDeleteJob = (job: ManagedJob) => {
     const isLive = job.status === 'published' || job.status === 'pending_review' || job.status === 'active' || job.status === 'paused';
-    if (isLive) {
-      Alert.alert('Close this job first?', `${job.title} is live. It will be closed so it stops accepting applications and its applicant data is preserved. You can delete it once it is closed.`, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Close job', style: 'destructive', onPress: () => void handleJobAction(job.id, 'close') },
-      ]);
-      return;
-    }
-    const applicationNote = job.applications.length > 0 ? ` ${job.applications.length} application(s) will be marked as job withdrawn and their resume files removed.` : '';
-    Alert.alert('Delete job permanently?', `${job.title} will be permanently deleted. This cannot be undone.${applicationNote}`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => void handleJobAction(job.id, 'delete') },
-    ]);
+    setDeleteTarget({ job, mode: isLive ? 'close' : 'delete' });
+  };
+
+  const handleConfirmDeleteAction = async (action: 'close' | 'delete') => {
+    if (!deleteTarget) return;
+    const succeeded = await handleJobAction(deleteTarget.job.id, action);
+    if (succeeded) setDeleteTarget(null);
   };
 
   const handleApplication = async (application: ManagedJobApplication, status: ApplicationStatus) => {
@@ -218,7 +219,7 @@ export default function ManageJobsScreen() {
     </ScrollView>
     {selectedJob ? <View style={styles.jobCard}>
       <View style={styles.jobTitleRow}><View style={styles.flex}><Text style={styles.jobTitle}>{selectedJob.title}</Text><View style={styles.locationRow}><MapPin size={13} color={colors.mutedText} /><Text numberOfLines={1} ellipsizeMode="tail" style={[styles.meta, styles.flex]}>{linkPresentationService.compactUrlsInText(selectedJob.location)} · {selectedJob.type === 'quickTask' ? 'Quick Task' : 'Professional'} · {selectedJob.status.replace(/_/g, ' ')}</Text></View></View><TouchableOpacity onPress={() => setAuditJob(selectedJob)} style={styles.iconButton}><History size={19} color={colors.successText} /></TouchableOpacity></View>
-      <View style={styles.actions}><TouchableOpacity onPress={() => setEditJob(selectedJob)} style={styles.editAction}><Edit3 size={15} color={colors.icon} /><Text style={styles.editActionText}>Edit</Text></TouchableOpacity>{selectedJob.status === 'draft' ? <Action label="Publish" icon="reopen" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'publish')} /> : selectedJob.status === 'closed' || selectedJob.status === 'archived' || selectedJob.status === 'active' ? <Action label="Reopen" icon="reopen" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'reopen')} /> : null}{selectedJob.status !== 'closed' && selectedJob.status !== 'archived' && selectedJob.status !== 'draft' ? <Action label="Close" icon="close" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'close')} /> : null}{selectedJob.status !== 'archived' ? <Action label="Archive" icon="archive" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'archive')} /> : null}<Action label="Delete" icon="delete" danger disabled={workingId === selectedJob.id} onPress={() => handleDeleteJob(selectedJob)} /></View>
+      <View style={styles.actions}><TouchableOpacity onPress={() => setEditJob(selectedJob)} style={styles.editAction}><Edit3 size={15} color={colors.icon} /><Text style={styles.editActionText}>Edit</Text></TouchableOpacity>{selectedJob.status === 'draft' ? <Action label="Publish" icon="reopen" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'publish')} /> : selectedJob.status === 'closed' || selectedJob.status === 'archived' || selectedJob.status === 'active' ? <Action label="Reopen" icon="reopen" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'reopen')} /> : null}{selectedJob.status === 'published' ? <Action label="Pause" icon="pause" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'pause')} /> : selectedJob.status === 'paused' ? <Action label="Resume" icon="resume" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'resume')} /> : null}{selectedJob.status !== 'closed' && selectedJob.status !== 'archived' && selectedJob.status !== 'draft' ? <Action label="Close" icon="close" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'close')} /> : null}{selectedJob.status !== 'archived' ? <Action label="Archive" icon="archive" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'archive')} /> : null}<Action label="Delete" icon="delete" danger disabled={workingId === selectedJob.id} onPress={() => handleDeleteJob(selectedJob)} /></View>
     </View> : null}
     <View style={styles.searchBox}><Search size={18} color={colors.mutedText} /><TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Search applicants, cover letters, answers…" placeholderTextColor={colors.mutedText} style={styles.searchInput} /></View>
     <View style={styles.filterBar}><FilterBar groups={filterGroups} onOpen={() => setFiltersOpen(true)} onClear={handleClearFilter} /></View>
@@ -270,6 +271,16 @@ export default function ManageJobsScreen() {
     <FilterSheet visible={filtersOpen} title="Filter applicants" groups={filterGroups} applyLabel="Show applicants" onApply={handleApplyFilters} onClose={() => setFiltersOpen(false)} />
     <JobManagementAuditSheet job={auditJob} onClose={() => setAuditJob(null)} />
     <JobManagementEditSheet job={editJob} onClose={() => setEditJob(null)} onSaved={async () => { await load(); }} />
+    <JobDeleteModal
+      visible={Boolean(deleteTarget)}
+      mode={deleteTarget?.mode ?? 'delete'}
+      jobTitle={deleteTarget?.job.title ?? ''}
+      applicationCount={deleteTarget?.job.applications.length ?? 0}
+      isProcessing={Boolean(deleteTarget && workingId === deleteTarget.job.id)}
+      onDelete={() => void handleConfirmDeleteAction('delete')}
+      onCloseJob={() => void handleConfirmDeleteAction('close')}
+      onDismiss={() => setDeleteTarget(null)}
+    />
     <JobManagementInterviewSheet application={interviewApplication} job={selectedJob} onClose={() => setInterviewApplication(null)} onScheduled={async () => { await load(); }} />
   </SafeAreaView>;
 }
@@ -308,11 +319,11 @@ function ApplicationCard({ application, questionTextById, selected, expanded, wo
   </View>;
 }
 
-type ActionProps = { label: string; icon: 'reopen' | 'close' | 'archive' | 'delete'; onPress: () => void; disabled: boolean; danger?: boolean };
+type ActionProps = { label: string; icon: 'reopen' | 'close' | 'archive' | 'delete' | 'pause' | 'resume'; onPress: () => void; disabled: boolean; danger?: boolean };
 function Action({ label, icon, onPress, disabled, danger = false }: ActionProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const Icon = icon === 'reopen' ? RotateCcw : icon === 'close' ? XCircle : icon === 'archive' ? Archive : Trash2;
+  const Icon = icon === 'reopen' ? RotateCcw : icon === 'close' ? XCircle : icon === 'archive' ? Archive : icon === 'pause' ? PauseCircle : icon === 'resume' ? PlayCircle : Trash2;
   return <TouchableOpacity onPress={onPress} disabled={disabled} style={[styles.action, danger && styles.danger, disabled && styles.disabled]}><Icon size={15} color={danger ? colors.destructiveText : colors.successText} /><Text style={[styles.actionText, danger && styles.dangerText]}>{label}</Text></TouchableOpacity>;
 }
 

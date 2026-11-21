@@ -11,6 +11,8 @@ import AdminDeletionModal from '@/components/moderation/AdminDeletionModal';
 import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
+import { CancelEventDialog } from '@/components/events/EventDialogs';
+import { EventService } from '@/lib/services/EventService';
 
 type ActionFeedback = {
   title: string;
@@ -32,6 +34,7 @@ type PostOptionsSheetProps = {
 
 const postService = PostService.getInstance();
 const relationshipService = RelationshipService.getInstance();
+const eventService = EventService.getInstance();
 
 export default function PostOptionsSheet({ visible, post, currentUserId, canModerateCommunityPost = false, onClose, onDelete, onBlock, onPostUpdate, onEditRequest }: PostOptionsSheetProps) {
   const { colors } = useAppTheme();
@@ -45,6 +48,8 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
   const [isAdmin, setIsAdmin] = useState(false);
   const [blockConfirmationVisible, setBlockConfirmationVisible] = useState(false);
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
+  // An event post's host can cancel the event from here, as on the website (attendees are told it was cancelled).
+  const [eventCancel, setEventCancel] = useState<{ attendeeCount: number; state: 'idle' | 'busy' | 'done' } | null>(null);
   const isOwner = Boolean(currentUserId && currentUserId === post.userId);
   const canDelete = isOwner || (post.origin === 'community' && canModerateCommunityPost);
 
@@ -105,6 +110,26 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
 
   const handleDelete = () => {
     setDeleteModalVisible(true);
+  };
+
+  const handleOpenEventCancel = () => {
+    if (!post.eventId) return;
+    setEventCancel({ attendeeCount: 0, state: 'idle' });
+    eventService.countAttendees(post.eventId)
+      .then((attendeeCount) => setEventCancel((current) => current ? { ...current, attendeeCount } : current))
+      .catch((error: unknown) => console.error('[PostOptionsSheet.handleOpenEventCancel] Error:', error instanceof Error ? error.message : 'Unknown error'));
+  };
+
+  const handleConfirmEventCancel = async () => {
+    if (!post.eventId) return;
+    setEventCancel((current) => current ? { ...current, state: 'busy' } : current);
+    try {
+      await eventService.cancelEvent(post.eventId);
+      setEventCancel((current) => current ? { ...current, state: 'done' } : current);
+    } catch (error: unknown) {
+      setEventCancel(null);
+      setFeedback({ title: 'Event not cancelled', message: error instanceof Error ? error.message : 'Please try again', type: 'danger' });
+    }
   };
 
   const handleVisibility = () => {
@@ -253,6 +278,7 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
                     'Edit Post',
                     () => { onClose(); onEditRequest?.(); },
                   ) : null}
+                  {isOwner && post.eventId ? renderRow('x-circle', 'Cancel Event', handleOpenEventCancel, { destructive: true }) : null}
                   {isOwner && !post.communityId ? renderRow(
                     post.visibility === 'private' ? 'globe' : 'lock',
                     post.visibility === 'private' ? 'Make Public' : 'Make Private (Friends only)',
@@ -340,6 +366,15 @@ export default function PostOptionsSheet({ visible, post, currentUserId, canMode
         isLoading={busyAction === 'block'}
         onConfirm={handleConfirmBlock}
         onClose={() => setBlockConfirmationVisible(false)}
+      />
+      <CancelEventDialog
+        visible={eventCancel !== null}
+        eventTitle={post.caption || 'This event'}
+        attendeeCount={eventCancel?.attendeeCount ?? 0}
+        isBusy={eventCancel?.state === 'busy'}
+        isDone={eventCancel?.state === 'done'}
+        onConfirm={() => void handleConfirmEventCancel()}
+        onClose={() => { if (eventCancel?.state !== 'busy') setEventCancel(null); }}
       />
       <CustomModal
         visible={feedback !== null}

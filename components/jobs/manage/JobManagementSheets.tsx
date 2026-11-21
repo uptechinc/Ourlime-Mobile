@@ -11,6 +11,7 @@ import {
 	View,
 } from 'react-native';
 import {
+	AlertTriangle,
 	CalendarClock,
 	Edit3,
 	History,
@@ -23,18 +24,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
-import { ChoicePills } from '@/components/jobs/createJobsModal/JobFormParts';
+import { AddRowButton, ChoicePills, RemovableRow, type ChoiceOption } from '@/components/jobs/createJobsModal/JobFormParts';
+import DateTimeField from '@/components/ui/DateTimeField';
 import {
-	COMPANY_SIZES, COMPLEXITY_OPTIONS, CONTACT_OPTIONS, CURRENCIES, EMPLOYMENT_TYPES, EXPERIENCE_LEVELS, JOB_POSTER_DISCLAIMER,
+	ANSWER_TYPES, COMPANY_SIZES, COMPLEXITY_OPTIONS, CONTACT_OPTIONS, CURRENCIES, EMPLOYMENT_TYPES, EXPERIENCE_LEVELS, JOB_POSTER_DISCLAIMER,
 	LOCATION_TYPES, PAYMENT_PERIODS, URGENCY_OPTIONS,
 } from '@/lib/job/JobFormOptions';
 import {
+	JOB_MAJOR_CHANGE_LABELS,
 	jobManagementService,
 	type EmployerNote,
 	type InterviewType,
 	type JobAuditEntry,
 	type ManagedJob,
 	type ManagedJobApplication,
+	type ManagedJobQuestion,
 	type ScheduleInterviewInput,
 	type UpdateManagedJobInput,
 } from '@/lib/services/JobManagementService';
@@ -336,8 +340,7 @@ export function JobManagementInterviewSheet({
 }: JobManagementInterviewSheetProps) {
 	const { colors } = useAppTheme();
 	const styles = useMemo(() => createStyles(colors), [colors]);
-	const [date, setDate] = useState('');
-	const [time, setTime] = useState('');
+	const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
 	const [duration, setDuration] = useState(30);
 	const [type, setType] = useState<InterviewType>('video');
 	const [location, setLocation] = useState('');
@@ -347,8 +350,7 @@ export function JobManagementInterviewSheet({
 
 	useEffect(() => {
 		if (!application) {
-			setDate('');
-			setTime('');
+			setScheduledAt(null);
 			setDuration(30);
 			setType('video');
 			setLocation('');
@@ -359,13 +361,11 @@ export function JobManagementInterviewSheet({
 
 	const handleSchedule = async () => {
 		if (!application || !job) return;
-		const scheduledDate = new Date(`${date}T${time}`);
-		if (!date || !time || Number.isNaN(scheduledDate.getTime())) {
-			setError(
-				'Enter a valid date and time, for example 2026-08-24 and 14:30.'
-			);
+		if (!scheduledAt) {
+			setError('Pick the interview date and time.');
 			return;
 		}
+		const scheduledDate = scheduledAt;
 		if (scheduledDate.getTime() <= Date.now()) {
 			setError('Interview time must be in the future.');
 			return;
@@ -433,26 +433,17 @@ export function JobManagementInterviewSheet({
 						keyboardShouldPersistTaps="handled"
 						contentContainerStyle={styles.formContent}
 					>
-						<FormLabel label="Date (YYYY-MM-DD)" />
-						<TextInput
-							value={date}
-							onChangeText={setDate}
-							placeholder="2026-08-24"
-							placeholderTextColor={colors.mutedText}
-							autoCapitalize="none"
-							keyboardType="numbers-and-punctuation"
-							style={styles.input}
-						/>
-						<FormLabel label="Time (24-hour HH:MM)" />
-						<TextInput
-							value={time}
-							onChangeText={setTime}
-							placeholder="14:30"
-							placeholderTextColor={colors.mutedText}
-							autoCapitalize="none"
-							keyboardType="numbers-and-punctuation"
-							style={styles.input}
-						/>
+						<View style={styles.fieldSpacer}>
+							<DateTimeField
+								label="Date and time"
+								required
+								mode="datetime"
+								value={scheduledAt}
+								onChange={setScheduledAt}
+								placeholder="Pick the interview date and time"
+								minimumDate={new Date()}
+							/>
+						</View>
 						<FormLabel label="Duration" />
 						<ScrollView
 							horizontal
@@ -532,6 +523,16 @@ type JobManagementEditSheetProps = {
 	onSaved: () => Promise<void>;
 };
 
+/** A screening question in the editor; `id` is the stored question's id ('' for a new one), `rowKey` is local. */
+type EditableQuestion = ManagedJobQuestion & { rowKey: string };
+const createRowKey = (): string => Math.random().toString(36).substring(2, 11);
+const answerTypeOptions = (current: ManagedJobQuestion['answerType']): ChoiceOption<ManagedJobQuestion['answerType']>[] => {
+	const options: ChoiceOption<ManagedJobQuestion['answerType']>[] = [...ANSWER_TYPES];
+	// Older listings can use 'single' / 'multiple'; keep them selectable so the stored type is visible.
+	if (!options.some((option) => option.value === current)) options.push({ value: current, label: current === 'single' ? 'Single Choice' : 'Multiple Choice' });
+	return options;
+};
+
 export function JobManagementEditSheet({
 	job,
 	onClose,
@@ -562,6 +563,8 @@ export function JobManagementEditSheet({
 	const [currency, setCurrency] = useState('');
 	const [paymentPeriod, setPaymentPeriod] = useState('');
 	const [contactPreference, setContactPreference] = useState('');
+	const [closingDate, setClosingDate] = useState<Date | null>(null);
+	const [questions, setQuestions] = useState<EditableQuestion[]>([]);
 	const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState('');
@@ -586,44 +589,30 @@ export function JobManagementEditSheet({
 		setCompanySize(job.categoryDetails.size);
 		setUrgency(job.categoryDetails.urgency);
 		setComplexity(job.categoryDetails.complexity);
-		setEmploymentType(job.categoryDetails.employmentType);
-		setExperienceLevel(job.categoryDetails.experienceLevel);
-		setCurrency(job.categoryDetails.currency || 'USD');
-		setPaymentPeriod(job.categoryDetails.paymentPeriod);
-		setContactPreference(job.categoryDetails.contactPreference);
+		setEmploymentType(job.listingDetails.employmentType);
+		setExperienceLevel(job.listingDetails.experienceLevel);
+		setCurrency(job.listingDetails.currency || 'USD');
+		setPaymentPeriod(job.listingDetails.paymentPeriod);
+		setContactPreference(job.listingDetails.contactPreference);
+		setClosingDate(job.listingDetails.closingDateMs ? new Date(job.listingDetails.closingDateMs) : null);
+		setQuestions(job.questions.map((question) => ({ ...question, rowKey: question.id || createRowKey() })));
 		setDisclaimerAccepted(false);
 		setError('');
 	}, [job]);
 
-	const handleSave = async () => {
-		if (!job) return;
-		if (!disclaimerAccepted) {
-			setError(
-				'Confirm the Job Poster Disclaimer before saving listing changes.'
-			);
-			return;
-		}
-		const from = Number(priceFrom);
-		const to = Number(priceTo);
-		const isPhysical = locationType === 'onsite' || locationType === 'hybrid';
-		if (isPhysical && (!address.trim() || !city.trim() || !country.trim())) {
-			setError('Location details are required for onsite or hybrid jobs.');
-			return;
-		}
-		if (!Number.isFinite(from) || !Number.isFinite(to)) {
-			setError('Enter a valid compensation range.');
-			return;
-		}
-		const splitValues = (value: string) =>
-			value
-				.split(',')
-				.map((item) => item.trim())
-				.filter(Boolean);
-		const input: UpdateManagedJobInput = {
+	const splitValues = (value: string): string[] =>
+		value
+			.split(',')
+			.map((item) => item.trim())
+			.filter(Boolean);
+
+	const buildInput = (): UpdateManagedJobInput | null => {
+		if (!job) return null;
+		return {
 			title,
 			description,
 			category,
-			priceRange: { from, to },
+			priceRange: { from: Number(priceFrom), to: Number(priceTo) },
 			location: {
 				type: locationType.trim() || 'remote',
 				address: address.trim(),
@@ -641,18 +630,56 @@ export function JobManagementEditSheet({
 				duration: duration.trim(),
 				urgency,
 				complexity,
+			},
+			listingDetails: {
 				employmentType,
 				experienceLevel,
 				currency,
 				paymentPeriod,
 				contactPreference,
+				closingDateMs: closingDate ? closingDate.getTime() : null,
 			},
-			questions: job.questions,
+			questions: questions.map((question) => ({ id: question.id, question: question.question, answerType: question.answerType, options: question.options })),
 		};
+	};
+
+	const draftInput = buildInput();
+	const majorChanges = job && draftInput ? jobManagementService.detectMajorChanges(job, draftInput) : [];
+	const activeApplicantCount = job ? job.applications.filter((application) => application.status !== 'withdrawn' && application.status !== 'job_withdrawn' && application.status !== 'rejected').length : 0;
+
+	const updateQuestion = (rowKey: string, changes: Partial<ManagedJobQuestion>): void => {
+		setQuestions((current) => current.map((question) => (question.rowKey === rowKey ? { ...question, ...changes } : question)));
+	};
+
+	const handleSave = async () => {
+		const input = buildInput();
+		if (!job || !input) return;
+		// Website job editor: the disclaimer is confirmed again only for material (major) changes.
+		if (majorChanges.length > 0 && !disclaimerAccepted) {
+			setError(
+				'Confirm the Job Poster Disclaimer before saving these major changes.'
+			);
+			return;
+		}
+		const isPhysical = locationType === 'onsite' || locationType === 'hybrid';
+		if (isPhysical && (!address.trim() || !city.trim() || !country.trim())) {
+			setError('Location details are required for onsite or hybrid jobs.');
+			return;
+		}
+		if (!Number.isFinite(input.priceRange.from) || !Number.isFinite(input.priceRange.to)) {
+			setError('Enter a valid compensation range.');
+			return;
+		}
+		const incompleteQuestion = input.questions.find((question) => question.question.trim() && question.answerType !== 'input' && question.options.filter((option) => option.trim()).length < 2);
+		if (incompleteQuestion) {
+			setError('Give every choice question at least two options.');
+			return;
+		}
 		setSaving(true);
 		setError('');
 		try {
 			await jobManagementService.updateJob(job.id, input);
+			jobManagementService.notifyApplicantsOfMajorChanges(job, majorChanges);
 			await onSaved();
 			onClose();
 		} catch (saveError: unknown) {
@@ -852,21 +879,87 @@ export function JobManagementEditSheet({
 								<ChoicePills label="Currency" scrollable options={CURRENCIES.map((entry) => ({ value: entry, label: entry }))} value={currency} onChange={setCurrency} />
 							</>
 						)}
-						<View style={styles.disclaimer}>
-							<View style={styles.disclaimerCopy}>
-								<Text style={styles.disclaimerTitle}>
-									Job Poster Disclaimer
-								</Text>
-								<Text style={styles.disclaimerText}>
-									{JOB_POSTER_DISCLAIMER}
-								</Text>
-							</View>
-							<Switch
-								value={disclaimerAccepted}
-								onValueChange={setDisclaimerAccepted}
-								trackColor={{ true: '#10b981' }}
+						<View style={styles.fieldSpacer}>
+							<DateTimeField
+								label={job?.type === 'quickTask' ? 'Completion deadline' : 'Closing date'}
+								mode="date"
+								value={closingDate}
+								onChange={setClosingDate}
+								onClear={() => setClosingDate(null)}
+								placeholder="Optional. Leave empty to keep the job open"
+								minimumDate={new Date()}
 							/>
 						</View>
+						<View style={styles.questionsHeader}>
+							<Text style={styles.questionsTitle}>Screening questions</Text>
+							<AddRowButton label="Add question" onPress={() => setQuestions((current) => [...current, { rowKey: createRowKey(), id: '', question: '', answerType: 'input', options: [] }])} />
+						</View>
+						{questions.length === 0 ? (
+							<Text style={styles.disclaimerText}>No screening questions. Applicants just send their application.</Text>
+						) : questions.map((question, questionIndex) => (
+							<View key={question.rowKey} style={styles.questionCard}>
+								<RemovableRow
+									value={question.question}
+									onChangeText={(text) => updateQuestion(question.rowKey, { question: text })}
+									placeholder={`Question ${questionIndex + 1}`}
+									onRemove={() => setQuestions((current) => current.filter((entry) => entry.rowKey !== question.rowKey))}
+									removeLabel="Remove question"
+								/>
+								<ChoicePills
+									options={answerTypeOptions(question.answerType)}
+									value={question.answerType}
+									onChange={(answerType) => updateQuestion(question.rowKey, { answerType, options: answerType === 'input' ? [] : question.options })}
+								/>
+								{question.answerType !== 'input' ? (
+									<View style={styles.optionsBlock}>
+										{question.options.map((option, optionIndex) => (
+											<RemovableRow
+												key={`${question.rowKey}-${optionIndex}`}
+												value={option}
+												onChangeText={(text) => updateQuestion(question.rowKey, { options: question.options.map((entry, entryIndex) => (entryIndex === optionIndex ? text : entry)) })}
+												placeholder="Enter option"
+												onRemove={() => updateQuestion(question.rowKey, { options: question.options.filter((_entry, entryIndex) => entryIndex !== optionIndex) })}
+												removeLabel="Remove option"
+											/>
+										))}
+										<AddRowButton label="Add option" onPress={() => updateQuestion(question.rowKey, { options: [...question.options, ''] })} />
+									</View>
+								) : null}
+							</View>
+						))}
+						{majorChanges.length > 0 ? (
+							<View style={styles.majorChanges}>
+								<View style={styles.majorChangesHeader}>
+									<AlertTriangle size={16} color={colors.warningText} />
+									<Text style={styles.majorChangesTitle}>Major changes detected</Text>
+								</View>
+								<Text style={styles.majorChangesText}>
+									{majorChanges.map((change) => JOB_MAJOR_CHANGE_LABELS[change]).join(', ')}
+								</Text>
+								<Text style={styles.majorChangesText}>
+									{activeApplicantCount > 0
+										? `${activeApplicantCount} ${activeApplicantCount === 1 ? 'applicant' : 'applicants'} will be emailed about these changes when you save.`
+										: 'No current applicants will need to be told about these changes.'}
+								</Text>
+							</View>
+						) : null}
+						{majorChanges.length > 0 ? (
+							<View style={styles.disclaimer}>
+								<View style={styles.disclaimerCopy}>
+									<Text style={styles.disclaimerTitle}>
+										Job Poster Disclaimer
+									</Text>
+									<Text style={styles.disclaimerText}>
+										{JOB_POSTER_DISCLAIMER}
+									</Text>
+								</View>
+								<Switch
+									value={disclaimerAccepted}
+									onValueChange={setDisclaimerAccepted}
+									trackColor={{ true: '#10b981' }}
+								/>
+							</View>
+						) : null}
 						{job?.applications.length ? (
 							<Text style={styles.notice}>
 								This job has {job.applications.length}{' '}
@@ -1135,6 +1228,15 @@ const createStyles = (colors: ThemeColors) =>
 			lineHeight: 15,
 			marginTop: 4,
 		},
+		fieldSpacer: { marginTop: 15 },
+		questionsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, marginBottom: 8 },
+		questionsTitle: { color: colors.secondaryText, fontSize: 12, fontWeight: '800' },
+		questionCard: { gap: 8, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface, padding: 11, marginBottom: 10 },
+		optionsBlock: { gap: 8, paddingLeft: 10 },
+		majorChanges: { marginTop: 16, gap: 5, borderWidth: 1, borderColor: colors.warningText, borderRadius: 14, backgroundColor: colors.warningSurface, padding: 12 },
+		majorChangesHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+		majorChangesTitle: { color: colors.warningText, fontSize: 13, fontWeight: '900' },
+		majorChangesText: { color: colors.warningText, fontSize: 12, lineHeight: 17 },
 		notice: {
 			color: colors.warningText,
 			backgroundColor: colors.warningSurface,

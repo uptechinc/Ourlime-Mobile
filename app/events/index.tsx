@@ -218,6 +218,7 @@ export default function EventsPage() {
                 <EventCard
                   key={eventId || event.title}
                   event={event}
+                  isCoOrganizer={Boolean(activeUserId && event.coOrganizers?.some((coOrganizer) => coOrganizer.userId === activeUserId))}
                   variant={view === 'list' ? 'list' : 'grid'}
                   attendeeCount={state?.attendeeCount ?? 0}
                   isAttending={Boolean(state?.isAttending)}
@@ -227,7 +228,7 @@ export default function EventsPage() {
                   isTargeted={eventId === targetId}
                   isWorking={actions.workingEventId === eventId}
                   canManage={canManage}
-                  canEdit={eventService.canEdit(event, activeUserId)}
+                  canEdit={eventService.canEdit(event, activeUserId, authorization.isAdmin)}
                   onOpen={() => openEvent(event.id)}
                   onAttend={() => actions.requestAttendance(event)}
                   onLike={() => actions.toggleLike(event)}
