@@ -152,6 +152,30 @@ export class SellerVerificationService {
     if (!application.acceptedTerms) errors.acceptedTerms = 'Accept the seller terms.';
     return errors;
   }
+  /**
+   * Documents not attached to a submitted application are deleted after 24 hours for privacy, but a saved draft
+   * still lists them. Returns the draft without the documents that are gone (or already used by an earlier
+   * revision), and which kinds those were, so the form can ask for them again.
+   */
+  public async withoutExpiredFiles(application: SellerApplication): Promise<{ application: SellerApplication; expired: SellerFileKind[] }> {
+    if (application.status !== 'draft' || application.files.length === 0) return { application, expired: [] };
+    const checks = await Promise.all(application.files.map(async (file) => {
+      try {
+        const upload = (await getDoc(doc(db, 'sellerUploads', file.id))).data();
+        const deleteAfter = upload?.deleteAfter && typeof upload.deleteAfter.toMillis === 'function' ? upload.deleteAfter.toMillis() : 0;
+        const usable = Boolean(upload && upload.ready === true && upload.attached !== true && upload.deleting !== true && deleteAfter > Date.now());
+        return { file, usable };
+      } catch (error: unknown) {
+        // A file we cannot check stays; the server checks it again on submit.
+        console.error('[SellerVerificationService.withoutExpiredFiles] Error:', error instanceof Error ? error.message : 'Unknown error');
+        return { file, usable: true };
+      }
+    }));
+    const expired = checks.filter((check) => !check.usable).map((check) => check.file.kind);
+    if (expired.length === 0) return { application, expired };
+    return { application: { ...application, files: checks.filter((check) => check.usable).map((check) => check.file) }, expired };
+  }
+
   public async submit(application: SellerApplication): Promise<SellerApplication> {
     pageAccessService.assertMutation('/market');
     await this.save(application);

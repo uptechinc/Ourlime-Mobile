@@ -15,7 +15,7 @@ import type { EHubDraft, EHubPublicationState, EHubSellerProduct } from '@/lib/t
 import { EHubEmptyState, EHubNotice, useEHubLayout } from '@/components/ehub/EHubParts';
 import { SellerButton } from '@/components/ehub/EHubSellerFormParts';
 import { EHubSellerCenterSkeleton, EHubSellerSectionSkeleton } from '@/components/ehub/EHubSkeletons';
-import EHubSellerStorefront from '@/components/ehub/EHubSellerStorefront';
+import EHubSellerStorefront, { STOREFRONT_SERVICES_STEP } from '@/components/ehub/EHubSellerStorefront';
 import EHubSellerProducts from '@/components/ehub/EHubSellerProducts';
 import EHubSellerDrafts from '@/components/ehub/EHubSellerDrafts';
 import EHubSellerStoreSwitcher from '@/components/ehub/EHubSellerStoreSwitcher';
@@ -50,6 +50,9 @@ export default function EHubSellerCenterScreen() {
   const [productsKey, setProductsKey] = useState(0);
   const [productsStartEditing, setProductsStartEditing] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  // Which storefront step opens next: "Offer services" opens straight on the services fields.
+  const [storefrontStep, setStorefrontStep] = useState(0);
+  const [storefrontKey, setStorefrontKey] = useState(0);
   const { workspace, refresh } = center;
   // Coming back from the business account screen (or anywhere else) reloads eligibility; the first focus is the initial load.
   const hasFocused = useRef(false);
@@ -66,7 +69,15 @@ export default function EHubSellerCenterScreen() {
 
   const handleSectionChange = (nextSection: SellerSection) => {
     if (nextSection === 'products') { setProductsStartEditing(false); setProductsKey((key) => key + 1); }
+    if (nextSection === 'storefront') { setStorefrontStep(0); setStorefrontKey((key) => key + 1); }
     setSection(nextSection);
+  };
+
+  /** Opens the chosen storefront's setup on its services step (a new storefront when the owner has none yet). */
+  const handleOfferServices = () => {
+    setStorefrontStep(STOREFRONT_SERVICES_STEP);
+    setStorefrontKey((key) => key + 1);
+    setSection('storefront');
   };
 
   const handleResumeDraft = (draft: EHubDraft) => {
@@ -142,15 +153,15 @@ export default function EHubSellerCenterScreen() {
                 </View>
                 {[
                   { label: 'Set up your business account. A sole trader or freelancer counts.', isDone: hasBusiness },
-                  { label: 'Open Storefront. Under Business information, add each service you offer (for example Plumbing) and the areas you cover.', isDone: false },
-                  { label: 'Accept the Provider Declaration and publish. If you list services and no products, you appear under Professionals.', isDone: false },
+                  { label: workspace?.stores.length ? `Choose the storefront to list your services under in "Your storefronts" above (or tap New storefront), then tap "Add services".` : 'Tap "Add services" to set up your storefront with the services you offer.', isDone: false },
+                  { label: 'Add each service you offer (for example Pressure washing) and the areas you cover, accept the Provider Declaration and publish. You then appear under Professionals.', isDone: Boolean(workspace?.store?.services.length) },
                 ].map((item, index) => <View key={item.label} style={styles.servicesGuideStep}>
                   <Text style={[styles.servicesGuideNumber, item.isDone ? styles.servicesGuideNumberDone : null]}>{item.isDone ? '✓' : index + 1}</Text>
                   <Text style={styles.servicesGuideStepText}>{item.label}</Text>
                 </View>)}
                 <View style={styles.servicesGuideActions}>
                   {hasBusiness
-                    ? <SellerButton compact label="Open storefront setup" icon={<Store size={16} color="#ffffff" />} onPress={() => handleSectionChange('storefront')} />
+                    ? <SellerButton compact label={workspace?.store ? `Add services to ${workspace.store.storeName}` : 'Add services'} icon={<Wrench size={16} color="#ffffff" />} onPress={handleOfferServices} />
                     : <SellerButton compact label="Set up business account" icon={<Building2 size={16} color="#ffffff" />} onPress={() => router.push('/ehub/business-account' as Href)} />}
                   <SellerButton compact variant="secondary" label="Hide" onPress={() => setIsServicesGuideOpen(false)} />
                 </View>
@@ -184,11 +195,12 @@ export default function EHubSellerCenterScreen() {
                   <View style={styles.destinations}>
                     <Destination styles={styles} colors={colors} icon={<Store size={20} color={colors.accentText} />} title="My Storefront" description={workspace?.store ? 'Edit business information and branding' : 'Set up your storefront to start selling'} onPress={() => handleSectionChange('storefront')} />
                     <Destination styles={styles} colors={colors} icon={<Package size={20} color={colors.accentText} />} title="Manage Products" description="Add, edit, and organize your catalog" onPress={() => handleSectionChange('products')} />
+                    <Destination styles={styles} colors={colors} icon={<Wrench size={20} color={colors.accentText} />} title="Offer services" description={workspace?.store?.services.length ? `${workspace.store.services.join(', ')}. Edit your services and areas` : 'Pressure washing, landscaping, design… get listed under Professionals'} onPress={handleOfferServices} />
                     <Destination styles={styles} colors={colors} icon={<FileText size={20} color={colors.accentText} />} title="Saved Drafts" description="Continue unfinished storefronts or products" onPress={() => handleSectionChange('drafts')} />
                     <Destination styles={styles} colors={colors} icon={<Trash2 size={20} color={colors.accentText} />} title="Recently Deleted" description={`${deletedDrafts.length} recoverable draft${deletedDrafts.length === 1 ? '' : 's'}`} onPress={() => handleSectionChange('drafts')} />
                   </View>
                 </View> : null}
-                {section === 'storefront' ? <EHubSellerStorefront key={workspace?.selectedStoreId ?? 'first'} center={center} isTablet={layout.isTablet} onPublished={() => setSection('overview')} /> : null}
+                {section === 'storefront' ? <EHubSellerStorefront key={`${workspace?.selectedStoreId ?? 'first'}_${storefrontKey}`} initialStep={storefrontStep} center={center} isTablet={layout.isTablet} onPublished={() => setSection('overview')} /> : null}
                 {section === 'products' ? <EHubSellerProducts key={productsKey} center={center} isTablet={layout.isTablet} startEditing={productsStartEditing}
                   onPreview={(productId) => router.push(`/ehub/products/${encodeURIComponent(productId)}` as Href)}
                   onRequestStateChange={(product, state) => setConfirmation({ kind: 'productState', product, state })}

@@ -141,7 +141,8 @@ export default function EHubScreen() {
     })
     .map(({ product }) => product), [normalizedSearch, products, selectedCategory, sort]);
   const matchingProviders = useMemo(() => !normalizedSearch ? [] : providerList.filter((provider) => [provider.name, provider.description, provider.location, ...provider.categories, ...provider.services].some((value) => value.toLowerCase().includes(normalizedSearch))).slice(0, 5), [normalizedSearch, providerList]);
-  const professionals = providerList.filter((provider) => provider.kind === 'professional').slice(0, 4);
+  // Anyone offering services is a professional here, including storefronts that also sell products.
+  const professionals = providerList.filter((provider) => provider.offersServices || provider.kind === 'professional').slice(0, 4);
   const comparedProducts = products.filter((product) => compareIds.includes(product.id));
   const savedProducts = products.filter((product) => favorites.includes(product.id));
   const hero = HERO_SLIDES[heroIndex];

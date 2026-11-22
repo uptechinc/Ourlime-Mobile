@@ -27,6 +27,13 @@ const SELLER_TYPES = [
   { isBusiness: false, title: 'Individual seller', body: 'You sell as yourself. Needs your government ID and proof of address.' },
   { isBusiness: true, title: 'Registered business', body: 'You sell as a registered company. Also needs your business registration certificate.' },
 ];
+/** Why documents went missing from a saved draft, naming each one to choose again. */
+function expiredFilesMessage(kinds: SellerFileKind[]): string {
+  const names = kinds.map((kind) => SELLER_FILE_LABELS[kind].toLowerCase());
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+  return `Your ${list} ${kinds.length > 1 ? 'uploads have' : 'upload has'} expired. Documents are deleted 24 hours after upload unless the application is submitted, to keep them private. Choose ${kinds.length > 1 ? 'them' : 'it'} again, then submit.`;
+}
+
 const SELLER_FILE_LABELS: Record<SellerFileKind, string> = {
   governmentId: 'Government ID',
   proofOfAddress: 'Proof of address',
@@ -67,6 +74,13 @@ export default function SellerApplicationModal({ onClose }: SellerApplicationMod
       if (!active) return;
       setPending(await sellerVerificationService.pendingUploads(ownerId));
       current.current = local; setForm(local); setStatus('Saved on device');
+      const checked = await sellerVerificationService.withoutExpiredFiles(local);
+      if (active && checked.expired.length && current.current === local) {
+        await sellerVerificationService.save(checked.application);
+        current.current = checked.application; setForm(checked.application);
+        setIsCheckShown(true);
+        setError(expiredFilesMessage(checked.expired));
+      }
       const remote = await sellerVerificationService.remote(ownerId);
       if (active && remote && current.current === local && sellerVerificationService.shouldAdoptRemote(local, remote)) {
         await sellerVerificationService.save(remote);
@@ -146,7 +160,10 @@ export default function SellerApplicationModal({ onClose }: SellerApplicationMod
         <MarketButton label="Submit for review" disabled={busy} onPress={() => void action(async () => {
           const problems = Object.values(sellerVerificationService.validate(form));
           if (problems.length) { setIsCheckShown(true); throw new Error(problems.length === 1 ? problems[0] : `${problems.length} things to fix before submitting. Each is marked in red above.`); }
-          await queue.current; const submitted = await sellerVerificationService.submit(form); current.current = submitted; setForm(submitted); setStatus('Submitted'); })} />
+          await queue.current;
+          const checked = await sellerVerificationService.withoutExpiredFiles(current.current ?? form);
+          if (checked.expired.length) { await save(checked.application); setIsCheckShown(true); throw new Error(expiredFilesMessage(checked.expired)); }
+          const submitted = await sellerVerificationService.submit(checked.application); current.current = submitted; setForm(submitted); setStatus('Submitted'); })} />
       </> : <>
         <Text style={{ color: colors.text }}>Submitted revisions are locked. You will receive an in-app update when the review changes.</Text>
         <MarketButton label="Refresh review status" onPress={() => void action(async () => { const remote = await sellerVerificationService.remote(ownerId); if (remote) { current.current = remote; setForm(remote); } })} />

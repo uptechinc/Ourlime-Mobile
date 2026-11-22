@@ -13,14 +13,17 @@ import {
 
 const STORE_STEPS = ['Store basics', 'Branding', 'Business information', 'Policies', 'Review & publish'];
 
-type StorefrontProps = { center: EHubSellerCenter; isTablet: boolean; onPublished: () => void };
+/** The Business information step, where services are added. */
+export const STOREFRONT_SERVICES_STEP = 2;
+
+type StorefrontProps = { center: EHubSellerCenter; isTablet: boolean; onPublished: () => void; /** Opens on this step ("Offer services" opens the services step). */ initialStep?: number };
 
 /** The website's guided storefront setup: five steps, autosaved as a private draft, published with the agreements. */
-export default function EHubSellerStorefront({ center, isTablet, onPublished }: StorefrontProps) {
+export default function EHubSellerStorefront({ center, isTablet, onPublished, initialStep = 0 }: StorefrontProps) {
   const router = useRouter();
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(initialStep);
   const [isSellerAgreementAccepted, setIsSellerAgreementAccepted] = useState(false);
   const [isProviderDeclarationAccepted, setIsProviderDeclarationAccepted] = useState(false);
   const { storeForm: form, updateStoreForm: onChange, workspace } = center;
@@ -61,9 +64,12 @@ export default function EHubSellerStorefront({ center, isTablet, onPublished }: 
         <View style={styles.flex}><SellerImageField label="Cover image" imageUrl={form.coverUrl} aspect={[16, 9]} isUploading={center.isUploading} onPick={(uri) => void center.uploadImage(uri, 'storefront', 'coverUrl')} /></View>
       </View> : null}
       {step === 2 ? <>
-        <Text style={styles.muted}>Offer a trade or service, such as plumbing, masonry, or web or graphic design? Add each one here, with the areas you cover, to be listed in E-Hub's professionals directory.</Text>
-        <SellerChipField label="Services" values={form.services} onChange={(services) => onChange({ services })} placeholder="Add a service" />
-        <SellerChipField label="Service areas" values={form.serviceAreas} onChange={(serviceAreas) => onChange({ serviceAreas })} placeholder="Add an area" />
+        <View style={styles.servicesBox}>
+          <Text style={styles.servicesTitle}>Professional services</Text>
+          <Text style={styles.muted}>Offer a trade or service, such as pressure washing, landscaping, plumbing, or web or graphic design? Add each one and the areas you cover. After you publish (accepting the Provider Declaration), {store?.storeName || 'this storefront'} is listed under Professionals, alongside any products it sells.</Text>
+          <SellerChipField label="Services you offer" values={form.services} onChange={(services) => onChange({ services })} placeholder="e.g. Pressure washing" />
+          <SellerChipField label="Areas you cover" values={form.serviceAreas} onChange={(serviceAreas) => onChange({ serviceAreas })} placeholder="e.g. Couva, or Nationwide" />
+        </View>
         <SellerTextField label="Business hours" value={form.businessHours} maxLength={300} placeholder="Mon–Fri 8am–5pm" onChangeText={(businessHours) => onChange({ businessHours })} />
       </> : null}
       {step === 3 ? <>
@@ -109,6 +115,8 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   grid: { gap: 18 },
   gridRow: { flexDirection: 'row' },
   muted: { color: colors.mutedText, fontSize: 14, lineHeight: 20 },
+  servicesBox: { gap: 10, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.successSurface },
+  servicesTitle: { color: colors.text, fontSize: 16, fontWeight: '900' },
   preview: { overflow: 'hidden', borderRadius: 18, borderWidth: 1, borderColor: colors.border },
   previewCover: { height: 130, backgroundColor: colors.successSurface },
   previewBody: { padding: 16, gap: 8 },
