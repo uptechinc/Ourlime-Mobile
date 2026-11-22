@@ -29,7 +29,8 @@ const SELLER_TYPES = [
 ];
 /** Why documents went missing from a saved draft, naming each one to choose again. */
 function expiredFilesMessage(kinds: SellerFileKind[]): string {
-  const names = kinds.map((kind) => SELLER_FILE_LABELS[kind].toLowerCase());
+  // Lower-case the label but keep "ID" in capitals ("government ID", "proof of address").
+  const names = kinds.map((kind) => SELLER_FILE_LABELS[kind].toLowerCase().replace(/\bid\b/, 'ID'));
   const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
   return `Your ${list} ${kinds.length > 1 ? 'uploads have' : 'upload has'} expired. Documents are deleted 24 hours after upload unless the application is submitted, to keep them private. Choose ${kinds.length > 1 ? 'them' : 'it'} again, then submit.`;
 }
