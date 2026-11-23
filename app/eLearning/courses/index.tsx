@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Image,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { ChevronLeft, PenSquare, Search, Star, Clock, Users, GraduationCap, CheckCircle2, X } from 'lucide-react-native';
+import { GraduationCap, PenSquare, Search, X } from 'lucide-react-native';
 import CustomModal from '@/components/ui/CustomModal';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
-import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { CourseCatalogResultsSkeleton } from '@/components/eLearning/ELearningSkeletons';
+import { CourseCard, ELearningChip, ELearningEmptyState, ELearningHeader, ELearningHeaderButton, ELEARNING_GUTTER } from '@/components/eLearning/ELearningParts';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
 import { instructorService } from '@/lib/services/InstructorService';
 import type { CatalogPriceFilter, CatalogSort, Course, Enrollment } from '@/lib/types/course';
@@ -26,20 +26,27 @@ const LEVELS = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
 const PRICE_FILTERS: CatalogPriceFilter[] = ['All', 'Free', 'Paid'];
 const SORTS: { value: CatalogSort; label: string }[] = [
   { value: 'featured', label: 'Featured' },
-  { value: 'recent', label: 'Most recent' },
+  { value: 'recent', label: 'Newest' },
   { value: 'rating', label: 'Top rated' },
 ];
+/** Rails ("Popular", "New", "Free") only appear when the catalog is unfiltered and big enough to be worth browsing. */
+const RAIL_MIN_COURSES = 4;
+const RAIL_SIZE = 8;
+const CARD_GAP = 12;
 
 type Level = (typeof LEVELS)[number];
 type DialogState = { visible: boolean; type: 'error' | 'success'; title: string; message: string };
+type Rail = { key: string; title: string; courses: Course[] };
 
 const createdTime = (course: Course): number => (typeof course.createdAt === 'string' ? Date.parse(course.createdAt) || 0 : 0);
 
-/** The course catalog (web /eLearning/courses): search, category/level/price filters, sort, enrolled badges, quick enroll. */
+/** The course catalog (web /eLearning/courses): search, category/level/price filters, rails, sort, enrolled badges, quick enroll. */
 export default function CoursesCatalogScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ category?: string; q?: string; subcategory?: string }>();
   const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { width } = useWindowDimensions();
   const { activeUserId } = useAppData();
   // Web courses/page.tsx shows "Create Course" to instructors.
   const [isInstructor, setIsInstructor] = useState(false);
@@ -127,6 +134,18 @@ export default function CoursesCatalogScreen() {
 
   const hasFilters = Boolean(search.trim()) || selectedCategory !== 'All' || Boolean(subcategory) || level !== 'All' || price !== 'All';
 
+  const rails = useMemo<Rail[]>(() => {
+    if (hasFilters || courses.length < RAIL_MIN_COURSES) return [];
+    const popular = [...courses].sort((left, right) => right.enrolledStudents - left.enrolledStudents).slice(0, RAIL_SIZE);
+    const newest = [...courses].filter((course) => createdTime(course) > 0).sort((left, right) => createdTime(right) - createdTime(left)).slice(0, RAIL_SIZE);
+    const free = courses.filter((course) => course.price === 0).slice(0, RAIL_SIZE);
+    return [
+      { key: 'popular', title: 'Popular', courses: popular },
+      { key: 'new', title: 'New', courses: newest },
+      { key: 'free', title: 'Free', courses: free },
+    ].filter((rail) => rail.courses.length >= 2);
+  }, [courses, hasFilters]);
+
   const handleClearFilters = () => {
     setSearch('');
     setSelectedCategory('All');
@@ -150,176 +169,143 @@ export default function CoursesCatalogScreen() {
     }
   };
 
-  const renderPills = <T extends string>(options: readonly T[], selected: T, onSelect: (value: T) => void, label: (value: T) => string = (value) => value) => (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pills} keyboardShouldPersistTaps="handled">
-      {options.map((option) => {
-        const isActive = option.toLowerCase() === selected.toLowerCase();
-        return (
-          <TouchableOpacity
-            key={option}
-            accessibilityRole="button"
-            accessibilityState={{ selected: isActive }}
-            onPress={() => onSelect(option)}
-            style={[styles.pill, isActive ? { backgroundColor: '#10b981', borderColor: '#10b981' } : { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            <Text style={[styles.pillText, { color: isActive ? '#ffffff' : colors.text }]}>{label(option)}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
+  const handleOpenCourse = (courseId: string) => router.push(`/eLearning/courses/${courseId}` as Href);
+
+  // One column on phones, two from 600dp, three from 900dp.
+  const contentWidth = width - ELEARNING_GUTTER * 2;
+  const columns = width >= 900 ? 3 : width >= 600 ? 2 : 1;
+  const cardWidth = Math.floor((contentWidth - CARD_GAP * (columns - 1)) / columns);
+  const railCardWidth = Math.min(280, Math.round(contentWidth * 0.78));
+
+  const renderCourse = (course: Course, cardSize: number) => {
+    const enrollment = enrollments.get(course.id);
+    const isEnrolled = isActiveEnrollment(enrollment);
+    const canQuickEnroll = !isEnrolled && !enrollments.has(course.id) && course.price === 0;
+    return <CourseCard
+      key={course.id}
+      course={course}
+      width={cardSize}
+      enrollment={isEnrolled ? enrollment : null}
+      onOpen={handleOpenCourse}
+      action={canQuickEnroll ? {
+        label: 'Enroll free',
+        accessibilityLabel: `Enroll in ${course.title} for free`,
+        onPress: () => void handleEnroll(course),
+        isBusy: enrollingId === course.id,
+        isDisabled: enrollingId !== null && enrollingId !== course.id,
+      } : undefined}
+    />;
+  };
+
+  const renderChips = <T extends string>(label: string, options: readonly T[], selected: T, onSelect: (value: T) => void) => (
+    <View style={styles.filterGroup}>
+      <Text style={styles.filterLabel}>{label}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow} keyboardShouldPersistTaps="handled">
+        {options.map((option) => <ELearningChip key={option} label={option} isSelected={option.toLowerCase() === selected.toLowerCase()} onPress={() => onSelect(option)} />)}
+      </ScrollView>
+    </View>
   );
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.canvas }]}>
-      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Go back">
-          <ChevronLeft size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Courses Catalog</Text>
-        {isInstructor ? (
-          <TouchableOpacity onPress={() => router.push('/eLearning/instructor/create' as Href)} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Create course">
-            <PenSquare size={22} color="#10b981" />
-          </TouchableOpacity>
-        ) : <View style={{ width: 32 }} />}
-      </View>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+      <ELearningHeader
+        title="Courses"
+        onBack={() => router.back()}
+        right={isInstructor ? (
+          <ELearningHeaderButton accessibilityLabel="Create course" onPress={() => router.push('/eLearning/instructor/create' as Href)}>
+            <PenSquare size={21} color={colors.accentText} />
+          </ELearningHeaderButton>
+        ) : undefined}
+      />
 
       <KeyboardSafeView style={styles.container}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void loadCourses(); }} tintColor="#10b981" />}
-      >
-        <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Search size={18} color={colors.mutedText} />
-          <TextInput
-            placeholder="Search courses, topics, skills..."
-            placeholderTextColor={colors.mutedText}
-            value={search}
-            onChangeText={setSearch}
-            returnKeyType="search"
-            style={[styles.searchInput, { color: colors.text }]}
-          />
-          {search ? (
-            <TouchableOpacity onPress={() => setSearch('')} accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={8}>
-              <X size={18} color={colors.mutedText} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        <Text style={[styles.filterLabel, { color: colors.mutedText }]}>Category</Text>
-        {renderPills(categoryOptions, selectedCategory, (value) => { setSelectedCategory(value); setSubcategory(''); })}
-        {subcategory ? (
-          <TouchableOpacity accessibilityRole="button" onPress={() => setSubcategory('')} style={[styles.subcategoryChip, { backgroundColor: colors.successSurface }]}>
-            <Text style={[styles.pillText, { color: colors.successText }]}>{subcategory}</Text>
-            <X size={14} color={colors.successText} />
-          </TouchableOpacity>
-        ) : null}
-        <Text style={[styles.filterLabel, { color: colors.mutedText }]}>Level</Text>
-        {renderPills(LEVELS, level, setLevel)}
-        <Text style={[styles.filterLabel, { color: colors.mutedText }]}>Price</Text>
-        {renderPills(PRICE_FILTERS, price, setPrice)}
-
-        <View style={[styles.resultsBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.resultsText, { color: colors.mutedText }]}>
-            {loading ? 'Loading courses…' : `${filteredCourses.length} ${filteredCourses.length === 1 ? 'result' : 'results'}`}
-          </Text>
-          <View style={styles.sortRow}>
-            {SORTS.map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                accessibilityRole="button"
-                accessibilityState={{ selected: sort === option.value }}
-                onPress={() => setSort(option.value)}
-                style={[styles.sortChip, sort === option.value && { backgroundColor: colors.control }]}
-              >
-                <Text style={[styles.sortText, { color: sort === option.value ? colors.accentText : colors.mutedText }]}>{option.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {error && !loading ? (
-          <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyText, { color: colors.destructiveText }]}>{error}</Text>
-            <TouchableOpacity onPress={() => { setLoading(true); void loadCourses(); }} style={{ minHeight: 44, justifyContent: 'center' }}>
-              <Text style={{ color: colors.accentText, fontWeight: '800' }}>Try Again</Text>
-            </TouchableOpacity>
-          </View>
-        ) : loading ? (
-          <CourseCatalogResultsSkeleton />
-        ) : filteredCourses.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <GraduationCap size={44} color={colors.mutedText} />
-            <Text style={[styles.emptyText, { color: colors.text }]}>No courses found</Text>
-            <Text style={[styles.emptyHint, { color: colors.mutedText }]}>Try adjusting your search term or filters.</Text>
-            {hasFilters ? (
-              <TouchableOpacity accessibilityRole="button" onPress={handleClearFilters} style={[styles.secondaryBtn, { borderColor: colors.border }]}>
-                <Text style={[styles.secondaryBtnText, { color: colors.text }]}>Clear All Filters</Text>
-              </TouchableOpacity>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void loadCourses(); }} tintColor={colors.accent} />}
+        >
+          <View style={styles.searchBox}>
+            <Search size={18} color={colors.mutedText} />
+            <TextInput
+              placeholder="Search courses, topics, skills"
+              placeholderTextColor={colors.mutedText}
+              value={search}
+              onChangeText={setSearch}
+              returnKeyType="search"
+              accessibilityLabel="Search courses"
+              style={styles.searchInput}
+            />
+            {search ? (
+              <Pressable onPress={() => setSearch('')} accessibilityRole="button" accessibilityLabel="Clear search" style={styles.clearButton}>
+                <X size={18} color={colors.mutedText} />
+              </Pressable>
             ) : null}
           </View>
-        ) : (
-          <View style={styles.coursesGrid}>
-            {filteredCourses.map((course) => {
-              const isEnrolled = isActiveEnrollment(enrollments.get(course.id));
-              const canQuickEnroll = !isEnrolled && !enrollments.has(course.id) && course.price === 0;
-              return (
-                <TouchableOpacity
-                  key={course.id}
-                  activeOpacity={0.85}
-                  onPress={() => router.push(`/eLearning/courses/${course.id}` as Href)}
-                  style={[styles.courseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+
+          {renderChips('Category', categoryOptions, selectedCategory, (value) => { setSelectedCategory(value); setSubcategory(''); })}
+          {subcategory ? (
+            <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${subcategory} filter`} onPress={() => setSubcategory('')} style={styles.subcategoryChip}>
+              <Text numberOfLines={1} style={styles.subcategoryText}>{subcategory}</Text>
+              <X size={14} color={colors.successText} />
+            </Pressable>
+          ) : null}
+          {renderChips('Level', LEVELS, level, setLevel)}
+          {renderChips('Price', PRICE_FILTERS, price, setPrice)}
+
+          {!loading && !error && rails.map((rail) => (
+            <View key={rail.key} style={styles.rail}>
+              <Text accessibilityRole="header" style={styles.sectionTitle}>{rail.title}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} decelerationRate="fast" snapToInterval={railCardWidth + CARD_GAP} contentContainerStyle={styles.railRow}>
+                {rail.courses.map((course) => renderCourse(course, railCardWidth))}
+              </ScrollView>
+            </View>
+          ))}
+
+          <View style={styles.resultsBar}>
+            <Text style={styles.resultsText}>
+              {loading ? 'Loading courses…' : rails.length ? 'All courses' : `${filteredCourses.length} ${filteredCourses.length === 1 ? 'result' : 'results'}`}
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              {SORTS.map((option) => (
+                <Pressable
+                  key={option.value}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sort by ${option.label}`}
+                  accessibilityState={{ selected: sort === option.value }}
+                  onPress={() => setSort(option.value)}
+                  style={[styles.sortChip, sort === option.value && styles.sortChipActive]}
                 >
-                  {course.image ? <Image source={{ uri: course.image }} style={styles.courseImage} resizeMode="cover" /> : <View style={[styles.courseImage, { backgroundColor: colors.control }]} />}
-                  {isEnrolled ? (
-                    <View style={styles.enrolledBadge}>
-                      <CheckCircle2 size={13} color="#ffffff" />
-                      <Text style={styles.enrolledBadgeText}>Enrolled</Text>
-                    </View>
-                  ) : null}
-                  <View style={styles.cardContent}>
-                    <View style={styles.badgeRow}>
-                      <View style={styles.categoryBadge}>
-                        <Text style={styles.categoryBadgeText}>{course.category.toUpperCase()}</Text>
-                      </View>
-                      <Text style={[styles.levelBadgeText, { color: colors.mutedText }]}>{course.level}</Text>
-                    </View>
-                    <Text style={[styles.courseTitle, { color: colors.text }]} numberOfLines={2}>{course.title}</Text>
-                    <Text style={[styles.instructorText, { color: colors.mutedText }]}>by {course.instructor.name}</Text>
-                    <View style={styles.cardMetaRow}>
-                      <View style={styles.metaItem}>
-                        <Star size={14} color="#f59e0b" fill="#f59e0b" />
-                        <Text style={[styles.metaText, { color: colors.text }]}>{course.rating.toFixed(1)} ({course.totalRatings})</Text>
-                      </View>
-                      <View style={styles.metaItem}>
-                        <Clock size={14} color={colors.mutedText} />
-                        <Text style={[styles.metaText, { color: colors.mutedText }]}>{course.duration}h</Text>
-                      </View>
-                      <View style={styles.metaItem}>
-                        <Users size={14} color={colors.mutedText} />
-                        <Text style={[styles.metaText, { color: colors.mutedText }]}>{course.enrolledStudents}</Text>
-                      </View>
-                      <Text style={[styles.priceText, { color: colors.text }]}>{isEnrolled ? 'Enrolled' : course.price === 0 ? 'Free' : `$${course.price}`}</Text>
-                    </View>
-                    {canQuickEnroll ? (
-                      <TouchableOpacity
-                        accessibilityRole="button"
-                        accessibilityLabel={`Enroll in ${course.title}`}
-                        disabled={enrollingId !== null}
-                        onPress={() => void handleEnroll(course)}
-                        style={[styles.enrollBtn, { borderColor: colors.accent, opacity: enrollingId && enrollingId !== course.id ? 0.5 : 1 }]}
-                      >
-                        {enrollingId === course.id ? <ActivityIndicator size="small" color={colors.accentText} /> : <Text style={[styles.enrollBtnText, { color: colors.accentText }]}>Enroll</Text>}
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+                  <Text numberOfLines={1} style={[styles.sortText, sort === option.value && styles.sortTextActive]}>{option.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
           </View>
-        )}
-      </ScrollView>
+
+          {error && !loading ? (
+            <ELearningEmptyState
+              icon={<GraduationCap size={40} color={colors.mutedText} />}
+              title="Courses could not load"
+              hint={error}
+              actionLabel="Try again"
+              onAction={() => { setLoading(true); void loadCourses(); }}
+            />
+          ) : loading ? (
+            <CourseCatalogResultsSkeleton />
+          ) : filteredCourses.length === 0 ? (
+            <ELearningEmptyState
+              icon={<GraduationCap size={40} color={colors.mutedText} />}
+              title="No courses found"
+              hint={hasFilters ? 'Try a different search or fewer filters.' : 'New courses appear here as instructors publish them.'}
+              actionLabel={hasFilters ? 'Clear filters' : undefined}
+              onAction={hasFilters ? handleClearFilters : undefined}
+            />
+          ) : (
+            <View style={styles.coursesGrid}>
+              {filteredCourses.map((course) => renderCourse(course, cardWidth))}
+            </View>
+          )}
+        </ScrollView>
       </KeyboardSafeView>
 
       <CustomModal visible={dialog.visible} type={dialog.type} title={dialog.title} message={dialog.message} onClose={() => setDialog((current) => ({ ...current, visible: false }))} />
@@ -327,45 +313,25 @@ export default function CoursesCatalogScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
-  headerBtn: { padding: 6 },
-  headerTitle: { fontSize: 18, fontWeight: '800' },
-  scrollContent: { padding: 16, paddingBottom: 60, gap: 10 },
-  searchBox: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1, gap: 10 },
-  searchInput: { flex: 1, fontSize: 15, paddingVertical: 2 },
-  filterLabel: { fontSize: 12, fontWeight: '700', marginTop: 4 },
-  pills: { flexDirection: 'row', gap: 8, paddingBottom: 2 },
-  pill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
-  pillText: { fontSize: 13, fontWeight: '700' },
-  subcategoryChip: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
-  resultsBar: { marginTop: 6, padding: 10, borderRadius: 14, borderWidth: 1, gap: 8 },
-  resultsText: { fontSize: 13, fontWeight: '600' },
-  sortRow: { flexDirection: 'row', gap: 6 },
-  sortChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
-  sortText: { fontSize: 13, fontWeight: '800' },
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 50, gap: 10 },
-  emptyText: { fontSize: 15, fontWeight: '700' },
-  emptyHint: { fontSize: 13, textAlign: 'center' },
-  secondaryBtn: { minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', borderRadius: 12, borderWidth: 1 },
-  secondaryBtnText: { fontSize: 14, fontWeight: '700' },
-  coursesGrid: { gap: 16, marginTop: 6 },
-  courseCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1 },
-  courseImage: { width: '100%', height: 180 },
-  enrolledBadge: { position: 'absolute', top: 12, right: 12, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: '#059669' },
-  enrolledBadgeText: { color: '#ffffff', fontSize: 12, fontWeight: '800' },
-  cardContent: { padding: 16, gap: 8 },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  categoryBadge: { backgroundColor: '#10b98122', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  categoryBadgeText: { color: '#059669', fontSize: 11, fontWeight: '800' },
-  levelBadgeText: { fontSize: 12, textTransform: 'capitalize', fontWeight: '600' },
-  courseTitle: { fontSize: 17, fontWeight: '800', lineHeight: 22 },
-  instructorText: { fontSize: 13, fontWeight: '500' },
-  cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { fontSize: 12, fontWeight: '600' },
-  priceText: { marginLeft: 'auto', fontSize: 13, fontWeight: '800' },
-  enrollBtn: { minHeight: 42, marginTop: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1 },
-  enrollBtnText: { fontSize: 14, fontWeight: '800' },
+const createStyles = (colors: AppThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.canvas },
+  scrollContent: { padding: ELEARNING_GUTTER, paddingBottom: 48, gap: 16 },
+  searchBox: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingLeft: 14, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, gap: 8 },
+  searchInput: { flex: 1, minHeight: 44, color: colors.text, fontSize: 15, paddingVertical: 0 },
+  clearButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  filterGroup: { gap: 8 },
+  filterLabel: { color: colors.mutedText, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
+  subcategoryChip: { alignSelf: 'flex-start', minHeight: 36, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: colors.successSurface },
+  subcategoryText: { flexShrink: 1, color: colors.successText, fontSize: 14, fontWeight: '600' },
+  rail: { gap: 8 },
+  railRow: { gap: CARD_GAP },
+  sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
+  resultsBar: { gap: 8, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  resultsText: { paddingTop: 8, color: colors.text, fontSize: 16, fontWeight: '700' },
+  sortChip: { minHeight: 36, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 10 },
+  sortChipActive: { backgroundColor: colors.control },
+  sortText: { color: colors.mutedText, fontSize: 14, fontWeight: '600' },
+  sortTextActive: { color: colors.accentText, fontWeight: '700' },
+  coursesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP },
 });

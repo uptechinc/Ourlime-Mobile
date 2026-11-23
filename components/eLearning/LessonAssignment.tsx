@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Award, CheckCircle2, FileText, Paperclip, X } from 'lucide-react-native';
 import { LessonAssignmentSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { courseService } from '@/lib/services/CourseService';
+import { ELEARNING_ACTION_GREEN } from '@/components/eLearning/ELearningParts';
+import { openExternalLink } from '@/components/eLearning/course/workspaceHelpers';
 import type { AssignmentFile, AssignmentSubmission } from '@/lib/types/course';
 
 type LessonAssignmentProps = {
@@ -93,15 +95,18 @@ export default function LessonAssignment({ userId, courseId, lessonId, onSubmitt
     return (
       <View style={styles.card}>
         <View style={styles.statusRow}>
-          {isGraded ? <Award size={20} color="#2563eb" /> : <CheckCircle2 size={20} color="#16a34a" />}
-          <Text style={styles.statusTitle}>{isGraded ? 'Graded' : 'Submitted'}</Text>
+          <View style={styles.statusPill}>
+            {isGraded ? <Award size={14} color={colors.successText} /> : <CheckCircle2 size={14} color={colors.successText} />}
+            <Text style={styles.statusPillText}>{isGraded ? 'Graded' : 'Submitted'}</Text>
+          </View>
+          <Text style={styles.statusTitle}>Your submission</Text>
           {submission.submittedAt ? <Text style={styles.muted}>{new Date(submission.submittedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text> : null}
         </View>
         {isGraded && submission.score !== undefined ? <Text style={styles.score}>{submission.score}{submission.maxScore ? ` / ${submission.maxScore}` : ''}</Text> : null}
         {submission.feedback ? <View style={styles.feedback}><Text style={styles.feedbackLabel}>Instructor feedback</Text><Text style={styles.body}>{submission.feedback}</Text></View> : null}
         {submission.textResponse ? <Text style={styles.body}>{submission.textResponse}</Text> : null}
         {submission.files.map((file) => (
-          <Pressable key={file.url} accessibilityRole="link" onPress={() => void Linking.openURL(file.url)} style={styles.fileRow}>
+          <Pressable key={file.url} accessibilityRole="link" onPress={() => void openExternalLink(file.url)} style={styles.fileRow}>
             <FileText size={18} color={colors.accentText} />
             <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
             {file.size ? <Text style={styles.muted}>{formatSize(file.size)}</Text> : null}
@@ -132,7 +137,7 @@ export default function LessonAssignment({ userId, courseId, lessonId, onSubmitt
         <View key={file.url} style={styles.fileRow}>
           <FileText size={18} color={colors.accentText} />
           <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${file.name}`} hitSlop={8} onPress={() => setKeptFiles((current) => current.filter((item) => item.url !== file.url))}><X size={18} color={colors.mutedText} /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${file.name}`} style={styles.removeButton} onPress={() => setKeptFiles((current) => current.filter((item) => item.url !== file.url))}><X size={18} color={colors.mutedText} /></Pressable>
         </View>
       ))}
       {newFiles.map((file, index) => (
@@ -140,7 +145,7 @@ export default function LessonAssignment({ userId, courseId, lessonId, onSubmitt
           <Paperclip size={18} color={colors.accentText} />
           <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
           {file.size ? <Text style={styles.muted}>{formatSize(file.size)}</Text> : null}
-          <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${file.name}`} hitSlop={8} onPress={() => setNewFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={18} color={colors.mutedText} /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${file.name}`} style={styles.removeButton} onPress={() => setNewFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={18} color={colors.mutedText} /></Pressable>
         </View>
       ))}
       {keptFiles.length + newFiles.length < MAX_FILES ? (
@@ -166,24 +171,27 @@ export default function LessonAssignment({ userId, courseId, lessonId, onSubmitt
 }
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
-  card: { marginTop: 14, padding: 16, gap: 10, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  card: { padding: 16, gap: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
   heading: { color: colors.text, fontSize: 16, fontWeight: '800' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusTitle: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '800' },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.successSurface },
+  statusPillText: { color: colors.successText, fontSize: 13, fontWeight: '800' },
+  removeButton: { width: 44, height: 44, marginRight: -12, alignItems: 'center', justifyContent: 'center' },
   score: { color: colors.text, fontSize: 30, fontWeight: '900' },
   feedback: { padding: 12, gap: 4, borderRadius: 12, backgroundColor: colors.control },
   feedbackLabel: { color: colors.mutedText, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   body: { color: colors.text, fontSize: 14, lineHeight: 21 },
   input: { minHeight: 140, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 15, textAlignVertical: 'top' },
-  fileRow: { minHeight: 44, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
+  fileRow: { minHeight: 48, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
   fileName: { flex: 1, color: colors.text, fontSize: 14, fontWeight: '600' },
   muted: { color: colors.mutedText, fontSize: 12 },
   error: { color: colors.destructiveText, fontSize: 13 },
   actions: { flexDirection: 'row', gap: 10 },
   flex: { flex: 1 },
-  primaryButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.accent },
-  primaryButtonText: { color: colors.onAccent, fontSize: 15, fontWeight: '800' },
-  secondaryButton: { minHeight: 44, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
+  primaryButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: ELEARNING_ACTION_GREEN },
+  primaryButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
+  secondaryButton: { minHeight: 48, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
   secondaryButtonText: { color: colors.text, fontSize: 14, fontWeight: '700' },
   disabled: { opacity: 0.5 },
 });

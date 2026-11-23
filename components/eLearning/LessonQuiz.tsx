@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CheckCircle2, Circle, HelpCircle, XCircle } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
+import { ELEARNING_ACTION_GREEN, ProgressBar } from '@/components/eLearning/ELearningParts';
 import type { CourseQuizQuestion } from '@/lib/types/course';
 
 type LessonQuizProps = {
@@ -12,48 +13,73 @@ type LessonQuizProps = {
    * a short-answer question (not auto-scored). Resolves with the server's score, if any.
    */
   onSubmit: (answers: number[]) => Promise<number | null>;
+  /** The score screen's primary action (e.g. "Next lesson"); without it only "Retake quiz" is offered. */
+  onContinue?: () => void;
+  continueLabel?: string;
 };
 
-/** A lesson quiz like the website's quiz page (multiple choice, true/false, short answer): answer, submit, then see the score. */
-export default function LessonQuiz({ questions, isCompleted, onSubmit }: LessonQuizProps) {
+const isShortAnswer = (question: CourseQuizQuestion): boolean => question.type === 'short_answer' || question.options.length === 0;
+
+/**
+ * A lesson quiz like the website's quiz page (multiple choice, true/false, short answer), one question per screen with
+ * "Question 3 of 10", then a score screen that reviews every marked question (your answer, the right one, the
+ * explanation) with Retake and Continue. Only questions with a correct option are scored, as on the server.
+ */
+export default function LessonQuiz({ questions, isCompleted, onSubmit, onContinue, continueLabel = 'Continue' }: LessonQuizProps) {
   const { colors } = useAppTheme();
-  const styles = createStyles(colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [textAnswers, setTextAnswers] = useState<Record<number, string>>({});
+  const [questionIndex, setQuestionIndex] = useState(0);
   const [score, setScore] = useState<number | null>(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
 
   if (questions.length === 0) {
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, styles.centerCard]}>
         <HelpCircle size={28} color={colors.mutedText} />
         <Text style={styles.emptyTitle}>No questions yet</Text>
-        <Text style={styles.muted}>This quiz does not have any questions configured yet. Please check back later.</Text>
+        <Text style={[styles.muted, styles.centerText]}>This quiz does not have any questions configured yet. Please check back later.</Text>
       </View>
     );
   }
 
-  const isShortAnswer = (question: CourseQuizQuestion): boolean => question.type === 'short_answer' || question.options.length === 0;
-  const answeredCount = questions.filter((question, index) => isShortAnswer(question) ? Boolean(textAnswers[index]?.trim()) : answers[index] !== undefined).length;
+  const isAnswered = (index: number): boolean => {
+    const question = questions[index];
+    return isShortAnswer(question) ? Boolean(textAnswers[index]?.trim()) : answers[index] !== undefined;
+  };
+  const answeredCount = questions.filter((_question, index) => isAnswered(index)).length;
   const correctCount = questions.filter((question, index) => question.correctIndex !== undefined && answers[index] === question.correctIndex).length;
   // Only questions with a correct option are marked; short answers are not part of the score (as on the server).
   const markableCount = questions.filter((question) => question.correctIndex !== undefined).length;
   const totalPoints = questions.reduce((total, question) => total + (question.points ?? 0), 0);
   const hasShortAnswers = questions.some(isShortAnswer);
+  const isLastQuestion = questionIndex === questions.length - 1;
+  const question = questions[questionIndex];
 
-  const handleSelect = (questionIndex: number, optionIndex: number) => {
+  const handleSelect = (optionIndex: number) => {
     if (isSubmitted) return;
+    setHint(null);
     setAnswers((current) => ({ ...current, [questionIndex]: optionIndex }));
   };
 
   const handleSubmit = async () => {
+    // Every question must be answered (as before); jump to the first gap instead of leaving a dead Submit button.
+    const firstUnanswered = questions.findIndex((_question, index) => !isAnswered(index));
+    if (firstUnanswered >= 0) {
+      setQuestionIndex(firstUnanswered);
+      setHint(`Answer question ${firstUnanswered + 1} to submit (${answeredCount} of ${questions.length} answered).`);
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
+    setHint(null);
     try {
       // Every question keeps its slot so the server scores answers[index] against the right question.
-      const serverScore = await onSubmit(questions.map((question, index) => isShortAnswer(question) ? -1 : answers[index] ?? -1));
+      const serverScore = await onSubmit(questions.map((item, index) => isShortAnswer(item) ? -1 : answers[index] ?? -1));
       setScore(serverScore ?? (markableCount ? Math.round((correctCount / markableCount) * 100) : 100));
       setIsSubmitted(true);
     } catch (submitError: unknown) {
@@ -68,113 +94,175 @@ export default function LessonQuiz({ questions, isCompleted, onSubmit }: LessonQ
     setAnswers({});
     setTextAnswers({});
     setScore(null);
+    setQuestionIndex(0);
     setIsSubmitted(false);
+    setError(null);
+    setHint(null);
   };
+
+  if (isSubmitted) {
+    return (
+      <View style={styles.wrapper}>
+        <View style={[styles.card, styles.centerCard]}>
+          <Text style={styles.eyebrow}>Your score</Text>
+          <Text style={styles.resultScore}>{score}%</Text>
+          <Text style={styles.resultLabel}>{markableCount ? `${correctCount} of ${markableCount} correct` : 'Answers submitted'}</Text>
+          {hasShortAnswers ? <Text style={[styles.muted, styles.centerText]}>Short answers are not scored automatically.</Text> : null}
+        </View>
+
+        {markableCount > 0 ? (
+          <View style={styles.reviewList}>
+            <Text style={styles.sectionTitle}>Review</Text>
+            {questions.map((item, index) => {
+              if (item.correctIndex === undefined) return null;
+              const chosen = answers[index];
+              const isCorrect = chosen === item.correctIndex;
+              return (
+                <View key={item.id} style={[styles.card, styles.reviewCard]}>
+                  <View style={styles.reviewHeader}>
+                    {isCorrect ? <CheckCircle2 size={18} color={colors.successText} /> : <XCircle size={18} color={colors.destructiveText} />}
+                    <Text style={[styles.reviewStatus, { color: isCorrect ? colors.successText : colors.destructiveText }]}>{isCorrect ? 'Correct' : 'Incorrect'}</Text>
+                    <Text style={styles.reviewNumber}>Question {index + 1}</Text>
+                  </View>
+                  <Text style={styles.reviewQuestion}>{item.title}</Text>
+                  {!isCorrect ? <Text style={styles.reviewLine}><Text style={styles.reviewKey}>Your answer: </Text>{chosen !== undefined ? item.options[chosen] : 'Skipped'}</Text> : null}
+                  <Text style={styles.reviewLine}><Text style={styles.reviewKey}>Correct answer: </Text>{item.options[item.correctIndex]}</Text>
+                  {item.explanation ? <Text style={styles.explanation}>{item.explanation}</Text> : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
+        <View style={styles.actions}>
+          <Pressable accessibilityRole="button" onPress={handleRetake} android_ripple={{ color: colors.control }} style={[styles.secondaryButton, styles.flex]}>
+            <Text numberOfLines={1} style={styles.secondaryButtonText}>Retake quiz</Text>
+          </Pressable>
+          {onContinue ? (
+            <Pressable accessibilityRole="button" onPress={onContinue} android_ripple={{ color: 'rgba(255,255,255,0.2)' }} style={[styles.primaryButton, styles.flex]}>
+              <Text numberOfLines={1} style={styles.primaryButtonText}>{continueLabel}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
+
+  const typeLabel = question.type === 'true_false' ? 'True or false' : isShortAnswer(question) ? 'Short answer' : 'Choose one';
 
   return (
     <View style={styles.wrapper}>
-      {isSubmitted ? (
-        <View style={[styles.card, styles.resultCard]}>
-          <Text style={styles.resultScore}>{score}%</Text>
-          <Text style={styles.resultLabel}>{correctCount} of {markableCount} correct</Text>
-          {hasShortAnswers ? <Text style={styles.muted}>Short answers are not scored automatically.</Text> : null}
-          <Pressable accessibilityRole="button" onPress={handleRetake} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Retake quiz</Text>
-          </Pressable>
-        </View>
-      ) : isCompleted ? (
-        <Text style={styles.muted}>You already completed this quiz. You can take it again to practise.</Text>
-      ) : null}
-      {!isSubmitted ? <Text style={styles.muted}>{questions.length} {questions.length === 1 ? 'question' : 'questions'}{totalPoints > 0 ? ` · ${totalPoints} ${totalPoints === 1 ? 'point' : 'points'}` : ''}</Text> : null}
+      {isCompleted ? <Text style={styles.muted}>You already completed this quiz. You can take it again to practise.</Text> : null}
+      <Text style={styles.muted}>{questions.length} {questions.length === 1 ? 'question' : 'questions'}{totalPoints > 0 ? ` · ${totalPoints} ${totalPoints === 1 ? 'point' : 'points'}` : ''} · {answeredCount} answered</Text>
 
-      {questions.map((question, questionIndex) => (
-        <View key={question.id} style={styles.card}>
-          <View style={styles.questionHeader}>
-            <Text style={styles.questionNumber}>Question {questionIndex + 1} of {questions.length}{question.type === 'true_false' ? ' · True or false' : isShortAnswer(question) ? ' · Short answer' : ''}</Text>
-            {question.points ? <Text style={styles.questionNumber}>{question.points} {question.points === 1 ? 'pt' : 'pts'}</Text> : null}
-          </View>
-          <Text style={styles.questionTitle}>{question.title}</Text>
-          {isShortAnswer(question) ? (
-            <TextInput
-              value={textAnswers[questionIndex] ?? ''}
-              onChangeText={(text) => setTextAnswers((current) => ({ ...current, [questionIndex]: text }))}
-              editable={!isSubmitted}
-              placeholder="Type your answer…"
-              placeholderTextColor={colors.mutedText}
-              multiline
-              maxLength={2000}
-              accessibilityLabel={`Answer to question ${questionIndex + 1}`}
-              style={styles.textAnswer}
-            />
-          ) : null}
-          <View style={styles.options}>
+      <View style={styles.card}>
+        <View style={styles.questionHeader}>
+          <Text style={styles.questionNumber}>Question {questionIndex + 1} of {questions.length}</Text>
+          <Text style={styles.questionNumber}>{question.points ? `${question.points} ${question.points === 1 ? 'pt' : 'pts'}` : typeLabel}</Text>
+        </View>
+        <ProgressBar value={((questionIndex + 1) / questions.length) * 100} height={4} accessibilityLabel="Quiz position" />
+        <Text accessibilityRole="header" style={styles.questionTitle}>{question.title}</Text>
+        {question.points ? <Text style={styles.muted}>{typeLabel}</Text> : null}
+
+        {isShortAnswer(question) ? (
+          <TextInput
+            value={textAnswers[questionIndex] ?? ''}
+            onChangeText={(text) => { setHint(null); setTextAnswers((current) => ({ ...current, [questionIndex]: text })); }}
+            placeholder="Type your answer…"
+            placeholderTextColor={colors.mutedText}
+            multiline
+            maxLength={2000}
+            accessibilityLabel={`Answer to question ${questionIndex + 1}`}
+            style={styles.textAnswer}
+          />
+        ) : (
+          <View accessibilityRole="radiogroup" style={styles.options}>
             {question.options.map((option, optionIndex) => {
               const isSelected = answers[questionIndex] === optionIndex;
-              const isCorrect = question.correctIndex === optionIndex;
-              const showCorrect = isSubmitted && isCorrect;
-              const showWrong = isSubmitted && isSelected && !isCorrect;
               return (
                 <Pressable
                   key={optionIndex}
                   accessibilityRole="radio"
-                  accessibilityState={{ checked: isSelected, disabled: isSubmitted }}
-                  onPress={() => handleSelect(questionIndex, optionIndex)}
-                  style={[styles.option, isSelected && styles.optionSelected, showCorrect && styles.optionCorrect, showWrong && styles.optionWrong]}
+                  accessibilityLabel={option}
+                  accessibilityState={{ checked: isSelected }}
+                  onPress={() => handleSelect(optionIndex)}
+                  android_ripple={{ color: colors.control }}
+                  style={[styles.option, isSelected && styles.optionSelected]}
                 >
-                  {showCorrect ? <CheckCircle2 size={20} color="#059669" />
-                    : showWrong ? <XCircle size={20} color="#dc2626" />
-                    : isSelected ? <CheckCircle2 size={20} color={colors.accent} />
-                    : <Circle size={20} color={colors.mutedText} />}
-                  <Text style={styles.optionText}>{option}</Text>
+                  {isSelected ? <CheckCircle2 size={22} color={colors.accentText} /> : <Circle size={22} color={colors.mutedText} />}
+                  <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{option}</Text>
                 </Pressable>
               );
             })}
           </View>
-          {isSubmitted && question.explanation ? <Text style={styles.explanation}>{question.explanation}</Text> : null}
-        </View>
-      ))}
+        )}
+      </View>
 
-      {!isSubmitted ? (
-        <View style={styles.footer}>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Pressable
-            accessibilityRole="button"
-            disabled={isSubmitting || answeredCount < questions.length}
-            onPress={() => void handleSubmit()}
-            style={[styles.primaryButton, (isSubmitting || answeredCount < questions.length) && styles.disabled]}
-          >
-            <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting…' : `Submit answers (${answeredCount}/${questions.length})`}</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      {hint ? <Text accessibilityRole="alert" style={styles.hint}>{hint}</Text> : null}
+      {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+
+      <View style={styles.actions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Previous question"
+          accessibilityState={{ disabled: questionIndex === 0 }}
+          disabled={questionIndex === 0}
+          onPress={() => { setHint(null); setQuestionIndex((index) => Math.max(0, index - 1)); }}
+          style={[styles.secondaryButton, styles.flex, questionIndex === 0 && styles.disabled]}
+        >
+          <Text numberOfLines={1} style={styles.secondaryButtonText}>Previous</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ busy: isSubmitting }}
+          disabled={isSubmitting}
+          onPress={() => (isLastQuestion ? void handleSubmit() : setQuestionIndex((index) => Math.min(questions.length - 1, index + 1)))}
+          android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
+          style={[styles.primaryButton, styles.flex, isSubmitting && styles.disabled]}
+        >
+          <Text numberOfLines={1} style={styles.primaryButtonText}>{isSubmitting ? 'Submitting…' : isLastQuestion ? 'Submit' : 'Next'}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
-  wrapper: { gap: 14 },
-  card: { padding: 16, gap: 10, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  resultCard: { alignItems: 'center' },
-  resultScore: { color: colors.accentText, fontSize: 40, fontWeight: '900' },
-  resultLabel: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  wrapper: { gap: 12 },
+  flex: { flex: 1 },
+  card: { padding: 16, gap: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
+  centerCard: { alignItems: 'center', gap: 6 },
+  centerText: { textAlign: 'center' },
+  eyebrow: { color: colors.mutedText, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  resultScore: { color: colors.accentText, fontSize: 44, fontWeight: '900' },
+  resultLabel: { color: colors.text, fontSize: 16, fontWeight: '700' },
   emptyTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
   muted: { color: colors.mutedText, fontSize: 13, lineHeight: 19 },
+  sectionTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
   questionHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
-  textAnswer: { minHeight: 90, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 15, textAlignVertical: 'top' },
-  questionNumber: { color: colors.mutedText, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
-  questionTitle: { color: colors.text, fontSize: 17, fontWeight: '800', lineHeight: 24 },
+  questionNumber: { color: colors.mutedText, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  questionTitle: { color: colors.text, fontSize: 18, fontWeight: '800', lineHeight: 25 },
+  textAnswer: { minHeight: 110, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 15, textAlignVertical: 'top' },
   options: { gap: 8 },
-  option: { minHeight: 48, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas },
-  optionSelected: { borderColor: colors.accent },
-  optionCorrect: { borderColor: '#059669', backgroundColor: 'rgba(16,185,129,0.14)' },
-  optionWrong: { borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.12)' },
+  option: { minHeight: 52, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas, overflow: 'hidden' },
+  optionSelected: { borderColor: colors.accent, borderWidth: 2, backgroundColor: colors.successSurface },
   optionText: { flex: 1, color: colors.text, fontSize: 15, lineHeight: 21 },
-  explanation: { color: colors.mutedText, fontSize: 13, lineHeight: 19, fontStyle: 'italic' },
-  footer: { gap: 8 },
-  error: { color: colors.destructiveText, fontSize: 13 },
-  primaryButton: { minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: colors.accent },
-  primaryButtonText: { color: colors.onAccent, fontSize: 15, fontWeight: '800' },
-  secondaryButton: { minHeight: 44, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border },
-  secondaryButtonText: { color: colors.text, fontSize: 14, fontWeight: '700' },
+  optionTextSelected: { fontWeight: '700' },
+  hint: { color: colors.warningText, backgroundColor: colors.warningSurface, borderRadius: 12, padding: 12, fontSize: 13, lineHeight: 19 },
+  error: { color: colors.destructiveText, backgroundColor: colors.destructiveSurface, borderRadius: 12, padding: 12, fontSize: 13, lineHeight: 19 },
+  actions: { flexDirection: 'row', gap: 8 },
+  primaryButton: { minHeight: 48, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: ELEARNING_ACTION_GREEN, overflow: 'hidden' },
+  primaryButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
+  secondaryButton: { minHeight: 48, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
+  secondaryButtonText: { color: colors.text, fontSize: 15, fontWeight: '700' },
   disabled: { opacity: 0.5 },
+  reviewList: { gap: 8 },
+  reviewCard: { gap: 6 },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  reviewStatus: { fontSize: 14, fontWeight: '800' },
+  reviewNumber: { marginLeft: 'auto', color: colors.mutedText, fontSize: 12, fontWeight: '700' },
+  reviewQuestion: { color: colors.text, fontSize: 15, fontWeight: '700', lineHeight: 21 },
+  reviewLine: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  reviewKey: { color: colors.mutedText, fontWeight: '700' },
+  explanation: { color: colors.secondaryText, fontSize: 13, lineHeight: 19, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
 });

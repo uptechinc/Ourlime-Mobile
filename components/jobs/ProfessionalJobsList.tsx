@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Calendar, DollarSign, Eye, MapPin, Users } from 'lucide-react-native';
-import { JobCardActions } from './JobCardActions';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { CheckCircle2, Clock } from 'lucide-react-native';
+import { JobSaveButton, JobShareButton } from './JobCardActions';
+import { JOBS_ACTION_GREEN, JOBS_CARD_RADIUS, JobLogo, JobPosterLine, JobStatusPill, JobTagRow, formatJobPay, formatTimeAgo, getJobClosingInfo, getJobScheduleLabel } from './JobCardParts';
 import type { JobRecord } from '@/lib/job/JobsService';
-import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { auth } from '@/lib/firebaseConfig';
-import { formatJobLocation, formatJobPostedDate, formatJobPrice, getJobCompanyName } from '@/lib/job/JobPresentation';
+import { formatJobLocation, getJobCompanyName } from '@/lib/job/JobPresentation';
 
 export type JobListProps = {
   jobs: JobRecord[];
@@ -18,51 +19,66 @@ export type JobListProps = {
 
 type ProfessionalJobCardProps = Omit<JobListProps, 'jobs' | 'savedJobIds' | 'appliedJobIds'> & { job: JobRecord; isSaved: boolean; isApplied: boolean };
 
+/**
+ * A job card in the LinkedIn/Indeed order: the whole card opens the details; logo beside a two-line title and the
+ * poster with a verified tick; Save top-right; pay as the strongest line; one muted line of location · type ·
+ * posted; at most two skills and "+n"; then a footer with the one state that matters (Applied or closing soon) and
+ * Share + Apply.
+ */
 function ProfessionalJobCard({ job, isSaved, isApplied, onToggleSave, onApply, onViewDetails }: ProfessionalJobCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isCreator = auth.currentUser?.uid === job.basic_info.userId;
   const companyName = getJobCompanyName(job);
-  const logo = job.creator?.profileImage || job.category_specific.logo;
+  const logo = job.category_specific.logo || job.creator?.profileImage;
+  const isVerified = job.creator?.verificationStatus === 'verified';
+  const pay = formatJobPay(job);
+  const location = formatJobLocation(job);
+  const closing = getJobClosingInfo(job);
+  const canApply = !isCreator && !isApplied && !closing?.isPast;
+  const meta = [location, getJobScheduleLabel(job), formatTimeAgo(job.basic_info.createdAt?.seconds)].filter(Boolean).join(' · ');
 
   return (
-    <TouchableOpacity activeOpacity={0.9} onPress={() => onViewDetails(job)} style={styles.card}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${job.basic_info.title}, ${companyName}, ${pay}, ${meta}${isApplied ? ', applied' : ''}`}
+      accessibilityHint="Opens the job details"
+      onPress={() => onViewDetails(job)}
+      android_ripple={{ color: colors.control }}
+      style={styles.card}
+    >
       <View style={styles.topRow}>
-        <View style={styles.logoBox}>
-          {logo ? <Image source={{ uri: logo }} style={styles.logoImage} /> : <Text style={styles.logoLetter}>{companyName.charAt(0).toUpperCase()}</Text>}
-        </View>
+        <JobLogo uri={logo} name={companyName} size={44} />
         <View style={styles.titleCopy}>
           <Text numberOfLines={2} style={styles.jobTitle}>{job.basic_info.title}</Text>
-          <Text numberOfLines={1} style={styles.company}>{companyName}</Text>
+          <JobPosterLine name={companyName} isVerified={isVerified} />
         </View>
-        <View style={styles.typeBadge}><Text style={styles.typeText}>professional</Text></View>
+        <View style={styles.saveSlot}>
+          <JobSaveButton jobId={job.id} jobTitle={job.basic_info.title} isSaved={isSaved} onToggleSave={onToggleSave} />
+        </View>
       </View>
 
-      <View style={styles.pillRow}>
-        <View style={styles.greenPill}><MapPin size={12} color={colors.successText} /><Text style={styles.greenPillText}>{formatJobLocation(job)}</Text></View>
-        <View style={styles.greenPill}><DollarSign size={12} color={colors.successText} /><Text style={styles.greenPillText}>{formatJobPrice(job)}</Text></View>
-        <View style={styles.bluePill}><Users size={12} color="#3b82f6" /><Text style={styles.bluePillText}>0 applicants</Text></View>
+      <View style={styles.body}>
+        <Text numberOfLines={1} style={styles.pay}>{pay}</Text>
+        <Text numberOfLines={1} style={styles.meta}>{meta}</Text>
+        <JobTagRow tags={job.details.skills} />
       </View>
 
-      <View style={styles.metaRow}>
-        <View style={styles.inlineMeta}><Calendar size={14} color={colors.mutedText} /><Text style={styles.metaText}>Posted {formatJobPostedDate(job)}</Text></View>
-        <View style={styles.viewsPill}><Eye size={12} color="#3b82f6" /><Text style={styles.bluePillText}>0</Text></View>
+      <View style={styles.footer}>
+        <View style={styles.footerState}>
+          {isApplied ? <JobStatusPill presentation={{ label: 'Applied', tone: 'success', icon: CheckCircle2 }} />
+            : closing?.isSoon ? <View style={styles.inline}><Clock size={14} color={colors.warningText} /><Text numberOfLines={1} style={styles.closingSoon}>{closing.label}</Text></View>
+              : closing ? <Text numberOfLines={1} style={styles.closing}>{closing.label}</Text>
+                : isCreator ? <Text numberOfLines={1} style={styles.closing}>Your listing</Text> : null}
+        </View>
+        <JobShareButton jobId={job.id} jobTitle={job.basic_info.title} />
+        {canApply ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`Apply for ${job.basic_info.title}`} onPress={() => onApply(job)} hitSlop={4} android_ripple={{ color: 'rgba(255,255,255,0.2)' }} style={styles.applyButton}>
+            <Text numberOfLines={1} style={styles.applyText}>Apply</Text>
+          </Pressable>
+        ) : null}
       </View>
-
-      <View style={styles.actionsRow}>
-        <JobCardActions jobId={job.id} jobTitle={job.basic_info.title} isSaved={isSaved} onToggleSave={onToggleSave} />
-        {!isCreator ? (
-          <View style={styles.buttons}>
-            <TouchableOpacity accessibilityRole="button" onPress={() => onViewDetails(job)} style={styles.detailsButton}><Text style={styles.detailsText}>View Details</Text></TouchableOpacity>
-            {isApplied ? (
-              <View style={styles.appliedBadge}><Text style={styles.appliedText}>Applied</Text></View>
-            ) : (
-              <TouchableOpacity accessibilityRole="button" onPress={() => onApply(job)} style={styles.applyButton}><Text style={styles.applyText}>Apply Now</Text></TouchableOpacity>
-            )}
-          </View>
-        ) : <Text style={styles.ownerText}>Your listing</Text>}
-      </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -87,36 +103,24 @@ export function ProfessionalJobsList({ jobs, savedJobIds, appliedJobIds, onToggl
   );
 }
 
-type ThemeColors = ReturnType<typeof useAppTheme>['colors'];
-
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  list: { gap: 14, paddingHorizontal: 16 },
-  card: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 12 },
-  topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  logoBox: { width: 56, height: 56, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  logoImage: { width: 56, height: 56 },
-  logoLetter: { color: colors.onAccent, fontSize: 22, fontWeight: '900' },
-  titleCopy: { flex: 1, minWidth: 0, gap: 3 },
-  jobTitle: { color: colors.text, fontSize: 17, fontWeight: '900', lineHeight: 22 },
-  company: { color: colors.mutedText, fontSize: 13 },
-  typeBadge: { borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.successSurface, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
-  typeText: { color: colors.successText, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5 },
-  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  greenPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.successSurface, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  greenPillText: { color: colors.successText, fontSize: 12, fontWeight: '700' },
-  bluePill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#3b82f61a', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  bluePillText: { color: '#3b82f6', fontSize: 12, fontWeight: '700' },
-  viewsPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#3b82f61a', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  inlineMeta: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  metaText: { color: colors.mutedText, fontSize: 12, fontWeight: '600' },
-  actionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 },
-  buttons: { flexDirection: 'row', gap: 8 },
-  detailsButton: { borderWidth: 2, borderColor: colors.accent, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
-  detailsText: { color: colors.accentText, fontWeight: '800', fontSize: 13 },
-  applyButton: { backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
-  applyText: { color: colors.onAccent, fontWeight: '900', fontSize: 13 },
-  appliedBadge: { backgroundColor: colors.control, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
-  appliedText: { color: colors.mutedText, fontWeight: '800', fontSize: 13 },
-  ownerText: { color: colors.mutedText, fontSize: 12, fontWeight: '700' },
-});
+function createStyles(colors: AppThemeColors) {
+  return StyleSheet.create({
+    list: { gap: 12, paddingHorizontal: 16 },
+    card: { overflow: 'hidden', backgroundColor: colors.surface, borderRadius: JOBS_CARD_RADIUS, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, paddingTop: 16, paddingHorizontal: 16, paddingBottom: 8 },
+    topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    titleCopy: { flex: 1, minWidth: 0, gap: 4 },
+    // The save button's 44dp box overhangs into the padding so the bookmark lines up with the card's edge.
+    saveSlot: { marginTop: -10, marginRight: -12 },
+    jobTitle: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: '800' },
+    body: { marginTop: 12, gap: 4 },
+    pay: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: '900' },
+    meta: { color: colors.mutedText, fontSize: 13, lineHeight: 18, marginBottom: 4 },
+    footer: { marginTop: 12, paddingTop: 4, flexDirection: 'row', alignItems: 'center', gap: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+    footerState: { flex: 1, minWidth: 0 },
+    inline: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0 },
+    closingSoon: { flexShrink: 1, color: colors.warningText, fontSize: 12, fontWeight: '800' },
+    closing: { color: colors.mutedText, fontSize: 12, fontWeight: '600' },
+    applyButton: { minWidth: 84, height: 40, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: JOBS_ACTION_GREEN },
+    applyText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
+  });
+}

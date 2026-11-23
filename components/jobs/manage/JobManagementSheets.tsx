@@ -581,8 +581,9 @@ export function JobManagementEditSheet({
 		setCity(job.locationDetails.city);
 		setCountry(job.locationDetails.country);
 		setSkills(job.skills.join(', '));
-		setRequirements(job.requirements.join(', '));
-		setQualifications(job.qualifications.join(', '));
+		// One requirement or qualification per line: they are sentences that can contain commas.
+		setRequirements(job.requirements.join('\n'));
+		setQualifications(job.qualifications.join('\n'));
 		setCompanyName(job.categoryDetails.name);
 		setIndustry(job.categoryDetails.industry);
 		setDuration(job.categoryDetails.duration);
@@ -607,6 +608,12 @@ export function JobManagementEditSheet({
 			.map((item) => item.trim())
 			.filter(Boolean);
 
+	const splitLines = (value: string): string[] =>
+		value
+			.split('\n')
+			.map((line) => line.replace(/^[\s•\-*]+/, '').trim())
+			.filter(Boolean);
+
 	const buildInput = (): UpdateManagedJobInput | null => {
 		if (!job) return null;
 		return {
@@ -621,8 +628,8 @@ export function JobManagementEditSheet({
 				country: country.trim(),
 			},
 			skills: splitValues(skills),
-			requirements: splitValues(requirements),
-			qualifications: splitValues(qualifications),
+			requirements: splitLines(requirements),
+			qualifications: splitLines(qualifications),
 			categoryDetails: {
 				...job.categoryDetails,
 				name: companyName.trim(),
@@ -824,21 +831,25 @@ export function JobManagementEditSheet({
 							placeholderTextColor={colors.mutedText}
 							style={styles.input}
 						/>
-						<FormLabel label="Requirements (comma separated)" />
+						<FormLabel label="Requirements (one per line)" />
 						<TextInput
 							value={requirements}
 							onChangeText={setRequirements}
-							placeholder="Requirements"
+							placeholder={'2 years of support experience\nFamiliar with Windows, Microsoft 365'}
 							placeholderTextColor={colors.mutedText}
-							style={styles.input}
+							multiline
+							textAlignVertical="top"
+							style={[styles.input, { minHeight: 112 }]}
 						/>
-						<FormLabel label="Qualifications (comma separated)" />
+						<FormLabel label="Qualifications (one per line)" />
 						<TextInput
 							value={qualifications}
 							onChangeText={setQualifications}
-							placeholder="Qualifications"
+							placeholder="Qualifications, one per line"
 							placeholderTextColor={colors.mutedText}
-							style={styles.input}
+							multiline
+							textAlignVertical="top"
+							style={[styles.input, { minHeight: 112 }]}
 						/>
 						{job?.type === 'professional' ? (
 							<>

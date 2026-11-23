@@ -22,9 +22,9 @@ export default function WorkItemRow({ lesson, isDone, isOverdue, statusLabel, de
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${lesson.title}, ${statusLabel}`} onPress={onPress} style={styles.card}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${lesson.title}, ${statusLabel}`} onPress={onPress} android_ripple={{ color: colors.control }} style={styles.card}>
       <View style={[styles.icon, { backgroundColor: isDone ? colors.successSurface : colors.control }]}>
-        {isDone ? <CheckCircle2 size={22} color="#16a34a" /> : <LessonTypeIcon type={lesson.type} size={22} />}
+        {isDone ? <CheckCircle2 size={22} color={colors.successText} /> : <LessonTypeIcon type={lesson.type} size={22} />}
       </View>
       <View style={styles.copy}>
         <Text style={styles.title} numberOfLines={2}>{lesson.title}</Text>
@@ -36,28 +36,28 @@ export default function WorkItemRow({ lesson, isDone, isOverdue, statusLabel, de
         {isOverdue ? (
           <View style={styles.metaRow}><AlertCircle size={12} color={colors.destructiveText} /><Text style={styles.overdue}>Overdue</Text></View>
         ) : null}
-        {detail ? <Text style={styles.detail}>{detail}</Text> : null}
-      </View>
-      <View style={styles.side}>
-        <View style={[styles.pill, { backgroundColor: isDone ? colors.successSurface : colors.control }]}>
-          <Text style={[styles.pillText, { color: isDone ? colors.successText : colors.mutedText }]}>{statusLabel}</Text>
+        <View style={styles.statusRow}>
+          <View style={[styles.pill, { backgroundColor: isDone ? colors.successSurface : colors.control }]}>
+            <Text numberOfLines={1} style={[styles.pillText, { color: isDone ? colors.successText : colors.secondaryText }]}>{statusLabel}</Text>
+          </View>
+          {detail ? <Text numberOfLines={1} style={styles.detail}>{detail}</Text> : null}
         </View>
-        <ChevronRight size={18} color={colors.mutedText} />
       </View>
+      <ChevronRight size={18} color={colors.mutedText} />
     </Pressable>
   );
 }
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
-  card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  card: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
   icon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  copy: { flex: 1, gap: 4 },
+  copy: { flex: 1, minWidth: 0, gap: 4 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 2 },
   title: { color: colors.text, fontSize: 15, fontWeight: '800' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
   meta: { color: colors.mutedText, fontSize: 12 },
   overdue: { color: colors.destructiveText, fontSize: 12, fontWeight: '800' },
   detail: { color: colors.accentText, fontSize: 12, fontWeight: '700' },
-  side: { alignItems: 'flex-end', gap: 6 },
   pill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
-  pillText: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.4 },
+  pillText: { fontSize: 12, fontWeight: '800' },
 });

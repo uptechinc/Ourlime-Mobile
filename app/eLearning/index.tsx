@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Image, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Image, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import {
-  BookOpen, BookText, Calendar, CheckCircle, ClipboardCheck, Clock, FolderOpen, GraduationCap, Library, Megaphone, MessageSquare,
-  PenSquare, PlayCircle, Presentation, Search, Star, Users,
+  BookOpen, BookText, Calendar, ClipboardCheck, FolderOpen, GraduationCap, Library, Megaphone, MessageSquare,
+  PenSquare, PlayCircle, Presentation, Search, Users,
 } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
@@ -16,7 +17,8 @@ import { useProfileResource } from '@/lib/hooks/useProfileResource';
 import { AuthService } from '@/lib/services/AuthService';
 import { COURSE_MAIN_CATEGORIES, getSubcategories } from '@/lib/constants/courseCategories';
 import { ELearningHomeContentSkeleton, ELearningInlineStatsSkeleton } from '@/components/eLearning/ELearningSkeletons';
-import type { Course, CourseAnnouncement, InstructorProfile } from '@/lib/types/course';
+import { CourseCard, ELEARNING_ACTION_GREEN } from '@/components/eLearning/ELearningParts';
+import type { CourseAnnouncement, InstructorProfile } from '@/lib/types/course';
 
 /** Web app/eLearning/page.tsx as it renders on a phone: welcome card, hero + search, course updates, tabbed materials. */
 type LearningTab = 'materials' | 'resources' | 'tutors';
@@ -70,8 +72,6 @@ const formatAge = (createdAt?: string): string => {
   return new Date(time).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
 };
 
-const formatPrice = (price: number): string => `$${price.toFixed(2)}`;
-
 export default function ELearningScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
@@ -116,7 +116,7 @@ export default function ELearningScreen() {
     ...(isInstructor ? [
       { label: 'Create Course', icon: PenSquare, route: '/eLearning/instructor/create' },
       { label: 'Instructor', icon: Presentation, route: '/eLearning/instructor' },
-      { label: 'Grading', icon: ClipboardCheck, route: '/eLearning/instructor' },
+      { label: 'Grading', icon: ClipboardCheck, route: '/eLearning/instructor/grading' },
     ] : []),
   ];
 
@@ -171,7 +171,7 @@ export default function ELearningScreen() {
             <View style={styles.heroSearchArea}>
               <View style={styles.searchPill}>
                 <Search size={18} color={colors.mutedText} />
-                <TextInput value={search} onChangeText={setSearch} onSubmitEditing={handleSearchSubmit} returnKeyType="search" placeholder="Search courses or topics" placeholderTextColor={colors.mutedText} style={styles.searchInput} />
+                <TextInput value={search} onChangeText={setSearch} onSubmitEditing={handleSearchSubmit} returnKeyType="search" placeholder="Search courses" numberOfLines={1} placeholderTextColor={colors.mutedText} style={styles.searchInput} />
                 <TouchableOpacity accessibilityRole="button" onPress={handleSearchSubmit} style={styles.searchButton}><Text style={styles.searchButtonText}>Search</Text></TouchableOpacity>
               </View>
               {popularTopics.length > 0 ? (
@@ -261,7 +261,7 @@ export default function ELearningScreen() {
                   <View style={styles.divider} />
                   {filteredCourses.length ? (
                     <View style={styles.courseList}>
-                      {filteredCourses.slice(0, COURSE_PREVIEW_COUNT).map((course) => <CourseCard key={course.id} course={course} onOpen={handleOpenCourse} styles={styles} colors={colors} />)}
+                      {filteredCourses.slice(0, COURSE_PREVIEW_COUNT).map((course) => <CourseCard key={course.id} course={course} width={width - 56} onOpen={handleOpenCourse} />)}
                     </View>
                   ) : (
                     <View style={styles.emptyState}>
@@ -308,7 +308,6 @@ function InlineStat({ value, label, styles }: InlineStatProps) {
 type HeroBannerProps = { width: number; styles: Styles; surfaceColor: string };
 /** Logo on the left; three crossfading photos with a green gradient and a slanted left edge on the right. */
 function HeroBanner({ width, styles, surfaceColor }: HeroBannerProps) {
-  const opacities = useRef(HERO_SLIDES.map((_slide, index) => new Animated.Value(index === 0 ? 1 : 0))).current;
   const [activeIndex, setActiveIndex] = useState(0);
   const slideWidth = width * 0.75;
 
@@ -317,10 +316,6 @@ function HeroBanner({ width, styles, surfaceColor }: HeroBannerProps) {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    Animated.parallel(opacities.map((opacity, index) => Animated.timing(opacity, { toValue: index === activeIndex ? 1 : 0, duration: 700, useNativeDriver: true }))).start();
-  }, [activeIndex, opacities]);
-
   return (
     <View style={styles.heroBanner}>
       <View style={styles.heroLogo}>
@@ -328,20 +323,32 @@ function HeroBanner({ width, styles, surfaceColor }: HeroBannerProps) {
         <Text style={styles.heroLogoCaption}>e-Learning</Text>
       </View>
       <View style={[styles.heroSlides, { width: slideWidth }]}>
-        {HERO_SLIDES.map((slide, index) => (
-          <Animated.View key={slide.title} style={[StyleSheet.absoluteFill, { opacity: opacities[index] }]}>
-            <Image source={{ uri: slide.image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-            <LinearGradient colors={[...slide.gradient]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
-            <View style={[styles.heroSlideCopy, { paddingLeft: slideWidth * 0.28 }]}>
-              <Text numberOfLines={1} style={styles.heroSlideTitle}>{slide.title}</Text>
-              <Text numberOfLines={1} style={styles.heroSlideSubtitle}>{slide.subtitle}</Text>
-            </View>
-          </Animated.View>
-        ))}
+        {HERO_SLIDES.map((slide, index) => <HeroSlide key={slide.title} slide={slide} isActive={index === activeIndex} slideWidth={slideWidth} styles={styles} />)}
         {/* clipPath polygon(25% 0, 100% 0, 100% 100%, 0 100%): cover the top-left triangle with the card colour. */}
         <View style={[styles.heroSlant, { borderTopColor: surfaceColor, borderRightWidth: slideWidth * 0.25 }]} />
       </View>
     </View>
+  );
+}
+
+type HeroSlideProps = { slide: (typeof HERO_SLIDES)[number]; isActive: boolean; slideWidth: number; styles: Styles };
+/**
+ * One crossfading slide. React Native's core Animated never reaches views in this app (NativeWind interop), so the
+ * banner used to stay on the first slide; a finite Reanimated withTiming per change does reach them.
+ */
+function HeroSlide({ slide, isActive, slideWidth, styles }: HeroSlideProps) {
+  const opacity = useSharedValue(isActive ? 1 : 0);
+  useEffect(() => { opacity.value = withTiming(isActive ? 1 : 0, { duration: 700 }); }, [isActive, opacity]);
+  const fadeStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.View pointerEvents="none" accessibilityElementsHidden={!isActive} importantForAccessibility={isActive ? 'auto' : 'no-hide-descendants'} style={[StyleSheet.absoluteFill, fadeStyle]}>
+      <Image source={{ uri: slide.image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      <LinearGradient colors={[...slide.gradient]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
+      <View style={[styles.heroSlideCopy, { paddingLeft: slideWidth * 0.28 }]}>
+        <Text numberOfLines={1} style={styles.heroSlideTitle}>{slide.title}</Text>
+        <Text numberOfLines={1} style={styles.heroSlideSubtitle}>{slide.subtitle}</Text>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -379,33 +386,6 @@ function CourseUpdates({ announcements, cardWidth, onOpen, styles, colors }: Cou
         </ScrollView>
       )}
     </View>
-  );
-}
-
-type CourseCardProps = { course: Course; onOpen: (courseId: string) => void; styles: Styles; colors: AppThemeColors };
-function CourseCard({ course, onOpen, styles, colors }: CourseCardProps) {
-  const image = course.thumbnail || course.image;
-  return (
-    <TouchableOpacity accessibilityRole="button" onPress={() => onOpen(course.id)} style={styles.courseCard}>
-      <View style={styles.courseImageWrap}>
-        {image ? <Image source={{ uri: image }} style={styles.courseImage} resizeMode="cover" /> : <View style={[styles.courseImage, styles.courseImageFallback]}><BookOpen size={30} color={colors.mutedText} /></View>}
-        <Text style={styles.levelBadge}>{course.level}</Text>
-      </View>
-      <View style={styles.courseBody}>
-        <Text numberOfLines={2} style={styles.courseTitle}>{course.title}</Text>
-        <Text numberOfLines={1} style={styles.courseInstructor}>by {course.instructor.name}</Text>
-        <View style={styles.courseMetaRow}>
-          <View style={styles.metaItem}><Star size={14} color="#facc15" fill="#facc15" /><Text style={styles.meta}>{course.rating.toFixed(1)} ({course.totalRatings} {course.totalRatings === 1 ? 'rating' : 'ratings'})</Text></View>
-          <View style={styles.metaItem}><Clock size={14} color={colors.mutedText} /><Text style={styles.meta}>{course.duration} {course.duration === 1 ? 'hour' : 'hours'}</Text></View>
-        </View>
-        <View style={styles.courseFooter}>
-          {course.price === 0 ? (
-            <View style={styles.metaItem}><CheckCircle size={15} color={GREEN} /><Text style={styles.freeText}>Free</Text></View>
-          ) : <Text style={styles.priceText}>{formatPrice(course.price)}</Text>}
-          <View style={styles.viewCourseButton}><Text style={styles.viewCourseText}>View Course</Text></View>
-        </View>
-      </View>
-    </TouchableOpacity>
   );
 }
 
@@ -461,10 +441,10 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   inlineStat: { alignItems: 'center' },
   inlineStatValue: { color: GREEN, fontSize: 16, fontWeight: '800' },
   inlineStatLabel: { color: colors.mutedText, fontSize: 12 },
-  becomeInstructor: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: GREEN, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9 },
+  becomeInstructor: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: ELEARNING_ACTION_GREEN, borderRadius: 999, paddingHorizontal: 16 },
   becomeInstructorText: { color: '#ffffff', fontSize: 14, fontWeight: '600' },
   quickLinksDivider: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14, marginTop: 2 },
-  quickChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control, paddingHorizontal: 16, paddingVertical: 9 },
+  quickChip: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.control, paddingHorizontal: 16 },
   quickChipText: { color: colors.secondaryText, fontSize: 14, fontWeight: '500' },
 
   heroCard: { padding: 0, gap: 0, overflow: 'hidden' },
@@ -480,15 +460,15 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   heroSearchArea: { borderTopWidth: 1, borderTopColor: colors.border, padding: 16, gap: 12 },
   searchPill: { height: 48, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, paddingLeft: 16, paddingRight: 6 },
   searchInput: { flex: 1, color: colors.text, fontSize: 15, paddingVertical: 0 },
-  searchButton: { height: 36, justifyContent: 'center', borderRadius: 999, backgroundColor: GREEN, paddingHorizontal: 16 },
+  searchButton: { height: 36, justifyContent: 'center', borderRadius: 999, backgroundColor: ELEARNING_ACTION_GREEN, paddingHorizontal: 16 },
   searchButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '600' },
   popularRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   popularLabel: { color: colors.mutedText, fontSize: 12 },
-  popularChip: { borderRadius: 999, backgroundColor: colors.successSurface, paddingHorizontal: 10, paddingVertical: 4 },
+  popularChip: { minHeight: 32, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.successSurface, paddingHorizontal: 12 },
   popularChipText: { color: colors.accentText, fontSize: 12, fontWeight: '500' },
 
   errorCard: { backgroundColor: colors.destructiveSurface, borderRadius: 16, padding: 18, gap: 10 },
-  primaryPill: { alignSelf: 'flex-start', minHeight: 40, justifyContent: 'center', backgroundColor: GREEN, borderRadius: 999, paddingHorizontal: 18 },
+  primaryPill: { alignSelf: 'flex-start', minHeight: 48, justifyContent: 'center', backgroundColor: ELEARNING_ACTION_GREEN, borderRadius: 999, paddingHorizontal: 18 },
   primaryPillText: { color: '#ffffff', fontWeight: '700' },
 
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -503,49 +483,34 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   updateAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
   updateAvatarText: { color: colors.accentText, fontWeight: '700' },
   updateAuthor: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  importantPill: { alignSelf: 'flex-start', backgroundColor: '#fef3c7', color: '#b45309', fontSize: 11, fontWeight: '600', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
+  importantPill: { alignSelf: 'flex-start', backgroundColor: colors.warningSurface, color: colors.warningText, fontSize: 11, fontWeight: '600', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
   updateTitle: { color: colors.text, fontSize: 14, fontWeight: '600' },
 
   sectionSwitch: { flexDirection: 'row', gap: 4, borderRadius: 999, backgroundColor: colors.surface, padding: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-  sectionSwitchItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 8 },
-  sectionSwitchItemActive: { backgroundColor: GREEN },
+  sectionSwitchItem: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 8 },
+  sectionSwitchItemActive: { backgroundColor: ELEARNING_ACTION_GREEN },
   sectionSwitchText: { color: colors.secondaryText, fontSize: 14, fontWeight: '600' },
   sectionSwitchTextActive: { color: '#ffffff' },
-  tabChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  tabChip: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, backgroundColor: colors.surface, paddingHorizontal: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   tabChipActive: { backgroundColor: colors.text, borderColor: colors.text },
   tabChipText: { color: colors.secondaryText, fontSize: 14, fontWeight: '500' },
   tabChipTextActive: { color: colors.canvas },
 
   materialsCard: { padding: 12 },
-  categoryPill: { borderRadius: 999, backgroundColor: colors.control, paddingHorizontal: 16, paddingVertical: 9 },
-  categoryPillActive: { backgroundColor: GREEN },
+  categoryPill: { minHeight: 40, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.control, paddingHorizontal: 16 },
+  categoryPillActive: { backgroundColor: ELEARNING_ACTION_GREEN },
   categoryPillText: { color: colors.secondaryText, fontSize: 14, fontWeight: '500' },
   categoryPillTextActive: { color: '#ffffff' },
   subcategoryRow: { marginTop: -2 },
-  subcategoryChip: { borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 6 },
+  subcategoryChip: { minHeight: 36, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 },
   subcategoryChipActive: { borderColor: GREEN, backgroundColor: colors.successSurface },
   subcategoryText: { color: colors.secondaryText, fontSize: 12 },
   subcategoryTextActive: { color: colors.accentText, fontWeight: '600' },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: 4 },
   courseList: { gap: 12 },
-  courseCard: { borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control, overflow: 'hidden' },
-  courseImageWrap: { height: 128 },
-  courseImage: { width: '100%', height: 128, backgroundColor: colors.border },
-  courseImageFallback: { alignItems: 'center', justifyContent: 'center' },
-  levelBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(255,255,255,0.9)', color: '#111827', fontSize: 12, textTransform: 'capitalize', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
-  courseBody: { padding: 12 },
-  courseTitle: { color: colors.text, fontSize: 16, fontWeight: '600', marginBottom: 6 },
-  courseInstructor: { color: colors.mutedText, fontSize: 12, marginBottom: 10 },
-  courseMetaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 16, rowGap: 6 },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  courseFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
-  freeText: { color: GREEN, fontSize: 14, fontWeight: '600' },
-  priceText: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  viewCourseButton: { backgroundColor: GREEN, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
-  viewCourseText: { color: '#ffffff', fontSize: 12, fontWeight: '600' },
   emptyState: { alignItems: 'center', paddingVertical: 28, gap: 6 },
-  viewAllButton: { borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingVertical: 12, alignItems: 'center' },
-  viewAllText: { color: GREEN, fontSize: 14, fontWeight: '600' },
+  viewAllButton: { minHeight: 48, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, justifyContent: 'center', alignItems: 'center' },
+  viewAllText: { color: colors.accentText, fontSize: 14, fontWeight: '600' },
 
   tutorList: { gap: 14 },
   tutorRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },

@@ -1,32 +1,29 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Image,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
-import {
-  ChevronLeft,
-  BookOpen,
-  Award,
-  PlayCircle,
-  TrendingUp,
-  Clock,
-  CheckCircle2,
-} from 'lucide-react-native';
-import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { BookOpen, PlayCircle } from 'lucide-react-native';
+import CachedImage from '@/components/ui/CachedImage';
+import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { MyLearningListSkeleton } from '@/components/eLearning/ELearningSkeletons';
+import { ELearningChip, ELearningEmptyState, ELearningHeader, ELEARNING_ACTION_GREEN, ELEARNING_GUTTER, ProgressBar, roundProgress } from '@/components/eLearning/ELearningParts';
+import { lessonHref } from '@/components/eLearning/course/workspaceHelpers';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
 import type { Enrollment, MyLearningSort, MyLearningStatus } from '@/lib/types/course';
 
 const STATUS_FILTERS: MyLearningStatus[] = ['All', 'In progress', 'Not started', 'Completed'];
-const SORTS: { value: MyLearningSort; label: string }[] = [{ value: 'recent', label: 'Most recent' }, { value: 'progress', label: 'Progress' }];
+const SORTS: { value: MyLearningSort; label: string }[] = [{ value: 'recent', label: 'Recent' }, { value: 'progress', label: 'Progress' }];
+const THUMB_WIDTH = 96;
+const THUMB_HEIGHT = 54;
 
 /** Completed by enrollment status (like the website), otherwise in progress once any progress is recorded. */
 const progressStatus = (enrollment: Enrollment): Exclude<MyLearningStatus, 'All'> =>
@@ -41,9 +38,15 @@ const toTime = (value: Enrollment['lastAccessed']): number => {
 };
 const lastActivity = (enrollment: Enrollment): number => toTime(enrollment.lastAccessed) || toTime(enrollment.enrolledAt);
 
+/**
+ * My Learning: "Continue where you left off" first (the most recent unfinished course with its next lesson and a
+ * Resume button), then the filtered list as compact rows with a progress bar and the percentage as text.
+ */
 export default function MyLearningScreen() {
   const router = useRouter();
-  const { colors, isDark } = useAppTheme();
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { width } = useWindowDimensions();
   const { activeUserId, nativeSession, retryNativeSession } = useAppData();
 
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
@@ -52,6 +55,7 @@ export default function MyLearningScreen() {
   const [status, setStatus] = useState<MyLearningStatus>('All');
   const [sort, setSort] = useState<MyLearningSort>('recent');
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [nextLessonTitle, setNextLessonTitle] = useState<{ courseId: string; lessonId: string; title: string } | null>(null);
   const loadGenerationRef = useRef(0);
 
   const loadEnrollments = useCallback(async () => {
@@ -92,340 +96,193 @@ export default function MyLearningScreen() {
     };
   }, [loadEnrollments]);
 
-  const inProgressCourses = enrollments.filter((enrollment) => progressStatus(enrollment) === 'In progress');
-  const completedCourses = enrollments.filter((enrollment) => progressStatus(enrollment) === 'Completed');
+  // The most recently touched course that is not finished (and still in the catalog).
+  const continueEnrollment = useMemo(() => [...enrollments]
+    .filter((enrollment) => enrollment.course && progressStatus(enrollment) !== 'Completed')
+    .sort((left, right) => lastActivity(right) - lastActivity(left))[0] ?? null, [enrollments]);
+
+  // Only the continue card names its next lesson: one curriculum read, not one per course.
+  useEffect(() => {
+    if (!continueEnrollment) { setNextLessonTitle(null); return; }
+    let isActive = true;
+    void courseService.getCourseCurriculum(continueEnrollment.courseId, 'enrolled')
+      .then((modules) => {
+        const next = courseService.nextLesson(modules, continueEnrollment);
+        if (isActive) setNextLessonTitle(next ? { courseId: continueEnrollment.courseId, lessonId: next.lesson.id, title: next.lesson.title } : null);
+      })
+      .catch((curriculumError: unknown) => {
+        console.warn('[MyLearningScreen.nextLesson] Curriculum unavailable:', curriculumError instanceof Error ? curriculumError.message : 'Unknown error');
+        if (isActive) setNextLessonTitle(null);
+      });
+    return () => { isActive = false; };
+  }, [continueEnrollment]);
+
+  const inProgressCount = enrollments.filter((enrollment) => progressStatus(enrollment) === 'In progress').length;
+  const completedCount = enrollments.filter((enrollment) => progressStatus(enrollment) === 'Completed').length;
   const filtered = status === 'All' ? enrollments : enrollments.filter((enrollment) => progressStatus(enrollment) === status);
   const displayedList = [...filtered].sort((left, right) => sort === 'progress' ? right.progress - left.progress : lastActivity(right) - lastActivity(left));
+  const heroImageWidth = width - ELEARNING_GUTTER * 2;
+  const heroImageHeight = Math.min(200, Math.round(heroImageWidth * 9 / 16));
+  const continueNext = continueEnrollment && nextLessonTitle?.courseId === continueEnrollment.courseId ? nextLessonTitle : null;
+
+  const handleResume = (enrollment: Enrollment, lessonId?: string) => router.push(lessonHref(enrollment.courseId, lessonId));
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.canvas }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
-          <ChevronLeft size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>My Learning</Text>
-        <View style={{ width: 32 }} />
-      </View>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+      <ELearningHeader title="My learning" onBack={() => router.back()} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              void loadEnrollments();
-            }}
-            tintColor="#10b981"
-          />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void loadEnrollments(); }} tintColor={colors.accent} />}
       >
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <TrendingUp size={22} color="#10b981" />
-            <Text style={[styles.statValue, { color: colors.text }]}>{inProgressCourses.length}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedText }]}>In Progress</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Award size={22} color="#3b82f6" />
-            <Text style={[styles.statValue, { color: colors.text }]}>{completedCourses.length}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedText }]}>Completed</Text>
-          </View>
-        </View>
-
-        {/* Status filter and sort (web My Learning selects) */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {STATUS_FILTERS.map((option) => (
-            <TouchableOpacity
-              key={option}
-              accessibilityRole="button"
-              accessibilityState={{ selected: status === option }}
-              onPress={() => setStatus(option)}
-              style={[styles.chip, status === option ? { backgroundColor: '#10b981', borderColor: '#10b981' } : { backgroundColor: colors.surface, borderColor: colors.border }]}
-            >
-              <Text style={[styles.chipText, { color: status === option ? '#ffffff' : colors.text }]}>{option}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-        <View style={styles.sortRow}>
-          <Text style={[styles.sortLabel, { color: colors.mutedText }]}>Sort</Text>
-          {SORTS.map((option) => (
-            <TouchableOpacity
-              key={option.value}
-              accessibilityRole="button"
-              accessibilityState={{ selected: sort === option.value }}
-              onPress={() => setSort(option.value)}
-              style={[styles.sortChip, sort === option.value && { backgroundColor: colors.control }]}
-            >
-              <Text style={[styles.sortText, { color: sort === option.value ? colors.accentText : colors.mutedText }]}>{option.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Course List */}
         {loading ? (
           <MyLearningListSkeleton />
         ) : loadError ? (
-          <View style={[styles.emptyContainer, { backgroundColor: colors.destructiveSurface }]}>
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>My Learning could not load</Text>
-            <Text style={[styles.emptySubtitle, { color: colors.mutedText }]}>{loadError}</Text>
-            <TouchableOpacity
-              onPress={() => nativeSession.status === 'retryable_failure' ? retryNativeSession() : void loadEnrollments()}
-              style={styles.browseBtn}
-            >
-              <Text style={styles.browseBtnText}>Try Again</Text>
-            </TouchableOpacity>
-          </View>
-        ) : displayedList.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <BookOpen size={48} color={colors.mutedText} />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>
-              {status === 'All' ? 'No courses yet' : status === 'Completed' ? 'No completed courses yet' : `No ${status.toLowerCase()} courses`}
-            </Text>
-            <Text style={[styles.emptySubtitle, { color: colors.mutedText }]}>
-              Explore our curriculum to start learning today.
-            </Text>
-            <TouchableOpacity
-              onPress={() => router.push('/eLearning/courses' as Href)}
-              style={styles.browseBtn}
-            >
-              <Text style={styles.browseBtnText}>Browse Courses</Text>
-            </TouchableOpacity>
-          </View>
+          <ELearningEmptyState
+            icon={<BookOpen size={40} color={colors.mutedText} />}
+            title="My learning could not load"
+            hint={loadError}
+            actionLabel="Try again"
+            onAction={() => (nativeSession.status === 'retryable_failure' ? retryNativeSession() : void loadEnrollments())}
+          />
+        ) : enrollments.length === 0 ? (
+          <ELearningEmptyState
+            icon={<BookOpen size={40} color={colors.mutedText} />}
+            title="No courses yet"
+            hint="Courses you enroll in appear here with your progress."
+            actionLabel="Browse courses"
+            onAction={() => router.push('/eLearning/courses' as Href)}
+          />
         ) : (
-          <View style={styles.list}>
-            {displayedList.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                activeOpacity={0.85}
-                onPress={() => router.push(`/eLearning/courses/${item.courseId}` as Href)}
-                style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              >
-                {item.course?.image || item.course?.thumbnail ? (
-                  <View>
-                    <Image source={{ uri: item.course?.image || item.course?.thumbnail || '' }} style={styles.cardImage} resizeMode="cover" />
-                    {lastActivity(item) ? (
-                      <View style={styles.dateBadge}>
-                        <Clock size={12} color="#ffffff" />
-                        <Text style={styles.dateBadgeText}>{new Date(lastActivity(item)).toLocaleDateString()}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : null}
-
-                <View style={styles.cardInfo}>
-                  <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
-                    {item.course?.title ?? 'Course unavailable'}
-                  </Text>
-                  {item.course ? <Text style={[styles.instructorText, { color: colors.mutedText }]}>by {item.course.instructor.name}</Text> : <Text style={[styles.instructorText, { color: colors.mutedText }]}>This course is no longer available in the catalog.</Text>}
-
-                  {/* Progress Bar */}
-                  <View style={styles.progressSection}>
-                    <View style={styles.progressHeader}>
-                      <Text style={[styles.progressLabel, { color: colors.mutedText }]}>
-                        {progressStatus(item)}{!(item.course?.image || item.course?.thumbnail) && lastActivity(item) ? ` · ${new Date(lastActivity(item)).toLocaleDateString()}` : ''}
-                      </Text>
-                      <Text style={[styles.progressPercent, { color: '#10b981' }]}>
-                        {item.progress || 0}%
-                      </Text>
-                    </View>
-                    <View style={[styles.progressBarTrack, { backgroundColor: isDark ? '#334155' : '#e2e8f0' }]}>
-                      <View
-                        style={[styles.progressBarFill, { width: `${Math.min(100, item.progress || 0)}%` }]}
-                      />
+          <>
+            {continueEnrollment?.course ? (
+              <View style={styles.continueCard}>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Open ${continueEnrollment.course.title}`} onPress={() => router.push(`/eLearning/courses/${continueEnrollment.courseId}` as Href)} android_ripple={{ color: colors.control }}>
+                  {continueEnrollment.course.image || continueEnrollment.course.thumbnail ? (
+                    <CachedImage uri={continueEnrollment.course.image || continueEnrollment.course.thumbnail || ''} style={{ width: heroImageWidth, height: heroImageHeight }} />
+                  ) : null}
+                  <View style={styles.continueBody}>
+                    <Text style={styles.eyebrow}>Continue where you left off</Text>
+                    <Text numberOfLines={2} style={styles.continueTitle}>{continueEnrollment.course.title}</Text>
+                    {continueNext ? <Text numberOfLines={1} style={styles.muted}>Next: {continueNext.title}</Text> : null}
+                    <View style={styles.progressRow}>
+                      <View style={styles.flex}><ProgressBar value={continueEnrollment.progress} accessibilityLabel={`${continueEnrollment.course.title} progress`} /></View>
+                      <Text style={styles.progressPercent}>{roundProgress(continueEnrollment.progress)}%</Text>
                     </View>
                   </View>
-
-                  <TouchableOpacity
-                    onPress={() => router.push(`/eLearning/courses/${item.courseId}/lesson` as Href)}
-                    style={styles.resumeBtn}
-                  >
-                    {item.status === 'completed' ? <CheckCircle2 size={16} color="#ffffff" /> : <PlayCircle size={16} color="#ffffff" />}
-                    <Text style={styles.resumeBtnText}>
-                      {item.status === 'completed' ? 'Review' : item.progress > 0 ? 'Resume' : 'Start'}
-                    </Text>
-                  </TouchableOpacity>
+                </Pressable>
+                <View style={styles.continueFooter}>
+                  <Pressable accessibilityRole="button" onPress={() => handleResume(continueEnrollment, continueNext?.lessonId)} android_ripple={{ color: 'rgba(255,255,255,0.2)' }} style={styles.resumeButton}>
+                    <PlayCircle size={18} color="#ffffff" />
+                    <Text numberOfLines={1} style={styles.resumeButtonText}>{continueEnrollment.progress > 0 ? 'Resume' : 'Start'}</Text>
+                  </Pressable>
                 </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+              </View>
+            ) : null}
+
+            <Text style={styles.summary}>{inProgressCount} in progress · {completedCount} completed</Text>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+              {STATUS_FILTERS.map((option) => <ELearningChip key={option} label={option} isSelected={status === option} onPress={() => setStatus(option)} />)}
+            </ScrollView>
+            <View style={styles.sortRow}>
+              <Text style={styles.sortLabel}>Sort</Text>
+              {SORTS.map((option) => (
+                <Pressable
+                  key={option.value}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sort by ${option.label}`}
+                  accessibilityState={{ selected: sort === option.value }}
+                  onPress={() => setSort(option.value)}
+                  style={[styles.sortChip, sort === option.value && styles.sortChipActive]}
+                >
+                  <Text style={[styles.sortText, sort === option.value && styles.sortTextActive]}>{option.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {displayedList.length === 0 ? (
+              <ELearningEmptyState
+                icon={<BookOpen size={36} color={colors.mutedText} />}
+                title={status === 'Completed' ? 'No completed courses yet' : `No ${status.toLowerCase()} courses`}
+                hint="Try another filter."
+                actionLabel="Show all"
+                onAction={() => setStatus('All')}
+              />
+            ) : (
+              <View style={styles.list}>
+                {displayedList.map((item) => {
+                  const itemStatus = progressStatus(item);
+                  const progress = roundProgress(item.progress);
+                  const image = item.course?.image || item.course?.thumbnail;
+                  return (
+                    <View key={item.id} style={styles.row}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${item.course?.title ?? 'Course unavailable'}, ${itemStatus}, ${progress}%`}
+                        onPress={() => router.push(`/eLearning/courses/${item.courseId}` as Href)}
+                        android_ripple={{ color: colors.control }}
+                        style={styles.rowMain}
+                      >
+                        <View style={styles.thumb}>
+                          {image ? <CachedImage uri={image} style={{ width: THUMB_WIDTH, height: THUMB_HEIGHT }} /> : <BookOpen size={22} color={colors.mutedText} />}
+                        </View>
+                        <View style={styles.flex}>
+                          <Text numberOfLines={2} style={styles.rowTitle}>{item.course?.title ?? 'Course unavailable'}</Text>
+                          <Text numberOfLines={1} style={styles.muted}>{item.course ? item.course.instructor.name : 'No longer in the catalog'}</Text>
+                        </View>
+                      </Pressable>
+                      <View style={styles.rowFooter}>
+                        <View style={styles.flex}>
+                          <ProgressBar value={progress} accessibilityLabel={`${item.course?.title ?? 'Course'} progress`} />
+                          <Text numberOfLines={1} style={styles.rowStatus}>{itemStatus} · {progress}%</Text>
+                        </View>
+                        <Pressable accessibilityRole="button" accessibilityLabel={`${item.status === 'completed' ? 'Review' : item.progress > 0 ? 'Resume' : 'Start'} ${item.course?.title ?? 'course'}`} onPress={() => handleResume(item)} android_ripple={{ color: colors.control }} style={styles.rowAction}>
+                          <Text numberOfLines={1} style={styles.rowActionText}>{item.status === 'completed' ? 'Review' : item.progress > 0 ? 'Resume' : 'Start'}</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  headerBtn: {
-    padding: 6,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 60,
-    gap: 16,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 1,
-    alignItems: 'center',
-    gap: 4,
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: '900',
-    marginTop: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  chips: { flexDirection: 'row', gap: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1 },
-  chipText: { fontSize: 13, fontWeight: '700' },
-  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  sortLabel: { fontSize: 12, fontWeight: '700', marginRight: 4 },
-  sortChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
-  sortText: { fontSize: 13, fontWeight: '800' },
-  dateBadge: { position: 'absolute', right: 10, bottom: 10, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.6)' },
-  dateBadgeText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
-  tabBar: {
-    flexDirection: 'row',
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 4,
-  },
-  tabItem: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-  },
-  tabItemText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  centerContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 50,
-    gap: 10,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    marginTop: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    maxWidth: 260,
-  },
-  browseBtn: {
-    backgroundColor: '#10b981',
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 14,
-    marginTop: 10,
-  },
-  browseBtnText: {
-    color: '#ffffff',
-    fontWeight: '800',
-    fontSize: 14,
-  },
-  list: {
-    gap: 16,
-  },
-  card: {
-    borderRadius: 18,
-    overflow: 'hidden',
-    borderWidth: 1,
-  },
-  cardImage: {
-    width: '100%',
-    height: 140,
-  },
-  cardInfo: {
-    padding: 16,
-    gap: 8,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    lineHeight: 22,
-  },
-  instructorText: {
-    fontSize: 13,
-  },
-  progressSection: {
-    gap: 6,
-    marginVertical: 4,
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  progressLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  progressPercent: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  progressBarTrack: {
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#10b981',
-    borderRadius: 4,
-  },
-  resumeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#10b981',
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginTop: 6,
-  },
-  resumeBtnText: {
-    color: '#ffffff',
-    fontWeight: '800',
-    fontSize: 14,
-  },
+const createStyles = (colors: AppThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.canvas },
+  scrollContent: { padding: ELEARNING_GUTTER, paddingBottom: 48, gap: 16 },
+  flex: { flex: 1, minWidth: 0, gap: 4 },
+  muted: { color: colors.mutedText, fontSize: 13 },
+  eyebrow: { color: colors.accentText, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  continueCard: { borderRadius: 16, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
+  continueBody: { padding: 16, paddingBottom: 8, gap: 6 },
+  continueTitle: { color: colors.text, fontSize: 18, fontWeight: '800', lineHeight: 24 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
+  progressPercent: { color: colors.accentText, fontSize: 14, fontWeight: '800' },
+  continueFooter: { paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 },
+  resumeButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, backgroundColor: ELEARNING_ACTION_GREEN, overflow: 'hidden' },
+  resumeButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
+  summary: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  chips: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
+  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: -8 },
+  sortLabel: { color: colors.mutedText, fontSize: 13, fontWeight: '600', marginRight: 4 },
+  sortChip: { minHeight: 36, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 10 },
+  sortChipActive: { backgroundColor: colors.control },
+  sortText: { color: colors.mutedText, fontSize: 14, fontWeight: '600' },
+  sortTextActive: { color: colors.accentText, fontWeight: '700' },
+  list: { gap: 12 },
+  row: { borderRadius: 16, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
+  rowMain: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
+  thumb: { width: THUMB_WIDTH, height: THUMB_HEIGHT, borderRadius: 8, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
+  rowTitle: { color: colors.text, fontSize: 15, fontWeight: '700', lineHeight: 20 },
+  rowFooter: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingBottom: 12 },
+  rowStatus: { color: colors.mutedText, fontSize: 12, fontWeight: '600' },
+  rowAction: { minHeight: 44, minWidth: 84, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.accent, overflow: 'hidden' },
+  rowActionText: { color: colors.accentText, fontSize: 14, fontWeight: '700' },
 });

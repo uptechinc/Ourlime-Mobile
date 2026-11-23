@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Skeleton, SkeletonCircle } from '@/components/ui/Skeleton';
 import {
@@ -21,74 +21,49 @@ const APPLICANT_NAME_WIDTHS: PercentWidth[] = ['48%', '56%', '42%', '52%'];
 /* Jobs list (app/jobs/index.tsx)                                      */
 /* ------------------------------------------------------------------ */
 
-/** Mirrors `ProfessionalJobCard` in components/jobs/ProfessionalJobsList.tsx. */
+/** Mirrors `ProfessionalJobCard` in components/jobs/ProfessionalJobsList.tsx (logo + title, pay, meta, tags, footer). */
 function ProfessionalJobCardSkeleton({ titleWidth }: { titleWidth: PercentWidth }): ReactNode {
   const { colors } = useAppTheme();
   return (
-    <View style={{ backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 12 }}>
+    <View style={{ backgroundColor: colors.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, paddingTop: 16, paddingHorizontal: 16, paddingBottom: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-        <Skeleton width={56} height={56} borderRadius={16} />
-        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-          <SkeletonLine fontSize={17} width={titleWidth} />
+        <Skeleton width={44} height={44} borderRadius={12} />
+        <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+          <SkeletonLine fontSize={16} width={titleWidth} />
           <SkeletonLine fontSize={13} width="45%" />
         </View>
-        <Skeleton width={84} height={20} borderRadius={999} />
+        <Skeleton width={22} height={22} borderRadius={6} />
       </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        {[82, 96, 92].map((pillWidth) => <Skeleton key={pillWidth} width={pillWidth} height={24} borderRadius={999} />)}
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <SkeletonLine fontSize={12} width={120} />
-        <Skeleton width={38} height={18} borderRadius={999} />
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Skeleton width={40} height={40} borderRadius={12} />
-          <Skeleton width={40} height={40} borderRadius={12} />
+      <View style={{ marginTop: 12, gap: 6 }}>
+        <SkeletonLine fontSize={16} width="40%" />
+        <SkeletonLine fontSize={13} width="70%" />
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {[72, 88].map((tagWidth) => <Skeleton key={tagWidth} width={tagWidth} height={24} borderRadius={8} />)}
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Skeleton width={96} height={38} borderRadius={12} />
-          <Skeleton width={90} height={38} borderRadius={12} />
-        </View>
+      </View>
+      <View style={{ marginTop: 12, paddingTop: 4, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+        <SkeletonLine fontSize={12} width={96} />
+        <Skeleton width={84} height={40} borderRadius={12} />
       </View>
     </View>
   );
 }
 
-/** Mirrors `QuickTaskCard` in components/jobs/QuickTasksList.tsx. */
+/** Mirrors `QuickTaskCard` in components/jobs/QuickTasksList.tsx (price, title, meta, poster, tags, footer). */
 function QuickTaskCardSkeleton({ titleWidth }: { titleWidth: PercentWidth }): ReactNode {
   const { colors } = useAppTheme();
   return (
-    <View style={{ backgroundColor: colors.surface, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
-      <View style={{ minHeight: 118, backgroundColor: colors.successSurface, padding: 14, justifyContent: 'flex-end' }}>
-        <View style={{ position: 'absolute', top: 10, right: 10, left: 90, flexDirection: 'row', justifyContent: 'flex-end', gap: 6 }}>
-          <Skeleton width={80} height={22} borderRadius={999} />
-          <Skeleton width={100} height={22} borderRadius={999} />
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <SkeletonCircle size={64} />
-          <Skeleton width={52} height={26} borderRadius={999} />
-        </View>
+    <View style={{ backgroundColor: colors.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, paddingTop: 16, paddingHorizontal: 16, paddingBottom: 8, gap: 8 }}>
+      <SkeletonLine fontSize={18} width="34%" />
+      <SkeletonLine fontSize={16} width={titleWidth} />
+      <SkeletonLine fontSize={13} width="62%" />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <SkeletonCircle size={28} />
+        <SkeletonLine fontSize={13} width="35%" />
       </View>
-      <View style={{ padding: 16, gap: 10 }}>
-        <SkeletonLine fontSize={18} width={titleWidth} />
-        <SkeletonParagraph fontSize={14} lineHeight={20} lines={2} lastLineWidth="55%" />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {[74, 92, 82, 128].map((badgeWidth) => <Skeleton key={badgeWidth} width={badgeWidth} height={26} borderRadius={8} />)}
-        </View>
-        <View style={{ gap: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <SkeletonLine fontSize={12} width={112} />
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Skeleton width={40} height={40} borderRadius={12} />
-              <Skeleton width={40} height={40} borderRadius={12} />
-            </View>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Skeleton width="48%" height={38} borderRadius={999} />
-            <Skeleton width="48%" height={38} borderRadius={999} />
-          </View>
-        </View>
+      <View style={{ marginTop: 4, paddingTop: 4, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+        <Skeleton width={70} height={24} borderRadius={999} />
+        <Skeleton width={84} height={40} borderRadius={12} />
       </View>
     </View>
   );
@@ -98,11 +73,11 @@ export type JobsListSkeletonProps = {
   variant?: 'professional' | 'quickTask';
 };
 
-/** Replaces `ProfessionalJobsList` / `QuickTasksList` while jobs load: same `gap: 14, paddingHorizontal: 16` list. */
+/** Replaces `ProfessionalJobsList` / `QuickTasksList` while jobs load: same `gap: 12, paddingHorizontal: 16` list. */
 export function JobsListSkeleton({ variant = 'professional' }: JobsListSkeletonProps): ReactNode {
   const titleWidths: PercentWidth[] = ['72%', '58%', '66%'];
   return (
-    <View style={{ gap: 14, paddingHorizontal: 16 }}>
+    <View style={{ gap: 12, paddingHorizontal: 16 }}>
       {titleWidths.map((titleWidth) => (variant === 'professional'
         ? <ProfessionalJobCardSkeleton key={titleWidth} titleWidth={titleWidth} />
         : <QuickTaskCardSkeleton key={titleWidth} titleWidth={titleWidth} />))}
@@ -116,45 +91,35 @@ export function JobsPageSkeleton(): ReactNode {
   return (
     <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
       <PageHeaderSkeleton titleWidth={44} />
-      <ScrollView scrollEnabled={false} contentContainerStyle={{ paddingBottom: 50, gap: 16 }}>
-        <View style={{ marginHorizontal: 16, marginTop: 14, alignItems: 'center', gap: 8 }}>
-          <Skeleton width={180} height={24} borderRadius={999} />
+      <ScrollView scrollEnabled={false} contentContainerStyle={{ paddingBottom: 48, gap: 16 }}>
+        <View style={{ marginHorizontal: 16, marginTop: 16, gap: 8 }}>
+          <Skeleton width={120} height={24} borderRadius={999} />
           <SkeletonLine fontSize={24} width="80%" />
-          <SkeletonLine fontSize={24} width="50%" />
-          <SkeletonLine fontSize={14} width="75%" />
         </View>
-        <View style={{ marginHorizontal: 16, borderRadius: 22, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 8, gap: 4 }}>
+        <View style={{ marginHorizontal: 16, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, padding: 8, gap: 4 }}>
           {[0, 1].map((row) => (
-            <View key={row} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 10 }}>
+            <View key={row} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8 }}>
               <Skeleton width={18} height={18} borderRadius={5} />
               <SkeletonLine fontSize={14} width="60%" />
             </View>
           ))}
-          <Skeleton width="100%" height={44} borderRadius={999} />
+          <Skeleton width="100%" height={48} borderRadius={12} />
         </View>
         <View style={{ marginHorizontal: 16, flexDirection: 'row', gap: 8 }}>
-          <Skeleton width="48%" height={40} borderRadius={12} />
-          <Skeleton width="48%" height={40} borderRadius={12} />
+          <Skeleton width="48%" height={48} borderRadius={12} />
+          <Skeleton width="48%" height={48} borderRadius={12} />
+        </View>
+        <View style={{ marginHorizontal: 16 }}><Skeleton width="100%" height={52} borderRadius={14} /></View>
+        <View style={{ marginHorizontal: 16, flexDirection: 'row', gap: 8 }}>
+          <Skeleton width="48%" height={48} borderRadius={12} />
+          <Skeleton width="48%" height={48} borderRadius={12} />
         </View>
         <View style={{ paddingHorizontal: 16, flexDirection: 'row', gap: 8 }}>
-          {[96, 82, 110].map((chipWidth) => <Skeleton key={chipWidth} width={chipWidth} height={34} borderRadius={999} />)}
+          {[96, 82, 110].map((chipWidth) => <Skeleton key={chipWidth} width={chipWidth} height={40} borderRadius={999} />)}
         </View>
         <View style={{ marginHorizontal: 16, flexDirection: 'row', gap: 8 }}>
-          <Skeleton width="48%" height={44} borderRadius={999} />
-          <Skeleton width="48%" height={44} borderRadius={999} />
-        </View>
-        <View style={{ paddingHorizontal: 16, flexDirection: 'row', gap: 12 }}>
-          {[0, 1].map((card) => (
-            <View key={card} style={{ width: 160, minHeight: 140, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 16, gap: 6 }}>
-              <Skeleton width={44} height={44} borderRadius={14} />
-              <SkeletonLine fontSize={16} width="70%" />
-              <SkeletonLine fontSize={13} width="55%" />
-            </View>
-          ))}
-        </View>
-        <View style={{ marginHorizontal: 16, flexDirection: 'row', gap: 8 }}>
-          <Skeleton width="48%" height={40} borderRadius={999} />
-          <Skeleton width="48%" height={40} borderRadius={999} />
+          <Skeleton width={96} height={44} borderRadius={12} />
+          <Skeleton width={104} height={44} borderRadius={12} />
         </View>
         <JobsListSkeleton />
       </ScrollView>
@@ -229,17 +194,16 @@ export function JobDetailSkeleton(): ReactNode {
   );
 }
 
-/** Mirrors the absolutely positioned "Compensation / Apply Now" bar at the bottom of the job detail screen. */
+/** Mirrors `JobDetailBottomBar`: the 48dp Save square and the full-width primary action, inside the bottom safe area. */
 export function JobDetailBottomBarSkeleton(): ReactNode {
   const { colors } = useAppTheme();
   return (
-    <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1, backgroundColor: colors.surface, borderTopColor: colors.border }}>
-      <View>
-        <SkeletonLine fontSize={11} width={92} />
-        <SkeletonLine fontSize={17} width={118} />
+    <SafeAreaView edges={['bottom', 'left', 'right']} style={{ backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+      <View style={{ minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12 }}>
+        <Skeleton width={48} height={48} borderRadius={12} />
+        <View style={{ flex: 1 }}><Skeleton width="100%" height={48} borderRadius={12} /></View>
       </View>
-      <Skeleton width={142} height={44} borderRadius={14} />
-    </View>
+    </SafeAreaView>
   );
 }
 

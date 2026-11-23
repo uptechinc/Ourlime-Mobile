@@ -7,9 +7,10 @@ import PageHeader from '@/components/ui/PageHeader';
 import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
 import FilterBar from '@/components/ui/FilterBar';
 import { JobManagementSkeleton } from '@/components/jobs/JobsSkeletons';
+import { JOBS_ACTION_GREEN, JOBS_CARD_RADIUS, JobStatusPill, getApplicationStatusPresentation, getListingStatusPresentation } from '@/components/jobs/JobCardParts';
 import JobDeleteModal, { type JobDeleteMode } from '@/components/jobs/manage/JobDeleteModal';
 import { JobManagementAuditSheet, JobManagementEditSheet, JobManagementInterviewSheet, JobManagementNotesSheet } from '@/components/jobs/manage/JobManagementSheets';
-import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import {
   jobManagementService,
   type ApplicationStatus,
@@ -32,9 +33,9 @@ const applicationSorts: { value: ApplicationSort; label: string }[] = [
   { value: 'newest', label: 'Newest' }, { value: 'oldest', label: 'Oldest' }, { value: 'name', label: 'Name A–Z' },
 ];
 
-const formatApplicationStatus = (status: ApplicationStatus): string => status === 'job_withdrawn' ? 'Job withdrawn' : status.charAt(0).toUpperCase() + status.slice(1);
+const formatApplicationStatus = (status: ApplicationStatus): string => getApplicationStatusPresentation(status, 'poster').label;
 
-const getAllowedApplicationStatuses =(status: ApplicationStatus): ApplicationStatus[] => {
+const getAllowedApplicationStatuses = (status: ApplicationStatus): ApplicationStatus[] => {
   if (status === 'pending') return ['reviewing', 'rejected'];
   if (status === 'reviewing') return ['interviewing', 'accepted', 'rejected'];
   if (status === 'interviewing' || status === 'offer') return ['accepted', 'rejected'];
@@ -95,6 +96,7 @@ export default function ManageJobsScreen() {
   }, [applyJobs, load]);
 
   const selectedJob = useMemo(() => jobs.find((job) => job.id === selectedJobId) ?? null, [jobs, selectedJobId]);
+  const newApplicationCount = selectedJob ? selectedJob.applications.filter((application) => application.status === 'pending').length : 0;
   const questionTextById = useMemo(() => new Map((selectedJob?.questions ?? []).map((question) => [question.id, question.question])), [selectedJob]);
 
   useEffect(() => {
@@ -215,16 +217,26 @@ export default function ManageJobsScreen() {
 
   const listHeader = <>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.jobSelector}>
-      {jobs.map((job) => <TouchableOpacity key={job.id} onPress={() => setSelectedJobId(job.id)} style={[styles.jobChip, selectedJobId === job.id && styles.jobChipActive]}><Text numberOfLines={1} style={[styles.jobChipText, selectedJobId === job.id && styles.jobChipTextActive]}>{job.title}</Text><Text style={[styles.jobChipCount, selectedJobId === job.id && styles.jobChipTextActive]}>{job.applications.length}</Text></TouchableOpacity>)}
+      {jobs.map((job) => <TouchableOpacity key={job.id} accessibilityRole="button" accessibilityLabel={`${job.title}, ${job.applications.length} applicants`} accessibilityState={{ selected: selectedJobId === job.id }} onPress={() => setSelectedJobId(job.id)} style={[styles.jobChip, selectedJobId === job.id && styles.jobChipActive]}><Text numberOfLines={1} style={[styles.jobChipText, selectedJobId === job.id && styles.jobChipTextActive]}>{job.title}</Text><View style={[styles.jobChipCountBox, selectedJobId === job.id && styles.jobChipCountBoxActive]}><Text style={[styles.jobChipCount, selectedJobId === job.id && styles.jobChipTextActive]}>{job.applications.length}</Text></View></TouchableOpacity>)}
     </ScrollView>
     {selectedJob ? <View style={styles.jobCard}>
-      <View style={styles.jobTitleRow}><View style={styles.flex}><Text style={styles.jobTitle}>{selectedJob.title}</Text><View style={styles.locationRow}><MapPin size={13} color={colors.mutedText} /><Text numberOfLines={1} ellipsizeMode="tail" style={[styles.meta, styles.flex]}>{linkPresentationService.compactUrlsInText(selectedJob.location)} · {selectedJob.type === 'quickTask' ? 'Quick Task' : 'Professional'} · {selectedJob.status.replace(/_/g, ' ')}</Text></View></View><TouchableOpacity onPress={() => setAuditJob(selectedJob)} style={styles.iconButton}><History size={19} color={colors.successText} /></TouchableOpacity></View>
-      <View style={styles.actions}><TouchableOpacity onPress={() => setEditJob(selectedJob)} style={styles.editAction}><Edit3 size={15} color={colors.icon} /><Text style={styles.editActionText}>Edit</Text></TouchableOpacity>{selectedJob.status === 'draft' ? <Action label="Publish" icon="reopen" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'publish')} /> : selectedJob.status === 'closed' || selectedJob.status === 'archived' || selectedJob.status === 'active' ? <Action label="Reopen" icon="reopen" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'reopen')} /> : null}{selectedJob.status === 'published' ? <Action label="Pause" icon="pause" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'pause')} /> : selectedJob.status === 'paused' ? <Action label="Resume" icon="resume" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'resume')} /> : null}{selectedJob.status !== 'closed' && selectedJob.status !== 'archived' && selectedJob.status !== 'draft' ? <Action label="Close" icon="close" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'close')} /> : null}{selectedJob.status !== 'archived' ? <Action label="Archive" icon="archive" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'archive')} /> : null}<Action label="Delete" icon="delete" danger disabled={workingId === selectedJob.id} onPress={() => handleDeleteJob(selectedJob)} /></View>
+      <View style={styles.jobTitleRow}>
+        <View style={styles.flex}>
+          <Text numberOfLines={2} style={styles.jobTitle}>{selectedJob.title}</Text>
+          <View style={styles.locationRow}><MapPin size={14} color={colors.mutedText} /><Text numberOfLines={1} ellipsizeMode="tail" style={[styles.meta, styles.flex]}>{linkPresentationService.compactUrlsInText(selectedJob.location)} · {selectedJob.type === 'quickTask' ? 'Quick task' : 'Professional'}</Text></View>
+        </View>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Listing activity history" onPress={() => setAuditJob(selectedJob)} style={styles.iconButton}><History size={20} color={colors.successText} /></TouchableOpacity>
+      </View>
+      <View style={styles.jobStatsRow}>
+        <JobStatusPill presentation={getListingStatusPresentation(selectedJob.status)} />
+        <Text numberOfLines={1} style={styles.jobStats}><Text style={styles.jobStatsStrong}>{selectedJob.applications.length}</Text> {selectedJob.applications.length === 1 ? 'applicant' : 'applicants'}{newApplicationCount ? <Text> · <Text style={styles.jobStatsNew}>{newApplicationCount} new</Text></Text> : null}</Text>
+      </View>
+      <View style={styles.actions}><TouchableOpacity accessibilityRole="button" onPress={() => setEditJob(selectedJob)} style={styles.editAction}><Edit3 size={16} color={colors.icon} /><Text style={styles.editActionText}>Edit</Text></TouchableOpacity>{selectedJob.status === 'draft' ? <Action label="Publish" icon="reopen" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'publish')} /> : selectedJob.status === 'closed' || selectedJob.status === 'archived' || selectedJob.status === 'active' ? <Action label="Reopen" icon="reopen" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'reopen')} /> : null}{selectedJob.status === 'published' ? <Action label="Pause" icon="pause" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'pause')} /> : selectedJob.status === 'paused' ? <Action label="Resume" icon="resume" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'resume')} /> : null}{selectedJob.status !== 'closed' && selectedJob.status !== 'archived' && selectedJob.status !== 'draft' ? <Action label="Close" icon="close" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'close')} /> : null}{selectedJob.status !== 'archived' ? <Action label="Archive" icon="archive" disabled={workingId === selectedJob.id} onPress={() => void handleJobAction(selectedJob.id, 'archive')} /> : null}<Action label="Delete" icon="delete" danger disabled={workingId === selectedJob.id} onPress={() => handleDeleteJob(selectedJob)} /></View>
     </View> : null}
-    <View style={styles.searchBox}><Search size={18} color={colors.mutedText} /><TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Search applicants, cover letters, answers…" placeholderTextColor={colors.mutedText} style={styles.searchInput} /></View>
+    <View style={styles.searchBox}><Search size={18} color={colors.mutedText} /><TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Search applicants" placeholderTextColor={colors.mutedText} accessibilityLabel="Search applicants, cover letters and answers" style={styles.searchInput} /></View>
     <View style={styles.filterBar}><FilterBar groups={filterGroups} onOpen={() => setFiltersOpen(true)} onClear={handleClearFilter} /></View>
-    <Text style={[styles.sectionLabel, styles.applicantCount]}>{visibleApplications.length} applicant{visibleApplications.length === 1 ? '' : 's'}</Text>
-    {selectedApplicationIds.size > 0 ? <View style={styles.bulkBar}><Text style={styles.bulkTitle}>{selectedApplicationIds.size} selected</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bulkActions}>{applicationStatuses.map((status) => <TouchableOpacity key={status} disabled={workingId === 'bulk'} onPress={() => void handleBulkStatus(status)} style={styles.bulkChip}><Text style={styles.bulkChipText}>{status}</Text></TouchableOpacity>)}</ScrollView></View> : null}
+    <Text style={[styles.sectionLabel, styles.applicantCount]}>{visibleApplications.length === (selectedJob?.applications.length ?? 0) ? `${visibleApplications.length} applicant${visibleApplications.length === 1 ? '' : 's'}` : `Showing ${visibleApplications.length} of ${selectedJob?.applications.length ?? 0} applicants`}</Text>
+    {selectedApplicationIds.size > 0 ? <View style={styles.bulkBar}><View style={styles.bulkHeader}><Text style={styles.bulkTitle}>{selectedApplicationIds.size} selected · move to</Text><TouchableOpacity accessibilityRole="button" onPress={() => setSelectedApplicationIds(new Set())} hitSlop={8}><Text style={styles.bulkClear}>Clear</Text></TouchableOpacity></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bulkActions}>{applicationStatuses.map((status) => <TouchableOpacity key={status} accessibilityRole="button" accessibilityLabel={`Mark ${selectedApplicationIds.size} selected as ${formatApplicationStatus(status)}`} disabled={workingId === 'bulk'} onPress={() => void handleBulkStatus(status)} style={[styles.bulkChip, workingId === 'bulk' && styles.disabled]}><Text style={styles.bulkChipText}>{formatApplicationStatus(status)}</Text></TouchableOpacity>)}</ScrollView></View> : null}
     {error ? <Text style={styles.error}>{error}</Text> : null}
   </>;
 
@@ -238,7 +250,7 @@ export default function ManageJobsScreen() {
       </SafeAreaView>
     );
   }
-  if (!loading && jobs.length === 0) return <SafeAreaView edges={['left', 'right']} style={styles.safeArea}><PageHeader title="Manage Jobs" onBackPress={() => router.back()} /><View style={styles.center}><Briefcase size={42} color={colors.mutedText} /><Text style={styles.jobTitle}>No jobs published</Text><Text style={styles.meta}>Create an opportunity from the Jobs screen.</Text></View></SafeAreaView>;
+  if (!loading && jobs.length === 0) return <SafeAreaView edges={['left', 'right']} style={styles.safeArea}><PageHeader title="Manage Jobs" onBackPress={() => router.back()} /><View style={styles.center}><View style={styles.emptyIcon}><Briefcase size={32} color={colors.mutedText} /></View><Text style={styles.jobTitle}>No listings yet</Text><Text style={styles.emptyText}>Post a job or quick task and its applicants will show up here.</Text><TouchableOpacity accessibilityRole="button" onPress={() => router.replace('/jobs')} style={styles.emptyButton}><Text style={styles.emptyButtonText}>Go to Jobs</Text></TouchableOpacity></View></SafeAreaView>;
 
   return <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
     <PageHeader title="Manage Jobs" onBackPress={() => router.back()} />
@@ -248,7 +260,7 @@ export default function ManageJobsScreen() {
       ListHeaderComponent={listHeader}
       ListEmptyComponent={<View style={styles.emptyApplications}><Text style={styles.jobTitle}>No matching applicants</Text><Text style={styles.meta}>Try another filter or search.</Text></View>}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#10b981" />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.accent} />}
       renderItem={({ item: application }) => <ApplicationCard
         application={application}
         questionTextById={questionTextById}
@@ -306,15 +318,15 @@ function ApplicationCard({ application, questionTextById, selected, expanded, wo
   const allowedStatuses = getAllowedApplicationStatuses(application.status);
   const canScheduleInterview = application.status === 'reviewing';
   return <View style={[styles.applicationCard, selected && styles.applicationSelected]}>
-    <View style={styles.applicationHeader}><TouchableOpacity onPress={onToggleSelected} hitSlop={8}>{selected ? <CheckSquare size={22} color={colors.accent} /> : <Square size={22} color={colors.mutedText} />}</TouchableOpacity><TouchableOpacity style={styles.flex} onPress={onToggleExpanded}><Text style={styles.applicantName}>{application.applicant.name}</Text><Text style={styles.meta}>{application.applicant.email || 'No public email'} · Applied {formatDate(application.createdAtMs)}</Text></TouchableOpacity><TouchableOpacity onPress={onToggleExpanded}>{expanded ? <ChevronUp size={21} color={colors.icon} /> : <ChevronDown size={21} color={colors.icon} />}</TouchableOpacity></View>
-    <View style={styles.applicationToolbar}><View style={styles.statusBadge}><Text style={styles.statusBadgeText}>{formatApplicationStatus(application.status)}</Text></View><TouchableOpacity onPress={onNotes} style={styles.smallAction}><StickyNote size={15} color={colors.warningText} /><Text style={styles.noteActionText}>Notes</Text></TouchableOpacity><TouchableOpacity disabled={!canScheduleInterview} onPress={onInterview} style={[styles.smallAction, !canScheduleInterview && styles.disabled]}><CalendarClock size={15} color={colors.accentText} /><Text style={styles.interviewActionText}>Interview</Text></TouchableOpacity></View>
+    <View style={styles.applicationHeader}><TouchableOpacity accessibilityRole="checkbox" accessibilityLabel={`Select ${application.applicant.name}`} accessibilityState={{ checked: selected }} onPress={onToggleSelected} style={styles.checkboxButton}>{selected ? <CheckSquare size={22} color={colors.accent} /> : <Square size={22} color={colors.mutedText} />}</TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded }} accessibilityLabel={`${application.applicant.name}, ${formatApplicationStatus(application.status)}. ${expanded ? 'Hide' : 'Show'} application`} style={styles.flex} onPress={onToggleExpanded}><Text numberOfLines={1} style={styles.applicantName}>{application.applicant.name}</Text><Text numberOfLines={1} style={styles.meta}>{application.applicant.email || 'No public email'}</Text><Text numberOfLines={1} style={styles.meta}>Applied {formatDate(application.createdAtMs)}</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" accessibilityLabel={expanded ? 'Hide application' : 'Show application'} onPress={onToggleExpanded} style={styles.chevronButton}>{expanded ? <ChevronUp size={22} color={colors.icon} /> : <ChevronDown size={22} color={colors.icon} />}</TouchableOpacity></View>
+    <View style={styles.applicationToolbar}><View style={styles.flex}><JobStatusPill presentation={getApplicationStatusPresentation(application.status, 'poster')} /></View><TouchableOpacity accessibilityRole="button" accessibilityLabel={`Notes on ${application.applicant.name}`} onPress={onNotes} style={styles.smallAction}><StickyNote size={16} color={colors.warningText} /><Text style={styles.noteActionText}>Notes</Text></TouchableOpacity>{canScheduleInterview ? <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Schedule an interview with ${application.applicant.name}`} onPress={onInterview} style={styles.smallAction}><CalendarClock size={16} color={colors.accentText} /><Text style={styles.interviewActionText}>Interview</Text></TouchableOpacity> : null}</View>
     {expanded ? <View style={styles.applicationDetails}>
       <Text style={styles.detailLabel}>Cover letter</Text><Text style={styles.detailBody}>{application.coverLetter || 'No cover letter provided.'}</Text>
       {answers.length ? <><Text style={styles.detailLabel}>Application answers</Text>{answers.map(([questionId, answer]) => <View key={questionId} style={styles.answerRow}><Text style={styles.answerQuestion}>{questionTextById.get(questionId) || 'Question'}</Text><Text style={styles.detailBody}>{Array.isArray(answer) ? answer.join(', ') : answer}</Text></View>)}</> : null}
       {application.applicant.workExperience.length ? <><Text style={styles.detailLabel}>Experience</Text>{application.applicant.workExperience.slice(0, 4).map((experience) => <Text key={experience.id} style={styles.detailBody}>{experience.role || 'Role'} · {experience.company || 'Company'}</Text>)}</> : null}
       {application.applicant.education.length ? <><Text style={styles.detailLabel}>Education</Text>{application.applicant.education.slice(0, 4).map((education) => <Text key={education.id} style={styles.detailBody}>{education.degree || 'Study'} · {education.school || 'School'}</Text>)}</> : null}
       <View style={styles.linkRow}>{application.resumeUrl ? <LinkButton label="Resume" onPress={() => onOpenLink(application.resumeUrl)} /> : null}{application.portfolioLink ? <LinkButton label="Portfolio" onPress={() => onOpenLink(application.portfolioLink)} /> : null}</View>
-      {allowedStatuses.length > 0 ? <><Text style={styles.detailLabel}>Update status</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statuses}>{allowedStatuses.map((status) => <TouchableOpacity key={status} disabled={working} onPress={() => onStatus(status)} style={styles.statusChip}><Text style={styles.statusText}>{formatApplicationStatus(status)}</Text></TouchableOpacity>)}</ScrollView></> : <Text style={styles.terminalStatus}>This application is in a final state.</Text>}
+      {allowedStatuses.length > 0 ? <><Text style={styles.detailLabel}>Update status</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statuses}>{allowedStatuses.map((status) => <TouchableOpacity key={status} accessibilityRole="button" accessibilityLabel={`Mark as ${formatApplicationStatus(status)}`} disabled={working} onPress={() => onStatus(status)} style={[styles.statusChip, status === 'rejected' && styles.statusChipDanger, working && styles.disabled]}><Text style={[styles.statusText, status === 'rejected' && styles.statusTextDanger]}>{formatApplicationStatus(status)}</Text></TouchableOpacity>)}</ScrollView></> : <Text style={styles.terminalStatus}>This application is in a final state.</Text>}
     </View> : null}
   </View>;
 }
@@ -324,13 +336,13 @@ function Action({ label, icon, onPress, disabled, danger = false }: ActionProps)
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const Icon = icon === 'reopen' ? RotateCcw : icon === 'close' ? XCircle : icon === 'archive' ? Archive : icon === 'pause' ? PauseCircle : icon === 'resume' ? PlayCircle : Trash2;
-  return <TouchableOpacity onPress={onPress} disabled={disabled} style={[styles.action, danger && styles.danger, disabled && styles.disabled]}><Icon size={15} color={danger ? colors.destructiveText : colors.successText} /><Text style={[styles.actionText, danger && styles.dangerText]}>{label}</Text></TouchableOpacity>;
+  return <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled }} onPress={onPress} disabled={disabled} style={[styles.action, danger && styles.danger, disabled && styles.disabled]}><Icon size={16} color={danger ? colors.destructiveText : colors.successText} /><Text style={[styles.actionText, danger && styles.dangerText]}>{label}</Text></TouchableOpacity>;
 }
 
 function LinkButton({ label, onPress }: { label: string; onPress: () => void }) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  return <TouchableOpacity onPress={onPress} style={styles.linkButton}>{label === 'Resume' ? <FileText size={15} color={colors.successText} /> : <ExternalLink size={15} color={colors.successText} />}<Text style={styles.linkText}>{label}</Text></TouchableOpacity>;
+  return <TouchableOpacity accessibilityRole="link" accessibilityLabel={`Open ${label.toLowerCase()}`} onPress={onPress} style={styles.linkButton}>{label === 'Resume' ? <FileText size={16} color={colors.successText} /> : <ExternalLink size={15} color={colors.successText} />}<Text style={styles.linkText}>{label}</Text></TouchableOpacity>;
 }
 
 function formatDate(timestampMs: number): string {
@@ -338,66 +350,77 @@ function formatDate(timestampMs: number): string {
   return new Date(timestampMs).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-type ThemeColors = ReturnType<typeof useAppTheme>['colors'];
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
-  content: { paddingBottom: 50 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
-  flex: { flex: 1 },
-  jobSelector: { gap: 8, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 },
-  jobChip: { maxWidth: 190, flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: colors.border, borderRadius: 999, backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 9 },
+  content: { paddingBottom: 48 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
+  emptyIcon: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control, marginBottom: 4 },
+  emptyText: { color: colors.mutedText, fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  emptyButton: { marginTop: 8, minHeight: 48, justifyContent: 'center', borderRadius: 12, backgroundColor: JOBS_ACTION_GREEN, paddingHorizontal: 24 },
+  emptyButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
+  flex: { flex: 1, minWidth: 0 },
+  jobSelector: { gap: 8, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 },
+  jobChip: { maxWidth: 220, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: 999, backgroundColor: colors.surface, paddingLeft: 14, paddingRight: 8 },
   jobChipActive: { borderColor: colors.accent, backgroundColor: colors.successSurface },
-  jobChipText: { maxWidth: 140, color: colors.secondaryText, fontSize: 12, fontWeight: '800' },
-  jobChipTextActive: { color: colors.successText },
-  jobChipCount: { color: colors.mutedText, fontSize: 11, fontWeight: '900' },
-  jobCard: { marginHorizontal: 16, marginBottom: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 18, backgroundColor: colors.surface, padding: 15, gap: 12 },
-  jobTitleRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-  jobTitle: { color: colors.text, fontSize: 18, fontWeight: '900' },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5 },
-  meta: { color: colors.mutedText, fontSize: 11 },
-  iconButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.successSurface },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  editAction: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 10, backgroundColor: colors.control, paddingHorizontal: 10, paddingVertical: 8 },
-  editActionText: { color: colors.secondaryText, fontSize: 12, fontWeight: '800' },
-  action: { flexDirection: 'row', gap: 5, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.successSurface },
+  jobChipText: { flexShrink: 1, color: colors.secondaryText, fontSize: 13, fontWeight: '700' },
+  jobChipTextActive: { color: colors.successText, fontWeight: '800' },
+  jobChipCountBox: { minWidth: 24, height: 24, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.control },
+  jobChipCountBoxActive: { backgroundColor: colors.surface },
+  jobChipCount: { color: colors.mutedText, fontSize: 12, fontWeight: '900' },
+  jobCard: { marginHorizontal: 16, marginBottom: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: JOBS_CARD_RADIUS, backgroundColor: colors.surface, padding: 16, gap: 12 },
+  jobTitleRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  jobTitle: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: '900' },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  meta: { color: colors.mutedText, fontSize: 12, lineHeight: 17 },
+  jobStatsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  jobStats: { flexShrink: 1, color: colors.mutedText, fontSize: 13 },
+  jobStatsStrong: { color: colors.text, fontWeight: '900' },
+  jobStatsNew: { color: colors.successText, fontWeight: '800' },
+  iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.successSurface },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  editAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 12, backgroundColor: colors.control, paddingHorizontal: 12 },
+  editActionText: { color: colors.secondaryText, fontSize: 13, fontWeight: '800' },
+  action: { minHeight: 44, flexDirection: 'row', gap: 6, alignItems: 'center', paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.successSurface },
   danger: { backgroundColor: colors.destructiveSurface },
-  actionText: { color: colors.successText, fontSize: 12, fontWeight: '800' },
+  actionText: { color: colors.successText, fontSize: 13, fontWeight: '800' },
   dangerText: { color: colors.destructiveText },
   disabled: { opacity: 0.5 },
-  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.input, paddingHorizontal: 12 },
-  searchInput: { flex: 1, color: colors.text, paddingVertical: 11 },
-  filterBar: { paddingHorizontal: 16, paddingVertical: 11 },
-  applicantCount: { flex: 0, paddingHorizontal: 16, marginBottom: 9 },
-  sectionLabel: { flex: 1, color: colors.secondaryText, fontSize: 12, fontWeight: '900' },
-  bulkBar: { marginHorizontal: 16, marginBottom: 10, borderRadius: 14, backgroundColor: colors.selectedControl, padding: 11, gap: 8 },
-  bulkTitle: { color: colors.selectedText, fontSize: 12, fontWeight: '900' },
-  bulkActions: { gap: 7 },
-  bulkChip: { borderRadius: 999, backgroundColor: colors.surface, paddingHorizontal: 10, paddingVertical: 6 },
-  bulkChipText: { color: colors.successText, fontSize: 10, fontWeight: '900', textTransform: 'capitalize' },
-  error: { marginHorizontal: 16, marginBottom: 10, color: colors.destructiveText, backgroundColor: colors.destructiveSurface, borderRadius: 12, padding: 11 },
-  applicationCard: { marginHorizontal: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 17, backgroundColor: colors.surface, padding: 14 },
-  applicationSelected: { borderColor: colors.accent, backgroundColor: colors.surface },
-  applicationHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  searchBox: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.input, paddingHorizontal: 12 },
+  searchInput: { flex: 1, minHeight: 44, color: colors.text, fontSize: 14 },
+  filterBar: { paddingHorizontal: 16, paddingVertical: 12 },
+  applicantCount: { flex: 0, paddingHorizontal: 16, marginBottom: 8 },
+  sectionLabel: { flex: 1, color: colors.secondaryText, fontSize: 13, fontWeight: '800' },
+  bulkBar: { marginHorizontal: 16, marginBottom: 12, borderRadius: 12, backgroundColor: colors.successSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.accent, padding: 12, gap: 8 },
+  bulkHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  bulkTitle: { flexShrink: 1, color: colors.successText, fontSize: 13, fontWeight: '900' },
+  bulkClear: { color: colors.secondaryText, fontSize: 13, fontWeight: '800' },
+  bulkActions: { gap: 8 },
+  bulkChip: { minHeight: 40, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, paddingHorizontal: 14 },
+  bulkChipText: { color: colors.successText, fontSize: 13, fontWeight: '800' },
+  error: { marginHorizontal: 16, marginBottom: 12, color: colors.destructiveText, backgroundColor: colors.destructiveSurface, borderRadius: 12, padding: 12 },
+  applicationCard: { marginHorizontal: 16, marginBottom: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: JOBS_CARD_RADIUS, backgroundColor: colors.surface, padding: 12 },
+  applicationSelected: { borderColor: colors.accent, borderWidth: 1 },
+  applicationHeader: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  checkboxButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  chevronButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   applicantName: { color: colors.text, fontSize: 15, fontWeight: '900' },
-  applicationToolbar: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12 },
-  statusBadge: { borderRadius: 999, backgroundColor: colors.successSurface, paddingHorizontal: 9, paddingVertical: 5 },
-  statusBadgeText: { color: colors.successText, fontSize: 10, fontWeight: '900', textTransform: 'capitalize' },
-  smallAction: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, backgroundColor: colors.canvas, paddingHorizontal: 9, paddingVertical: 6 },
-  noteActionText: { color: colors.warningText, fontSize: 10, fontWeight: '900' },
-  interviewActionText: { color: colors.accentText, fontSize: 10, fontWeight: '900' },
-  applicationDetails: { borderTopWidth: 1, borderTopColor: colors.border, marginTop: 12, paddingTop: 12 },
-  detailLabel: { color: colors.secondaryText, fontSize: 11, fontWeight: '900', marginTop: 9, marginBottom: 5, textTransform: 'uppercase' },
-  detailBody: { color: colors.text, fontSize: 12, lineHeight: 18 },
-  answerRow: { marginBottom: 7 },
-  answerQuestion: { color: colors.mutedText, fontSize: 10, marginBottom: 2 },
-  linkRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 11 },
-  linkButton: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 10, backgroundColor: colors.successSurface, paddingHorizontal: 11, paddingVertical: 8 },
-  linkText: { color: colors.successText, fontWeight: '800', fontSize: 12 },
-  statuses: { gap: 7 },
-  statusChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 7 },
-  statusChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  statusText: { color: colors.mutedText, fontSize: 10, fontWeight: '800', textTransform: 'capitalize' },
-  statusTextActive: { color: colors.onAccent },
-  terminalStatus: { color: colors.mutedText, fontSize: 12, fontStyle: 'italic', marginTop: 10 },
-  emptyApplications: { alignItems: 'center', gap: 6, paddingVertical: 45 },
+  applicationToolbar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingLeft: 4 },
+  smallAction: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, paddingHorizontal: 12 },
+  noteActionText: { color: colors.warningText, fontSize: 13, fontWeight: '800' },
+  interviewActionText: { color: colors.accentText, fontSize: 13, fontWeight: '800' },
+  applicationDetails: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginTop: 12, paddingTop: 4, paddingHorizontal: 4 },
+  detailLabel: { color: colors.mutedText, fontSize: 12, fontWeight: '800', marginTop: 12, marginBottom: 4 },
+  detailBody: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  answerRow: { marginBottom: 8 },
+  answerQuestion: { color: colors.mutedText, fontSize: 12, marginBottom: 2 },
+  linkRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  linkButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 12, backgroundColor: colors.successSurface, paddingHorizontal: 14 },
+  linkText: { color: colors.successText, fontWeight: '800', fontSize: 13 },
+  statuses: { gap: 8 },
+  statusChip: { minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: colors.accent, borderRadius: 12, paddingHorizontal: 14, backgroundColor: colors.surface },
+  statusChipDanger: { borderColor: colors.destructiveText },
+  statusText: { color: colors.accentText, fontSize: 13, fontWeight: '800' },
+  statusTextDanger: { color: colors.destructiveText },
+  terminalStatus: { color: colors.mutedText, fontSize: 13, marginTop: 12 },
+  emptyApplications: { alignItems: 'center', gap: 6, paddingVertical: 40 },
 });

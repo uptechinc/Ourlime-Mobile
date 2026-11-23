@@ -9,7 +9,7 @@ import { CourseModulesSkeleton } from '@/components/eLearning/ELearningSkeletons
 import LessonTypeIcon from '@/components/eLearning/course/LessonTypeIcon';
 import ModuleResources from '@/components/eLearning/course/ModuleResources';
 import WorkspaceScreenState from '@/components/eLearning/course/WorkspaceScreenState';
-import { courseHref, lessonHref, pluralize } from '@/components/eLearning/course/workspaceHelpers';
+import { courseHref, lessonHref, lessonTypeLabel, pluralize } from '@/components/eLearning/course/workspaceHelpers';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useCourseWorkspace } from '@/lib/hooks/useCourseWorkspace';
 import { isActiveEnrollment } from '@/lib/services/CourseService';
@@ -59,7 +59,7 @@ export default function CourseModulesScreen() {
                   <View style={styles.flex}>
                     <View style={styles.inline}>
                       <Text style={styles.moduleTitle}>Module {index + 1}: {courseModule.title}</Text>
-                      {isModuleDone ? <CheckCircle2 size={16} color="#16a34a" /> : null}
+                      {isModuleDone ? <CheckCircle2 size={16} color={colors.successText} /> : null}
                     </View>
                     <Text style={styles.small}>{completedInModule} / {pluralize(lessons.length, 'item', 'items')} completed</Text>
                   </View>
@@ -67,13 +67,13 @@ export default function CourseModulesScreen() {
                 {isExpanded ? (
                   <View style={styles.moduleBody}>
                     {lessons.map((lesson) => (
-                      <Pressable key={lesson.id} accessibilityRole="button" onPress={() => router.push(lessonHref(id, lesson.id))} style={styles.lessonRow}>
-                        {completed.has(lesson.id) ? <CheckCircle2 size={20} color="#16a34a" /> : <Circle size={20} color={colors.border} />}
+                      <Pressable key={lesson.id} accessibilityRole="button" accessibilityLabel={`${lesson.title}${completed.has(lesson.id) ? ', completed' : ''}`} android_ripple={{ color: colors.control }} onPress={() => router.push(lessonHref(id, lesson.id))} style={styles.lessonRow}>
+                        {completed.has(lesson.id) ? <CheckCircle2 size={20} color={colors.successText} /> : <Circle size={20} color={colors.mutedText} />}
                         <View style={styles.lessonIcon}><LessonTypeIcon type={lesson.type} size={16} /></View>
                         <View style={styles.flex}>
-                          <Text style={styles.lessonTitle}>{lesson.title}</Text>
+                          <Text numberOfLines={2} style={styles.lessonTitle}>{lesson.title}</Text>
                           <Text style={styles.small}>
-                            {[pluralize(lesson.duration ?? 0, 'minute', 'minutes'), lesson.type === 'quiz' || lesson.type === 'assignment' ? `${lesson.points ?? 0} pts` : null].filter(Boolean).join(' · ')}
+                            {[lessonTypeLabel(lesson.type), lesson.duration ? pluralize(lesson.duration, 'minute', 'minutes') : null, lesson.type === 'quiz' || lesson.type === 'assignment' ? `${lesson.points ?? 0} pts` : null].filter(Boolean).join(' · ')}
                           </Text>
                         </View>
                         <ChevronRight size={16} color={colors.mutedText} />
@@ -98,8 +98,8 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   scroll: { padding: 16, gap: 12, paddingBottom: 40 },
   title: { color: colors.text, fontSize: 22, fontWeight: '900' },
   muted: { color: colors.mutedText, fontSize: 13 },
-  module: { borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
-  moduleHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
+  module: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
+  moduleHeader: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
   moduleBody: { borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: 14, paddingBottom: 6 },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   flex: { flex: 1, gap: 3 },

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Calendar, CheckCircle2, Clock, Download, FileText } from 'lucide-react-native';
+import { AlertCircle, Calendar, CheckCircle2, Clock, Download, FileText } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { courseService } from '@/lib/services/CourseService';
 import type { CourseLesson } from '@/lib/types/course';
@@ -13,13 +13,48 @@ type AssignmentDetailsProps = {
   onOpenError?: () => void;
 };
 
-/** Points, due date, overdue/late notes and reference files of an assignment (web assignment/[assignmentId] header). */
+type AssignmentState = { label: 'Submitted' | 'Not submitted' | 'Late' | 'Missing'; tone: 'success' | 'neutral' | 'warning' | 'danger' };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** "Due today", "Due tomorrow", "Due in 3 days", "1 day late"; null without a due date. */
+export const dueCountdown = (dueDate: string | undefined, now = Date.now()): string | null => {
+  const due = dueDate ? Date.parse(dueDate) : NaN;
+  if (!Number.isFinite(due)) return null;
+  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
+  const startOfDueDay = new Date(due).setHours(0, 0, 0, 0);
+  const days = Math.round((startOfDueDay - startOfToday) / DAY_MS);
+  if (due < now) {
+    const late = Math.max(1, -days);
+    return days >= 0 ? 'Due date passed today' : `${late} ${late === 1 ? 'day' : 'days'} late`;
+  }
+  if (days === 0) return 'Due today';
+  if (days === 1) return 'Due tomorrow';
+  return `Due in ${days} days`;
+};
+
+/**
+ * Points, due date with a countdown, the submission state as text (Submitted, Not submitted, Late when late work is
+ * accepted, Missing when it is not) and reference files (web assignment/[assignmentId] header). Missing clears as soon
+ * as the work is submitted; the grade itself shows in the submission card.
+ */
 export default function AssignmentDetails({ lesson, isSubmitted, onOpenError }: AssignmentDetailsProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isPastDue = courseService.isOverdue(lesson, false);
-  const isOverdue = isPastDue && !isSubmitted;
   const attachments = lesson.attachments ?? [];
+  const countdown = dueCountdown(lesson.dueDate);
+  const state: AssignmentState = isSubmitted
+    ? { label: 'Submitted', tone: 'success' }
+    : isPastDue ? (lesson.allowLateSubmission ? { label: 'Late', tone: 'warning' } : { label: 'Missing', tone: 'danger' })
+    : { label: 'Not submitted', tone: 'neutral' };
+  const toneColors = {
+    success: { background: colors.successSurface, text: colors.successText },
+    neutral: { background: colors.control, text: colors.secondaryText },
+    warning: { background: colors.warningSurface, text: colors.warningText },
+    danger: { background: colors.destructiveSurface, text: colors.destructiveText },
+  }[state.tone];
+  const StateIcon = state.tone === 'success' ? CheckCircle2 : state.tone === 'neutral' ? Clock : AlertCircle;
 
   const handleOpen = async (url: string) => {
     if (!(await openExternalLink(url))) onOpenError?.();
@@ -28,32 +63,30 @@ export default function AssignmentDetails({ lesson, isSubmitted, onOpenError }: 
   return (
     <View style={styles.card}>
       <View style={styles.row}>
-        <View style={styles.pointsBadge}>
-          <FileText size={14} color={colors.successText} />
-          <Text style={styles.pointsText}>{lesson.points ?? 0} points</Text>
+        <View style={[styles.statePill, { backgroundColor: toneColors.background }]}>
+          <StateIcon size={14} color={toneColors.text} />
+          <Text style={[styles.stateText, { color: toneColors.text }]}>{state.label}</Text>
         </View>
-        {isSubmitted ? (
-          <View style={styles.inline}><CheckCircle2 size={15} color="#16a34a" /><Text style={styles.submitted}>Submitted</Text></View>
-        ) : null}
+        <View style={styles.inline}>
+          <FileText size={14} color={colors.mutedText} />
+          <Text style={styles.meta}>{lesson.points ?? 0} points</Text>
+        </View>
       </View>
       <View style={styles.inline}>
         <Calendar size={15} color={colors.mutedText} />
-        <Text style={styles.meta}>Due: {formatDate(lesson.dueDate)}</Text>
-        {isOverdue ? <View style={styles.overdue}><Text style={styles.overdueText}>OVERDUE</Text></View> : null}
+        <Text style={styles.meta}>Due {formatDate(lesson.dueDate)}</Text>
+        {countdown && !isSubmitted ? <Text style={[styles.countdown, isPastDue && { color: toneColors.text }]}>· {countdown}</Text> : null}
       </View>
       {isPastDue && !isSubmitted ? (
-        <View style={styles.inline}>
-          <Clock size={15} color={lesson.allowLateSubmission ? colors.warningText : colors.destructiveText} />
-          <Text style={[styles.meta, { color: lesson.allowLateSubmission ? colors.warningText : colors.destructiveText }]}>
-            {lesson.allowLateSubmission ? 'Late submission allowed' : 'The due date has passed. Check with your instructor before submitting.'}
-          </Text>
-        </View>
+        <Text style={[styles.meta, { color: toneColors.text }]}>
+          {lesson.allowLateSubmission ? 'Late submissions are accepted for this assignment.' : 'The due date has passed. Check with your instructor before submitting.'}
+        </Text>
       ) : null}
       {attachments.length > 0 ? (
         <View style={styles.files}>
           <Text style={styles.label}>Reference files</Text>
           {attachments.map((file) => (
-            <Pressable key={file.url} accessibilityRole="link" accessibilityLabel={`Open ${file.name}`} onPress={() => void handleOpen(file.url)} style={styles.fileRow}>
+            <Pressable key={file.url} accessibilityRole="link" accessibilityLabel={`Open ${file.name}`} onPress={() => void handleOpen(file.url)} android_ripple={{ color: colors.control }} style={styles.fileRow}>
               <Download size={16} color={colors.accentText} />
               <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
               {file.size ? <Text style={styles.meta}>{formatFileSize(file.size)}</Text> : null}
@@ -66,17 +99,15 @@ export default function AssignmentDetails({ lesson, isSubmitted, onOpenError }: 
 }
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
-  card: { padding: 14, gap: 10, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  card: { padding: 16, gap: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  pointsBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.successSurface },
-  pointsText: { color: colors.successText, fontSize: 13, fontWeight: '800' },
-  submitted: { color: '#16a34a', fontSize: 13, fontWeight: '800' },
-  meta: { color: colors.mutedText, fontSize: 13, flexShrink: 1 },
-  overdue: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.destructiveSurface },
-  overdueText: { color: colors.destructiveText, fontSize: 10, fontWeight: '900' },
-  files: { gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border },
-  label: { color: colors.mutedText, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
-  fileRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas },
+  statePill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  stateText: { fontSize: 13, fontWeight: '800' },
+  meta: { color: colors.mutedText, fontSize: 13, lineHeight: 19, flexShrink: 1 },
+  countdown: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  files: { gap: 8, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  label: { color: colors.mutedText, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  fileRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.canvas, overflow: 'hidden' },
   fileName: { flex: 1, color: colors.text, fontSize: 14, fontWeight: '600' },
 });

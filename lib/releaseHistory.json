@@ -1,6 +1,25 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-23-6",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-23",
+      "notes": [
+        "Jobs: cleaner job cards with the pay shown clearly, when the job was posted and when it closes, and your Applied and Saved status at a glance. Made-up applicant and view counts are gone.",
+        "Jobs: quick filter chips, a Filters sheet that shows how many jobs match, and a list of the filters you have on that you can remove one by one.",
+        "Job pages show the key facts (pay, type, location, experience, closing date) in a grid, a Read more for long descriptions, and an Apply bar at the bottom that changes to Applied · View status.",
+        "Applying shows which step you are on and ends with what happens next. My applications shows each status in words with a timeline, and withdrawing asks you to confirm first.",
+        "Editing a job: requirements and qualifications are now one per line, so a requirement with commas in it is no longer split into pieces.",
+        "E-Learning: new course cards with the instructor, rating (only when there are ratings), level and price, or your progress with Continue if you are enrolled. Courses has Popular, New and Free rows.",
+        "Course pages list what the course really includes (lessons, videos, quizzes, assignments), show the syllabus by module, and keep the Enroll or Continue button at the bottom.",
+        "Lessons: a thin bar shows Lesson 3 of 12, and Previous, Mark complete and Next sit at the bottom. The lesson list opens from the bottom, grouped by module.",
+        "Quizzes show one question at a time and end with a review of your answers. Assignments show their status in words and how long until they are due.",
+        "My Learning starts with Continue where you left off. The E-Learning banner now changes slides again."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-23-5",
       "version": "1.3.2",
       "versionCode": 11,
