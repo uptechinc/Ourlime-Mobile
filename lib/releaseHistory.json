@@ -1,6 +1,23 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-23-5",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-23",
+      "notes": [
+        "E-Hub product cards are cleaner: the price stands out (sale prices in red with the old price crossed out), stock only shows when it's low or sold out, and buttons no longer cut off their text.",
+        "The button beside Add to cart is now a labelled Compare box. Tick two products and a Compare bar appears at the bottom; tap View to see price, stock, delivery and pickup side by side.",
+        "The quick add button turns into a tick once the product is in your cart.",
+        "The E-Hub banner now changes slides on its own and fades smoothly. Swipe it, or use the arrows, dots or pause button; it stops moving once you take over, and stays still if your phone's Reduce Motion setting is on.",
+        "New product page: a full-width photo gallery you can swipe or tap for full screen, price with % off, stock, size and colour choices that show what you picked, a quantity picker and an Add to cart bar that stays at the bottom.",
+        "Product pages also show clear delivery and pickup details and the seller's card, with View store and Message buttons.",
+        "Order requests start with a ready-made message listing what you're ordering, which you can edit, plus a reminder to pay on pickup or delivery.",
+        "Fixed the app freezing (\"Ourlime isn't responding\") while pages were loading, including E-Hub and the home feed. Loading placeholders no longer pulse."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-23-4",
       "version": "1.3.2",
       "versionCode": 11,

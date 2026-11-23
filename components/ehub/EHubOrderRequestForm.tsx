@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Check, ChevronLeft, Send, Store, Truck } from 'lucide-react-native';
+import { Check, ChevronLeft, Package, Send, ShieldCheck, Store, Truck } from 'lucide-react-native';
+import CachedImage from '@/components/ui/CachedImage';
 import { useRouter, type Href } from 'expo-router';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
@@ -35,6 +36,17 @@ function describeAreas(courier: EHubOrderCourierOption): string {
   return hidden > 0 ? `${shown} +${hidden} more` : shown;
 }
 
+const MAXIMUM_MESSAGE_LENGTH = 1500;
+
+/** "2 × Blue shirt (M, Navy)" for each line, so the opening message already says what is being ordered. */
+function buildOpeningMessage(group: EHubCartSellerGroup): string {
+  const lines = group.items.map((item) => {
+    const options = [item.selectedVariant, item.selectedSize, item.selectedColour].filter(Boolean).join(', ');
+    return `${item.quantity} × ${item.title}${options ? ` (${options})` : ''}`;
+  });
+  return [`Hi ${group.sellerName}, I would like to order:`, ...lines, 'Please confirm availability and the total.'].join('\n').slice(0, MAXIMUM_MESSAGE_LENGTH);
+}
+
 /** Cheapest listed starting price first; couriers without a price come last. */
 function sortCouriersByPrice(couriers: EHubOrderCourierOption[]): EHubOrderCourierOption[] {
   return [...couriers].sort((first, second) => (first.startingPrice ?? Number.POSITIVE_INFINITY) - (second.startingPrice ?? Number.POSITIVE_INFINITY));
@@ -53,7 +65,8 @@ export default function EHubOrderRequestForm({ group, onBack, onSent, onClose }:
   const options = useEHubOrderRequestOptions(group.sellerId);
   const [fulfilment, setFulfilment] = useState<EHubOrderFulfilment>(group.pickupAvailable ? 'pickup' : 'delivery');
   const [courierId, setCourierId] = useState<string | null>(null);
-  const [message, setMessage] = useState('');
+  // Prefilled with the items and options; the buyer can change or clear it.
+  const [message, setMessage] = useState(() => buildOpeningMessage(group));
   const [isAcknowledged, setIsAcknowledged] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -123,6 +136,7 @@ export default function EHubOrderRequestForm({ group, onBack, onSent, onClose }:
       {group.items.map((item) => {
         const itemOptions = [item.selectedVariant, item.selectedSize, item.selectedColour].filter(Boolean).join(' · ');
         return <View key={item.id} style={styles.itemRow}>
+          <View style={styles.itemImage}>{item.imageUrl ? <CachedImage uri={item.imageUrl} style={styles.fill} accessibilityLabel={item.title} /> : <Package size={18} color={colors.mutedText} />}</View>
           <View style={styles.flex}>
             <Text numberOfLines={2} style={styles.itemTitle}>{item.quantity} × {item.title}</Text>
             {itemOptions ? <Text style={styles.optionMeta}>{itemOptions}</Text> : null}
@@ -159,7 +173,7 @@ export default function EHubOrderRequestForm({ group, onBack, onSent, onClose }:
 
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Message to the seller (optional)</Text>
-      <TextInput value={message} onChangeText={setMessage} multiline maxLength={1500} textAlignVertical="top" placeholder="Address area, preferred time, questions…" placeholderTextColor={colors.mutedText} accessibilityLabel="Message to the seller" style={styles.input} />
+      <TextInput value={message} onChangeText={setMessage} multiline maxLength={MAXIMUM_MESSAGE_LENGTH} textAlignVertical="top" placeholder="Address area, preferred time, questions…" placeholderTextColor={colors.mutedText} accessibilityLabel="Message to the seller" style={styles.input} />
     </View>
 
     <View style={styles.acknowledgement}>
@@ -170,10 +184,15 @@ export default function EHubOrderRequestForm({ group, onBack, onSent, onClose }:
       <Pressable accessibilityRole="link" onPress={() => { onClose(); router.push(getEHubTermsRoute('buyer') as Href); }} style={styles.termsLink}><Text style={styles.termsText}>Read the buyer terms</Text></Pressable>
     </View>
 
+    <View accessibilityRole="text" style={styles.safetyNote}>
+      <ShieldCheck size={16} color={colors.accentText} />
+      <Text style={styles.safetyText}>Stay safe: pay on pickup or delivery once you have seen the item, and meet in a public place.</Text>
+    </View>
+
     {sendError ? <EHubNotice tone="error" text={sendError} /> : null}
     {profile ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: !canSend }} disabled={!canSend} onPress={() => void handleSend()} style={[styles.submit, !canSend && styles.disabled]}>
       {isSending ? <ActivityIndicator color="#ffffff" /> : <Send size={17} color="#ffffff" />}
-      <Text style={styles.submitText}>{isSending ? 'Sending…' : 'Send order request'}</Text>
+      <Text numberOfLines={1} style={styles.submitText}>{isSending ? 'Sending…' : 'Send order request'}</Text>
     </Pressable> : <EHubNotice tone="warning" text="Sign in to send an order request." actionLabel="Sign in" onAction={() => { onClose(); router.push('/(auth)/login'); }} />}
   </View>;
 }
@@ -181,6 +200,7 @@ export default function EHubOrderRequestForm({ group, onBack, onSent, onClose }:
 function createStyles(colors: AppThemeColors) {
   return StyleSheet.create({
     flex: { flex: 1, minWidth: 0 },
+    fill: { width: '100%', height: '100%' },
     disabled: { opacity: 0.45 },
     form: { gap: 14 },
     backButton: { alignSelf: 'flex-start', minHeight: 44, paddingRight: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -188,9 +208,10 @@ function createStyles(colors: AppThemeColors) {
     eyebrow: { color: colors.accentText, fontSize: 11, fontWeight: '900', letterSpacing: 1.6, textTransform: 'uppercase' },
     title: { marginTop: 3, color: colors.text, fontSize: 20, fontWeight: '900' },
     muted: { marginTop: 4, color: colors.mutedText, fontSize: 12, lineHeight: 18 },
-    section: { padding: 13, gap: 9, borderRadius: 16, borderWidth: 1, borderColor: colors.border },
+    section: { padding: 12, gap: 8, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
     sectionTitle: { color: colors.text, fontSize: 14, fontWeight: '900' },
-    itemRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+    itemRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    itemImage: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 10, backgroundColor: colors.control },
     itemTitle: { color: colors.text, fontSize: 13, fontWeight: '700' },
     itemPrice: { color: colors.text, fontSize: 13, fontWeight: '800' },
     subtotalRow: { marginTop: 2, paddingTop: 9, flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: colors.border },
@@ -209,15 +230,17 @@ function createStyles(colors: AppThemeColors) {
     radioSelected: { borderColor: colors.accent },
     radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
     loader: { paddingVertical: 14 },
-    input: { minHeight: 90, padding: 12, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 15 },
-    acknowledgement: { padding: 13, gap: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control },
+    input: { minHeight: 112, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 15 },
+    acknowledgement: { padding: 12, gap: 4, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.control },
     acknowledgementRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
     checkbox: { width: 22, height: 22, marginTop: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 2, borderColor: colors.mutedText },
     checkboxChecked: { borderColor: colors.accent, backgroundColor: colors.accent },
     acknowledgementText: { flex: 1, color: colors.secondaryText, fontSize: 12, lineHeight: 18 },
     termsLink: { marginLeft: 33, minHeight: 44, justifyContent: 'center' },
     termsText: { color: colors.accentText, fontSize: 12, fontWeight: '800', textDecorationLine: 'underline' },
-    submit: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: '#047857' },
+    safetyNote: { padding: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 12, backgroundColor: colors.successSurface },
+    safetyText: { flex: 1, color: colors.successText, fontSize: 12, lineHeight: 18, fontWeight: '600' },
+    submit: { minHeight: 48, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, backgroundColor: '#047857' },
     submitText: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
   });
 }

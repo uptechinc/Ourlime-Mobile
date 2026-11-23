@@ -1,15 +1,6 @@
-import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 export type SkeletonProps = {
@@ -19,36 +10,16 @@ export type SkeletonProps = {
   style?: StyleProp<ViewStyle>;
 };
 
+/**
+ * A static placeholder block. It used to pulse with an endless Reanimated withRepeat, but on React Native 0.86 that
+ * floods the UI thread: Reanimated keeps pushing synchronous prop updates for skeleton views whose native views are
+ * already gone, logging a full stack trace for each failure (thousands per second), which froze E-Hub and the feed
+ * ("isn't responding"). Cancelling the animation on unmount did not stop it; a static block does.
+ */
 export function Skeleton({ width = '100%', height = 16, borderRadius = 8, style }: SkeletonProps): ReactNode {
   const { isDark } = useAppTheme();
-  const opacity = useSharedValue(isDark ? 0.25 : 0.45);
-
-  useEffect(() => {
-    opacity.value = withRepeat(
-      withSequence(
-        withTiming(isDark ? 0.65 : 0.9, { duration: 750, easing: Easing.inOut(Easing.ease) }),
-        withTiming(isDark ? 0.25 : 0.45, { duration: 750, easing: Easing.inOut(Easing.ease) }),
-      ),
-      -1,
-      false,
-    );
-  }, [isDark, opacity]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
-
   const baseColor = isDark ? '#334155' : '#e2e8f0';
-
-  return (
-    <Animated.View
-      style={[
-        { width, height, borderRadius, backgroundColor: baseColor },
-        animatedStyle,
-        style,
-      ]}
-    />
-  );
+  return <View style={[{ width, height, borderRadius, backgroundColor: baseColor, opacity: isDark ? 0.55 : 0.8 }, style]} />;
 }
 
 export const SkeletonBox = Skeleton;

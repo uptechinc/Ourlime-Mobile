@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { EHubCatalogProduct } from '@/lib/types/ehubDiscovery';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { ArrowLeft, ArrowRight, Building2, ChevronDown, ChevronLeft, ChevronRight, Inbox, Package, Search, ShieldCheck, ShoppingBag, Store, Truck, Wrench, X } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, Building2, ChevronDown, Inbox, Package, Search, ShieldCheck, ShoppingBag, Store, Truck, Wrench, X } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
@@ -13,16 +14,16 @@ import { getEHubTermsRoute } from '@/lib/services/EHubService';
 import { getEHubCurrentPrice } from '@/lib/services/EHubCommerceService';
 import { EHubChip, EHubEmptyState, EHubLinkButton, EHubNotice, EHubProductCard, EHubProviderCard, EHubRecruitPanel, EHubSectionHeading, useEHubLayout } from '@/components/ehub/EHubParts';
 import EHubSectionNav from '@/components/ehub/EHubSectionNav';
-import { EHubCartSheet, EHubComparePanel, EHubHeaderActions } from '@/components/ehub/EHubCommerceParts';
+import { EHubCartSheet, EHubHeaderActions } from '@/components/ehub/EHubCommerceParts';
+import { EHUB_COMPARE_LIMIT, EHubCompareBar, EHubCompareSheet, type EHubStoreRating } from '@/components/ehub/EHubCompare';
+import EHubHeroSlider, { type EHubHeroSlide } from '@/components/ehub/EHubHeroSlider';
 import { EHubScrollView, useEHubSectionScroll } from '@/components/ehub/EHubScrollView';
 import { EHubProductGridSkeleton, EHubProviderGridSkeleton } from '@/components/ehub/EHubSkeletons';
 
 type ProductSort = 'catalog' | 'price-low' | 'price-high' | 'name';
 type HomeSection = 'products' | 'saved' | 'professionals';
 type HomeTarget = { section: HomeSection } | { route: string };
-type HeroSlide = { eyebrow: string; title: string; description: string; imageUrl: string; actionLabel: string; target: HomeTarget };
-
-const HERO_ROTATION_MS = 6_000;
+type HeroSlide = EHubHeroSlide<HomeTarget>;
 
 // Same slides, paths, copy and links as the website's /ehub (components/ehub/EHubHomePageContent.tsx). The website's
 // #anchors scroll to the section here; its /profile/ehub pages are the app's /ehub/seller and /ehub/enquiries.
@@ -41,11 +42,12 @@ const CATEGORY_IMAGES: { label: string; imageUrl: string }[] = [
   { label: 'Books', imageUrl: 'https://images.unsplash.com/photo-1495446815901-a7297e633e8d?w=600&h=450&fit=crop&auto=format' },
 ];
 
-const SORT_OPTIONS: { value: ProductSort; label: string }[] = [
-  { value: 'catalog', label: 'Catalog order' },
-  { value: 'price-low', label: 'Price: low to high' },
-  { value: 'price-high', label: 'Price: high to low' },
-  { value: 'name', label: 'Name' },
+// Short labels so each chip fits on one line at 360dp.
+const SORT_OPTIONS: { value: ProductSort; label: string; accessibilityLabel: string }[] = [
+  { value: 'catalog', label: 'Default', accessibilityLabel: 'Sort in catalog order' },
+  { value: 'price-low', label: 'Lowest price', accessibilityLabel: 'Sort by price, low to high' },
+  { value: 'price-high', label: 'Highest price', accessibilityLabel: 'Sort by price, high to low' },
+  { value: 'name', label: 'A–Z', accessibilityLabel: 'Sort by name' },
 ];
 
 const STEPS = [
@@ -84,8 +86,9 @@ export default function EHubScreen() {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [sort, setSort] = useState<ProductSort>('catalog');
-  const [heroIndex, setHeroIndex] = useState(0);
+  const insets = useSafeAreaInsets();
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [openQuestion, setOpenQuestion] = useState<string | null>(null);
 
@@ -93,16 +96,15 @@ export default function EHubScreen() {
     if (params.section === 'products' || params.section === 'professionals') scrollToSection(params.section);
   }, [params.jump, params.section, scrollToSection]);
 
-  useEffect(() => {
-    const timer = setInterval(() => setHeroIndex((currentIndex) => (currentIndex + 1) % HERO_SLIDES.length), HERO_ROTATION_MS);
-    return () => clearInterval(timer);
-  }, []);
-
   const products = useMemo(() => catalog.data ?? [], [catalog.data]);
   const providerList = useMemo(() => providers.data ?? [], [providers.data]);
   // Only real catalog categories, like the website (no placeholder categories).
   const categories = useMemo(() => [...new Set(products.map((product) => product.category).filter(Boolean))].sort(), [products]);
   const displayedCategories = categories.slice(0, 6);
+  const categoryCounts = useMemo(() => products.reduce<{ [category: string]: number }>((counts, product) => {
+    if (product.category) counts[product.category] = (counts[product.category] ?? 0) + 1;
+    return counts;
+  }, {}), [products]);
   const normalizedSearch = search.trim().toLowerCase();
   const visibleProducts = useMemo(() => products
     .filter((product) => selectedCategory === 'All' || product.category === selectedCategory)
@@ -119,9 +121,20 @@ export default function EHubScreen() {
   // Anyone offering services is a professional here, including storefronts that also sell products.
   const professionals = providerList.filter((provider) => provider.offersServices || provider.kind === 'professional').slice(0, 6);
   const carouselCardWidth = Math.round(layout.innerWidth * 0.86);
-  const comparedProducts = products.filter((product) => compareIds.includes(product.id));
+  // Kept in the order they were ticked, so the bar's thumbnails and the table's columns match.
+  const comparedProducts = compareIds.map((productId) => products.find((product) => product.id === productId)).filter((product): product is EHubCatalogProduct => Boolean(product));
   const savedProducts = products.filter((product) => favorites.includes(product.id));
-  const hero = HERO_SLIDES[heroIndex];
+  // Products carry no rating of their own; the comparison shows the storefront's rating when the directory has it.
+  const storeRatings = useMemo(() => {
+    const ratings = new Map<string, EHubStoreRating>();
+    providerList.filter((provider) => provider.offersProducts || provider.kind === 'business').forEach((provider) => {
+      const rating = { rating: provider.rating, reviewCount: provider.reviewCount };
+      ratings.set(`id:${provider.id}`, rating);
+      ratings.set(`name:${provider.name.trim().toLowerCase()}`, rating);
+    });
+    return ratings;
+  }, [providerList]);
+  const getStoreRating = (product: EHubCatalogProduct) => storeRatings.get(`id:${product.storeId}`) ?? storeRatings.get(`name:${product.storeName.trim().toLowerCase()}`) ?? null;
   const isRefreshing = catalog.isRefreshing || providers.isRefreshing;
 
   const handleOpenProduct = (productId: string) => router.push(`/ehub/products/${encodeURIComponent(productId)}` as Href);
@@ -134,15 +147,19 @@ export default function EHubScreen() {
     setSelectedCategory(category);
     scrollToSection('products');
   };
+  // A third pick replaces the oldest, so ticking Compare never silently does nothing.
   const handleCompare = (productId: string) => setCompareIds((currentIds) => currentIds.includes(productId)
     ? currentIds.filter((id) => id !== productId)
-    : [...currentIds.slice(-1), productId]);
+    : [...currentIds.slice(-(EHUB_COMPARE_LIMIT - 1)), productId]);
+  const handleRemoveCompare = (productId: string) => setCompareIds((currentIds) => currentIds.filter((id) => id !== productId));
+  const handleClearCompare = () => setCompareIds([]);
   const handleRefresh = () => { void catalog.refresh(); void providers.refresh(); };
   const handleResetFilters = () => { setSearch(''); setSelectedCategory('All'); };
   const handleOpenCart = () => setIsCartOpen(true);
 
   const renderProductGrid = (items: typeof products) => <View style={[styles.grid, { gap: layout.gap }]}>
-    {items.map((product) => <EHubProductCard key={product.id} product={product} width={layout.productWidth} onOpen={handleOpenProduct} isCompared={compareIds.includes(product.id)} onCompare={handleCompare} onAddedToCart={handleOpenCart} />)}
+    {/* Adding confirms with a toast, the header badge and the card's "in cart" state; it no longer covers the page with the cart. */}
+    {items.map((product) => <EHubProductCard key={product.id} product={product} width={layout.productWidth} onOpen={handleOpenProduct} isCompared={compareIds.includes(product.id)} onCompare={handleCompare} onOpenCart={handleOpenCart} />)}
   </View>;
 
   return (
@@ -158,61 +175,46 @@ export default function EHubScreen() {
         </View>
         <EHubSectionNav />
       </SafeAreaView>
-      <EHubScrollView scrollRef={scrollRef} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.accent} />} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.hero}>
-          <CachedImage key={hero.imageUrl} uri={hero.imageUrl} style={styles.heroImage} />
-          <LinearGradient colors={['rgba(2,6,23,0.35)', 'rgba(2,6,23,0.92)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.heroShade} />
-          <View style={[styles.heroContent, { width: layout.contentWidth }]}>
-            <Text style={styles.heroEyebrow}>{hero.eyebrow}</Text>
-            <Text style={styles.heroTitle}>{hero.title}</Text>
-            <Text style={styles.heroBody}>{hero.description}</Text>
-            <View style={styles.heroActions}>
-              <Pressable accessibilityRole="button" onPress={() => handleTarget(hero.target)} style={styles.heroPrimary}><Text style={styles.heroPrimaryText}>{hero.actionLabel}</Text><ArrowRight size={16} color="#020617" /></Pressable>
-            </View>
-          </View>
-          <View style={styles.heroDots}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Previous slide" onPress={() => setHeroIndex((heroIndex - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)} hitSlop={6} style={styles.heroArrow}><ChevronLeft size={18} color="#ffffff" /></Pressable>
-            {HERO_SLIDES.map((slide, index) => <Pressable key={slide.eyebrow} accessibilityRole="button" accessibilityLabel={`Show slide ${index + 1}`} accessibilityState={{ selected: index === heroIndex }} onPress={() => setHeroIndex(index)} hitSlop={8} style={[styles.dot, index === heroIndex && styles.dotActive]} />)}
-            <Pressable accessibilityRole="button" accessibilityLabel="Next slide" onPress={() => setHeroIndex((heroIndex + 1) % HERO_SLIDES.length)} hitSlop={6} style={styles.heroArrow}><ChevronRight size={18} color="#ffffff" /></Pressable>
-          </View>
-        </View>
+      <EHubScrollView scrollRef={scrollRef} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.accent} />} contentContainerStyle={[styles.scrollContent, comparedProducts.length ? { paddingBottom: 96 + insets.bottom } : null]}>
+        <EHubHeroSlider slides={HERO_SLIDES} contentWidth={layout.contentWidth} gutter={layout.gutter} isTablet={layout.isTablet} onAction={handleTarget} />
 
         <View onLayout={onContainerLayout} style={[styles.body, { width: layout.contentWidth }]}>
           <View style={styles.searchBox}>
             <Search size={19} color={colors.mutedText} />
             <TextInput value={search} onChangeText={setSearch} onSubmitEditing={() => scrollToSection('products')} placeholder="Search E-Hub" placeholderTextColor={colors.mutedText} returnKeyType="search" accessibilityLabel="Search E-Hub products, storefronts, and professionals" style={styles.searchInput} />
-            {search ? <Pressable accessibilityRole="button" accessibilityLabel="Clear search" onPress={() => setSearch('')} hitSlop={8}><X size={18} color={colors.mutedText} /></Pressable> : null}
+            {search ? <Pressable accessibilityRole="button" accessibilityLabel="Clear search" onPress={() => setSearch('')} style={styles.searchClear}><X size={18} color={colors.mutedText} /></Pressable> : null}
           </View>
 
           {normalizedSearch ? <View style={styles.searchResults}>
-            <EHubSectionHeading eyebrow="Search" title={`Results for “${search.trim()}”`} description={`${visibleProducts.length} products and ${matchingProviders.length} providers match.`} />
+            <EHubSectionHeading eyebrow="Search" title={`Results for “${search.trim()}”`} description={`${visibleProducts.length} ${visibleProducts.length === 1 ? 'product' : 'products'} and ${matchingProviders.length} ${matchingProviders.length === 1 ? 'provider' : 'providers'} match.`} />
             {matchingProviders.map((provider) => <Pressable key={provider.id} accessibilityRole="button" onPress={() => handleOpenProvider(provider.id)} style={styles.searchProvider}>
               <View style={styles.searchLogo}>{provider.logoUrl ? <CachedImage uri={provider.logoUrl} style={styles.fill} /> : <Building2 size={20} color={colors.mutedText} />}</View>
-              <View style={styles.flex}><Text numberOfLines={1} style={styles.searchProviderName}>{provider.name}</Text><Text style={styles.muted}>{provider.kind === 'business' ? 'Storefront' : 'Professional'}</Text></View>
+              <View style={styles.flex}><Text numberOfLines={1} style={styles.searchProviderName}>{provider.name}</Text><Text numberOfLines={1} style={styles.muted}>{provider.kind === 'business' ? 'Storefront' : 'Professional'}</Text></View>
               <ArrowRight size={16} color={colors.mutedText} />
             </Pressable>)}
-            <Pressable accessibilityRole="button" onPress={() => setSearch('')} style={styles.clearSearch}><Text style={styles.clearSearchText}>Clear search</Text></Pressable>
+            <Pressable accessibilityRole="button" onPress={() => setSearch('')} style={styles.clearSearch}><Text numberOfLines={1} style={styles.clearSearchText}>Clear search</Text></Pressable>
           </View> : null}
 
           {displayedCategories.length ? <View style={styles.section}>
-            <EHubSectionHeading eyebrow="Explore" title="Shop by category" description="Filter published products from active storefronts." action={<EHubLinkButton label="View all" onPress={() => handleCategorySelect('All')} />} />
+            <EHubSectionHeading eyebrow="Explore" title="Shop by category" action={<EHubLinkButton label="See all" onPress={() => handleCategorySelect('All')} />} />
             <HorizontalRow styles={styles}>
               {displayedCategories.map((category) => {
                 const imageUrl = CATEGORY_IMAGES.find((item) => item.label === category)?.imageUrl ?? CATEGORY_IMAGES[0].imageUrl;
-                return <Pressable key={category} accessibilityRole="button" accessibilityLabel={`Show ${category}`} onPress={() => handleCategorySelect(category)} style={styles.categoryTile}>
+                const count = categoryCounts[category] ?? 0;
+                return <Pressable key={category} accessibilityRole="button" accessibilityLabel={`Show ${category}, ${count} ${count === 1 ? 'product' : 'products'}`} onPress={() => handleCategorySelect(category)} style={styles.categoryTile}>
                   <CachedImage uri={imageUrl} style={styles.fill} />
                   <LinearGradient colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.85)']} start={{ x: 0, y: 0.35 }} end={{ x: 0, y: 1 }} style={styles.categoryShade} />
-                  <Text numberOfLines={2} style={styles.categoryLabel}>{category}</Text>
+                  <View style={styles.categoryText}>
+                    <Text numberOfLines={2} style={styles.categoryLabel}>{category}</Text>
+                    <Text numberOfLines={1} style={styles.categoryCount}>{count} {count === 1 ? 'product' : 'products'}</Text>
+                  </View>
                 </Pressable>;
               })}
             </HorizontalRow>
           </View> : null}
 
           <View onLayout={onSectionLayout('professionals')} style={[styles.section, styles.band]}>
-            <EHubSectionHeading eyebrow="Hire" title="Discover professionals" description="Real service profiles. Send an enquiry; booking and payment happen with the provider." action={<View style={styles.headingActions}>
-              <EHubLinkButton label="See all" onPress={() => router.push('/ehub/discover?kind=professional' as Href)} />
-              <EHubLinkButton label="Join as a pro" onPress={() => router.push('/ehub/seller?intent=services' as Href)} />
-            </View>} />
+            <EHubSectionHeading eyebrow="Hire" title="Professionals" description="Send an enquiry; booking and payment happen with the provider." action={<EHubLinkButton label="See all" onPress={() => router.push('/ehub/discover?kind=professional' as Href)} />} />
             {providers.error ? <EHubNotice tone="warning" text={providers.error} actionLabel="Try again" onAction={() => void providers.refresh()} /> : null}
             {providers.isLoading && !providers.data ? <EHubProviderGridSkeleton />
               : professionals.length ? (layout.isTablet
@@ -222,35 +224,41 @@ export default function EHubScreen() {
                   {professionals.map((provider) => <EHubProviderCard key={provider.id} provider={provider} width={professionals.length === 1 ? layout.innerWidth : carouselCardWidth} onOpen={handleOpenProvider} />)}
                 </ScrollView>)
                 : !providers.error ? <EHubRecruitPanel onOfferServices={() => router.push('/ehub/seller?intent=services' as Href)} onOpenDirectory={() => router.push('/ehub/discover' as Href)} /> : null}
+            {/* "Join as a pro" used to sit beside "See all" in the heading; one heading action keeps the title readable. */}
+            {professionals.length ? <Pressable accessibilityRole="link" onPress={() => router.push('/ehub/seller?intent=services' as Href)} style={styles.joinLink}>
+              <Wrench size={15} color={colors.successText} /><Text numberOfLines={1} style={styles.joinLinkText}>Offer your services on E-Hub</Text><ArrowRight size={15} color={colors.successText} />
+            </Pressable> : null}
           </View>
 
           <View onLayout={onSectionLayout('products')} style={styles.section}>
-            <EHubSectionHeading eyebrow="Current catalog" title="Products from local storefronts" description="Real published products with seller-provided pricing and availability. Prices are shown in TTD." />
+            <EHubSectionHeading eyebrow="Shop" title="Products" description="From local storefronts. Prices in TTD, set by each seller." />
             <View style={styles.filterPanel}>
               <HorizontalRow styles={styles}>
                 {['All', ...categories].map((category) => <EHubChip key={category} label={category} selected={selectedCategory === category} onPress={() => setSelectedCategory(category)} />)}
               </HorizontalRow>
               <HorizontalRow styles={styles}>
                 <Text style={styles.sortLabel}>Sort</Text>
-                {SORT_OPTIONS.map((option) => <EHubChip key={option.value} label={option.label} selected={sort === option.value} onPress={() => setSort(option.value)} />)}
+                {SORT_OPTIONS.map((option) => <Pressable key={option.value} accessibilityRole="button" accessibilityLabel={option.accessibilityLabel} accessibilityState={{ selected: sort === option.value }} onPress={() => setSort(option.value)} style={[styles.sortChip, sort === option.value && styles.sortChipSelected]}>
+                  <Text numberOfLines={1} style={[styles.sortChipText, sort === option.value && styles.sortChipTextSelected]}>{option.label}</Text>
+                </Pressable>)}
               </HorizontalRow>
             </View>
+            {catalog.data && !catalog.error ? <Text accessibilityLiveRegion="polite" style={styles.resultCount}>{visibleProducts.length} {visibleProducts.length === 1 ? 'product' : 'products'}{selectedCategory === 'All' ? '' : ` in ${selectedCategory}`}</Text> : null}
             {catalog.error ? <EHubNotice tone="warning" text={catalog.error} actionLabel="Try again" onAction={() => void catalog.refresh()} /> : null}
             {catalog.isLoading && !catalog.data ? <EHubProductGridSkeleton />
               : visibleProducts.length ? renderProductGrid(visibleProducts)
                 : !catalog.error ? <EHubEmptyState icon={<Package size={40} color={colors.mutedText} />} title="No matching products" body="Try another search or category. Only real published listings appear here." actionLabel="Reset filters" onAction={handleResetFilters} /> : null}
-            <EHubComparePanel products={comparedProducts} onClear={() => setCompareIds([])} onOpenProduct={handleOpenProduct} />
           </View>
 
           {favorites.length ? <View onLayout={onSectionLayout('saved')} style={styles.section}>
-            <EHubSectionHeading eyebrow="Saved for later" title="Your saved products" description="Saved items stay on this device so you can quickly return to them." />
+            <EHubSectionHeading eyebrow="Saved" title="Saved for later" description="Saved on this device." />
             {savedProducts.length ? renderProductGrid(savedProducts)
               : <View style={styles.dashedNote}><Text style={styles.dashedNoteText}>Your saved products are not currently published. You can remove them with the heart button when they become available again.</Text></View>}
           </View> : null}
 
           <Pressable accessibilityRole="button" onPress={() => router.push('/ehub/enquiries?mode=sent' as Href)} style={[styles.inboxCard]}>
             <View style={styles.inboxIcon}><Inbox size={22} color={colors.successText} /></View>
-            <View style={styles.flex}><Text style={styles.inboxTitle}>My enquiries</Text><Text style={styles.muted}>Enquiries you sent and replies from providers</Text></View>
+            <View style={styles.flex}><Text numberOfLines={1} style={styles.inboxTitle}>My enquiries</Text><Text numberOfLines={2} style={styles.muted}>Enquiries you sent and replies from providers</Text></View>
             <ArrowRight size={19} color={colors.mutedText} />
           </Pressable>
 
@@ -258,11 +266,12 @@ export default function EHubScreen() {
             <LinearGradient colors={['#022c22', '#065f46']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
             <Text style={styles.sellEyebrow}>Sell on E-Hub</Text>
             <Text style={styles.sellTitle}>Run a storefront, offer services or deliver.</Text>
-            <Text style={styles.sellBody}>Plumber, designer, shop or courier? Set up once and get enquiries from people across Trinidad & Tobago. Couriers can be chosen by sellers and their buyers for delivery.</Text>
+            <Text style={styles.sellBody}>Plumber, designer, shop or courier? Set up once and get enquiries from people across Trinidad & Tobago.</Text>
+            {/* One full-width primary, then two equal secondaries: three wrapping pills of different widths looked unfinished. */}
+            <Pressable accessibilityRole="button" onPress={() => router.push('/ehub/seller?intent=services' as Href)} style={styles.sellPrimary}><Wrench size={16} color="#022c22" /><Text numberOfLines={1} style={styles.sellPrimaryText}>Offer services</Text></Pressable>
             <View style={styles.sellActions}>
-              <Pressable accessibilityRole="button" onPress={() => router.push('/ehub/seller?intent=services' as Href)} style={[styles.sellPrimary]}><Wrench size={16} color="#022c22" /><Text style={styles.sellPrimaryText}>Offer services</Text></Pressable>
-              <Pressable accessibilityRole="button" onPress={() => router.push('/ehub/seller' as Href)} style={[styles.sellSecondary]}><Store size={16} color="#ffffff" /><Text style={styles.sellSecondaryText}>Seller Center</Text></Pressable>
-              <Pressable accessibilityRole="button" onPress={() => router.push('/market/couriers/register' as Href)} style={[styles.sellSecondary]}><Truck size={16} color="#ffffff" /><Text style={styles.sellSecondaryText}>Register as a courier</Text></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Open Seller Center" onPress={() => router.push('/ehub/seller' as Href)} style={styles.sellSecondary}><Store size={16} color="#ffffff" /><Text numberOfLines={1} style={styles.sellSecondaryText}>Seller Center</Text></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Register as a courier" onPress={() => router.push('/market/couriers/register' as Href)} style={styles.sellSecondary}><Truck size={16} color="#ffffff" /><Text numberOfLines={1} style={styles.sellSecondaryText}>Courier sign-up</Text></Pressable>
             </View>
           </View>
 
@@ -285,7 +294,7 @@ export default function EHubScreen() {
               })}
             </View>
             <Pressable accessibilityRole="link" onPress={() => router.push(getEHubTermsRoute('buyer') as Href)} style={[styles.safetyLink]}>
-              <ShieldCheck size={18} color="#fbbf24" /><Text style={styles.safetyLinkText}>Read buyer safety terms</Text><ArrowRight size={15} color="#fbbf24" />
+              <ShieldCheck size={18} color="#fbbf24" /><Text numberOfLines={1} style={styles.safetyLinkText}>Read buyer safety terms</Text><ArrowRight size={15} color="#fbbf24" />
             </Pressable>
           </View>
         </View>
@@ -299,6 +308,8 @@ export default function EHubScreen() {
           <Text style={styles.copyright}>© 2026 Ourlime EHub. Discovery, catalogs, and enquiries—not payment or booking.</Text>
         </View>
       </EHubScrollView>
+      <EHubCompareBar products={comparedProducts} bottomInset={insets.bottom} onOpen={() => setIsCompareOpen(true)} onRemove={handleRemoveCompare} onClear={handleClearCompare} />
+      <EHubCompareSheet visible={isCompareOpen} onClose={() => setIsCompareOpen(false)} onClear={handleClearCompare} products={comparedProducts} getStoreRating={getStoreRating} onOpenProduct={handleOpenProduct} />
       <EHubCartSheet visible={isCartOpen} onClose={() => setIsCartOpen(false)} onOpenProduct={handleOpenProduct} />
     </View>
   );
@@ -314,7 +325,6 @@ function HorizontalRow({ styles, children }: RowProps) {
 const createStyles = (colors: AppThemeColors, gutter: number, isTablet: boolean) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
   flex: { flex: 1, minWidth: 0 },
-  headingActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pressed: { opacity: 0.86 },
   fill: { width: '100%', height: '100%' },
   muted: { color: colors.mutedText, fontSize: 12, lineHeight: 17 },
@@ -325,43 +335,39 @@ const createStyles = (colors: AppThemeColors, gutter: number, isTablet: boolean)
   brand: { flex: 1, color: colors.text, fontSize: 21, fontWeight: '900' },
   brandAccent: { color: '#10b981' },
   scrollContent: { alignItems: 'center' },
-  hero: { width: '100%', minHeight: isTablet ? 420 : 360, justifyContent: 'center', alignItems: 'center', backgroundColor: '#020617', overflow: 'hidden' },
-  heroImage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.55 },
-  heroShade: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(2,6,23,0.55)' },
-  heroContent: { paddingHorizontal: gutter + 6, paddingTop: 32, paddingBottom: 76, maxWidth: '100%' },
-  heroEyebrow: { color: '#01eb53', fontSize: 11, fontWeight: '900', letterSpacing: 2, textTransform: 'uppercase' },
-  heroTitle: { marginTop: 12, maxWidth: 620, color: '#ffffff', fontSize: isTablet ? 42 : 29, lineHeight: isTablet ? 46 : 34, fontWeight: '900' },
-  heroBody: { marginTop: 14, maxWidth: 520, color: 'rgba(255,255,255,0.82)', fontSize: 14, lineHeight: 22 },
-  heroActions: { marginTop: 22, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  heroPrimary: { minHeight: 46, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 13, backgroundColor: '#01eb53' },
-  heroPrimaryText: { color: '#020617', fontSize: 14, fontWeight: '900' },
-  heroDots: { position: 'absolute', bottom: 22, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 5, borderRadius: 999, backgroundColor: 'rgba(2,6,23,0.5)' },
-  heroArrow: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.5)' },
-  dotActive: { width: 26, backgroundColor: '#01eb53' },
-  body: { maxWidth: '100%', paddingHorizontal: gutter, paddingTop: 20, paddingBottom: 40, gap: 30 },
+  body: { maxWidth: '100%', paddingHorizontal: gutter, paddingTop: 16, paddingBottom: 40, gap: 32 },
   band: { marginHorizontal: -gutter, paddingHorizontal: gutter, paddingVertical: 24, backgroundColor: colors.successSurface },
   carouselBleed: { marginHorizontal: -gutter },
-  carousel: { gap: 12, paddingHorizontal: gutter, paddingBottom: 6 },
-  searchBox: { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, shadowColor: '#020617', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  carousel: { gap: 12, paddingHorizontal: gutter, paddingBottom: 4 },
+  searchBox: { minHeight: 52, paddingLeft: 16, paddingRight: 4, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  searchClear: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   searchInput: { flex: 1, minHeight: 48, color: colors.text, fontSize: 15 },
-  searchResults: { marginTop: -16, padding: 14, gap: 10, borderRadius: 22, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.successSurface },
-  searchProvider: { minHeight: 60, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: 14, backgroundColor: colors.surface },
+  searchResults: { marginTop: -16, padding: 16, gap: 8, borderRadius: 16, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.successSurface },
+  searchProvider: { minHeight: 60, padding: 8, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 12, backgroundColor: colors.surface },
   searchLogo: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 12, backgroundColor: colors.control },
   searchProviderName: { color: colors.text, fontSize: 14, fontWeight: '900' },
-  clearSearch: { alignSelf: 'flex-start', minHeight: 42, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  clearSearch: { alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: 16, justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   clearSearchText: { color: colors.successText, fontSize: 13, fontWeight: '800' },
-  section: { gap: 14 },
+  section: { gap: 12 },
   chipRow: { gap: 8, alignItems: 'center', paddingHorizontal: 2 },
-  categoryTile: { width: isTablet ? 160 : 136, height: isTablet ? 170 : 150, overflow: 'hidden', borderRadius: 18, backgroundColor: colors.control },
+  categoryTile: { width: isTablet ? 160 : 136, height: isTablet ? 168 : 152, overflow: 'hidden', borderRadius: 16, backgroundColor: colors.control },
   categoryShade: { position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 },
-  categoryLabel: { position: 'absolute', left: 12, right: 12, bottom: 12, color: '#ffffff', fontSize: 14, fontWeight: '900' },
-  filterPanel: { padding: 10, gap: 8, borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  categoryText: { position: 'absolute', left: 12, right: 12, bottom: 12, gap: 2 },
+  categoryLabel: { color: '#ffffff', fontSize: 14, lineHeight: 18, fontWeight: '800' },
+  categoryCount: { color: 'rgba(255,255,255,0.78)', fontSize: 12 },
+  filterPanel: { gap: 8 },
+  sortChip: { minHeight: 36, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, flexShrink: 0 },
+  sortChipSelected: { backgroundColor: colors.control },
+  sortChipText: { color: colors.mutedText, fontSize: 13, fontWeight: '600' },
+  sortChipTextSelected: { color: colors.text, fontWeight: '800' },
+  resultCount: { marginTop: -4, color: colors.mutedText, fontSize: 12 },
+  joinLink: { alignSelf: 'flex-start', maxWidth: '100%', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  joinLinkText: { flexShrink: 1, color: colors.successText, fontSize: 14, fontWeight: '700' },
   sortLabel: { color: colors.mutedText, fontSize: 13, fontWeight: '800' },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dashedNote: { padding: 18, borderRadius: 18, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, backgroundColor: colors.surface },
+  dashedNote: { padding: 16, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, backgroundColor: colors.surface },
   dashedNoteText: { color: colors.secondaryText, fontSize: 13, lineHeight: 20 },
-  howItWorks: { padding: isTablet ? 28 : 20, gap: 8, borderRadius: 24, backgroundColor: '#020617' },
+  howItWorks: { padding: isTablet ? 32 : 20, gap: 8, borderRadius: 20, backgroundColor: '#020617' },
   howEyebrow: { color: '#01eb53', fontSize: 11, fontWeight: '900', letterSpacing: 1.6, textTransform: 'uppercase' },
   howTitle: { color: '#ffffff', fontSize: 24, fontWeight: '900' },
   howBody: { marginTop: 2, color: 'rgba(255,255,255,0.68)', fontSize: 13, lineHeight: 19 },
@@ -377,18 +383,18 @@ const createStyles = (colors: AppThemeColors, gutter: number, isTablet: boolean)
   faqAnswer: { color: 'rgba(255,255,255,0.72)', fontSize: 13, lineHeight: 20 },
   chevronOpen: { transform: [{ rotate: '180deg' }] },
   safetyLink: { marginTop: 6, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  safetyLinkText: { color: '#fbbf24', fontSize: 14, fontWeight: '800' },
-  sellBanner: { overflow: 'hidden', padding: 20, gap: 8, borderRadius: 24, backgroundColor: '#022c22' },
+  safetyLinkText: { flexShrink: 1, color: '#fbbf24', fontSize: 14, fontWeight: '800' },
+  sellBanner: { overflow: 'hidden', padding: 20, gap: 8, borderRadius: 20, backgroundColor: '#022c22' },
   sellEyebrow: { color: '#01eb53', fontSize: 11, fontWeight: '900', letterSpacing: 1.6, textTransform: 'uppercase' },
   sellTitle: { color: '#ffffff', fontSize: 21, lineHeight: 26, fontWeight: '900' },
   sellBody: { color: 'rgba(255,255,255,0.78)', fontSize: 13, lineHeight: 19 },
-  sellActions: { marginTop: 6, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  sellPrimary: { minHeight: 46, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 13, backgroundColor: '#01eb53' },
-  sellPrimaryText: { color: '#022c22', fontSize: 14, fontWeight: '900' },
-  sellSecondary: { minHeight: 46, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
-  sellSecondaryText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
+  sellActions: { flexDirection: 'row', gap: 8 },
+  sellPrimary: { marginTop: 8, minHeight: 48, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, backgroundColor: '#01eb53' },
+  sellPrimaryText: { flexShrink: 1, color: '#022c22', fontSize: 14, fontWeight: '900' },
+  sellSecondary: { flex: 1, minWidth: 0, minHeight: 48, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  sellSecondaryText: { flexShrink: 1, color: '#ffffff', fontSize: 13, fontWeight: '800' },
   inboxIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: colors.successSurface },
-  inboxCard: { minHeight: 76, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  inboxCard: { minHeight: 76, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   inboxTitle: { color: colors.text, fontSize: 16, fontWeight: '900' },
   footer: { width: '100%', alignItems: 'center', gap: 8, paddingTop: 28, paddingBottom: 36, paddingHorizontal: gutter + 4, backgroundColor: '#020617' },
   footerBrand: { color: '#ffffff', fontSize: 22, fontWeight: '900' },

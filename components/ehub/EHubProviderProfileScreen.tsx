@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, RefreshControl, Share, StyleSheet, Text, TextInput, View, type ScrollView } from 'react-native';
-import { BadgeCheck, Building2, Check, Clock, Globe, MapPin, Package, Send, Share2, Star, UserRound } from 'lucide-react-native';
+import { BadgeCheck, Building2, Check, ChevronRight, Clock, Globe, MapPin, MessageCircle, Package, Send, Share2, Star, UserRound } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
 import EHubSectionNav from '@/components/ehub/EHubSectionNav';
@@ -9,8 +9,7 @@ import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useEHubProvider } from '@/lib/hooks/useEHub';
-import { eHubService, EHUB_PROVIDER_SHARE_BASE_URL, getEHubTermsRoute } from '@/lib/services/EHubService';
-import { EHubChip, EHubEmptyState, EHubNotice, formatEHubPrice, useEHubLayout } from '@/components/ehub/EHubParts';
+import { eHubService, EHUB_PROVIDER_SHARE_BASE_URL, getEHubTermsRoute } from '@/lib/services/EHubService';import { EHubChip, EHubEmptyState, EHubNotice, formatEHubPrice, useEHubLayout } from '@/components/ehub/EHubParts';
 import { EHubScrollView } from '@/components/ehub/EHubScrollView';
 import { EHubProviderProfileSkeleton } from '@/components/ehub/EHubSkeletons';
 import type { EHubPlainEnquiryType, EHubProviderDetail } from '@/lib/types/ehubDiscovery';
@@ -174,7 +173,11 @@ export default function EHubProviderProfileScreen() {
     {provider.products.length === 0 ? <Text style={styles.muted}>This provider has no currently published E-Hub products.</Text>
       : <View style={styles.productGrid}>{provider.products.map((product) => <Pressable key={product.id} accessibilityRole="button" accessibilityLabel={`View ${product.title}`} onPress={() => router.push(`/ehub/products/${encodeURIComponent(product.id)}` as Href)} style={[styles.productRow, { width: productWidth }]}>
         <View style={styles.productImage}>{product.imageUrl ? <CachedImage uri={product.imageUrl} style={styles.fill} /> : <Package size={22} color={colors.mutedText} />}</View>
-        <View style={styles.flex}><Text numberOfLines={2} style={styles.productTitle}>{product.title}</Text><Text style={styles.productPrice}>{formatEHubPrice(product.price)}</Text></View>
+        <View style={styles.flex}>
+          <Text numberOfLines={2} style={styles.productTitle}>{product.title}</Text>
+          <Text style={styles.productPrice}>{formatEHubPrice(product.price)}</Text>
+        </View>
+        <ChevronRight size={18} color={colors.mutedText} />
       </Pressable>)}</View>}
     {provider.sellerPolicies || provider.returnPolicy ? <View style={styles.policies}>
       {provider.sellerPolicies ? <Text style={styles.policyText}><Text style={styles.strong}>Seller policies: </Text>{provider.sellerPolicies}</Text> : null}
@@ -203,7 +206,7 @@ export default function EHubProviderProfileScreen() {
       </View>
       {notice ? <EHubNotice tone={notice.tone} text={notice.text} actionLabel={notice.tone === 'success' ? 'View my enquiries' : undefined} onAction={notice.tone === 'success' ? () => router.push('/ehub/enquiries?mode=sent' as Href) : undefined} /> : null}
       <Pressable accessibilityRole="button" accessibilityState={{ disabled: profile ? !canSubmit : false }} onPress={() => void handleSubmit()} disabled={profile ? !canSubmit : false} style={[styles.submit, profile && !canSubmit && styles.submitDisabled]}>
-        <Send size={17} color="#ffffff" /><Text style={styles.submitText}>{!profile ? 'Sign in to send an enquiry' : isSubmitting ? 'Sending…' : 'Send enquiry'}</Text>
+        <Send size={17} color="#ffffff" /><Text numberOfLines={1} style={styles.submitText}>{!profile ? 'Sign in to send an enquiry' : isSubmitting ? 'Sending…' : 'Send enquiry'}</Text>
       </Pressable>
     </>}
   </View>;
@@ -227,13 +230,17 @@ export default function EHubProviderProfileScreen() {
                   <View style={styles.row}><MapPin size={15} color={colors.mutedText} /><Text style={styles.meta}>{place}</Text></View>
                   {provider.businessHours ? <View style={styles.row}><Clock size={15} color={colors.mutedText} /><Text style={styles.meta}>{provider.businessHours}</Text></View> : null}
                   {provider.rating !== null ? <View style={styles.row}><Star size={15} color="#f59e0b" fill="#f59e0b" /><Text style={styles.meta}>{provider.rating.toFixed(1)} from {provider.reviewCount} eligible reviews</Text></View> : null}
-                  {provider.websiteUrl ? <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(/^https?:\/\//i.test(provider.websiteUrl ?? '') ? provider.websiteUrl ?? '' : `https://${provider.websiteUrl}`)} style={styles.row}><Globe size={15} color={colors.accentText} /><Text numberOfLines={1} style={styles.link}>{provider.websiteUrl}</Text></Pressable> : null}
+                  {provider.websiteUrl ? <Pressable accessibilityRole="link" accessibilityLabel={`Open website ${provider.websiteUrl}`} onPress={() => void Linking.openURL(/^https?:\/\//i.test(provider.websiteUrl ?? '') ? provider.websiteUrl ?? '' : `https://${provider.websiteUrl}`)} style={[styles.row, styles.linkRow]}><Globe size={15} color={colors.accentText} /><Text numberOfLines={1} style={styles.link}>{provider.websiteUrl}</Text></Pressable> : null}
                 </View>
                 {tags.length ? <View style={styles.tags}>{tags.map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}</View> : null}
+                {isOwnProvider ? null : <Pressable accessibilityRole="button" accessibilityLabel={`Send ${provider.name} an enquiry`} onPress={scrollToForm} style={styles.profileAction}>
+                  <MessageCircle size={18} color="#ffffff" /><Text numberOfLines={1} style={styles.profileActionText}>Send an enquiry</Text>
+                </Pressable>}
               </View>
             </View>
             <View onLayout={(event) => { layoutOffsets.current.columns = event.nativeEvent.layout.y; }} style={[styles.columns, layout.isWide && styles.columnsWide]}>
-              {layout.isWide ? <>{catalog}{enquiryForm}</> : <>{enquiryForm}{catalog}</>}
+              {/* Phones open on the catalog ("View store"); a product or service enquiry link opens on the form. */}
+              {layout.isWide || !(requestedProduct || requestedService) ? <>{catalog}{enquiryForm}</> : <>{enquiryForm}{catalog}</>}
             </View>
           </View>
         </EHubScrollView>
@@ -248,15 +255,18 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   fill: { width: '100%', height: '100%' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
   muted: { color: colors.mutedText, fontSize: 13, lineHeight: 19 },
-  headerButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   scrollContent: { paddingBottom: 48, alignItems: 'center' },
   body: { maxWidth: '100%', alignSelf: 'center', paddingHorizontal: gutter, paddingTop: 16, gap: 18 },
-  profileCard: { overflow: 'hidden', borderRadius: 24, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  profileCard: { overflow: 'hidden', borderRadius: 16, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   cover: { backgroundColor: colors.successSurface, overflow: 'hidden' },
-  profileBody: { paddingHorizontal: 20, paddingBottom: 22, gap: 12 },
-  logo: { width: 92, height: 92, marginTop: -50, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 26, borderWidth: 4, borderColor: colors.surface, backgroundColor: colors.control },
+  profileBody: { paddingHorizontal: 16, paddingBottom: 16, gap: 12 },
+  profileAction: { marginTop: 4, minHeight: 48, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, backgroundColor: '#047857' },
+  profileActionText: { flexShrink: 1, color: '#ffffff', fontSize: 15, fontWeight: '800' },
+  linkRow: { minHeight: 44 },
+  logo: { width: 88, height: 88, marginTop: -44, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 20, borderWidth: 4, borderColor: colors.surface, backgroundColor: colors.control },
   nameRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
-  name: { color: colors.text, fontSize: 26, lineHeight: 31, fontWeight: '900' },
+  name: { flexShrink: 1, color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: '900' },
   verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.successSurface },
   verifiedText: { color: colors.successText, fontSize: 12, fontWeight: '800' },
   description: { color: colors.secondaryText, fontSize: 14, lineHeight: 21 },
@@ -267,38 +277,38 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   tagText: { color: colors.secondaryText, fontSize: 12, fontWeight: '800' },
   columns: { gap: 18 },
   columnsWide: { flexDirection: 'row', alignItems: 'flex-start', gap: 22 },
-  card: { padding: 18, gap: 12, borderRadius: 24, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  card: { padding: 16, gap: 12, borderRadius: 16, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   formWide: { width: 400 },
-  sectionTitle: { color: colors.text, fontSize: 20, fontWeight: '900' },
+  sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
   services: { gap: 8, paddingBottom: 14, marginBottom: 2, borderBottomWidth: 1, borderBottomColor: colors.border },
   serviceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  serviceButton: { minHeight: 44, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 13, borderWidth: 1, borderColor: '#a7f3d0', backgroundColor: colors.successSurface },
-  serviceButtonActive: { borderColor: '#047857' },
-  serviceText: { color: colors.successText, fontSize: 13, fontWeight: '900' },
-  serviceTextActive: { color: colors.text },
-  contextBanner: { padding: 14, gap: 3, borderRadius: 16, borderWidth: 1, borderColor: '#a7f3d0', backgroundColor: colors.successSurface },
+  serviceButton: { minHeight: 44, maxWidth: '100%', paddingHorizontal: 16, justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.successSurface },
+  serviceButtonActive: { borderColor: colors.accent, backgroundColor: colors.accent },
+  serviceText: { color: colors.successText, fontSize: 13, fontWeight: '800' },
+  serviceTextActive: { color: '#ffffff' },
+  contextBanner: { padding: 12, gap: 4, borderRadius: 12, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.successSurface },
   contextLabel: { color: colors.successText, fontSize: 11, fontWeight: '900', letterSpacing: 0.6, textTransform: 'uppercase' },
   contextName: { color: colors.text, fontSize: 15, fontWeight: '900' },
-  productGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  productRow: { padding: 10, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: 16, borderWidth: 1, borderColor: colors.border },
-  productImage: { width: 62, height: 62, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 13, backgroundColor: colors.control },
+  productGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  productRow: { minHeight: 80, padding: 8, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  productImage: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 10, backgroundColor: colors.control },
   productTitle: { color: colors.text, fontSize: 14, fontWeight: '800' },
-  productPrice: { marginTop: 3, color: colors.accentText, fontSize: 14, fontWeight: '900' },
-  policies: { padding: 14, gap: 8, borderRadius: 16, backgroundColor: colors.control },
+  productPrice: { marginTop: 4, color: colors.text, fontSize: 15, fontWeight: '900' },
+  policies: { padding: 12, gap: 8, borderRadius: 12, backgroundColor: colors.control },
   policyText: { color: colors.secondaryText, fontSize: 13, lineHeight: 20 },
   strong: { color: colors.text, fontWeight: '900' },
   link: { flexShrink: 1, color: colors.accentText, fontSize: 13, fontWeight: '900', textDecorationLine: 'underline' },
   fieldLabel: { marginTop: 4, color: colors.text, fontSize: 13, fontWeight: '900' },
   typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  messageInput: { minHeight: 140, padding: 13, borderRadius: 15, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 15, lineHeight: 21 },
+  messageInput: { minHeight: 140, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 15, lineHeight: 21 },
   hint: { marginTop: -4, color: colors.mutedText, fontSize: 12 },
-  acknowledgement: { padding: 13, gap: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control },
+  acknowledgement: { padding: 12, gap: 4, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.control },
   acknowledgementRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
-  termsLink: { marginLeft: 33, minHeight: 32, justifyContent: 'center' },
+  termsLink: { marginLeft: 33, minHeight: 44, justifyContent: 'center' },
   checkbox: { width: 22, height: 22, marginTop: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 2, borderColor: colors.mutedText },
   checkboxChecked: { borderColor: colors.accent, backgroundColor: colors.accent },
   acknowledgementText: { flex: 1, color: colors.secondaryText, fontSize: 12, lineHeight: 18 },
-  submit: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: '#047857' },
+  submit: { minHeight: 48, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, backgroundColor: '#047857' },
   submitDisabled: { opacity: 0.45 },
-  submitText: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
+  submitText: { flexShrink: 1, color: '#ffffff', fontSize: 15, fontWeight: '900' },
 });

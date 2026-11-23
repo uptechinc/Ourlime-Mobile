@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SkeletonBox, SkeletonCircle, SkeletonText } from '@/components/ui/Skeleton';
@@ -101,46 +101,43 @@ function useSkeletonStyles() {
 
 type SectionHeadingSkeletonProps = { width: number; titleChars: number; descriptionChars?: number; actionWidth?: number };
 
-/** EHubSectionHeading: eyebrow, 22/27 title, 13/19 description and an optional EHubLinkButton on the right. */
+/** EHubSectionHeading: eyebrow and 22/28 title with the "See all" link on the same line, then the 13/20 description. */
 export function EHubSectionHeadingSkeleton({ width, titleChars, descriptionChars, actionWidth }: SectionHeadingSkeletonProps) {
-  const { layout, styles } = useSkeletonStyles();
-  // Phones stack the action under the text, like EHubSectionHeading.
-  const isStacked = layout.width < 600;
-  const textWidth = actionWidth && !isStacked ? width - actionWidth - 12 : width;
-  return <View style={isStacked ? { gap: 10 } : styles.heading}>
-    <View style={isStacked ? null : styles.flex}>
-      <Line fontSize={11} lineHeight={15} width={96} />
-      <TextBlock chars={titleChars} fontSize={24} lineHeight={29} weight="bold" width={textWidth} style={styles.marginTop4} />
-      {descriptionChars ? <TextBlock chars={descriptionChars} fontSize={13} lineHeight={19} width={textWidth} style={styles.marginTop4} /> : null}
+  const { styles } = useSkeletonStyles();
+  const textWidth = actionWidth ? width - actionWidth - 12 : width;
+  return <View style={{ gap: 4 }}>
+    <View style={[styles.heading, { alignItems: 'flex-end' }]}>
+      <View style={styles.flex}>
+        <Line fontSize={12} lineHeight={16} width={96} />
+        <TextBlock chars={titleChars} fontSize={22} lineHeight={28} weight="bold" width={textWidth} maxLines={2} style={styles.marginTop4} />
+      </View>
+      {actionWidth ? <View style={{ height: 44, marginBottom: -8, justifyContent: 'center' }}><Line fontSize={14} width={actionWidth} /></View> : null}
     </View>
-    {actionWidth ? <SkeletonBox width={actionWidth} height={38} borderRadius={999} /> : null}
+    {descriptionChars ? <TextBlock chars={descriptionChars} fontSize={13} lineHeight={20} width={width} /> : null}
   </View>;
 }
 
 type ProductCardSkeletonProps = { width: number; isCompact?: boolean; withCompare?: boolean };
 
-/** EHubProductCard: square image with stock badge and heart, store, two-line title, price, cart and compare buttons. */
+/** EHubProductCard: square image with the heart, two-line title, price, store line, then Compare and quick-add. */
 export function EHubProductCardSkeleton({ width, isCompact = false, withCompare = true }: ProductCardSkeletonProps) {
   const { styles } = useSkeletonStyles();
-  const bodyWidth = width - 22;
+  const bodyWidth = width - 24;
   return <View style={[styles.productCard, { width }]}>
-    <View>
-      <SkeletonBox width="100%" height={width} borderRadius={0} />
-      <View style={styles.stockBadge}><Line fontSize={10} lineHeight={13} width={58} tint={ON_DARK} /></View>
-    </View>
+    <SkeletonBox width="100%" height={width} borderRadius={0} />
     <View style={styles.productBody}>
-      <Line fontSize={10} lineHeight={14} width={Math.round(bodyWidth * 0.55)} />
       <View style={styles.productTitle}>
-        <Line fontSize={13} lineHeight={18} width={Math.round(bodyWidth * 0.95)} />
-        <Line fontSize={13} lineHeight={18} width={Math.round(bodyWidth * 0.6)} />
+        <Line fontSize={14} lineHeight={19} width={Math.round(bodyWidth * 0.95)} />
+        <Line fontSize={14} lineHeight={19} width={Math.round(bodyWidth * 0.6)} />
       </View>
-      <Line fontSize={16} width={Math.min(96, Math.round(bodyWidth * 0.6))} style={styles.marginTop3} />
+      <Line fontSize={16} lineHeight={22} width={Math.min(96, Math.round(bodyWidth * 0.6))} />
+      <Line fontSize={12} lineHeight={16} width={Math.round(bodyWidth * 0.5)} />
     </View>
     {isCompact ? null : <>
       <View style={styles.heartButton}><IconBox size={17} /></View>
       <View style={styles.productActions}>
-        <SkeletonBox height={42} borderRadius={12} style={styles.flex} />
-        {withCompare ? <View style={styles.compareButton}><IconBox size={16} /></View> : null}
+        {withCompare ? <View style={[styles.flex, styles.row6, { minHeight: 44, paddingHorizontal: 8, gap: 8 }]}><SkeletonBox width={18} height={18} borderRadius={5} /><Line fontSize={12} width={52} /></View> : <View style={styles.flex} />}
+        <SkeletonBox width={40} height={40} borderRadius={12} />
       </View>
     </>}
   </View>;
@@ -223,25 +220,24 @@ function EHubHomeHeaderSkeleton() {
   </SafeAreaView>;
 }
 
-/** The rotating hero: dark slide with eyebrow, title, body, one button and the slide dots. */
+/** The hero (EHubHeroSlider): at most ~45% of the screen, eyebrow, title, two-line body, one button, then the control pill. */
 function EHubHomeHeroSkeleton({ layout }: { layout: EHubLayout }) {
   const { styles } = useSkeletonStyles();
-  const contentWidth = layout.contentWidth - (layout.gutter + 6) * 2;
-  return <View style={[styles.hero, { minHeight: layout.isTablet ? 420 : 360 }]}>
-    <View style={{ width: layout.contentWidth, maxWidth: '100%', paddingHorizontal: layout.gutter + 6, paddingTop: 32, paddingBottom: 76 }}>
-      <Line fontSize={11} lineHeight={15} width={128} tint={ON_DARK} />
-      <TextBlock chars={56} fontSize={layout.isTablet ? 42 : 29} lineHeight={layout.isTablet ? 46 : 34} weight="bold" width={Math.min(contentWidth, 620)} tint={ON_DARK} style={styles.marginTop12} />
-      <TextBlock chars={100} fontSize={14} lineHeight={22} width={Math.min(contentWidth, 520)} tint={ON_DARK} style={styles.marginTop14} />
-      <View style={styles.heroActions}>
-        <SkeletonBox width={170} height={46} borderRadius={13} style={{ backgroundColor: 'rgba(1,235,83,0.45)' }} />
-      </View>
+  const { height: windowHeight } = useWindowDimensions();
+  const heroHeight = Math.round(Math.max(layout.isTablet ? 380 : 320, Math.min(windowHeight * 0.45, layout.isTablet ? 440 : 380)));
+  const contentWidth = layout.contentWidth - (layout.gutter + 8) * 2;
+  return <View style={[styles.hero, { height: heroHeight }]}>
+    <View style={{ width: layout.contentWidth, maxWidth: '100%', paddingHorizontal: layout.gutter + 8, paddingBottom: 48 }}>
+      <Line fontSize={12} lineHeight={16} width={128} tint={ON_DARK} />
+      <TextBlock chars={56} fontSize={layout.isTablet ? 40 : 26} lineHeight={layout.isTablet ? 46 : 32} weight="bold" width={Math.min(contentWidth, 620)} maxLines={3} tint={ON_DARK} style={styles.marginTop6} />
+      <TextBlock chars={100} fontSize={14} lineHeight={20} width={Math.min(contentWidth, 520)} maxLines={layout.isTablet ? 3 : 2} tint={ON_DARK} style={styles.marginTop6} />
+      <SkeletonBox width={170} height={48} borderRadius={12} style={{ marginTop: 16, backgroundColor: 'rgba(1,235,83,0.45)' }} />
     </View>
-    <View style={[styles.heroDots, { bottom: 22 }]}>
-      <IconSlot box={34} size={18} tint={ON_DARK} />
-      <View style={[styles.dot, styles.dotActive]} />
-      <View style={styles.dot} />
-      <View style={styles.dot} />
-      <IconSlot box={34} size={18} tint={ON_DARK} />
+    <View style={[styles.heroDots, { bottom: 12, gap: 0, padding: 0, paddingHorizontal: 4 }]}>
+      <IconSlot box={44} size={18} tint={ON_DARK} />
+      {[0, 1, 2].map((dotIndex) => <View key={dotIndex} style={{ minWidth: 24, height: 44, alignItems: 'center', justifyContent: 'center' }}><View style={[styles.dot, { width: 8, height: 8 }, dotIndex === 0 && { width: 22, backgroundColor: '#01eb53' }]} /></View>)}
+      <IconSlot box={44} size={18} tint={ON_DARK} />
+      <IconSlot box={44} size={15} tint={ON_DARK} />
     </View>
   </View>;
 }
@@ -250,19 +246,19 @@ function EHubHomeHeroSkeleton({ layout }: { layout: EHubLayout }) {
 function EHubHomeBodySkeleton({ layout }: { layout: EHubLayout }) {
   const { styles } = useSkeletonStyles();
   const inner = layout.innerWidth;
-  return <View style={[styles.homeBody, { width: layout.contentWidth, paddingHorizontal: layout.gutter, paddingTop: 20, gap: 30 }]}>
+  return <View style={[styles.homeBody, { width: layout.contentWidth, paddingHorizontal: layout.gutter, paddingTop: 16, gap: 32 }]}>
     <View style={[styles.searchBox, { minHeight: 52, borderRadius: 999 }]}>
       <IconBox size={19} />
       <Line fontSize={15} width={96} />
     </View>
     <View style={styles.section}>
-      <EHubSectionHeadingSkeleton width={inner} titleChars={16} descriptionChars={48} actionWidth={92} />
+      <EHubSectionHeadingSkeleton width={inner} titleChars={16} actionWidth={56} />
       <View style={{ flexDirection: 'row', gap: 8, overflow: 'hidden' }}>
-        {[0, 1, 2].map((tileIndex) => <SkeletonBox key={tileIndex} width={layout.isTablet ? 160 : 136} height={layout.isTablet ? 170 : 150} borderRadius={18} />)}
+        {[0, 1, 2].map((tileIndex) => <SkeletonBox key={tileIndex} width={layout.isTablet ? 160 : 136} height={layout.isTablet ? 168 : 152} borderRadius={16} />)}
       </View>
     </View>
     <View style={styles.section}>
-      <EHubSectionHeadingSkeleton width={inner} titleChars={22} descriptionChars={84} actionWidth={92} />
+      <EHubSectionHeadingSkeleton width={inner} titleChars={13} descriptionChars={62} actionWidth={56} />
       {layout.isTablet ? <EHubProviderGridSkeleton /> : <EHubProviderCardSkeleton width={Math.round(inner * 0.86)} />}
     </View>
   </View>;
@@ -352,6 +348,23 @@ export function EHubProductDetailSkeleton() {
   const buyCardInner = (layout.isWide ? layout.innerWidth - galleryWidth - 24 : layout.innerWidth) - 38;
   const sellerWidth = layout.isWide ? 340 : layout.innerWidth;
   const infoInner = (layout.isWide ? layout.innerWidth - sellerWidth - 24 : layout.innerWidth) - 38;
+  if (!layout.isWide) {
+    // Phones: the product page's full-width photo, then breadcrumb, store, title, price, stock and quantity.
+    const photoSize = Math.min(layout.width, 560);
+    const textWidth = layout.width - 32;
+    return <ScrollView scrollEnabled={false} showsVerticalScrollIndicator={false}>
+      <SkeletonBox width={layout.width} height={photoSize} borderRadius={0} />
+      <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 12 }}>
+        <Line fontSize={14} width={120} />
+        <Line fontSize={15} width={170} />
+        <TextBlock chars={34} fontSize={24} lineHeight={30} weight="bold" width={textWidth} />
+        <Line fontSize={28} lineHeight={36} width={200} />
+        <View style={styles.row6}><SkeletonCircle size={10} /><Line fontSize={14} width={140} /></View>
+        <SkeletonBox height={48} borderRadius={12} width={textWidth} />
+        <SkeletonBox height={96} borderRadius={16} width={textWidth} />
+      </View>
+    </ScrollView>;
+  }
   return <ScrollView scrollEnabled={false} showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailScrollContent}>
     <View style={[styles.detailBody, { width: layout.contentWidth, paddingHorizontal: layout.gutter }]}>
       <View style={[styles.top18, layout.isWide ? styles.topWide : null]}>
@@ -643,12 +656,11 @@ function createStyles(colors: AppThemeColors) {
     // EHubParts
     heading: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
     linkButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4 },
-    productCard: { overflow: 'hidden', borderRadius: 18, ...card },
-    stockBadge: { position: 'absolute', left: 8, bottom: 8, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(2,6,23,0.85)' },
-    productBody: { padding: 11, gap: 3 },
-    productTitle: { minHeight: 36 },
-    heartButton: { position: 'absolute', top: 8, right: 8, width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.95)' },
-    productActions: { flexDirection: 'row', gap: 8, paddingHorizontal: 11, paddingBottom: 11 },
+    productCard: { overflow: 'hidden', borderRadius: 16, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+    productBody: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4, gap: 4 },
+    productTitle: { minHeight: 38 },
+    heartButton: { position: 'absolute', top: 6, right: 6, width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.95)' },
+    productActions: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 4, paddingRight: 8, paddingBottom: 8 },
     compareButton: { width: 42, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border },
     providerCard: { overflow: 'hidden', borderRadius: 24, ...card },
     providerCover: { height: 128, overflow: 'hidden' },

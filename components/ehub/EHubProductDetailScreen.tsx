@@ -1,42 +1,51 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
-import { Building2, Check, Heart, MapPin, Package, Send, Share2, ShieldCheck, ShoppingCart, Star, Store, Truck } from 'lucide-react-native';
+import { Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { BadgeCheck, ChevronRight, Info, Package, RotateCcw, ShieldCheck, Star, Store, Truck } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import PageHeader from '@/components/ui/PageHeader';
-import EHubSectionNav from '@/components/ehub/EHubSectionNav';
-import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useEHubProduct } from '@/lib/hooks/useEHub';
 import { getEHubTermsRoute } from '@/lib/services/EHubService';
 import { getEHubCurrentPrice, normalizeEHubSalePrice } from '@/lib/services/EHubCommerceService';
 import { useEHubCommerce } from '@/lib/hooks/useEHubCommerce';
-import { EHubCartSheet, EHubHeaderActions } from '@/components/ehub/EHubCommerceParts';
-import { EHubEmptyState, EHubNotice, EHubProductCard, formatEHubPrice, useEHubLayout } from '@/components/ehub/EHubParts';
+import { EHubCartSheet } from '@/components/ehub/EHubCommerceParts';
+import { EHubEmptyState, EHubNotice, formatEHubPrice, useEHubLayout } from '@/components/ehub/EHubParts';
 import { EHubProductDetailSkeleton } from '@/components/ehub/EHubSkeletons';
-import type { EHubCatalogProduct } from '@/lib/types/ehubDiscovery';
 import SellerCouriersPanel from '@/components/market/couriers/SellerCouriersPanel';
+import ProductGallery from '@/components/ehub/productDetail/ProductGallery';
+import { PRODUCT_TOP_BAR_HEIGHT, ProductBottomBar, ProductTopBar } from '@/components/ehub/productDetail/ProductDetailBars';
+import {
+  PRODUCT_DETAIL_GUTTER, ProductDetailSection, ProductExpandableText, ProductInfoRow, ProductOptionPicker, ProductQuantityStepper,
+  ProductRail, ProductSellerCard, ProductSpecList, describeProductStock, getDiscountPercent, type ProductSpec,
+} from '@/components/ehub/productDetail/ProductDetailParts';
 
-type OptionGroupProps = { label: string; values: string[]; selectedValue: string; onSelect: (value: string) => void };
+/** Wide screens (960+) put the gallery and the buying column side by side, capped at this width. */
+const WIDE_MAXIMUM_WIDTH = 1080;
+const MAXIMUM_GALLERY_HEIGHT = 560;
 
-/** The website's /ehub/products/[productId]: gallery, price and stock, options, seller card, policies, related products. */
+/**
+ * The website's /ehub/products/[productId], laid out like a native shopping app: a full-bleed photo gallery under a
+ * floating header, then store, title, rating, price and stock, option chips and quantity, delivery and pickup, the
+ * seller, description, details, policies and related products, with a sticky price + "Add to cart" bar.
+ */
 export default function EHubProductDetailScreen() {
   const router = useRouter();
   const { productId } = useLocalSearchParams<{ productId: string }>();
-  const { colors } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const layout = useEHubLayout();
-  const styles = useMemo(() => createStyles(colors, layout.gutter), [colors, layout.gutter]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const resource = useEHubProduct(productId);
   const detail = resource.data;
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedVariant, setSelectedVariant] = useState('');
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColour, setSelectedColour] = useState('');
+  const [quantity, setQuantity] = useState(1);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [isPastGallery, setIsPastGallery] = useState(false);
   const { addToCart, addRecentlyViewed, isFavorite, toggleFavorite } = useEHubCommerce();
   const images = useMemo(() => detail ? [...new Set([detail.product.imageUrl, ...detail.product.imageUrls].filter((image): image is string => Boolean(image)))] : [], [detail]);
-
-  useEffect(() => { setSelectedImage(images[0] ?? null); }, [images]);
 
   // Recorded like the website (newest first, at most 10); not shown anywhere yet.
   const viewedProduct = detail?.product ?? null;
@@ -45,25 +54,42 @@ export default function EHubProductDetailScreen() {
     addRecentlyViewed({ id: viewedProduct.id, title: viewedProduct.title, imageUrl: viewedProduct.imageUrl ?? '', price: getEHubCurrentPrice(viewedProduct.price, viewedProduct.salePrice), category: viewedProduct.category });
   }, [addRecentlyViewed, viewedProduct]);
 
+  // Keep the quantity inside the stock after a refresh lowers it.
+  const inventory = detail?.product.inventory ?? 0;
+  useEffect(() => { setQuantity((current) => Math.max(1, Math.min(current, inventory))); }, [inventory]);
+
+  const isWide = layout.isWide;
+  const headerHeight = insets.top + PRODUCT_TOP_BAR_HEIGHT;
+  const galleryWidth = isWide ? Math.floor((Math.min(layout.width, WIDE_MAXIMUM_WIDTH) - PRODUCT_DETAIL_GUTTER * 3) * 0.52) : layout.width;
+  const galleryHeight = isWide ? galleryWidth : Math.min(layout.width, MAXIMUM_GALLERY_HEIGHT);
+  const isHeaderSolid = isWide || isPastGallery || !detail;
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (isWide) return;
+    const isPast = event.nativeEvent.contentOffset.y > galleryHeight - headerHeight - 8;
+    if (isPast !== isPastGallery) setIsPastGallery(isPast);
+  };
+
+  const providerId = detail ? detail.store.providerId || detail.store.businessId : '';
   const handleOpenProduct = (nextProductId: string) => router.push(`/ehub/products/${encodeURIComponent(nextProductId)}` as Href);
+  const handleViewStore = () => { if (providerId) router.push(`/ehub/providers/${encodeURIComponent(providerId)}` as Href); };
+  const handleOpenShop = () => router.dismissTo(`/ehub?section=products&jump=${Date.now()}` as Href);
   const handleEnquire = () => {
     if (!detail) return;
     const options = [selectedVariant, selectedSize, selectedColour].filter(Boolean).join(', ');
     const productLabel = options ? `${detail.product.title} (${options})` : detail.product.title;
-    router.push(`/ehub/providers/${encodeURIComponent(detail.store.providerId || detail.store.businessId)}?product=${encodeURIComponent(productLabel)}` as Href);
+    router.push(`/ehub/providers/${encodeURIComponent(providerId)}?product=${encodeURIComponent(productLabel)}` as Href);
   };
   const handleAddToCart = () => {
     if (!detail || detail.product.inventory <= 0) return;
     const { product, store } = detail;
     const isAdded = addToCart({
       productId: product.id, title: product.title, imageUrl: product.imageUrl ?? '', price: getEHubCurrentPrice(product.price, product.salePrice),
-      originalPrice: normalizeEHubSalePrice(product.salePrice, product.price) !== null ? product.price : null, quantity: 1,
+      originalPrice: normalizeEHubSalePrice(product.salePrice, product.price) !== null ? product.price : null, quantity,
       availableQuantity: product.inventory, sellerId: product.storeId, sellerName: store.storeName, deliveryAvailable: product.deliveryAvailable,
       pickupAvailable: product.pickupAvailable, selectedVariant: selectedVariant || null, selectedSize: selectedSize || null, selectedColour: selectedColour || null,
     });
-    if (!isAdded) return;
-    setNotice('Saved in your E-Hub preparation cart. Checkout and payment are not available yet.');
-    setIsCartOpen(true);
+    if (isAdded) setIsCartOpen(true);
   };
   const handleShare = () => {
     if (!detail) return;
@@ -75,194 +101,179 @@ export default function EHubProductDetailScreen() {
     });
   };
 
-  const header = <>
-    <PageHeader title={detail?.product.title ?? 'Product'} onBackPress={() => router.back()} rightComponent={<EHubHeaderActions onOpenCart={() => setIsCartOpen(true)} />} />
-    <EHubSectionNav currentLabel={detail?.product.title ?? 'Product'} parentLabel="Shop" onParentPress={() => router.dismissTo(`/ehub?section=products&jump=${Date.now()}` as Href)} />
-  </>;
-  if (resource.isLoading && !detail) {
-    return <View style={styles.screen}>{header}<EHubProductDetailSkeleton /></View>;
-  }
+  const statusBar = <StatusBar style={isHeaderSolid ? (isDark ? 'light' : 'dark') : 'light'} />;
+  const cartSheet = <EHubCartSheet visible={isCartOpen} onClose={() => setIsCartOpen(false)} onOpenProduct={handleOpenProduct} />;
+
   if (!detail) {
-    return <View style={styles.screen}>{header}<View style={[styles.body, { width: layout.contentWidth }]}>
-      {resource.error ? <EHubNotice tone="error" text={resource.error} actionLabel="Try again" onAction={() => void resource.refresh()} />
-        : <EHubEmptyState icon={<Package size={46} color={colors.mutedText} />} title="Product unavailable" body="This product is unavailable, unpublished, or no longer offered by an active E-Hub store." actionLabel="Browse E-Hub products" onAction={() => router.replace('/ehub' as Href)} />}
-    </View></View>;
+    const plainHeader = <ProductTopBar title="Product" isSolid isFloating={false} onBack={() => router.back()} onOpenCart={() => setIsCartOpen(true)} />;
+    return <View style={styles.screen}>
+      {statusBar}{plainHeader}
+      {resource.isLoading ? <EHubProductDetailSkeleton /> : <View style={styles.stateBody}>
+        {resource.error ? <EHubNotice tone="error" text={resource.error} actionLabel="Try again" onAction={() => void resource.refresh()} />
+          : <EHubEmptyState icon={<Package size={46} color={colors.mutedText} />} title="Product unavailable" body="This product is unavailable, unpublished, or no longer offered by an active E-Hub store." actionLabel="Browse E-Hub products" onAction={() => router.replace('/ehub' as Href)} />}
+      </View>}
+      {cartSheet}
+    </View>;
   }
 
   const { product, store } = detail;
   const isAvailable = product.inventory > 0;
-  const isSaved = isFavorite(product.id);
   const currentPrice = getEHubCurrentPrice(product.price, product.salePrice);
-  const isOnSale = normalizeEHubSalePrice(product.salePrice, product.price) !== null;
-  const galleryWidth = layout.isWide ? Math.floor((layout.innerWidth - 24) * 0.52) : layout.innerWidth;
-  const thumbnailSize = Math.floor((galleryWidth - 30) / 6);
-  const detailItems: { label: string; value: string }[] = [
+  const originalPrice = normalizeEHubSalePrice(product.salePrice, product.price) !== null ? product.price : null;
+  const discountPercent = originalPrice !== null ? getDiscountPercent(currentPrice, originalPrice) : null;
+  const stock = describeProductStock(product.inventory);
+  const stockColor = stock.tone === 'positive' ? colors.accentText : stock.tone === 'low' ? colors.warningText : colors.destructiveText;
+  const stockDotColor = stock.tone === 'positive' ? colors.accent : stock.tone === 'low' ? '#f59e0b' : colors.destructive;
+  const hasRating = store.rating !== null && store.reviewCount > 0;
+  const specs: ProductSpec[] = [
+    { label: 'Category', value: product.category },
+    ...(product.brand ? [{ label: 'Brand', value: product.brand }] : []),
+    ...(product.variants.length ? [{ label: 'Variants', value: product.variants.join(', ') }] : []),
     ...(product.sku ? [{ label: 'SKU', value: product.sku }] : []),
-    { label: 'Status', value: isAvailable ? 'Available' : 'Out of stock' },
-    ...(product.deliveryAvailable ? [{ label: 'Delivery', value: 'Seller indicates delivery is available' }] : []),
-    ...(product.pickupAvailable ? [{ label: 'Pickup', value: 'Seller indicates pickup is available' }] : []),
     ...(product.warrantyInformation ? [{ label: 'Warranty', value: product.warrantyInformation }] : []),
   ];
+  const railCardWidth = layout.isTablet ? 200 : Math.floor((layout.width - PRODUCT_DETAIL_GUTTER * 2 - 12) / 2.3);
+
+  const summary = <View style={[styles.summary, isWide && styles.wideCard]}>
+    <View style={styles.breadcrumb}>
+      <Pressable accessibilityRole="link" accessibilityLabel="Back to the E-Hub shop" onPress={handleOpenShop} hitSlop={8} style={styles.crumbButton}><Text style={styles.crumbLink}>Shop</Text></Pressable>
+      <ChevronRight size={14} color={colors.mutedText} />
+      <Text numberOfLines={1} style={styles.crumbText}>{product.category}</Text>
+    </View>
+    <Pressable accessibilityRole="link" accessibilityLabel={`Sold by ${store.storeName}${store.isVerified ? ', verified' : ''}. View store`} onPress={handleViewStore} hitSlop={4} style={styles.storeLink}>
+      <Store size={15} color={colors.accentText} />
+      <Text numberOfLines={1} style={styles.storeLinkText}>{store.storeName}</Text>
+      {store.isVerified ? <BadgeCheck size={15} color={colors.accentText} /> : null}
+    </Pressable>
+    <Text accessibilityRole="header" style={styles.title}>{product.title}</Text>
+    {hasRating ? <Pressable accessibilityRole="link" accessibilityLabel={`Seller rated ${store.rating?.toFixed(1)} out of 5 from ${store.reviewCount} reviews. View store`} onPress={handleViewStore} style={styles.ratingRow}>
+      <Star size={15} color="#f59e0b" fill="#f59e0b" />
+      <Text style={styles.ratingValue}>{store.rating?.toFixed(1)}</Text>
+      <Text style={styles.ratingCount}>({store.reviewCount} seller {store.reviewCount === 1 ? 'review' : 'reviews'})</Text>
+    </Pressable> : null}
+    <View style={styles.priceRow}>
+      <Text style={styles.price}>{formatEHubPrice(currentPrice)}</Text>
+      {originalPrice !== null ? <Text accessibilityLabel={`was ${formatEHubPrice(originalPrice)}`} style={styles.oldPrice}>{formatEHubPrice(originalPrice)}</Text> : null}
+      {discountPercent !== null ? <View style={styles.discountBadge}><Text style={styles.discountText}>{discountPercent}% off</Text></View> : null}
+    </View>
+    <View style={styles.stockRow}>
+      <View style={[styles.stockDot, { backgroundColor: stockDotColor }]} />
+      <Text style={[styles.stockText, { color: stockColor }]}>{stock.label}</Text>
+      {stock.detail ? <Text style={styles.stockDetail}>· {stock.detail}</Text> : null}
+    </View>
+
+    {product.variants.length || product.sizes.length || product.colours.length || isAvailable ? <View style={styles.options}>
+      {product.variants.length ? <ProductOptionPicker label="Variant" values={product.variants} selectedValue={selectedVariant} isDisabled={!isAvailable} onSelect={setSelectedVariant} /> : null}
+      {product.sizes.length ? <ProductOptionPicker label="Size" values={product.sizes} selectedValue={selectedSize} isDisabled={!isAvailable} onSelect={setSelectedSize} /> : null}
+      {product.colours.length ? <ProductOptionPicker label="Colour" values={product.colours} selectedValue={selectedColour} isDisabled={!isAvailable} onSelect={setSelectedColour} /> : null}
+      {isAvailable ? <ProductQuantityStepper quantity={quantity} maximum={product.inventory} onChange={setQuantity} /> : null}
+    </View> : null}
+  </View>;
+
+  const fulfilment = <ProductDetailSection title="Delivery and pickup">
+    <ProductInfoRow icon={<Truck size={18} color={product.deliveryAvailable ? colors.accentText : colors.mutedText} />} isMuted={!product.deliveryAvailable}
+      title={product.deliveryAvailable ? 'Delivery available' : 'No delivery'}
+      body={product.deliveryAvailable ? 'By the seller or one of their couriers. The seller confirms the fee.' : 'This seller does not deliver this item.'} />
+    <ProductInfoRow icon={<Store size={18} color={product.pickupAvailable ? colors.accentText : colors.mutedText} />} isMuted={!product.pickupAvailable}
+      title={product.pickupAvailable ? (store.location ? `Pickup in ${store.location}` : 'Pickup available') : 'No pickup'}
+      body={product.pickupAvailable ? 'Arrange a time with the seller after your order request.' : 'This item is not offered for pickup.'} />
+    {product.warrantyInformation ? <ProductInfoRow icon={<ShieldCheck size={18} color={colors.accentText} />} title="Warranty" body={product.warrantyInformation} /> : null}
+    <ProductInfoRow icon={<RotateCcw size={18} color={store.returnPolicy ? colors.accentText : colors.mutedText} />} isMuted={!store.returnPolicy}
+      title={store.returnPolicy ? 'Returns accepted by this seller' : 'No return policy listed'} body={store.returnPolicy ? 'See Policies and returns below.' : null} />
+    {product.deliveryAvailable ? <SellerCouriersPanel sellerId={product.storeId} /> : null}
+    <View style={styles.requestNote}>
+      <Info size={16} color={colors.warningText} />
+      <Text style={styles.requestNoteText}>E-Hub sends the seller an order request: no payment is taken in the app. The seller confirms stock, price and delivery.</Text>
+    </View>
+  </ProductDetailSection>;
 
   return (
     <View style={styles.screen}>
-      {header}
-      <ScrollView showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={resource.isRefreshing} onRefresh={() => void resource.refresh()} tintColor={colors.accent} />} contentContainerStyle={styles.scrollContent}>
-        <View style={[styles.body, { width: layout.contentWidth }]}>
-          <View style={[styles.top, layout.isWide && styles.topWide]}>
-            <View style={{ width: galleryWidth, gap: 10 }}>
-              <View style={[styles.mainImage, { height: galleryWidth }]}>
-                {selectedImage ? <CachedImage uri={selectedImage} style={styles.fill} contentFit="contain" accessibilityLabel={product.title} /> : <View style={styles.noImage}><Package size={60} color={colors.mutedText} /><Text style={styles.muted}>No product image provided</Text></View>}
-              </View>
-              {images.length > 1 ? <View style={styles.thumbnails}>{images.map((image) => <Pressable key={image} accessibilityRole="button" accessibilityLabel="View product image" onPress={() => setSelectedImage(image)} style={[styles.thumbnail, { width: thumbnailSize, height: thumbnailSize }, selectedImage === image && styles.thumbnailActive]}><CachedImage uri={image} style={styles.fill} /></Pressable>)}</View> : null}
-            </View>
+      {statusBar}
+      {isWide ? <ProductTopBar title={product.title} isSolid isFloating={false} isSaved={isFavorite(product.id)} onBack={() => router.back()} onShare={handleShare} onToggleSaved={() => toggleFavorite(product.id, product.title)} onOpenCart={() => setIsCartOpen(true)} /> : null}
+      <ScrollView style={styles.flex} showsVerticalScrollIndicator={false} onScroll={handleScroll} scrollEventThrottle={32}
+        refreshControl={<RefreshControl refreshing={resource.isRefreshing} onRefresh={() => void resource.refresh()} tintColor={colors.accent} progressViewOffset={isWide ? 0 : headerHeight} />}
+        contentContainerStyle={styles.scrollContent}>
+        <View style={isWide ? [styles.wideBody, { width: Math.min(layout.width, WIDE_MAXIMUM_WIDTH) }] : null}>
+          {isWide ? <View style={styles.wideTop}>
+            <ProductGallery images={images} title={product.title} width={galleryWidth} height={galleryHeight} isFullBleed={false} />
+            <View style={styles.wideColumn}>{summary}<View style={styles.wideCard}>{fulfilment}</View></View>
+          </View> : <>
+            <ProductGallery images={images} title={product.title} width={galleryWidth} height={galleryHeight} isFullBleed topScrimHeight={headerHeight + 16} />
+            {summary}
+            <View style={styles.sectionGap} />
+            {fulfilment}
+          </>}
 
-            <View style={[styles.card, layout.isWide && styles.flex]}>
-              <View style={styles.badges}><View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{product.category}</Text></View><View style={styles.plainBadge}><Text style={styles.plainBadgeText}>Published E-Hub product</Text></View></View>
-              <Text style={styles.title}>{product.title}</Text>
-              {product.brand ? <Text style={styles.muted}>Brand: {product.brand}</Text> : null}
-              <View style={styles.priceRow}><Text style={styles.price}>{formatEHubPrice(currentPrice)}</Text>{isOnSale ? <Text style={styles.oldPrice}>{formatEHubPrice(product.price)}</Text> : null}</View>
-              <View style={styles.row}><View style={[styles.stockDot, { backgroundColor: isAvailable ? colors.accent : colors.destructive }]} /><Text style={[styles.stockText, { color: isAvailable ? colors.accentText : colors.destructiveText }]}>{isAvailable ? `${product.inventory} available` : 'Currently out of stock'}</Text></View>
-              {product.variants.length ? <OptionGroup label="Variant" values={product.variants} selectedValue={selectedVariant} onSelect={setSelectedVariant} /> : null}
-              {product.sizes.length ? <OptionGroup label="Size" values={product.sizes} selectedValue={selectedSize} onSelect={setSelectedSize} /> : null}
-              {product.colours.length ? <OptionGroup label="Colour" values={product.colours} selectedValue={selectedColour} onSelect={setSelectedColour} /> : null}
-              <View style={styles.actions}>
-                <Pressable accessibilityRole="button" accessibilityState={{ disabled: !isAvailable }} disabled={!isAvailable} onPress={handleAddToCart} style={[styles.primaryButton, styles.flex, !isAvailable && styles.disabled]}><ShoppingCart size={17} color="#ffffff" /><Text numberOfLines={1} style={styles.primaryText}>Add to E-Hub cart</Text></Pressable>
-                <Pressable accessibilityRole="button" accessibilityState={{ selected: isSaved }} onPress={() => toggleFavorite(product.id, product.title)} style={[styles.secondaryButton, styles.flex, isSaved && styles.savedButton]}><Heart size={17} color={isSaved ? '#e11d48' : colors.text} fill={isSaved ? '#e11d48' : 'transparent'} /><Text style={[styles.secondaryText, isSaved && styles.savedText]}>{isSaved ? 'Saved' : 'Save product'}</Text></Pressable>
-              </View>
-              <View style={styles.actions}>
-                <Pressable accessibilityRole="button" onPress={handleEnquire} style={[styles.secondaryButton, styles.flex]}><Send size={17} color={colors.text} /><Text style={styles.secondaryText}>Send enquiry</Text></Pressable>
-                <Pressable accessibilityRole="button" accessibilityLabel="Share product" onPress={handleShare} style={[styles.secondaryButton, styles.flex]}><Share2 size={17} color={colors.text} /><Text style={styles.secondaryText}>Share</Text></Pressable>
-              </View>
-              <EHubNotice tone="warning" text="The E-Hub cart is a preparation list only. Checkout, payment, escrow, platform-managed refunds, and delivery guarantees are not active." />
-              {notice ? <EHubNotice tone="success" text={notice} /> : null}
-            </View>
+          <View style={styles.sectionGap} />
+          <View style={isWide ? styles.wideCard : null}>
+            <ProductDetailSection title="Sold by"><ProductSellerCard store={store} onViewStore={handleViewStore} onMessage={handleEnquire} /></ProductDetailSection>
+          </View>
+          <View style={styles.sectionGap} />
+          <View style={isWide ? styles.wideCard : null}>
+            <ProductDetailSection title="Description">
+              {product.description ? <ProductExpandableText text={product.description} /> : <Text style={styles.mutedText}>The seller has not added a description.</Text>}
+              <Text style={styles.subheading}>Details</Text>
+              <ProductSpecList specs={specs} />
+            </ProductDetailSection>
+          </View>
+          <View style={styles.sectionGap} />
+          <View style={isWide ? styles.wideCard : null}>
+            <ProductDetailSection title="Policies and returns" isCollapsible isInitiallyOpen={false}>
+              <Text style={styles.policyText}>{store.sellerPolicies ? <><Text style={styles.strong}>Seller policies: </Text>{store.sellerPolicies}</> : 'The seller has not added general policies.'}</Text>
+              <Text style={styles.policyText}>{store.returnPolicy ? <><Text style={styles.strong}>Return/refund expectations: </Text>{store.returnPolicy}</> : 'No seller return or refund policy is currently listed.'}</Text>
+              <Pressable accessibilityRole="link" onPress={() => router.push(getEHubTermsRoute('buyer') as Href)} style={styles.termsLink}><Text style={styles.link}>Read E-Hub buyer terms and payment limitations</Text></Pressable>
+            </ProductDetailSection>
           </View>
 
-          <View style={[styles.top, layout.isWide && styles.topWide]}>
-            <View style={[styles.flex, styles.stack]}>
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Product details</Text>
-                <Text style={styles.description}>{product.description}</Text>
-                <View style={styles.detailGrid}>{detailItems.map((item) => <View key={item.label} style={[styles.detailItem, layout.isTablet && styles.detailItemHalf]}><Text style={styles.detailLabel}>{item.label}</Text><Text style={styles.detailValue}>{item.value}</Text></View>)}</View>
-              </View>
-              {product.deliveryAvailable ? <SellerCouriersPanel sellerId={product.storeId} /> : null}
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Policies and buyer information</Text>
-                <Text style={styles.description}>{store.sellerPolicies ? <><Text style={styles.strong}>Seller policies: </Text>{store.sellerPolicies}</> : 'The seller has not added general policies.'}</Text>
-                <Text style={styles.description}>{store.returnPolicy ? <><Text style={styles.strong}>Return/refund expectations: </Text>{store.returnPolicy}</> : 'No seller return or refund policy is currently listed.'}</Text>
-                <Pressable accessibilityRole="link" onPress={() => router.push(getEHubTermsRoute('buyer') as Href)} hitSlop={6}><Text style={styles.link}>Read E-Hub buyer terms and payment limitations</Text></Pressable>
-              </View>
-            </View>
-
-            <Pressable accessibilityRole="button" accessibilityLabel={`View ${store.storeName}`} onPress={() => router.push(`/ehub/providers/${encodeURIComponent(store.providerId || store.businessId)}` as Href)} style={[styles.card, layout.isWide && styles.sellerWide]}>
-              <View style={styles.sellerTop}>
-                <View style={styles.sellerLogo}>{store.logoUrl ? <CachedImage uri={store.logoUrl} style={styles.fill} accessibilityLabel={`${store.storeName} logo`} /> : <Building2 size={26} color={colors.mutedText} />}</View>
-                <View style={styles.flex}>
-                  <Text numberOfLines={2} style={styles.sellerName}>{store.storeName}</Text>
-                  {store.isVerified ? <View style={styles.row}><ShieldCheck size={15} color={colors.accentText} /><Text style={styles.verified}>Verified seller identity</Text></View> : null}
-                </View>
-              </View>
-              {store.description ? <Text numberOfLines={4} style={styles.description}>{store.description}</Text> : null}
-              {store.location ? <View style={styles.row}><MapPin size={14} color={colors.mutedText} /><Text style={styles.muted}>{store.location}</Text></View> : null}
-              {store.rating !== null ? <View style={styles.row}><Star size={14} color="#f59e0b" fill="#f59e0b" /><Text style={styles.muted}>{store.rating.toFixed(1)} from {store.reviewCount} eligible reviews</Text></View> : null}
-              <View style={styles.storefrontButton}><Store size={16} color={colors.canvas} /><Text style={styles.storefrontText}>View seller storefront</Text></View>
-            </Pressable>
-          </View>
-
-          <ProductCollection title="More from this seller" products={detail.moreFromSeller} onOpen={handleOpenProduct} />
-          <ProductCollection title="Related E-Hub products" products={detail.relatedProducts} onOpen={handleOpenProduct} />
+          <ProductRail title="More from this seller" products={detail.moreFromSeller} cardWidth={railCardWidth} onOpen={handleOpenProduct} />
+          <ProductRail title="You may also like" products={detail.relatedProducts} cardWidth={railCardWidth} onOpen={handleOpenProduct} />
         </View>
       </ScrollView>
-      <EHubCartSheet visible={isCartOpen} onClose={() => setIsCartOpen(false)} onOpenProduct={handleOpenProduct} />
+      {isWide ? null : <ProductTopBar title={product.title} isSolid={isHeaderSolid} isFloating isSaved={isFavorite(product.id)} onBack={() => router.back()} onShare={handleShare} onToggleSaved={() => toggleFavorite(product.id, product.title)} onOpenCart={() => setIsCartOpen(true)} />}
+      <ProductBottomBar price={currentPrice} originalPrice={originalPrice} isAvailable={isAvailable} onAddToCart={handleAddToCart} onMessage={handleEnquire} />
+      {cartSheet}
     </View>
   );
 }
 
-function OptionGroup({ label, values, selectedValue, onSelect }: OptionGroupProps) {
-  const { colors } = useAppTheme();
-  const styles = useMemo(() => createStyles(colors, 0), [colors]);
-  return <View style={styles.optionGroup}>
-    <Text style={styles.detailLabel}>{label}</Text>
-    <View style={styles.optionRow}>{values.map((value) => {
-      const isSelected = selectedValue === value;
-      return <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: isSelected }} onPress={() => onSelect(isSelected ? '' : value)} style={[styles.option, isSelected && styles.optionSelected]}>
-        {isSelected ? <Check size={14} color={colors.accentText} /> : null}<Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{value}</Text>
-      </Pressable>;
-    })}</View>
-  </View>;
-}
-
-function ProductCollection({ title, products, onOpen }: { title: string; products: EHubCatalogProduct[]; onOpen: (productId: string) => void }) {
-  const { colors } = useAppTheme();
-  const layout = useEHubLayout();
-  const styles = useMemo(() => createStyles(colors, 0), [colors]);
-  if (!products.length) return null;
-  const columns = layout.isTablet ? 4 : 2;
-  return <View style={styles.stack}>
-    <View style={styles.row}><Truck size={19} color={colors.accent} /><Text style={styles.sectionTitle}>{title}</Text></View>
-    <View style={[styles.grid, { gap: layout.gap }]}>{products.map((product) => <EHubProductCard key={product.id} product={product} width={layout.columnWidth(columns)} onOpen={onOpen} isCompact />)}</View>
-  </View>;
-}
-
-const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.create({
-  // No alignItems here: it shrank the full-width page header to its content. The body centres itself instead.
+const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
-  flex: { flex: 1, minWidth: 0 },
-  fill: { width: '100%', height: '100%' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  stack: { gap: 14 },
-  muted: { color: colors.mutedText, fontSize: 13, lineHeight: 19 },
-  scrollContent: { paddingBottom: 48, alignItems: 'center' },
-  body: { maxWidth: '100%', alignSelf: 'center', paddingHorizontal: gutter, paddingTop: 16, gap: 22 },
-  top: { gap: 18 },
-  topWide: { flexDirection: 'row', alignItems: 'flex-start', gap: 24 },
-  mainImage: { width: '100%', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 24, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  noImage: { alignItems: 'center', gap: 8 },
-  thumbnails: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  thumbnail: { overflow: 'hidden', borderRadius: 12, borderWidth: 2, borderColor: 'transparent', backgroundColor: colors.surface },
-  thumbnailActive: { borderColor: colors.accent },
-  card: { padding: 18, gap: 12, borderRadius: 24, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  categoryBadge: { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.successSurface },
-  categoryBadgeText: { color: colors.successText, fontSize: 11, fontWeight: '900' },
-  plainBadge: { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.control },
-  plainBadgeText: { color: colors.secondaryText, fontSize: 11, fontWeight: '700' },
-  title: { color: colors.text, fontSize: 27, lineHeight: 32, fontWeight: '900' },
-  priceRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 10 },
-  price: { color: colors.accentText, fontSize: 28, fontWeight: '900' },
-  oldPrice: { color: colors.mutedText, fontSize: 17, fontWeight: '700', textDecorationLine: 'line-through' },
-  stockDot: { width: 10, height: 10, borderRadius: 5 },
-  stockText: { fontSize: 13, fontWeight: '800' },
-  optionGroup: { gap: 8 },
-  optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  option: { minHeight: 40, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
-  optionSelected: { borderColor: colors.accent, backgroundColor: colors.successSurface },
-  optionText: { color: colors.secondaryText, fontSize: 13, fontWeight: '800' },
-  optionTextSelected: { color: colors.successText },
-  actions: { flexDirection: 'row', gap: 10 },
-  primaryButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: '#047857' },
-  primaryText: { color: '#ffffff', fontSize: 14, fontWeight: '900' },
-  secondaryButton: { minHeight: 48, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
-  secondaryText: { color: colors.text, fontSize: 14, fontWeight: '800' },
-  savedButton: { borderColor: '#fecdd3', backgroundColor: colors.destructiveSurface },
-  savedText: { color: '#e11d48' },
-  disabled: { opacity: 0.45 },
-  storefrontButton: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 13, backgroundColor: colors.text },
-  storefrontText: { color: colors.canvas, fontSize: 14, fontWeight: '900' },
-  sectionTitle: { color: colors.text, fontSize: 19, fontWeight: '900' },
-  description: { color: colors.secondaryText, fontSize: 14, lineHeight: 22 },
-  strong: { color: colors.text, fontWeight: '900' },
-  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border },
-  detailItem: { width: '100%', gap: 3 },
-  detailItemHalf: { width: '47%' },
-  detailLabel: { color: colors.mutedText, fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.6 },
-  detailValue: { color: colors.secondaryText, fontSize: 14, fontWeight: '700' },
-  link: { color: colors.accentText, fontSize: 13, fontWeight: '900', textDecorationLine: 'underline' },
-  sellerWide: { width: 340 },
-  sellerTop: { flexDirection: 'row', alignItems: 'center', gap: 13 },
-  sellerLogo: { width: 62, height: 62, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 18, backgroundColor: colors.control },
-  sellerName: { color: colors.text, fontSize: 17, fontWeight: '900' },
-  verified: { color: colors.accentText, fontSize: 12, fontWeight: '800' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  flex: { flex: 1 },
+  scrollContent: { paddingBottom: 24 },
+  stateBody: { padding: PRODUCT_DETAIL_GUTTER },
+  sectionGap: { height: 8 },
+  summary: { paddingHorizontal: PRODUCT_DETAIL_GUTTER, paddingTop: 12, paddingBottom: 16, gap: 8, backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  breadcrumb: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0 },
+  crumbButton: { minHeight: 32, justifyContent: 'center' },
+  crumbLink: { color: colors.accentText, fontSize: 13, fontWeight: '700' },
+  crumbText: { flexShrink: 1, color: colors.mutedText, fontSize: 13, fontWeight: '600' },
+  storeLink: { alignSelf: 'flex-start', maxWidth: '100%', minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  storeLinkText: { flexShrink: 1, color: colors.accentText, fontSize: 14, fontWeight: '700' },
+  title: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: '800' },
+  ratingRow: { alignSelf: 'flex-start', minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ratingValue: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  ratingCount: { color: colors.accentText, fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
+  priceRow: { marginTop: 4, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 4 },
+  price: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: '900' },
+  oldPrice: { color: colors.mutedText, fontSize: 16, fontWeight: '600', textDecorationLine: 'line-through' },
+  discountBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.destructiveSurface },
+  discountText: { color: colors.destructiveText, fontSize: 12, fontWeight: '800' },
+  stockRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  stockDot: { width: 8, height: 8, borderRadius: 4 },
+  stockText: { fontSize: 14, fontWeight: '800' },
+  stockDetail: { color: colors.mutedText, fontSize: 13, fontWeight: '600' },
+  options: { marginTop: 8, paddingTop: 16, gap: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  requestNote: { padding: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 12, backgroundColor: colors.warningSurface },
+  requestNoteText: { flex: 1, color: colors.warningText, fontSize: 13, lineHeight: 19 },
+  mutedText: { color: colors.mutedText, fontSize: 14, lineHeight: 21 },
+  subheading: { marginTop: 4, color: colors.text, fontSize: 15, fontWeight: '800' },
+  policyText: { color: colors.secondaryText, fontSize: 14, lineHeight: 21 },
+  strong: { color: colors.text, fontWeight: '800' },
+  termsLink: { minHeight: 44, justifyContent: 'center' },
+  link: { color: colors.accentText, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
+  wideBody: { alignSelf: 'center', paddingHorizontal: PRODUCT_DETAIL_GUTTER, paddingTop: 16 },
+  wideTop: { flexDirection: 'row', alignItems: 'flex-start', gap: PRODUCT_DETAIL_GUTTER },
+  wideColumn: { flex: 1, minWidth: 0, gap: 8 },
+  wideCard: { overflow: 'hidden', borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
 });
