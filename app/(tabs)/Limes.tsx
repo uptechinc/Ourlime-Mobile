@@ -42,7 +42,7 @@ import {
 } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEventListener } from 'expo';
-import { useRouter, useLocalSearchParams, useIsFocused } from 'expo-router';
+import { useRouter, useLocalSearchParams, useIsFocused, type Href } from 'expo-router';
 import { usePlaybackInteraction } from '@/lib/hooks/usePlaybackInteraction';
 import { PlaybackSeekBar } from '@/components/media/PlaybackSeekBar';
 import type { PlaybackSpeed } from '@/lib/services/PlaybackInteractionService';
@@ -249,6 +249,21 @@ export default function LimesScreen() {
   const { getDecision: getPageDecision } = usePageAccess();
   const canViewLimes = getPageDecision('/limes').canRead;
   const isSharedViewer = viewer === '1';
+  // A lime opened from a link is the first screen, with nothing to go back to: open the Limes feed instead.
+  const handleViewerBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)/Limes' as Href);
+  }, [router]);
+  // Android back on a linked lime with no history goes to the feed too, instead of closing the app.
+  useEffect(() => {
+    if (!isSharedViewer) return;
+    const backSubscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (router.canGoBack()) return false;
+      router.replace('/(tabs)/Limes' as Href);
+      return true;
+    });
+    return () => backSubscription.remove();
+  }, [isSharedViewer, router]);
 
   const [feedTab, setFeedTab] = useState<'forYou' | 'following'>('forYou');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -473,7 +488,7 @@ export default function LimesScreen() {
         {isScreenFocused ? <StatusBar barStyle="light-content" backgroundColor="#000000" /> : null}
         <LimesFeedSkeleton
           header={isSharedViewer ? 'sharedViewer' : 'feed'}
-          onBackPress={isSharedViewer ? () => router.back() : undefined}
+          onBackPress={isSharedViewer ? handleViewerBack : undefined}
         />
       </View>
     );
@@ -536,9 +551,9 @@ export default function LimesScreen() {
         {isSharedViewer ? (
           <>
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={handleViewerBack}
               accessibilityRole="button"
-              accessibilityLabel="Back to chat"
+              accessibilityLabel="Back"
               style={styles.viewerBackButton}
             >
               <ChevronLeft size={25} color="#ffffff" />
