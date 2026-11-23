@@ -121,7 +121,8 @@ async function main() {
   admin.app.initializeApp({ credential: admin.app.applicationDefault() });
   const database = admin.firestore.getFirestore();
   await database.doc('siteConfig/mobileApp').set(
-    { latestOta: { ...latestOta, publishedAt: admin.firestore.FieldValue.serverTimestamp() } },
+    // notes: the app shows them on "An update is ready" before downloading (the same notes What's new shows after).
+    { latestOta: { ...latestOta, notes: releases[0].notes, publishedAt: admin.firestore.FieldValue.serverTimestamp() } },
     { merge: true },
   );
   console.log('\n✔ Announced. Open apps on this version show the update sheet; notifyAppUpdate sends the push (once per update).');

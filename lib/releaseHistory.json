@@ -1,6 +1,24 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-22-6",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-22",
+      "notes": [
+        "In case you missed it: today's updates are listed below. From now on, every update shows what's new after it installs, and \"An update is ready\" lists what it brings before you download.",
+        "E-Hub order requests: from your cart, send each seller a request with pickup or delivery and pick one of the couriers they work with. No payment is taken; the seller confirms in your enquiries.",
+        "E-Hub has a fresh design: one menu on every page (Shop, Professionals, Storefronts, My enquiries, Sell), swipeable professional cards above the catalog, and a shorter home page.",
+        "Couriers: \"Register as a courier\" is on the E-Hub home under Sell on E-Hub. Sellers pick the couriers they trust in Seller Center → Preferred couriers.",
+        "My enquiries: the E-Hub inbox now opens on the enquiries you sent and their replies, and remembers which tab you were on.",
+        "E-Hub Seller Center: \"Offer services\" takes you straight to the services you offer and the areas you cover, so you show under Professionals.",
+        "E-Hub: storefronts that offer services now appear under Professionals, even when they also sell products.",
+        "\"You're up to date\" in Settings now shows what's in the version you have, with a link to all release notes.",
+        "Fixes: E-Hub enquiry notifications open your enquiries instead of \"TICKET_NOT_FOUND\"; the order request Send button is reachable; seller applications explain expired uploads instead of \"INTERNAL\"; Add to cart fits."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-22-5",
       "version": "1.3.2",
       "versionCode": 11,

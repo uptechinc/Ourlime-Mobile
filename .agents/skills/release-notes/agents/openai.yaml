@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release Notes: Every Update Says What Changed"
+  short_description: "Write lib/releaseHistory.json entries members actually see (update sheet, What's new, Settings) and keep those screens working"
+  default_prompt: "Use $release-notes: list everything members haven't been told since the last releaseHistory entry, add one plain-language entry at the top, run npm run release:check (stop on failure), publish, then confirm What's new and 'You're up to date' show the notes."

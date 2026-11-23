@@ -12,6 +12,8 @@ type AppUpdateStoreState = AppUpdateState & {
   /** Release notes for the one-time "What's new" after an update. */
   whatsNewVersion: string;
   whatsNewNotes: string[];
+  /** Notes of the announced quick update (siteConfig/mobileApp.latestOta), shown on "An update is ready". */
+  otaNotes: string[];
   prompt: AppUpdatePrompt;
   installedVersion: string;
   installedVersionCode: number | null;
@@ -28,6 +30,7 @@ export const useAppUpdateStore = create<AppUpdateStoreState>(() => ({
   sheetMode: 'update',
   whatsNewVersion: '',
   whatsNewNotes: [],
+  otaNotes: [],
   prompt: 'none',
   installedVersion: '',
   installedVersionCode: null,

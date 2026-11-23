@@ -7,7 +7,7 @@ description: Ship an Ourlime production app update (Play release or OTA) with de
 
 Every app update tells people what changed. In "What's new" after updating, in "Update available" before it, and in **Settings → App → Release notes** at any time, they see a bulleted list of real changes, never just "fixes and improvements".
 
-**The rule, for every model and every release (Play or OTA):** add one new entry at the top of `lib/releaseHistory.json`, run `npm run release:check`, and commit it before the build or `eas update`. Never edit or delete past entries: they are the app's release history. A release without its entry is not ready.
+**The rule, for every model and every release (Play or OTA):** add one new entry at the top of `lib/releaseHistory.json`, run `npm run release:check`, and commit it before the build or `eas update`. Never edit or delete past entries: they are the app's release history. A release without its entry is not ready. How to write the notes, where members see them and how to check they showed up: the `release-notes` skill (`.agents/skills/release-notes/SKILL.md`).
 
 ## 1. Know what is in the release before you push
 
@@ -40,7 +40,7 @@ The file lists every release, **newest first**. Add the new one at the top of `r
 - Up to 12 notes, each under 240 characters. One bullet per feature or fix, in plain words for members ("Assignments: hand in a written answer and files, then see your grade"). No internal names, file paths or "parity".
 - Order: new features first, biggest first. End with one "Fixes: …" bullet.
 - An OTA's notes list only what that OTA changes; the earlier entries stay as they are.
-- Run `npm run release:check`. It refuses a missing or duplicate id, an entry out of order, too many or too long notes, and a top entry that doesn't match `app.json`.
+- Run `npm run release:check` and stop if it fails (never pipe it into `tail` before `&& git commit`: the pipe hides the failure). It refuses a missing or duplicate id, an entry out of order, too many or too long notes, and a top entry that doesn't match `app.json`.
 - How it is used: the file ships inside the app (and inside each OTA). "What's new" shows the newest entry for the running version, Settings → Release notes lists them all, and `scripts/publish-android-release.cjs` sends the `"app"` entry's notes to `siteConfig/mobileApp`.
 - Commit the entry with (or before) the version bump, then push to `main` (see `git-workflow`).
 

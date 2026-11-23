@@ -29,6 +29,7 @@ export function useAppUpdate() {
     sheetMode: store.sheetMode,
     whatsNewVersion: store.whatsNewVersion,
     whatsNewNotes: store.whatsNewNotes,
+    otaNotes: store.otaNotes,
     prompt: store.prompt,
     installedVersion: store.installedVersion,
     installedVersionCode: store.installedVersionCode,

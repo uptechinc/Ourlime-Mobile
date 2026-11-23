@@ -21,6 +21,8 @@ export type MobileAppConfig = {
   releasedAt?: unknown;
   otaAvailable?: unknown;
   sideloadUpdates?: unknown;
+  /** The announced quick update (scripts/publish-ota.cjs): { runtimeVersion, notes, … }. */
+  latestOta?: unknown;
 };
 
 /** The newest published build, validated. Fields that failed validation are null (never trusted half-way). */
@@ -186,6 +188,18 @@ export class AppVersionService {
       return { status: 'update_available', installedVersion, installedVersionCode, storeUrl: this.storeUrl(config, platform), release };
     }
     return { status: 'supported' };
+  }
+
+  /** The announced quick update's notes when it targets this app version (its runtime); empty otherwise. */
+  public readOtaNotes(config: MobileAppConfig | null, installedVersion: string): string[] {
+    const latestOta = config?.latestOta;
+    if (!latestOta || typeof latestOta !== 'object') return [];
+    const ota = latestOta as { runtimeVersion?: unknown; notes?: unknown };
+    if (readString(ota.runtimeVersion) !== installedVersion || !Array.isArray(ota.notes)) return [];
+    return ota.notes
+      .map((note) => readString(note).slice(0, MAX_RELEASE_NOTE_LENGTH))
+      .filter((note) => note.length > 0)
+      .slice(0, MAX_RELEASE_NOTES);
   }
 
   /** Validates the release fields; null when the doc names no usable newer build (no version and no versionCode). */

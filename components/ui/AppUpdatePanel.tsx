@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppUpdate } from '@/lib/hooks/useAppUpdate';
+import { releaseHistoryService } from '@/lib/services/ReleaseHistoryService';
 
 type AppUpdatePanelProps = {
   /** The blocking "update required" screen: no Later / Close. */
@@ -60,6 +61,7 @@ export default function AppUpdatePanel({ isBlocking = false }: AppUpdatePanelPro
   const { status, release, prompt } = update;
   const versionLabel = release?.version ? `Ourlime ${release.version}` : 'A new version of Ourlime';
   const closeLabel = isBlocking ? null : 'Later';
+  const currentNotes = releaseHistoryService.getLatestFor(update.installedVersion)?.notes ?? [];
 
   const renderTitle = (title: string, subtitle?: string) => (
     <View style={{ marginBottom: 14 }}>
@@ -216,7 +218,7 @@ export default function AppUpdatePanel({ isBlocking = false }: AppUpdatePanelPro
       return (
         <View>
           {renderTitle(isOta ? 'An update is ready' : 'Update available', isOta ? 'A quick download, no reinstall. Ourlime restarts to apply it.' : details)}
-          {release && !isOta ? renderNotes(release.releaseNotes) : null}
+          {isOta ? renderNotes(update.otaNotes) : release ? renderNotes(release.releaseNotes) : null}
           <PanelButton label="Update now" onPress={() => void update.startUpdate()} />
           {closeLabel ? <PanelButton label={closeLabel} variant="secondary" onPress={update.dismissSheet} /> : null}
         </View>
@@ -229,7 +231,11 @@ export default function AppUpdatePanel({ isBlocking = false }: AppUpdatePanelPro
       return (
         <View>
           {renderTitle('You\'re up to date', `Ourlime ${update.installedVersion}${update.installedVersionCode !== null ? ` (${update.installedVersionCode})` : ''}`)}
+          {/* What this version brought, so the sheet is never just "up to date" (the newest entry for this version). */}
+          {currentNotes.length > 0 ? <Text style={{ color: colors.text, fontSize: 15, fontWeight: '700', marginBottom: 8 }}>In this version</Text> : null}
+          {renderNotes(currentNotes)}
           {!isBlocking ? <PanelButton label="Close" onPress={update.dismissSheet} /> : null}
+          {!isBlocking ? <PanelButton label="See all release notes" variant="secondary" onPress={() => { update.dismissSheet(); router.push('/settings/release-notes' as Href); }} /> : null}
         </View>
       );
   }

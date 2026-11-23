@@ -52,6 +52,8 @@ export class AppUpdateService {
   private installed: InstalledBuild = { version: '', versionCode: null };
   private lastCheckedAt = 0;
   private hasHandledWhatsNew = false;
+  /** "What's new" waiting for an update offer on screen to close (it is never dropped). */
+  private hasPendingWhatsNew = false;
   /** An automatic prompt that waited for a call or upload to end. */
   private hasDeferredPrompt = false;
   /** Releases already offered automatically this session (the sheet doesn't pop up again on every snapshot). */
@@ -157,6 +159,7 @@ export class AppUpdateService {
   private applyConfig(config: MobileAppConfig | null): void {
     const versionCheck = this.withPlayUpdate(appVersionService.evaluate(this.installed.version, config, Platform.OS, this.installed.versionCode));
     this.dispatch({ type: 'check_finished', versionCheck, otaReady: otaUpdateService.hasPendingUpdate() });
+    useAppUpdateStore.setState({ otaNotes: appVersionService.readOtaNotes(config, this.installed.version) });
     if (!this.hasHandledWhatsNew) void this.handleWhatsNew(config ? appVersionService.readRelease(config) : null);
     void this.maybePromptAutomatically();
   }
@@ -259,6 +262,11 @@ export class AppUpdateService {
     if (state.sheetMode === 'update' && state.status === 'available' && state.release) {
       void writeStorage(this.snoozeKey(state.release), String(Date.now() + SNOOZE_MS));
     }
+    // "What's new" that waited behind an update offer shows once that sheet closes.
+    if (state.sheetMode === 'update' && this.hasPendingWhatsNew) {
+      this.hasPendingWhatsNew = false;
+      setTimeout(() => useAppUpdateStore.setState({ isSheetVisible: true, sheetMode: 'whats_new' }), 350);
+    }
   }
 
   private snoozeKey(release: AppRelease): string {
@@ -323,10 +331,23 @@ export class AppUpdateService {
         whatsNewNotes: bundledNotes.length > 0 ? bundledNotes : notesMatchThisBuild ? release.releaseNotes : [],
       });
       this.logger.info('AppUpdateService', 'whats-new', { build: buildKey, isNewOta });
-      if (!useAppUpdateStore.getState().isSheetVisible) useAppUpdateStore.setState({ isSheetVisible: true, sheetMode: 'whats_new' });
+      this.showWhatsNew();
     } catch (error: unknown) {
       console.warn('[AppUpdateService.handleWhatsNew] Error:', error instanceof Error ? error.message : error);
     }
+  }
+
+  /**
+   * Shows "What's new" now, unless a real update offer or download is on screen: then it waits for that sheet to
+   * close. A sheet that only says "You're up to date" (e.g. opened from the update push after the update already
+   * ran) is replaced, so the release notes are never skipped.
+   */
+  private showWhatsNew(): void {
+    const state = useAppUpdateStore.getState();
+    const isShowingUpdateFlow = state.isSheetVisible && state.sheetMode === 'update'
+      && !['idle', 'checking', 'up_to_date'].includes(state.status);
+    if (isShowingUpdateFlow) { this.hasPendingWhatsNew = true; return; }
+    useAppUpdateStore.setState({ isSheetVisible: true, sheetMode: 'whats_new' });
   }
 
   // ── Update actions ───────────────────────────────────────────────────────────
