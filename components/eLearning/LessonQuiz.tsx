@@ -38,6 +38,8 @@ export default function LessonQuiz({ questions, isCompleted, onSubmit }: LessonQ
   const isShortAnswer = (question: CourseQuizQuestion): boolean => question.type === 'short_answer' || question.options.length === 0;
   const answeredCount = questions.filter((question, index) => isShortAnswer(question) ? Boolean(textAnswers[index]?.trim()) : answers[index] !== undefined).length;
   const correctCount = questions.filter((question, index) => question.correctIndex !== undefined && answers[index] === question.correctIndex).length;
+  // Only questions with a correct option are marked; short answers are not part of the score (as on the server).
+  const markableCount = questions.filter((question) => question.correctIndex !== undefined).length;
   const totalPoints = questions.reduce((total, question) => total + (question.points ?? 0), 0);
   const hasShortAnswers = questions.some(isShortAnswer);
 
@@ -52,7 +54,7 @@ export default function LessonQuiz({ questions, isCompleted, onSubmit }: LessonQ
     try {
       // Every question keeps its slot so the server scores answers[index] against the right question.
       const serverScore = await onSubmit(questions.map((question, index) => isShortAnswer(question) ? -1 : answers[index] ?? -1));
-      setScore(serverScore ?? Math.round((correctCount / questions.length) * 100));
+      setScore(serverScore ?? (markableCount ? Math.round((correctCount / markableCount) * 100) : 100));
       setIsSubmitted(true);
     } catch (submitError: unknown) {
       console.error('[LessonQuiz.handleSubmit] Error:', submitError instanceof Error ? submitError.message : 'Unknown error');
@@ -74,7 +76,7 @@ export default function LessonQuiz({ questions, isCompleted, onSubmit }: LessonQ
       {isSubmitted ? (
         <View style={[styles.card, styles.resultCard]}>
           <Text style={styles.resultScore}>{score}%</Text>
-          <Text style={styles.resultLabel}>{correctCount} of {questions.length} correct</Text>
+          <Text style={styles.resultLabel}>{correctCount} of {markableCount} correct</Text>
           {hasShortAnswers ? <Text style={styles.muted}>Short answers are not scored automatically.</Text> : null}
           <Pressable accessibilityRole="button" onPress={handleRetake} style={styles.secondaryButton}>
             <Text style={styles.secondaryButtonText}>Retake quiz</Text>

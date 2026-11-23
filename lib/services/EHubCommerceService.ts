@@ -73,11 +73,28 @@ export class EHubCommerceService {
     return [item.productId, item.selectedVariant, item.selectedSize, item.selectedColour].filter(Boolean).join('|');
   }
 
+  /** Same product with the same options; size "M" and colour "M" are different lines. */
+  public static isSameCartLine(
+    left: Pick<EHubCartItemInput, 'productId' | 'selectedVariant' | 'selectedSize' | 'selectedColour'>,
+    right: Pick<EHubCartItemInput, 'productId' | 'selectedVariant' | 'selectedSize' | 'selectedColour'>,
+  ): boolean {
+    const option = (value: string | null | undefined): string => value ?? '';
+    return left.productId === right.productId && option(left.selectedVariant) === option(right.selectedVariant)
+      && option(left.selectedSize) === option(right.selectedSize) && option(left.selectedColour) === option(right.selectedColour);
+  }
+
+  /** The short id carts have always used; a labelled one only when that would clash with a different line. */
+  public static createCartItemId(item: Pick<EHubCartItemInput, 'productId' | 'selectedVariant' | 'selectedSize' | 'selectedColour'>, cart: EHubCartItem[]): string {
+    const shortId = EHubCommerceService.getCartItemId(item);
+    if (!cart.some((cartItem) => cartItem.id === shortId)) return shortId;
+    return [item.productId, `v:${item.selectedVariant ?? ''}`, `s:${item.selectedSize ?? ''}`, `c:${item.selectedColour ?? ''}`].join('|');
+  }
+
   /** Adds the item, or raises the quantity of the same product with the same options, never past the stock. */
   public addToCart(item: EHubCartItemInput): boolean {
     if (!item.productId || item.availableQuantity <= 0) return false;
-    const id = EHubCommerceService.getCartItemId(item);
-    const existingItem = this.state.cart.find((cartItem) => cartItem.id === id);
+    const existingItem = this.state.cart.find((cartItem) => EHubCommerceService.isSameCartLine(cartItem, item));
+    const id = existingItem ? existingItem.id : EHubCommerceService.createCartItemId(item, this.state.cart);
     const cart = existingItem
       ? this.state.cart.map((cartItem) => cartItem.id === id
         ? { ...cartItem, ...item, id, quantity: Math.min(cartItem.quantity + item.quantity, item.availableQuantity) }

@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-23-3",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-23",
+      "notes": [
+        "E-Hub cart: picking size \"M\" and colour \"M\" on the same product now keeps two separate items in your cart instead of merging them.",
+        "E-Learning quizzes: short-answer questions no longer count against your score, so getting every multiple-choice question right gives you 100%."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-23-2",
       "version": "1.3.2",
       "versionCode": 11,
