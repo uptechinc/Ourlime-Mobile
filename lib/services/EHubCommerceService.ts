@@ -113,13 +113,15 @@ export class EHubCommerceService {
     this.setState({ ...this.state, cart: this.state.cart.filter((item) => item.id !== itemId) });
   }
 
-  /** 0 or less removes the item; more than the stock is capped at the stock. */
+  /** Whole units only: less than 1 removes the item; more than the stock is capped at the stock. */
   public updateQuantity(itemId: string, quantity: number): void {
     if (!itemId || !Number.isFinite(quantity)) return;
-    if (quantity <= 0) { this.removeFromCart(itemId); return; }
+    // Rounded down before the check, so 0.5 removes the line instead of leaving one of 0 units the seller refuses.
+    const wholeQuantity = Math.floor(quantity);
+    if (wholeQuantity <= 0) { this.removeFromCart(itemId); return; }
     this.setState({
       ...this.state,
-      cart: this.state.cart.map((item) => item.id === itemId ? { ...item, quantity: Math.min(Math.floor(quantity), item.availableQuantity) } : item),
+      cart: this.state.cart.map((item) => item.id === itemId ? { ...item, quantity: Math.min(wholeQuantity, item.availableQuantity) } : item),
     });
   }
 

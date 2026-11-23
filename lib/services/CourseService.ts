@@ -438,7 +438,8 @@ export class CourseService {
     if (!status || !this.text(data.userId) || !this.text(data.courseId)) return null;
     return { id, userId: this.text(data.userId), courseId: this.text(data.courseId), enrolledAt: this.timestamp(data.enrolledAt) ?? 'Date unavailable',
       status, progress: Math.max(0, Math.min(100, this.number(data.progress))), lastAccessed: this.timestamp(data.lastAccessed),
-      completedLessons: this.textList(data.completedLessons ?? data.completedModules), certificateIssued: data.certificateIssued === true,
+      // Both names hold completed lesson ids (website: completedModules); merge them like the website and the server do.
+      completedLessons: [...new Set([...this.textList(data.completedLessons), ...this.textList(data.completedModules)])], certificateIssued: data.certificateIssued === true,
       certificateUrl: this.optionalText(data.certificateUrl) };
   }
   private lesson(id: string, data: Data): CourseLesson | null {

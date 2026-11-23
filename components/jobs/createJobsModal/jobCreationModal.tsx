@@ -17,6 +17,7 @@ import DraftDiscardSheet from '@/components/drafts/DraftDiscardSheet';
 import DateTimeField from '@/components/ui/DateTimeField';
 import JobFormShell, { FooterButton } from './JobFormShell';
 import { AddRowButton, AgreementCheckbox, ChipInput, ChoiceCards, ChoicePills, DisclaimerBox, FormField, FormSection, RemovableRow } from './JobFormParts';
+import { endOfLocalDay } from '@/lib/job/JobRules';
 
 type JobCreationModalProps = { isOpen: boolean; onClose: () => void; onCreated?: () => void };
 type TextRow = { id: string; text: string };
@@ -338,7 +339,7 @@ export default function JobCreationModal({ isOpen, onClose, onCreated }: JobCrea
         <ChoicePills label="Employment type" allowClear options={EMPLOYMENT_TYPES} value={form.employmentType} onChange={(value) => update('employmentType', value)} />
         <ChoicePills label="Experience level" allowClear options={EXPERIENCE_LEVELS} value={form.experienceLevel} onChange={(value) => update('experienceLevel', value)} />
         <ChoicePills label="Education requirement" scrollable options={EDUCATION_OPTIONS} value={form.educationRequirement} onChange={(value) => update('educationRequirement', value)} />
-        <DateTimeField label="Closing date" mode="date" value={form.closingDate ? new Date(form.closingDate) : null} onChange={(date) => update('closingDate', date.toISOString())} onClear={() => update('closingDate', null)} placeholder="Optional. Leave empty to keep the job open" minimumDate={new Date()} />
+        <DateTimeField label="Closing date" mode="date" value={form.closingDate ? new Date(form.closingDate) : null} onChange={(date) => update('closingDate', endOfLocalDay(date).toISOString())} onClear={() => update('closingDate', null)} placeholder="Optional. Leave empty to keep the job open" minimumDate={new Date()} />
       </FormSection>
 
       <FormSection title="Screening questions" description="Optional questions applicants answer when they apply." action={<AddRowButton label="Add question" onPress={() => update('questions', [...form.questions, { id: generateId(), question: '', answerType: 'input', options: [] }])} />}>

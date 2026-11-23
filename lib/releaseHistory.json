@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-23-2",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-23",
+      "notes": [
+        "Jobs: a job's closing date now lasts the whole day you pick, so choosing today works and jobs no longer close the evening before.",
+        "Jobs: managing applicants follows the same steps as the website (review, interview, offer, accept), including bulk changes; only the applicant can withdraw an application.",
+        "E-Projects: due dates set on the website no longer show a day early in the app.",
+        "E-Learning: lessons you finished on the website count in the app, and assignment grades show as the right percentage (8 out of 10 is 80%).",
+        "Blogs: links and markup that could run code are removed from posts before you see them.",
+        "E-Hub cart: changing a quantity to less than one removes the item instead of leaving an empty line."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-23",
       "version": "1.3.2",
       "versionCode": 11,

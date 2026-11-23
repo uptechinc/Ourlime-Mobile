@@ -14,6 +14,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { contentDateService } from '@/lib/services/ContentDateService';
 import { auth, db, storage } from '@/lib/firebaseConfig';
 import { appServerService } from '@/lib/services/AppServerService';
+import { blogContentService } from '@/lib/services/BlogContentService';
 import { contentDraftService } from '@/lib/services/ContentDraftService';
 import { nativeEngagementService } from '@/lib/services/NativeEngagementService';
 import { nativeSessionService } from '@/lib/services/NativeSessionService';
@@ -61,24 +62,10 @@ type AuthorRecord = BlogAuthorSummary & { identityVerified: boolean };
 const text = (value: unknown, fallback = ''): string => (typeof value === 'string' ? value : fallback);
 const count = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
 
-// ── Ported from Ourlime-Web blogSecurity.ts (the app has no server to do this for it) ──
-const BLOCKED_ELEMENTS_PATTERN = /<(script|style|iframe|object|embed|form|input|button|textarea|select|meta|link|base)[^>]*>[\s\S]*?<\/\1\s*>|<(script|style|iframe|object|embed|form|input|button|textarea|select|meta|link|base)[^>]*\/?>/gi;
-const EVENT_ATTRIBUTE_PATTERN = /\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
-const UNSAFE_URL_ATTRIBUTE_PATTERN = /\s+(href|src)\s*=\s*(["'])\s*(?:javascript|data|vbscript):[\s\S]*?\2/gi;
-const STYLE_ATTRIBUTE_PATTERN = /\s+style\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
-
-function sanitizeBlogHtml(content: string): string {
-  if (!content) return '';
-  return content.replace(BLOCKED_ELEMENTS_PATTERN, '').replace(EVENT_ATTRIBUTE_PATTERN, '').replace(UNSAFE_URL_ATTRIBUTE_PATTERN, '').replace(STYLE_ATTRIBUTE_PATTERN, '');
-}
-
-function sanitizePlainText(value: string, maximumLength: number): string {
-  return value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, maximumLength);
-}
-
-function isSafeExternalUrl(value: string): boolean {
-  return !value || /^https?:\/\/\S+$/i.test(value.trim());
-}
+// Ported from Ourlime-Web blogSecurity.ts (the app has no server to do this for it).
+const sanitizeBlogHtml = (content: string): string => blogContentService.sanitizeHtml(content);
+const sanitizePlainText = (value: string, maximumLength: number): string => blogContentService.plainText(value, maximumLength);
+const isSafeExternalUrl = (value: string): boolean => blogContentService.isSafeExternalUrl(value);
 
 /**
  * Blogs & Articles for the app. Reads come from Firestore with the same data model as the website's
@@ -553,13 +540,13 @@ export class BlogsAndArticlesService {
     const excerpt = sanitizePlainText(draft.excerpt, 500);
     const content = sanitizeBlogHtml(draft.content);
     const categoryId = sanitizePlainText(draft.categoryId, 80);
-    if (!title || !excerpt || !content.replace(/<[^>]*>/g, '').trim() || !categoryId) throw new Error('Title, excerpt, content, and category are required.');
+    if (!title || !excerpt || !blogContentService.hasText(content) || !categoryId) throw new Error('Title, excerpt, content, and category are required.');
     const tags = [...new Set(draft.tags.map((tag) => sanitizePlainText(tag, 40)).filter(Boolean))];
     if (tags.length > MAX_TAG_COUNT) throw new Error(`A maximum of ${MAX_TAG_COUNT} tags is allowed.`);
     const sources = draft.sources.filter((source) => source.url.trim());
     if (sources.some((source) => !isSafeExternalUrl(source.url) || !Number.isFinite(Date.parse(source.publishDate)))) throw new Error('Every source must use a valid HTTP or HTTPS URL and date.');
     if (draft.coverImage && !/^https:\/\//i.test(draft.coverImage)) throw new Error('The cover image link is not valid.');
-    const readTime = Math.max(1, Math.ceil(content.replace(/<[^>]*>/g, ' ').trim().split(/\s+/).filter(Boolean).length / 200));
+    const readTime = blogContentService.readTime(content);
 
     // New posts are published by the publishContentDraft callable from a saved account draft; "Save draft" keeps
     // the post as that account draft (it appears under Drafts) until it is published.

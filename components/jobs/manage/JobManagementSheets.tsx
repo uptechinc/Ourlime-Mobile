@@ -26,6 +26,7 @@ import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { AddRowButton, ChoicePills, RemovableRow, type ChoiceOption } from '@/components/jobs/createJobsModal/JobFormParts';
 import DateTimeField from '@/components/ui/DateTimeField';
+import { endOfLocalDay } from '@/lib/job/JobRules';
 import {
 	ANSWER_TYPES, COMPANY_SIZES, COMPLEXITY_OPTIONS, CONTACT_OPTIONS, CURRENCIES, EMPLOYMENT_TYPES, EXPERIENCE_LEVELS, JOB_POSTER_DISCLAIMER,
 	LOCATION_TYPES, PAYMENT_PERIODS, URGENCY_OPTIONS,
@@ -884,7 +885,7 @@ export function JobManagementEditSheet({
 								label={job?.type === 'quickTask' ? 'Completion deadline' : 'Closing date'}
 								mode="date"
 								value={closingDate}
-								onChange={setClosingDate}
+								onChange={(date) => setClosingDate(endOfLocalDay(date))}
 								onClear={() => setClosingDate(null)}
 								placeholder="Optional. Leave empty to keep the job open"
 								minimumDate={new Date()}

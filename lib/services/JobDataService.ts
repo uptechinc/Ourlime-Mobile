@@ -19,6 +19,7 @@ import {
 import { deleteObject, ref } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebaseConfig';
 import { appServerService } from './AppServerService';
+import { canApplicantWithdraw, canEmployerChangeApplicationStatus } from '@/lib/job/JobRules';
 
 export type JobAnswerValue = string | string[];
 export type JobApplicationSubmission = {
@@ -75,13 +76,6 @@ const APPLICANT_DISCLAIMER_VERSION = '1.0';
 const JOBS_POLICY_VERSION = '1.0';
 const SUPPORTED_JOB_TYPES = new Set(['professional', 'quickTask']);
 const EMPLOYER_STATUSES = new Set<string>(['pending', 'reviewing', 'accepted', 'rejected', 'withdrawn', 'interviewing', 'offer']);
-const EMPLOYER_TRANSITIONS: { [status: string]: string[] } = {
-  pending: ['reviewing', 'rejected', 'withdrawn'],
-  reviewing: ['interviewing', 'accepted', 'rejected', 'withdrawn'],
-  interviewing: ['accepted', 'rejected'],
-  offer: ['accepted', 'rejected'],
-};
-const APPLICANT_WITHDRAWAL_STATUSES = new Set(['pending', 'reviewing']);
 /** basic_info keys the website writes for a listing; jobs the app posted before kept them in category_specific. */
 const JOB_LISTING_FIELDS = ['currency', 'paymentPeriod', 'contactPreference', 'employmentType', 'experienceLevel', 'educationRequirement', 'closingDate'] as const;
 const readObject = (value: unknown): DocumentData => (value && typeof value === 'object' && !Array.isArray(value) ? value as DocumentData : {});
@@ -207,7 +201,7 @@ export class JobDataService {
     if (!application.exists()) throw new Error('Application not found.');
     const currentStatus = readString(application.data().basic_info?.status);
     if (application.data().basic_info?.userId !== userId) throw new Error('You are not authorized to withdraw this application.');
-    if (!APPLICANT_WITHDRAWAL_STATUSES.has(currentStatus)) {
+    if (!canApplicantWithdraw(currentStatus)) {
       throw new Error(`This application cannot be withdrawn because its current status is "${currentStatus}". Only pending or reviewing applications can be withdrawn.`);
     }
     await updateDoc(applicationRef, { 'basic_info.status': 'withdrawn', 'basic_info.updatedAt': Timestamp.now() });
@@ -396,7 +390,7 @@ export class JobDataService {
     if (!jobId) throw new Error('Application has no associated job');
     await this.requireOwnedJob(jobId, userId).catch(() => { throw new Error('You are not authorized to change this application status'); });
     const previousStatus = readString(application.data().basic_info?.status);
-    if (!(EMPLOYER_TRANSITIONS[previousStatus] ?? []).includes(status)) throw new Error(`Cannot transition from "${previousStatus}" to "${status}"`);
+    if (!canEmployerChangeApplicationStatus(previousStatus, status)) throw new Error(`Cannot transition from "${previousStatus}" to "${status}"`);
     await updateDoc(applicationRef, { 'basic_info.status': status, 'basic_info.updatedAt': Timestamp.now() });
     await this.logAudit({ jobId, applicationId, action: `application_${status}`, details: `Application status changed from ${previousStatus} to ${status} by employer`, previousValue: previousStatus, newValue: status }, userId).catch(() => undefined);
     void appServerService.call('sendJobStatusEmail', { applicationId }).catch(() => undefined);
@@ -411,6 +405,11 @@ export class JobDataService {
       const applicationRef = doc(db, 'jobApplications', applicationId);
       const application = await getDoc(applicationRef);
       if (application.data()?.basic_info?.jobId !== jobId) throw new Error('Application does not belong to this job');
+      // The same transition rules as a single status change: a withdrawn or final application is skipped, and one
+      // already in that status is left as it is.
+      const previousStatus: unknown = application.data()?.basic_info?.status;
+      if (previousStatus === status) return;
+      if (!canEmployerChangeApplicationStatus(previousStatus, status)) throw new Error('This application cannot move to that status');
       await updateDoc(applicationRef, { 'basic_info.status': status, 'basic_info.updatedAt': Timestamp.now() });
     }));
     return { succeeded: results.filter((result) => result.status === 'fulfilled').length, failed: results.filter((result) => result.status === 'rejected').length };

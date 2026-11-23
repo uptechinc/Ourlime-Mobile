@@ -293,6 +293,10 @@ export class ProjectService {
     const date = this.readDate(value);
     if (date.getTime() === 0) return '';
     const pad = (part: number): string => String(part).padStart(2, '0');
+    // The website and the project callable store a picked day as UTC midnight (`new Date('YYYY-MM-DD')`); read in the
+    // Americas' local time that is the evening before, so take those days in UTC. The app itself stores local noon.
+    const isUtcMidnight = date.getUTCHours() === 0 && date.getUTCMinutes() === 0 && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0;
+    if (isUtcMidnight) return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   }
 
