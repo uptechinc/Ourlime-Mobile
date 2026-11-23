@@ -437,7 +437,9 @@ export default function NotificationsModal({ visible = true, onClose, mode = 'mo
       type: item.type,
       notificationId: item.id,
       userName: username,
-      path: item.metadata?.actionUrl,
+      // E-Hub enquiry notices keep their link in metadata.path (they reuse the support_ticket type); dropping it sent
+      // them to the support ticket screen ("TICKET_NOT_FOUND").
+      path: item.metadata?.actionUrl || item.metadata?.path,
     };
     const destination = notificationDestinationRegistry.resolve(notificationDestinationRegistry.normalize(destinationData));
     const destinationPathname = typeof destination.route === 'string'
