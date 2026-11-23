@@ -71,7 +71,8 @@ export class AdminJobsService {
     snapshot.docs.forEach((jobDocument) => {
       const data = jobDocument.data();
       const basic = data.basic_info as { [field: string]: unknown } | undefined;
-      if (!basic) return;
+      // Removed listings are gone from moderation, like deleted ones.
+      if (!basic || basic.status === 'removed') return;
       const details = data.details as { skills?: unknown } | undefined;
       const createdAt = basic.createdAt as { seconds?: unknown } | undefined;
       jobs.push({
@@ -147,13 +148,13 @@ export class AdminJobsService {
     });
   }
 
-  /** "Remove Listing": rejects and hides the job with the reason on basic_info, like the website. */
+  /** "Remove Listing": takes the job down for good (status "removed", which its poster cannot undo) with the reason on basic_info. */
   public async removeListing(jobId: string, reason: string): Promise<void> {
     const trimmedReason = reason.trim();
     if (!trimmedReason) throw new Error('Enter a reason for removing this listing.');
     await adminAccessService.requireAdmin();
     await updateDoc(doc(db, 'jobs', jobId), {
-      'basic_info.status': 'rejected',
+      'basic_info.status': 'removed',
       'basic_info.rejectionReason': trimmedReason,
       'basic_info.rejectedAt': Timestamp.now(),
     });

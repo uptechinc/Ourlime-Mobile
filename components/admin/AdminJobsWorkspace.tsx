@@ -157,8 +157,10 @@ export default function AdminJobsWorkspace() {
         setMessage('Job rejected.');
       } else if (action === 'remove') {
         await adminJobsService.removeListing(actionJob.id, reason);
-        updateJobStatus(actionJob.id, 'rejected');
-        setMessage('Listing Removed. The job listing has been rejected and hidden.');
+        const removedJobId = actionJob.id;
+        setJobs((current) => current.filter((job) => job.id !== removedJobId));
+        setSelectedJob((current) => (current?.id === removedJobId ? null : current));
+        setMessage('Listing removed. The job has been taken down and removed from this list.');
       } else {
         await adminJobsService.suspendPoster(actionJob.userId, reason, suspendDays);
         setMessage('User Suspended. The user has been suspended from job posting and applying.');
