@@ -146,7 +146,9 @@ function createStyles(colors: AppThemeColors) {
     badge: { position: 'absolute', top: 2, right: 0, minWidth: 18, height: 18, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#047857' },
     badgeRose: { backgroundColor: '#f43f5e' },
     badgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
-    sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: colors.surface },
+    // flexShrink keeps the sheet inside its 88% cap so its ScrollView scrolls to the end (the order request's Send button
+    // sat below the screen edge without it).
+    sheet: { flexShrink: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: colors.surface },
     sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
     sheetTitle: { color: colors.text, fontSize: 19, fontWeight: '900' },
     closeButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
