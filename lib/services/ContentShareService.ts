@@ -139,10 +139,23 @@ export class ContentShareService {
     return { sentCount, failedCount: settledResults.length - sentCount };
   }
 
+  /**
+   * What the native share sheet receives, so every app share carries the ourlime.com link.
+   * Android ignores `url`, so the link goes at the end of the message there; iOS gets the link
+   * as `url` (WhatsApp and iMessage build the preview card from it) and the text without it,
+   * so the link is not pasted twice.
+   */
+  public buildNativeShareContent(input: ExternalShareInput, platform: string = ReactNative.Platform?.OS ?? 'android'): ReactNative.ShareContent {
+    const url = input.url.trim();
+    const text = url ? input.message.split(url).join('').trim() : input.message.trim();
+    if (platform === 'ios' && url) return text ? { title: input.title, message: text, url } : { title: input.title, url };
+    return { title: input.title, message: [text, url].filter(Boolean).join('\n\n') };
+  }
+
   public async shareExternally(input: ExternalShareInput): Promise<boolean> {
     const nativeShare = ReactNative.Share ?? (ReactNative as unknown as { default?: { Share?: typeof ReactNative.Share } }).default?.Share;
     if (!nativeShare) throw new Error('Share is not supported on this platform');
-    const result = await nativeShare.share({ title: input.title, message: input.message, url: input.url });
+    const result = await nativeShare.share(this.buildNativeShareContent(input));
     return result.action === nativeShare.sharedAction;
   }
 }

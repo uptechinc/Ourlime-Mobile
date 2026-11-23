@@ -42,6 +42,7 @@ import { useAppData } from '@/lib/contexts/AppDataContext';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
 import { useCourseWorkspace } from '@/lib/hooks/useCourseWorkspace';
 import { OURLIME_SITE_URL } from '@/lib/constants/site';
+import { contentShareService } from '@/lib/services/ContentShareService';
 
 type CourseTab = 'home' | 'overview' | 'syllabus' | 'work' | 'reviews' | 'instructor';
 type DialogState = { visible: boolean; type: 'error' | 'warning' | 'info' | 'success'; title: string; message: string };
@@ -100,7 +101,7 @@ export default function CourseDetailScreen() {
     if (!course) return;
     const url = `${OURLIME_SITE_URL}/eLearning/courses/${encodeURIComponent(course.id)}`;
     try {
-      await Share.share({ title: course.title, message: `${course.title}\n${url}`, url });
+      await Share.share(contentShareService.buildNativeShareContent({ title: course.title, message: course.title, url }));
     } catch (shareError: unknown) {
       console.error('[CourseDetailScreen.handleShare] Error:', shareError instanceof Error ? shareError.message : 'Unknown error');
     }

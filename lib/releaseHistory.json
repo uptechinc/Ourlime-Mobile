@@ -14,7 +14,8 @@
         "New product page: a full-width photo gallery you can swipe or tap for full screen, price with % off, stock, size and colour choices that show what you picked, a quantity picker and an Add to cart bar that stays at the bottom.",
         "Product pages also show clear delivery and pickup details and the seller's card, with View store and Message buttons.",
         "Order requests start with a ready-made message listing what you're ordering, which you can edit, plus a reminder to pay on pickup or delivery.",
-        "Fixed the app freezing (\"Ourlime isn't responding\") while pages were loading, including E-Hub and the home feed. Loading placeholders no longer pulse."
+        "Fixed the app freezing (\"Ourlime isn't responding\") while pages were loading, including E-Hub and the home feed. Loading placeholders no longer pulse.",
+        "Sharing a job, event or anything else from the app now always includes its ourlime.com link, so WhatsApp and other apps show a preview card with a picture."
       ]
     },
     {
