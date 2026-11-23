@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { EHubCartItem, EHubCartItemInput, EHubCommerceState, EHubRecentlyViewedItem } from '@/lib/types/ehubCommerce';
+import type { EHubCartItem, EHubCartItemInput, EHubCartSellerGroup, EHubCommerceState, EHubRecentlyViewedItem } from '@/lib/types/ehubCommerce';
 
 // Same keys as the website's localStorage (lib/ehub/EHubCommerceContext.tsx).
 const CART_STORAGE_KEY = 'ourlime_ehub_cart_v2';
@@ -85,6 +85,27 @@ export class EHubCommerceService {
       : [...this.state.cart, { ...item, id, quantity: Math.min(Math.max(1, item.quantity), item.availableQuantity) }];
     this.setState({ ...this.state, cart });
     return true;
+  }
+
+  /** Cart lines by storefront (sellerId is the storefront id), in the order each storefront was first added. */
+  public static groupCartBySeller(cart: EHubCartItem[]): EHubCartSellerGroup[] {
+    const groups = new Map<string, EHubCartSellerGroup>();
+    cart.forEach((item) => {
+      const group = groups.get(item.sellerId) ?? { sellerId: item.sellerId, sellerName: item.sellerName, items: [], subtotal: 0, deliveryAvailable: true, pickupAvailable: true };
+      group.items.push(item);
+      group.subtotal = Math.round((group.subtotal + item.price * item.quantity) * 100) / 100;
+      group.deliveryAvailable = group.deliveryAvailable && item.deliveryAvailable;
+      // Matches the server: pickup is refused only for a product that offers delivery but not pickup.
+      group.pickupAvailable = group.pickupAvailable && (item.pickupAvailable || !item.deliveryAvailable);
+      groups.set(item.sellerId, group);
+    });
+    return [...groups.values()];
+  }
+
+  /** Removes several lines at once (the lines of an order request that was just sent). */
+  public removeManyFromCart(itemIds: string[]): void {
+    if (!itemIds.length) return;
+    this.setState({ ...this.state, cart: this.state.cart.filter((item) => !itemIds.includes(item.id)) });
   }
 
   public removeFromCart(itemId: string): void {

@@ -66,6 +66,6 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   small: { color: colors.mutedText, fontSize: 12 },
   recover: { color: colors.warningText, fontSize: 12, fontWeight: '700' },
   track: { height: 6, marginTop: 6, overflow: 'hidden', borderRadius: 3, backgroundColor: colors.control },
-  bar: { height: '100%', borderRadius: 3, backgroundColor: '#059669' },
+  bar: { height: '100%', borderRadius: 3, backgroundColor: '#047857' },
   actions: { marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

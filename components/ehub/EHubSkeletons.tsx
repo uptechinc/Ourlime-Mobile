@@ -19,7 +19,7 @@ type EHubLayout = ReturnType<typeof useEHubLayout>;
 /** Bars on the dark hero, "How EHub works" and footer surfaces. */
 const ON_DARK = 'rgba(255,255,255,0.22)';
 const DARK_SURFACE = '#020617';
-const BRAND_GREEN = '#059669';
+const BRAND_GREEN = '#047857';
 
 /** Default React Native line height for a font size (no explicit lineHeight in the style). */
 function defaultLineHeight(fontSize: number): number {
@@ -103,15 +103,17 @@ type SectionHeadingSkeletonProps = { width: number; titleChars: number; descript
 
 /** EHubSectionHeading: eyebrow, 22/27 title, 13/19 description and an optional EHubLinkButton on the right. */
 export function EHubSectionHeadingSkeleton({ width, titleChars, descriptionChars, actionWidth }: SectionHeadingSkeletonProps) {
-  const { styles } = useSkeletonStyles();
-  const textWidth = actionWidth ? width - actionWidth - 12 : width;
-  return <View style={styles.heading}>
-    <View style={styles.flex}>
+  const { layout, styles } = useSkeletonStyles();
+  // Phones stack the action under the text, like EHubSectionHeading.
+  const isStacked = layout.width < 600;
+  const textWidth = actionWidth && !isStacked ? width - actionWidth - 12 : width;
+  return <View style={isStacked ? { gap: 10 } : styles.heading}>
+    <View style={isStacked ? null : styles.flex}>
       <Line fontSize={11} lineHeight={15} width={96} />
-      <TextBlock chars={titleChars} fontSize={22} lineHeight={27} weight="bold" width={textWidth} style={styles.marginTop4} />
+      <TextBlock chars={titleChars} fontSize={24} lineHeight={29} weight="bold" width={textWidth} style={styles.marginTop4} />
       {descriptionChars ? <TextBlock chars={descriptionChars} fontSize={13} lineHeight={19} width={textWidth} style={styles.marginTop4} /> : null}
     </View>
-    {actionWidth ? <View style={styles.linkButton}><Line fontSize={13} width={actionWidth - 19} /><IconBox size={15} /></View> : null}
+    {actionWidth ? <SkeletonBox width={actionWidth} height={38} borderRadius={999} /> : null}
   </View>;
 }
 
@@ -157,28 +159,31 @@ export function EHubProductGridSkeleton({ count, width, isCompact, withCompare }
 
 type ProviderCardSkeletonProps = { width: number };
 
-/** EHubProviderCard: 128 cover with kind badge, overlapping 64 logo, name, place, two-line description, tags, action pill. */
+/** EHubProviderCard: cover at half the card width with badge, name and place on it, round logo overlapping its edge, description, tags, action. */
 export function EHubProviderCardSkeleton({ width }: ProviderCardSkeletonProps) {
   const { styles } = useSkeletonStyles();
-  const textWidth = width - 36;
-  return <View style={[styles.providerCard, { width }]}>
-    <View style={styles.providerCover}>
-      <SkeletonBox width="100%" height={128} borderRadius={0} />
-      <View style={styles.kindBadge}><Line fontSize={10} lineHeight={13} width={66} tint={ON_DARK} /></View>
+  const textWidth = width - 28;
+  const coverHeight = Math.round(Math.min(width, 520) * 0.5);
+  return <View style={[styles.providerCard, { width, borderRadius: 20 }]}>
+    <View style={{ height: coverHeight, overflow: 'hidden', backgroundColor: '#022c22' }}>
+      <View style={[styles.kindBadge, { left: 12, top: 12 }]}><Line fontSize={11} lineHeight={13} width={70} tint={ON_DARK} /></View>
+      <View style={{ position: 'absolute', left: 14, bottom: 12, gap: 6 }}>
+        <Line fontSize={19} lineHeight={23} width={Math.round(textWidth * 0.55)} tint={ON_DARK} />
+        <Line fontSize={12} lineHeight={16} width={Math.round(textWidth * 0.3)} tint={ON_DARK} />
+      </View>
     </View>
-    <View style={styles.providerBody}>
-      <View style={styles.providerLogo}><SkeletonBox width="100%" height="100%" borderRadius={13} /></View>
-      <Line fontSize={16} lineHeight={20} width={Math.round(textWidth * 0.62)} />
-      <View style={styles.placeRow}><IconBox size={13} style={styles.marginTop2} /><Line fontSize={12} lineHeight={18} width={Math.round(textWidth * 0.4)} /></View>
-      <View style={styles.providerDescription}>
-        <Line fontSize={12} lineHeight={18} width={Math.round(textWidth * 0.95)} />
-        <Line fontSize={12} lineHeight={18} width={Math.round(textWidth * 0.7)} />
+    <View style={{ padding: 14, paddingTop: 12, gap: 10 }}>
+      <View style={{ position: 'absolute', right: 14, top: -30, width: 60, height: 60, overflow: 'hidden', borderRadius: 30, borderWidth: 3, borderColor: 'transparent' }}><SkeletonBox width="100%" height="100%" borderRadius={30} /></View>
+      <View style={{ marginRight: 62, gap: 4 }}>
+        <Line fontSize={13} lineHeight={19} width={Math.round((textWidth - 62) * 0.95)} />
+        <Line fontSize={13} lineHeight={19} width={Math.round((textWidth - 62) * 0.7)} />
       </View>
       <View style={styles.tags}>
-        <SkeletonBox width={74} height={21} borderRadius={999} />
-        <SkeletonBox width={58} height={21} borderRadius={999} />
+        <SkeletonBox width={78} height={23} borderRadius={999} />
+        <SkeletonBox width={64} height={23} borderRadius={999} />
+        <SkeletonBox width={70} height={23} borderRadius={999} />
       </View>
-      <View style={styles.providerAction}><Line fontSize={14} width={92} /><IconBox size={15} /></View>
+      <View style={{ minHeight: 40, paddingTop: 8, alignItems: 'flex-end', justifyContent: 'center' }}><Line fontSize={14} width={104} /></View>
     </View>
   </View>;
 }
@@ -194,53 +199,44 @@ export function EHubProviderGridSkeleton({ count, width }: ProviderGridSkeletonP
   </View>;
 }
 
-/** EHubChip: 40 tall, radius 13, 15 horizontal padding around 13/800 text. */
+/** EHubChip: 40 tall pill, 15 horizontal padding around 13 text. */
 function ChipSkeleton({ textWidth }: { textWidth: number }) {
-  return <SkeletonBox width={textWidth + 30} height={40} borderRadius={13} />;
+  return <SkeletonBox width={textWidth + 30} height={40} borderRadius={999} />;
 }
 
 /* ------------------------------------------------------------------ E-Hub home (EHubScreen.tsx) */
 
-const HOME_NAV_TEXT_WIDTHS = [34, 29, 60, 36];
-const HOME_SORT_CHIP_TEXT_WIDTHS = [88, 116, 118, 38];
-const HOME_PATH_DESCRIPTION_CHARS = [59, 63, 59, 96, 59];
-const HOME_FAQ_QUESTION_CHARS = [31, 28, 23];
-const HOME_FOOTER_LINK_WIDTHS = [[60, 74, 84], [108, 64, 82], [80, 70, 88]];
+const HOME_NAV_TEXT_WIDTHS = [34, 92, 84, 92, 28];
 
-/** The E-Hub home header: back, "E-Hub" brand, saved/cart/enquiries buttons, then Shop/Hire/Discover/Grow. */
+/** The E-Hub home header: back, "E-Hub" brand, saved/cart/enquiries buttons, then the E-Hub section pills. */
 function EHubHomeHeaderSkeleton() {
   const { styles } = useSkeletonStyles();
   return <SafeAreaView edges={['top', 'left', 'right']} style={styles.homeHeader}>
     <View style={styles.homeHeaderRow}>
-      <IconSlot box={40} size={24} />
+      <IconSlot box={44} size={24} />
       <View style={styles.flex}><Line fontSize={21} lineHeight={28} width={58} /></View>
-      <View style={styles.row}>
-        <View style={[styles.row, styles.gap2]}><IconSlot box={40} size={21} /><IconSlot box={40} size={21} /></View>
-        <IconSlot box={40} size={21} />
-      </View>
+      <View style={styles.row}><IconSlot box={44} size={21} /><IconSlot box={44} size={21} /><IconSlot box={44} size={21} /></View>
     </View>
-    <View style={styles.homeNav}>
-      {HOME_NAV_TEXT_WIDTHS.map((textWidth) => <View key={textWidth} style={styles.homeNavItem}><Line fontSize={14} width={textWidth} /></View>)}
+    <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: 10, paddingVertical: 6, overflow: 'hidden' }}>
+      {HOME_NAV_TEXT_WIDTHS.map((textWidth) => <SkeletonBox key={textWidth} width={textWidth + 47} height={40} borderRadius={999} />)}
     </View>
   </SafeAreaView>;
 }
 
-/** The rotating hero: dark slide with eyebrow, three-line title, body, two buttons and the slide dots. */
+/** The rotating hero: dark slide with eyebrow, title, body, one button and the slide dots. */
 function EHubHomeHeroSkeleton({ layout }: { layout: EHubLayout }) {
   const { styles } = useSkeletonStyles();
   const contentWidth = layout.contentWidth - (layout.gutter + 6) * 2;
-  const titleSize = layout.isTablet ? 44 : 32;
-  return <View style={[styles.hero, { minHeight: layout.isTablet ? 460 : 430 }]}>
-    <View style={{ width: layout.contentWidth, maxWidth: '100%', paddingHorizontal: layout.gutter + 6, paddingTop: 40, paddingBottom: 88 }}>
+  return <View style={[styles.hero, { minHeight: layout.isTablet ? 420 : 360 }]}>
+    <View style={{ width: layout.contentWidth, maxWidth: '100%', paddingHorizontal: layout.gutter + 6, paddingTop: 32, paddingBottom: 76 }}>
       <Line fontSize={11} lineHeight={15} width={128} tint={ON_DARK} />
-      <TextBlock chars={56} fontSize={titleSize} lineHeight={layout.isTablet ? 48 : 36} weight="bold" width={Math.min(contentWidth, 620)} tint={ON_DARK} style={styles.marginTop12} />
+      <TextBlock chars={56} fontSize={layout.isTablet ? 42 : 29} lineHeight={layout.isTablet ? 46 : 34} weight="bold" width={Math.min(contentWidth, 620)} tint={ON_DARK} style={styles.marginTop12} />
       <TextBlock chars={100} fontSize={14} lineHeight={22} width={Math.min(contentWidth, 520)} tint={ON_DARK} style={styles.marginTop14} />
       <View style={styles.heroActions}>
-        <SkeletonBox width={170} height={46} borderRadius={13} style={{ backgroundColor: 'rgba(163,230,53,0.55)' }} />
-        <View style={styles.heroSecondary}><Line fontSize={14} width={88} tint={ON_DARK} /></View>
+        <SkeletonBox width={170} height={46} borderRadius={13} style={{ backgroundColor: 'rgba(1,235,83,0.45)' }} />
       </View>
     </View>
-    <View style={styles.heroDots}>
+    <View style={[styles.heroDots, { bottom: 22 }]}>
       <IconSlot box={34} size={18} tint={ON_DARK} />
       <View style={[styles.dot, styles.dotActive]} />
       <View style={styles.dot} />
@@ -250,123 +246,31 @@ function EHubHomeHeroSkeleton({ layout }: { layout: EHubLayout }) {
   </View>;
 }
 
-/** The four "ways to use E-Hub" cards that overlap the hero. */
-function EHubHomePathsSkeleton({ layout }: { layout: EHubLayout }) {
-  const { styles } = useSkeletonStyles();
-  const cardWidth = layout.isWide ? layout.columnWidth(4) : layout.isTablet ? layout.columnWidth(2) : layout.innerWidth;
-  const textWidth = cardWidth - 32 - 2 - 44 - 14;
-  return <View style={[styles.paths, { width: layout.contentWidth, paddingHorizontal: layout.gutter, gap: layout.isTablet ? 14 : 10 }]}>
-    {HOME_PATH_DESCRIPTION_CHARS.map((descriptionChars, cardIndex) => <View key={cardIndex} style={[styles.pathCard, { width: cardWidth }]}>
-      <SkeletonBox width={44} height={44} borderRadius={13} />
-      <View style={styles.flex}>
-        <Line fontSize={11} lineHeight={15} width={52} />
-        <Line fontSize={15} lineHeight={20} width={Math.round(Math.min(textWidth * 0.85, 190))} style={styles.marginVertical2} />
-        <TextBlock chars={descriptionChars} fontSize={12} lineHeight={17} width={textWidth} />
-      </View>
-    </View>)}
-  </View>;
-}
-
-/** The body of the E-Hub home, from the search box to the enquiries card, with the catalog and providers loading. */
+/** The top of the home body (the rest is below the fold): search, category tiles, then the professionals band. */
 function EHubHomeBodySkeleton({ layout }: { layout: EHubLayout }) {
   const { styles } = useSkeletonStyles();
   const inner = layout.innerWidth;
-  const howWidth = inner - (layout.isTablet ? 60 : 44);
-  const stepTextWidth = layout.isTablet ? Math.floor((howWidth - 20) / 3) - 34 : howWidth - 34;
-  const faqWidth = layout.isWide ? inner - 360 - 24 : inner;
-  const safetyWidth = (layout.isWide ? 360 : inner) - 46;
-  return <View style={[styles.homeBody, { width: layout.contentWidth, paddingHorizontal: layout.gutter }]}>
-    <View style={styles.searchBox}>
+  return <View style={[styles.homeBody, { width: layout.contentWidth, paddingHorizontal: layout.gutter, paddingTop: 20, gap: 30 }]}>
+    <View style={[styles.searchBox, { minHeight: 52, borderRadius: 999 }]}>
       <IconBox size={19} />
       <Line fontSize={15} width={96} />
     </View>
-
     <View style={styles.section}>
-      <EHubSectionHeadingSkeleton width={inner} titleChars={31} descriptionChars={96} />
-      <View style={styles.filterPanel}>
-        <View style={styles.chipRow}><ChipSkeleton textWidth={18} /></View>
-        <View style={styles.chipRow}>
-          <Line fontSize={13} width={28} />
-          {HOME_SORT_CHIP_TEXT_WIDTHS.map((textWidth) => <ChipSkeleton key={textWidth} textWidth={textWidth} />)}
-        </View>
+      <EHubSectionHeadingSkeleton width={inner} titleChars={16} descriptionChars={48} actionWidth={92} />
+      <View style={{ flexDirection: 'row', gap: 8, overflow: 'hidden' }}>
+        {[0, 1, 2].map((tileIndex) => <SkeletonBox key={tileIndex} width={layout.isTablet ? 160 : 136} height={layout.isTablet ? 170 : 150} borderRadius={18} />)}
       </View>
-      <EHubProductGridSkeleton />
     </View>
-
     <View style={styles.section}>
-      <EHubSectionHeadingSkeleton width={inner} titleChars={17} descriptionChars={79} actionWidth={114} />
-      <EHubProviderGridSkeleton />
-    </View>
-
-    <View style={styles.section}>
-      <EHubSectionHeadingSkeleton width={inner} titleChars={22} descriptionChars={106} actionWidth={82} />
-      <EHubProviderGridSkeleton />
-    </View>
-
-    <View style={[styles.howItWorks, { padding: layout.isTablet ? 30 : 22 }]}>
-      <Line fontSize={11} lineHeight={15} width={160} tint={ON_DARK} />
-      <Line fontSize={24} lineHeight={32} width={170} tint={ON_DARK} />
-      <TextBlock chars={84} fontSize={13} lineHeight={20} width={howWidth} tint={ON_DARK} />
-      <View style={[styles.steps, layout.isTablet ? styles.rowStretch : null]}>
-        {[60, 72, 61].map((textChars, stepIndex) => <View key={stepIndex} style={[styles.step, layout.isTablet ? styles.flex : null]}>
-          <IconBox size={22} tint={ON_DARK} />
-          <Line fontSize={15} lineHeight={20} width={86} tint={ON_DARK} />
-          <TextBlock chars={textChars} fontSize={13} lineHeight={20} width={stepTextWidth} tint={ON_DARK} />
-        </View>)}
-      </View>
-    </View>
-
-    <View style={[styles.faqLayout, layout.isWide ? styles.faqLayoutWide : null]}>
-      <View style={[styles.section, layout.isWide ? styles.flex : null]}>
-        <EHubSectionHeadingSkeleton width={faqWidth} titleChars={8} descriptionChars={52} />
-        {HOME_FAQ_QUESTION_CHARS.map((questionChars) => <View key={questionChars} style={styles.faqItem}>
-          <View style={styles.flex}><TextBlock chars={questionChars} fontSize={15} lineHeight={20} weight="bold" width={faqWidth - 38 - 28} /></View>
-          <IconBox size={18} />
-        </View>)}
-      </View>
-      <View style={[styles.safetyCard, layout.isWide ? styles.safetyCardWide : null]}>
-        <IconBox size={32} />
-        <Line fontSize={22} lineHeight={29} width={130} />
-        <TextBlock chars={190} fontSize={13} lineHeight={20} width={safetyWidth} />
-        <SkeletonBox width={164} height={44} borderRadius={13} />
-      </View>
-    </View>
-
-    <View style={styles.inboxCard}>
-      <IconBox size={24} />
-      <View style={styles.flex}>
-        <Line fontSize={16} width={120} />
-        <TextBlock chars={50} fontSize={12} lineHeight={17} width={inner - 34 - 24 - 19 - 24} />
-      </View>
-      <IconBox size={19} />
-    </View>
-  </View>;
-}
-
-/** The dark footer: brand block, three link groups and the copyright line. */
-function EHubHomeFooterSkeleton({ layout }: { layout: EHubLayout }) {
-  const { styles } = useSkeletonStyles();
-  const footerWidth = layout.contentWidth - (layout.gutter + 4) * 2;
-  return <View style={styles.footer}>
-    <View style={[styles.footerInner, { width: layout.contentWidth, paddingHorizontal: layout.gutter + 4 }]}>
-      <View style={[styles.footerBrandBlock, layout.isTablet ? styles.footerColumn : null]}>
-        <Line fontSize={24} lineHeight={32} width={64} tint={ON_DARK} />
-        <TextBlock chars={70} fontSize={13} lineHeight={20} width={layout.isTablet ? 150 : footerWidth} tint={ON_DARK} />
-      </View>
-      {HOME_FOOTER_LINK_WIDTHS.map((linkWidths, groupIndex) => <View key={groupIndex} style={[styles.footerGroup, layout.isTablet ? styles.footerColumn : null]}>
-        <Line fontSize={14} width={76} tint={ON_DARK} style={styles.marginBottom4} />
-        {linkWidths.map((linkWidth) => <View key={linkWidth} style={styles.footerLink}><Line fontSize={13} lineHeight={20} width={linkWidth} tint={ON_DARK} /></View>)}
-      </View>)}
-    </View>
-    <View style={[styles.copyright, { paddingHorizontal: layout.gutter + 4 }]}>
-      <TextBlock chars={85} fontSize={12} width={footerWidth} tint={ON_DARK} align="center" />
+      <EHubSectionHeadingSkeleton width={inner} titleChars={22} descriptionChars={84} actionWidth={92} />
+      {layout.isTablet ? <EHubProviderGridSkeleton /> : <EHubProviderCardSkeleton width={Math.round(inner * 0.86)} />}
     </View>
   </View>;
 }
 
 /**
  * The whole E-Hub home page while it (or page access) loads: header inside SafeAreaView with the real screen's
- * edges, hero, path cards, catalog, storefronts, professionals, how it works, FAQ, enquiries card and footer.
+ * edges, section pills, hero, search, categories and the professionals band (the rest is below the fold).
  * Renders full screen with no wrapper needed.
  */
 export function EHubHomePageSkeleton() {
@@ -375,9 +279,7 @@ export function EHubHomePageSkeleton() {
     <EHubHomeHeaderSkeleton />
     <ScrollView scrollEnabled={false} showsVerticalScrollIndicator={false} contentContainerStyle={styles.homeScrollContent}>
       <EHubHomeHeroSkeleton layout={layout} />
-      <EHubHomePathsSkeleton layout={layout} />
       <EHubHomeBodySkeleton layout={layout} />
-      <EHubHomeFooterSkeleton layout={layout} />
     </ScrollView>
   </View>;
 }

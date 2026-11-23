@@ -210,7 +210,7 @@ export class DeepLinkService {
       return this.screen('/profile/ehub/seller', '/ehub/seller');
     }
     if (first === 'profile' && segments[1]?.toLowerCase() === 'ehub' && segments[2]?.toLowerCase() === 'enquiries') {
-      const mode = url.searchParams.get('mode') === 'sent' ? '?mode=sent' : '';
+      const mode = this.pickQuery(url, ['mode']);
       return { kind: 'screen', webPath: `/profile/ehub/enquiries${mode}`, appRoute: `/ehub/enquiries${mode}` };
     }
     // The website's adoption enquiries page (/profile/pets/adoption) is /market/pets/enquiries in the app.
@@ -265,7 +265,11 @@ export class DeepLinkService {
       }
       // App-only E-Hub screens; on the website these live under /profile (business account under /profile too).
       if (section === 'seller') return this.screen('/profile/ehub/seller', '/ehub/seller');
-      if (section === 'enquiries') return this.screen('/profile/ehub/enquiries', '/ehub/enquiries');
+      if (section === 'enquiries') {
+        // Keeps the Sent / Received tab (?mode=sent).
+        const query = this.pickQuery(url, ['mode']);
+        return this.screen(`/profile/ehub/enquiries${query}`, `/ehub/enquiries${query}`);
+      }
       if (section === 'business-account') return this.screen('/profile/business-account', '/ehub/business-account');
       if (section === 'terms') {
         // /ehub/terms#buyer on the website opens at that section; the app scrolls to ?section=.

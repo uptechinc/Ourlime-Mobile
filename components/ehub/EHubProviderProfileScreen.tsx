@@ -13,11 +13,11 @@ import { eHubService, EHUB_PROVIDER_SHARE_BASE_URL, getEHubTermsRoute } from '@/
 import { EHubChip, EHubEmptyState, EHubNotice, formatEHubPrice, useEHubLayout } from '@/components/ehub/EHubParts';
 import { EHubScrollView } from '@/components/ehub/EHubScrollView';
 import { EHubProviderProfileSkeleton } from '@/components/ehub/EHubSkeletons';
-import type { EHubEnquiryType, EHubProviderDetail } from '@/lib/types/ehubDiscovery';
+import type { EHubPlainEnquiryType, EHubProviderDetail } from '@/lib/types/ehubDiscovery';
 
 type Notice = { tone: 'success' | 'error'; text: string };
 
-const ENQUIRY_TYPES: { value: EHubEnquiryType; label: string }[] = [
+const ENQUIRY_TYPES: { value: EHubPlainEnquiryType; label: string }[] = [
   { value: 'service', label: 'Ask about a service' },
   { value: 'availability', label: 'Ask about availability' },
   { value: 'product', label: 'Product or business question' },
@@ -55,7 +55,7 @@ export default function EHubProviderProfileScreen() {
   const styles = useMemo(() => createStyles(colors, layout.gutter), [colors, layout.gutter]);
   const resource = useEHubProvider(providerId);
   const provider = resource.data;
-  const [type, setType] = useState<EHubEnquiryType>('service');
+  const [type, setType] = useState<EHubPlainEnquiryType>('service');
   const [message, setMessage] = useState('');
   const [isAcknowledged, setIsAcknowledged] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -188,7 +188,7 @@ export default function EHubProviderProfileScreen() {
     <Text style={styles.muted}>Your private contact details are not exposed. This is not a quote, booking, contract, or payment.</Text>
     {requestedProduct ? <View style={styles.contextBanner}><Text style={styles.contextLabel}>Product enquiry</Text><Text style={styles.contextName}>{requestedProduct}</Text></View> : null}
     {!requestedProduct && requestedService ? <View style={styles.contextBanner}><Text style={styles.contextLabel}>Service enquiry</Text><Text style={styles.contextName}>{requestedService}</Text></View> : null}
-    {isOwnProvider ? <EHubNotice tone="warning" text="This is your business profile. Enquiries from other members appear in your E-Hub inbox." actionLabel="Open inbox" onAction={() => router.push('/ehub/enquiries' as Href)} /> : <>
+    {isOwnProvider ? <EHubNotice tone="warning" text="This is your business profile. Enquiries from other members appear in your E-Hub inbox." actionLabel="Open inbox" onAction={() => router.push('/ehub/enquiries?mode=received' as Href)} /> : <>
       <Text style={styles.fieldLabel}>Enquiry type</Text>
       <View style={styles.typeGrid}>{ENQUIRY_TYPES.map((option) => <EHubChip key={option.value} label={option.label} selected={type === option.value} onPress={() => setType(option.value)} />)}</View>
       <Text style={styles.fieldLabel}>Message</Text>
@@ -273,7 +273,7 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   services: { gap: 8, paddingBottom: 14, marginBottom: 2, borderBottomWidth: 1, borderBottomColor: colors.border },
   serviceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   serviceButton: { minHeight: 44, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 13, borderWidth: 1, borderColor: '#a7f3d0', backgroundColor: colors.successSurface },
-  serviceButtonActive: { borderColor: '#059669' },
+  serviceButtonActive: { borderColor: '#047857' },
   serviceText: { color: colors.successText, fontSize: 13, fontWeight: '900' },
   serviceTextActive: { color: colors.text },
   contextBanner: { padding: 14, gap: 3, borderRadius: 16, borderWidth: 1, borderColor: '#a7f3d0', backgroundColor: colors.successSurface },
@@ -298,7 +298,7 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   checkbox: { width: 22, height: 22, marginTop: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 6, borderWidth: 2, borderColor: colors.mutedText },
   checkboxChecked: { borderColor: colors.accent, backgroundColor: colors.accent },
   acknowledgementText: { flex: 1, color: colors.secondaryText, fontSize: 12, lineHeight: 18 },
-  submit: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: '#059669' },
+  submit: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: '#047857' },
   submitDisabled: { opacity: 0.45 },
   submitText: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
 });

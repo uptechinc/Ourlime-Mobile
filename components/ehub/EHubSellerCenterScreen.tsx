@@ -120,7 +120,7 @@ export default function EHubSellerCenterScreen() {
         {item.icon(isSelected ? '#ffffff' : colors.icon)}<Text style={[styles.navText, isSelected ? styles.navTextActive : null]}>{item.label}</Text>
       </Pressable>;
     })}
-    <Pressable accessibilityRole="link" onPress={() => router.push('/ehub/enquiries' as Href)} style={styles.navItem}><Inbox size={17} color={colors.icon} /><Text style={styles.navText}>Enquiries</Text></Pressable>
+    <Pressable accessibilityRole="link" onPress={() => router.push('/ehub/enquiries?mode=received' as Href)} style={styles.navItem}><Inbox size={17} color={colors.icon} /><Text style={styles.navText}>Enquiries</Text></Pressable>
   </ScrollView>;
 
   const confirmCopy = confirmation?.kind === 'deleteProduct'
@@ -189,7 +189,7 @@ export default function EHubSellerCenterScreen() {
                   <View style={[styles.metrics, layout.isTablet ? styles.metricsRow : null]}>
                     <Metric styles={styles} icon={<Package size={20} color={colors.accentText} />} value={String(publishedProducts.length)} label="Published" />
                     <Metric styles={styles} icon={<FilePenLine size={20} color={colors.accentText} />} value={String(activeDrafts.length)} label="Drafts" />
-                    <Metric styles={styles} icon={<Inbox size={20} color={colors.accentText} />} value="Open inbox" label="Enquiries" onPress={() => router.push('/ehub/enquiries' as Href)} />
+                    <Metric styles={styles} icon={<Inbox size={20} color={colors.accentText} />} value="Open inbox" label="Enquiries" onPress={() => router.push('/ehub/enquiries?mode=received' as Href)} />
                   </View>
                   <Text style={styles.subTitle}>Manage your business</Text>
                   <View style={styles.destinations}>
@@ -259,7 +259,7 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   railContent: { padding: 10, gap: 4 },
   railLabel: { paddingHorizontal: 10, paddingVertical: 8, color: colors.accentText, fontSize: 11, fontWeight: '900', letterSpacing: 1.6, textTransform: 'uppercase' },
   navItem: { minHeight: 44, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  navItemActive: { backgroundColor: '#059669', borderColor: '#059669' },
+  navItemActive: { backgroundColor: '#047857', borderColor: '#047857' },
   navText: { color: colors.secondaryText, fontSize: 14, fontWeight: '800' },
   navTextActive: { color: '#ffffff' },
   servicesGuide: { padding: 16, gap: 12, borderRadius: 18, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.successSurface },

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { ArrowRight, BriefcaseBusiness, CheckCircle2, Heart, MapPin, Package, SlidersHorizontal, Star, Store } from 'lucide-react-native';
+import { ArrowRight, BriefcaseBusiness, CheckCircle2, Clock, Heart, MapPin, Package, ShoppingCart, SlidersHorizontal, Star, Store, Wrench } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
@@ -35,8 +35,10 @@ type SectionHeadingProps = { eyebrow: string; title: string; description?: strin
 export function EHubSectionHeading({ eyebrow, title, description, action }: SectionHeadingProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  return <View style={styles.heading}>
-    <View style={styles.flex}>
+  // On phones the actions sit under the text so the title and description keep the full width.
+  const isStacked = useWindowDimensions().width < 600;
+  return <View style={isStacked ? styles.headingStacked : styles.heading}>
+    <View style={isStacked ? null : styles.flex}>
       <Text style={styles.eyebrow}>{eyebrow}</Text>
       <Text style={styles.headingTitle}>{title}</Text>
       {description ? <Text style={styles.headingBody}>{description}</Text> : null}
@@ -50,7 +52,7 @@ type LinkButtonProps = { label: string; onPress: () => void };
 export function EHubLinkButton({ label, onPress }: LinkButtonProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  return <Pressable accessibilityRole="link" onPress={onPress} hitSlop={6} style={styles.linkButton}>
+  return <Pressable accessibilityRole="link" onPress={onPress} hitSlop={6} style={[styles.linkButton]}>
     <Text style={styles.linkText}>{label}</Text><ArrowRight size={15} color={colors.accentText} />
   </Pressable>;
 }
@@ -103,8 +105,10 @@ export function EHubProductCard({ product, width, onOpen, isCompact = false, isC
         <Heart size={17} color={isSaved ? '#f43f5e' : '#334155'} fill={isSaved ? '#f43f5e' : 'transparent'} />
       </Pressable>
       <View style={styles.productActions}>
-        <Pressable accessibilityRole="button" accessibilityState={{ disabled: !isAvailable }} disabled={!isAvailable} onPress={handleAddToCart} style={[styles.cartButton, !isAvailable && styles.cartButtonDisabled]}>
-          <Text numberOfLines={1} style={[styles.cartButtonText, !isAvailable && styles.cartButtonTextDisabled]}>{isAvailable ? 'Add to E-Hub cart' : 'Unavailable'}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={isAvailable ? `Add ${product.title} to E-Hub cart` : `${product.title} is unavailable`} accessibilityState={{ disabled: !isAvailable }} disabled={!isAvailable} onPress={handleAddToCart} style={[styles.cartButton, !isAvailable && styles.cartButtonDisabled]}>
+          {/* Two-column phone cards are too narrow for the icon and the label together. */}
+          {isAvailable && width >= 190 ? <ShoppingCart size={15} color="#ffffff" /> : null}
+          <Text numberOfLines={1} style={[styles.cartButtonText, !isAvailable && styles.cartButtonTextDisabled]}>{isAvailable ? 'Add to cart' : 'Unavailable'}</Text>
         </Pressable>
         {onCompare ? <Pressable accessibilityRole="button" accessibilityLabel={`${isCompared ? 'Remove' : 'Add'} ${product.title} ${isCompared ? 'from' : 'to'} comparison`} accessibilityState={{ selected: isCompared }} onPress={() => onCompare(product.id)} style={[styles.compareButton, isCompared && styles.compareButtonActive]}>
           <SlidersHorizontal size={16} color={isCompared ? colors.successText : colors.icon} />
@@ -123,40 +127,76 @@ type ProviderCardProps = {
   showRating?: boolean;
 };
 
-/** The website's ProviderCard: gradient cover with circles when there is no cover photo, logo, two tags and a "View profile" pill. */
+/**
+ * A provider's card: cover (photo with a dark fade, or a brand gradient), name, place and verified badge on the
+ * cover, the logo overlapping its edge, then up to three services or categories, hours, and "View profile".
+ */
 export function EHubProviderCard({ provider, width, onOpen, actionLabel = 'View profile', showRating = false }: ProviderCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const label = provider.kind === 'professional' ? 'Professional' : 'Storefront';
-  const ProviderIcon = provider.kind === 'professional' ? BriefcaseBusiness : Store;
-  const tags = [...new Set([...provider.categories, ...provider.services])].slice(0, 2);
-  const place = provider.nationwide ? 'Nationwide' : provider.location;
-  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${provider.name}`} onPress={() => onOpen(provider.id)} style={[styles.providerCard, { width }]} android_ripple={{ color: colors.control }}>
-    <View style={styles.cover}>
-      <LinearGradient colors={['#022c22', '#047857', '#a3e635']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+  const isProfessional = provider.kind === 'professional' || (provider.offersServices && !provider.offersProducts);
+  const label = isProfessional ? 'Professional' : provider.offersServices ? 'Shop + services' : 'Storefront';
+  const ProviderIcon = isProfessional ? BriefcaseBusiness : Store;
+  const allTags = [...new Set([...provider.services, ...provider.categories])].filter(Boolean);
+  const tags = allTags.slice(0, 3);
+  const place = provider.nationwide ? 'Nationwide' : provider.location || provider.serviceAreas[0] || '';
+  const coverHeight = Math.round(Math.min(width, 520) * 0.5);
+  const hasMeta = Boolean(provider.businessHours) || (provider.offersServices && provider.offersProducts) || (showRating && provider.rating !== null);
+  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${provider.name}, ${label.toLowerCase()}${place ? `, ${place}` : ''}`} onPress={() => onOpen(provider.id)} style={[styles.providerCard, { width }]} android_ripple={{ color: colors.control }}>
+    <View style={[styles.cover, { height: coverHeight }]}>
       {provider.coverUrl ? <CachedImage uri={provider.coverUrl} style={styles.fill} /> : <>
+        <LinearGradient colors={['#022c22', '#065f46', '#10b981']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
         <View style={styles.coverRing} />
-        <View style={styles.coverCircle} />
+        <View style={styles.coverIcon}><ProviderIcon size={110} color="rgba(255,255,255,0.09)" /></View>
       </>}
-      <View style={styles.kindBadge}><Text style={styles.kindText}>{label}</Text></View>
+      <LinearGradient colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.82)']} start={{ x: 0, y: 0.3 }} end={{ x: 0, y: 1 }} style={StyleSheet.absoluteFill} />
+      <View style={styles.coverTopRow}>
+        <View style={styles.kindBadge}><Text style={styles.kindText}>{label}</Text></View>
+        {provider.isVerified ? <View style={styles.verifiedPill}><CheckCircle2 size={13} color="#01eb53" /><Text style={styles.verifiedText}>Verified</Text></View> : null}
+      </View>
+      <View style={styles.coverText}>
+        <Text numberOfLines={1} style={styles.providerName}>{provider.name}</Text>
+        {place ? <View style={styles.placeRow}><MapPin size={12} color="rgba(255,255,255,0.8)" /><Text numberOfLines={1} style={styles.placeText}>{place}</Text></View> : null}
+      </View>
     </View>
     <View style={styles.providerBody}>
       <View style={styles.logo}>
         <View style={styles.logoInner}>
-          {provider.logoUrl ? <CachedImage uri={provider.logoUrl} style={styles.fill} accessibilityLabel={`${provider.name} logo`} /> : <ProviderIcon size={26} color="#047857" />}
+          {provider.logoUrl ? <CachedImage uri={provider.logoUrl} style={styles.fill} accessibilityLabel={`${provider.name} logo`} /> : <ProviderIcon size={24} color={colors.successText} />}
         </View>
       </View>
-      <View style={styles.nameRow}>
-        <Text numberOfLines={2} style={styles.providerName}>{provider.name}</Text>
-        {provider.isVerified ? <View style={styles.verifiedDot}><CheckCircle2 size={15} color="#059669" accessibilityLabel="Verified" /></View> : null}
-      </View>
-      {place ? <View style={styles.placeRow}><MapPin size={13} color={colors.mutedText} style={styles.placeIcon} /><Text numberOfLines={2} style={styles.meta}>{place}</Text></View> : null}
       <Text numberOfLines={2} style={styles.providerDescription}>{provider.description || `View this ${label.toLowerCase()} for current information and enquiry options.`}</Text>
-      {showRating && provider.rating !== null ? <View style={styles.row}><Star size={13} color="#f59e0b" fill="#f59e0b" /><Text style={styles.ratingText}>{provider.rating.toFixed(1)}</Text><Text style={styles.meta}>({provider.reviewCount} verified interactions)</Text></View> : null}
-      {tags.length ? <View style={styles.tags}>{tags.map((tag) => <View key={tag} style={styles.tag}><Text numberOfLines={1} style={styles.tagText}>{tag}</Text></View>)}</View> : null}
+      {tags.length ? <View style={styles.tags}>
+        {tags.map((tag) => <View key={tag} style={styles.tag}><Text numberOfLines={1} style={styles.tagText}>{tag}</Text></View>)}
+        {allTags.length > tags.length ? <View style={styles.tagMore}><Text style={styles.tagMoreText}>+{allTags.length - tags.length}</Text></View> : null}
+      </View> : null}
+      {hasMeta ? <View style={styles.metaRow}>
+        {showRating && provider.rating !== null ? <View style={styles.row}><Star size={13} color="#f59e0b" fill="#f59e0b" /><Text style={styles.ratingText}>{provider.rating.toFixed(1)}</Text><Text style={styles.meta}>({provider.reviewCount} verified interactions)</Text></View> : null}
+        {provider.businessHours ? <View style={styles.row}><Clock size={13} color={colors.mutedText} /><Text numberOfLines={1} style={styles.meta}>{provider.businessHours}</Text></View> : null}
+        {provider.offersServices && provider.offersProducts ? <View style={styles.row}><Package size={13} color={colors.mutedText} /><Text numberOfLines={1} style={styles.meta}>Services and products</Text></View> : null}
+      </View> : null}
       <View style={styles.providerAction}><Text numberOfLines={1} style={styles.providerActionText}>{actionLabel}</Text><ArrowRight size={15} color={colors.successText} /></View>
     </View>
   </Pressable>;
+}
+
+type RecruitPanelProps = { onOfferServices: () => void; onOpenDirectory: () => void };
+
+/** Shown where professionals would be listed when none are active yet: invites people to list their services. */
+export function EHubRecruitPanel({ onOfferServices, onOpenDirectory }: RecruitPanelProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  return <View style={styles.recruit}>
+    <LinearGradient colors={['#022c22', '#064e3b', '#047857']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <View style={styles.recruitRing} />
+    <View style={styles.recruitIconOuter}><View style={styles.recruitIconInner}><Wrench size={26} color="#ffffff" /></View></View>
+    <Text style={styles.recruitTitle}>Be the first professional on E-Hub</Text>
+    <Text style={styles.recruitBody}>Plumbers, designers, tutors, caterers: list your services and the areas you cover, and get enquiries from people nearby.</Text>
+    <View style={styles.recruitActions}>
+      <Pressable accessibilityRole="button" onPress={onOfferServices} style={[styles.recruitPrimary]}><Text style={styles.recruitPrimaryText}>Offer your services</Text><ArrowRight size={16} color="#022c22" /></Pressable>
+      <Pressable accessibilityRole="link" onPress={onOpenDirectory} style={[styles.recruitSecondary]}><Text style={styles.recruitSecondaryText}>Open directory</Text></Pressable>
+    </View>
+  </View>;
 }
 
 type NoticeProps = { tone: 'error' | 'warning' | 'success'; text: string; actionLabel?: string; onAction?: () => void };
@@ -178,10 +218,10 @@ export function EHubEmptyState({ icon, title, body, actionLabel, onAction }: Emp
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return <View style={styles.empty}>
-    {icon}
+    <View style={styles.emptyIcon}>{icon}</View>
     <Text style={styles.emptyTitle}>{title}</Text>
     {body ? <Text style={styles.emptyBody}>{body}</Text> : null}
-    {actionLabel && onAction ? <Pressable accessibilityRole="button" onPress={onAction} style={styles.darkButton}><Text style={styles.darkButtonText}>{actionLabel}</Text></Pressable> : null}
+    {actionLabel && onAction ? <Pressable accessibilityRole="button" onPress={onAction} style={[styles.primaryButton]}><Text style={styles.primaryButtonText}>{actionLabel}</Text></Pressable> : null}
   </View>;
 }
 
@@ -199,65 +239,84 @@ function createStyles(colors: AppThemeColors) {
   return StyleSheet.create({
     flex: { flex: 1 },
     fill: { width: '100%', height: '100%' },
-    row: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0 },
-    pressed: { opacity: 0.86, transform: [{ scale: 0.99 }] },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0, flexShrink: 1 },
+    pressed: { opacity: 0.86 },
+    cardPressed: { transform: [{ scale: 0.985 }] },
     heading: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
+    headingStacked: { gap: 10 },
     eyebrow: { color: colors.accentText, fontSize: 11, fontWeight: '900', letterSpacing: 1.6, textTransform: 'uppercase' },
-    headingTitle: { marginTop: 4, color: colors.text, fontSize: 22, lineHeight: 27, fontWeight: '900' },
+    headingTitle: { marginTop: 4, color: colors.text, fontSize: 24, lineHeight: 29, fontWeight: '900' },
     headingBody: { marginTop: 4, color: colors.mutedText, fontSize: 13, lineHeight: 19 },
-    linkButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4 },
-    linkText: { color: colors.accentText, fontSize: 13, fontWeight: '900' },
-    productCard: { overflow: 'hidden', borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+    linkButton: { alignSelf: 'flex-start', minHeight: 38, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+    linkText: { color: colors.accentText, fontSize: 13, fontWeight: '800' },
+    productCard: { overflow: 'hidden', borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, shadowColor: '#020617', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
     heartButton: { position: 'absolute', top: 8, right: 8, width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.95)' },
     productActions: { flexDirection: 'row', gap: 8, paddingHorizontal: 11, paddingBottom: 11 },
-    cartButton: { flex: 1, minHeight: 42, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#059669' },
+    cartButton: { flex: 1, minHeight: 44, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, backgroundColor: '#047857' },
     cartButtonDisabled: { backgroundColor: colors.disabled },
-    cartButtonText: { color: '#ffffff', fontSize: 12, fontWeight: '900' },
+    cartButtonText: { color: '#ffffff', fontSize: 13, fontWeight: '800' },
     cartButtonTextDisabled: { color: colors.disabledText },
-    compareButton: { width: 42, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border },
-    compareButtonActive: { borderColor: '#059669', backgroundColor: colors.successSurface },
+    compareButton: { width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border },
+    compareButtonActive: { borderColor: colors.accent, backgroundColor: colors.successSurface },
     productImage: { width: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control, overflow: 'hidden' },
     stockBadge: { position: 'absolute', left: 8, bottom: 8, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(2,6,23,0.85)' },
-    stockText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
+    stockText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
     productBody: { padding: 11, gap: 3 },
-    storeName: { color: colors.accentText, fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-    productTitle: { minHeight: 36, color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '700' },
-    price: { marginTop: 3, color: colors.text, fontSize: 16, fontWeight: '900' },
+    storeName: { color: colors.accentText, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+    productTitle: { minHeight: 36, color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '800' },
+    price: { marginTop: 3, color: colors.successText, fontSize: 17, fontWeight: '900' },
     oldPrice: { color: colors.mutedText, fontSize: 11, fontWeight: '700', textDecorationLine: 'line-through' },
-    providerCard: { overflow: 'hidden', borderRadius: 24, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-    cover: { height: 128, overflow: 'hidden' },
-    coverRing: { position: 'absolute', right: -32, top: -48, width: 128, height: 128, borderRadius: 64, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
-    coverCircle: { position: 'absolute', right: 48, bottom: -64, width: 128, height: 128, borderRadius: 64, backgroundColor: 'rgba(255,255,255,0.1)' },
-    kindBadge: { position: 'absolute', left: 16, top: 16, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(2,6,23,0.8)' },
-    kindText: { color: '#ffffff', fontSize: 10, fontWeight: '900', letterSpacing: 0.4, textTransform: 'uppercase' },
-    providerBody: { flex: 1, paddingHorizontal: 18, paddingBottom: 18, paddingTop: 44, gap: 8 },
-    logo: { position: 'absolute', top: -32, left: 18, width: 64, height: 64, overflow: 'hidden', borderRadius: 18, borderWidth: 4, borderColor: colors.surface, backgroundColor: colors.surface },
-    logoInner: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 13, backgroundColor: '#ecfccb' },
-    nameRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-    providerName: { flex: 1, minWidth: 0, color: colors.text, fontSize: 16, lineHeight: 20, fontWeight: '900' },
-    verifiedDot: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.successSurface },
-    placeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 5 },
-    placeIcon: { marginTop: 2 },
-    meta: { flexShrink: 1, color: colors.mutedText, fontSize: 12, lineHeight: 18 },
-    providerDescription: { minHeight: 36, color: colors.secondaryText, fontSize: 12, lineHeight: 18 },
+    providerCard: { overflow: 'hidden', borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, shadowColor: '#020617', shadowOpacity: 0.08, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
+    cover: { overflow: 'hidden', backgroundColor: '#022c22' },
+    coverRing: { position: 'absolute', right: -40, top: -60, width: 170, height: 170, borderRadius: 85, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' },
+    coverIcon: { position: 'absolute', right: 14, bottom: -14 },
+    coverTopRow: { position: 'absolute', left: 12, right: 12, top: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+    kindBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', backgroundColor: 'rgba(2,6,23,0.6)' },
+    kindText: { color: '#ffffff', fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
+    verifiedPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: 'rgba(2,6,23,0.6)' },
+    verifiedText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
+    coverText: { position: 'absolute', left: 14, right: 84, bottom: 12, gap: 3 },
+    providerName: { color: '#ffffff', fontSize: 19, lineHeight: 23, fontWeight: '900' },
+    placeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    placeText: { flexShrink: 1, color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600' },
+    logo: { position: 'absolute', right: 14, top: -30, width: 60, height: 60, overflow: 'hidden', borderRadius: 30, borderWidth: 3, borderColor: colors.surface, backgroundColor: colors.surface },
+    logoInner: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 27, backgroundColor: colors.successSurface },
+    providerBody: { flex: 1, padding: 14, paddingTop: 12, gap: 10 },
+    providerDescription: { marginRight: 62, color: colors.secondaryText, fontSize: 13, lineHeight: 19 },
+    meta: { flexShrink: 1, color: colors.mutedText, fontSize: 12, lineHeight: 17 },
+    metaRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6 },
     ratingText: { color: colors.text, fontSize: 12, fontWeight: '900' },
     tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    tag: { maxWidth: '100%', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.control },
-    tagText: { color: colors.secondaryText, fontSize: 10, fontWeight: '800' },
-    providerAction: { marginTop: 4, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 13, borderWidth: 1, borderColor: '#a7f3d0', backgroundColor: colors.successSurface },
-    providerActionText: { flexShrink: 1, color: colors.successText, fontSize: 14, fontWeight: '900' },
-    notice: { padding: 13, borderRadius: 15, gap: 10 },
+    tag: { maxWidth: '100%', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.successSurface },
+    tagText: { color: colors.successText, fontSize: 11, fontWeight: '800' },
+    tagMore: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.control },
+    tagMoreText: { color: colors.secondaryText, fontSize: 11, fontWeight: '800' },
+    providerAction: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border },
+    providerActionText: { flexShrink: 1, color: colors.successText, fontSize: 14, fontWeight: '800' },
+    recruit: { overflow: 'hidden', padding: 22, gap: 12, borderRadius: 24, backgroundColor: '#064e3b' },
+    recruitRing: { position: 'absolute', right: -60, top: -70, width: 220, height: 220, borderRadius: 110, borderWidth: 30, borderColor: 'rgba(255,255,255,0.05)' },
+    recruitIconOuter: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center', borderRadius: 38, backgroundColor: 'rgba(255,255,255,0.08)' },
+    recruitIconInner: { width: 58, height: 58, alignItems: 'center', justifyContent: 'center', borderRadius: 29, backgroundColor: '#10b981' },
+    recruitTitle: { color: '#ffffff', fontSize: 21, lineHeight: 26, fontWeight: '900' },
+    recruitBody: { color: 'rgba(255,255,255,0.8)', fontSize: 13, lineHeight: 20 },
+    recruitActions: { marginTop: 4, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    recruitPrimary: { minHeight: 46, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 13, backgroundColor: '#01eb53' },
+    recruitPrimaryText: { color: '#022c22', fontSize: 14, fontWeight: '900' },
+    recruitSecondary: { minHeight: 46, paddingHorizontal: 16, justifyContent: 'center', borderRadius: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+    recruitSecondaryText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
+    notice: { padding: 13, borderRadius: 14, gap: 10 },
     noticeText: { fontSize: 13, lineHeight: 19 },
-    noticeButton: { alignSelf: 'flex-start', minHeight: 40, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 12, borderWidth: 1 },
-    noticeButtonText: { fontSize: 13, fontWeight: '900' },
-    empty: { paddingVertical: 36, paddingHorizontal: 20, alignItems: 'center', gap: 8, borderRadius: 22, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, backgroundColor: colors.surface },
+    noticeButton: { alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 12, borderWidth: 1 },
+    noticeButtonText: { fontSize: 13, fontWeight: '800' },
+    empty: { paddingVertical: 30, paddingHorizontal: 20, alignItems: 'center', gap: 8, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+    emptyIcon: { width: 72, height: 72, marginBottom: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 36, backgroundColor: colors.control },
     emptyTitle: { color: colors.text, fontSize: 17, fontWeight: '900', textAlign: 'center' },
-    emptyBody: { color: colors.mutedText, fontSize: 13, lineHeight: 19, textAlign: 'center' },
-    darkButton: { marginTop: 6, minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', borderRadius: 13, backgroundColor: colors.text },
-    darkButtonText: { color: colors.canvas, fontSize: 13, fontWeight: '900' },
-    chip: { minHeight: 40, maxWidth: 220, paddingHorizontal: 15, justifyContent: 'center', borderRadius: 13, backgroundColor: colors.control },
-    chipSelected: { backgroundColor: colors.accent },
-    chipText: { color: colors.secondaryText, fontSize: 13, fontWeight: '800' },
-    chipTextSelected: { color: colors.onAccent },
+    emptyBody: { maxWidth: 360, color: colors.mutedText, fontSize: 13, lineHeight: 19, textAlign: 'center' },
+    primaryButton: { marginTop: 6, minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', borderRadius: 13, backgroundColor: '#047857' },
+    primaryButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
+    chip: { minHeight: 40, maxWidth: 220, paddingHorizontal: 15, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+    chipSelected: { backgroundColor: colors.successSurface, borderColor: colors.accent },
+    chipText: { color: colors.secondaryText, fontSize: 13, fontWeight: '700' },
+    chipTextSelected: { color: colors.successText, fontWeight: '800' },
   });
 }

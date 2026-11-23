@@ -1,16 +1,19 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { toast } from 'sonner-native';
-import { eHubCommerceService } from '@/lib/services/EHubCommerceService';
-import type { EHubCartItem, EHubCartItemInput, EHubRecentlyViewedItem } from '@/lib/types/ehubCommerce';
+import { EHubCommerceService, eHubCommerceService } from '@/lib/services/EHubCommerceService';
+import type { EHubCartItem, EHubCartItemInput, EHubCartSellerGroup, EHubRecentlyViewedItem } from '@/lib/types/ehubCommerce';
 
 export type EHubCommerce = {
   cart: EHubCartItem[];
   cartCount: number;
   cartTotal: number;
+  /** Cart lines by storefront, for per-seller order requests. */
+  cartGroups: EHubCartSellerGroup[];
   favorites: string[];
   recentlyViewed: EHubRecentlyViewedItem[];
   addToCart: (item: EHubCartItemInput) => boolean;
   removeFromCart: (itemId: string) => void;
+  removeManyFromCart: (itemIds: string[]) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
   isFavorite: (productId: string) => boolean;
   toggleFavorite: (productId: string, productTitle?: string) => void;
@@ -30,6 +33,7 @@ export function useEHubCommerce(): EHubCommerce {
     return isAdded;
   }, []);
   const removeFromCart = useCallback((itemId: string) => eHubCommerceService.removeFromCart(itemId), []);
+  const removeManyFromCart = useCallback((itemIds: string[]) => eHubCommerceService.removeManyFromCart(itemIds), []);
   const updateQuantity = useCallback((itemId: string, quantity: number) => eHubCommerceService.updateQuantity(itemId, quantity), []);
   const isFavorite = useCallback((productId: string) => state.favorites.includes(productId), [state.favorites]);
   const toggleFavorite = useCallback((productId: string, productTitle?: string) => {
@@ -39,10 +43,11 @@ export function useEHubCommerce(): EHubCommerce {
   const addRecentlyViewed = useCallback((item: Omit<EHubRecentlyViewedItem, 'viewedAt'>) => eHubCommerceService.addRecentlyViewed(item), []);
 
   const cartCount = useMemo(() => state.cart.reduce((total, item) => total + item.quantity, 0), [state.cart]);
+  const cartGroups = useMemo(() => EHubCommerceService.groupCartBySeller(state.cart), [state.cart]);
   const cartTotal = useMemo(() => state.cart.reduce((total, item) => total + item.price * item.quantity, 0), [state.cart]);
 
   return {
-    cart: state.cart, cartCount, cartTotal, favorites: state.favorites, recentlyViewed: state.recentlyViewed,
-    addToCart, removeFromCart, updateQuantity, isFavorite, toggleFavorite, addRecentlyViewed,
+    cart: state.cart, cartCount, cartTotal, cartGroups, favorites: state.favorites, recentlyViewed: state.recentlyViewed,
+    addToCart, removeFromCart, removeManyFromCart, updateQuantity, isFavorite, toggleFavorite, addRecentlyViewed,
   };
 }

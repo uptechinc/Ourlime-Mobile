@@ -21,6 +21,18 @@ export type EHubCartItem = {
 
 export type EHubCartItemInput = Omit<EHubCartItem, 'id'>;
 
+/** One storefront's lines in the cart; an order request is sent per group. */
+export type EHubCartSellerGroup = {
+  sellerId: string;
+  sellerName: string;
+  items: EHubCartItem[];
+  subtotal: number;
+  /** Every line offers delivery. */
+  deliveryAvailable: boolean;
+  /** No line offers delivery while refusing pickup. */
+  pickupAvailable: boolean;
+};
+
 export type EHubRecentlyViewedItem = {
   id: string;
   title: string;

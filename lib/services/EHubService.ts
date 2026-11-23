@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { appServerService, AppServerError } from './AppServerService';
 import type {
   EHubCatalogProduct, EHubEnquiry, EHubEnquiryDraft, EHubEnquiryInput, EHubEnquiryMode, EHubManageableEnquiryStatus,
-  EHubProductDetail, EHubProvider, EHubProviderDetail, EHubProviderFilters,
+  EHubOrderRequestInput, EHubOrderRequestOptions, EHubProductDetail, EHubProvider, EHubProviderDetail, EHubProviderFilters,
 } from '@/lib/types/ehubDiscovery';
 
 export type EHubMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -107,6 +107,19 @@ export class EHubService {
 
   public async createEnquiry(input: EHubEnquiryInput): Promise<EHubEnquiry> {
     return this.request<EHubEnquiry>('POST', '/api/ehub/enquiries', { body: input });
+  }
+
+  /** The storefront's name and its seller's approved preferred couriers, for the order request form. */
+  public async getOrderRequestOptions(storeId: string): Promise<EHubOrderRequestOptions> {
+    return this.request<EHubOrderRequestOptions>('GET', '/api/ehub/order-requests', { query: `storeId=${encodeURIComponent(storeId)}` });
+  }
+
+  /**
+   * Sends one seller an order request (an enquiry of type 'order') for their lines in the cart. The server re-reads
+   * prices and stock and checks the courier; no payment is taken and nothing is reserved.
+   */
+  public async createOrderRequest(input: EHubOrderRequestInput): Promise<EHubEnquiry> {
+    return this.request<EHubEnquiry>('POST', '/api/ehub/order-requests', { body: input });
   }
 
   public async getEnquiries(mode: EHubEnquiryMode): Promise<EHubEnquiry[]> {

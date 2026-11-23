@@ -1,17 +1,20 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Heart, Minus, Package, Plus, ShoppingCart, Trash2, X } from 'lucide-react-native';
+import { Heart, Minus, Package, Plus, Send, ShoppingCart, Trash2, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, type Href } from 'expo-router';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import CachedImage from '@/components/ui/CachedImage';
 import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useEHubCommerce } from '@/lib/hooks/useEHubCommerce';
 import { getEHubCurrentPrice } from '@/lib/services/EHubCommerceService';
-import { formatEHubPrice } from '@/components/ehub/EHubParts';
+import { EHubNotice, formatEHubPrice } from '@/components/ehub/EHubParts';
+import EHubOrderRequestForm from '@/components/ehub/EHubOrderRequestForm';
 import type { EHubCatalogProduct } from '@/lib/types/ehubDiscovery';
 
-export const EHUB_CART_NOTICE = 'Payments, escrow, platform-managed refunds, and guaranteed fulfilment are not active. Contact each seller to confirm arrangements.';
+export const EHUB_CART_NOTICE = 'Payments, escrow, platform-managed refunds, and guaranteed fulfilment are not active. An order request asks the seller to confirm stock, price and delivery; nothing is paid or reserved.';
 
 type HeaderActionsProps = { onOpenCart: () => void; onOpenSaved?: () => void };
 
@@ -34,52 +37,82 @@ export function EHubHeaderActions({ onOpenCart, onOpenSaved }: HeaderActionsProp
 
 type CartSheetProps = { visible: boolean; onClose: () => void; onOpenProduct: (productId: string) => void };
 
-/** The website's CartDrawer: a preparation list, not checkout. Quantities stop at the seller's listed stock. */
+/**
+ * The website's CartDrawer. Lines are grouped by storefront; each group can be sent to its seller as an order request
+ * (pickup or delivery, optionally with one of the seller's couriers). Nothing is paid or reserved. Quantities stop at
+ * the seller's listed stock.
+ */
 export function EHubCartSheet({ visible, onClose, onOpenProduct }: CartSheetProps) {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const { cart, cartTotal, removeFromCart, updateQuantity } = useEHubCommerce();
-  return <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="none" presentationStyle="overFullScreen" onRequestClose={onClose}>
-    <View style={{ height: Dimensions.get('screen').height, justifyContent: 'flex-end' }}>
+  const { cart, cartTotal, cartGroups, removeFromCart, removeManyFromCart, updateQuantity } = useEHubCommerce();
+  const [requestSellerId, setRequestSellerId] = useState<string | null>(null);
+  const [sentNotice, setSentNotice] = useState<string | null>(null);
+  const requestGroup = cartGroups.find((group) => group.sellerId === requestSellerId) ?? null;
+
+  // Each time the cart opens it starts on the list, without the last notice.
+  useEffect(() => { if (visible) { setRequestSellerId(null); setSentNotice(null); } }, [visible]);
+
+  const handleOpenEnquiries = () => { onClose(); router.push('/ehub/enquiries?mode=sent' as Href); };
+  const handleSent = (sellerName: string, itemIds: string[]) => {
+    removeManyFromCart(itemIds);
+    setRequestSellerId(null);
+    setSentNotice(`Order request sent to ${sellerName}. The seller will reply in your enquiries to confirm stock, price and delivery.`);
+  };
+
+  return <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="none" presentationStyle="overFullScreen" onRequestClose={requestGroup ? () => setRequestSellerId(null) : onClose}>
+    <KeyboardSafeView style={{ height: Dimensions.get('screen').height, justifyContent: 'flex-end' }}>
       <ModalBackdrop onPress={onClose} accessibilityLabel="Close cart" style={[StyleSheet.absoluteFill, { backgroundColor: colors.modalScrim }]} />
       <ModalMotionSurface variant="sheet" style={{ maxHeight: '88%' }}>
         <SwipeDismissSurface visible={visible} onDismiss={onClose} handleColor={colors.border} accessibilityLabel="Swipe down to close the cart" style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) + 10 }]}>
           <View style={styles.sheetHeader}>
-            <View style={styles.flex}><Text style={styles.sheetTitle}>E-Hub cart</Text><Text style={styles.muted}>A preparation list—not checkout.</Text></View>
+            <View style={styles.flex}><Text style={styles.sheetTitle}>E-Hub cart</Text><Text style={styles.muted}>Send each seller an order request. No payment is taken.</Text></View>
             <Pressable accessibilityRole="button" accessibilityLabel="Close cart" onPress={onClose} hitSlop={10} style={styles.closeButton}><X size={19} color={colors.icon} /></Pressable>
           </View>
-          <ScrollView contentContainerStyle={styles.sheetBody} showsVerticalScrollIndicator={false}>
-            {cart.length === 0 ? <View style={styles.emptyCart}><ShoppingCart size={40} color={colors.mutedText} /><Text style={styles.emptyCartText}>Your E-Hub cart is empty</Text></View>
-              : cart.map((item) => {
-                const options = [item.selectedVariant, item.selectedSize, item.selectedColour].filter(Boolean).join(' · ');
-                return <View key={item.id} style={styles.cartItem}>
-                  <Pressable accessibilityRole="link" accessibilityLabel={`View ${item.title}`} onPress={() => { onClose(); onOpenProduct(item.productId); }} style={styles.cartImage}>
-                    {item.imageUrl ? <CachedImage uri={item.imageUrl} style={styles.fill} accessibilityLabel={item.title} /> : <Package size={26} color={colors.mutedText} />}
-                  </Pressable>
-                  <View style={styles.flex}>
-                    <Text numberOfLines={1} style={styles.cartTitle}>{item.title}</Text>
-                    <Text numberOfLines={1} style={styles.muted}>{item.sellerName}</Text>
-                    {options ? <Text numberOfLines={1} style={styles.options}>{options}</Text> : null}
-                    <Text style={styles.cartPrice}>{formatEHubPrice(item.price)}</Text>
-                    <View style={styles.quantityRow}>
-                      <Text style={styles.muted}>Qty</Text>
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Decrease quantity of ${item.title}`} onPress={() => updateQuantity(item.id, item.quantity - 1)} hitSlop={6} style={styles.stepper}><Minus size={15} color={colors.text} /></Pressable>
-                      <Text accessibilityLabel={`Quantity ${item.quantity}`} style={styles.quantity}>{item.quantity}</Text>
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Increase quantity of ${item.title}`} accessibilityState={{ disabled: item.quantity >= item.availableQuantity }} disabled={item.quantity >= item.availableQuantity} onPress={() => updateQuantity(item.id, item.quantity + 1)} hitSlop={6} style={[styles.stepper, item.quantity >= item.availableQuantity && styles.disabled]}><Plus size={15} color={colors.text} /></Pressable>
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${item.title}`} onPress={() => removeFromCart(item.id)} hitSlop={6} style={styles.removeButton}><Trash2 size={17} color={colors.destructiveText} /></Pressable>
-                    </View>
+          <ScrollView contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            {requestGroup ? <EHubOrderRequestForm key={requestGroup.sellerId} group={requestGroup} onBack={() => setRequestSellerId(null)} onClose={onClose}
+              onSent={() => handleSent(requestGroup.sellerName, requestGroup.items.map((item) => item.id))} /> : <>
+              {sentNotice ? <EHubNotice tone="success" text={sentNotice} actionLabel="View my enquiries" onAction={handleOpenEnquiries} /> : null}
+              {cart.length === 0 ? <View style={styles.emptyCart}><ShoppingCart size={40} color={colors.mutedText} /><Text style={styles.emptyCartText}>Your E-Hub cart is empty</Text></View>
+                : cartGroups.map((group) => <View key={group.sellerId} style={styles.sellerGroup}>
+                  <View style={styles.sellerHeader}>
+                    <View style={styles.flex}><Text numberOfLines={1} style={styles.sellerName}>{group.sellerName}</Text><Text style={styles.muted}>{group.items.length} {group.items.length === 1 ? 'item' : 'items'} · {formatEHubPrice(group.subtotal)}</Text></View>
                   </View>
-                </View>;
-              })}
+                  {group.items.map((item) => {
+                    const options = [item.selectedVariant, item.selectedSize, item.selectedColour].filter(Boolean).join(' · ');
+                    return <View key={item.id} style={styles.cartItem}>
+                      <Pressable accessibilityRole="link" accessibilityLabel={`View ${item.title}`} onPress={() => { onClose(); onOpenProduct(item.productId); }} style={styles.cartImage}>
+                        {item.imageUrl ? <CachedImage uri={item.imageUrl} style={styles.fill} accessibilityLabel={item.title} /> : <Package size={26} color={colors.mutedText} />}
+                      </Pressable>
+                      <View style={styles.flex}>
+                        <Text numberOfLines={1} style={styles.cartTitle}>{item.title}</Text>
+                        {options ? <Text numberOfLines={1} style={styles.options}>{options}</Text> : null}
+                        <Text style={styles.cartPrice}>{formatEHubPrice(item.price)}</Text>
+                        <View style={styles.quantityRow}>
+                          <Text style={styles.muted}>Qty</Text>
+                          <Pressable accessibilityRole="button" accessibilityLabel={`Decrease quantity of ${item.title}`} onPress={() => updateQuantity(item.id, item.quantity - 1)} hitSlop={6} style={styles.stepper}><Minus size={15} color={colors.text} /></Pressable>
+                          <Text accessibilityLabel={`Quantity ${item.quantity}`} style={styles.quantity}>{item.quantity}</Text>
+                          <Pressable accessibilityRole="button" accessibilityLabel={`Increase quantity of ${item.title}`} accessibilityState={{ disabled: item.quantity >= item.availableQuantity }} disabled={item.quantity >= item.availableQuantity} onPress={() => updateQuantity(item.id, item.quantity + 1)} hitSlop={6} style={[styles.stepper, item.quantity >= item.availableQuantity && styles.disabled]}><Plus size={15} color={colors.text} /></Pressable>
+                          <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${item.title}`} onPress={() => removeFromCart(item.id)} hitSlop={6} style={styles.removeButton}><Trash2 size={17} color={colors.destructiveText} /></Pressable>
+                        </View>
+                      </View>
+                    </View>;
+                  })}
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Send an order request to ${group.sellerName}`} onPress={() => { setSentNotice(null); setRequestSellerId(group.sellerId); }} style={styles.requestButton}>
+                    <Send size={16} color="#ffffff" /><Text style={styles.requestButtonText}>Send order request</Text>
+                  </Pressable>
+                </View>)}
+            </>}
           </ScrollView>
-          {cart.length ? <View style={styles.sheetFooter}>
+          {cart.length && !requestGroup ? <View style={styles.sheetFooter}>
             <View style={styles.totalRow}><Text style={styles.totalText}>Estimated product total</Text><Text style={styles.totalText}>{formatEHubPrice(cartTotal)}</Text></View>
             <View style={styles.amberNote}><Text style={styles.amberText}>{EHUB_CART_NOTICE}</Text></View>
           </View> : null}
         </SwipeDismissSurface>
       </ModalMotionSurface>
-    </View>
+    </KeyboardSafeView>
   </Modal>;
 }
 
@@ -110,7 +143,7 @@ function createStyles(colors: AppThemeColors) {
     muted: { color: colors.mutedText, fontSize: 12, lineHeight: 17 },
     headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
     headerButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-    badge: { position: 'absolute', top: 2, right: 0, minWidth: 18, height: 18, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#059669' },
+    badge: { position: 'absolute', top: 2, right: 0, minWidth: 18, height: 18, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#047857' },
     badgeRose: { backgroundColor: '#f43f5e' },
     badgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
     sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: colors.surface },
@@ -120,7 +153,12 @@ function createStyles(colors: AppThemeColors) {
     sheetBody: { padding: 16, gap: 12 },
     emptyCart: { paddingVertical: 56, alignItems: 'center', gap: 10 },
     emptyCartText: { color: colors.secondaryText, fontSize: 15, fontWeight: '800' },
-    cartItem: { padding: 12, flexDirection: 'row', gap: 12, borderRadius: 18, borderWidth: 1, borderColor: colors.border },
+    sellerGroup: { padding: 12, gap: 10, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas },
+    sellerHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    sellerName: { color: colors.text, fontSize: 15, fontWeight: '900' },
+    requestButton: { minHeight: 44, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 13, backgroundColor: '#047857' },
+    requestButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '900' },
+    cartItem: { padding: 12, backgroundColor: colors.surface, flexDirection: 'row', gap: 12, borderRadius: 18, borderWidth: 1, borderColor: colors.border },
     cartImage: { width: 78, height: 78, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 14, backgroundColor: colors.control },
     cartTitle: { color: colors.text, fontSize: 14, fontWeight: '800' },
     options: { marginTop: 2, color: colors.mutedText, fontSize: 11 },

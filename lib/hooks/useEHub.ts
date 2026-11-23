@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { eHubService } from '@/lib/services/EHubService';
 import type {
   EHubCatalogProduct, EHubEnquiry, EHubEnquiryMode, EHubManageableEnquiryStatus, EHubProductDetail,
-  EHubProvider, EHubProviderDetail, EHubProviderFilters,
+  EHubOrderRequestOptions, EHubProvider, EHubProviderDetail, EHubProviderFilters,
 } from '@/lib/types/ehubDiscovery';
 
 export type EHubResource<TData> = {
@@ -78,6 +78,12 @@ export function useEHubProduct(productId: string | undefined): EHubResource<EHub
 export function useEHubProvider(providerId: string | undefined): EHubResource<EHubProviderDetail | null> {
   const load = useCallback(() => eHubService.getProvider(providerId ?? ''), [providerId]);
   return useEHubResource(providerId ? load : null, 'E-Hub could not load this provider right now. Please try again.');
+}
+
+/** The storefront's couriers for the order request form; nothing loads until a storefront is chosen. */
+export function useEHubOrderRequestOptions(storeId: string | null): EHubResource<EHubOrderRequestOptions> {
+  const load = useCallback(() => eHubService.getOrderRequestOptions(storeId ?? ''), [storeId]);
+  return useEHubResource(storeId ? load : null, "E-Hub could not load this seller's delivery options. Please try again.");
 }
 
 export type EHubEnquiriesResource = EHubResource<EHubEnquiry[]> & {

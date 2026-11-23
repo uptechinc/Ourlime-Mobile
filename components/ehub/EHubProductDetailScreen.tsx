@@ -241,7 +241,7 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   optionText: { color: colors.secondaryText, fontSize: 13, fontWeight: '800' },
   optionTextSelected: { color: colors.successText },
   actions: { flexDirection: 'row', gap: 10 },
-  primaryButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: '#059669' },
+  primaryButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: '#047857' },
   primaryText: { color: '#ffffff', fontSize: 14, fontWeight: '900' },
   secondaryButton: { minHeight: 48, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
   secondaryText: { color: colors.text, fontSize: 14, fontWeight: '800' },

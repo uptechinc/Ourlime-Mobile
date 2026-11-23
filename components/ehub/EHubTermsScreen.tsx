@@ -27,7 +27,7 @@ const SECTIONS: TermsSectionContent[] = [
     id: 'provider', title: 'Provider Declaration', points: [
       'You are authorized and qualified to offer the services described.',
       'Service scope, availability, areas served, pricing statements, and credentials must be accurate.',
-      'Enquiries are not quotes, bookings, contracts, or payment commitments.',
+      'Enquiries and order requests are not quotes, bookings, contracts, purchases, or payment commitments.',
       'You are responsible for lawful delivery, safety, cancellations, and any independently agreed terms.',
     ],
   },
@@ -47,7 +47,7 @@ const SECTIONS: TermsSectionContent[] = [
   },
   {
     id: 'moderation', title: 'Moderation and safety',
-    body: 'Ourlime may restrict accounts and remove storefronts, products, services, or enquiries that are misleading, unsafe, prohibited, unlawful, or inconsistent with these rules.',
+    body: 'Ourlime may restrict accounts and remove storefronts, products, services, enquiries, or order requests that are misleading, unsafe, prohibited, unlawful, or inconsistent with these rules.',
   },
 ];
 
@@ -78,7 +78,7 @@ export default function EHubTermsScreen() {
         <View onLayout={onContainerLayout} style={[styles.article, { width: layout.contentWidth - layout.gutter * 2 }]}>
           <Text style={styles.eyebrow}>EHub terms & safety</Text>
           <Text style={styles.title}>Seller, provider, catalog, and buyer guidance</Text>
-          <Text style={styles.intro}>EHub currently supports discovery, storefront catalogs, and enquiries. It does not provide live payments, escrow, booking protection, formal service contracts, platform-managed refunds, or courier guarantees.</Text>
+          <Text style={styles.intro}>EHub currently supports discovery, storefront catalogs, enquiries, and order requests (a request to the seller that names the items and a delivery choice; nothing is paid or reserved). It does not provide live payments, escrow, booking protection, formal service contracts, platform-managed refunds, or courier guarantees.</Text>
           {SECTIONS.map((item) => <View key={item.id} onLayout={onSectionLayout(item.id)} style={[styles.section, section === item.id && styles.sectionActive]}>
             <Text style={styles.sectionTitle}>{item.title}</Text>
             {item.points ? item.points.map((point) => <View key={point} style={styles.point}><Text style={styles.bullet}>•</Text><Text style={styles.pointText}>{point}</Text></View>) : null}
@@ -107,6 +107,6 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   point: { flexDirection: 'row', gap: 8, paddingRight: 4 },
   bullet: { color: colors.mutedText, fontSize: 14, lineHeight: 21 },
   pointText: { flex: 1, color: colors.secondaryText, fontSize: 14, lineHeight: 21 },
-  returnButton: { marginTop: 28, alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 13, backgroundColor: '#059669' },
+  returnButton: { marginTop: 28, alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 13, backgroundColor: '#047857' },
   returnText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
 });

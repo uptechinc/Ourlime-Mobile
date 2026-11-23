@@ -33,8 +33,14 @@ export default function EHubDiscoverScreen() {
   const [kind, setKind] = useState<KindFilter>(params.kind === 'business' || params.kind === 'professional' ? params.kind : 'all');
   // The Professionals pill sets ?kind= on this screen when it is already open.
   useEffect(() => {
-    if (params.kind === 'business' || params.kind === 'professional') setKind(params.kind);
+    if (params.kind === 'business' || params.kind === 'professional' || params.kind === 'all') setKind(params.kind);
   }, [params.kind]);
+  // The Type filter writes ?kind= too, so the section bar lights Professionals or Storefronts to match.
+  const handleKindSelect = (label: string) => {
+    const nextKind = KIND_OPTIONS.find((option) => option.label === label)?.value ?? 'all';
+    setKind(nextKind);
+    router.setParams({ kind: nextKind });
+  };
   const providers = useEHubProviders({
     search,
     category: category === 'All categories' ? undefined : category,
@@ -70,7 +76,7 @@ export default function EHubDiscoverScreen() {
               <Search size={18} color={colors.mutedText} />
               <TextInput value={search} onChangeText={setSearch} placeholder="Search services or names" placeholderTextColor={colors.mutedText} returnKeyType="search" accessibilityLabel="Search providers" style={styles.searchInput} />
             </View>
-            <FilterRow label="Type" values={KIND_OPTIONS.map((option) => option.label)} selected={KIND_OPTIONS.find((option) => option.value === kind)?.label ?? ''} onSelect={(label) => setKind(KIND_OPTIONS.find((option) => option.label === label)?.value ?? 'all')} styles={styles} />
+            <FilterRow label="Type" values={KIND_OPTIONS.map((option) => option.label)} selected={KIND_OPTIONS.find((option) => option.value === kind)?.label ?? ''} onSelect={handleKindSelect} styles={styles} />
             <FilterRow label="Category" values={categories} selected={category} onSelect={setCategory} styles={styles} />
             <FilterRow label="Location" values={TRINIDAD_AND_TOBAGO_AREAS} selected={location} onSelect={setLocation} styles={styles} />
           </View>
