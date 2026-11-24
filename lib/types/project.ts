@@ -1,3 +1,5 @@
+import type { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
+
 export type ProjectStatus = 'active' | 'completed' | 'on-hold' | 'archived';
 export type ProjectPlanTier = 'free' | 'premium';
 /** Website useProjectDetails ProjectLoadError. */
@@ -186,30 +188,66 @@ export type ProjectRecord = {
   memberUids?: string[];
   planTier: ProjectPlanTier;
   automationRules: { [ruleId: string]: boolean };
+  /** When and by whom the status last changed through a lifecycle transition (null / '' for older projects). */
+  statusChangedAt?: Date | null;
+  statusChangedBy?: string;
 };
 
 export type ProjectVisibility = 'public' | 'private';
 
-/** Fields the website's project form edits beyond name and description. */
+/**
+ * Fields the project form edits beyond name and description. Status is not one of them: it changes only through
+ * ProjectService.transitionProject (server-checked and recorded in the project's activity log).
+ */
 export type ProjectSettingsUpdate = {
   name?: string;
   description?: string;
   color?: string;
-  status?: ProjectStatus;
   dueDate?: string | null;
   visibility?: ProjectVisibility;
   tags?: string[];
 };
 
+/** New projects always start active. */
 export type CreateProjectInput = {
   name: string;
   description: string;
   color?: string;
   dueDate?: string | null;
-  status?: ProjectStatus;
   visibility?: ProjectVisibility;
   tags?: string[];
 };
+
+/** A status change request (mutateProjectMembership "transition"). */
+export type ProjectTransitionInput = { expectedStatus: ProjectStatus; toStatus: ProjectStatus; reason?: string };
+
+/** Event types in projects/{id}/activity (website functions/src/ProjectActivityService.ts). Unknown types read as 'unknown'. */
+export type ProjectActivityType =
+  | 'project.created' | 'project.status_changed' | 'project.deleted' | 'project.ownership_transferred' | 'project.settings_changed'
+  | 'member.invited' | 'member.invite_cancelled' | 'member.joined' | 'member.declined' | 'member.left' | 'member.removed' | 'member.role_changed'
+  | 'unknown';
+
+/** One decoded activity event. Names are never stored; screens resolve actorId and subjectId from the loaded team. */
+export type ProjectActivityEvent = {
+  id: string;
+  type: ProjectActivityType;
+  actorId: string;
+  subjectKind: 'project' | 'member' | 'email_invite' | 'unknown';
+  subjectId: string;
+  /** Null until the server timestamp resolves. */
+  at: Date | null;
+  from: string;
+  to: string;
+  role: string;
+  reason: string;
+  channel: string;
+  changed: string[];
+};
+
+/** A page of activity; pass `cursor` back to load the next page (null when there are no more). */
+export type ProjectActivityPage = { events: ProjectActivityEvent[]; cursor: ProjectActivityCursor | null };
+/** Firestore position of the last event of a page. */
+export type ProjectActivityCursor = QueryDocumentSnapshot<DocumentData>;
 
 export type CreateTaskInput = {
   title: string;

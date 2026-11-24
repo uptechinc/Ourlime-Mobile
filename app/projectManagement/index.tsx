@@ -10,6 +10,8 @@ import CustomModal from '@/components/ui/CustomModal';
 import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
 import FilterBar from '@/components/ui/FilterBar';
 import ProjectFormSheet, { type ProjectFormValues } from '@/components/projectManagement/ProjectFormSheet';
+import ProjectLifecycleSheet from '@/components/projectManagement/ProjectLifecycleSheet';
+import { projectLifecycleRules } from '@/lib/services/ProjectLifecycleRules';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { projectService } from '@/lib/services/ProjectService';
 import type { ProjectRecord, ProjectRole, ProjectStatus } from '@/lib/types/project';
@@ -23,7 +25,7 @@ type SortKey = 'activity' | 'name' | 'progress' | 'created';
 type FormTarget = { mode: 'create' } | { mode: 'edit'; project: ProjectRecord } | null;
 
 const STATUS_FILTERS: { value: ProjectStatus | 'all'; label: string }[] = [
-  { value: 'all', label: 'Any status' }, { value: 'active', label: 'Active' }, { value: 'completed', label: 'Completed' }, { value: 'on-hold', label: 'On Hold' }, { value: 'archived', label: 'Archived' },
+  { value: 'all', label: 'Any status' }, { value: 'active', label: 'Active' }, { value: 'completed', label: 'Completed' }, { value: 'on-hold', label: 'Paused' }, { value: 'archived', label: 'Archived' },
 ];
 const ROLE_FILTERS: { value: ProjectRole | 'all'; label: string }[] = [
   { value: 'all', label: 'Any role' }, { value: 'owner', label: 'Owner' }, { value: 'admin', label: 'Admin' }, { value: 'member', label: 'Member' }, { value: 'viewer', label: 'Viewer' },
@@ -41,7 +43,7 @@ const isSortChoice = (value: string | undefined): value is SortChoice => SORTS.s
 /** Cached records can come back from disk with dates as strings; always read them as Date. */
 const toTime = (value: Date | string | undefined): number => (value ? new Date(value).getTime() || 0 : 0);
 const plural = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
-const formatProjectStatus = (status: string): string => status === 'on-hold' ? 'On hold' : status;
+const formatProjectStatus = (status: ProjectStatus): string => projectLifecycleRules.label(status);
 
 function formatLastActivity(value: Date | string | undefined): string {
   const time = toTime(value);
@@ -77,7 +79,7 @@ export default function ProjectManagementScreen() {
   const [formTarget, setFormTarget] = useState<FormTarget>(null);
   const [menuProject, setMenuProject] = useState<ProjectRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectRecord | null>(null);
-  // Website asks before archiving/unarchiving a project and before declining an invitation.
+  // Status changes (archive, restore, pause…) open the status sheet; declining an invitation asks first.
   const [archiveTarget, setArchiveTarget] = useState<ProjectRecord | null>(null);
   const [declineTarget, setDeclineTarget] = useState<ProjectRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -138,17 +140,12 @@ export default function ProjectManagementScreen() {
     await refreshProjects();
   };
 
-  const handleToggleArchive = async (project: ProjectRecord): Promise<void> => {
-    setMenuProject(null);
-    if (!ensureCanChange() || workingProjectId) return;
-    const nextStatus: ProjectStatus = project.status === 'archived' ? 'active' : 'archived';
+  /** Status change from the card menu, checked against the status this list shows (the sheet shows any error). */
+  const handleTransition = async (project: ProjectRecord, toStatus: ProjectStatus, reason: string): Promise<void> => {
     setWorkingProjectId(project.id);
     try {
-      await projectService.updateProjectSettings(project.id, { status: nextStatus });
-      toast.success(nextStatus === 'archived' ? 'Project archived' : 'Project restored');
+      await projectService.transitionProject(project.id, { expectedStatus: project.status, toStatus, reason });
       await refreshProjects();
-    } catch (archiveError: unknown) {
-      setError(archiveError instanceof Error ? archiveError.message : 'The project could not be updated.');
     } finally {
       setWorkingProjectId(null);
     }
@@ -336,7 +333,7 @@ export default function ProjectManagementScreen() {
           <Pressable style={styles.menuSheet}>
             <Text numberOfLines={1} style={styles.menuTitle}>{menuProject?.name}</Text>
             {menuCanEdit && menuProject ? <TouchableOpacity style={styles.menuItem} onPress={() => { const project = menuProject; setMenuProject(null); if (ensureCanChange()) setFormTarget({ mode: 'edit', project }); }}><Pencil size={18} color={colors.text} /><Text style={styles.menuText}>Edit</Text></TouchableOpacity> : null}
-            {menuCanEdit && menuProject ? <TouchableOpacity style={styles.menuItem} onPress={() => { const project = menuProject; setMenuProject(null); setArchiveTarget(project); }}>{menuProject.status === 'archived' ? <ArchiveRestore size={18} color={colors.text} /> : <Archive size={18} color={colors.text} />}<Text style={styles.menuText}>{menuProject.status === 'archived' ? 'Unarchive' : 'Archive'}</Text></TouchableOpacity> : null}
+            {menuCanEdit && menuProject ? <TouchableOpacity style={styles.menuItem} accessibilityRole="button" accessibilityLabel="Change project status" onPress={() => { const project = menuProject; setMenuProject(null); if (ensureCanChange()) setArchiveTarget(project); }}>{menuProject.status === 'archived' ? <ArchiveRestore size={18} color={colors.text} /> : <Archive size={18} color={colors.text} />}<Text style={styles.menuText}>{menuProject.status === 'archived' ? 'Restore…' : 'Change status…'}</Text></TouchableOpacity> : null}
             {menuProject?.isOwner ? <TouchableOpacity style={styles.menuItem} onPress={() => { const project = menuProject; setMenuProject(null); if (ensureCanChange()) setDeleteTarget(project); }}><Trash2 size={18} color={colors.destructive} /><Text style={[styles.menuText, { color: colors.destructiveText }]}>Delete</Text></TouchableOpacity> : null}
             <TouchableOpacity style={styles.menuCancel} onPress={() => setMenuProject(null)}><Text style={styles.menuText}>Cancel</Text></TouchableOpacity>
           </Pressable>
@@ -350,16 +347,14 @@ export default function ProjectManagementScreen() {
         onClose={() => setFormTarget(null)}
         onSubmit={handleSubmitForm}
       />
-      <CustomModal
+      <ProjectLifecycleSheet
         visible={archiveTarget !== null}
-        type="warning"
-        title={archiveTarget?.status === 'archived' ? 'Unarchive project?' : 'Archive project?'}
-        message={archiveTarget?.status === 'archived' ? 'This project will be restored and set back to active.' : 'Archiving will move this project to the archived status. You can restore it later.'}
-        confirmText={archiveTarget?.status === 'archived' ? 'Unarchive' : 'Archive'}
-        cancelText="Cancel"
-        onConfirm={() => { const project = archiveTarget; setArchiveTarget(null); if (project) void handleToggleArchive(project); }}
-        onCancel={() => setArchiveTarget(null)}
+        projectName={archiveTarget?.name ?? ''}
+        status={archiveTarget?.status ?? 'active'}
+        initialTarget={archiveTarget?.status === 'archived' ? 'active' : null}
         onClose={() => setArchiveTarget(null)}
+        onConfirm={async (toStatus, reason) => { if (archiveTarget) await handleTransition(archiveTarget, toStatus, reason); }}
+        onStale={() => { setArchiveTarget(null); toast.error('This project changed since the list loaded. The list was refreshed.'); void refreshProjects(); }}
       />
       <CustomModal
         visible={declineTarget !== null}

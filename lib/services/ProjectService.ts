@@ -12,10 +12,13 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
+  orderBy,
   query,
   serverTimestamp,
   setDoc,
+  startAfter,
   updateDoc,
   where,
   type DocumentData,
@@ -43,6 +46,11 @@ import type {
   ProjectMembershipStatus,
   ProjectMutationAction,
   ProjectMutationCapability,
+  ProjectActivityCursor,
+  ProjectActivityEvent,
+  ProjectActivityPage,
+  ProjectActivityType,
+  ProjectTransitionInput,
   ProjectRecord,
   ProjectRole,
   ProjectSettingsUpdate,
@@ -74,9 +82,17 @@ type ProjectDocument = {
   automationRules?: unknown;
   visibility?: unknown;
   tags?: unknown;
+  statusChangedAt?: unknown;
+  statusChangedBy?: unknown;
   teamMembers?: Record<string, { role?: unknown; membershipStatus?: unknown; invitedByName?: unknown }>;
   memberUids?: string[];
 };
+
+const PROJECT_ACTIVITY_TYPES: readonly Exclude<ProjectActivityType, 'unknown'>[] = [
+  'project.created', 'project.status_changed', 'project.deleted', 'project.ownership_transferred', 'project.settings_changed',
+  'member.invited', 'member.invite_cancelled', 'member.joined', 'member.declined', 'member.left', 'member.removed', 'member.role_changed',
+];
+export const PROJECT_ACTIVITY_PAGE_SIZE = 20;
 
 export class ProjectService {
   private static instance: ProjectService;
@@ -101,7 +117,7 @@ export class ProjectService {
     if (context.mutationInFlight) return { allowed: false, reason: 'Another project change is still being saved.' };
     if (action === 'create_project') return { allowed: true };
     if (!project) return { allowed: false, reason: 'This project is not available.' };
-    if (project.status !== 'active') return { allowed: false, reason: 'Archived and completed projects are read-only.' };
+    if (project.status !== 'active') return { allowed: false, reason: 'Paused, completed and archived projects are read-only.' };
     if (project.membershipStatus !== 'accepted') return { allowed: false, reason: 'Accept the project invitation before making changes.' };
     if (action === 'invite' && project.role !== 'owner' && project.role !== 'admin') return { allowed: false, reason: 'Only project owners and admins can invite members.' };
     if (project.role === 'viewer') return { allowed: false, reason: 'Viewers cannot change project content.' };
@@ -171,7 +187,7 @@ export class ProjectService {
           email: userProfile.email,
           avatar: userProfile.avatar,
           role: this.readRole(memberData?.role),
-          membershipStatus: this.readMembershipStatus(memberData?.membershipStatus),
+          membershipStatus: this.readMembershipStatus(memberData?.membershipStatus, memberId === project.ownerId),
           status: 'offline',
           isOwner: memberId === project.ownerId,
         };
@@ -221,7 +237,7 @@ export class ProjectService {
     const extras: ProjectSettingsUpdate = {
       ...(input.color ? { color: input.color } : {}),
       ...(input.dueDate ? { dueDate: input.dueDate } : {}),
-      ...(input.status && input.status !== 'active' ? { status: input.status } : {}),
+      // New projects always start active; a status change is a separate, recorded transition.
       ...(input.visibility ? { visibility: input.visibility } : {}),
       ...(input.tags && input.tags.length > 0 ? { tags: input.tags } : {}),
     };
@@ -258,14 +274,81 @@ export class ProjectService {
     await nativeSessionService.ensure(this.requireUserId());
     pageAccessService.assertMutation('/projectManagement');
     const projectReference = doc(this.database, 'projects', projectId);
-    const { dueDate, ...rest } = updates;
+    const { dueDate, name, description, color, visibility, tags } = updates;
     // The website stores a project's due date as endDate (a timestamp); keep the same field.
     const dueDateFields = dueDate === undefined ? {} : { endDate: this.parseCalendarDate(dueDate) };
+    // Only the settings fields are written; status changes go through transitionProject.
     await updateDoc(projectReference, {
-      ...rest,
+      ...(name !== undefined ? { name } : {}),
+      ...(description !== undefined ? { description } : {}),
+      ...(color !== undefined ? { color } : {}),
+      ...(visibility !== undefined ? { visibility } : {}),
+      ...(tags !== undefined ? { tags } : {}),
       ...dueDateFields,
       updatedAt: serverTimestamp(),
     });
+  }
+
+  // One operation ID per intended change, kept until the server gives a definite answer, so a retry after a lost
+  // response is applied once instead of failing as "the project changed".
+  private readonly transitionOperations = new Map<string, string>();
+
+  /** Pause, resume, complete, archive, restore or reopen (owners and admins; the server checks everything). */
+  public async transitionProject(projectId: string, input: ProjectTransitionInput): Promise<void> {
+    const userId = this.requireUserId();
+    const reason = input.reason?.trim() ?? '';
+    const identity = JSON.stringify([userId, projectId, input.expectedStatus, input.toStatus, reason]);
+    const operationId = this.transitionOperations.get(identity) ?? await contentDraftService.newId();
+    this.transitionOperations.set(identity, operationId);
+    try {
+      await this.membershipMutation({ action: 'transition', projectId, operationId, expectedStatus: input.expectedStatus, toStatus: input.toStatus, ...(reason ? { reason } : {}) });
+      this.transitionOperations.delete(identity);
+    } catch (error: unknown) {
+      if (this.isDefiniteRefusal(error)) this.transitionOperations.delete(identity);
+      throw error;
+    }
+  }
+
+  /** True when the callable refused because someone else changed the project status first. */
+  public isStaleProjectError(error: unknown): boolean {
+    const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
+    return code === 'functions/aborted' || code === 'aborted';
+  }
+
+  private isDefiniteRefusal(error: unknown): boolean {
+    const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code).replace(/^functions\//, '') : '';
+    return ['aborted', 'invalid-argument', 'failed-precondition', 'permission-denied', 'not-found', 'unauthenticated', 'already-exists'].includes(code);
+  }
+
+  /** projects/{id}/activity, newest first, one page at a time (a one-off read, not a listener). */
+  public async listActivity(projectId: string, cursor: ProjectActivityCursor | null = null): Promise<ProjectActivityPage> {
+    this.requireUserId();
+    const activity = collection(this.database, 'projects', projectId, 'activity');
+    const page = cursor
+      ? query(activity, orderBy('at', 'desc'), startAfter(cursor), limit(PROJECT_ACTIVITY_PAGE_SIZE))
+      : query(activity, orderBy('at', 'desc'), limit(PROJECT_ACTIVITY_PAGE_SIZE));
+    const snapshot = await getDocs(page);
+    const documents = snapshot.docs as QueryDocumentSnapshot[];
+    return {
+      events: documents.map((document) => this.mapActivity(document.id, document.data())),
+      cursor: documents.length === PROJECT_ACTIVITY_PAGE_SIZE ? documents[documents.length - 1] : null,
+    };
+  }
+
+  /** Tolerant decoding of one activity event: unknown types and missing fields become 'unknown' and ''. */
+  public mapActivity(id: string, value: unknown): ProjectActivityEvent {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+    const subject = source.subject && typeof source.subject === 'object' && !Array.isArray(source.subject) ? source.subject as Record<string, unknown> : {};
+    const data = source.data && typeof source.data === 'object' && !Array.isArray(source.data) ? source.data as Record<string, unknown> : {};
+    const type: ProjectActivityType = typeof source.type === 'string' && (PROJECT_ACTIVITY_TYPES as readonly string[]).includes(source.type) ? source.type as ProjectActivityType : 'unknown';
+    const at = this.readDate(source.at);
+    return {
+      id, type, actorId: this.readString(source.actorId),
+      subjectKind: subject.kind === 'project' || subject.kind === 'member' || subject.kind === 'email_invite' ? subject.kind : 'unknown',
+      subjectId: this.readString(subject.id), at: at.getTime() === 0 ? null : at,
+      from: this.readString(data.from), to: this.readString(data.to), role: this.readString(data.role), reason: this.readString(data.reason), channel: this.readString(data.channel),
+      changed: Array.isArray(data.changed) ? data.changed.filter((entry): entry is string => typeof entry === 'string') : [],
+    };
   }
 
   /** Plan tier and automation rules are server-managed (website: mutateProjectMembership "settings"). */
@@ -589,7 +672,7 @@ export class ProjectService {
   public async transferOwnership(projectId: string, newOwnerId: string): Promise<void> {
     await this.membershipMutation({ action: 'transfer', projectId, targetId: newOwnerId });
   }
-  private async membershipMutation(input: { action: 'claim' | 'accept' | 'decline' | 'invite' | 'cancel' | 'resend' | 'role' | 'remove' | 'leave' | 'transfer' | 'create' | 'delete_project' | 'settings'; fields?: { name: string; description: string }; projectId?: string; targetId?: string; recipient?: string; role?: ProjectRole; planTier?: ProjectPlanTier; automationRules?: { [ruleId: string]: boolean } }): Promise<{ claimed?: unknown }> {
+  private async membershipMutation(input: { action: 'claim' | 'accept' | 'decline' | 'invite' | 'cancel' | 'resend' | 'role' | 'remove' | 'leave' | 'transfer' | 'create' | 'delete_project' | 'settings' | 'transition'; fields?: { name: string; description: string }; projectId?: string; targetId?: string; recipient?: string; role?: ProjectRole; planTier?: ProjectPlanTier; automationRules?: { [ruleId: string]: boolean }; operationId?: string; expectedStatus?: ProjectStatus; toStatus?: ProjectStatus; reason?: string }): Promise<{ claimed?: unknown }> {
     pageAccessService.assertMutation('/projectManagement');
     const ownerId = this.requireUserId();
     await nativeSessionService.ensure(ownerId);
@@ -678,7 +761,7 @@ export class ProjectService {
       status: this.readStatus(data.status),
       role,
       isOwner: ownerId === userId,
-      membershipStatus: this.readMembershipStatus(membership?.membershipStatus),
+      membershipStatus: ownerId === userId ? 'accepted' : this.readMembershipStatus(membership?.membershipStatus, false),
       invitedByName: this.readString(membership?.invitedByName) || undefined,
       totalTasks: this.readNumber(data.totalTasks),
       completedTasks: this.readNumber(data.completedTasks),
@@ -693,6 +776,8 @@ export class ProjectService {
       visibility: data.visibility === 'public' ? 'public' : 'private',
       tags: Array.isArray(data.tags) ? data.tags.map((tag) => this.readString(tag)).filter(Boolean) : [],
       memberUids: data.memberUids ?? [],
+      statusChangedAt: this.readDate(data.statusChangedAt).getTime() === 0 ? null : this.readDate(data.statusChangedAt),
+      statusChangedBy: this.readString(data.statusChangedBy),
     };
   }
 
@@ -749,18 +834,22 @@ export class ProjectService {
     return new Date(0);
   }
 
+  /** An unknown stored role never grants more than read access (same as the website). */
   private readRole(value: unknown): ProjectRole {
-    return value === 'owner' || value === 'admin' || value === 'viewer' ? value : 'member';
+    return value === 'owner' || value === 'admin' || value === 'member' || value === 'viewer' ? value : 'viewer';
   }
 
+  /** An unknown status reads as archived, which every screen treats as read-only (same as the website). */
   private readStatus(value: unknown): ProjectStatus {
-    if (value === 'completed' || value === 'on-hold' || value === 'archived') return value;
+    if (value === 'active' || value === 'completed' || value === 'on-hold' || value === 'archived') return value;
     if (value === 'on_hold') return 'on-hold';
-    return 'active';
+    return 'archived';
   }
 
-  private readMembershipStatus(value: unknown): ProjectMembershipStatus {
-    return value === 'pending' ? 'pending' : 'accepted';
+  /** An entry saved without a status is accepted for the owner and a pending invitation for anyone else (server rule). */
+  private readMembershipStatus(value: unknown, isOwner: boolean): ProjectMembershipStatus {
+    if (value === 'accepted' || value === 'pending') return value;
+    return isOwner ? 'accepted' : 'pending';
   }
 }
 

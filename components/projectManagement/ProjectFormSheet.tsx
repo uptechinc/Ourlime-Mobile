@@ -6,15 +6,15 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import DateTimeField from '@/components/ui/DateTimeField';
 import ProjectColorPicker from '@/components/projectManagement/ProjectColorPicker';
 import { DEFAULT_PROJECT_COLOR } from '@/components/projectManagement/projectColors';
-import type { ProjectRecord, ProjectStatus, ProjectVisibility } from '@/lib/types/project';
+import type { ProjectRecord, ProjectVisibility } from '@/lib/types/project';
 import { useAndroidKeyboardInset } from '@/lib/hooks/useKeyboardHeight';
 
+/** Status is not here: it changes from the project's status menu (a recorded server transition). */
 export type ProjectFormValues = {
   name: string;
   description: string;
   color: string;
   dueDate: string | null;
-  status: ProjectStatus;
   visibility: ProjectVisibility;
   tags: string[];
 };
@@ -33,12 +33,6 @@ type ProjectFormSheetProps = {
   footer?: ReactNode;
 };
 
-const STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
-  { value: 'active', label: 'Active' },
-  { value: 'on-hold', label: 'On Hold' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'archived', label: 'Archived' },
-];
 // Same limits as the website's CreateProjectModal.
 const NAME_LIMIT = 50;
 const DESCRIPTION_LIMIT = 300;
@@ -64,7 +58,6 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit, 
   const [description, setDescription] = useState('');
   const [color, setColor] = useState<string>(DEFAULT_PROJECT_COLOR);
   const [dueDate, setDueDate] = useState<Date | null>(null);
-  const [status, setStatus] = useState<ProjectStatus>('active');
   const [visibility, setVisibility] = useState<ProjectVisibility>('private');
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
@@ -78,7 +71,6 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit, 
     setDescription(project?.description ?? '');
     setColor(project?.color || DEFAULT_PROJECT_COLOR);
     setDueDate(parseDateString(project?.dueDate ?? null));
-    setStatus(project?.status ?? 'active');
     setVisibility(project?.visibility ?? 'private');
     setTags(project?.tags ?? []);
     setTagInput('');
@@ -101,7 +93,7 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit, 
     setIsSaving(true);
     setError('');
     try {
-      await onSubmit({ name: name.trim(), description: description.trim(), color, dueDate: dueDate ? toDateString(dueDate) : null, status, visibility, tags });
+      await onSubmit({ name: name.trim(), description: description.trim(), color, dueDate: dueDate ? toDateString(dueDate) : null, visibility, tags });
     } catch (submitError: unknown) {
       console.error('[ProjectFormSheet.handleSubmit] Error:', submitError);
       setError(submitError instanceof Error ? submitError.message : 'The project could not be saved.');
@@ -151,16 +143,6 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit, 
               <ProjectColorPicker value={color} onChange={setColor} disabled={isSaving} />
             </View>
             <DateTimeField label="Due Date" mode="date" placeholder="No due date" value={dueDate} minimumDate={project ? undefined : new Date()} onChange={setDueDate} onClear={() => setDueDate(null)} />
-            <View style={{ gap: 8 }}>
-              <Text style={label}>Project Status</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {STATUS_OPTIONS.map((option) => (
-                  <TouchableOpacity key={option.value} onPress={() => setStatus(option.value)} style={chip(status === option.value)}>
-                    <Text style={{ color: status === option.value ? colors.onAccent : colors.secondaryText, fontWeight: '800', fontSize: 12 }}>{option.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
             <View style={{ gap: 8 }}>
               <Text style={label}>Visibility</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>

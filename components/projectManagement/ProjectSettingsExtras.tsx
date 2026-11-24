@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
-import { AlertTriangle, Archive, ArchiveRestore, Crown, Trash2, Users, X } from 'lucide-react-native';
+import { AlertTriangle, Crown, Flag, Trash2, Users, X } from 'lucide-react-native';
+import { projectLifecycleRules } from '@/lib/services/ProjectLifecycleRules';
 import { toast } from 'sonner-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -14,20 +15,21 @@ type ProjectSettingsExtrasProps = {
   onChangeRole: (member: TeamMember, role: ProjectRole) => Promise<void>;
   onRemove: (member: TeamMember) => Promise<void>;
   onTransfer: (member: TeamMember) => Promise<void>;
-  onArchiveToggle: () => Promise<void>;
   onDelete: () => Promise<void>;
 };
 
-type Confirmation = { kind: 'remove' | 'transfer'; member: TeamMember } | { kind: 'archive' | 'delete' } | null;
+type Confirmation = { kind: 'remove' | 'transfer'; member: TeamMember } | { kind: 'delete' } | null;
 
-/** Website ProjectSettingsModal "Team & Roles" and "Danger zone" sections, under the settings form. */
-export default function ProjectSettingsExtras({ project, teamMembers, currentUserId, onChangeRole, onRemove, onTransfer, onArchiveToggle, onDelete }: ProjectSettingsExtrasProps) {
+/**
+ * Website ProjectSettingsModal "Team & Roles" and "Danger zone" sections, under the settings form. Archiving moved to
+ * the project's status menu (a recorded server transition); only the owner can delete.
+ */
+export default function ProjectSettingsExtras({ project, teamMembers, currentUserId, onChangeRole, onRemove, onTransfer, onDelete }: ProjectSettingsExtrasProps) {
   const { colors } = useAppTheme();
   const [pending, setPending] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const canManage = project.role === 'owner' || project.role === 'admin';
   const isOwner = project.role === 'owner';
-  const isArchived = project.status === 'archived';
 
   const run = async (key: string, action: () => Promise<void>, success: string): Promise<void> => {
     if (pending) return;
@@ -43,7 +45,6 @@ export default function ProjectSettingsExtras({ project, teamMembers, currentUse
     if (!current) return;
     if (current.kind === 'remove') void run(`remove:${current.member.id}`, () => onRemove(current.member), current.member.membershipStatus === 'pending' ? 'Invitation cancelled' : `${current.member.name} removed from project`);
     else if (current.kind === 'transfer') void run(`transfer:${current.member.id}`, () => onTransfer(current.member), `Ownership transferred to ${current.member.name}`);
-    else if (current.kind === 'archive') void run('archive', onArchiveToggle, isArchived ? 'Project unarchived' : 'Project archived');
     else void run('delete', onDelete, 'Project deleted');
   };
 
@@ -93,13 +94,16 @@ export default function ProjectSettingsExtras({ project, teamMembers, currentUse
       </View>
 
       {canManage ? (
+        <View style={card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Flag size={16} color={colors.accent} /><Text style={{ color: colors.text, fontSize: 15, fontWeight: '900' }}>Status: {projectLifecycleRules.label(project.status)}</Text></View>
+          <Text style={{ color: colors.mutedText, fontSize: 12 }}>Pause, complete, archive or restore the project from the ⋯ button next to its name.</Text>
+        </View>
+      ) : null}
+
+      {isOwner ? (
         <View style={[card, { borderColor: '#fecaca' }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><AlertTriangle size={16} color={colors.destructive} /><Text style={{ color: colors.destructiveText, fontSize: 15, fontWeight: '900' }}>Danger zone</Text></View>
           <Text style={{ color: colors.mutedText, fontSize: 12 }}>These actions affect everyone on the project. Proceed with caution.</Text>
-          <TouchableOpacity disabled={pending !== null} onPress={() => setConfirmation({ kind: 'archive' })} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
-            {isArchived ? <ArchiveRestore size={16} color={colors.text} /> : <Archive size={16} color={colors.text} />}
-            <Text style={{ color: colors.text, fontWeight: '800' }}>{isArchived ? 'Unarchive project' : 'Archive project'}</Text>
-          </TouchableOpacity>
           <TouchableOpacity disabled={pending !== null} onPress={() => setConfirmation({ kind: 'delete' })} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, borderRadius: 12, backgroundColor: colors.destructiveSurface }}>
             {pending === 'delete' ? <ActivityIndicator size="small" color={colors.destructiveText} /> : <Trash2 size={16} color={colors.destructiveText} />}
             <Text style={{ color: colors.destructiveText, fontWeight: '800' }}>Delete project</Text>
@@ -109,13 +113,13 @@ export default function ProjectSettingsExtras({ project, teamMembers, currentUse
 
       <CustomModal
         visible={confirmation !== null}
-        type={confirmation?.kind === 'transfer' || confirmation?.kind === 'archive' ? 'warning' : 'danger'}
+        type={confirmation?.kind === 'transfer' ? 'warning' : 'danger'}
         title={confirmation?.kind === 'remove' ? (confirmation.member.membershipStatus === 'pending' ? 'Cancel invitation?' : 'Remove member?')
-          : confirmation?.kind === 'transfer' ? 'Transfer ownership?' : confirmation?.kind === 'archive' ? (isArchived ? 'Unarchive project?' : 'Archive project?') : 'Delete project?'}
+          : confirmation?.kind === 'transfer' ? 'Transfer ownership?' : 'Delete project?'}
         message={confirmation?.kind === 'remove' ? (confirmation.member.membershipStatus === 'pending' ? `Cancel the invitation sent to ${confirmation.member.name}?` : `Remove ${confirmation.member.name} from this project?`)
           : confirmation?.kind === 'transfer' ? `Transfer ownership to ${confirmation.member.name}? You will become an admin and will no longer be the owner.`
-            : confirmation?.kind === 'archive' ? `Are you sure you want to ${isArchived ? 'unarchive' : 'archive'} this project?` : 'Are you sure? This permanently deletes all tasks and attachments.'}
-        confirmText={confirmation?.kind === 'remove' ? 'Yes' : confirmation?.kind === 'transfer' ? 'Transfer' : confirmation?.kind === 'archive' ? (isArchived ? 'Unarchive' : 'Archive') : 'Delete'}
+            : 'Are you sure? This permanently deletes all tasks and attachments.'}
+        confirmText={confirmation?.kind === 'remove' ? 'Yes' : confirmation?.kind === 'transfer' ? 'Transfer' : 'Delete'}
         cancelText="Cancel"
         onConfirm={handleConfirm}
         onCancel={() => setConfirmation(null)}

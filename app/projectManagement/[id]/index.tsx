@@ -1,11 +1,11 @@
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
-import { Clock, Download, FileText, Flag, FolderOpen, LayoutGrid, Layers, LogOut, Paperclip, Repeat, Link2, Sparkles, Users } from 'lucide-react-native';
+import { Clock, Download, FileText, Flag, FolderOpen, LayoutGrid, Layers, LogOut, MoreHorizontal, Paperclip, Repeat, Link2, Sparkles, Users } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import PageHeader from '@/components/ui/PageHeader';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
@@ -26,6 +26,10 @@ import ProjectFilesPanel from '@/components/projectManagement/ProjectFilesPanel'
 import ProjectTimesheetsPanel from '@/components/projectManagement/ProjectTimesheetsPanel';
 import SessionRetryBanner from '@/components/projectManagement/SessionRetryBanner';
 import ProjectFriendPickerModal from '@/components/projectManagement/ProjectFriendPickerModal';
+import ProjectLifecycleSheet from '@/components/projectManagement/ProjectLifecycleSheet';
+import ProjectStatusBanner from '@/components/projectManagement/ProjectStatusBanner';
+import ProjectActivityPanel from '@/components/projectManagement/ProjectActivityPanel';
+import { projectLifecycleRules } from '@/lib/services/ProjectLifecycleRules';
 import { projectColorHex } from '@/components/projectManagement/projectColors';
 import { formatCalendarDate, formatDuration, priorityColor, taskMinutes } from '@/components/projectManagement/projectFormat';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
@@ -46,6 +50,7 @@ import type {
   Task,
   TaskTemplate,
   TeamMember,
+  ProjectStatus,
 } from '@/lib/types/project';
 
 type MainTab = 'board' | 'timeline' | 'workload' | 'files' | 'milestones' | 'timesheets';
@@ -62,8 +67,6 @@ const LOAD_ERRORS: { [error in ProjectLoadError]: { title: string; message: stri
   'network-error': { title: 'Network Error', message: 'We could not reach the server. Check your connection and try again.', retry: true },
   unknown: { title: 'Something Went Wrong', message: 'An unexpected error occurred while loading this project.', retry: true },
 };
-
-const formatProjectStatus = (status: string): string => status === 'on-hold' ? 'On hold' : status;
 
 export default function ProjectBoardScreen() {
   const router = useRouter();
@@ -117,6 +120,8 @@ export default function ProjectBoardScreen() {
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [exporting, setExporting] = useState<'csv' | 'summary' | null>(null);
+  // Status actions sheet: null when closed; initialTarget opens straight on one confirmation (the banner's Restore).
+  const [lifecycleSheet, setLifecycleSheet] = useState<{ initialTarget: ProjectStatus | null } | null>(null);
 
   // Invite form
   const [inviteRecipient, setInviteRecipient] = useState('');
@@ -251,14 +256,12 @@ export default function ProjectBoardScreen() {
     void loadProject();
   };
 
-  const handleArchiveToggle = async (): Promise<void> => {
+  /** Pause, resume, complete, archive, restore or reopen, checked against the status this screen shows. */
+  const handleTransition = async (toStatus: ProjectStatus, reason: string): Promise<void> => {
     if (!project) return;
-    const archiving = project.status !== 'archived';
-    await projectService.updateProjectSettings(projectId, { status: archiving ? 'archived' : 'active' });
-    setSettingsOpen(false);
-    // Website archiveProject returns to the project list; unarchiving stays on the board.
-    if (archiving) router.replace('/projectManagement');
-    else void loadProject();
+    await projectService.transitionProject(projectId, { expectedStatus: project.status, toStatus, reason });
+    setProject((current) => current ? { ...current, status: toStatus, statusChangedAt: new Date(), statusChangedBy: currentUserId } : current);
+    void loadProject();
   };
 
   const handleDeleteProject = async (): Promise<void> => {
@@ -391,6 +394,11 @@ export default function ProjectBoardScreen() {
   const acceptedMemberCount = teamMembers.filter((member) => member.isOwner || member.membershipStatus !== 'pending').length;
   const activeTimerTask = activeTimer ? tasks.find((task) => task.id === activeTimer.taskId) ?? null : null;
   const openUpgrade = (): void => setUpgradeOpen(true);
+  // Paused, completed and archived projects are read-only for everyone (the server refuses those writes too).
+  const isProjectActive = project.status === 'active';
+  const statusChangedByName = project.statusChangedBy
+    ? project.statusChangedBy === currentUserId ? 'you' : teamMembers.find((member) => member.id === project.statusChangedBy)?.name ?? 'a former member'
+    : '';
 
   return (
     <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
@@ -409,9 +417,21 @@ export default function ProjectBoardScreen() {
               <Text style={styles.projectName}>{project.name}</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
                 <Text style={[styles.planBadge, isPremium ? styles.planBadgePremium : null]}>{isPremium ? '★ Premium' : 'Free Plan'}</Text>
-                <Text style={styles.statusBadge}>{formatProjectStatus(project.status)}</Text>
+                <Text style={[styles.statusBadge, project.status === 'on-hold' ? styles.statusBadgePaused : project.status === 'archived' ? styles.statusBadgeMuted : null]}>{projectLifecycleRules.label(project.status)}</Text>
               </View>
             </View>
+            {canManageSettings ? (
+              <Pressable
+                onPress={() => setLifecycleSheet({ initialTarget: null })}
+                android_ripple={{ color: 'rgba(15,23,42,0.12)', borderless: true }}
+                accessibilityRole="button"
+                accessibilityLabel="Project status actions"
+                accessibilityHint="Pause, complete, archive or restore this project"
+                style={styles.statusMenuButton}
+              >
+                <MoreHorizontal size={20} color={colors.text} />
+              </Pressable>
+            ) : null}
           </View>
           <Text style={styles.projectDesc}>{project.description || 'No description provided.'}</Text>
           {project.dueDate ? <Text style={styles.metaSmallText}>Due {formatCalendarDate(project.dueDate)}</Text> : null}
@@ -432,6 +452,14 @@ export default function ProjectBoardScreen() {
           ) : null}
           <SessionRetryBanner />
         </View>
+
+        <ProjectStatusBanner
+          status={project.status}
+          changedAt={project.statusChangedAt}
+          changedByName={statusChangedByName}
+          canManage={canManageSettings}
+          onReactivate={() => setLifecycleSheet({ initialTarget: 'active' })}
+        />
 
         {/* Stats overview (website ProjectStatsOverview) */}
         <View style={styles.statsGrid}>
@@ -481,7 +509,7 @@ export default function ProjectBoardScreen() {
             <View style={styles.toolbarCard}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <Text style={[styles.sectionTitle, { flex: 1 }]}>Task Management</Text>
-                {project.role !== 'viewer' ? (
+                {project.role !== 'viewer' && isProjectActive ? (
                   <TouchableOpacity onPress={() => { if (!writeCapability.allowed) { setFeedback({ title: 'New task unavailable', message: writeCapability.reason, type: 'warning' }); return; } setCreateTaskOpen(true); }} style={[styles.actionBtn, !canWrite && { opacity: 0.58 }]}>
                     <Icon name="plus" size={16} color="#ffffff" /><Text style={styles.actionBtnText}>New Task</Text>
                   </TouchableOpacity>
@@ -533,7 +561,7 @@ export default function ProjectBoardScreen() {
                 <View style={styles.noTasksCard}>
                   <Icon name="check-circle" size={36} color={colors.mutedText} />
                   <Text style={styles.noTasksTitle}>No tasks in this column</Text>
-                  <Text style={styles.noTasksSubtitle}>{project.role !== 'viewer' ? 'Tap "New Task" above to create one.' : 'Tasks will appear here.'}</Text>
+                  <Text style={styles.noTasksSubtitle}>{project.role !== 'viewer' && isProjectActive ? 'Tap "New Task" above to create one.' : 'Tasks will appear here.'}</Text>
                 </View>
               ) : tasksByStatus[activeTabStatus].map((task) => {
                 const color = priorityColor(task.priority);
@@ -615,6 +643,13 @@ export default function ProjectBoardScreen() {
           canManageAutomation={canManageSettings}
           dueSoonCount={dueSoonCount}
           onToggleAutomationRule={(ruleId) => void handleToggleAutomationRule(ruleId)}
+        />
+
+        <ProjectActivityPanel
+          projectId={projectId}
+          teamMembers={teamMembers}
+          currentUserId={currentUserId}
+          refreshKey={`${project.status}|${project.statusChangedAt?.getTime() ?? 0}|${teamMembers.map((member) => `${member.id}:${member.role}:${member.membershipStatus ?? ''}`).join(',')}`}
         />
       </ScrollView>
 
@@ -714,10 +749,19 @@ export default function ProjectBoardScreen() {
             onChangeRole={async (member, role) => { await projectService.changeMemberRole(projectId, member.id, role); await loadProject(); }}
             onRemove={async (member) => { await projectService.removeMember(projectId, member.id); await loadProject(); }}
             onTransfer={async (member) => { await projectService.transferOwnership(projectId, member.id); await loadProject(); }}
-            onArchiveToggle={handleArchiveToggle}
             onDelete={handleDeleteProject}
           />
         )}
+      />
+
+      <ProjectLifecycleSheet
+        visible={lifecycleSheet !== null}
+        projectName={project.name}
+        status={project.status}
+        initialTarget={lifecycleSheet?.initialTarget ?? null}
+        onClose={() => setLifecycleSheet(null)}
+        onConfirm={handleTransition}
+        onStale={() => void loadProject()}
       />
 
       <ProjectUpgradeSheet
@@ -770,7 +814,10 @@ const createStyles = (colors: AppThemeColors, isDark: boolean) =>
     projectDesc: { fontSize: 13, color: colors.mutedText, lineHeight: 18 },
     planBadge: { fontSize: 11, fontWeight: '800', color: colors.secondaryText, backgroundColor: colors.control, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' },
     planBadgePremium: { color: '#78350f', backgroundColor: '#fde68a' },
-    statusBadge: { fontSize: 11, fontWeight: '800', color: '#047857', backgroundColor: '#d1fae5', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, overflow: 'hidden', textTransform: 'capitalize' },
+    statusBadge: { fontSize: 11, fontWeight: '800', color: colors.successText, backgroundColor: colors.successSurface, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' },
+    statusBadgePaused: { color: colors.warningText, backgroundColor: colors.warningSurface },
+    statusBadgeMuted: { color: colors.secondaryText, backgroundColor: colors.control },
+    statusMenuButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
     progressContainer: { gap: 6 },
     progressHeader: { flexDirection: 'row', justifyContent: 'space-between' },
     progressLabel: { fontSize: 12, fontWeight: '700', color: colors.mutedText },
