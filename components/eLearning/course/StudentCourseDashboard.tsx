@@ -22,7 +22,7 @@ import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { courseService } from '@/lib/services/CourseService';
 import type { AssignmentSubmission, Course, CourseModule, Enrollment } from '@/lib/types/course';
 import LessonTypeIcon from './LessonTypeIcon';
-import { courseHref, formatDate, lessonHref, lessonTypeLabel, openExternalLink } from './workspaceHelpers';
+import { courseHref, formatDate, lessonHref, lessonTypeLabel, openCourseFile } from './workspaceHelpers';
 
 const RIPPLE = { color: 'rgba(15,23,42,0.12)' };
 
@@ -70,8 +70,8 @@ export default function StudentCourseDashboard({ course, enrollment, modules, su
     { key: 'discussions', label: 'Discussions', icon: <MessageSquare size={18} color={colors.accentText} />, onPress: () => router.push(courseHref(course.id, 'discussions')) },
   ];
 
-  const handleOpenResource = async (url: string) => {
-    if (!(await openExternalLink(url))) onOpenError();
+  const handleOpenResource = async (resourceId: string, url: string) => {
+    if (!(await openCourseFile({ kind: 'resource', resourceId }, url))) onOpenError();
   };
 
   return (
@@ -170,7 +170,7 @@ export default function StudentCourseDashboard({ course, enrollment, modules, su
       <View style={styles.card}>
         <View style={styles.sectionHeader}><FileText size={18} color={colors.icon} /><Text accessibilityRole="header" style={styles.cardTitle}>Helpful resources</Text></View>
         {resources.length === 0 ? <Text style={styles.empty}>No resources available yet.</Text> : resources.map((resource) => (
-          <Pressable key={resource.id} accessibilityRole="link" onPress={() => void handleOpenResource(resource.url)} android_ripple={RIPPLE} style={styles.listRow}>
+          <Pressable key={resource.id} accessibilityRole="link" onPress={() => void handleOpenResource(resource.id, resource.url)} android_ripple={RIPPLE} style={styles.listRow}>
             <FileText size={16} color={colors.accentText} />
             <Text style={[styles.rowTitle, styles.flex]} numberOfLines={1}>{resource.title}</Text>
             <ChevronRight size={16} color={colors.mutedText} />

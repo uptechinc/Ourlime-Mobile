@@ -6,7 +6,7 @@ import { LessonAssignmentSkeleton } from '@/components/eLearning/ELearningSkelet
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { courseService } from '@/lib/services/CourseService';
 import { ELEARNING_ACTION_GREEN } from '@/components/eLearning/ELearningParts';
-import { openExternalLink } from '@/components/eLearning/course/workspaceHelpers';
+import { openCourseFile } from '@/components/eLearning/course/workspaceHelpers';
 import type { AssignmentFile, AssignmentSubmission } from '@/lib/types/course';
 
 type LessonAssignmentProps = {
@@ -105,8 +105,8 @@ export default function LessonAssignment({ userId, courseId, lessonId, onSubmitt
         {isGraded && submission.score !== undefined ? <Text style={styles.score}>{submission.score}{submission.maxScore ? ` / ${submission.maxScore}` : ''}</Text> : null}
         {submission.feedback ? <View style={styles.feedback}><Text style={styles.feedbackLabel}>Instructor feedback</Text><Text style={styles.body}>{submission.feedback}</Text></View> : null}
         {submission.textResponse ? <Text style={styles.body}>{submission.textResponse}</Text> : null}
-        {submission.files.map((file) => (
-          <Pressable key={file.url} accessibilityRole="link" onPress={() => void openExternalLink(file.url)} style={styles.fileRow}>
+        {submission.files.map((file, index) => (
+          <Pressable key={file.url} accessibilityRole="link" onPress={() => void openCourseFile({ kind: 'submission_file', submissionId: submission.id, index }, file.url)} style={styles.fileRow}>
             <FileText size={18} color={colors.accentText} />
             <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
             {file.size ? <Text style={styles.muted}>{formatSize(file.size)}</Text> : null}

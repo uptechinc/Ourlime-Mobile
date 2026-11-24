@@ -79,10 +79,11 @@ export default function CourseDiscussionsScreen() {
   }, [loadPage]);
 
   const loadReplies = useCallback(async (discussionId: string) => {
+    if (!courseId) return;
     setLoadingRepliesId(discussionId);
     setReplyError(null);
     try {
-      const discussionReplies = await courseInteractionService.getReplies(discussionId);
+      const discussionReplies = await courseInteractionService.getReplies(courseId, discussionId);
       setReplies((currentReplies) => ({ ...currentReplies, [discussionId]: discussionReplies }));
     } catch (loadError) {
       console.error('[CourseDiscussionsScreen.loadReplies] Error:', loadError instanceof Error ? loadError.message : 'Unknown error');
@@ -90,7 +91,7 @@ export default function CourseDiscussionsScreen() {
     } finally {
       setLoadingRepliesId((currentId) => currentId === discussionId ? null : currentId);
     }
-  }, []);
+  }, [courseId]);
 
   const handleToggleDiscussion = (discussionId: string) => {
     if (expandedId === discussionId) {

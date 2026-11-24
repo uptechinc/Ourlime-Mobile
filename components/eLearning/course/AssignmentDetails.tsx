@@ -4,7 +4,7 @@ import { AlertCircle, Calendar, CheckCircle2, Clock, Download, FileText } from '
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { courseService } from '@/lib/services/CourseService';
 import type { CourseLesson } from '@/lib/types/course';
-import { formatDate, formatFileSize, openExternalLink } from './workspaceHelpers';
+import { formatDate, formatFileSize, openCourseFile } from './workspaceHelpers';
 
 type AssignmentDetailsProps = {
   lesson: CourseLesson;
@@ -56,8 +56,8 @@ export default function AssignmentDetails({ lesson, isSubmitted, onOpenError }: 
   }[state.tone];
   const StateIcon = state.tone === 'success' ? CheckCircle2 : state.tone === 'neutral' ? Clock : AlertCircle;
 
-  const handleOpen = async (url: string) => {
-    if (!(await openExternalLink(url))) onOpenError?.();
+  const handleOpen = async (index: number, url: string) => {
+    if (!(await openCourseFile({ kind: 'lesson_attachment', lessonId: lesson.id, index }, url))) onOpenError?.();
   };
 
   return (
@@ -85,8 +85,8 @@ export default function AssignmentDetails({ lesson, isSubmitted, onOpenError }: 
       {attachments.length > 0 ? (
         <View style={styles.files}>
           <Text style={styles.label}>Reference files</Text>
-          {attachments.map((file) => (
-            <Pressable key={file.url} accessibilityRole="link" accessibilityLabel={`Open ${file.name}`} onPress={() => void handleOpen(file.url)} android_ripple={{ color: colors.control }} style={styles.fileRow}>
+          {attachments.map((file, index) => (
+            <Pressable key={file.url} accessibilityRole="link" accessibilityLabel={`Open ${file.name}`} onPress={() => void handleOpen(index, file.url)} android_ripple={{ color: colors.control }} style={styles.fileRow}>
               <Download size={16} color={colors.accentText} />
               <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
               {file.size ? <Text style={styles.meta}>{formatFileSize(file.size)}</Text> : null}

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ExternalLink, FileText } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import type { CourseResource } from '@/lib/types/course';
-import { formatFileSize, openExternalLink } from './workspaceHelpers';
+import { formatFileSize, openCourseFile } from './workspaceHelpers';
 
 type ModuleResourcesProps = {
   resources: CourseResource[];
@@ -18,7 +18,7 @@ export default function ModuleResources({ resources, onOpenError }: ModuleResour
   if (resources.length === 0) return null;
 
   const handleOpen = async (resource: CourseResource) => {
-    const opened = await openExternalLink(resource.url);
+    const opened = await openCourseFile({ kind: 'resource', resourceId: resource.id }, resource.url);
     if (!opened) onOpenError?.();
   };
 

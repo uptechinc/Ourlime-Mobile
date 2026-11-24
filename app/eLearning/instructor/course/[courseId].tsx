@@ -1,28 +1,24 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { AlertCircle, BookOpen, ClipboardCheck, ClipboardList, Clock, ExternalLink, Eye, EyeOff, HelpCircle, Lock, Send } from 'lucide-react-native';
+import { AlertCircle, BookOpen, ChevronRight, ClipboardCheck, ClipboardList, Clock, ExternalLink, Eye, EyeOff, HelpCircle, Lock, Megaphone, Send } from 'lucide-react-native';
 import CustomModal from '@/components/ui/CustomModal';
 import { InstructorCourseSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { CourseRating, ELearningButton, ELearningEmptyState, ELearningHeader, ELEARNING_GUTTER, StatusPill } from '@/components/eLearning/ELearningParts';
 import LessonTypeIcon from '@/components/eLearning/course/LessonTypeIcon';
 import { pluralize } from '@/components/eLearning/course/workspaceHelpers';
 import { courseStagePresentation } from '@/components/eLearning/instructor/courseStatus';
+import CourseInsightsCard from '@/components/eLearning/instructor/CourseInsightsCard';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { settleAll } from '@/lib/utils/settleAll';
-import { instructorService, type InstructorCourseDetail, type InstructorCourseStatus, type InstructorCurriculum, type InstructorLesson, type InstructorStatus, type InstructorSubmission } from '@/lib/services/InstructorService';
+import { instructorService, type CourseInsights, type InstructorCourseDetail, type InstructorCurriculum, type InstructorLesson, type InstructorStatus, type InstructorSubmission } from '@/lib/services/InstructorService';
 
 const CONTENT_MAX_WIDTH = 860;
 const RIPPLE = { color: 'rgba(15,23,42,0.12)' };
-const UNAVAILABLE_TEXT: Record<InstructorCourseStatus, string> = {
-  pending_review: 'An administrator is reviewing this course. Its modules and lessons appear here once it is approved and published.',
-  draft: 'This course is unpublished. Its modules and lessons appear here while it is published.',
-  archived: 'This course is archived. Its modules and lessons appear here while it is published.',
-  published: 'The modules and lessons could not be loaded. Pull down to try again.',
-};
+const UNAVAILABLE_TEXT = 'The modules and lessons could not be loaded. Pull down to try again.';
 
 const lessonLabel = (lesson: InstructorLesson): string => {
   if (lesson.type === 'quiz') return `Quiz · ${lesson.questionCount} question${lesson.questionCount === 1 ? '' : 's'}`;
@@ -61,6 +57,9 @@ export default function InstructorCourseScreen() {
   const [confirmUnpublish, setConfirmUnpublish] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [insights, setInsights] = useState<CourseInsights | null>(null);
+  const [isInsightsLoading, setIsInsightsLoading] = useState(true);
+  const [hasInsightsError, setHasInsightsError] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) { setIsLoading(false); setError('This course could not be found.'); return; }
@@ -76,7 +75,7 @@ export default function InstructorCourseScreen() {
       // read side by side; any of them failing leaves its section out instead of failing the page.
       const hasWork = detail.status === 'published' || detail.status === 'archived';
       const [curriculumResult, statusResult, submissionResult] = await settleAll([
-        instructorService.getCurriculum(id, detail.status),
+        instructorService.getCurriculum(id),
         activeUserId ? instructorService.getStatus(activeUserId) : Promise.resolve<InstructorStatus>('none'),
         hasWork ? instructorService.getSubmissions(id) : Promise.resolve<InstructorSubmission[]>([]),
       ] as const);
@@ -94,6 +93,28 @@ export default function InstructorCourseScreen() {
   }, [activeUserId, id]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  // Learner progress is a bounded server read, so it loads when the screen opens and on pull-to-refresh, not on every focus.
+  const loadInsights = useCallback(async () => {
+    if (!id) return;
+    setIsInsightsLoading(true);
+    setHasInsightsError(false);
+    try {
+      setInsights(await instructorService.getInsights(id));
+    } catch (insightsError: unknown) {
+      console.warn('[InstructorCourseScreen.loadInsights] Error:', insightsError instanceof Error ? insightsError.message : 'Unknown error');
+      setHasInsightsError(true);
+    } finally {
+      setIsInsightsLoading(false);
+    }
+  }, [id]);
+  useEffect(() => { void loadInsights(); }, [loadInsights]);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    void load();
+    void loadInsights();
+  };
 
   const handleResubmit = async () => {
     if (!course) return;
@@ -118,8 +139,8 @@ export default function InstructorCourseScreen() {
     setActionError(null);
     try {
       await instructorService.setCourseStatus(course.id, 'draft');
+      // The outline stays readable: the rules let the course's instructor read it in every state.
       setCourse({ ...course, status: 'draft' });
-      setCurriculum({ kind: 'unavailable' });
     } catch (statusError: unknown) {
       console.error('[InstructorCourseScreen.handleUnpublish] Error:', statusError instanceof Error ? statusError.message : 'Unknown error');
       setActionError('The course could not be unpublished. Please try again.');
@@ -153,7 +174,7 @@ export default function InstructorCourseScreen() {
           <ELearningEmptyState icon={<BookOpen size={40} color={colors.mutedText} />} title="Course unavailable" hint={error ?? 'This course could not be found.'} actionLabel="Try again" onAction={() => { setIsLoading(true); void load(); }} secondaryActionLabel="Go back" onSecondaryAction={() => router.back()} />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => { setIsRefreshing(true); void load(); }} tintColor={colors.accent} />}>
+        <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}>
           <View style={[styles.column, { width: columnWidth }]}>
             {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
             {course.image ? <Image source={{ uri: course.image }} contentFit="cover" style={[styles.cover, { width: coverWidth, height: coverHeight }]} /> : null}
@@ -232,6 +253,17 @@ export default function InstructorCourseScreen() {
                 {summary && summary.waiting > 0 ? <Text style={[styles.tileMeta, { color: colors.warningText }]}>{summary.waiting} waiting</Text> : null}
               </Pressable>
             </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Course announcements" accessibilityHint="Post news for your enrolled learners" onPress={() => router.push(`/eLearning/instructor/announcements/${query}` as Href)} android_ripple={RIPPLE} style={styles.rowButton}>
+              <Megaphone size={20} color={colors.icon} />
+              <View style={styles.flexText}>
+                <Text style={styles.rowButtonTitle}>Announcements</Text>
+                <Text style={styles.muted}>Post news and reminders for enrolled learners</Text>
+              </View>
+              <ChevronRight size={18} color={colors.mutedText} />
+            </Pressable>
+
+            <CourseInsightsCard insights={insights} isLoading={isInsightsLoading} hasError={hasInsightsError} onRetry={() => void loadInsights()} />
+
             {course.status === 'published' ? (
               <Pressable accessibilityRole="link" onPress={() => router.push(`/eLearning/courses/${encodeURIComponent(course.id)}` as Href)} android_ripple={RIPPLE} style={styles.linkButton}>
                 <ExternalLink size={16} color={colors.accentText} /><Text style={styles.linkText}>Open the learner view</Text>
@@ -266,7 +298,7 @@ export default function InstructorCourseScreen() {
             {curriculum.kind === 'unavailable' ? (
               <View style={styles.lockedCard}>
                 <Lock size={18} color={colors.mutedText} />
-                <Text style={[styles.mutedBody, styles.flexText]}>{UNAVAILABLE_TEXT[course.status]}</Text>
+                <Text style={[styles.mutedBody, styles.flexText]}>{UNAVAILABLE_TEXT}</Text>
               </View>
             ) : curriculum.modules.length === 0 ? (
               <Text style={styles.mutedBody}>No modules yet.</Text>
@@ -340,6 +372,8 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   tile: { flex: 1, minWidth: 0, minHeight: 72, paddingHorizontal: 4, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
   tileText: { color: colors.text, fontSize: 13, fontWeight: '700', textAlign: 'center' },
   tileMeta: { color: colors.mutedText, fontSize: 11 },
+  rowButton: { minHeight: 64, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
+  rowButtonTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
   linkButton: { minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4, marginTop: -6 },
   linkText: { color: colors.accentText, fontSize: 14, fontWeight: '700' },
   card: { padding: 16, gap: 6, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },

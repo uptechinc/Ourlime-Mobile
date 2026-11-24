@@ -1,4 +1,4 @@
-import { collection, doc, getCountFromServer, getDoc, getDocs, limit, query, where, type DocumentData } from 'firebase/firestore';
+import { collection, doc, getCountFromServer, getDoc, getDocs, limit, orderBy, query, where, type DocumentData } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { app, auth, db, storage } from '@/lib/firebaseConfig';
@@ -13,6 +13,9 @@ import type {
   LearningReviewQueue,
 } from '@/lib/types/learningReview';
 import type {
+  AnnouncementDraft,
+  CourseInsights,
+  InstructorAnnouncement,
   InstructorApplicant,
   InstructorApplication,
   InstructorApplicationState,
@@ -34,6 +37,9 @@ import type {
 } from '@/lib/types/instructor';
 
 export type {
+  AnnouncementDraft,
+  CourseInsights,
+  InstructorAnnouncement,
   InstructorApplicant,
   InstructorApplication,
   InstructorApplicationState,
@@ -80,6 +86,11 @@ type ManageLearningRequest =
   }
   | { action: 'grade_submission'; submissionId: string; score: number; feedback: string; draft: boolean }
   | { action: 'grade_drafts'; courseId: string }
+  // Course announcements and insights (the course's instructor or an administrator).
+  | ({ action: 'create_announcement'; courseId: string; operationId: string } & AnnouncementDraft)
+  | ({ action: 'update_announcement'; announcementId: string } & AnnouncementDraft)
+  | { action: 'delete_announcement'; announcementId: string }
+  | { action: 'course_insights'; courseId: string }
   // Administrator review (the server refuses anyone else).
   | { action: 'review_queue' }
   | { action: 'review_course_outline'; courseId: string }
@@ -92,9 +103,9 @@ const DOCUMENT_PREFIX: Record<InstructorDocumentKind, string> = { resume: 'resum
 /**
  * Instructor side of E-Learning in the app: the application, the instructor's own courses (including drafts and
  * courses waiting for review, which the student-side CourseService hides), quizzes, assignments and grading. Reads use
- * the rules (an instructor reads their own instructors/{uid}, their own courses and their courses' submissions; modules
- * and lessons only once a course is published); every write goes through the manageLearning callable, which applies
- * the same checks as the website.
+ * the rules (an instructor reads their own instructors/{uid}, their own courses in any state with their modules and
+ * lessons, their courses' submissions and announcements); every write, and the learner-progress totals, go through the
+ * manageLearning callable, which applies the same checks as the website.
  */
 export class InstructorService {
   private static instance: InstructorService;
@@ -156,7 +167,7 @@ export class InstructorService {
   public async getMyCourses(userId: string): Promise<InstructorCourse[]> {
     const snapshot = await getDocs(query(collection(db, 'courses'), where('instructor.id', '==', userId), limit(100)));
     const courses = snapshot.docs.map((course) => this.toCourse(course.id, course.data()));
-    const withCounts = await Promise.all(courses.map(async (course) => ({ ...course, ...(await this.assessmentCounts(course.id, course.status)) })));
+    const withCounts = await Promise.all(courses.map(async (course) => ({ ...course, ...(await this.assessmentCounts(course.id)) })));
     return withCounts.sort((left, right) => left.title.localeCompare(right.title));
   }
 
@@ -170,7 +181,7 @@ export class InstructorService {
     const course = this.toCourse(snapshot.id, data);
     return {
       ...course,
-      ...(await this.assessmentCounts(course.id, course.status)),
+      ...(await this.assessmentCounts(course.id)),
       shortDescription: this.text(data.shortDescription),
       description: this.text(data.description),
       level: this.text(data.level) || 'beginner',
@@ -182,9 +193,11 @@ export class InstructorService {
     };
   }
 
-  /** Modules and lessons of the instructor's course. The rules only expose them once the course is published. */
-  public async getCurriculum(courseId: string, status: InstructorCourseStatus): Promise<InstructorCurriculum> {
-    if (status !== 'published') return { kind: 'unavailable' };
+  /**
+   * Modules and lessons of the instructor's course in any state: the rules let a course's own instructor read its
+   * outline while it is a draft, waiting for review, declined or archived (everyone else only once it is published).
+   */
+  public async getCurriculum(courseId: string): Promise<InstructorCurriculum> {
     try {
       const [modules, lessons] = await Promise.all([
         getDocs(query(collection(db, 'courseModules'), where('courseId', '==', courseId), limit(100))),
@@ -206,7 +219,7 @@ export class InstructorService {
     }
   }
 
-  /** Quizzes and assignments of a published course (empty when the lessons can't be read). */
+  /** Quizzes and assignments of the instructor's course (empty when the lessons can't be read). */
   public async getAssessments(courseId: string): Promise<InstructorLesson[]> {
     try {
       return (await this.getLessons(courseId)).filter((lesson) => lesson.type === 'quiz' || lesson.type === 'assignment');
@@ -339,6 +352,82 @@ export class InstructorService {
     }) : [];
   }
 
+  // ── Announcements and insights ──
+
+  /** The course's announcements, newest first (readable by its instructor and enrolled learners). */
+  public async getAnnouncements(courseId: string): Promise<InstructorAnnouncement[]> {
+    const snapshot = await getDocs(query(collection(db, 'courseAnnouncements'), where('courseId', '==', courseId), orderBy('createdAt', 'desc'), limit(50)));
+    return snapshot.docs.flatMap((item): InstructorAnnouncement[] => {
+      const announcement = this.toAnnouncement({ ...item.data(), id: item.id });
+      return announcement ? [announcement] : [];
+    });
+  }
+
+  /** `operationId` makes a retry return the announcement already posted instead of posting it twice. No push or email is sent. */
+  public async createAnnouncement(courseId: string, draft: AnnouncementDraft, operationId: string): Promise<InstructorAnnouncement> {
+    const result = await this.call<{ announcement?: unknown }>({ action: 'create_announcement', courseId, operationId, ...this.cleanDraft(draft) });
+    return this.requireAnnouncement(result.announcement);
+  }
+
+  public async updateAnnouncement(announcementId: string, draft: AnnouncementDraft): Promise<InstructorAnnouncement> {
+    const result = await this.call<{ announcement?: unknown }>({ action: 'update_announcement', announcementId, ...this.cleanDraft(draft) });
+    return this.requireAnnouncement(result.announcement);
+  }
+
+  public async deleteAnnouncement(announcementId: string): Promise<void> {
+    await this.call({ action: 'delete_announcement', announcementId });
+  }
+
+  /**
+   * Learner progress totals for one course (course_insights), computed on the server because instructors cannot read
+   * enrollments. Completion and per-lesson numbers are withheld while a course has too few learners.
+   */
+  public async getInsights(courseId: string): Promise<CourseInsights> {
+    const result = await this.call<Partial<CourseInsights>>({ action: 'course_insights', courseId });
+    const count = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0);
+    const nullableCount = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+    const lessons = Array.isArray(result.lessons) ? result.lessons.flatMap((entry: unknown): CourseInsights['lessons'] => {
+      if (!entry || typeof entry !== 'object') return [];
+      const lesson = entry as DocumentData;
+      return this.text(lesson.lessonId) ? [{
+        lessonId: this.text(lesson.lessonId), title: this.text(lesson.title) || 'Lesson', type: this.text(lesson.type) || 'text',
+        completedCount: nullableCount(lesson.completedCount), completedPercent: nullableCount(lesson.completedPercent), dropOff: nullableCount(lesson.dropOff),
+      }] : [];
+    }) : [];
+    const drop = result.biggestDropOff;
+    return {
+      courseId, generatedAt: this.text(result.generatedAt) || new Date().toISOString(),
+      enrollments: count(result.enrollments), learners: count(result.learners),
+      completed: nullableCount(result.completed), completionPercent: nullableCount(result.completionPercent),
+      submissionsWaiting: count(result.submissionsWaiting), lessons,
+      biggestDropOff: drop && this.text(drop.lessonId) ? { lessonId: this.text(drop.lessonId), title: this.text(drop.title) || 'Lesson', dropOff: count(drop.dropOff) } : null,
+      withheld: result.withheld === true, minimumGroup: count(result.minimumGroup) || 5, partial: result.partial === true,
+    };
+  }
+
+  private cleanDraft(draft: AnnouncementDraft): AnnouncementDraft {
+    return { title: draft.title.trim(), body: draft.body.trim(), important: draft.important };
+  }
+
+  private requireAnnouncement(value: unknown): InstructorAnnouncement {
+    const announcement = value && typeof value === 'object' ? this.toAnnouncement(value as DocumentData) : null;
+    if (!announcement) throw new Error('The announcement was not confirmed. Pull down to refresh.');
+    return announcement;
+  }
+
+  /** From a Firestore document (Timestamps) or a manageLearning response (ISO strings). */
+  private toAnnouncement(data: DocumentData): InstructorAnnouncement | null {
+    const id = this.text(data.id);
+    const title = this.text(data.title);
+    const body = this.text(data.body ?? data.content);
+    if (!id || !title || !body) return null;
+    const editedAt = this.isoDate(data.editedAt);
+    return {
+      id, courseId: this.text(data.courseId), title, body, important: data.important === true, authorName: this.text(data.authorName) || 'Instructor',
+      createdAt: this.isoDate(data.createdAt), ...(editedAt ? { editedAt } : {}),
+    };
+  }
+
   // ── Administrator review ──
 
   /** Instructor applications and courses waiting for an administrator, oldest first (admin only on the server). */
@@ -377,8 +466,7 @@ export class InstructorService {
     });
   }
 
-  private async assessmentCounts(courseId: string, status: InstructorCourseStatus): Promise<{ quizCount: number | null; assignmentCount: number | null }> {
-    if (status !== 'published') return { quizCount: null, assignmentCount: null };
+  private async assessmentCounts(courseId: string): Promise<{ quizCount: number | null; assignmentCount: number | null }> {
     try {
       const lessons = await this.getLessons(courseId);
       return { quizCount: lessons.filter((lesson) => lesson.type === 'quiz').length, assignmentCount: lessons.filter((lesson) => lesson.type === 'assignment').length };

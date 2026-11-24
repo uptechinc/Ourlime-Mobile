@@ -368,16 +368,24 @@ export class CourseService {
   public async getReviews(courseId: string): Promise<CourseReview[]> {
     this.requireUserId();
     const snapshot = await getDocs(query(collection(this.database, 'courseReviews'), where('courseId', '==', courseId), limit(50)));
-    // The stored title falls back to the account's userName, which for some accounts is their email address: show the
-    // profile's name instead, and never an email. Student (minor) accounts show a first name and last initial.
-    const reviewerIds = [...new Set(snapshot.docs.map((item) => this.text(item.data().userId)).filter(Boolean))];
-    const profiles = await this.optional('reviewers', firestoreBatchReadService.getDocumentsByIds('users', reviewerIds), new Map<string, Data>());
+    // Newer reviews carry authorDisplayName, which the server worked out from the account (a full name for adults,
+    // "First L." for student accounts and anyone under 18) and is shown as stored. Older reviews only have the name in
+    // `title`, which may be an email address: for those the reviewer's profile decides (LearnerNameRules), never an email.
+    const storedName = (data: Data): string => {
+      const name = this.text(data.authorDisplayName);
+      return name && !name.includes('@') ? name : '';
+    };
+    const reviewerIds = [...new Set(snapshot.docs.filter((item) => !storedName(item.data())).map((item) => this.text(item.data().userId)).filter(Boolean))];
+    const profiles = reviewerIds.length
+      ? await this.optional('reviewers', firestoreBatchReadService.getDocumentsByIds('users', reviewerIds), new Map<string, Data>())
+      : new Map<string, Data>();
     return snapshot.docs.flatMap((item): CourseReview[] => {
       const data = item.data();
       const rating = this.integer(data.rating);
       if (rating < 1 || rating > 5) return [];
       const userId = this.text(data.userId);
-      return [{ id: item.id, userId, reviewerName: learnerPublicName(profiles.get(userId), this.text(data.title)), rating, comment: this.text(data.comment), createdAt: this.timestamp(data.createdAt) }];
+      const reviewerName = storedName(data) || learnerPublicName(profiles.get(userId), this.text(data.title));
+      return [{ id: item.id, userId, reviewerName, rating, comment: this.text(data.comment), createdAt: this.timestamp(data.createdAt) }];
     }).sort((left, right) => (right.createdAt ?? '').localeCompare(left.createdAt ?? ''));
   }
 
@@ -520,7 +528,8 @@ export class CourseService {
     // One equality query per course: the rules can only prove access course by course, so a single `in` query is refused
     // as soon as one of the courses is not readable.
     const perCourse = await Promise.all(courseIds.map((courseId) => this.optional('announcements:' + courseId,
-      getDocs(query(collection(this.database, 'courseAnnouncements'), where('courseId', '==', courseId), limit(5)))
+      // Newest first on the server (index courseId + createdAt), so the latest five are the ones shown.
+      getDocs(query(collection(this.database, 'courseAnnouncements'), where('courseId', '==', courseId), orderBy('createdAt', 'desc'), limit(5)))
         .then((snapshot) => snapshot.docs.map((item) => this.announcement(item.id, item.data())).filter((item): item is CourseAnnouncement => item !== null)),
       [] as CourseAnnouncement[])));
     return perCourse.flat();

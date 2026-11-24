@@ -28,6 +28,7 @@ import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { LessonContentSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
+import { courseMediaLinkService } from '@/lib/services/CourseMediaLinkService';
 import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
 import LessonQuiz from '@/components/eLearning/LessonQuiz';
 import LessonAssignment from '@/components/eLearning/LessonAssignment';
@@ -146,6 +147,20 @@ export default function LessonScreen() {
 
   useEffect(() => { setIsAssignmentSubmitted(false); }, [currentLesson?.id]);
 
+  // Course files play from a short-lived signed link the server issues after checking access (external links as they are).
+  const mediaLessonId = currentLesson?.id ?? '';
+  const storedMediaUrl = currentLesson?.mediaUrl ?? '';
+  const [resolvedMedia, setResolvedMedia] = useState<{ source: string; url: string } | null>(null);
+  useEffect(() => {
+    if (!mediaLessonId || !storedMediaUrl) return;
+    let isCancelled = false;
+    void courseMediaLinkService.openableUrl({ kind: 'lesson', lessonId: mediaLessonId }, storedMediaUrl).then((url) => {
+      if (!isCancelled) setResolvedMedia({ source: `${mediaLessonId}:${storedMediaUrl}`, url });
+    });
+    return () => { isCancelled = true; };
+  }, [mediaLessonId, storedMediaUrl]);
+  const playableUrl = resolvedMedia?.source === `${mediaLessonId}:${storedMediaUrl}` ? resolvedMedia.url : '';
+
   const enrollmentId = enrollment?.id ?? null;
   // The learner's past attempts at the open quiz (extra: the quiz works without them).
   const loadQuizHistory = useCallback(async (lessonId: string) => {
@@ -224,9 +239,10 @@ export default function LessonScreen() {
     }
   };
 
-  const handleOpenMaterial = () => {
+  const handleOpenMaterial = async () => {
     if (!currentLesson?.mediaUrl) return;
-    void Linking.openURL(currentLesson.mediaUrl).catch((error: unknown) => {
+    const url = await courseMediaLinkService.openableUrl({ kind: 'lesson', lessonId: currentLesson.id }, currentLesson.mediaUrl);
+    void Linking.openURL(url).catch((error: unknown) => {
       console.error('[LessonScreen.handleOpenMaterial] Error:', error instanceof Error ? error.message : 'Unknown error');
       setDialogState({ visible: true, type: 'error', title: 'Could not open', message: 'This lesson material could not be opened on this device.' });
     });
@@ -310,9 +326,13 @@ export default function LessonScreen() {
             {/* Content first: only video lessons get the full-width player area; reading, quiz and file lessons start with their text. */}
             {isVideoLesson ? (
               <View style={[styles.playerBox, { height: playerHeight }]}>
-                {isVideoFile(currentLesson.mediaUrl) ? (
+                {isVideoFile(currentLesson.mediaUrl) && playableUrl ? (
                   // key: a new lesson gets a fresh player instead of keeping the previous video's position.
-                  <CustomVideoPlayer key={currentLesson.id} url={currentLesson.mediaUrl ?? ''} autoPlay={false} showSpeed />
+                  <CustomVideoPlayer key={currentLesson.id} url={playableUrl} autoPlay={false} showSpeed />
+                ) : isVideoFile(currentLesson.mediaUrl) ? (
+                  <View accessible accessibilityLabel="Loading the video" style={styles.videoPlaceholder}>
+                    <ActivityIndicator color={colors.accent} />
+                  </View>
                 ) : (
                   <View style={styles.videoPlaceholder}>
                     <PlayCircle size={48} color={colors.accent} />
@@ -384,7 +404,7 @@ export default function LessonScreen() {
               ) : null}
 
               {currentLesson.mediaUrl && currentLesson.type !== 'quiz' && !(currentLesson.type === 'video' && isVideoFile(currentLesson.mediaUrl)) ? (
-                <Pressable accessibilityRole="link" onPress={handleOpenMaterial} android_ripple={{ color: colors.control }} style={styles.materialButton}>
+                <Pressable accessibilityRole="link" onPress={() => void handleOpenMaterial()} android_ripple={{ color: colors.control }} style={styles.materialButton}>
                   <FileText size={18} color={colors.accentText} />
                   <Text numberOfLines={1} style={styles.materialButtonText}>Open lesson material</Text>
                   <ChevronRight size={18} color={colors.mutedText} />

@@ -41,10 +41,11 @@ export class CourseInteractionService {
     return { items, cursor: snapshot.size === 30 && lastItem?.createdAt ? { createdAt: lastItem.createdAt, id: lastItem.id } : null };
   }
 
-  public async getReplies(discussionId: string): Promise<CourseDiscussionReply[]> {
+  public async getReplies(courseId: string, discussionId: string): Promise<CourseDiscussionReply[]> {
     const userId = this.requireUserId();
     await nativeSessionService.ensure(userId);
-    const snapshot: QuerySnapshot = await getDocs(query(collection(this.database, 'courseDiscussionReplies'), where('discussionId', '==', discussionId), where('deleted', '==', false), orderBy('createdAt', 'asc'), limit(100)));
+    // The rules check enrollment in the reply's course, so the list query must name the course to be allowed.
+    const snapshot: QuerySnapshot = await getDocs(query(collection(this.database, 'courseDiscussionReplies'), where('courseId', '==', courseId), where('discussionId', '==', discussionId), where('deleted', '==', false), orderBy('createdAt', 'asc'), limit(100)));
     nativeSessionService.assertOwner(userId);
     return this.withAuthorNames(snapshot.docs.map((item) => this.reply(item.id, item.data())).filter((item): item is CourseDiscussionReply => item !== null));
   }
@@ -69,29 +70,37 @@ export class CourseInteractionService {
   private discussion(id: string, data: Data): CourseDiscussion | null {
     const authorId = this.text(data.authorId) || this.text(data.userId);
     if (!this.text(data.courseId) || !authorId || !this.text(data.body) || data.deleted === true) return null;
-    return { id, courseId: this.text(data.courseId), authorId, authorName: this.optionalText(data.authorName) ?? (this.text(data.userName).includes('@') ? undefined : this.optionalText(data.userName)), title: this.optionalText(data.title), body: this.text(data.body), replyCount: this.integer(data.replyCount), createdAt: this.timestamp(data.createdAt) };
+    return { id, courseId: this.text(data.courseId), authorId, authorName: this.optionalText(data.authorName) ?? (this.text(data.userName).includes('@') ? undefined : this.optionalText(data.userName)), authorDisplayName: this.displayName(data), title: this.optionalText(data.title), body: this.text(data.body), replyCount: this.integer(data.replyCount), createdAt: this.timestamp(data.createdAt) };
+  }
+
+  /** The server's display-safe name (never an email), when the post has one. */
+  private displayName(data: Data): string | undefined {
+    const name = this.text(data.authorDisplayName);
+    return name && !name.includes('@') ? name : undefined;
   }
 
   private reply(id: string, data: Data): CourseDiscussionReply | null {
     if (!this.text(data.discussionId) || !this.text(data.courseId) || !this.text(data.authorId) || !this.text(data.body) || data.deleted === true) return null;
-    return { id, discussionId: this.text(data.discussionId), courseId: this.text(data.courseId), authorId: this.text(data.authorId), authorName: this.optionalText(data.authorName), body: this.text(data.body), createdAt: this.timestamp(data.createdAt) };
+    return { id, discussionId: this.text(data.discussionId), courseId: this.text(data.courseId), authorId: this.text(data.authorId), authorName: this.optionalText(data.authorName), authorDisplayName: this.displayName(data), body: this.text(data.body), createdAt: this.timestamp(data.createdAt) };
   }
 
   /**
-   * The name other learners see on each post (LearnerNameRules): student (minor) accounts as "First L.", never an email.
-   * Every author's profile is read (one batch for the page) because the stored authorName cannot tell a minor apart;
-   * when profiles can't be read the stored names are shortened the same way.
+   * The name other learners see on each post. Newer posts carry authorDisplayName, which the server worked out from the
+   * account (a full name for adults, "First L." for student accounts and anyone under 18), so it is shown as stored.
+   * For older posts every author's profile is read (one batch for the page) because the stored authorName cannot tell
+   * a minor apart (LearnerNameRules); when profiles can't be read the stored names are shortened the same way.
    */
-  private async withAuthorNames<T extends { authorId: string; authorName?: string }>(items: T[]): Promise<T[]> {
-    const authorIds = [...new Set(items.map((item) => item.authorId))];
-    if (authorIds.length === 0) return items;
+  private async withAuthorNames<T extends { authorId: string; authorName?: string; authorDisplayName?: string }>(items: T[]): Promise<T[]> {
+    const legacy = items.filter((item) => !item.authorDisplayName);
+    if (legacy.length === 0) return items.map((item) => ({ ...item, authorName: item.authorDisplayName }));
+    const authorIds = [...new Set(legacy.map((item) => item.authorId))];
     let profiles: Map<string, Data> | null = null;
     try {
       profiles = await firestoreBatchReadService.getDocumentsByIds('users', authorIds);
     } catch (error: unknown) {
       console.error('[CourseInteractionService.withAuthorNames] Error:', error instanceof Error ? error.message : 'Unknown error');
     }
-    return items.map((item) => ({ ...item, authorName: learnerPublicName(profiles?.get(item.authorId) ?? null, item.authorName ?? '') }));
+    return items.map((item) => ({ ...item, authorName: item.authorDisplayName ?? learnerPublicName(profiles?.get(item.authorId) ?? null, item.authorName ?? '') }));
   }
 
   private requireUserId(): string { const userId = auth.currentUser?.uid; if (!userId) throw new Error('You must be signed in to join course discussions.'); return userId; }

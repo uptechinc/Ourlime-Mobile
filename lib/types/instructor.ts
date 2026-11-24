@@ -106,6 +106,29 @@ export type NewQuiz = { courseId: string; title: string; description: string; qu
 /** A draft grade the instructor saved; it stays on the server until they publish it. */
 export type InstructorGradeDraft = { submissionId: string; lessonId: string; score: number; feedback: string };
 
+/** One announcement of the instructor's course (courseAnnouncements; written through manageLearning). */
+export type InstructorAnnouncement = { id: string; courseId: string; title: string; body: string; important: boolean; authorName: string; createdAt?: string; editedAt?: string };
+export type AnnouncementDraft = { title: string; body: string; important: boolean };
+
+/** One lesson in the instructor's course insights; counts are null while withheld (too few learners). */
+export type CourseLessonInsight = { lessonId: string; title: string; type: string; completedCount: number | null; completedPercent: number | null; dropOff: number | null };
+
+/** Server-computed totals for one course (manageLearning course_insights); never per-learner records. */
+export type CourseInsights = {
+  courseId: string;
+  generatedAt: string;
+  enrollments: number;
+  learners: number;
+  completed: number | null;
+  completionPercent: number | null;
+  submissionsWaiting: number;
+  lessons: CourseLessonInsight[];
+  biggestDropOff: { lessonId: string; title: string; dropOff: number } | null;
+  withheld: boolean;
+  minimumGroup: number;
+  partial: boolean;
+};
+
 export type NewAssignment = {
   courseId: string;
   title: string;

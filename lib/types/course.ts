@@ -177,11 +177,19 @@ export type CxcSubject = {
 export type AssignmentFile = { name: string; url: string; size: number };
 export type AssignmentSubmission = { id: string; lessonId?: string; status: 'submitted' | 'graded'; textResponse: string; files: AssignmentFile[]; score?: number; maxScore?: number; feedback?: string; submittedAt?: string };
 export type CourseReview = { id: string; userId: string; reviewerName: string; rating: number; comment: string; createdAt?: string };
+/** Which course file a short-lived signed link is asked for (manageLearning media_link). */
+export type CourseMediaRequest =
+  | { kind: 'lesson'; lessonId: string }
+  | { kind: 'resource'; resourceId: string }
+  | { kind: 'lesson_attachment'; lessonId: string; index: number }
+  | { kind: 'submission_file'; submissionId: string; index: number };
+export type CourseMediaLink = { url: string; expiresAt: string | null; signed: boolean; name: string };
 export type CourseAnnouncement = { id: string; courseId: string; title: string; body: string; authorName: string; authorAvatar?: string; important: boolean; createdAt?: string };
 export type InstructorProfile = { id: string; name: string; avatar?: string; bio?: string; specialties: string[]; rating: number; totalStudents: number; totalCourses: number; isVerified: true };
 export type CourseCategory = { id: string; name: string; description?: string; icon?: string; color?: string; order: number; isActive: boolean; courseCount: number };
-export type CourseDiscussion = { id: string; courseId: string; authorId: string; authorName?: string; title?: string; body: string; replyCount: number; createdAt?: string };
-export type CourseDiscussionReply = { id: string; discussionId: string; courseId: string; authorId: string; authorName?: string; body: string; createdAt?: string };
+/** `authorDisplayName`: the display-safe name the server stored on newer posts (shown as it is). */
+export type CourseDiscussion = { id: string; courseId: string; authorId: string; authorName?: string; authorDisplayName?: string; title?: string; body: string; replyCount: number; createdAt?: string };
+export type CourseDiscussionReply = { id: string; discussionId: string; courseId: string; authorId: string; authorName?: string; authorDisplayName?: string; body: string; createdAt?: string };
 export type DiscussionCursor = { createdAt: string; id: string };
 export type DiscussionPage = { items: CourseDiscussion[]; cursor: DiscussionCursor | null };
 

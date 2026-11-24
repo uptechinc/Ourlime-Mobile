@@ -1,6 +1,7 @@
 import { Linking } from 'react-native';
 import type { Href } from 'expo-router';
-import type { CourseLesson } from '@/lib/types/course';
+import type { CourseLesson, CourseMediaRequest } from '@/lib/types/course';
+import { courseMediaLinkService } from '@/lib/services/CourseMediaLinkService';
 
 /** The lesson screen opened on one lesson (web /lesson/[id], /quiz/[id] and /assignment/[id] all live in it here). */
 export const lessonHref = (courseId: string, lessonId?: string): Href =>
@@ -35,3 +36,7 @@ export const openExternalLink = async (url: string): Promise<boolean> => {
     return false;
   }
 };
+
+/** Opens a course file through a short-lived signed link (the server checks access first); see CourseMediaLinkService. */
+export const openCourseFile = async (request: CourseMediaRequest, storedUrl: string): Promise<boolean> =>
+  openExternalLink(await courseMediaLinkService.openableUrl(request, storedUrl));

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -9,6 +9,7 @@ import { FieldMessage } from '@/components/eLearning/instructor/InstructorForm';
 import { ELearningButton, ELearningChip, ELearningEmptyState, ELearningHeader, ELEARNING_GUTTER, StatusPill, formatWhen, type ELearningTone } from '@/components/eLearning/ELearningParts';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { instructorService, type InstructorLesson, type InstructorSubmission } from '@/lib/services/InstructorService';
+import { openCourseFile } from '@/components/eLearning/course/workspaceHelpers';
 
 const CONTENT_MAX_WIDTH = 820;
 const ALL_ITEMS = '__all__';
@@ -186,8 +187,8 @@ export default function InstructorGradingScreen() {
           <View style={styles.cardBody}>
             <Text style={styles.label}>Student's work</Text>
             {submission.textResponse ? <Text selectable style={styles.response}>{submission.textResponse}</Text> : <Text style={styles.muted}>No written response.</Text>}
-            {submission.files.map((file) => (
-              <Pressable key={file.url} accessibilityRole="link" accessibilityLabel={`Open ${file.name}`} onPress={() => void Linking.openURL(file.url).catch((openError: unknown) => console.error('[InstructorGradingScreen.openFile] Error:', openError instanceof Error ? openError.message : 'Unknown error'))} android_ripple={RIPPLE} style={styles.fileRow}>
+            {submission.files.map((file, index) => (
+              <Pressable key={file.url} accessibilityRole="link" accessibilityLabel={`Open ${file.name}`} onPress={() => void openCourseFile({ kind: 'submission_file', submissionId: submission.id, index }, file.url)} android_ripple={RIPPLE} style={styles.fileRow}>
                 <FileText size={18} color={colors.accentText} />
                 <Text style={styles.fileName} numberOfLines={2}>{file.name}</Text>
               </Pressable>
