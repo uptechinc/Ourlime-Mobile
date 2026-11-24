@@ -3,9 +3,8 @@ import { Linking, ScrollView, Text, TextInput, TouchableOpacity, View } from 're
 import { File, FileArchive, FileImage, FileText, FolderOpen, Search, X } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { EmptyPanel, PanelHeader, PremiumNotice } from '@/components/projectManagement/ProjectPanelParts';
+import { EmptyPanel, PanelHeader } from '@/components/projectManagement/ProjectPanelParts';
 import { formatFileSize } from '@/components/projectManagement/projectFormat';
-import { projectEntitlementService } from '@/lib/services/ProjectEntitlementService';
 import type { ProjectRecord, Task, TeamMember } from '@/lib/types/project';
 
 type ProjectFilesPanelProps = {
@@ -41,11 +40,10 @@ export async function openAttachment(url: string): Promise<void> {
 }
 
 /** Website ProjectFilesTab: every task attachment in one vault, with storage used, search and type filters. */
-export default function ProjectFilesPanel({ project, tasks, teamMembers, onOpenUpgrade, onSelectTask }: ProjectFilesPanelProps) {
+export default function ProjectFilesPanel({ tasks, teamMembers, onSelectTask }: ProjectFilesPanelProps) {
   const { colors } = useAppTheme();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FileFilter>('all');
-  const isPremium = projectEntitlementService.isPremium(project);
 
   const files = useMemo(() => {
     const names = new Map(teamMembers.map((member) => [member.id, member.name]));
@@ -56,28 +54,14 @@ export default function ProjectFilesPanel({ project, tasks, teamMembers, onOpenU
     return (!term || file.name.toLowerCase().includes(term) || file.task.title.toLowerCase().includes(term)) && matchesFilter(file.type || '', filter);
   });
   const totalBytes = files.reduce((sum, file) => sum + (file.size || 0), 0);
-  const maxBytes = projectEntitlementService.getLimits(project).maxFileUploadBytes;
-  const percent = Math.min(100, Math.round((totalBytes / maxBytes) * 100));
 
   return (
     <View style={{ gap: 12 }}>
       <PanelHeader
         icon={<FolderOpen size={18} color={colors.accent} />}
-        title="Project File Vault"
-        description={`${files.length} project file${files.length !== 1 ? 's' : ''} stored across tasks`}
-        action={(
-          <View style={{ gap: 6 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ color: colors.secondaryText, fontSize: 12 }}>Storage Used</Text>
-              <Text style={{ color: colors.secondaryText, fontSize: 12, fontWeight: '700' }}>{formatFileSize(totalBytes)} / {formatFileSize(maxBytes)}</Text>
-            </View>
-            <View style={{ height: 7, borderRadius: 999, backgroundColor: colors.control, overflow: 'hidden' }}>
-              <View style={{ height: '100%', width: `${percent}%`, backgroundColor: percent > 85 ? '#ef4444' : percent > 60 ? '#f59e0b' : '#10b981' }} />
-            </View>
-          </View>
-        )}
+        title="Files"
+        description={`${files.length} file${files.length !== 1 ? 's' : ''} attached to tasks${files.length > 0 ? ` · ${formatFileSize(totalBytes)} in total` : ''}. Attach files from a task; each can be up to 10 MB.`}
       />
-      {!isPremium ? <PremiumNotice title="Free plan storage:" message="10 MB per file. Upgrade to Premium for uploads up to 1 GB." actionLabel="Upgrade" onUpgrade={onOpenUpgrade} /> : null}
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, height: 42, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
         <Search size={16} color={colors.mutedText} />

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CheckCircle2, Clock, DollarSign, Layers, ShieldAlert, Sparkles, Users, X, Zap } from 'lucide-react-native';
+import { CheckCircle2, Clock, Sparkles, X } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { ProjectPlanTier } from '@/lib/types/project';
@@ -14,20 +14,18 @@ type ProjectUpgradeSheetProps = {
   onUpgrade: () => Promise<void>;
 };
 
-// Same benefits and comparison as the website's UpgradeTierModal.
+/**
+ * Only what Premium actually changes in the app today: the timesheet CSV export. Budgets, risk registers, more
+ * automations, 1 GB uploads and the old subtask / milestone caps were listed before but do not exist (audit D6/D7),
+ * and the timeline and workload views are open to every project, so none of that is promised here.
+ */
 const PREMIUM_BENEFITS = [
-  { Icon: Layers, title: 'Gantt Charts & Visual Timeline', desc: 'Interactive schedule with task dependencies and milestone tracking.' },
-  { Icon: Users, title: 'Resource Allocation & Workload', desc: 'Monitor team capacity to prevent over-utilization and burn-out.' },
-  { Icon: Clock, title: 'Weekly & Monthly Timesheets', desc: 'Aggregated time reporting, exportable timesheets, and hour logs.' },
-  { Icon: DollarSign, title: 'Budgeting & Cost Management', desc: 'Track project budget, expense approvals, and burn rate.' },
-  { Icon: ShieldAlert, title: 'Risk Management Matrix', desc: '5x5 Risk register, likelihood & impact scoring, and mitigation plans.' },
-  { Icon: Zap, title: 'Unlimited Automations & Subtasks', desc: 'Automate repetitive flows without limits or constraints.' },
+  { Icon: Clock, title: 'Timesheet export', desc: 'Download the project’s time log as a spreadsheet.' },
 ];
 const COMPARISON = [
-  { label: 'Subtasks per task', free: '3', premium: 'Unlimited' },
-  { label: 'Milestones per project', free: '2', premium: 'Unlimited' },
-  { label: 'Max file upload size', free: '10 MB', premium: '1 GB' },
-  { label: 'Gantt & Workload Views', free: '✕', premium: 'Included' },
+  { label: 'Tasks, checklists, milestones, team', free: 'Included', premium: 'Included' },
+  { label: 'Timeline and workload views', free: 'Included', premium: 'Included' },
+  { label: 'Timesheet CSV export', free: '✕', premium: 'Included' },
 ];
 
 /** Website UpgradeTierModal: Premium benefits, plan comparison and the upgrade action. */
@@ -59,7 +57,7 @@ export default function ProjectUpgradeSheet({ visible, projectName, currentTier,
         </View>
         <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 32 }}>
           <Text style={{ color: colors.secondaryText, fontSize: 14, lineHeight: 20 }}>
-            Elevate your project execution from basic task tracking to enterprise-grade planning, Gantt timelines, budgeting, and risk management.
+            Everything you need to run a project is free. Premium currently adds timesheet export; new Premium tools will be listed here when they are ready.
           </Text>
           <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.successSurface }}>
             <Sparkles size={14} color={colors.accent} />

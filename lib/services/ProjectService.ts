@@ -536,30 +536,40 @@ export class ProjectService {
   public subscribeToMilestones(projectId: string, onUpdate: (milestones: Milestone[]) => void, onError?: (error: Error) => void): () => void {
     this.requireUserId();
     return onSnapshot(collection(this.database, 'projects', projectId, 'milestones'), (snapshot) => {
-      onUpdate(snapshot.docs.map((document) => {
-        const data = document.data();
-        return {
-          id: document.id,
-          name: this.readString(data.name),
-          description: this.readString(data.description) || undefined,
-          dueDate: this.toCalendarDate(data.dueDate),
-          color: this.readString(data.color) || 'bg-blue-500',
-          completed: data.completed === true,
-          createdBy: this.readString(data.createdBy),
-        };
-      }));
+      onUpdate(snapshot.docs.map((document) => this.mapMilestone(document.id, document.data())));
     }, (error) => onError?.(error));
   }
 
-  public async createMilestone(projectId: string, input: { name: string; dueDate?: string; color?: string }): Promise<void> {
+  /** One read of a project's milestones (the projects list uses it for "next milestone"; screens use the listener). */
+  public async fetchMilestones(projectId: string): Promise<Milestone[]> {
+    this.requireUserId();
+    const snapshot = await getDocs(collection(this.database, 'projects', projectId, 'milestones'));
+    return snapshot.docs.map((document: QueryDocumentSnapshot) => this.mapMilestone(document.id, document.data()));
+  }
+
+  /** Creates a milestone and returns its id (so a new project's starter tasks can be linked to it). */
+  public async createMilestone(projectId: string, input: { name: string; dueDate?: string; color?: string }): Promise<string> {
     const ownerId = this.requireUserId();
     pageAccessService.assertMutation('/projectManagement');
     const name = input.name.trim();
     if (!name) throw new Error('Milestone title is required');
-    await addDoc(collection(this.database, 'projects', projectId, 'milestones'), {
+    const created = await addDoc(collection(this.database, 'projects', projectId, 'milestones'), {
       name, description: '', dueDate: input.dueDate || '', color: input.color || 'bg-blue-500', completed: false,
       createdAt: serverTimestamp(), createdBy: ownerId,
     });
+    return created.id;
+  }
+
+  private mapMilestone(id: string, data: DocumentData): Milestone {
+    return {
+      id,
+      name: this.readString(data.name),
+      description: this.readString(data.description) || undefined,
+      dueDate: this.toCalendarDate(data.dueDate),
+      color: this.readString(data.color) || 'bg-blue-500',
+      completed: data.completed === true,
+      createdBy: this.readString(data.createdBy),
+    };
   }
 
   public async setMilestoneCompleted(projectId: string, milestoneId: string, completed: boolean): Promise<void> {

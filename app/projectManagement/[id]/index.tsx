@@ -1,19 +1,17 @@
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import Icon from 'react-native-vector-icons/Feather';
-import { Clock, Download, FileText, Flag, FolderOpen, LayoutGrid, Layers, LogOut, MoreHorizontal, Paperclip, Repeat, Link2, Sparkles, Users } from 'lucide-react-native';
+import {
+  Archive, Clock, Download, FileText, FolderKanban, FolderOpen, Layers, LogOut, MoreHorizontal, Pencil, Sparkles, Timer, Users,
+} from 'lucide-react-native';
 import { toast } from 'sonner-native';
-import PageHeader from '@/components/ui/PageHeader';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import CustomModal from '@/components/ui/CustomModal';
-import UserAvatar from '@/components/ui/UserAvatar';
 import SwipeDismissHandle from '@/components/ui/SwipeDismissHandle';
 import { ProjectBoardSkeleton } from '@/components/projectManagement/ProjectSkeletons';
-import ProjectBoardSidebar from '@/components/projectManagement/ProjectBoardSidebar';
 import CreateTaskSheet from '@/components/projectManagement/CreateTaskSheet';
 import TaskDetailSheet from '@/components/projectManagement/TaskDetailSheet';
 import ProjectFormSheet, { type ProjectFormValues } from '@/components/projectManagement/ProjectFormSheet';
@@ -29,44 +27,46 @@ import ProjectFriendPickerModal from '@/components/projectManagement/ProjectFrie
 import ProjectLifecycleSheet from '@/components/projectManagement/ProjectLifecycleSheet';
 import ProjectStatusBanner from '@/components/projectManagement/ProjectStatusBanner';
 import ProjectActivityPanel from '@/components/projectManagement/ProjectActivityPanel';
-import { projectLifecycleRules } from '@/lib/services/ProjectLifecycleRules';
+import ProjectActionSheet from '@/components/projectManagement/ProjectActionSheet';
+import ProjectModuleSheet from '@/components/projectManagement/ProjectModuleSheet';
+import ProjectOverviewPanel, { type ProjectSectionId } from '@/components/projectManagement/ProjectOverviewPanel';
+import ProjectTasksPanel, { type TaskView } from '@/components/projectManagement/ProjectTasksPanel';
+import ProjectTeamPanel from '@/components/projectManagement/ProjectTeamPanel';
+import { ROLE_LABELS } from '@/components/projectManagement/ProjectCard';
+import {
+  PROJECT_GUTTER, PROJECT_RIPPLE, ProjectAvatarStack, ProjectButton, ProjectEmptyState, ProjectIconButton, ProjectPill, ProjectProgressBar,
+  ProjectScreenHeader, ProjectSegmented, ProjectSheetRow, projectStatusTone,
+} from '@/components/projectManagement/ProjectUiParts';
 import { projectColorHex } from '@/components/projectManagement/projectColors';
-import { formatCalendarDate, formatDuration, priorityColor, taskMinutes } from '@/components/projectManagement/projectFormat';
 import { useSwipeDismiss } from '@/lib/hooks/useSwipeDismiss';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { projectService } from '@/lib/services/ProjectService';
 import { projectEntitlementService } from '@/lib/services/ProjectEntitlementService';
 import { projectExportService } from '@/lib/services/ProjectExportService';
+import { projectLifecycleRules } from '@/lib/services/ProjectLifecycleRules';
+import { DEFAULT_TASK_FILTERS, type TaskFilters, type TaskQuickFilter } from '@/lib/services/ProjectInsightRules';
 import type {
-  ActiveTaskTimer,
-  Milestone,
-  Priority,
-  ProjectLoadError,
-  ProjectRecord,
-  ProjectRole,
-  ProjectTeamMember,
-  Status,
-  Task,
-  TaskTemplate,
-  TeamMember,
-  ProjectStatus,
+  ActiveTaskTimer, Milestone, ProjectLoadError, ProjectRecord, ProjectRole, ProjectStatus, ProjectTeamMember, Status, Task, TaskTemplate, TeamMember,
 } from '@/lib/types/project';
 
-type MainTab = 'board' | 'timeline' | 'workload' | 'files' | 'milestones' | 'timesheets';
-const MAIN_TABS: { id: MainTab; label: string; Icon: typeof LayoutGrid }[] = [
-  { id: 'board', label: 'Tasks & Board', Icon: LayoutGrid }, { id: 'timeline', label: 'Gantt Timeline', Icon: Layers },
-  { id: 'workload', label: 'Workload', Icon: Users }, { id: 'files', label: 'Files', Icon: FileText },
-  { id: 'milestones', label: 'Milestones', Icon: Flag }, { id: 'timesheets', label: 'Timesheets', Icon: Clock },
+type ModuleView = 'files' | 'timeline' | 'workload' | 'timesheets';
+type CreateTaskTarget = { status?: Status; milestoneId?: string };
+
+const SECTIONS: { value: ProjectSectionId; label: string }[] = [
+  { value: 'overview', label: 'Overview' }, { value: 'tasks', label: 'Tasks' }, { value: 'milestones', label: 'Milestones' }, { value: 'team', label: 'Team' },
 ];
+const MODULE_TITLES: { [module in ModuleView]: string } = { files: 'Files', timeline: 'Timeline', workload: 'Workload', timesheets: 'Timesheets' };
 
 // Same messages as the website's project page error states.
 const LOAD_ERRORS: { [error in ProjectLoadError]: { title: string; message: string; retry: boolean } } = {
-  'not-found': { title: 'Project Not Found', message: 'The project you are looking for does not exist or may have been deleted.', retry: false },
-  'permission-denied': { title: 'Access Denied', message: 'You do not have permission to view this project. It may be private, or you may have been removed from it.', retry: false },
-  'network-error': { title: 'Network Error', message: 'We could not reach the server. Check your connection and try again.', retry: true },
-  unknown: { title: 'Something Went Wrong', message: 'An unexpected error occurred while loading this project.', retry: true },
+  'not-found': { title: 'Project not found', message: 'This project does not exist or may have been deleted.', retry: false },
+  'permission-denied': { title: 'No access', message: 'You do not have permission to view this project. It may be private, or you may have been removed from it.', retry: false },
+  'network-error': { title: 'Connection problem', message: 'We could not reach the server. Check your connection and try again.', retry: true },
+  unknown: { title: 'Something went wrong', message: 'An unexpected error occurred while loading this project.', retry: true },
 };
+
+const plural = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
 
 export default function ProjectBoardScreen() {
   const router = useRouter();
@@ -98,22 +98,21 @@ export default function ProjectBoardScreen() {
   const writeCapability = projectService.getMutationCapability('create_task', project, { signedIn: Boolean(activeUserId), sessionReady: mutationReady, pageCanMutate });
   const inviteCapability = projectService.getMutationCapability('invite', project, { signedIn: Boolean(activeUserId), sessionReady: mutationReady, pageCanMutate });
   const canWrite = writeCapability.allowed;
-  const canManage = inviteCapability.allowed;
+  const canInvite = inviteCapability.allowed;
   const canManageSettings = project?.role === 'owner' || project?.role === 'admin';
 
-  // Filters & views
-  const [mainTab, setMainTab] = useState<MainTab>('board');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterPriority, setFilterPriority] = useState<Priority | 'all'>('all');
-  const [filterAssignee, setFilterAssignee] = useState<string>('all');
-  const [activeTabStatus, setActiveTabStatus] = useState<Status>('todo');
-  // Start/Complete is locked while that task's change saves (a fast second tap used to skip a column).
+  // Sections, views and sheets
+  const [section, setSection] = useState<ProjectSectionId>('overview');
+  const [taskView, setTaskView] = useState<TaskView>('list');
+  const [taskFilters, setTaskFilters] = useState<TaskFilters>(DEFAULT_TASK_FILTERS);
+  // Move/complete is locked while that task's change saves (a fast second tap used to skip a column).
   const [statusBusyTaskId, setStatusBusyTaskId] = useState<string | null>(null);
   const inviteOpenedRef = useRef(false);
-
-  // Modals
-  const [createTaskOpen, setCreateTaskOpen] = useState(false);
+  const [createTaskTarget, setCreateTaskTarget] = useState<CreateTaskTarget | null>(null);
+  const [milestoneCreateOpen, setMilestoneCreateOpen] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [moduleView, setModuleView] = useState<ModuleView | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -188,59 +187,45 @@ export default function ProjectBoardScreen() {
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, [projectId, sessionReady]);
 
-  // A project created from the list arrives with ?invite=1: open the invite picker once (website "Initial Members").
+  // A project created from the list arrives with ?invite=1: open the friend picker once (website "Initial Members").
   useEffect(() => {
-    if (invite !== '1' || inviteOpenedRef.current || !project || !canManage) return;
+    if (invite !== '1' || inviteOpenedRef.current || !project || !canInvite) return;
     inviteOpenedRef.current = true;
     setFriendPickerOpen(true);
-  }, [canManage, invite, project]);
+  }, [canInvite, invite, project]);
 
-  const handleUpdateStatus = async (task: Task, nextStatus: Status) => {
+  const handleMoveTask = async (task: Task, nextStatus: Status): Promise<void> => {
     if (!writeCapability.allowed) { setFeedback({ title: 'Task update unavailable', message: writeCapability.reason, type: 'warning' }); return; }
     if (statusBusyTaskId) return;
     setStatusBusyTaskId(task.id);
     try {
       await projectService.updateTaskStatus(projectId, task.id, nextStatus);
     } catch (error: unknown) {
-      setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not update status', type: 'danger' });
+      setFeedback({ title: 'Could not move the task', message: error instanceof Error ? error.message : 'Please try again.', type: 'danger' });
     } finally {
       setStatusBusyTaskId(null);
     }
   };
 
+  const handleOpenCreateTask = (target: CreateTaskTarget = {}): void => {
+    if (!writeCapability.allowed) { setFeedback({ title: 'New task unavailable', message: writeCapability.reason, type: 'warning' }); return; }
+    setCreateTaskTarget(target);
+  };
+
   const handleSendInvite = async () => {
     if (!inviteCapability.allowed) { setFeedback({ title: 'Invitations unavailable', message: inviteCapability.reason, type: 'warning' }); return; }
-    if (!inviteRecipient.trim()) { setFeedback({ title: 'Recipient required', message: 'Choose a friend or enter an email or username.', type: 'warning' }); return; }
+    if (!inviteRecipient.trim()) { setFeedback({ title: 'Who should we invite?', message: 'Choose a friend or enter an email or username.', type: 'warning' }); return; }
     setInviting(true);
     try {
       await projectService.inviteMember(projectId, inviteRecipient.trim(), inviteRole);
       setInviteRecipient('');
       setInviteOpen(false);
-      setFeedback({ title: 'Invitation Sent', message: 'The team member has been invited.', type: 'success' });
+      toast.success('Invitation sent');
       void loadProject();
     } catch (error: unknown) {
-      setFeedback({ title: 'Error', message: error instanceof Error ? error.message : 'Could not send invitation', type: 'danger' });
+      setFeedback({ title: 'Invitation not sent', message: error instanceof Error ? error.message : 'Could not send the invitation.', type: 'danger' });
     } finally {
       setInviting(false);
-    }
-  };
-
-  const handleCancelInvite = async (targetUid: string) => {
-    try {
-      await projectService.cancelInvite(projectId, targetUid);
-      void loadProject();
-      setFeedback({ title: 'Invite Cancelled', message: 'The invitation has been cancelled.', type: 'info' });
-    } catch {
-      setFeedback({ title: 'Error', message: 'Could not cancel invitation', type: 'danger' });
-    }
-  };
-
-  const handleResendInvite = async (targetUid: string) => {
-    try {
-      await projectService.resendInvite(projectId, targetUid);
-      setFeedback({ title: 'Invite Resent', message: 'The invitation reminder has been sent.', type: 'success' });
-    } catch {
-      setFeedback({ title: 'Error', message: 'Could not resend invitation', type: 'danger' });
     }
   };
 
@@ -251,7 +236,7 @@ export default function ProjectBoardScreen() {
 
   const handleSaveSettings = async (values: ProjectFormValues): Promise<void> => {
     await projectService.updateProjectSettings(projectId, values);
-    toast.success('Settings updated');
+    toast.success('Project updated');
     setSettingsOpen(false);
     void loadProject();
   };
@@ -285,19 +270,14 @@ export default function ProjectBoardScreen() {
     }
   };
 
-  // Website handleToggleAutomationRule: Premium rules open the upgrade sheet on Free projects.
-  const handleToggleAutomationRule = async (ruleId: string): Promise<void> => {
+  const handleToggleAutoAssign = async (): Promise<void> => {
     if (!project) return;
-    const rule = projectEntitlementService.automationRules(project).find((entry) => entry.id === ruleId);
-    if (!rule) return;
-    if (rule.isPremium && !projectEntitlementService.isPremium(project)) { setUpgradeOpen(true); return; }
-    if (!canManageSettings) { toast.error('Only the project owner or an admin can change automation settings.'); return; }
-    const nextEnabled = !projectEntitlementService.isAutomationRuleEnabled(project, ruleId);
+    const nextEnabled = !projectEntitlementService.isAutomationRuleEnabled(project, '1');
     try {
-      await projectService.updateProjectPlan(projectId, { automationRules: { ...project.automationRules, [ruleId]: nextEnabled } });
-      toast.success(nextEnabled ? `${rule.name} enabled.` : `${rule.name} disabled.`);
+      await projectService.updateProjectPlan(projectId, { automationRules: { ...project.automationRules, '1': nextEnabled } });
+      toast.success(nextEnabled ? 'New unassigned tasks go to the owner' : 'New tasks stay unassigned unless someone is picked');
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : 'Could not save the automation setting.');
+      toast.error(error instanceof Error ? error.message : 'The setting could not be saved.');
     }
   };
 
@@ -314,45 +294,23 @@ export default function ProjectBoardScreen() {
     }
   };
 
-  const pendingInvites = useMemo(() => teamMembers.filter((member) => member.membershipStatus === 'pending'), [teamMembers]);
+  const pendingInvites = useMemo(() => teamMembers.filter((member) => !member.isOwner && member.membershipStatus === 'pending'), [teamMembers]);
+  const acceptedMembers = useMemo(() => teamMembers.filter((member) => member.isOwner || member.membershipStatus !== 'pending'), [teamMembers]);
   const existingMembersRecord = useMemo<Record<string, ProjectTeamMember>>(() => {
     const map: Record<string, ProjectTeamMember> = {};
     for (const member of teamMembers) map[member.id] = { role: member.role, membershipStatus: member.membershipStatus };
     return map;
   }, [teamMembers]);
 
-  const filteredTasks = useMemo(() => tasks.filter((task) => {
-    const term = searchQuery.toLowerCase();
-    const matchesSearch = !term || task.title.toLowerCase().includes(term) || task.description.toLowerCase().includes(term);
-    const matchesPriority = filterPriority === 'all' || task.priority === filterPriority;
-    const matchesAssignee = filterAssignee === 'all' || task.assignee === filterAssignee || (task.assignees ?? []).includes(filterAssignee) || task.assignedToAll === true;
-    return matchesSearch && matchesPriority && matchesAssignee;
-  }), [tasks, searchQuery, filterPriority, filterAssignee]);
-
-  const tasksByStatus = useMemo(() => ({
-    todo: filteredTasks.filter((task) => task.status === 'todo'),
-    'in-progress': filteredTasks.filter((task) => task.status === 'in-progress'),
-    done: filteredTasks.filter((task) => task.status === 'done'),
-  }), [filteredTasks]);
-
-  const totalMinutes = useMemo(() => tasks.reduce((sum, task) => sum + taskMinutes(task), 0), [tasks]);
-  // Website "Due date reminders": open tasks due within 24 hours.
-  const dueSoonCount = useMemo(() => {
-    const now = Date.now();
-    return tasks.filter((task) => {
-      if (task.status === 'done' || !task.dueDate) return false;
-      const due = new Date(`${task.dueDate.slice(0, 10)}T23:59:59`).getTime();
-      return Number.isFinite(due) && due >= now && due - now <= 24 * 60 * 60 * 1000;
-    }).length;
-  }, [tasks]);
-
-  const handleSelectTask = (task: Task): void => setActiveTaskId(task.id);
+  const handleOpenTask = (task: Task): void => { setModuleView(null); setActiveTaskId(task.id); };
+  const handleShowTasks = (quick: TaskQuickFilter): void => { setTaskFilters({ ...DEFAULT_TASK_FILTERS, quick }); setSection('tasks'); };
+  const handleAddMilestone = (): void => { setSection('milestones'); setMilestoneCreateOpen(true); };
 
   if (!activeUserId) {
     return (
       <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
-        <PageHeader title="E-Projects" onBackPress={() => router.back()} />
-        <View style={styles.loadingContainer}><Text style={styles.loadingText}>Sign in to view this project.</Text></View>
+        <ProjectScreenHeader title="E-Projects" onBack={() => router.back()} />
+        <ProjectEmptyState icon={<FolderOpen size={40} color={colors.mutedText} />} title="Sign in to view this project" />
       </SafeAreaView>
     );
   }
@@ -360,7 +318,7 @@ export default function ProjectBoardScreen() {
   if (loading || !sessionReady) {
     return (
       <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
-        <PageHeader title="Project Details" onBackPress={() => router.back()} />
+        <ProjectScreenHeader title="Project" onBack={() => router.back()} />
         <ScrollView showsVerticalScrollIndicator={false}><ProjectBoardSkeleton /></ScrollView>
       </SafeAreaView>
     );
@@ -370,299 +328,210 @@ export default function ProjectBoardScreen() {
     const config = LOAD_ERRORS[loadError ?? 'not-found'];
     return (
       <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
-        <PageHeader title="Project Details" onBackPress={() => router.back()} />
-        <View style={styles.emptyContainer}>
-          <FolderOpen size={48} color={colors.mutedText} />
-          <Text style={styles.emptyTitle}>{config.title}</Text>
-          <Text style={[styles.loadingText, { textAlign: 'center' }]}>{config.message}</Text>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            {config.retry ? (
-              <TouchableOpacity onPress={() => { setLoading(true); setLoadError(null); void loadProject(); }} style={[styles.primaryButton, { paddingHorizontal: 20 }]}>
-                <Text style={styles.primaryButtonText}>Try Again</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity onPress={() => router.replace('/projectManagement')} style={[styles.cancelButton, { paddingHorizontal: 20 }]}>
-              <Text style={styles.cancelButtonText}>Back to Projects</Text>
-            </TouchableOpacity>
-          </View>
+        <ProjectScreenHeader title="Project" onBack={() => router.back()} />
+        <View style={styles.errorContainer}>
+          <ProjectEmptyState
+            icon={<FolderOpen size={44} color={colors.mutedText} />}
+            title={config.title}
+            hint={config.message}
+            actionLabel={config.retry ? 'Try again' : undefined}
+            onAction={config.retry ? () => { setLoading(true); setLoadError(null); void loadProject(); } : undefined}
+            secondaryLabel="Back to projects"
+            onSecondary={() => router.replace('/projectManagement')}
+          />
         </View>
       </SafeAreaView>
     );
   }
 
   const isPremium = projectEntitlementService.isPremium(project);
-  const acceptedMemberCount = teamMembers.filter((member) => member.isOwner || member.membershipStatus !== 'pending').length;
   const activeTimerTask = activeTimer ? tasks.find((task) => task.id === activeTimer.taskId) ?? null : null;
-  const openUpgrade = (): void => setUpgradeOpen(true);
-  // Paused, completed and archived projects are read-only for everyone (the server refuses those writes too).
-  const isProjectActive = project.status === 'active';
+  const doneCount = tasks.filter((task) => task.status === 'done').length;
+  const progress = tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : project.progress;
+  const fileCount = tasks.reduce((sum, task) => sum + task.attachments.length, 0);
   const statusChangedByName = project.statusChangedBy
     ? project.statusChangedBy === currentUserId ? 'you' : teamMembers.find((member) => member.id === project.statusChangedBy)?.name ?? 'a former member'
     : '';
+  const closeMoreThen = (action: () => void) => (): void => { setMoreOpen(false); action(); };
 
   return (
     <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
-      <PageHeader title={project.name} onBackPress={() => router.back()} />
+      <ProjectScreenHeader
+        title={project.name}
+        subtitle={`${projectLifecycleRules.label(project.status)} · ${project.isOwner ? 'Owner' : ROLE_LABELS[project.role]}`}
+        onBack={() => router.back()}
+        right={<ProjectIconButton accessibilityLabel="Project menu" accessibilityHint="Status, details, files, timeline, exports and more" onPress={() => setMoreOpen(true)}><MoreHorizontal size={22} color={colors.icon} /></ProjectIconButton>}
+      />
+      <SessionRetryBanner />
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        stickyHeaderIndices={[1]}
         keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 48 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void loadProject(); }} tintColor="#10b981" />}
       >
-        {/* Project header (website ProjectHeader) */}
-        <View style={styles.projectHero}>
-          <View style={styles.heroTop}>
-            <View style={[styles.colorTile, { backgroundColor: projectColorHex(project.color) }]}><FolderOpen size={18} color="#ffffff" /></View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.projectName}>{project.name}</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                <Text style={[styles.planBadge, isPremium ? styles.planBadgePremium : null]}>{isPremium ? '★ Premium' : 'Free Plan'}</Text>
-                <Text style={[styles.statusBadge, project.status === 'on-hold' ? styles.statusBadgePaused : project.status === 'archived' ? styles.statusBadgeMuted : null]}>{projectLifecycleRules.label(project.status)}</Text>
-              </View>
-            </View>
-            {canManageSettings ? (
-              <Pressable
-                onPress={() => setLifecycleSheet({ initialTarget: null })}
-                android_ripple={{ color: 'rgba(15,23,42,0.12)', borderless: true }}
-                accessibilityRole="button"
-                accessibilityLabel="Project status actions"
-                accessibilityHint="Pause, complete, archive or restore this project"
-                style={styles.statusMenuButton}
-              >
-                <MoreHorizontal size={20} color={colors.text} />
-              </Pressable>
-            ) : null}
-          </View>
-          <Text style={styles.projectDesc}>{project.description || 'No description provided.'}</Text>
-          {project.dueDate ? <Text style={styles.metaSmallText}>Due {formatCalendarDate(project.dueDate)}</Text> : null}
-
-          <View style={styles.progressContainer}>
-            <View style={styles.progressHeader}><Text style={styles.progressLabel}>Overall Progress</Text><Text style={styles.progressValue}>{project.progress}%</Text></View>
-            <View style={styles.progressBarBg}><View style={[styles.progressBarFill, { width: `${project.progress}%` }]} /></View>
-          </View>
-
-          <View style={styles.metricsRow}>
-            <View style={styles.metricItem}><Text style={styles.metricNumber}>{tasks.length}</Text><Text style={styles.metricLabel}>{tasks.length === 1 ? 'Total Task' : 'Total Tasks'}</Text></View>
-            <View style={styles.metricItem}><Text style={styles.metricNumber}>{formatDuration(totalMinutes)}</Text><Text style={styles.metricLabel}>Time Tracked</Text></View>
-          </View>
-          {project.role !== 'owner' ? (
-            <TouchableOpacity onPress={() => setLeaveConfirmOpen(true)} style={styles.leaveButton}>
-              <LogOut size={15} color="#ffffff" /><Text style={styles.leaveButtonText}>Leave Project</Text>
-            </TouchableOpacity>
-          ) : null}
-          <SessionRetryBanner />
-        </View>
-
-        <ProjectStatusBanner
-          status={project.status}
-          changedAt={project.statusChangedAt}
-          changedByName={statusChangedByName}
-          canManage={canManageSettings}
-          onReactivate={() => setLifecycleSheet({ initialTarget: 'active' })}
-        />
-
-        {/* Stats overview (website ProjectStatsOverview) */}
-        <View style={styles.statsGrid}>
-          {[
-            { label: 'To Do', value: tasks.filter((task) => task.status === 'todo').length, color: '#64748b' },
-            { label: 'In Progress', value: tasks.filter((task) => task.status === 'in-progress').length, color: '#3b82f6' },
-            { label: 'Completed', value: tasks.filter((task) => task.status === 'done').length, color: '#10b981' },
-            { label: 'Team Members', value: acceptedMemberCount, color: '#8b5cf6' },
-          ].map((stat) => (
-            <View key={stat.label} style={styles.statCard}>
-              <Text style={styles.statLabel}>{stat.label}</Text>
-              <Text style={[styles.statValue, { color: stat.color }]}>{stat.value}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Sub-navigation tabs, export and upgrade */}
-        <View style={styles.tabBar}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-            {MAIN_TABS.map(({ id: tabId, label, Icon: TabIcon }) => {
-              const selected = mainTab === tabId;
-              return (
-                <TouchableOpacity key={tabId} onPress={() => setMainTab(tabId)} style={[styles.mainTab, selected && styles.mainTabActive]}>
-                  <TabIcon size={15} color={selected ? colors.accent : colors.mutedText} />
-                  <Text style={[styles.mainTabText, selected && styles.mainTabTextActive]}>{label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-          <View style={styles.tabActions}>
-            <TouchableOpacity disabled={exporting !== null} onPress={() => void handleExport('csv')} style={styles.exportButton}>
-              {exporting === 'csv' ? <ActivityIndicator size="small" color={colors.accent} /> : <Download size={14} color={colors.mutedText} />}<Text style={styles.exportText}>CSV</Text>
-            </TouchableOpacity>
-            <TouchableOpacity disabled={exporting !== null} onPress={() => void handleExport('summary')} style={styles.exportButton}>
-              {exporting === 'summary' ? <ActivityIndicator size="small" color={colors.accent} /> : <FileText size={14} color={colors.mutedText} />}<Text style={styles.exportText}>Summary</Text>
-            </TouchableOpacity>
-            {isPremium ? (
-              <View style={styles.premiumPill}><Sparkles size={12} color={colors.successText} /><Text style={styles.premiumPillText}>Premium</Text></View>
-            ) : (
-              <TouchableOpacity onPress={openUpgrade} style={styles.upgradeButton}><Sparkles size={14} color="#ffffff" /><Text style={styles.upgradeText}>Upgrade</Text></TouchableOpacity>
-            )}
-          </View>
-        </View>
-
-        {mainTab === 'board' ? (
-          <>
-            <View style={styles.toolbarCard}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <Text style={[styles.sectionTitle, { flex: 1 }]}>Task Management</Text>
-                {project.role !== 'viewer' && isProjectActive ? (
-                  <TouchableOpacity onPress={() => { if (!writeCapability.allowed) { setFeedback({ title: 'New task unavailable', message: writeCapability.reason, type: 'warning' }); return; } setCreateTaskOpen(true); }} style={[styles.actionBtn, !canWrite && { opacity: 0.58 }]}>
-                    <Icon name="plus" size={16} color="#ffffff" /><Text style={styles.actionBtnText}>New Task</Text>
-                  </TouchableOpacity>
-                ) : null}
-                {canManageSettings ? (
-                  <TouchableOpacity onPress={() => setSettingsOpen(true)} style={styles.actionBtnSecondary}>
-                    <Icon name="settings" size={16} color={colors.text} /><Text style={styles.actionBtnTextSecondary}>Settings</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-              <View style={styles.searchBar}>
-                <Icon name="search" size={16} color={colors.mutedText} style={{ marginRight: 8 }} />
-                <TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Search tasks..." placeholderTextColor={colors.mutedText} style={styles.searchInput} />
-                {searchQuery ? <TouchableOpacity onPress={() => setSearchQuery('')}><Icon name="x" size={16} color={colors.mutedText} /></TouchableOpacity> : null}
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.priorityFilterRow}>
-                {(['all', 'urgent', 'high', 'medium', 'low'] as const).map((priority) => (
-                  <TouchableOpacity key={priority} onPress={() => setFilterPriority(priority)} style={[styles.filterPill, filterPriority === priority && styles.filterPillActive]}>
-                    <Text style={[styles.filterPillText, filterPriority === priority && styles.filterPillTextActive]}>{priority === 'all' ? 'ALL PRIORITIES' : priority.toUpperCase()}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              {teamMembers.length > 1 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.priorityFilterRow}>
-                  {[{ id: 'all', name: 'All members' }, ...teamMembers.filter((member) => member.isOwner || member.membershipStatus !== 'pending').map((member) => ({ id: member.id, name: member.id === currentUserId ? 'Me' : member.name }))].map((option) => (
-                    <TouchableOpacity key={option.id} onPress={() => setFilterAssignee(option.id)} style={[styles.filterPill, filterAssignee === option.id && styles.filterPillActive]}>
-                      <Text numberOfLines={1} style={[styles.filterPillText, filterAssignee === option.id && styles.filterPillTextActive]}>{option.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              ) : null}
-            </View>
-
-            {/* Kanban columns as status tabs */}
-            <View style={styles.kanbanTabs}>
-              {(['todo', 'in-progress', 'done'] as const).map((status) => {
-                const active = activeTabStatus === status;
-                const label = status === 'todo' ? 'To Do' : status === 'in-progress' ? 'In Progress' : 'Done';
-                return (
-                  <TouchableOpacity key={status} onPress={() => setActiveTabStatus(status)} style={[styles.kanbanTab, active && styles.kanbanTabActive]}>
-                    <Text style={[styles.kanbanTabText, active && styles.kanbanTabTextActive]}>{label} ({tasksByStatus[status].length})</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View style={styles.tasksContainer}>
-              {tasksByStatus[activeTabStatus].length === 0 ? (
-                <View style={styles.noTasksCard}>
-                  <Icon name="check-circle" size={36} color={colors.mutedText} />
-                  <Text style={styles.noTasksTitle}>No tasks in this column</Text>
-                  <Text style={styles.noTasksSubtitle}>{project.role !== 'viewer' && isProjectActive ? 'Tap "New Task" above to create one.' : 'Tasks will appear here.'}</Text>
+        <View style={styles.top}>
+          <View style={styles.identity}>
+            <View style={styles.identityRow}>
+              <View style={[styles.tile, { backgroundColor: projectColorHex(project.color) }]}><FolderKanban size={22} color="#ffffff" /></View>
+              <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
+                <Text numberOfLines={3} style={styles.name}>{project.name}</Text>
+                <View style={styles.pills}>
+                  <ProjectPill label={projectLifecycleRules.label(project.status)} tone={projectStatusTone(project.status)} />
+                  <ProjectPill label={project.isOwner ? 'Owner' : ROLE_LABELS[project.role]} tone="neutral" />
                 </View>
-              ) : tasksByStatus[activeTabStatus].map((task) => {
-                const color = priorityColor(task.priority);
-                const isDone = task.status === 'done';
-                const isInProgress = task.status === 'in-progress';
-                const milestone = task.milestoneId ? milestones.find((entry) => entry.id === task.milestoneId) : undefined;
-                const assigneeIds = task.assignedToAll ? [] : [...new Set([task.assignee, ...(task.assignees ?? [])].filter(Boolean))];
-                return (
-                  <TouchableOpacity key={task.id} onPress={() => handleSelectTask(task)} activeOpacity={0.7} style={styles.taskCard}>
-                    <View style={styles.taskCardHeader}>
-                      <View style={[styles.priorityBadge, { backgroundColor: `${color}18`, borderColor: color }]}><Text style={[styles.priorityText, { color }]}>{task.priority.toUpperCase()}</Text></View>
-                      {canWrite ? (
-                        <TouchableOpacity onPress={() => void handleUpdateStatus(task, isDone ? 'todo' : isInProgress ? 'done' : 'in-progress')} disabled={statusBusyTaskId !== null} style={[styles.quickStatusBtn, isDone && { backgroundColor: '#10b981' }, statusBusyTaskId === task.id && { opacity: 0.5 }]}>
-                          <Icon name={isDone ? 'check' : 'arrow-right'} size={14} color={isDone ? '#ffffff' : colors.text} />
-                          <Text style={[styles.quickStatusText, isDone && { color: '#ffffff' }]}>{isDone ? 'Done' : isInProgress ? 'Complete' : 'Start'}</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                    <Text style={styles.taskTitle}>{task.title}</Text>
-                    {task.description ? <Text numberOfLines={2} style={styles.taskCardDesc}>{task.description}</Text> : null}
-                    {milestone || task.recurrence || (task.dependencies?.length ?? 0) > 0 ? (
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                        {milestone ? <View style={styles.tinyBadge}><Flag size={11} color="#9333ea" /><Text numberOfLines={1} style={[styles.tinyBadgeText, { color: '#9333ea', maxWidth: 140 }]}>{milestone.name}</Text></View> : null}
-                        {task.recurrence ? <View style={styles.tinyBadge}><Repeat size={11} color="#2563eb" /><Text style={[styles.tinyBadgeText, { color: '#2563eb' }]}>Repeats</Text></View> : null}
-                        {(task.dependencies?.length ?? 0) > 0 ? <View style={styles.tinyBadge}><Link2 size={11} color="#d97706" /><Text style={[styles.tinyBadgeText, { color: '#d97706' }]}>{task.dependencies?.length}</Text></View> : null}
-                      </View>
-                    ) : null}
-                    {task.subTasks.length > 0 ? (
-                      <View style={styles.subtaskCountRow}>
-                        <Icon name="check-square" size={13} color={colors.mutedText} />
-                        <Text style={styles.subtaskCountText}>{task.subTasks.filter((subTask) => subTask.completed).length} / {task.subTasks.length} subtasks</Text>
-                      </View>
-                    ) : null}
-                    <View style={styles.taskCardFooter}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, flexWrap: 'wrap' }}>
-                        {task.assignedToAll ? <Text style={styles.metaSmallText}>All team</Text> : (
-                          <View style={{ flexDirection: 'row' }}>
-                            {assigneeIds.slice(0, 3).map((memberId, index) => {
-                              const member = teamMembers.find((entry) => entry.id === memberId);
-                              return <View key={memberId} style={{ marginLeft: index === 0 ? 0 : -6 }}><UserAvatar profileImage={member?.avatar} firstName={member?.name} size={22} /></View>;
-                            })}
-                          </View>
-                        )}
-                        {task.comments.length > 0 ? <View style={styles.metaInline}><Icon name="message-circle" size={13} color={colors.mutedText} /><Text style={styles.metaSmallText}>{task.comments.length}</Text></View> : null}
-                        {task.attachments.length > 0 ? <View style={styles.metaInline}><Paperclip size={12} color={colors.mutedText} /><Text style={styles.metaSmallText}>{task.attachments.length}</Text></View> : null}
-                        {task.dueDate ? <View style={styles.metaInline}><Icon name="calendar" size={13} color={colors.mutedText} /><Text style={styles.metaSmallText}>{formatCalendarDate(task.dueDate)}</Text></View> : null}
-                        {activeTimer?.taskId === task.id ? <View style={styles.metaInline}><Clock size={12} color={colors.accent} /><Text style={[styles.metaSmallText, { color: colors.accent, fontWeight: '800' }]}>Timer</Text></View> : null}
-                      </View>
-                      <Icon name="chevron-right" size={16} color={colors.mutedText} />
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              </View>
             </View>
-          </>
-        ) : null}
+            <View style={{ gap: 6 }}>
+              <View style={styles.progressRow}>
+                <Text style={styles.muted}>{tasks.length > 0 ? `${doneCount} of ${plural(tasks.length, 'task', 'tasks')} done` : 'No tasks yet'}</Text>
+                <Text style={styles.percent}>{progress}%</Text>
+              </View>
+              <ProjectProgressBar value={progress} accessibilityLabel="Project progress" />
+            </View>
+            <Pressable onPress={() => setSection('team')} android_ripple={PROJECT_RIPPLE} accessibilityRole="button" accessibilityLabel={`${plural(acceptedMembers.length, 'member', 'members')}. Open team`} style={styles.teamRow}>
+              <ProjectAvatarStack members={acceptedMembers} max={5} size={26} />
+              <Text numberOfLines={1} style={[styles.muted, { flexShrink: 1 }]}>{plural(acceptedMembers.length, 'member', 'members')}{pendingInvites.length > 0 ? ` · ${pendingInvites.length} invited` : ''}</Text>
+            </Pressable>
+          </View>
 
-        {mainTab === 'timeline' ? <ProjectTimelinePanel project={project} tasks={filteredTasks} milestones={milestones} onOpenUpgrade={openUpgrade} onSelectTask={handleSelectTask} /> : null}
-        {mainTab === 'workload' ? <ProjectWorkloadPanel project={project} tasks={tasks} teamMembers={teamMembers} onOpenUpgrade={openUpgrade} onSelectTask={handleSelectTask} /> : null}
-        {mainTab === 'files' ? <ProjectFilesPanel project={project} tasks={tasks} teamMembers={teamMembers} onOpenUpgrade={openUpgrade} onSelectTask={handleSelectTask} /> : null}
-        {mainTab === 'milestones' ? <ProjectMilestonesPanel project={project} milestones={milestones} tasks={tasks} canEdit={project.role !== 'viewer' && canWrite} onOpenUpgrade={openUpgrade} /> : null}
-        {mainTab === 'timesheets' ? <ProjectTimesheetsPanel project={project} tasks={tasks} teamMembers={teamMembers} onOpenUpgrade={openUpgrade} /> : null}
+          <ProjectStatusBanner
+            status={project.status}
+            changedAt={project.statusChangedAt}
+            changedByName={statusChangedByName}
+            canManage={canManageSettings}
+            onReactivate={() => setLifecycleSheet({ initialTarget: 'active' })}
+          />
 
-        {/* Website right sidebar: time tracking, team, automation, recent activity */}
-        <ProjectBoardSidebar
-          tasks={tasks}
-          teamMembers={teamMembers}
-          currentUserId={currentUserId}
-          isOwner={project.isOwner === true}
-          onChangeRole={async (member, role) => { await projectService.changeMemberRole(projectId, member.id, role); await loadProject(); setFeedback({ title: 'Role updated', message: `${member.name} is now ${role === 'admin' ? 'an' : 'a'} ${role}.`, type: 'success' }); }}
-          onRemove={async (member) => { await projectService.removeMember(projectId, member.id); await loadProject(); setFeedback({ title: member.membershipStatus === 'pending' ? 'Invitation cancelled' : 'Member removed', message: `${member.name} was removed from the project.`, type: 'info' }); }}
-          onTransfer={async (member) => { await projectService.transferOwnership(projectId, member.id); await loadProject(); setFeedback({ title: 'Ownership transferred', message: `${member.name} is now the project owner.`, type: 'success' }); }}
-          totalMinutes={totalMinutes}
-          activeTimerTaskTitle={activeTimerTask ? activeTimerTask.title : null}
-          canInvite={canManage}
-          onInvite={handleOpenInvite}
-          automationRules={projectEntitlementService.automationRules(project)}
-          isPremiumPlan={isPremium}
-          canManageAutomation={canManageSettings}
-          dueSoonCount={dueSoonCount}
-          onToggleAutomationRule={(ruleId) => void handleToggleAutomationRule(ruleId)}
-        />
+          {activeTimerTask ? (
+            <Pressable onPress={() => handleOpenTask(activeTimerTask)} android_ripple={PROJECT_RIPPLE} accessibilityRole="button" accessibilityLabel={`Timer running on ${activeTimerTask.title}. Open the task`} style={styles.timerBanner}>
+              <Timer size={18} color={colors.successText} />
+              <Text numberOfLines={1} style={styles.timerText}>Timer running · {activeTimerTask.title}</Text>
+            </Pressable>
+          ) : null}
+        </View>
 
-        <ProjectActivityPanel
-          projectId={projectId}
-          teamMembers={teamMembers}
-          currentUserId={currentUserId}
-          refreshKey={`${project.status}|${project.statusChangedAt?.getTime() ?? 0}|${teamMembers.map((member) => `${member.id}:${member.role}:${member.membershipStatus ?? ''}`).join(',')}`}
-        />
+        <View style={styles.tabs}>
+          <ProjectSegmented accessibilityLabel="Project sections" value={section} onChange={setSection} options={SECTIONS} />
+        </View>
+
+        <View style={styles.sectionBody}>
+          {section === 'overview' ? (
+            <ProjectOverviewPanel
+              project={project}
+              tasks={tasks}
+              milestones={milestones}
+              acceptedMembers={acceptedMembers}
+              pendingCount={pendingInvites.length}
+              currentUserId={currentUserId}
+              canManage={canManageSettings && project.status === 'active'}
+              canWrite={canWrite}
+              onOpenTask={handleOpenTask}
+              onShowTasks={handleShowTasks}
+              onShowSection={setSection}
+              onCreateTask={() => handleOpenCreateTask()}
+              onInvite={handleOpenInvite}
+              onEditDetails={() => setSettingsOpen(true)}
+              onAddMilestone={handleAddMilestone}
+              onChangeStatus={() => setLifecycleSheet({ initialTarget: project.status === 'active' ? 'completed' : null })}
+              activity={(
+                <ProjectActivityPanel
+                  projectId={projectId}
+                  teamMembers={teamMembers}
+                  currentUserId={currentUserId}
+                  refreshKey={`${project.status}|${project.statusChangedAt?.getTime() ?? 0}|${teamMembers.map((member) => `${member.id}:${member.role}:${member.membershipStatus ?? ''}`).join(',')}`}
+                />
+              )}
+            />
+          ) : null}
+          {section === 'tasks' ? (
+            <ProjectTasksPanel
+              tasks={tasks}
+              milestones={milestones}
+              acceptedMembers={acceptedMembers}
+              currentUserId={currentUserId}
+              canWrite={canWrite}
+              busyTaskId={statusBusyTaskId}
+              activeTimerTaskId={activeTimer?.taskId ?? null}
+              view={taskView}
+              onChangeView={setTaskView}
+              filters={taskFilters}
+              onChangeFilters={setTaskFilters}
+              onOpenTask={handleOpenTask}
+              onMoveTask={(task, status) => void handleMoveTask(task, status)}
+              onCreateTask={(status) => handleOpenCreateTask(status ? { status } : {})}
+            />
+          ) : null}
+          {section === 'milestones' ? (
+            <ProjectMilestonesPanel
+              project={project}
+              milestones={milestones}
+              tasks={tasks}
+              canEdit={canWrite}
+              currentUserId={currentUserId}
+              isCreateOpen={milestoneCreateOpen}
+              onOpenCreate={() => { if (canWrite) setMilestoneCreateOpen(true); else setFeedback({ title: 'Milestones are read-only', message: writeCapability.reason, type: 'warning' }); }}
+              onCloseCreate={() => setMilestoneCreateOpen(false)}
+              onOpenTask={handleOpenTask}
+              onAddTask={(milestoneId) => handleOpenCreateTask({ milestoneId })}
+            />
+          ) : null}
+          {section === 'team' ? (
+            <ProjectTeamPanel
+              project={project}
+              teamMembers={teamMembers}
+              currentUserId={currentUserId}
+              canInvite={canInvite}
+              onInvite={handleOpenInvite}
+              onChangeRole={async (member, role) => { await projectService.changeMemberRole(projectId, member.id, role); await loadProject(); }}
+              onRemove={async (member) => {
+                if (member.membershipStatus === 'pending') await projectService.cancelInvite(projectId, member.id);
+                else await projectService.removeMember(projectId, member.id);
+                await loadProject();
+              }}
+              onTransfer={async (member) => { await projectService.transferOwnership(projectId, member.id); await loadProject(); }}
+              onResendInvite={(member) => projectService.resendInvite(projectId, member.id)}
+              autoAssignEnabled={projectEntitlementService.isAutomationRuleEnabled(project, '1')}
+              onToggleAutoAssign={handleToggleAutoAssign}
+              onLeave={() => setLeaveConfirmOpen(true)}
+            />
+          ) : null}
+        </View>
       </ScrollView>
+
+      {/* Project menu: status, details, optional modules, exports */}
+      <ProjectActionSheet visible={moreOpen} title={project.name} subtitle={`${projectLifecycleRules.label(project.status)} · ${plural(tasks.length, 'task', 'tasks')}`} onClose={() => setMoreOpen(false)}>
+        {canManageSettings ? <ProjectSheetRow label="Project status…" detail="Pause, complete, archive or restore" icon={<Archive size={18} color={colors.icon} />} onPress={closeMoreThen(() => setLifecycleSheet({ initialTarget: null }))} /> : null}
+        <ProjectSheetRow label={canManageSettings ? 'Edit details' : 'Project details'} detail="Name, purpose, colour, target date and tags" icon={<Pencil size={18} color={colors.icon} />} onPress={closeMoreThen(() => setSettingsOpen(true))} />
+        <ProjectSheetRow label="Files" detail={fileCount > 0 ? `${plural(fileCount, 'file', 'files')} attached to tasks` : 'Files attached to tasks'} icon={<FileText size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('files'))} />
+        <ProjectSheetRow label="Timeline" detail="Tasks and milestones across four weeks" icon={<Layers size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('timeline'))} />
+        <ProjectSheetRow label="Workload" detail="How much open work each person has" icon={<Users size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('workload'))} />
+        <ProjectSheetRow label="Timesheets" detail={isPremium ? 'Time logged on tasks, with CSV export' : 'Time logged on tasks'} icon={<Clock size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('timesheets'))} />
+        <ProjectSheetRow label="Export tasks (CSV)" detail="A spreadsheet of every task" icon={exporting === 'csv' ? <ActivityIndicator size="small" color={colors.accent} /> : <Download size={18} color={colors.icon} />} onPress={closeMoreThen(() => void handleExport('csv'))} />
+        <ProjectSheetRow label="Export summary" detail="A readable report of the project" icon={exporting === 'summary' ? <ActivityIndicator size="small" color={colors.accent} /> : <FileText size={18} color={colors.icon} />} onPress={closeMoreThen(() => void handleExport('summary'))} />
+        {canManageSettings && !isPremium ? <ProjectSheetRow label="Premium plan" detail="Adds timesheet export" icon={<Sparkles size={18} color={colors.icon} />} onPress={closeMoreThen(() => setUpgradeOpen(true))} /> : null}
+        {!project.isOwner ? <ProjectSheetRow label="Leave project" tone="danger" icon={<LogOut size={18} color={colors.destructive} />} onPress={closeMoreThen(() => setLeaveConfirmOpen(true))} /> : null}
+      </ProjectActionSheet>
+
+      <ProjectModuleSheet visible={moduleView !== null} title={moduleView ? MODULE_TITLES[moduleView] : ''} subtitle={project.name} onClose={() => setModuleView(null)}>
+        {moduleView === 'files' ? <ProjectFilesPanel project={project} tasks={tasks} teamMembers={teamMembers} onOpenUpgrade={() => setUpgradeOpen(true)} onSelectTask={handleOpenTask} /> : null}
+        {moduleView === 'timeline' ? <ProjectTimelinePanel tasks={tasks} milestones={milestones} onSelectTask={handleOpenTask} /> : null}
+        {moduleView === 'workload' ? <ProjectWorkloadPanel tasks={tasks} teamMembers={acceptedMembers} onSelectTask={handleOpenTask} /> : null}
+        {moduleView === 'timesheets' ? <ProjectTimesheetsPanel project={project} tasks={tasks} teamMembers={teamMembers} onOpenUpgrade={() => { setModuleView(null); setUpgradeOpen(true); }} /> : null}
+      </ProjectModuleSheet>
 
       {currentUserId ? (
         <CreateTaskSheet
-          visible={createTaskOpen}
+          visible={createTaskTarget !== null}
           project={project}
           currentUserId={currentUserId}
           teamMembers={teamMembers}
           tasks={tasks}
           milestones={milestones}
           taskTemplates={taskTemplates}
-          onClose={() => setCreateTaskOpen(false)}
+          initialStatus={createTaskTarget?.status}
+          initialMilestoneId={createTaskTarget?.milestoneId}
+          onClose={() => setCreateTaskTarget(null)}
           onCreated={() => void loadProject()}
         />
       ) : null}
@@ -672,85 +541,56 @@ export default function ProjectBoardScreen() {
         project={project}
         teamMembers={teamMembers}
         milestones={milestones}
+        tasks={tasks}
         currentUserId={currentUserId}
         canWrite={canWrite}
         writeBlockedReason={writeCapability.allowed ? '' : writeCapability.reason}
         activeTimer={activeTimer}
         onClose={() => setActiveTaskId(null)}
-        onOpenUpgrade={openUpgrade}
+        onOpenTask={(task) => setActiveTaskId(task.id)}
       />
 
-      {/* Invite team member (website InviteUserModal) */}
+      {/* Invite (website InviteUserModal) */}
       <Modal visible={inviteOpen} transparent animationType="none" onRequestClose={inviteSwipeDismiss.dismissWithAnimation}>
         <KeyboardSafeView style={styles.modalBackdrop}>
           <Animated.View style={[styles.modalSheet, inviteSwipeDismiss.animatedStyle]}>
-            <SwipeDismissHandle gesture={inviteSwipeDismiss.gesture} color={colors.border} animatedStyle={inviteSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close invite modal" />
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text style={styles.modalHeading}>Invite Team Member</Text>
-              <TouchableOpacity onPress={() => { setInviteOpen(false); setFriendPickerOpen(true); }} style={styles.friendPickerButton}>
-                <Icon name="users" size={18} color="#10b981" /><Text style={styles.friendPickerText}>Choose from Friends List</Text>
-              </TouchableOpacity>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 8 }}>
-                <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-                <Text style={{ marginHorizontal: 10, fontSize: 12, color: colors.mutedText, fontWeight: '600' }}>OR INVITE BY EMAIL</Text>
-                <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+            <SwipeDismissHandle gesture={inviteSwipeDismiss.gesture} color={colors.border} animatedStyle={inviteSwipeDismiss.handleAnimatedStyle} accessibilityLabel="Swipe down to close" />
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
+              <Text accessibilityRole="header" style={styles.modalHeading}>Invite people</Text>
+              <Text style={styles.muted}>They will see the project once they accept.</Text>
+              <ProjectButton label="Choose from your friends" variant="secondary" icon={<Users size={18} color={colors.text} />} onPress={() => { setInviteOpen(false); setFriendPickerOpen(true); }} />
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or by email or username</Text>
+                <View style={styles.dividerLine} />
               </View>
-              <Text style={styles.inputLabel}>Email Address or Username</Text>
-              <TextInput value={inviteRecipient} onChangeText={setInviteRecipient} placeholder="user@example.com" autoCapitalize="none" placeholderTextColor={colors.mutedText} style={styles.modalInput} />
-              <Text style={styles.inputLabel}>Role</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                {(project.isOwner ? (['member', 'admin', 'viewer'] as const) : (['member', 'viewer'] as const)).map((role) => (
-                  <TouchableOpacity key={role} onPress={() => setInviteRole(role)} style={[styles.pillSelect, inviteRole === role && styles.pillSelectActive]}>
-                    <Text style={[styles.pillSelectText, inviteRole === role && styles.pillSelectTextActive]}>{role.toUpperCase()}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <TextInput value={inviteRecipient} onChangeText={setInviteRecipient} placeholder="name@example.com or username" autoCapitalize="none" autoCorrect={false} placeholderTextColor={colors.mutedText} accessibilityLabel="Email or username" style={styles.modalInput} />
+              <Text style={styles.label}>Their role</Text>
+              <ProjectSegmented
+                accessibilityLabel="Role"
+                value={inviteRole}
+                onChange={setInviteRole}
+                options={(project.isOwner ? (['member', 'admin', 'viewer'] as const) : (['member', 'viewer'] as const)).map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
+              />
               <View style={styles.modalActions}>
-                <TouchableOpacity onPress={() => setInviteOpen(false)} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Cancel</Text></TouchableOpacity>
-                <TouchableOpacity onPress={() => void handleSendInvite()} disabled={inviting || !inviteRecipient.trim()} style={styles.primaryButton}>
-                  {inviting ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.primaryButtonText}>Send Invite</Text>}
-                </TouchableOpacity>
+                <ProjectButton label="Cancel" variant="secondary" onPress={() => setInviteOpen(false)} isDisabled={inviting} style={{ flex: 1 }} />
+                <ProjectButton label="Send invite" busyLabel="Sending…" isBusy={inviting} isDisabled={!inviteRecipient.trim()} onPress={() => void handleSendInvite()} style={{ flex: 1 }} />
               </View>
-              {pendingInvites.length > 0 ? (
-                <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
-                  <Text style={[styles.inputLabel, { marginBottom: 8 }]}>Pending Invitations ({pendingInvites.length})</Text>
-                  {pendingInvites.map((member) => (
-                    <View key={member.id} style={styles.pendingRow}>
-                      <View style={{ flex: 1, marginRight: 8 }}>
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }} numberOfLines={1}>{member.email || member.name || member.id}</Text>
-                        <Text style={{ fontSize: 11, color: colors.mutedText }}>Role: {member.role}</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', gap: 6 }}>
-                        <TouchableOpacity onPress={() => void handleResendInvite(member.id)} style={[styles.smallPill, { backgroundColor: '#10b98118' }]}><Text style={{ fontSize: 12, fontWeight: '700', color: '#10b981' }}>Resend</Text></TouchableOpacity>
-                        <TouchableOpacity onPress={() => void handleCancelInvite(member.id)} style={[styles.smallPill, { backgroundColor: '#ef444418' }]}><Text style={{ fontSize: 12, fontWeight: '700', color: '#ef4444' }}>Cancel</Text></TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
             </ScrollView>
           </Animated.View>
         </KeyboardSafeView>
       </Modal>
 
-      {/* Project settings (website ProjectSettingsModal) */}
+      {/* Project details (website ProjectSettingsModal) */}
       <ProjectFormSheet
         visible={settingsOpen}
         project={project}
-        title="Project settings"
+        title={canManageSettings ? 'Edit details' : 'Project details'}
         readOnly={!canManageSettings}
         onClose={() => setSettingsOpen(false)}
         onSubmit={handleSaveSettings}
         footer={(
-          <ProjectSettingsExtras
-            project={project}
-            teamMembers={teamMembers}
-            currentUserId={currentUserId}
-            onChangeRole={async (member, role) => { await projectService.changeMemberRole(projectId, member.id, role); await loadProject(); }}
-            onRemove={async (member) => { await projectService.removeMember(projectId, member.id); await loadProject(); }}
-            onTransfer={async (member) => { await projectService.transferOwnership(projectId, member.id); await loadProject(); }}
-            onDelete={handleDeleteProject}
-          />
+          <ProjectSettingsExtras project={project} onDelete={handleDeleteProject} />
         )}
       />
 
@@ -778,16 +618,16 @@ export default function ProjectBoardScreen() {
         projectId={projectId}
         projectName={project.name}
         existingMembers={existingMembersRecord}
-        onMemberInvited={() => { void loadProject(); setFeedback({ type: 'success', title: 'Invitation Sent', message: 'Friend has been invited to the project.' }); }}
+        onMemberInvited={() => { void loadProject(); toast.success('Invitation sent'); }}
       />
 
       <CustomModal
         visible={leaveConfirmOpen}
         type="danger"
         title="Leave project?"
-        message={`Leave ${project.name}? You will lose access to this project.`}
+        message={`You will lose access to ${project.name}. Someone on the project can invite you back.`}
         confirmText={leaving ? 'Leaving…' : 'Leave project'}
-        cancelText="Cancel"
+        cancelText="Stay"
         isLoading={leaving}
         onConfirm={() => void handleLeaveProject()}
         onCancel={() => setLeaveConfirmOpen(false)}
@@ -802,105 +642,30 @@ export default function ProjectBoardScreen() {
 const createStyles = (colors: AppThemeColors, isDark: boolean) =>
   StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: colors.canvas },
-    scrollContent: { padding: 16, paddingBottom: 48, gap: 16 },
-    loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    loadingText: { marginTop: 4, fontSize: 14, color: colors.mutedText },
-    emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
-    emptyTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
-    projectHero: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 12 },
-    heroTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    colorTile: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-    projectName: { fontSize: 20, fontWeight: '900', color: colors.text },
-    projectDesc: { fontSize: 13, color: colors.mutedText, lineHeight: 18 },
-    planBadge: { fontSize: 11, fontWeight: '800', color: colors.secondaryText, backgroundColor: colors.control, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' },
-    planBadgePremium: { color: '#78350f', backgroundColor: '#fde68a' },
-    statusBadge: { fontSize: 11, fontWeight: '800', color: colors.successText, backgroundColor: colors.successSurface, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' },
-    statusBadgePaused: { color: colors.warningText, backgroundColor: colors.warningSurface },
-    statusBadgeMuted: { color: colors.secondaryText, backgroundColor: colors.control },
-    statusMenuButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
-    progressContainer: { gap: 6 },
-    progressHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-    progressLabel: { fontSize: 12, fontWeight: '700', color: colors.mutedText },
-    progressValue: { fontSize: 12, fontWeight: '800', color: '#10b981' },
-    progressBarBg: { height: 7, borderRadius: 999, backgroundColor: colors.border, overflow: 'hidden' },
-    progressBarFill: { height: '100%', borderRadius: 999, backgroundColor: '#10b981' },
-    metricsRow: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderRadius: 14, padding: 12 },
-    metricItem: { alignItems: 'center' },
-    metricNumber: { fontSize: 18, fontWeight: '900', color: colors.text },
-    metricLabel: { fontSize: 11, color: colors.mutedText, marginTop: 2 },
-    leaveButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40, borderRadius: 12, backgroundColor: '#ef4444' },
-    leaveButtonText: { color: '#ffffff', fontWeight: '800', fontSize: 13 },
-    statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-    statCard: { flexBasis: '47%', flexGrow: 1, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, gap: 4 },
-    statLabel: { fontSize: 12, color: colors.mutedText, fontWeight: '700' },
-    statValue: { fontSize: 22, fontWeight: '900' },
-    tabBar: { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 8, gap: 8 },
-    mainTab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
-    mainTabActive: { backgroundColor: isDark ? '#053b31' : '#ecfdf5' },
-    mainTabText: { fontSize: 13, fontWeight: '700', color: colors.mutedText },
-    mainTabTextActive: { color: colors.accent, fontWeight: '900' },
-    tabActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
-    exportButton: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: colors.border },
-    exportText: { fontSize: 12, fontWeight: '700', color: colors.secondaryText },
-    upgradeButton: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: '#d97706' },
-    upgradeText: { fontSize: 12, fontWeight: '800', color: '#ffffff' },
-    premiumPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.successSurface },
-    premiumPillText: { fontSize: 12, fontWeight: '800', color: colors.successText },
-    toolbarCard: { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 12, gap: 10 },
-    sectionTitle: { fontSize: 17, fontWeight: '900', color: colors.text },
-    actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#10b981' },
-    actionBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 13 },
-    actionBtnSecondary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 14, height: 38, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-    actionBtnTextSecondary: { color: colors.text, fontWeight: '700', fontSize: 13 },
-    searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.control, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, height: 42 },
-    searchInput: { flex: 1, color: colors.text, fontSize: 14 },
-    priorityFilterRow: { flexDirection: 'row', gap: 8 },
-    filterPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-    filterPillActive: { backgroundColor: '#10b981', borderColor: '#10b981' },
-    filterPillText: { fontSize: 11, fontWeight: '700', color: colors.mutedText },
-    filterPillTextActive: { color: '#ffffff' },
-    kanbanTabs: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 4 },
-    kanbanTab: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10 },
-    kanbanTabActive: { backgroundColor: isDark ? '#1e293b' : '#ecfdf5' },
-    kanbanTabText: { fontSize: 12, fontWeight: '700', color: colors.mutedText },
-    kanbanTabTextActive: { color: '#047857', fontWeight: '800' },
-    tasksContainer: { gap: 12 },
-    noTasksCard: { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 32, alignItems: 'center', gap: 8 },
-    noTasksTitle: { fontSize: 15, fontWeight: '800', color: colors.text },
-    noTasksSubtitle: { fontSize: 12, color: colors.mutedText },
-    taskCard: { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 8 },
-    taskCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    priorityBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
-    priorityText: { fontSize: 10, fontWeight: '800' },
-    quickStatusBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: colors.control },
-    quickStatusText: { fontSize: 11, fontWeight: '700', color: colors.text },
-    taskTitle: { fontSize: 15, fontWeight: '800', color: colors.text },
-    taskCardDesc: { fontSize: 13, color: colors.mutedText, lineHeight: 18 },
-    tinyBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: colors.control },
-    tinyBadgeText: { fontSize: 10, fontWeight: '800' },
-    subtaskCountRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    subtaskCountText: { fontSize: 12, color: colors.mutedText, fontWeight: '600' },
-    taskCardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border },
-    metaInline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    metaSmallText: { fontSize: 12, color: colors.mutedText },
+    errorContainer: { flex: 1, justifyContent: 'center', padding: PROJECT_GUTTER },
+    top: { paddingHorizontal: PROJECT_GUTTER, paddingTop: PROJECT_GUTTER, gap: 12 },
+    identity: { padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, gap: 14 },
+    identityRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    tile: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+    name: { color: colors.text, fontSize: 20, fontWeight: '800', lineHeight: 26 },
+    pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+    percent: { color: colors.text, fontSize: 14, fontWeight: '800' },
+    muted: { color: colors.mutedText, fontSize: 13, lineHeight: 18 },
+    teamRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, borderRadius: 12, overflow: 'hidden' },
+    timerBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, paddingHorizontal: 14, borderRadius: 14, backgroundColor: colors.successSurface, borderWidth: 1, borderColor: isDark ? '#065f46' : '#a7f3d0', overflow: 'hidden' },
+    timerText: { flex: 1, color: colors.successText, fontSize: 14, fontWeight: '700' },
+    tabs: { paddingHorizontal: PROJECT_GUTTER, paddingVertical: 10, backgroundColor: colors.canvas },
+    sectionBody: { paddingHorizontal: PROJECT_GUTTER, paddingTop: 4 },
     modalBackdrop: { flex: 1, backgroundColor: colors.modalScrim, justifyContent: 'flex-end' },
-    modalSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, maxHeight: '88%', gap: 12 },
-    modalHeading: { fontSize: 18, fontWeight: '900', color: colors.text },
-    friendPickerButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, backgroundColor: isDark ? '#1e293b' : '#ecfdf5', borderWidth: 1, borderColor: '#10b981', marginVertical: 12 },
-    friendPickerText: { fontSize: 14, fontWeight: '700', color: '#10b981' },
-    inputLabel: { fontSize: 12, fontWeight: '700', color: colors.mutedText, marginTop: 4, marginBottom: 6 },
-    modalInput: { backgroundColor: colors.control, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: colors.text, marginBottom: 8 },
-    pillSelect: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control },
-    pillSelectActive: { backgroundColor: '#d1fae5', borderColor: '#10b981' },
-    pillSelectText: { fontSize: 11, fontWeight: '700', color: colors.mutedText },
-    pillSelectTextActive: { color: '#047857', fontWeight: '800' },
-    modalActions: { flexDirection: 'row', gap: 10, marginTop: 8 },
-    cancelButton: { flex: 1, height: 44, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-    cancelButtonText: { color: colors.text, fontWeight: '700' },
-    primaryButton: { flex: 1, height: 44, borderRadius: 12, backgroundColor: '#10b981', alignItems: 'center', justifyContent: 'center' },
-    primaryButtonText: { color: '#ffffff', fontWeight: '800' },
-    pendingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
-    smallPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+    modalSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32, maxHeight: '88%' },
+    modalHeading: { fontSize: 18, fontWeight: '800', color: colors.text },
+    label: { color: colors.secondaryText, fontSize: 13, fontWeight: '700' },
+    divider: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+    dividerText: { fontSize: 12, color: colors.mutedText, fontWeight: '600' },
+    modalInput: { minHeight: 48, backgroundColor: colors.input, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 14, fontSize: 15, color: colors.text },
+    modalActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
   });
 
 function projectMessage(error: unknown): string {

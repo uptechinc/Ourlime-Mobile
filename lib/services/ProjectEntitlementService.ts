@@ -1,25 +1,20 @@
 import type { AutomationRule, ProjectRecord } from '@/lib/types/project';
 
-/** Kept identical to Ourlime-Web lib/projects/ProjectEntitlementService.ts (Free vs Premium project plans). */
-export type ProjectTierLimits = {
-  tierName: string;
-  maxSubtasksPerTask: number;
-  maxMilestones: number;
-  maxFileUploadBytes: number;
+/**
+ * Free vs Premium project plans (Ourlime-Web lib/projects/ProjectEntitlementService.ts). The Free-plan caps of 3
+ * subtasks per task and 2 milestones per project were enforced only in the client, with no product reason, so the app
+ * no longer applies them (audit D6). Premium currently gates only the timesheet CSV export.
+ */
+type AutomationRuleDefinition = Omit<AutomationRule, 'enabled'> & {
+  /** False for rules that are stored but that nothing carries out yet; the app hides those (audit D7). */
+  hasExecutor: boolean;
 };
-
-export type EntitlementCheck = { allowed: boolean; max: number; reason?: string };
-
-const FREE_LIMITS: ProjectTierLimits = { tierName: 'Free', maxSubtasksPerTask: 3, maxMilestones: 2, maxFileUploadBytes: 10 * 1024 * 1024 };
-const PREMIUM_LIMITS: ProjectTierLimits = { tierName: 'Premium', maxSubtasksPerTask: Infinity, maxMilestones: Infinity, maxFileUploadBytes: 1024 * 1024 * 1024 };
-
-type AutomationRuleDefinition = Omit<AutomationRule, 'enabled'>;
 
 // Same rules and defaults as the website's project page (app/projectManagement/[projectId]/page.tsx).
 const AUTOMATION_RULE_DEFINITIONS: AutomationRuleDefinition[] = [
-  { id: '1', name: 'Auto-assign to team lead', trigger: 'Task created', action: 'Assign to team lead', isPremium: false },
-  { id: '2', name: 'Due date reminders', trigger: '24h before due', action: 'Send notification', isPremium: true },
-  { id: '3', name: 'Status change notifications', trigger: 'Status changed', action: 'Notify team', isPremium: true },
+  { id: '1', name: 'Auto-assign to team lead', trigger: 'Task created', action: 'Assign to team lead', isPremium: false, hasExecutor: true },
+  { id: '2', name: 'Due date reminders', trigger: '24h before due', action: 'Send notification', isPremium: true, hasExecutor: false },
+  { id: '3', name: 'Status change notifications', trigger: 'Status changed', action: 'Notify team', isPremium: true, hasExecutor: false },
 ];
 const AUTOMATION_RULE_DEFAULTS: { [ruleId: string]: boolean } = { '1': true };
 
@@ -37,28 +32,9 @@ export class ProjectEntitlementService {
     return project?.planTier === 'premium';
   }
 
-  public getLimits(project: ProjectRecord | null | undefined): ProjectTierLimits {
-    return this.isPremium(project) ? PREMIUM_LIMITS : FREE_LIMITS;
-  }
-
-  public canAddSubtask(currentCount: number, project: ProjectRecord | null | undefined): EntitlementCheck {
-    const limits = this.getLimits(project);
-    if (currentCount >= limits.maxSubtasksPerTask) {
-      return { allowed: false, max: limits.maxSubtasksPerTask, reason: `The ${limits.tierName} plan allows up to ${limits.maxSubtasksPerTask} subtasks per task. Upgrade to Premium for unlimited subtasks.` };
-    }
-    return { allowed: true, max: limits.maxSubtasksPerTask };
-  }
-
-  public canCreateMilestone(currentCount: number, project: ProjectRecord | null | undefined): EntitlementCheck {
-    const limits = this.getLimits(project);
-    if (currentCount >= limits.maxMilestones) {
-      return { allowed: false, max: limits.maxMilestones, reason: `The ${limits.tierName} plan allows up to ${limits.maxMilestones} milestones per project. Upgrade to Premium for unlimited milestones.` };
-    }
-    return { allowed: true, max: limits.maxMilestones };
-  }
-
+  /** Only the rules something actually carries out (today: auto-assign, applied when a task is created). */
   public automationRules(project: ProjectRecord | null | undefined): AutomationRule[] {
-    return AUTOMATION_RULE_DEFINITIONS.map((definition) => ({
+    return AUTOMATION_RULE_DEFINITIONS.filter((definition) => definition.hasExecutor).map(({ hasExecutor: _hasExecutor, ...definition }) => ({
       ...definition,
       enabled: project?.automationRules?.[definition.id] ?? AUTOMATION_RULE_DEFAULTS[definition.id] ?? false,
     }));

@@ -3,16 +3,13 @@ import { Text, TouchableOpacity, View } from 'react-native';
 import { ChevronDown, ChevronUp, Users } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import UserAvatar from '@/components/ui/UserAvatar';
-import { EmptyPanel, PanelHeader, PremiumNotice } from '@/components/projectManagement/ProjectPanelParts';
+import { EmptyPanel, PanelHeader } from '@/components/projectManagement/ProjectPanelParts';
 import { STATUS_LABELS, formatDuration, isAssignedTo, priorityColor, taskMinutes } from '@/components/projectManagement/projectFormat';
-import { projectEntitlementService } from '@/lib/services/ProjectEntitlementService';
-import type { ProjectRecord, Task, TeamMember } from '@/lib/types/project';
+import type { Task, TeamMember } from '@/lib/types/project';
 
 type ProjectWorkloadPanelProps = {
-  project: ProjectRecord;
   tasks: Task[];
   teamMembers: TeamMember[];
-  onOpenUpgrade: () => void;
   onSelectTask: (task: Task) => void;
 };
 
@@ -20,9 +17,8 @@ type ProjectWorkloadPanelProps = {
 const STANDARD_WEEKLY_CAPACITY_HOURS = 40;
 
 /** Website ProjectWorkloadView: per-member task load, estimated hours vs 40h capacity, and logged time. */
-export default function ProjectWorkloadPanel({ project, tasks, teamMembers, onOpenUpgrade, onSelectTask }: ProjectWorkloadPanelProps) {
+export default function ProjectWorkloadPanel({ tasks, teamMembers, onSelectTask }: ProjectWorkloadPanelProps) {
   const { colors } = useAppTheme();
-  const isPremium = projectEntitlementService.isPremium(project);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const workloads = useMemo(() => teamMembers.map((member) => {
@@ -52,13 +48,6 @@ export default function ProjectWorkloadPanel({ project, tasks, teamMembers, onOp
         badge="Capacity Management"
         description="Monitor task distribution and hours across team members to prevent over-utilization and bottlenecks."
       />
-      {!isPremium ? (
-        <PremiumNotice
-          title="Resource Balancing:"
-          message="Free tier includes basic capacity views. Upgrade to Premium for AI-powered workload balancing, automated capacity re-assignment, and cross-project utilization."
-          onUpgrade={onOpenUpgrade}
-        />
-      ) : null}
       {workloads.length === 0 ? (
         <EmptyPanel icon={<Users size={26} color={colors.mutedText} />} title="No team members" message="No team members found in this project." />
       ) : (

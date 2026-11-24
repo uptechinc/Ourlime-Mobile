@@ -3,8 +3,8 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, Touch
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import {
-  Archive, CheckSquare, Clock, Copy, FileText, Flag, History, Lock, MessageCircle, MoreVertical, Paperclip, Pause, Pencil, PlayCircle,
-  Send, Sparkles, Square, Trash2, Upload, X,
+  Archive, CheckSquare, Clock, Copy, FileText, Flag, History, Link2, MessageCircle, MoreVertical, Paperclip, Pause, Pencil, PlayCircle,
+  Repeat, Send, Square, Trash2, Upload, X,
 } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -16,8 +16,8 @@ import { FileTypeIcon, openAttachment } from '@/components/projectManagement/Pro
 import {
   PRIORITY_OPTIONS, STATUS_LABELS, auditLabel, formatCalendarDate, formatDuration, formatFileSize, parseCalendarString, statusColor, taskMinutes, toCalendarString,
 } from '@/components/projectManagement/projectFormat';
-import { projectEntitlementService } from '@/lib/services/ProjectEntitlementService';
 import { projectService } from '@/lib/services/ProjectService';
+import { projectInsightRules } from '@/lib/services/ProjectInsightRules';
 import type { ActiveTaskTimer, Milestone, ProjectRecord, Status, Task, TaskFieldUpdate, TeamMember } from '@/lib/types/project';
 
 type TaskDetailSheetProps = {
@@ -25,26 +25,30 @@ type TaskDetailSheetProps = {
   project: ProjectRecord;
   teamMembers: TeamMember[];
   milestones: Milestone[];
+  /** The project's tasks, to name the ones this task waits on. */
+  tasks: Task[];
   currentUserId: string;
   /** False for viewers and read-only projects (the reason is shown when they try). */
   canWrite: boolean;
   writeBlockedReason: string;
   activeTimer: ActiveTaskTimer | null;
   onClose: () => void;
-  onOpenUpgrade: () => void;
+  /** Opens another task (a task this one waits on). */
+  onOpenTask: (task: Task) => void;
 };
 
 type DetailTab = 'details' | 'subtasks' | 'comments' | 'time' | 'files' | 'activity';
 const TABS: { id: DetailTab; label: string; Icon: typeof FileText }[] = [
-  { id: 'details', label: 'Details', Icon: FileText }, { id: 'subtasks', label: 'Subtasks', Icon: CheckSquare },
-  { id: 'comments', label: 'Comments', Icon: MessageCircle }, { id: 'time', label: 'Time', Icon: Clock },
-  { id: 'files', label: 'Files', Icon: Paperclip }, { id: 'activity', label: 'Activity', Icon: History },
+  { id: 'details', label: 'Details', Icon: FileText }, { id: 'subtasks', label: 'Checklist', Icon: CheckSquare },
+  { id: 'comments', label: 'Comments', Icon: MessageCircle }, { id: 'files', label: 'Files', Icon: Paperclip },
+  { id: 'time', label: 'Time', Icon: Clock }, { id: 'activity', label: 'History', Icon: History },
 ];
+const RECURRENCE_UNITS = { daily: 'day', weekly: 'week', monthly: 'month', yearly: 'year' } as const;
 const STATUSES: Status[] = ['todo', 'in-progress', 'done'];
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 /** Website TaskDetailModal: edit the task, subtasks, comments with @mentions, timer and time log, files and history. */
-export default function TaskDetailSheet({ task, project, teamMembers, milestones, currentUserId, canWrite, writeBlockedReason, activeTimer, onClose, onOpenUpgrade }: TaskDetailSheetProps) {
+export default function TaskDetailSheet({ task, project, teamMembers, milestones, tasks, currentUserId, canWrite, writeBlockedReason, activeTimer, onClose, onOpenTask }: TaskDetailSheetProps) {
   const { colors } = useAppTheme();
   const [tab, setTab] = useState<DetailTab>('details');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -76,11 +80,18 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
   const mentionSuggestions = mentionQuery === null ? [] : teamMembers.filter((member) => member.membershipStatus !== 'pending' && member.name.toLowerCase().includes(mentionQuery)).slice(0, 6);
 
   if (!task) return null;
-  const subtaskEntitlement = projectEntitlementService.canAddSubtask(task.subTasks.length, project);
   const totalMinutes = taskMinutes(task);
   const isAssignedToMe = task.assignee === currentUserId || (task.assignees ?? []).includes(currentUserId);
   const timerOnThisTask = activeTimer?.taskId === task.id && activeTimer.projectId === project.id;
-  const milestone = task.milestoneId ? milestones.find((entry) => entry.id === task.milestoneId) : undefined;
+  const tasksById = projectInsightRules.indexById(tasks);
+  const dependencies = (task.dependencies ?? []).flatMap((dependencyId) => {
+    const dependency = tasksById.get(dependencyId);
+    return dependency ? [dependency] : [];
+  });
+  const waitingOn = projectInsightRules.blockers(task, tasksById);
+  const assignedIds = [...new Set([task.assignee, ...(task.assignees ?? [])].filter(Boolean))];
+  const acceptedMembers = teamMembers.filter((member) => member.isOwner || member.membershipStatus !== 'pending');
+  const tabCount = (tab: DetailTab): number | null => (tab === 'subtasks' ? task.subTasks.length : tab === 'comments' ? task.comments.length : tab === 'files' ? task.attachments.length : null);
 
   /** Runs one change at a time and reports failures (website runTaskMutation). */
   const run = async (key: string, action: () => Promise<void>, success?: string): Promise<boolean> => {
@@ -112,8 +123,13 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
   const handleAddSubtask = async (): Promise<void> => {
     const title = newSubtask.trim();
     if (!title) return;
-    if (!subtaskEntitlement.allowed) { toast.error(subtaskEntitlement.reason || 'Subtask limit reached'); onOpenUpgrade(); return; }
     if (await run('subtask', () => projectService.addSubTask(project.id, task.id, title))) setNewSubtask((current) => (current.trim() === title ? '' : current));
+  };
+  /** Adds or removes one person; picking someone turns "everyone" off. */
+  const handleToggleAssignee = (memberId: string): void => {
+    const current = task.assignedToAll ? [] : assignedIds;
+    const next = current.includes(memberId) ? current.filter((id) => id !== memberId) : [...current, memberId];
+    void update('assignee', { assignee: next[0] ?? '', assignees: next, assignedToAll: false });
   };
   const handleInsertMention = (member: TeamMember): void => {
     const lastAt = newComment.lastIndexOf('@');
@@ -163,13 +179,13 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
     }
   };
 
-  const chip = (selected: boolean, tint = colors.accent) => ({
-    paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, borderWidth: 1,
+  const chip = (selected: boolean, tint = '#047857') => ({
+    minHeight: 36, justifyContent: 'center' as const, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1,
     borderColor: selected ? tint : colors.border, backgroundColor: selected ? tint : colors.control,
   });
-  const input = { minHeight: 44, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 14 } as const;
-  const sectionTitle = { color: colors.text, fontSize: 14, fontWeight: '800' as const };
-  const sendButton = (disabled: boolean) => ({ width: 44, height: 44, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: colors.accent, opacity: disabled ? 0.55 : 1 });
+  const input = { minHeight: 48, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 15 } as const;
+  const sectionTitle = { color: colors.text, fontSize: 15, fontWeight: '800' as const };
+  const sendButton = (disabled: boolean) => ({ width: 48, height: 48, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: '#047857', opacity: disabled ? 0.55 : 1 });
 
   const renderCommentText = (content: string) => content.split(/(@\S+(?: \S+)?)/g).map((part, index) => {
     const isMention = part.startsWith('@') && teamMembers.some((member) => part.slice(1).toLowerCase().startsWith(member.name.toLowerCase()));
@@ -183,42 +199,33 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
           {/* Header */}
           <View style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12, gap: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-              <TouchableOpacity onPress={onClose} accessibilityLabel="Close task details" style={{ padding: 4 }}><X size={22} color={colors.text} /></TouchableOpacity>
-              <View style={{ flex: 1 }}>
+              <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Close task details" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: -8 }}><X size={22} color={colors.text} /></TouchableOpacity>
+              <View style={{ flex: 1, minWidth: 0, paddingTop: 8 }}>
                 {editingTitle ? (
                   <TextInput value={titleDraft} onChangeText={setTitleDraft} autoFocus maxLength={200} onSubmitEditing={() => void handleSaveTitle()} onBlur={() => void handleSaveTitle()} style={[input, { fontSize: 17, fontWeight: '800' }]} />
                 ) : (
-                  <TouchableOpacity disabled={!canWrite} onPress={() => { setTitleDraft(task.title); setEditingTitle(true); }}>
-                    <Text style={{ color: colors.text, fontSize: 18, fontWeight: '900' }}>{task.title}</Text>
+                  <TouchableOpacity disabled={!canWrite} accessibilityRole="button" accessibilityLabel={canWrite ? `${task.title}. Tap to rename` : task.title} onPress={() => { setTitleDraft(task.title); setEditingTitle(true); }}>
+                    <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800', lineHeight: 24 }}>{task.title}</Text>
                   </TouchableOpacity>
                 )}
               </View>
-              {project.role !== 'viewer' ? (
-                <TouchableOpacity onPress={() => setMenuOpen(true)} accessibilityLabel="Task actions" style={{ padding: 4 }}><MoreVertical size={20} color={colors.text} /></TouchableOpacity>
+              {canWrite ? (
+                <TouchableOpacity onPress={() => setMenuOpen(true)} accessibilityRole="button" accessibilityLabel="Task actions" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -8 }}><MoreVertical size={20} color={colors.text} /></TouchableOpacity>
               ) : null}
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 6 }}>
-              {PRIORITY_OPTIONS.map((option) => (
-                <TouchableOpacity key={option.value} disabled={!canWrite || busy !== null} onPress={() => { if (option.value !== task.priority) void update('priority', { priority: option.value }); }} style={chip(task.priority === option.value, option.color)}>
-                  <Text style={{ color: task.priority === option.value ? '#ffffff' : colors.secondaryText, fontSize: 11, fontWeight: '800' }}>{option.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            {!canWrite && writeBlockedReason ? <Text style={{ color: colors.mutedText, fontSize: 12 }}>{writeBlockedReason}</Text> : null}
+            <View accessibilityRole="radiogroup" accessibilityLabel="Status" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
               {STATUSES.map((status) => (
-                <TouchableOpacity key={status} disabled={!canWrite || busy !== null} onPress={() => { if (status !== task.status) void update('status', { status }); }} style={chip(task.status === status, statusColor(status))}>
-                  <Text style={{ color: task.status === status ? '#ffffff' : colors.secondaryText, fontSize: 11, fontWeight: '800' }}>{STATUS_LABELS[status]}</Text>
+                <TouchableOpacity key={status} disabled={!canWrite || busy !== null} onPress={() => { if (status !== task.status) void update('status', { status }); }} accessibilityRole="radio" accessibilityState={{ selected: task.status === status, disabled: !canWrite }} accessibilityLabel={STATUS_LABELS[status]} style={chip(task.status === status, statusColor(status))}>
+                  <Text style={{ color: task.status === status ? '#ffffff' : colors.secondaryText, fontSize: 13, fontWeight: '700' }}>{STATUS_LABELS[status]}</Text>
                 </TouchableOpacity>
               ))}
               {task.status === 'todo' && isAssignedToMe && canWrite ? (
-                <TouchableOpacity disabled={busy !== null || (activeTimer !== null && !timerOnThisTask)} onPress={() => void handleStartTimer()} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: '#059669' }}>
-                  <PlayCircle size={13} color="#ffffff" /><Text style={{ color: '#ffffff', fontSize: 11, fontWeight: '800' }}>Start Task</Text>
+                <TouchableOpacity disabled={busy !== null || (activeTimer !== null && !timerOnThisTask)} onPress={() => void handleStartTimer()} accessibilityRole="button" accessibilityLabel="Start task and its timer" style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, paddingHorizontal: 12, borderRadius: 999, backgroundColor: '#047857' }}>
+                  <PlayCircle size={14} color="#ffffff" /><Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '700' }}>Start</Text>
                 </TouchableOpacity>
               ) : null}
               {busy ? <ActivityIndicator size="small" color={colors.accent} /> : null}
-            </View>
-            <View pointerEvents={canWrite ? 'auto' : 'none'}>
-              <DateTimeField label="Due date" mode="date" placeholder="No due date" value={parseCalendarString(task.dueDate)} onChange={(date) => void update('dueDate', { dueDate: toCalendarString(date) })} onClear={() => void update('dueDate', { dueDate: '' })} />
             </View>
           </View>
 
@@ -227,10 +234,12 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
             <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 8 }}>
               {TABS.map(({ id, label, Icon }) => {
                 const selected = tab === id;
+                const count = tabCount(id);
+                const text = count ? `${label} ${count}` : label;
                 return (
-                  <TouchableOpacity key={id} onPress={() => setTab(id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 11, borderBottomWidth: 2, borderBottomColor: selected ? colors.accent : 'transparent' }}>
-                    <Icon size={14} color={selected ? colors.accent : colors.mutedText} />
-                    <Text style={{ color: selected ? colors.accent : colors.mutedText, fontSize: 13, fontWeight: '800' }}>{label}</Text>
+                  <TouchableOpacity key={id} onPress={() => setTab(id)} accessibilityRole="tab" accessibilityLabel={text} accessibilityState={{ selected }} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 48, paddingHorizontal: 12, borderBottomWidth: 2, borderBottomColor: selected ? colors.accent : 'transparent' }}>
+                    <Icon size={14} color={selected ? colors.accentText : colors.mutedText} />
+                    <Text style={{ color: selected ? colors.accentText : colors.mutedText, fontSize: 14, fontWeight: '700' }}>{text}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -240,6 +249,19 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 40 }}>
             {tab === 'details' ? (
               <>
+                <View style={{ gap: 8 }}>
+                  <Text style={sectionTitle}>Priority</Text>
+                  <View accessibilityRole="radiogroup" accessibilityLabel="Priority" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {PRIORITY_OPTIONS.map((option) => (
+                      <TouchableOpacity key={option.value} disabled={!canWrite || busy !== null} onPress={() => { if (option.value !== task.priority) void update('priority', { priority: option.value }); }} accessibilityRole="radio" accessibilityState={{ selected: task.priority === option.value, disabled: !canWrite }} accessibilityLabel={`${option.label} priority`} style={chip(task.priority === option.value, option.color)}>
+                        <Text style={{ color: task.priority === option.value ? '#ffffff' : colors.secondaryText, fontSize: 13, fontWeight: '700' }}>{option.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+                <View pointerEvents={canWrite ? 'auto' : 'none'}>
+                  <DateTimeField label="Due date" mode="date" placeholder="No due date" value={parseCalendarString(task.dueDate)} onChange={(date) => void update('dueDate', { dueDate: toCalendarString(date) })} onClear={() => void update('dueDate', { dueDate: '' })} />
+                </View>
                 <View style={{ gap: 8 }}>
                   <Text style={sectionTitle}>Description</Text>
                   {editingDescription ? (
@@ -258,19 +280,46 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
                 </View>
                 <View style={{ gap: 8 }}>
                   <Text style={sectionTitle}>Assigned to</Text>
-                  {task.assignedToAll ? <Text style={{ color: colors.mutedText, fontSize: 12 }}>Assigned to all team members</Text> : null}
+                  <Text style={{ color: colors.mutedText, fontSize: 12 }}>{task.assignedToAll ? 'Everyone on the team. Pick people to narrow it down.' : assignedIds.length === 0 ? 'Nobody yet. Tap people to add them.' : 'Tap to add or remove people.'}</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {teamMembers.filter((member) => member.isOwner || member.membershipStatus !== 'pending').map((member) => {
-                      const selected = task.assignee === member.id || (task.assignees ?? []).includes(member.id);
+                    {acceptedMembers.map((member) => {
+                      const selected = task.assignedToAll || assignedIds.includes(member.id);
                       return (
-                        <TouchableOpacity key={member.id} disabled={!canWrite || busy !== null} onPress={() => { if (task.assignee !== member.id) void update('assignee', { assignee: member.id, assignees: [member.id] }); }} style={[chip(selected), { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
-                          <UserAvatar profileImage={member.avatar} firstName={member.name} size={20} />
-                          <Text style={{ color: selected ? colors.onAccent : colors.secondaryText, fontSize: 12, fontWeight: '700' }}>{member.id === currentUserId ? 'Me' : member.name}</Text>
+                        <TouchableOpacity key={member.id} disabled={!canWrite || busy !== null} onPress={() => handleToggleAssignee(member.id)} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={member.id === currentUserId ? 'Me' : member.name} style={[chip(selected), { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 6 }]}>
+                          <UserAvatar profileImage={member.avatar} firstName={member.name} size={22} />
+                          <Text style={{ color: selected ? '#ffffff' : colors.secondaryText, fontSize: 13, fontWeight: '700' }}>{member.id === currentUserId ? 'Me' : member.name}</Text>
                         </TouchableOpacity>
                       );
                     })}
                   </View>
                 </View>
+                {milestones.length > 0 ? (
+                  <View style={{ gap: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Flag size={14} color={colors.accentText} /><Text style={sectionTitle}>Milestone</Text></View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
+                      {[{ id: '', name: 'None', completed: false }, ...milestones].map((option) => {
+                        const selected = (task.milestoneId ?? '') === option.id;
+                        return (
+                          <TouchableOpacity key={option.id || 'none'} disabled={!canWrite || busy !== null} onPress={() => { if (!selected) void update('milestone', { milestoneId: option.id }); }} accessibilityRole="radio" accessibilityState={{ selected }} style={chip(selected)}>
+                            <Text numberOfLines={1} style={{ color: selected ? '#ffffff' : colors.secondaryText, fontSize: 13, fontWeight: '700', maxWidth: 200 }}>{option.name}{option.completed ? ' (done)' : ''}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                ) : null}
+                {dependencies.length > 0 ? (
+                  <View style={{ gap: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Link2 size={14} color={waitingOn.length > 0 ? colors.warningText : colors.accentText} /><Text style={sectionTitle}>{waitingOn.length > 0 ? `Waiting on ${waitingOn.length} ${waitingOn.length === 1 ? 'task' : 'tasks'}` : 'Depends on (all done)'}</Text></View>
+                    {dependencies.map((dependency) => (
+                      <TouchableOpacity key={dependency.id} onPress={() => onOpenTask(dependency)} accessibilityRole="button" accessibilityLabel={`${dependency.title}, ${STATUS_LABELS[dependency.status]}. Open`} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.control }}>
+                        {dependency.status === 'done' ? <CheckSquare size={16} color={colors.accentText} /> : <Square size={16} color={colors.warningText} />}
+                        <Text numberOfLines={1} style={{ flex: 1, color: colors.text, fontSize: 14 }}>{dependency.title}</Text>
+                        <Text style={{ color: colors.mutedText, fontSize: 12 }}>{STATUS_LABELS[dependency.status]}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
                 <View style={{ gap: 6 }}>
                   <Text style={sectionTitle}>Progress</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -278,13 +327,18 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
                     <Text style={{ color: colors.secondaryText, fontSize: 12, fontWeight: '700' }}>{task.progress}%</Text>
                   </View>
                 </View>
-                {milestone || task.startDate || task.estimatedTime || (task.dependencies?.length ?? 0) > 0 || task.recurrence ? (
+                {task.startDate || task.estimatedTime || task.recurrence ? (
                   <View style={{ gap: 6 }}>
-                    {milestone ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Flag size={13} color="#9333ea" /><Text style={{ color: colors.secondaryText, fontSize: 12 }}>Milestone: {milestone.name}</Text></View> : null}
-                    {task.startDate ? <Text style={{ color: colors.secondaryText, fontSize: 12 }}>Starts {formatCalendarDate(task.startDate)}</Text> : null}
-                    {task.estimatedTime ? <Text style={{ color: colors.secondaryText, fontSize: 12 }}>Estimated {task.estimatedTime}h</Text> : null}
-                    {(task.dependencies?.length ?? 0) > 0 ? <Text style={{ color: colors.secondaryText, fontSize: 12 }}>Depends on {task.dependencies?.length} task{task.dependencies?.length === 1 ? '' : 's'}</Text> : null}
-                    {task.recurrence ? <Text style={{ color: colors.secondaryText, fontSize: 12 }}>Repeats every {task.recurrence.interval} {task.recurrence.frequency.replace('ly', '').replace('dai', 'day')}{task.recurrence.interval === 1 ? '' : 's'}</Text> : null}
+                    {task.startDate ? <Text style={{ color: colors.secondaryText, fontSize: 13 }}>Starts {formatCalendarDate(task.startDate)}</Text> : null}
+                    {task.estimatedTime ? <Text style={{ color: colors.secondaryText, fontSize: 13 }}>Estimated {task.estimatedTime}h</Text> : null}
+                    {task.recurrence ? (
+                      <View style={{ flexDirection: 'row', gap: 8, padding: 10, borderRadius: 12, backgroundColor: colors.control }}>
+                        <Repeat size={14} color={colors.mutedText} style={{ marginTop: 2 }} />
+                        <Text style={{ flex: 1, color: colors.mutedText, fontSize: 12, lineHeight: 17 }}>
+                          A repeat (every {task.recurrence.interval > 1 ? `${task.recurrence.interval} ` : ''}{RECURRENCE_UNITS[task.recurrence.frequency]}{task.recurrence.interval > 1 ? 's' : ''}) was saved on this task, but repeats are not created automatically yet. Duplicate the task from ⋯ when you need the next one.
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                 ) : null}
                 <View style={{ gap: 8 }}>
@@ -300,24 +354,17 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
 
             {tab === 'subtasks' ? (
               <>
-                {!subtaskEntitlement.allowed ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 12, backgroundColor: colors.warningSurface }}>
-                    <Lock size={14} color="#d97706" />
-                    <Text style={{ flex: 1, color: colors.warningText, fontSize: 12 }}>Free Plan limit: max 3 subtasks per task.</Text>
-                    <TouchableOpacity onPress={onOpenUpgrade} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}><Sparkles size={12} color="#d97706" /><Text style={{ color: colors.warningText, fontWeight: '900', fontSize: 12, textDecorationLine: 'underline' }}>Upgrade</Text></TouchableOpacity>
-                  </View>
-                ) : null}
-                <Text style={{ color: colors.mutedText, fontSize: 12 }}>{task.subTasks.filter((subTask) => subTask.completed).length} of {task.subTasks.length} completed</Text>
+                <Text style={{ color: colors.mutedText, fontSize: 13 }}>{task.subTasks.length === 0 ? 'Split the task into small steps you can tick off.' : `${task.subTasks.filter((subTask) => subTask.completed).length} of ${task.subTasks.length} done`}</Text>
                 {task.subTasks.map((subTask) => (
-                  <TouchableOpacity key={subTask.id} disabled={!canWrite || busy !== null} onPress={() => void run(`toggle:${subTask.id}`, () => projectService.toggleSubTask(project.id, task.id, subTask.id, !subTask.completed))} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 10, backgroundColor: colors.control }}>
-                    {subTask.completed ? <CheckSquare size={18} color={colors.accent} /> : <Square size={18} color={colors.mutedText} />}
-                    <Text style={{ flex: 1, color: subTask.completed ? colors.mutedText : colors.text, textDecorationLine: subTask.completed ? 'line-through' : 'none', fontSize: 13 }}>{subTask.title}</Text>
+                  <TouchableOpacity key={subTask.id} disabled={!canWrite || busy !== null} onPress={() => void run(`toggle:${subTask.id}`, () => projectService.toggleSubTask(project.id, task.id, subTask.id, !subTask.completed))} accessibilityRole="checkbox" accessibilityState={{ checked: subTask.completed }} accessibilityLabel={subTask.title} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.control }}>
+                    {subTask.completed ? <CheckSquare size={20} color={colors.accentText} /> : <Square size={20} color={colors.mutedText} />}
+                    <Text style={{ flex: 1, color: subTask.completed ? colors.mutedText : colors.text, textDecorationLine: subTask.completed ? 'line-through' : 'none', fontSize: 14 }}>{subTask.title}</Text>
                   </TouchableOpacity>
                 ))}
                 {canWrite ? (
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TextInput value={newSubtask} onChangeText={setNewSubtask} editable={subtaskEntitlement.allowed} placeholder={subtaskEntitlement.allowed ? 'Add a subtask...' : 'Subtask limit reached (Upgrade to Premium)'} placeholderTextColor={colors.mutedText} onSubmitEditing={() => void handleAddSubtask()} style={[input, { flex: 1 }]} />
-                    <TouchableOpacity disabled={busy !== null} onPress={() => void handleAddSubtask()} style={sendButton(!newSubtask.trim())}><CheckSquare size={17} color={colors.onAccent} /></TouchableOpacity>
+                    <TextInput value={newSubtask} onChangeText={setNewSubtask} placeholder="Add a checklist item" placeholderTextColor={colors.mutedText} onSubmitEditing={() => void handleAddSubtask()} returnKeyType="done" accessibilityLabel="New checklist item" style={[input, { flex: 1 }]} />
+                    <TouchableOpacity disabled={busy !== null || !newSubtask.trim()} onPress={() => void handleAddSubtask()} accessibilityRole="button" accessibilityLabel="Add checklist item" style={sendButton(!newSubtask.trim())}><CheckSquare size={17} color={colors.onAccent} /></TouchableOpacity>
                   </View>
                 ) : null}
               </>
@@ -384,7 +431,7 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
                 <View style={{ padding: 14, borderRadius: 14, backgroundColor: colors.control, gap: 10 }}>
                   <Text style={sectionTitle}>Total Time Spent</Text>
                   <Text style={{ color: colors.accent, fontSize: 26, fontWeight: '900' }}>{formatDuration(totalMinutes)}</Text>
-                  {project.role !== 'viewer' ? (
+                  {canWrite || timerOnThisTask ? (
                     timerOnThisTask ? (
                       <TouchableOpacity disabled={busy !== null} onPress={() => void handleStopTimer()} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: '#dc2626' }}>
                         <Pause size={15} color="#ffffff" /><Text style={{ color: '#ffffff', fontWeight: '800' }}>Stop timer</Text>
@@ -418,8 +465,8 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
 
             {tab === 'files' ? (
               <>
-                {project.role !== 'viewer' ? (
-                  <TouchableOpacity disabled={busy !== null} onPress={() => void handleUpload()} style={{ alignItems: 'center', gap: 6, padding: 20, borderRadius: 14, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.border }}>
+                {canWrite ? (
+                  <TouchableOpacity disabled={busy !== null} onPress={() => void handleUpload()} accessibilityRole="button" accessibilityLabel="Upload a file" style={{ alignItems: 'center', gap: 6, padding: 20, borderRadius: 14, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.border }}>
                     {busy === 'upload' ? <ActivityIndicator color={colors.accent} /> : <Upload size={22} color={colors.accent} />}
                     <Text style={{ color: colors.text, fontWeight: '800' }}>{busy === 'upload' ? 'Uploading…' : 'Upload files'}</Text>
                     <Text style={{ color: colors.mutedText, fontSize: 12, textAlign: 'center' }}>Attach documents, images or other files to this task (up to 10 MB)</Text>

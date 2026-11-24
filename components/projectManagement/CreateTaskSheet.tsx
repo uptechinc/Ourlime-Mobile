@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
-import { Flag, Link2, Paperclip, Plus, Repeat, Trash2, X } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Flag, Link2, Paperclip, Plus, Trash2, X } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { projectService } from '@/lib/services/ProjectService';
@@ -12,7 +12,7 @@ import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { FileTypeIcon } from '@/components/projectManagement/ProjectFilesPanel';
 import { PRIORITY_OPTIONS, STATUS_LABELS, formatFileSize, toCalendarString } from '@/components/projectManagement/projectFormat';
 import type {
-  Milestone, PickedTaskFile, Priority, ProjectRecord, RecurrenceEndMode, RecurrenceFrequency, Status, Task, TaskTemplate, TeamMember,
+  Milestone, PickedTaskFile, Priority, ProjectRecord, Status, Task, TaskTemplate, TeamMember,
 } from '@/lib/types/project';
 
 type CreateTaskSheetProps = {
@@ -23,21 +23,23 @@ type CreateTaskSheetProps = {
   tasks: Task[];
   milestones: Milestone[];
   taskTemplates: TaskTemplate[];
+  /** Column the task starts in (a board column's "Add task"). */
+  initialStatus?: Status;
+  /** Milestone the task starts linked to (a milestone's "Add task"). */
+  initialMilestoneId?: string;
   onClose: () => void;
   onCreated: () => void;
 };
 
 const STATUSES: Status[] = ['todo', 'in-progress', 'done'];
-const FREQUENCIES: { value: RecurrenceFrequency; label: string }[] = [
-  { value: 'daily', label: 'Day(s)' }, { value: 'weekly', label: 'Week(s)' }, { value: 'monthly', label: 'Month(s)' }, { value: 'yearly', label: 'Year(s)' },
-];
-const END_MODES: { value: RecurrenceEndMode; label: string }[] = [
-  { value: 'never', label: 'Never' }, { value: 'date', label: 'On a date' }, { value: 'count', label: 'After occurrences' },
-];
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
-/** Website TaskCreationModal: every field, milestones, dependencies, recurrence, templates and owner attachments. */
-export default function CreateTaskSheet({ visible, project, currentUserId, teamMembers, tasks, milestones, taskTemplates, onClose, onCreated }: CreateTaskSheetProps) {
+/**
+ * Website TaskCreationModal: title, description, status, priority, due date, people and milestone up front; start
+ * date, estimate, tags, dependencies, templates and owner attachments under "More options". The website's repeat
+ * setting is not offered: nothing creates the next occurrence yet, so it would promise something that never happens.
+ */
+export default function CreateTaskSheet({ visible, project, currentUserId, teamMembers, tasks, milestones, taskTemplates, initialStatus, initialMilestoneId, onClose, onCreated }: CreateTaskSheetProps) {
   const { colors } = useAppTheme();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -54,12 +56,7 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
   const [newMilestoneName, setNewMilestoneName] = useState('');
   const [creatingMilestone, setCreatingMilestone] = useState(false);
   const [dependencies, setDependencies] = useState<string[]>([]);
-  const [recurrenceEnabled, setRecurrenceEnabled] = useState(false);
-  const [recurrenceFrequency, setRecurrenceFrequency] = useState<RecurrenceFrequency>('weekly');
-  const [recurrenceInterval, setRecurrenceInterval] = useState('1');
-  const [recurrenceEndMode, setRecurrenceEndMode] = useState<RecurrenceEndMode>('never');
-  const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
-  const [recurrenceCount, setRecurrenceCount] = useState('10');
+  const [showMore, setShowMore] = useState(false);
   const [templateId, setTemplateId] = useState('');
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [files, setFiles] = useState<PickedTaskFile[]>([]);
@@ -75,10 +72,16 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
   const resetForm = (): void => {
     setTitle(''); setDescription(''); setPriority('medium'); setStatus('todo'); setAssignees([currentUserId]); setAssignedToAll(false);
     setStartDate(null); setDueDate(null); setEstimatedTime('1'); setTags([]); setTagInput(''); setMilestoneId(''); setNewMilestoneName('');
-    setDependencies([]); setRecurrenceEnabled(false); setRecurrenceFrequency('weekly'); setRecurrenceInterval('1'); setRecurrenceEndMode('never');
-    setRecurrenceEndDate(null); setRecurrenceCount('10'); setTemplateId(''); setSaveAsTemplate(false); setFiles([]); setError(''); setProgressLabel('');
+    setDependencies([]); setShowMore(false); setTemplateId(''); setSaveAsTemplate(false); setFiles([]); setError(''); setProgressLabel('');
     pendingTaskIdRef.current = null;
   };
+
+  // Each time the sheet opens, start in the column / milestone it was opened from.
+  useEffect(() => {
+    if (!visible) return;
+    setStatus(initialStatus ?? 'todo');
+    setMilestoneId(initialMilestoneId ?? '');
+  }, [initialMilestoneId, initialStatus, visible]);
 
   const handleClose = (): void => {
     if (savingRef.current) return;
@@ -150,7 +153,6 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
     if (start && due && due < start) { setError('Due date must be on or after the start date'); return; }
     const hours = Number(estimatedTime || '0');
     if (!Number.isFinite(hours) || hours < 0) { setError('Estimated time must be zero or more hours.'); return; }
-    if (recurrenceEnabled && recurrenceEndMode === 'date' && !recurrenceEndDate) { setError('Choose when the repeat ends.'); return; }
 
     const memberIds = assignableMembers.map((member) => member.id);
     const chosen = assignedToAll ? memberIds : assignees;
@@ -158,11 +160,6 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
       title: title.trim(), description: description.trim(), status, priority,
       assignee: chosen[0] ?? '', assignees: chosen, assignedToAll, startDate: start, dueDate: due, estimatedTime: hours,
       tags, dependencies, milestoneId,
-      ...(recurrenceEnabled ? { recurrence: {
-        frequency: recurrenceFrequency, interval: Math.max(1, Number(recurrenceInterval) || 1), endMode: recurrenceEndMode,
-        ...(recurrenceEndMode === 'date' && recurrenceEndDate ? { endDate: toCalendarString(recurrenceEndDate) } : {}),
-        ...(recurrenceEndMode === 'count' ? { endCount: Math.max(1, Number(recurrenceCount) || 1) } : {}),
-      } } : {}),
     };
 
     savingRef.current = true;
@@ -196,13 +193,13 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
     }
   };
 
-  const chip = (selected: boolean, accent: string = colors.accent) => ({
-    paddingHorizontal: 13, paddingVertical: 7, borderRadius: 999, borderWidth: 1,
+  const chip = (selected: boolean, accent: string = '#047857') => ({
+    minHeight: 36, justifyContent: 'center' as const, maxWidth: '100%' as const, paddingHorizontal: 13, borderRadius: 999, borderWidth: 1,
     borderColor: selected ? accent : colors.border, backgroundColor: selected ? accent : colors.control,
   });
-  const chipText = (selected: boolean) => ({ color: selected ? '#ffffff' : colors.secondaryText, fontWeight: '800' as const, fontSize: 12 });
-  const label = { color: colors.mutedText, fontSize: 11, fontWeight: '800' as const };
-  const input = { minHeight: 46, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text } as const;
+  const chipText = (selected: boolean) => ({ color: selected ? '#ffffff' : colors.secondaryText, fontWeight: '700' as const, fontSize: 13 });
+  const label = { color: colors.secondaryText, fontSize: 13, fontWeight: '700' as const };
+  const input = { minHeight: 48, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 15 } as const;
   const section = { gap: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 } as const;
   const sectionTitle = (Icon: typeof Flag, text: string) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Icon size={15} color={colors.accent} /><Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>{text}</Text></View>
@@ -212,9 +209,9 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
     <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
       <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
-          <TouchableOpacity onPress={handleClose} disabled={isSaving} accessibilityLabel="Close" style={{ padding: 6 }}><X size={22} color={colors.text} /></TouchableOpacity>
-          <Text style={{ flex: 1, textAlign: 'center', color: colors.text, fontSize: 17, fontWeight: '900' }}>New task</Text>
-          <TouchableOpacity onPress={() => void handleCreate()} disabled={isSaving} style={{ minWidth: 72, alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.accent, opacity: isSaving ? 0.7 : 1 }}>
+          <TouchableOpacity onPress={handleClose} disabled={isSaving} accessibilityRole="button" accessibilityLabel="Close" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><X size={22} color={colors.text} /></TouchableOpacity>
+          <Text style={{ flex: 1, textAlign: 'center', color: colors.text, fontSize: 17, fontWeight: '800' }}>New task</Text>
+          <TouchableOpacity onPress={() => void handleCreate()} disabled={isSaving} accessibilityRole="button" accessibilityLabel="Create task" style={{ minWidth: 76, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, borderRadius: 999, backgroundColor: '#047857', opacity: isSaving ? 0.7 : 1 }}>
             {isSaving ? <ActivityIndicator size="small" color={colors.onAccent} /> : <Text style={{ color: colors.onAccent, fontWeight: '900' }}>Create</Text>}
           </TouchableOpacity>
         </View>
@@ -226,7 +223,7 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
 
             <View style={{ gap: 6 }}>
               <Text style={label}>Task title <Text style={{ color: '#ef4444' }}>*</Text></Text>
-              <TextInput value={title} onChangeText={setTitle} editable={!isSaving} maxLength={200} placeholder="Enter task title" placeholderTextColor={colors.mutedText} style={input} />
+              <TextInput value={title} onChangeText={setTitle} editable={!isSaving} maxLength={200} placeholder="What needs doing?" placeholderTextColor={colors.mutedText} accessibilityLabel="Task title" style={input} />
             </View>
             <View style={{ gap: 6 }}>
               <Text style={label}>Description</Text>
@@ -244,12 +241,7 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
                 {PRIORITY_OPTIONS.map((option) => <TouchableOpacity key={option.value} onPress={() => setPriority(option.value)} style={chip(priority === option.value, option.color)}><Text style={chipText(priority === option.value)}>{option.label}</Text></TouchableOpacity>)}
               </View>
             </View>
-            <DateTimeField label="Start date" mode="date" placeholder="No start date" value={startDate} minimumDate={new Date()} onChange={setStartDate} onClear={() => setStartDate(null)} />
             <DateTimeField label="Due date" mode="date" placeholder="No due date" value={dueDate} minimumDate={startDate ?? new Date()} onChange={setDueDate} onClear={() => setDueDate(null)} />
-            <View style={{ gap: 6 }}>
-              <Text style={label}>Estimated time (hours)</Text>
-              <TextInput value={estimatedTime} onChangeText={setEstimatedTime} keyboardType="decimal-pad" editable={!isSaving} placeholder="1" placeholderTextColor={colors.mutedText} style={input} />
-            </View>
 
             <View style={section}>
               <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>Assignee</Text>
@@ -273,7 +265,40 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
                   })}
                 </View>
               ) : null}
-              {!assignedToAll && assignees.length === 0 && project.automationRules['1'] !== false ? <Text style={{ color: colors.mutedText, fontSize: 12 }}>No one picked: the task goes to the team lead (Auto-assign automation).</Text> : null}
+              {!assignedToAll && assignees.length === 0 && project.automationRules['1'] !== false ? <Text style={{ color: colors.mutedText, fontSize: 12 }}>Nobody picked: the task goes to the project owner (you can change this on the Team tab).</Text> : null}
+            </View>
+
+            <View style={section}>
+              {sectionTitle(Flag, 'Milestone')}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                <TouchableOpacity onPress={() => setMilestoneId('')} accessibilityRole="radio" accessibilityState={{ selected: milestoneId === '' }} style={chip(milestoneId === '')}><Text style={chipText(milestoneId === '')}>No milestone</Text></TouchableOpacity>
+                {milestones.map((milestone) => (
+                  <TouchableOpacity key={milestone.id} onPress={() => setMilestoneId(milestone.id)} accessibilityRole="radio" accessibilityState={{ selected: milestoneId === milestone.id }} style={chip(milestoneId === milestone.id)}>
+                    <Text numberOfLines={1} style={chipText(milestoneId === milestone.id)}>{milestone.name}{milestone.completed ? ' (done)' : ''}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput value={newMilestoneName} onChangeText={setNewMilestoneName} editable={!isSaving && !creatingMilestone} placeholder="Or add a new milestone" placeholderTextColor={colors.mutedText} accessibilityLabel="New milestone name" style={[input, { flex: 1 }]} />
+                <TouchableOpacity onPress={() => void handleCreateMilestone()} disabled={!newMilestoneName.trim() || creatingMilestone} accessibilityRole="button" accessibilityLabel="Add milestone" style={{ paddingHorizontal: 16, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, opacity: newMilestoneName.trim() ? 1 : 0.5 }}>
+                  {creatingMilestone ? <ActivityIndicator size="small" color={colors.accent} /> : <Text style={{ color: colors.text, fontWeight: '800' }}>Add</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <TouchableOpacity onPress={() => setShowMore((current) => !current)} accessibilityRole="button" accessibilityState={{ expanded: showMore }} accessibilityLabel={showMore ? 'Hide more options' : 'More options: start date, estimate, tags, dependencies, templates and files'} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontSize: 15, fontWeight: '700' }}>More options</Text>
+                {!showMore ? <Text numberOfLines={1} style={{ color: colors.mutedText, fontSize: 12 }}>Start date, estimate, tags, dependencies, templates{project.isOwner ? ', files' : ''}</Text> : null}
+              </View>
+              {showMore ? <ChevronUp size={18} color={colors.mutedText} /> : <ChevronDown size={18} color={colors.mutedText} />}
+            </TouchableOpacity>
+
+            {showMore ? <>
+            <DateTimeField label="Start date" mode="date" placeholder="No start date" value={startDate} minimumDate={new Date()} onChange={setStartDate} onClear={() => setStartDate(null)} />
+            <View style={{ gap: 6 }}>
+              <Text style={label}>Estimated time (hours)</Text>
+              <TextInput value={estimatedTime} onChangeText={setEstimatedTime} keyboardType="decimal-pad" editable={!isSaving} placeholder="1" placeholderTextColor={colors.mutedText} style={input} />
             </View>
 
             <View style={section}>
@@ -294,26 +319,8 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
             </View>
 
             <View style={section}>
-              {sectionTitle(Flag, 'Milestone')}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                <TouchableOpacity onPress={() => setMilestoneId('')} style={chip(milestoneId === '')}><Text style={chipText(milestoneId === '')}>No milestone</Text></TouchableOpacity>
-                {milestones.map((milestone) => (
-                  <TouchableOpacity key={milestone.id} onPress={() => setMilestoneId(milestone.id)} style={chip(milestoneId === milestone.id)}>
-                    <Text style={chipText(milestoneId === milestone.id)}>{milestone.name}{milestone.completed ? ' (completed)' : ''}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TextInput value={newMilestoneName} onChangeText={setNewMilestoneName} editable={!isSaving && !creatingMilestone} placeholder="Or create a new milestone" placeholderTextColor={colors.mutedText} style={[input, { flex: 1 }]} />
-                <TouchableOpacity onPress={() => void handleCreateMilestone()} disabled={!newMilestoneName.trim() || creatingMilestone} style={{ paddingHorizontal: 14, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, opacity: newMilestoneName.trim() ? 1 : 0.5 }}>
-                  {creatingMilestone ? <ActivityIndicator size="small" color={colors.accent} /> : <Text style={{ color: colors.text, fontWeight: '800' }}>Add</Text>}
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={section}>
-              {sectionTitle(Link2, 'Dependencies')}
-              <Text style={{ color: colors.mutedText, fontSize: 12 }}>This task can start after these tasks are completed</Text>
+              {sectionTitle(Link2, 'Waits on')}
+              <Text style={{ color: colors.mutedText, fontSize: 12 }}>Pick tasks that must be done first. Until then this task shows as “Waiting”.</Text>
               {tasks.length === 0 ? <Text style={{ color: colors.mutedText, fontSize: 12 }}>No other tasks yet.</Text> : tasks.map((task) => {
                 const selected = dependencies.includes(task.id);
                 return (
@@ -324,36 +331,6 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
                   </TouchableOpacity>
                 );
               })}
-            </View>
-
-            <View style={section}>
-              {sectionTitle(Repeat, 'Recurrence')}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>Make this task repeat</Text>
-                <Switch value={recurrenceEnabled} onValueChange={setRecurrenceEnabled} trackColor={{ true: colors.accent, false: colors.border }} />
-              </View>
-              {recurrenceEnabled ? (
-                <>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text style={label}>Repeat every</Text>
-                    <TextInput value={recurrenceInterval} onChangeText={setRecurrenceInterval} keyboardType="number-pad" style={[input, { width: 70, textAlign: 'center' }]} />
-                  </View>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {FREQUENCIES.map((option) => <TouchableOpacity key={option.value} onPress={() => setRecurrenceFrequency(option.value)} style={chip(recurrenceFrequency === option.value)}><Text style={chipText(recurrenceFrequency === option.value)}>{option.label}</Text></TouchableOpacity>)}
-                  </View>
-                  <Text style={label}>Ends</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {END_MODES.map((option) => <TouchableOpacity key={option.value} onPress={() => setRecurrenceEndMode(option.value)} style={chip(recurrenceEndMode === option.value)}><Text style={chipText(recurrenceEndMode === option.value)}>{option.label}</Text></TouchableOpacity>)}
-                  </View>
-                  {recurrenceEndMode === 'date' ? <DateTimeField label="End date" mode="date" placeholder="Choose a date" value={recurrenceEndDate} minimumDate={new Date()} onChange={setRecurrenceEndDate} /> : null}
-                  {recurrenceEndMode === 'count' ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={label}>Occurrences</Text>
-                      <TextInput value={recurrenceCount} onChangeText={setRecurrenceCount} keyboardType="number-pad" style={[input, { width: 80, textAlign: 'center' }]} />
-                    </View>
-                  ) : null}
-                </>
-              ) : null}
             </View>
 
             <View style={section}>
@@ -393,6 +370,7 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
                 ))}
               </View>
             ) : null}
+            </> : null}
           </ScrollView>
         </KeyboardSafeView>
       </SafeAreaView>

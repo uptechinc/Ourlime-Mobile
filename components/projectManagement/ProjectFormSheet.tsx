@@ -1,21 +1,24 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Globe, Lock, Plus, X } from 'lucide-react-native';
+import { Plus, X } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import DateTimeField from '@/components/ui/DateTimeField';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import ProjectColorPicker from '@/components/projectManagement/ProjectColorPicker';
 import { DEFAULT_PROJECT_COLOR } from '@/components/projectManagement/projectColors';
-import type { ProjectRecord, ProjectVisibility } from '@/lib/types/project';
-import { useAndroidKeyboardInset } from '@/lib/hooks/useKeyboardHeight';
+import type { ProjectRecord } from '@/lib/types/project';
 
-/** Status is not here: it changes from the project's status menu (a recorded server transition). */
+/**
+ * Status is not here: it changes from the project's status menu (a recorded server transition). Visibility is not
+ * here either: "Public" has no behaviour yet (no read path uses it), so the app no longer offers it (audit D8). The
+ * stored value is left untouched.
+ */
 export type ProjectFormValues = {
   name: string;
   description: string;
   color: string;
   dueDate: string | null;
-  visibility: ProjectVisibility;
   tags: string[];
 };
 
@@ -53,12 +56,10 @@ function parseDateString(value: string | null): Date | null {
 /** Create / edit project form with the same fields as the website's project modal. */
 export default function ProjectFormSheet({ visible, project, onClose, onSubmit, title, readOnly = false, footer }: ProjectFormSheetProps) {
   const { colors } = useAppTheme();
-  const keyboardInset = useAndroidKeyboardInset();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState<string>(DEFAULT_PROJECT_COLOR);
   const [dueDate, setDueDate] = useState<Date | null>(null);
-  const [visibility, setVisibility] = useState<ProjectVisibility>('private');
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [error, setError] = useState('');
@@ -71,7 +72,6 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit, 
     setDescription(project?.description ?? '');
     setColor(project?.color || DEFAULT_PROJECT_COLOR);
     setDueDate(parseDateString(project?.dueDate ?? null));
-    setVisibility(project?.visibility ?? 'private');
     setTags(project?.tags ?? []);
     setTagInput('');
     setError('');
@@ -93,7 +93,7 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit, 
     setIsSaving(true);
     setError('');
     try {
-      await onSubmit({ name: name.trim(), description: description.trim(), color, dueDate: dueDate ? toDateString(dueDate) : null, visibility, tags });
+      await onSubmit({ name: name.trim(), description: description.trim(), color, dueDate: dueDate ? toDateString(dueDate) : null, tags });
     } catch (submitError: unknown) {
       console.error('[ProjectFormSheet.handleSubmit] Error:', submitError);
       setError(submitError instanceof Error ? submitError.message : 'The project could not be saved.');
@@ -103,10 +103,6 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit, 
     }
   };
 
-  const chip = (selected: boolean) => ({
-    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-    borderWidth: 1, borderColor: selected ? colors.accent : colors.border, backgroundColor: selected ? colors.accent : colors.control,
-  });
   const label = { color: colors.mutedText, fontSize: 11, fontWeight: '800' as const };
   const input = { minHeight: 46, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text };
 
@@ -114,15 +110,15 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit, 
     <Modal visible={visible} animationType="slide" onRequestClose={() => { if (!savingRef.current) onClose(); }}>
       <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
-          <TouchableOpacity onPress={onClose} disabled={isSaving} accessibilityLabel="Close" style={{ padding: 6 }}><X size={22} color={colors.text} /></TouchableOpacity>
+          <TouchableOpacity onPress={onClose} disabled={isSaving} accessibilityRole="button" accessibilityLabel="Close" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><X size={22} color={colors.text} /></TouchableOpacity>
           <Text style={{ flex: 1, textAlign: 'center', color: colors.text, fontSize: 17, fontWeight: '900' }}>{title ?? (project ? 'Edit project' : 'New project')}</Text>
           {readOnly ? <View style={{ minWidth: 72 }} /> : (
-            <TouchableOpacity onPress={() => void handleSubmit()} disabled={isSaving} style={{ minWidth: 72, alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.accent, opacity: isSaving ? 0.7 : 1 }}>
+            <TouchableOpacity onPress={() => void handleSubmit()} disabled={isSaving} accessibilityRole="button" style={{ minWidth: 72, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, borderRadius: 999, backgroundColor: '#047857', opacity: isSaving ? 0.7 : 1 }}>
               {isSaving ? <ActivityIndicator size="small" color={colors.onAccent} /> : <Text style={{ color: colors.onAccent, fontWeight: '900' }}>{project ? 'Save' : 'Create'}</Text>}
             </TouchableOpacity>
           )}
         </View>
-        <KeyboardAvoidingView style={{ flex: 1, paddingBottom: keyboardInset }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardSafeView style={{ flex: 1 }}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: 40 }}>
             {error ? <Text accessibilityRole="alert" style={{ color: colors.destructiveText, fontWeight: '700' }}>{error}</Text> : null}
             {readOnly ? <Text style={{ color: colors.mutedText, fontSize: 12 }}>Only the project owner or an admin can edit project settings.</Text> : null}
@@ -143,21 +139,6 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit, 
               <ProjectColorPicker value={color} onChange={setColor} disabled={isSaving} />
             </View>
             <DateTimeField label="Due Date" mode="date" placeholder="No due date" value={dueDate} minimumDate={project ? undefined : new Date()} onChange={setDueDate} onClear={() => setDueDate(null)} />
-            <View style={{ gap: 8 }}>
-              <Text style={label}>Visibility</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {(['private', 'public'] as const).map((option) => {
-                  const selected = visibility === option;
-                  const Icon = option === 'private' ? Lock : Globe;
-                  return (
-                    <TouchableOpacity key={option} onPress={() => setVisibility(option)} style={chip(selected)}>
-                      <Icon size={14} color={selected ? colors.onAccent : colors.secondaryText} />
-                      <Text style={{ color: selected ? colors.onAccent : colors.secondaryText, fontWeight: '800', fontSize: 12, textTransform: 'capitalize' }}>{option}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
             <View style={{ gap: 8 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={label}>Tags</Text>
@@ -181,7 +162,7 @@ export default function ProjectFormSheet({ visible, project, onClose, onSubmit, 
             </View>
             {footer}
           </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardSafeView>
       </SafeAreaView>
     </Modal>
   );

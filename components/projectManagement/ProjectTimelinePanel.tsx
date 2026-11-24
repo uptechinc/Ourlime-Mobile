@@ -2,16 +2,13 @@ import { useMemo, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { ChevronLeft, ChevronRight, Flag, Layers } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { PanelHeader, PremiumNotice } from '@/components/projectManagement/ProjectPanelParts';
+import { PanelHeader } from '@/components/projectManagement/ProjectPanelParts';
 import { STATUS_LABELS, parseCalendarString } from '@/components/projectManagement/projectFormat';
-import { projectEntitlementService } from '@/lib/services/ProjectEntitlementService';
-import type { Milestone, Priority, ProjectRecord, Task } from '@/lib/types/project';
+import type { Milestone, Priority, Task } from '@/lib/types/project';
 
 type ProjectTimelinePanelProps = {
-  project: ProjectRecord;
   tasks: Task[];
   milestones: Milestone[];
-  onOpenUpgrade: () => void;
   onSelectTask: (task: Task) => void;
 };
 
@@ -28,9 +25,8 @@ function dayStart(date: Date): Date {
 }
 
 /** Website ProjectTimelineView: a 28-day Gantt grid with milestone flags, scrolled sideways on a phone. */
-export default function ProjectTimelinePanel({ project, tasks, milestones, onOpenUpgrade, onSelectTask }: ProjectTimelinePanelProps) {
+export default function ProjectTimelinePanel({ tasks, milestones, onSelectTask }: ProjectTimelinePanelProps) {
   const { colors } = useAppTheme();
-  const isPremium = projectEntitlementService.isPremium(project);
   const [offsetDays, setOffsetDays] = useState(0);
 
   const startDate = useMemo(() => {
@@ -63,13 +59,6 @@ export default function ProjectTimelinePanel({ project, tasks, milestones, onOpe
           </View>
         )}
       />
-      {!isPremium ? (
-        <PremiumNotice
-          title="Gantt Timeline View:"
-          message="Free plan includes basic read-only preview. Upgrade to Premium for interactive drag-to-reschedule, auto-dependency shifting, and critical path analysis."
-          onUpgrade={onOpenUpgrade}
-        />
-      ) : null}
 
       <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden', flexDirection: 'row' }}>
         {/* Fixed task title column */}

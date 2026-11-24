@@ -69,7 +69,7 @@ export default function ProjectTimesheetsPanel({ project, tasks, teamMembers, on
           </View>
         )}
       />
-      {!isPremium ? <PremiumNotice title="Timesheets:" message="Free plan shows the time log. Upgrade to Premium for exportable weekly and monthly timesheets." onUpgrade={onOpenUpgrade} /> : null}
+      {!isPremium ? <PremiumNotice title="Timesheets:" message="Every project shows the time log. Premium adds downloading it as a spreadsheet." onUpgrade={onOpenUpgrade} /> : null}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
         {[{ id: 'all', name: `All Team Members (${teamMembers.length})` }, ...teamMembers.map((member) => ({ id: member.id, name: member.name }))].map((option) => {

@@ -1,36 +1,46 @@
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Activity, Archive, ArchiveRestore, ArrowRight, Briefcase, CalendarDays, Check, CheckCircle2, CheckSquare, Clock, Crown, FolderOpen, MoreHorizontal, Pencil, Plus, Search, Trash2, UserRound, Users, X } from 'lucide-react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Archive, ArchiveRestore, ArrowDownUp, Check, FolderKanban, Mail, Pencil, Plus, Search, Trash2, X } from 'lucide-react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
-import PageHeader from '@/components/ui/PageHeader';
 import CustomModal from '@/components/ui/CustomModal';
 import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
-import FilterBar from '@/components/ui/FilterBar';
 import ProjectFormSheet, { type ProjectFormValues } from '@/components/projectManagement/ProjectFormSheet';
+import ProjectCreateSheet, { type ProjectCreateValues } from '@/components/projectManagement/ProjectCreateSheet';
 import ProjectLifecycleSheet from '@/components/projectManagement/ProjectLifecycleSheet';
-import { projectLifecycleRules } from '@/lib/services/ProjectLifecycleRules';
-import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import { projectService } from '@/lib/services/ProjectService';
-import type { ProjectRecord, ProjectRole, ProjectStatus } from '@/lib/types/project';
-import { useAppData } from '@/lib/contexts/AppDataContext';
+import ProjectActionSheet from '@/components/projectManagement/ProjectActionSheet';
+import ProjectCard, { ROLE_LABELS } from '@/components/projectManagement/ProjectCard';
 import SessionRetryBanner from '@/components/projectManagement/SessionRetryBanner';
 import { ProjectManagementSkeleton } from '@/components/projectManagement/ProjectSkeletons';
+import {
+  PROJECT_GUTTER, PROJECT_RIPPLE, ProjectButton, ProjectChip, ProjectEmptyState, ProjectScreenHeader, ProjectSheetRow,
+} from '@/components/projectManagement/ProjectUiParts';
+import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
+import { useAppData } from '@/lib/contexts/AppDataContext';
 import { useProjectsResource } from '@/lib/hooks/useProjectsResource';
-import { projectColorHex } from '@/components/projectManagement/projectColors';
+import { useProjectPulses } from '@/lib/hooks/useProjectPulses';
+import { projectService } from '@/lib/services/ProjectService';
+import { projectInsightRules } from '@/lib/services/ProjectInsightRules';
+import { projectTemplateService } from '@/lib/services/ProjectTemplateService';
+import type { ProjectRecord, ProjectRole, ProjectStatus } from '@/lib/types/project';
 
+type StatusFilter = 'open' | 'completed' | 'archived' | 'all';
+type RoleFilter = ProjectRole | 'all';
 type SortKey = 'activity' | 'name' | 'progress' | 'created';
-type FormTarget = { mode: 'create' } | { mode: 'edit'; project: ProjectRecord } | null;
-
-const STATUS_FILTERS: { value: ProjectStatus | 'all'; label: string }[] = [
-  { value: 'all', label: 'Any status' }, { value: 'active', label: 'Active' }, { value: 'completed', label: 'Completed' }, { value: 'on-hold', label: 'Paused' }, { value: 'archived', label: 'Archived' },
-];
-const ROLE_FILTERS: { value: ProjectRole | 'all'; label: string }[] = [
-  { value: 'all', label: 'Any role' }, { value: 'owner', label: 'Owner' }, { value: 'admin', label: 'Admin' }, { value: 'member', label: 'Member' }, { value: 'viewer', label: 'Viewer' },
-];
 type SortChoice = `${SortKey}-${'asc' | 'desc'}`;
+
+/** "Open" is active and paused work; archived projects stay out of the default list (audit §10). */
+const STATUS_FILTERS: { value: StatusFilter; label: string; matches: (status: ProjectStatus) => boolean }[] = [
+  { value: 'open', label: 'Open', matches: (status) => status === 'active' || status === 'on-hold' },
+  { value: 'completed', label: 'Completed', matches: (status) => status === 'completed' },
+  { value: 'archived', label: 'Archived', matches: (status) => status === 'archived' },
+  { value: 'all', label: 'All', matches: () => true },
+];
+const ROLE_FILTERS: { value: RoleFilter; label: string }[] = [
+  { value: 'all', label: 'Any role' }, { value: 'owner', label: 'I own' }, { value: 'admin', label: 'Admin' }, { value: 'member', label: 'Member' }, { value: 'viewer', label: 'Viewer' },
+];
 const SORTS: { value: SortChoice; label: string }[] = [
   { value: 'activity-desc', label: 'Recent activity' }, { value: 'activity-asc', label: 'Oldest activity' },
   { value: 'created-desc', label: 'Newest' }, { value: 'created-asc', label: 'Oldest' },
@@ -43,27 +53,6 @@ const isSortChoice = (value: string | undefined): value is SortChoice => SORTS.s
 /** Cached records can come back from disk with dates as strings; always read them as Date. */
 const toTime = (value: Date | string | undefined): number => (value ? new Date(value).getTime() || 0 : 0);
 const plural = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
-const formatProjectStatus = (status: ProjectStatus): string => projectLifecycleRules.label(status);
-
-function formatLastActivity(value: Date | string | undefined): string {
-  const time = toTime(value);
-  if (!time) return 'No activity yet';
-  const minutes = Math.round((Date.now() - time) / 60000);
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(time).toLocaleDateString();
-}
-
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-// Calendar date (YYYY-MM-DD) shown in words, never shifted through UTC.
-function formatDueDate(value: string | null | undefined): string | null {
-  const match = value ? /^(\d{4})-(\d{2})-(\d{2})/.exec(value) : null;
-  return match ? `${MONTH_NAMES[Number(match[2]) - 1] ?? match[2]} ${Number(match[3])}, ${match[1]}` : null;
-}
 
 export default function ProjectManagementScreen() {
   const router = useRouter();
@@ -76,18 +65,18 @@ export default function ProjectManagementScreen() {
   const [error, setError] = useState('');
   const [workingProjectId, setWorkingProjectId] = useState<string | null>(null);
   const [openingProjectId, setOpeningProjectId] = useState<string | null>(null);
-  const [formTarget, setFormTarget] = useState<FormTarget>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<ProjectRecord | null>(null);
   const [menuProject, setMenuProject] = useState<ProjectRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectRecord | null>(null);
-  // Status changes (archive, restore, pause…) open the status sheet; declining an invitation asks first.
-  const [archiveTarget, setArchiveTarget] = useState<ProjectRecord | null>(null);
+  const [statusTarget, setStatusTarget] = useState<ProjectRecord | null>(null);
   const [declineTarget, setDeclineTarget] = useState<ProjectRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
-  const [roleFilter, setRoleFilter] = useState<ProjectRole | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [sortChoice, setSortChoice] = useState<SortChoice>(DEFAULT_SORT);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
   const [sortBy, sortDir] = sortChoice.split('-') as [SortKey, 'asc' | 'desc'];
   const sessionReady = Boolean(activeUserId);
   const mutationReady = Boolean(activeUserId && nativeSession.status === 'ready' && nativeSession.uid === activeUserId);
@@ -96,23 +85,43 @@ export default function ProjectManagementScreen() {
   const loading = projectResource.data === null && (projectResource.status === 'idle' || projectResource.status === 'hydrating');
   const hasBlockingError = Boolean(projectResource.error && !projectResource.data);
   const createCapability = projectService.getMutationCapability('create_project', null, { signedIn: Boolean(activeUserId), sessionReady: mutationReady, pageCanMutate: canMutate });
+  const showList = sessionReady && !loading && !hasBlockingError;
 
-  useFocusEffect(useCallback(() => {
-    setOpeningProjectId(null);
-  }, [setOpeningProjectId]));
+  useFocusEffect(useCallback(() => { setOpeningProjectId(null); }, [setOpeningProjectId]));
 
-  const handleRespond = async (respondProjectId: string, action: 'accept' | 'decline') => {
-    if (!canMutate || !mutationReady || workingProjectId) return;
-    setWorkingProjectId(respondProjectId);
-    setError('');
-    try {
-      await projectService.respondToInvite(respondProjectId, action);
-      await refreshProjects();
-    } catch (responseError: unknown) {
-      setError(responseError instanceof Error ? responseError.message : `The invitation could not be ${action}ed.`);
-    } finally {
-      setWorkingProjectId(null);
-    }
+  const invitations = useMemo(() => projects.filter((project) => project.membershipStatus === 'pending')
+    .sort((first, second) => (first.id === projectId ? -1 : second.id === projectId ? 1 : 0)), [projectId, projects]);
+  const acceptedProjects = useMemo(() => projects.filter((project) => project.membershipStatus !== 'pending'), [projects]);
+  const { pulses, reload: reloadPulses } = useProjectPulses(acceptedProjects, activeUserId ?? '');
+
+  const statusCounts = useMemo(() => Object.fromEntries(STATUS_FILTERS.map((filter) => [filter.value, acceptedProjects.filter((project) => filter.matches(project.status)).length])) as { [key in StatusFilter]: number }, [acceptedProjects]);
+  const roleCounts = useMemo(() => Object.fromEntries(ROLE_FILTERS.map((filter) => [filter.value, filter.value === 'all' ? acceptedProjects.length : acceptedProjects.filter((project) => project.role === filter.value).length])) as { [key in RoleFilter]: number }, [acceptedProjects]);
+
+  const visibleProjects = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    const statusMatcher = STATUS_FILTERS.find((filter) => filter.value === statusFilter) ?? STATUS_FILTERS[0];
+    const filtered = acceptedProjects.filter((project) => (!term || `${project.name} ${project.description} ${project.tags.join(' ')}`.toLowerCase().includes(term))
+      && statusMatcher.matches(project.status)
+      && (roleFilter === 'all' || project.role === roleFilter));
+    const sorted = [...filtered].sort((first, second) => {
+      const comparison = sortBy === 'name' ? first.name.localeCompare(second.name)
+        : sortBy === 'progress' ? first.progress - second.progress
+          : sortBy === 'created' ? toTime(first.createdAt) - toTime(second.createdAt)
+            : toTime(first.updatedAt) - toTime(second.updatedAt);
+      return sortDir === 'asc' ? comparison : -comparison;
+    });
+    return sorted.sort((first, second) => (first.id === projectId ? -1 : second.id === projectId ? 1 : 0));
+  }, [acceptedProjects, projectId, roleFilter, searchTerm, sortBy, sortDir, statusFilter]);
+
+  const openCount = statusCounts.open;
+  const overdueTotal = [...pulses.values()].reduce((sum, pulse) => sum + pulse.overdueTasks, 0);
+  const mineTotal = [...pulses.values()].reduce((sum, pulse) => sum + pulse.myOpenTasks, 0);
+  const summary = acceptedProjects.length === 0 ? 'Plan work with others: tasks, milestones and the team in one place.'
+    : [plural(openCount, 'open project', 'open projects'), mineTotal > 0 ? plural(mineTotal, 'task for you', 'tasks for you') : '', overdueTotal > 0 ? `${overdueTotal} overdue` : ''].filter(Boolean).join(' · ');
+
+  const handleRefresh = async (): Promise<void> => {
+    await refreshProjects();
+    void reloadPulses();
   };
 
   /** Session/page checks for any project change (the same gate the server applies). */
@@ -122,20 +131,41 @@ export default function ProjectManagementScreen() {
     return true;
   };
 
-  const handleSubmitForm = async (values: ProjectFormValues): Promise<void> => {
-    if (!formTarget) return;
-    if (formTarget.mode === 'create') {
-      const createdProjectId = await projectService.createProject(values);
-      setFormTarget(null);
-      toast.success('Project created');
+  const handleRespond = async (respondProjectId: string, action: 'accept' | 'decline') => {
+    if (!canMutate || !mutationReady || workingProjectId) return;
+    setWorkingProjectId(respondProjectId);
+    setError('');
+    try {
+      await projectService.respondToInvite(respondProjectId, action);
+      toast.success(action === 'accept' ? 'Invitation accepted' : 'Invitation declined');
       await refreshProjects();
-      setOpeningProjectId(createdProjectId);
-      // Like the website's "Initial Members": the new board opens with the invite picker ready.
-      router.push({ pathname: '/projectManagement/[id]', params: { id: createdProjectId, invite: '1' } });
-      return;
+    } catch (responseError: unknown) {
+      setError(responseError instanceof Error ? responseError.message : `The invitation could not be ${action}ed.`);
+    } finally {
+      setWorkingProjectId(null);
     }
-    await projectService.updateProjectSettings(formTarget.project.id, values);
-    setFormTarget(null);
+  };
+
+  const handleCreate = async (values: ProjectCreateValues, onProgress: (label: string) => void): Promise<void> => {
+    if (!createCapability.allowed) throw new Error(createCapability.reason);
+    const result = await projectTemplateService.createFromTemplate({ ...values, startDate: projectInsightRules.today() }, (stage, done, total) => {
+      onProgress(stage === 'project' ? 'Creating the project…' : `Adding the starter plan (${done} of ${total})…`);
+    });
+    setCreateOpen(false);
+    if (result.starter && result.starter.failed > 0) {
+      toast.error(`Project created. ${result.starter.created} of ${result.starter.total} starter items were added; add the rest from the project.`);
+    } else {
+      toast.success('Project created');
+    }
+    void refreshProjects();
+    setOpeningProjectId(result.projectId);
+    router.push({ pathname: '/projectManagement/[id]', params: result.template.suggestInvite ? { id: result.projectId, invite: '1' } : { id: result.projectId } });
+  };
+
+  const handleSaveEdit = async (values: ProjectFormValues): Promise<void> => {
+    if (!editTarget) return;
+    await projectService.updateProjectSettings(editTarget.id, values);
+    setEditTarget(null);
     toast.success('Project updated');
     await refreshProjects();
   };
@@ -173,188 +203,150 @@ export default function ProjectManagementScreen() {
     router.push({ pathname: '/projectManagement/[id]', params: { id: selectedProjectId } });
   };
 
-  const focusProject = (items: ProjectRecord[]) => [...items].sort((firstProject, secondProject) =>
-    firstProject.id === projectId ? -1 : secondProject.id === projectId ? 1 : 0);
-  const invitations = focusProject(projects.filter((project) => project.membershipStatus === 'pending'));
-  const acceptedProjects = projects.filter((project) => project.membershipStatus !== 'pending');
+  const handleOpenCreate = (): void => { if (ensureCanChange()) setCreateOpen(true); };
 
-  // Same search / filters / sort as the website's ProjectToolbar.
-  const visibleProjects = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    const filtered = acceptedProjects.filter((project) => (!term || `${project.name} ${project.description}`.toLowerCase().includes(term))
-      && (statusFilter === 'all' || project.status === statusFilter)
-      && (roleFilter === 'all' || project.role === roleFilter));
-    const sorted = [...filtered].sort((first, second) => {
-      const comparison = sortBy === 'name' ? first.name.localeCompare(second.name)
-        : sortBy === 'progress' ? first.progress - second.progress
-          : sortBy === 'created' ? toTime(first.createdAt) - toTime(second.createdAt)
-            : toTime(first.updatedAt) - toTime(second.updatedAt);
-      return sortDir === 'asc' ? comparison : -comparison;
-    });
-    return focusProject(sorted);
-    // focusProject only depends on projectId.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [acceptedProjects, projectId, roleFilter, searchTerm, sortBy, sortDir, statusFilter]);
-
-  const stats = {
-    active: acceptedProjects.filter((project) => project.status === 'active').length,
-    completed: acceptedProjects.filter((project) => project.status === 'completed').length,
-    totalTasks: acceptedProjects.reduce((sum, project) => sum + project.totalTasks, 0),
-    owned: acceptedProjects.filter((project) => project.isOwner).length,
-  };
-  const heroTasks = visibleProjects.reduce((sum, project) => sum + project.totalTasks, 0);
-  const menuCanEdit = Boolean(menuProject && (menuProject.isOwner || menuProject.role === 'admin'));
-
-  const filterGroups: FilterGroup[] = [
-    { key: 'sort', label: 'Sort by', options: SORTS, value: sortChoice, defaultValue: DEFAULT_SORT },
-    { key: 'status', label: 'Status', options: STATUS_FILTERS, value: statusFilter, defaultValue: 'all' },
-    { key: 'role', label: 'Your role', options: ROLE_FILTERS, value: roleFilter, defaultValue: 'all' },
-  ];
-  const handleApplyFilters = (values: FilterValues): void => {
+  const sortGroups: FilterGroup[] = [{ key: 'sort', label: 'Sort by', options: SORTS, value: sortChoice, defaultValue: DEFAULT_SORT }];
+  const handleApplySort = (values: FilterValues): void => {
     const nextSort = readSingleFilter(values, 'sort');
     if (isSortChoice(nextSort)) setSortChoice(nextSort);
-    const nextStatus = STATUS_FILTERS.find((option) => option.value === readSingleFilter(values, 'status'));
-    if (nextStatus) setStatusFilter(nextStatus.value);
-    const nextRole = ROLE_FILTERS.find((option) => option.value === readSingleFilter(values, 'role'));
-    if (nextRole) setRoleFilter(nextRole.value);
   };
-  const handleClearFilter = (groupKey: string): void => {
-    if (groupKey === 'sort') setSortChoice(DEFAULT_SORT);
-    if (groupKey === 'status') setStatusFilter('all');
-    if (groupKey === 'role') setRoleFilter('all');
-  };
+  const sortLabel = SORTS.find((sort) => sort.value === sortChoice)?.label ?? 'Recent activity';
+  const hasFilters = Boolean(searchTerm.trim()) || statusFilter !== 'open' || roleFilter !== 'all';
+  const statusLabel = (STATUS_FILTERS.find((filter) => filter.value === statusFilter)?.label ?? 'Open').toLowerCase();
 
   return (
     <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
-      <PageHeader title="E-Projects" onBackPress={() => router.back()} />
+      <ProjectScreenHeader title="E-Projects" onBack={() => router.back()} />
       <SessionRetryBanner />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={projectResource.status === 'refreshing'} onRefresh={() => void refreshProjects()} tintColor="#10b981" />}>
-        <View style={styles.hero}>
-          <View style={styles.heroTop}>
-            <Briefcase size={30} color="#052e16" />
-            <View style={styles.heroCopy}><Text style={styles.heroTitle}>Project Management</Text><Text style={styles.heroText}>Manage your projects, track progress, and collaborate with your team</Text></View>
-          </View>
-          <View style={styles.heroStats}>
-            <View style={styles.heroStat}><Text style={styles.heroStatValue}>{visibleProjects.length}</Text><Text style={styles.heroStatLabel}>{visibleProjects.length === 1 ? 'Total Project' : 'Total Projects'}</Text></View>
-            <View style={styles.heroStat}><Text style={styles.heroStatValue}>{heroTasks}</Text><Text style={styles.heroStatLabel}>{heroTasks === 1 ? 'Total Task' : 'Total Tasks'}</Text></View>
-          </View>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={projectResource.status === 'refreshing'} onRefresh={() => void handleRefresh()} tintColor="#10b981" />}>
+        <View style={styles.intro}>
+          <Text accessibilityRole="header" style={styles.introTitle}>Your projects</Text>
+          {showList ? <Text style={styles.introText}>{summary}</Text> : null}
+          {sessionReady ? <ProjectButton label="New project" icon={<Plus size={18} color="#ffffff" />} onPress={handleOpenCreate} isDisabled={!createCapability.allowed} accessibilityHint="Start from a template or a blank project" /> : null}
+          {sessionReady && !createCapability.allowed && !loading ? <Text style={styles.hint}>{createCapability.reason}</Text> : null}
         </View>
 
-        {!activeUserId ? <View style={styles.stateCard}><Text style={styles.stateTitle}>Sign in to use E-Projects</Text><Text style={styles.cardText}>Your projects and invitations are private to your account.</Text></View> : null}
+        {!activeUserId ? <View style={styles.stateCard}><Text style={styles.stateTitle}>Sign in to use E-Projects</Text><Text style={styles.hint}>Your projects and invitations are private to your account.</Text></View> : null}
         {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
         {projectResource.error && projectResource.data ? <Text accessibilityRole="alert" style={styles.staleNotice}>Showing saved projects. {projectResource.error.message}</Text> : null}
-        {projectResource.error && !projectResource.data ? <View style={styles.stateCard}><Text accessibilityRole="alert" style={styles.error}>{projectResource.error.message}</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry projects" onPress={() => void refreshProjects()} style={styles.retryButton}><Text style={styles.acceptText}>Retry</Text></TouchableOpacity></View> : null}
+        {hasBlockingError ? (
+          <View style={styles.stateCard}>
+            <Text accessibilityRole="alert" style={styles.stateTitle}>Projects could not be loaded</Text>
+            <Text style={styles.hint}>{projectResource.error?.message}</Text>
+            <ProjectButton label="Try again" onPress={() => void refreshProjects()} variant="secondary" />
+          </View>
+        ) : null}
         {loading ? <ProjectManagementSkeleton /> : null}
 
-        {sessionReady && !loading && !hasBlockingError ? <View style={styles.statsGrid}>
-          {[
-            { label: stats.active === 1 ? 'Active Project' : 'Active Projects', value: String(stats.active), Icon: Activity, tint: colors.successSurface, iconColor: colors.accent },
-            { label: stats.completed === 1 ? 'Completed Project' : 'Completed Projects', value: String(stats.completed), Icon: CheckCircle2, tint: '#dbeafe', iconColor: '#3b82f6' },
-            { label: stats.totalTasks === 1 ? 'Total Task' : 'Total Tasks', value: String(stats.totalTasks), Icon: CheckSquare, tint: '#ede9fe', iconColor: '#8b5cf6' },
-            { label: 'Your Role', value: 'Owner', sub: `in ${plural(stats.owned, 'project', 'projects')}`, Icon: Crown, tint: '#fef3c7', iconColor: '#d97706' },
-          ].map((item) => (
-            <View key={item.label} style={styles.statCard}>
-              <View style={styles.flex}><Text numberOfLines={2} style={styles.statLabel}>{item.label}</Text><Text style={styles.statValue}>{item.value}</Text>{item.sub ? <Text style={styles.statSub}>{item.sub}</Text> : null}</View>
-              <View style={[styles.statIcon, { backgroundColor: item.tint }]}><item.Icon size={20} color={item.iconColor} /></View>
-            </View>
-          ))}
-        </View> : null}
-
-        {sessionReady && !loading && !hasBlockingError && invitations.length > 0 ?<View style={styles.section}>
-          <Text style={styles.sectionTitle}>Project Invitations ({invitations.length})</Text>
-          {invitations.map((project) => <View key={project.id} style={[styles.card, styles.inviteCard, project.id === projectId && styles.focusedCard]}>
-            <Text style={styles.cardTitle}>{project.name}</Text><Text style={styles.cardText}>{project.description || 'You have been invited to collaborate on this project.'}</Text>
-            <Text style={styles.inviter}>Invited by {project.invitedByName || 'Project owner'} · {project.role}</Text>
-            <View style={styles.actions}>
-              <TouchableOpacity disabled={!canMutate || !mutationReady || workingProjectId === project.id} onPress={() => void handleRespond(project.id, 'accept')} style={[styles.acceptButton, !mutationReady && styles.disabled]}><Check size={17} color="#ffffff" /><Text style={styles.acceptText}>Accept</Text></TouchableOpacity>
-              <TouchableOpacity disabled={!canMutate || !mutationReady || workingProjectId === project.id} onPress={() => setDeclineTarget(project)} style={[styles.declineButton, !mutationReady && styles.disabled]}><X size={17} color={colors.destructiveText} /><Text style={styles.declineText}>Decline</Text></TouchableOpacity>
-            </View>
-          </View>)}
-        </View> : null}
-
-        {sessionReady && !loading && !hasBlockingError ? <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Your Projects ({visibleProjects.length})</Text>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Create project" onPress={() => { if (ensureCanChange()) setFormTarget({ mode: 'create' }); }} style={[styles.createButton, !createCapability.allowed && styles.disabled]}><Plus size={20} color="#ffffff" /></TouchableOpacity>
-          </View>
-          <View style={styles.searchBox}><Search size={17} color={colors.mutedText} /><TextInput value={searchTerm} onChangeText={setSearchTerm} placeholder="Search projects..." placeholderTextColor={colors.mutedText} style={styles.searchInput} /></View>
-          <FilterBar groups={filterGroups} onOpen={() => setFiltersOpen(true)} onClear={handleClearFilter} />
-
-          {visibleProjects.length === 0 ? <View style={styles.empty}><FolderOpen size={38} color={colors.mutedText} /><Text style={styles.emptyTitle}>{acceptedProjects.length === 0 ? 'No projects yet' : 'No matching projects'}</Text><Text style={styles.cardText}>{acceptedProjects.length === 0 ? 'Create your first project or accept a team invitation.' : 'Try a different search or filter.'}</Text></View> : visibleProjects.map((project) => {
-            const dueLabel = formatDueDate(project.dueDate);
-            const canEdit = project.isOwner || project.role === 'admin';
-            return (
-              <TouchableOpacity
-                key={project.id}
-                activeOpacity={0.75}
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${project.name} project board`}
-                disabled={openingProjectId !== null}
-                onPress={() => handleOpenProject(project.id)}
-                style={[styles.card, project.id === projectId && styles.focusedCard, (openingProjectId === project.id || workingProjectId === project.id) && styles.openingCard]}
-              >
-                <View style={styles.cardHeader}>
-                  <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: projectColorHex(project.color), alignItems: 'center', justifyContent: 'center' }}><FolderOpen size={16} color="#ffffff" /></View>
-                  <Text style={[styles.cardTitle, styles.flex]}>{project.name}</Text>
-                  {canEdit ? <TouchableOpacity accessibilityLabel={`Options for ${project.name}`} hitSlop={8} onPress={() => setMenuProject(project)} style={styles.menuButton}><MoreHorizontal size={18} color={colors.mutedText} /></TouchableOpacity> : null}
-                </View>
-                <View style={styles.badges}>
-                  <Text style={[styles.badge, styles.statusBadge, project.status === 'archived' && styles.mutedBadge, project.status === 'on-hold' && styles.warningBadge]}>{formatProjectStatus(project.status)}</Text>
-                  <Text style={[styles.badge, styles.roleBadge]}>{project.role}</Text>
-                </View>
-                <Text style={styles.cardText}>{project.description || 'No description'}</Text>
-                <View style={styles.meta}><UserRound size={15} color={colors.mutedText} /><Text numberOfLines={1} style={[styles.metaText, styles.flex]}>Owner: {project.ownerName || 'Project owner'}</Text></View>
-                <View style={styles.progressHeader}><Text style={styles.metaText}>Progress</Text><Text style={styles.progressValue}>{project.progress}%</Text></View>
-                <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.min(100, Math.max(0, project.progress))}%` }]} /></View>
-                <View style={styles.metaRow}>
-                  <View style={styles.meta}><CheckSquare size={14} color={colors.mutedText} /><Text style={styles.metaText}>{project.completedTasks}/{plural(project.totalTasks, 'task', 'tasks')}</Text></View>
-                  <View style={styles.meta}><Users size={14} color={colors.mutedText} /><Text style={styles.metaText}>{plural(project.teamMembers, 'member', 'members')}</Text></View>
-                </View>
-                <View style={styles.metaRow}>
-                  <View style={styles.meta}><Clock size={14} color={colors.mutedText} /><Text style={styles.metaText}>Last activity: {formatLastActivity(project.updatedAt)}</Text></View>
-                  {dueLabel ? <View style={styles.meta}><CalendarDays size={14} color={colors.mutedText} /><Text style={styles.metaText}>Due: {dueLabel}</Text></View> : null}
-                </View>
-                <View style={styles.cardFooter}>
-                  <Text style={styles.role}>Your role: {project.role}</Text>
-                  <View style={styles.meta}>
-                    {openingProjectId === project.id ? <ActivityIndicator size="small" color={colors.accent} /> : <ArrowRight size={14} color={colors.accent} />}
-                    <Text style={styles.openText}>{openingProjectId === project.id ? 'Opening…' : 'Open Board'}</Text>
+        {showList && invitations.length > 0 ? (
+          <View style={styles.section}>
+            <Text accessibilityRole="header" style={styles.sectionTitle}>Invitations ({invitations.length})</Text>
+            {invitations.map((project) => {
+              const isWorking = workingProjectId === project.id;
+              const disabled = !canMutate || !mutationReady || workingProjectId !== null;
+              return (
+                <View key={project.id} style={[styles.inviteCard, project.id === projectId && styles.focused]}>
+                  <View style={styles.inviteTop}>
+                    <View style={styles.inviteIcon}><Mail size={18} color={colors.accentText} /></View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={2} style={styles.inviteTitle}>{project.name}</Text>
+                      <Text numberOfLines={1} style={styles.hint}>{project.invitedByName || 'The project owner'} invited you as {ROLE_LABELS[project.role].toLowerCase()}</Text>
+                    </View>
+                  </View>
+                  {project.description ? <Text numberOfLines={3} style={styles.inviteText}>{project.description}</Text> : null}
+                  <View style={styles.inviteActions}>
+                    <ProjectButton label="Accept" icon={<Check size={18} color="#ffffff" />} isBusy={isWorking} isDisabled={disabled} onPress={() => void handleRespond(project.id, 'accept')} accessibilityLabel={`Accept invitation to ${project.name}`} style={{ flex: 1 }} />
+                    <ProjectButton label="Decline" variant="secondary" isDisabled={disabled} onPress={() => setDeclineTarget(project)} accessibilityLabel={`Decline invitation to ${project.name}`} style={{ flex: 1 }} />
                   </View>
                 </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View> : null}
+              );
+            })}
+          </View>
+        ) : null}
+
+        {showList && acceptedProjects.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.searchBox}>
+              <Search size={18} color={colors.mutedText} />
+              <TextInput value={searchTerm} onChangeText={setSearchTerm} placeholder="Search projects" placeholderTextColor={colors.mutedText} accessibilityLabel="Search projects" returnKeyType="search" style={styles.searchInput} />
+              {searchTerm ? <Pressable onPress={() => setSearchTerm('')} accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={8} style={styles.clearButton}><X size={18} color={colors.mutedText} /></Pressable> : null}
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.chipRow}>
+              {STATUS_FILTERS.map((filter) => <ProjectChip key={filter.value} label={filter.label} count={statusCounts[filter.value]} isSelected={statusFilter === filter.value} onPress={() => setStatusFilter(filter.value)} accessibilityLabel={`${filter.label} projects, ${statusCounts[filter.value]}`} />)}
+            </ScrollView>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.chipRow}>
+              {ROLE_FILTERS.filter((filter) => filter.value === 'all' || roleCounts[filter.value] > 0 || roleFilter === filter.value).map((filter) => (
+                <ProjectChip key={filter.value} label={filter.label} isSelected={roleFilter === filter.value} onPress={() => setRoleFilter(filter.value)} accessibilityLabel={`Role filter: ${filter.label}`} />
+              ))}
+            </ScrollView>
+            <View style={styles.listHeader}>
+              <Text style={styles.listCount}>{plural(visibleProjects.length, 'project', 'projects')}</Text>
+              <Pressable onPress={() => setSortOpen(true)} android_ripple={PROJECT_RIPPLE} accessibilityRole="button" accessibilityLabel={`Sort: ${sortLabel}. Change sort`} style={styles.sortButton}>
+                <ArrowDownUp size={15} color={colors.secondaryText} />
+                <Text numberOfLines={1} style={styles.sortText}>{sortLabel}</Text>
+              </Pressable>
+            </View>
+
+            {visibleProjects.length === 0 ? (
+              <ProjectEmptyState
+                icon={<Search size={32} color={colors.mutedText} />}
+                title={searchTerm.trim() ? 'No projects match your search' : `No ${statusLabel} projects`}
+                hint={statusFilter === 'open' ? 'Completed and archived projects are under their own filters.' : 'Try another filter.'}
+                secondaryLabel={hasFilters ? 'Show all projects' : undefined}
+                onSecondary={hasFilters ? () => { setSearchTerm(''); setStatusFilter('all'); setRoleFilter('all'); } : undefined}
+              />
+            ) : visibleProjects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                pulse={pulses.get(project.id)}
+                isFocused={project.id === projectId}
+                isOpening={openingProjectId === project.id || workingProjectId === project.id}
+                isDisabled={openingProjectId !== null}
+                onOpen={handleOpenProject}
+                onMenu={project.isOwner || project.role === 'admin' ? setMenuProject : undefined}
+              />
+            ))}
+          </View>
+        ) : null}
+
+        {showList && acceptedProjects.length === 0 ? (
+          <View style={styles.stateCard}>
+            <ProjectEmptyState
+              icon={<FolderKanban size={36} color={colors.accentText} />}
+              title={invitations.length > 0 ? 'Accept an invitation or start your own' : 'No projects yet'}
+              hint="Start from a template such as a class project, an event or a volunteer campaign, or begin with a blank project. Only people you invite can see it."
+              actionLabel={createCapability.allowed ? 'Start a project' : undefined}
+              onAction={createCapability.allowed ? handleOpenCreate : undefined}
+            />
+          </View>
+        ) : null}
       </ScrollView>
 
-      {/* Card options (website: Edit / Archive / Delete) */}
-      <Modal visible={menuProject !== null} transparent animationType="fade" onRequestClose={() => setMenuProject(null)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setMenuProject(null)}>
-          <Pressable style={styles.menuSheet}>
-            <Text numberOfLines={1} style={styles.menuTitle}>{menuProject?.name}</Text>
-            {menuCanEdit && menuProject ? <TouchableOpacity style={styles.menuItem} onPress={() => { const project = menuProject; setMenuProject(null); if (ensureCanChange()) setFormTarget({ mode: 'edit', project }); }}><Pencil size={18} color={colors.text} /><Text style={styles.menuText}>Edit</Text></TouchableOpacity> : null}
-            {menuCanEdit && menuProject ? <TouchableOpacity style={styles.menuItem} accessibilityRole="button" accessibilityLabel="Change project status" onPress={() => { const project = menuProject; setMenuProject(null); if (ensureCanChange()) setArchiveTarget(project); }}>{menuProject.status === 'archived' ? <ArchiveRestore size={18} color={colors.text} /> : <Archive size={18} color={colors.text} />}<Text style={styles.menuText}>{menuProject.status === 'archived' ? 'Restore…' : 'Change status…'}</Text></TouchableOpacity> : null}
-            {menuProject?.isOwner ? <TouchableOpacity style={styles.menuItem} onPress={() => { const project = menuProject; setMenuProject(null); if (ensureCanChange()) setDeleteTarget(project); }}><Trash2 size={18} color={colors.destructive} /><Text style={[styles.menuText, { color: colors.destructiveText }]}>Delete</Text></TouchableOpacity> : null}
-            <TouchableOpacity style={styles.menuCancel} onPress={() => setMenuProject(null)}><Text style={styles.menuText}>Cancel</Text></TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <ProjectActionSheet visible={menuProject !== null} title={menuProject?.name ?? ''} onClose={() => setMenuProject(null)}>
+        {menuProject ? <>
+          <ProjectSheetRow label="Edit details" detail="Name, purpose, colour, target date and tags" icon={<Pencil size={18} color={colors.icon} />} onPress={() => { const project = menuProject; setMenuProject(null); if (ensureCanChange()) setEditTarget(project); }} />
+          <ProjectSheetRow
+            label={menuProject.status === 'archived' ? 'Restore project…' : 'Change status…'}
+            detail="Pause, complete, archive or restore, with a note for the team"
+            icon={menuProject.status === 'archived' ? <ArchiveRestore size={18} color={colors.icon} /> : <Archive size={18} color={colors.icon} />}
+            onPress={() => { const project = menuProject; setMenuProject(null); if (ensureCanChange()) setStatusTarget(project); }}
+          />
+          {menuProject.isOwner ? <ProjectSheetRow label="Delete project" tone="danger" icon={<Trash2 size={18} color={colors.destructive} />} onPress={() => { const project = menuProject; setMenuProject(null); if (ensureCanChange()) setDeleteTarget(project); }} /> : null}
+        </> : null}
+      </ProjectActionSheet>
 
-      <FilterSheet visible={filtersOpen} title="Filter projects" groups={filterGroups} applyLabel="Show projects" onApply={handleApplyFilters} onClose={() => setFiltersOpen(false)} />
-      <ProjectFormSheet
-        visible={formTarget !== null}
-        project={formTarget?.mode === 'edit' ? formTarget.project : null}
-        onClose={() => setFormTarget(null)}
-        onSubmit={handleSubmitForm}
-      />
+      <FilterSheet visible={sortOpen} title="Sort projects" groups={sortGroups} applyLabel="Sort" onApply={handleApplySort} onClose={() => setSortOpen(false)} />
+      <ProjectCreateSheet visible={createOpen} onClose={() => setCreateOpen(false)} onSubmit={handleCreate} />
+      <ProjectFormSheet visible={editTarget !== null} project={editTarget} title="Edit project" onClose={() => setEditTarget(null)} onSubmit={handleSaveEdit} />
       <ProjectLifecycleSheet
-        visible={archiveTarget !== null}
-        projectName={archiveTarget?.name ?? ''}
-        status={archiveTarget?.status ?? 'active'}
-        initialTarget={archiveTarget?.status === 'archived' ? 'active' : null}
-        onClose={() => setArchiveTarget(null)}
-        onConfirm={async (toStatus, reason) => { if (archiveTarget) await handleTransition(archiveTarget, toStatus, reason); }}
-        onStale={() => { setArchiveTarget(null); toast.error('This project changed since the list loaded. The list was refreshed.'); void refreshProjects(); }}
+        visible={statusTarget !== null}
+        projectName={statusTarget?.name ?? ''}
+        status={statusTarget?.status ?? 'active'}
+        initialTarget={statusTarget?.status === 'archived' ? 'active' : null}
+        onClose={() => setStatusTarget(null)}
+        onConfirm={async (toStatus, reason) => { if (statusTarget) await handleTransition(statusTarget, toStatus, reason); }}
+        onStale={() => { setStatusTarget(null); toast.error('This project changed since the list loaded. The list was refreshed.'); void refreshProjects(); }}
       />
       <CustomModal
         visible={declineTarget !== null}
@@ -371,7 +363,7 @@ export default function ProjectManagementScreen() {
         visible={deleteTarget !== null}
         type="danger"
         title="Delete project?"
-        message={`${deleteTarget?.name ?? 'This project'} and all of its tasks will be permanently removed for every member.`}
+        message={`${deleteTarget?.name ?? 'This project'} and all of its tasks will be removed for every member. To keep a record instead, archive it.`}
         confirmText="Delete project"
         cancelText="Cancel"
         isLoading={deleting}
@@ -383,21 +375,32 @@ export default function ProjectManagementScreen() {
   );
 }
 
-type ThemeColors = ReturnType<typeof useAppTheme>['colors'];
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.canvas }, content: { padding: 18, paddingBottom: 48, gap: 18 }, flex: { flex: 1 },
-  hero: { borderRadius: 22, padding: 18, backgroundColor: '#34d399', gap: 16 }, heroTop: { flexDirection: 'row', alignItems: 'center', gap: 12 }, heroCopy: { flex: 1 }, heroTitle: { color: '#052e16', fontSize: 21, fontWeight: '900' }, heroText: { color: '#064e3b', fontSize: 13, marginTop: 3 },
-  heroStats: { flexDirection: 'row', gap: 10 }, heroStat: { flex: 1, borderRadius: 14, paddingVertical: 12, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.28)' }, heroStatValue: { color: '#ffffff', fontSize: 24, fontWeight: '900' }, heroStatLabel: { color: '#064e3b', fontSize: 12, fontWeight: '700' },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, statCard: { width: '48%', flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, statLabel: { color: colors.mutedText, fontSize: 12 }, statValue: { color: colors.text, fontSize: 22, fontWeight: '900' }, statSub: { color: colors.mutedText, fontSize: 11 }, statIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  section: { gap: 12 }, sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '900' }, createButton: { width: 42, height: 42, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
-  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input }, searchInput: { flex: 1, minHeight: 44, color: colors.text },
-  card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 16, gap: 9 }, inviteCard: { borderColor: '#6ee7b7' }, cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }, cardTitle: { flex: 1, color: colors.text, fontSize: 17, fontWeight: '800' }, cardText: { color: colors.mutedText, fontSize: 14, lineHeight: 20 }, inviter: { color: colors.text, fontSize: 13, fontWeight: '700' },
-  menuButton: { padding: 4, borderRadius: 999 }, badges: { flexDirection: 'row', gap: 6 }, badge: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 3, fontSize: 11, fontWeight: '800', textTransform: 'capitalize', overflow: 'hidden' }, statusBadge: { color: colors.successText, backgroundColor: colors.successSurface }, mutedBadge: { color: colors.mutedText, backgroundColor: colors.control }, warningBadge: { color: colors.warningText, backgroundColor: colors.warningSurface }, roleBadge: { color: '#6d28d9', backgroundColor: '#ede9fe' },
-  focusedCard: { borderColor: colors.accent, borderWidth: 2 }, openingCard: { opacity: 0.72 },
-  meta: { flexDirection: 'row', gap: 6, alignItems: 'center' }, metaRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8 }, metaText: { color: colors.mutedText, fontSize: 12 },
-  progressHeader: { flexDirection: 'row', justifyContent: 'space-between' }, progressValue: { color: colors.text, fontSize: 12, fontWeight: '800' }, progressTrack: { height: 6, borderRadius: 3, backgroundColor: colors.control, overflow: 'hidden' }, progressFill: { height: '100%', borderRadius: 3, backgroundColor: colors.accent },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }, role: { color: colors.accentText, fontWeight: '700', fontSize: 12, textTransform: 'capitalize' }, openText: { fontSize: 12, fontWeight: '700', color: colors.accent },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 4 }, acceptButton: { flex: 1, minHeight: 42, borderRadius: 12, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }, acceptText: { color: colors.onAccent, fontWeight: '800' }, declineButton: { flex: 1, minHeight: 42, borderRadius: 12, backgroundColor: colors.destructiveSurface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }, declineText: { color: colors.destructiveText, fontWeight: '800' }, disabled: { opacity: 0.5 },
-  empty: { alignItems: 'center', paddingVertical: 34, gap: 8 }, emptyTitle: { color: colors.text, fontSize: 17, fontWeight: '800' }, error: { color: colors.destructiveText, backgroundColor: colors.destructiveSurface, borderRadius: 12, padding: 12 }, staleNotice: { color: colors.warningText, backgroundColor: colors.warningSurface, borderRadius: 12, padding: 12 }, stateCard: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 18, gap: 9 }, stateTitle: { color: colors.text, fontSize: 17, fontWeight: '800' }, retryButton: { alignSelf: 'flex-start', minHeight: 44, borderRadius: 12, backgroundColor: colors.accent, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
-  modalBackdrop: { flex: 1, backgroundColor: colors.modalScrim, justifyContent: 'flex-end' }, menuSheet: { backgroundColor: colors.surface, padding: 16, paddingBottom: 32, borderTopLeftRadius: 22, borderTopRightRadius: 22, gap: 4 }, menuTitle: { color: colors.mutedText, fontSize: 13, fontWeight: '700', marginBottom: 6, paddingHorizontal: 4 }, menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 6 }, menuText: { color: colors.text, fontSize: 15, fontWeight: '700' }, menuCancel: { marginTop: 6, alignItems: 'center', paddingVertical: 14, borderRadius: 14, backgroundColor: colors.control },
+const createStyles = (colors: AppThemeColors) => StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: colors.canvas },
+  content: { padding: PROJECT_GUTTER, paddingBottom: 48, gap: 16 },
+  intro: { padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, gap: 10 },
+  introTitle: { color: colors.text, fontSize: 22, fontWeight: '800' },
+  introText: { color: colors.secondaryText, fontSize: 14, lineHeight: 20 },
+  hint: { color: colors.mutedText, fontSize: 13, lineHeight: 18 },
+  section: { gap: 12 },
+  sectionTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
+  inviteCard: { padding: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.surface, gap: 10 },
+  inviteTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  inviteIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.successSurface },
+  inviteTitle: { color: colors.text, fontSize: 16, fontWeight: '800' },
+  inviteText: { color: colors.secondaryText, fontSize: 14, lineHeight: 20 },
+  inviteActions: { flexDirection: 'row', gap: 10 },
+  focused: { borderColor: colors.accent, borderWidth: 2 },
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  searchInput: { flex: 1, minHeight: 48, color: colors.text, fontSize: 15 },
+  clearButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  chipRow: { gap: 8, paddingVertical: 2 },
+  listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  listCount: { color: colors.mutedText, fontSize: 13, fontWeight: '600' },
+  sortButton: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 10, borderRadius: 10, maxWidth: '65%', overflow: 'hidden' },
+  sortText: { color: colors.secondaryText, fontSize: 13, fontWeight: '700', flexShrink: 1 },
+  error: { color: colors.destructiveText, backgroundColor: colors.destructiveSurface, borderRadius: 12, padding: 12, overflow: 'hidden' },
+  staleNotice: { color: colors.warningText, backgroundColor: colors.warningSurface, borderRadius: 12, padding: 12, overflow: 'hidden' },
+  stateCard: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 16, gap: 10 },
+  stateTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
 });
