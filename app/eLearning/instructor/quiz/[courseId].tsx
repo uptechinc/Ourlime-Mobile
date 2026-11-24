@@ -55,6 +55,12 @@ export default function CreateQuizScreen() {
   const scrollRef = useRef<ScrollView | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  // Empty means unlimited attempts (the default); the server enforces a limit when one is set.
+  const [attemptLimit, setAttemptLimit] = useState('');
+  const parsedAttemptLimit = attemptLimit.trim() ? Number(attemptLimit) : null;
+  const attemptLimitProblem = parsedAttemptLimit !== null && (!Number.isInteger(parsedAttemptLimit) || parsedAttemptLimit < 1 || parsedAttemptLimit > 100)
+    ? 'Use a whole number from 1 to 100, or leave it empty for unlimited.'
+    : null;
   const [questions, setQuestions] = useState<QuestionDraft[]>([newQuestion()]);
   const [showErrors, setShowErrors] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -103,6 +109,7 @@ export default function CreateQuizScreen() {
     const found: string[] = [];
     if (!title.trim()) found.push('Enter a quiz title.');
     if (questions.length === 0) found.push('Add at least one question.');
+    if (attemptLimitProblem) found.push(attemptLimitProblem);
     questions.forEach((question, index) => {
       questionProblems(question).forEach((problem) => found.push(`Question ${index + 1}: ${problem.charAt(0).toLowerCase()}${problem.slice(1)}`));
     });
@@ -127,7 +134,7 @@ export default function CreateQuizScreen() {
         ...(question.type !== 'short' && question.correctIndex !== null ? { correctIndex: question.correctIndex } : {}),
         points: Number(question.points),
       }));
-      await instructorService.createQuiz({ courseId: id, title, description, questions: built });
+      await instructorService.createQuiz({ courseId: id, title, description, questions: built, maxAttempts: parsedAttemptLimit });
       setIsDone(true);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : '';
@@ -141,6 +148,7 @@ export default function CreateQuizScreen() {
   const handleStartAnother = () => {
     setTitle('');
     setDescription('');
+    setAttemptLimit('');
     setQuestions([newQuestion()]);
     setShowErrors(false);
     setSaveError(null);
@@ -176,6 +184,16 @@ export default function CreateQuizScreen() {
             <FormSection title="Quiz details" description="The quiz is added to the course's assessments module.">
               <FormField label="Quiz title" required value={title} onChange={setTitle} placeholder="e.g. Module 1 check-in" maxLength={200} error={showErrors && !title.trim() ? 'Enter a quiz title.' : undefined} />
               <FormField label="Description" value={description} onChange={setDescription} multiline placeholder="What the quiz covers" />
+              <FormField
+                label="Attempts allowed"
+                value={attemptLimit}
+                onChange={(text) => setAttemptLimit(text.replace(/[^0-9]/g, ''))}
+                keyboardType="number-pad"
+                maxLength={3}
+                placeholder="Unlimited"
+                hint="Leave empty for unlimited. Learners see their score and feedback after each attempt; their best score counts."
+                error={showErrors && attemptLimitProblem ? attemptLimitProblem : undefined}
+              />
             </FormSection>
 
             <View style={styles.sectionHead}>

@@ -66,8 +66,20 @@ export default function InstructorGradingScreen() {
     if (!id) { setIsLoading(false); return; }
     setError(null);
     try {
-      const [items, lessons] = await Promise.all([instructorService.getSubmissions(id), instructorService.getAssessments(id)]);
-      setSubmissions(items);
+      // Draft grades stay on the server until published (the student never sees them), so they are loaded separately.
+      const [items, lessons, drafts] = await Promise.all([
+        instructorService.getSubmissions(id),
+        instructorService.getAssessments(id),
+        instructorService.getGradeDrafts(id).catch((draftError: unknown) => {
+          console.warn('[InstructorGradingScreen.load] Draft grades unavailable:', draftError instanceof Error ? draftError.message : 'Unknown error');
+          return [];
+        }),
+      ]);
+      const draftsBySubmission = new Map(drafts.map((draft) => [draft.submissionId, draft]));
+      setSubmissions(items.map((item) => {
+        const draft = item.status === 'graded' ? undefined : draftsBySubmission.get(item.id);
+        return draft ? { ...item, score: draft.score, feedback: draft.feedback || undefined } : item;
+      }));
       setAssessments(lessons);
     } catch (loadError: unknown) {
       console.error('[InstructorGradingScreen.load] Error:', loadError instanceof Error ? loadError.message : 'Unknown error');
@@ -195,7 +207,10 @@ export default function InstructorGradingScreen() {
             <FieldMessage error={formError ?? undefined} />
             {formNotice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{formNotice}</Text> : null}
             <View style={styles.buttonRow}>
-              <ELearningButton label="Save draft" variant="secondary" busyLabel="Saving…" isBusy={saving === 'draft'} isDisabled={saving !== null} onPress={() => void handleGrade(submission, true)} style={styles.flex} />
+              {/* A published grade is changed by publishing again; it cannot go back to a private draft. */}
+              {state !== 'graded' ? (
+                <ELearningButton label="Save draft" variant="secondary" busyLabel="Saving…" isBusy={saving === 'draft'} isDisabled={saving !== null} onPress={() => void handleGrade(submission, true)} style={styles.flex} />
+              ) : null}
               <ELearningButton label={state === 'graded' ? 'Update grade' : 'Publish grade'} busyLabel="Publishing…" isBusy={saving === 'publish'} isDisabled={saving !== null} onPress={() => void handleGrade(submission, false)} style={styles.flex} />
             </View>
             <Text style={styles.muted}>Drafts stay private. Publishing shows the score and feedback to the student.</Text>

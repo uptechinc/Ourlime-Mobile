@@ -36,7 +36,7 @@ import AssignmentDetails from '@/components/eLearning/course/AssignmentDetails';
 import { courseHref, lessonTypeLabel } from '@/components/eLearning/course/workspaceHelpers';
 import { ELEARNING_ACTION_GREEN, ELEARNING_GUTTER, ProgressBar, formatMinutes, roundProgress } from '@/components/eLearning/ELearningParts';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
-import type { Course, CourseModule, CourseLesson, Enrollment } from '@/lib/types/course';
+import type { Course, CourseModule, CourseLesson, Enrollment, QuizAttemptRecord, QuizAttemptResult } from '@/lib/types/course';
 
 // Some lessons are typed "video" but hold a PDF or Word file; only real video files go to the player.
 const VIDEO_FILE = /\.(mp4|m4v|mov|webm|m3u8|3gp|mkv)$/i;
@@ -68,6 +68,7 @@ export default function LessonScreen() {
   // Not enrolled: only the course's preview lessons open, and progress is not saved.
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isAssignmentSubmitted, setIsAssignmentSubmitted] = useState(false);
+  const [quizHistory, setQuizHistory] = useState<{ lessonId: string; attempts: QuizAttemptRecord[] } | null>(null);
   const [dialogState, setDialogState] = useState<{
     visible: boolean;
     type: 'error' | 'warning' | 'info' | 'success';
@@ -143,6 +144,22 @@ export default function LessonScreen() {
 
   useEffect(() => { setIsAssignmentSubmitted(false); }, [currentLesson?.id]);
 
+  const enrollmentId = enrollment?.id ?? null;
+  // The learner's past attempts at the open quiz (extra: the quiz works without them).
+  const loadQuizHistory = useCallback(async (lessonId: string) => {
+    if (!activeUserId) return;
+    try {
+      const attempts = await courseService.getMyQuizAttempts(activeUserId, lessonId);
+      setQuizHistory({ lessonId, attempts });
+    } catch (error: unknown) {
+      console.warn('[LessonScreen.loadQuizHistory] Attempt history unavailable:', error instanceof Error ? error.message : 'Unknown error');
+    }
+  }, [activeUserId]);
+
+  useEffect(() => {
+    if (currentLesson?.type === 'quiz' && enrollmentId && !isPreviewMode) void loadQuizHistory(currentLesson.id);
+  }, [currentLesson?.id, currentLesson?.type, enrollmentId, isPreviewMode, loadQuizHistory]);
+
   const handleToggleComplete = async () => {
     if (!enrollment || !currentLesson || isCompleted || savingCompletion) return;
     setSavingCompletion(true);
@@ -169,12 +186,16 @@ export default function LessonScreen() {
     }
   };
 
-  const handleSubmitQuiz = async (answers: number[]): Promise<number | null> => {
+  const handleSubmitQuiz = async (answers: number[], operationId: string): Promise<QuizAttemptResult | null> => {
     if (!enrollment || !currentLesson) throw new Error('Enroll in this course before taking the quiz.');
-    const score = await courseService.submitQuiz(enrollment.id, currentLesson.id, answers);
-    const updated = await courseService.getEnrollmentStatus(enrollment.userId, id);
-    setEnrollment(updated);
-    return score;
+    const lessonId = currentLesson.id;
+    try {
+      return await courseService.submitQuiz(enrollment.id, lessonId, answers, operationId);
+    } finally {
+      // Progress, attempts used and the best score come back on the enrollment, refused or not.
+      void courseService.getEnrollmentStatus(enrollment.userId, id).then((updated) => { if (updated) setEnrollment(updated); }).catch(() => undefined);
+      void loadQuizHistory(lessonId);
+    }
   };
 
   const handleOpenMaterial = () => {
@@ -211,9 +232,11 @@ export default function LessonScreen() {
 
   const hasNext = currentLessonIndex < allLessons.length - 1;
   const hasPrevious = currentLessonIndex > 0;
-  // A quiz with questions is completed by submitting it; everything else is marked done by hand.
+  // A quiz with questions is completed by submitting it and an assignment by handing it in (the server completes both);
+  // everything else is marked done by hand.
   const isQuizWithQuestions = currentLesson?.type === 'quiz' && (currentLesson.quizQuestions?.length ?? 0) > 0;
-  const canMarkComplete = Boolean(currentLesson) && !isPreviewMode && !isQuizWithQuestions && !isCompleted;
+  const isAssignment = currentLesson?.type === 'assignment';
+  const canMarkComplete = Boolean(currentLesson) && !isPreviewMode && !isQuizWithQuestions && !isAssignment && !isCompleted;
   const isVideoLesson = currentLesson?.type === 'video' && (isVideoFile(currentLesson.mediaUrl) || !currentLesson.mediaUrl);
   const courseProgress = enrollment ? roundProgress(enrollment.progress) : allLessons.length ? Math.round(((currentLessonIndex + 1) / allLessons.length) * 100) : 0;
   const playerHeight = Math.min(520, Math.round(width * 9 / 16));
@@ -303,6 +326,10 @@ export default function LessonScreen() {
                   key={currentLesson.id}
                   questions={currentLesson.quizQuestions ?? []}
                   isCompleted={isCompleted}
+                  maxAttempts={currentLesson.maxAttempts ?? null}
+                  summary={enrollment?.quizSummary?.[currentLesson.id] ?? null}
+                  history={quizHistory?.lessonId === currentLesson.id ? quizHistory.attempts : []}
+                  allowanceText={(used, max) => courseService.attemptAllowanceText(used, max)}
                   onSubmit={handleSubmitQuiz}
                   continueLabel={hasNext ? 'Next lesson' : 'Back to course'}
                   onContinue={hasNext ? handleNext : handleBackToCourse}

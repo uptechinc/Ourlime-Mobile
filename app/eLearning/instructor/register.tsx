@@ -59,7 +59,8 @@ const DOCUMENTS_AND_VIDEO = [...WORD_AND_PDF, 'video/*'];
 const CONTENT_MAX_WIDTH = 720;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type Gate = { kind: 'loading' } | { kind: 'error' } | { kind: 'existing'; status: Exclude<InstructorStatus, 'none'> } | { kind: 'unverified'; status: string | null } | { kind: 'form' };
+type Gate = { kind: 'loading' } | { kind: 'error' } | { kind: 'existing'; status: Extract<InstructorStatus, 'pending' | 'verified'> }
+  | { kind: 'declined'; reason: string } | { kind: 'unverified'; status: string | null } | { kind: 'form' };
 
 const DRAFT_SAVE_DELAY_MS = 400;
 const isAgreementId = (value: string): value is AgreementId => AGREEMENTS.some((agreement) => agreement.id === value);
@@ -81,6 +82,8 @@ export default function InstructorRegisterScreen() {
   const [progress, setProgress] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isDone, setIsDone] = useState(false);
+  // A declined applicant chose "Apply again": the gate continues to the form instead of the decision.
+  const [isReapplying, setIsReapplying] = useState(false);
 
   // Type
   const [applicationType, setApplicationType] = useState<ApplicationType>('individual');
@@ -151,19 +154,22 @@ export default function InstructorRegisterScreen() {
     if (!activeUserId) return;
     setGate({ kind: 'loading' });
     try {
-      const [status, applicant] = await Promise.all([instructorService.getStatus(activeUserId), instructorService.getApplicant(activeUserId)]);
+      const [application, applicant] = await Promise.all([instructorService.getApplicationState(activeUserId), instructorService.getApplicant(activeUserId)]);
+      const { status } = application;
       setFirstName((current) => current || applicant.firstName);
       setLastName((current) => current || applicant.lastName);
       setEmail((current) => current || applicant.email);
+      // A declined applicant reads the administrator's reason and may apply again (unless they already chose to).
+      if (status === 'declined' && !isReapplying) { setGate({ kind: 'declined', reason: application.declineReason }); return; }
       // Members who already applied see their status instead of the form (as on the website).
-      if (status !== 'none') { setGate({ kind: 'existing', status }); return; }
+      if (status === 'pending' || status === 'verified') { setGate({ kind: 'existing', status }); return; }
       if (applicant.verificationStatus === 'verified') await restoreDraft(activeUserId);
       setGate(applicant.verificationStatus === 'verified' ? { kind: 'form' } : { kind: 'unverified', status: applicant.verificationStatus });
     } catch (error: unknown) {
       console.error('[InstructorRegisterScreen.loadGate] Error:', error instanceof Error ? error.message : 'Unknown error');
       setGate({ kind: 'error' });
     }
-  }, [activeUserId, restoreDraft]);
+  }, [activeUserId, isReapplying, restoreDraft]);
 
   useEffect(() => { void loadGate(); }, [loadGate]);
 
@@ -346,6 +352,36 @@ export default function InstructorRegisterScreen() {
             onAction={() => void loadGate()}
           />
         </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (gate.kind === 'declined') {
+    return (
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <ELearningHeader title="Become an instructor" onBack={() => router.back()} />
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <View style={[styles.column, column]}>
+            <View style={styles.gateCard}>
+              <View style={[styles.gateIcon, styles.gateIconWarning]}><AlertCircle size={28} color={colors.warningText} /></View>
+              <Text accessibilityRole="header" style={styles.centerTitle}>Not approved</Text>
+              <Text style={styles.centerText}>An administrator reviewed your instructor application and did not approve it yet.</Text>
+              {gate.reason ? (
+                <View style={styles.reviewBox}>
+                  <View style={styles.flexText}>
+                    <Text style={styles.reviewTitle}>Reason</Text>
+                    <Text style={styles.reviewText}>{gate.reason}</Text>
+                  </View>
+                </View>
+              ) : null}
+              <Text style={styles.centerText}>Update your application with what was missing and send it again. It goes back to the review queue.</Text>
+              <ELearningButton label="Apply again" onPress={() => { setIsReapplying(true); }} style={styles.stretch} />
+              <Pressable accessibilityRole="button" onPress={() => router.replace('/eLearning/instructor' as Href)} android_ripple={{ color: 'rgba(15,23,42,0.12)' }} style={styles.linkButton}>
+                <Text style={styles.linkText}>Go to instructor dashboard</Text>
+              </Pressable>
+            </View>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -550,6 +586,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   centerText: { color: colors.secondaryText, fontSize: 15, lineHeight: 22, textAlign: 'center' },
   gateCard: { padding: 20, gap: 14, alignItems: 'center', borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
   gateIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.successSurface },
+  gateIconWarning: { backgroundColor: colors.warningSurface },
   restoredBox: { paddingLeft: 12, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, backgroundColor: colors.successSurface },
   restoredText: { color: colors.successText, fontSize: 13, lineHeight: 18, fontWeight: '600', paddingVertical: 8 },
   dismissButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },

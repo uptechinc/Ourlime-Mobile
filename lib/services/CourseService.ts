@@ -4,6 +4,7 @@ import {
   getDoc,
   getDocs,
   limit,
+  orderBy,
   query,
   startAfter,
   where,
@@ -15,13 +16,14 @@ import { app, auth, db, storage } from '@/lib/firebaseConfig';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import { nativeSessionService } from './NativeSessionService';
-import type { AssignmentFile, AssignmentSubmission, Course, CourseAnnouncement, CourseReview, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, CourseQuizQuestionType, CourseResource, CourseWorkspace, Enrollment, InstructorProfile, CxcSubject, LearningStats } from '@/lib/types/course';
+import type { AssignmentFile, AssignmentSubmission, Course, CourseAnnouncement, CourseReview, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, CourseQuizQuestionType, CourseResource, CourseWorkspace, Enrollment, InstructorProfile, CxcSubject, LearningStats, QuizAttemptRecord, QuizAttemptResult, QuizAttemptSummary, QuizQuestionResult } from '@/lib/types/course';
 
 type Data = DocumentData;
 type QueryDocument = QueryDocumentSnapshot<Data>;
 export type LearningOverview = { courses: Course[]; announcements: CourseAnnouncement[]; instructors: InstructorProfile[]; categories: CourseCategory[]; stats: LearningStats };
 type MutationResponse = { id: string };
-type LessonCompletionResponse = { id: string; score?: number };
+/** completeCourseLesson's reply: `score` is the attempt's percentage; `attempt` is the full marked attempt. */
+type LessonCompletionResponse = { id: string; score?: number; attempt?: unknown };
 
 const COURSE_PAGE_SIZE = 100;
 const MAX_COURSE_PAGES = 20;
@@ -338,17 +340,68 @@ export class CourseService {
   }
 
   /**
-   * Submits quiz answers aligned by question index, exactly like the website quiz page: the chosen option index, or -1
-   * when skipped or for a short-answer question (the server only scores questions with a correctIndex).
+   * Submits one quiz attempt with answers aligned by question index, exactly like the website quiz page: the chosen option
+   * index, or -1 when skipped or for a short-answer question. The server marks it with its own key, records the attempt
+   * and returns it with the feedback the quiz releases. Reuse the same operationId to retry after a lost connection: the
+   * server then returns the same attempt instead of recording a second one.
    */
-  public async submitQuiz(enrollmentId: string, lessonId: string, answers: number[]): Promise<number | null> {
+  public async submitQuiz(enrollmentId: string, lessonId: string, answers: number[], operationId: string): Promise<QuizAttemptResult | null> {
     const userId = this.requireUserId();
     await nativeSessionService.ensure(userId);
     const result = await httpsCallable<{ enrollmentId: string; lessonId: string; operationId: string; answers: number[] }, LessonCompletionResponse>(getFunctions(app), 'completeCourseLesson')({
-      enrollmentId, lessonId, operationId: enrollmentId + '_' + lessonId + '_quiz_' + Date.now(), answers,
+      enrollmentId, lessonId, operationId, answers,
     });
     nativeSessionService.assertOwner(userId);
-    return typeof result.data.score === 'number' ? result.data.score : null;
+    return this.quizAttempt(result.data.attempt);
+  }
+
+  /** The learner's own attempts at one quiz, newest first (quizAttempts; at most 20, readable by the learner and the instructor). */
+  public async getMyQuizAttempts(userId: string, lessonId: string): Promise<QuizAttemptRecord[]> {
+    this.assertWebSession(userId);
+    const snapshot = await getDocs(query(collection(this.database, 'quizAttempts'), where('userId', '==', userId), where('lessonId', '==', lessonId), orderBy('submittedAt', 'desc'), limit(20)));
+    nativeSessionService.assertOwner(userId);
+    return snapshot.docs.map((item) => {
+      const data = item.data();
+      return { id: item.id, attemptNumber: this.integer(data.attemptNumber), percent: this.finiteOrNull(data.percent), submittedAt: this.timestamp(data.submittedAt) };
+    });
+  }
+
+  /** "Unlimited attempts", "3 attempts allowed", "1 of 3 attempts used", "All 3 attempts used". */
+  public attemptAllowanceText(attemptsUsed: number, maxAttempts: number | null | undefined): string {
+    if (typeof maxAttempts !== 'number' || maxAttempts <= 0) return attemptsUsed > 0 ? `${attemptsUsed} ${attemptsUsed === 1 ? 'attempt' : 'attempts'} so far · unlimited` : 'Unlimited attempts';
+    if (attemptsUsed <= 0) return maxAttempts === 1 ? 'One attempt allowed' : `${maxAttempts} attempts allowed`;
+    if (attemptsUsed >= maxAttempts) return maxAttempts === 1 ? 'Your one attempt is used' : `All ${maxAttempts} attempts used`;
+    return `${attemptsUsed} of ${maxAttempts} attempts used`;
+  }
+
+  public isAttemptLimitReached(attemptsUsed: number, maxAttempts: number | null | undefined): boolean {
+    return typeof maxAttempts === 'number' && maxAttempts > 0 && attemptsUsed >= maxAttempts;
+  }
+
+  /** The attempt in a completeCourseLesson response, or null when there is none (a quiz without questions). */
+  public quizAttempt(value: unknown): QuizAttemptResult | null {
+    const source = this.object(value);
+    if (!source || !this.text(source.id)) return null;
+    const results = Array.isArray(source.results) ? source.results.flatMap((entry: unknown): QuizQuestionResult[] => {
+      const item = this.object(entry);
+      if (!item || !this.text(item.questionId)) return [];
+      const correctIndex = this.finiteOrNull(item.correctIndex);
+      const explanation = this.optionalText(item.explanation);
+      return [{
+        questionId: this.text(item.questionId), index: this.integer(item.index), scored: item.scored === true, correct: item.correct === true,
+        chosenIndex: Math.floor(this.finiteOrNull(item.chosenIndex) ?? -1), points: this.number(item.points), earned: this.number(item.earned),
+        ...(correctIndex !== null ? { correctIndex } : {}), ...(explanation ? { explanation } : {}),
+      }];
+    }) : undefined;
+    const maxAttempts = this.finiteOrNull(source.maxAttempts);
+    const remaining = this.finiteOrNull(source.attemptsRemaining);
+    return {
+      id: this.text(source.id), attemptNumber: this.integer(source.attemptNumber), score: this.number(source.score), maxScore: this.number(source.maxScore),
+      percent: this.finiteOrNull(source.percent), correctCount: this.integer(source.correctCount), markableCount: this.integer(source.markableCount),
+      feedbackReleased: source.feedbackReleased === true && results !== undefined, ...(results ? { results } : {}),
+      attemptsUsed: this.integer(source.attemptsUsed), maxAttempts: maxAttempts === null ? null : Math.floor(maxAttempts),
+      attemptsRemaining: remaining === null ? null : this.integer(remaining), bestPercent: this.finiteOrNull(source.bestPercent), submittedAt: this.text(source.submittedAt),
+    };
   }
 
   public async markLessonCompleted(enrollmentId: string, lessonId: string, _totalLessonsCount: number): Promise<void> {
@@ -426,7 +479,8 @@ export class CourseService {
     const level = data.level === 'beginner' || data.level === 'intermediate' || data.level === 'advanced' ? data.level : null;
     if (!level || data.status !== 'published' || !this.text(data.title) || !this.text(data.description) || !this.text(data.category) || !instructor || !this.text(instructor.id) || !this.text(instructor.name)) return null;
     return { id, title: this.text(data.title), description: this.text(data.description), shortDescription: this.optionalText(data.shortDescription),
-      instructor: { id: this.text(instructor.id), name: this.text(instructor.name), email: this.optionalText(instructor.email), avatar: this.optionalText(instructor.avatar), role: this.optionalText(instructor.role) },
+      // Older course documents still carry the instructor's email; it is never decoded or shown.
+      instructor: { id: this.text(instructor.id), name: this.text(instructor.name), avatar: this.optionalText(instructor.avatar), role: this.optionalText(instructor.role) },
       category: this.text(data.category), subcategory: this.optionalText(data.subcategory), level, duration: this.number(data.duration), price: this.number(data.price),
       image: this.text(data.image), thumbnail: this.optionalText(data.thumbnail), rating: this.number(data.rating), totalRatings: this.integer(data.totalRatings),
       enrolledStudents: this.integer(data.enrolledStudents), status: 'published', isPublic: data.isPublic !== false, tags: this.textList(data.tags),
@@ -440,7 +494,15 @@ export class CourseService {
       status, progress: Math.max(0, Math.min(100, this.number(data.progress))), lastAccessed: this.timestamp(data.lastAccessed),
       // Both names hold completed lesson ids (website: completedModules); merge them like the website and the server do.
       completedLessons: [...new Set([...this.textList(data.completedLessons), ...this.textList(data.completedModules)])], certificateIssued: data.certificateIssued === true,
-      certificateUrl: this.optionalText(data.certificateUrl) };
+      certificateUrl: this.optionalText(data.certificateUrl), quizSummary: this.quizSummaries(data.quizSummary) };
+  }
+  private quizSummaries(value: unknown): { [lessonId: string]: QuizAttemptSummary } {
+    const summaries: { [lessonId: string]: QuizAttemptSummary } = {};
+    Object.entries(this.object(value) ?? {}).forEach(([lessonId, entry]) => {
+      const summary = this.object(entry);
+      if (summary) summaries[lessonId] = { attempts: this.integer(summary.attempts), bestPercent: this.finiteOrNull(summary.bestPercent), latestPercent: this.finiteOrNull(summary.latestPercent) };
+    });
+    return summaries;
   }
   private lesson(id: string, data: Data): CourseLesson | null {
     const allowed = ['video', 'text', 'quiz', 'assignment', 'resource', 'document'] as const;
@@ -454,14 +516,16 @@ export class CourseService {
     const mediaUrl = this.optionalText(data.contentUrl) ?? this.optionalText(data.attachedFile) ?? (contentIsUrl ? content : undefined);
     return { id, courseId: this.text(data.courseId), moduleId: this.text(data.moduleId), title: this.text(data.title), description: this.optionalText(data.description),
       type, content: contentIsUrl ? undefined : this.plainText(content), mediaUrl, quizQuestions: this.quizQuestions(data.quizQuestions),
+      ...(typeof data.maxAttempts === 'number' && Number.isInteger(data.maxAttempts) && data.maxAttempts > 0 ? { maxAttempts: data.maxAttempts } : {}),
       duration: this.integer(data.duration), order: this.integer(data.order),
       isRequired: data.isRequired === true, isPublished: data.isPublished !== false, isFree: data.isFree === true || data.isPreview === true,
       dueDate: this.timestamp(data.dueDate), points: typeof data.points === 'number' && Number.isFinite(data.points) ? Math.max(0, data.points) : undefined,
       allowLateSubmission: data.allowLateSubmission === true, attachments: this.files(data.attachments) };
   }
   /**
-   * Every stored question, in server order: the server scores answers[index] against quizQuestions[index], so dropping
-   * one (e.g. a short-answer question with no options) would shift every later answer.
+   * Every stored question, in server order: the server marks answers[index] against quizQuestions[index], so dropping
+   * one (e.g. a short-answer question with no options) would shift every later answer. The answer key (correctIndex,
+   * explanation) is never decoded, even from lessons written before it moved server-side.
    */
   private quizQuestions(value: unknown): CourseQuizQuestion[] {
     if (!Array.isArray(value)) return [];
@@ -470,8 +534,7 @@ export class CourseService {
       const storedOptions = this.textList(question.options);
       const type = this.questionType(question.type, storedOptions.length);
       const options = type === 'short_answer' ? [] : type === 'true_false' && storedOptions.length < 2 ? ['True', 'False'] : storedOptions;
-      return { id: this.text(question.id) || 'question-' + index, title: this.text(question.title) || 'Question ' + (index + 1), options, type,
-        correctIndex: typeof question.correctIndex === 'number' ? question.correctIndex : undefined, explanation: this.optionalText(question.explanation),
+      return { id: this.text(question.id) || 'question-' + index, title: this.text(question.title) || this.text(question.question) || 'Question ' + (index + 1), options, type,
         points: typeof question.points === 'number' && Number.isFinite(question.points) ? Math.max(0, question.points) : 1 };
     });
   }
@@ -526,6 +589,7 @@ export class CourseService {
   private text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
   private optionalText(value: unknown): string | undefined { const result = this.text(value); return result || undefined; }
   private number(value: unknown): number { return typeof value === 'number' && Number.isFinite(value) ? value : 0; }
+  private finiteOrNull(value: unknown): number | null { return typeof value === 'number' && Number.isFinite(value) ? value : null; }
   private integer(value: unknown): number { return Math.max(0, Math.round(this.number(value))); }
   private textList(value: unknown): string[] { return Array.isArray(value) ? value.map((entry) => this.text(entry)).filter(Boolean) : []; }
   private timestamp(value: unknown): string | undefined {

@@ -14,11 +14,13 @@ import type {
 import type {
   InstructorApplicant,
   InstructorApplication,
+  InstructorApplicationState,
   InstructorCourse,
   InstructorCourseDetail,
   InstructorCourseStatus,
   InstructorCurriculum,
   InstructorDocumentKind,
+  InstructorGradeDraft,
   InstructorLesson,
   InstructorLessonType,
   InstructorModule,
@@ -33,7 +35,9 @@ import type {
 export type {
   InstructorApplicant,
   InstructorApplication,
+  InstructorApplicationState,
   InstructorCourse,
+  InstructorGradeDraft,
   InstructorCourseDetail,
   InstructorCourseStatus,
   InstructorCurriculum,
@@ -66,13 +70,15 @@ type ManageLearningRequest =
   | ({ action: 'publish_course' } & NewCourse)
   | { action: 'register_instructor'; profile: ServerApplication }
   | { action: 'update_course'; courseId: string; updates: { status: InstructorSettableStatus } }
+  | { action: 'resubmit_course'; courseId: string }
   | { action: 'delete_course'; courseId: string }
-  | { action: 'create_assessment'; kind: 'quiz'; courseId: string; title: string; description: string; questions: NewQuiz['questions'] }
+  | { action: 'create_assessment'; kind: 'quiz'; courseId: string; title: string; description: string; questions: NewQuiz['questions']; maxAttempts?: number }
   | {
     action: 'create_assessment'; kind: 'assignment'; courseId: string; title: string; description: string; instructions: string; dueDate: string;
     points: number; allowLateSubmission: boolean; attachments: AssignmentFile[];
   }
   | { action: 'grade_submission'; submissionId: string; score: number; feedback: string; draft: boolean }
+  | { action: 'grade_drafts'; courseId: string }
   // Administrator review (the server refuses anyone else).
   | { action: 'review_queue' }
   | { action: 'review_course_outline'; courseId: string }
@@ -101,9 +107,19 @@ export class InstructorService {
   // ── Application ──
 
   public async getStatus(userId: string): Promise<InstructorStatus> {
+    return (await this.getApplicationState(userId)).status;
+  }
+
+  /**
+   * The member's own application (instructors/{uid}, readable by its owner): verified wins; an administrator's decline
+   * (review_instructor) sets applicationStatus 'declined' with the reason in declineReason; anything else is waiting.
+   */
+  public async getApplicationState(userId: string): Promise<InstructorApplicationState> {
     const snapshot = await getDoc(doc(db, 'instructors', userId));
-    if (!snapshot.exists()) return 'none';
-    return snapshot.data().isVerified === true ? 'verified' : 'pending';
+    if (!snapshot.exists()) return { status: 'none', declineReason: '' };
+    const data = snapshot.data();
+    if (data.isVerified === true) return { status: 'verified', declineReason: '' };
+    return data.applicationStatus === 'declined' ? { status: 'declined', declineReason: this.text(data.declineReason) } : { status: 'pending', declineReason: '' };
   }
 
   /** The signed-in member's name, email and identity verification status (users/{uid}). */
@@ -226,6 +242,15 @@ export class InstructorService {
     await this.call({ action: 'update_course', courseId, updates: { status } });
   }
 
+  /**
+   * Puts a draft, declined or archived course forward again (resubmit_course): verified instructors publish it, others
+   * send it back to the administrator's review queue. Resolves with the course's new status.
+   */
+  public async resubmitCourse(courseId: string): Promise<'published' | 'pending_review'> {
+    const result = await this.call<{ status?: string }>({ action: 'resubmit_course', courseId });
+    return result.status === 'published' ? 'published' : 'pending_review';
+  }
+
   public async deleteCourse(courseId: string): Promise<void> {
     await this.call({ action: 'delete_course', courseId });
   }
@@ -249,6 +274,8 @@ export class InstructorService {
         ...(question.explanation ? { explanation: question.explanation.trim() } : {}),
         points: Math.max(0, Math.floor(question.points)),
       })),
+      // The server keeps the answer key apart from the lesson learners read, and enforces the attempt limit.
+      ...(quiz.maxAttempts ? { maxAttempts: quiz.maxAttempts } : {}),
     });
     return result.lessonId;
   }
@@ -272,9 +299,19 @@ export class InstructorService {
       .sort((left, right) => Number(left.status === 'graded') - Number(right.status === 'graded') || (right.submittedAt ?? '').localeCompare(left.submittedAt ?? ''));
   }
 
-  /** draft: saves the score and feedback without releasing them (the submission stays "submitted"). */
+  /** draft: saves the score and feedback on the server only (gradeDrafts); the student sees nothing until it is published. */
   public async grade(submissionId: string, score: number, feedback: string, draft: boolean): Promise<void> {
     await this.call({ action: 'grade_submission', submissionId, score, feedback: feedback.trim(), draft });
+  }
+
+  /** The instructor's saved draft grades for a course (grade_drafts), to put back on the grading screen. */
+  public async getGradeDrafts(courseId: string): Promise<InstructorGradeDraft[]> {
+    const result = await this.call<{ drafts?: unknown }>({ action: 'grade_drafts', courseId });
+    return Array.isArray(result.drafts) ? result.drafts.flatMap((entry: unknown): InstructorGradeDraft[] => {
+      if (!entry || typeof entry !== 'object') return [];
+      const draft = entry as DocumentData;
+      return this.text(draft.submissionId) ? [{ submissionId: this.text(draft.submissionId), lessonId: this.text(draft.lessonId), score: this.number(draft.score), feedback: this.text(draft.feedback) }] : [];
+    }) : [];
   }
 
   // ── Administrator review ──
@@ -367,6 +404,8 @@ export class InstructorService {
       price: this.number(data.price),
       quizCount: null,
       assignmentCount: null,
+      ...(data.reviewStatus === 'approved' || data.reviewStatus === 'declined' || data.reviewStatus === 'resubmitted' ? { reviewStatus: data.reviewStatus } : {}),
+      ...(this.text(data.reviewNote) ? { reviewNote: this.text(data.reviewNote) } : {}),
     };
   }
 

@@ -3,7 +3,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindo
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
-import { AlertCircle, BookOpen, ClipboardCheck, ClipboardList, Clock, Eye, EyeOff, GraduationCap, HelpCircle, Plus, ShieldCheck, Trash2 } from 'lucide-react-native';
+import { AlertCircle, BookOpen, ClipboardCheck, ClipboardList, Clock, Eye, EyeOff, GraduationCap, HelpCircle, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react-native';
 import CustomModal from '@/components/ui/CustomModal';
 import { InstructorDashboardSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { CourseRating, ELearningButton, ELearningEmptyState, ELearningHeader, ELearningHeaderButton, ELEARNING_ACTION_GREEN, ELEARNING_GUTTER, StatusPill, type ELearningTone } from '@/components/eLearning/ELearningParts';
@@ -32,6 +32,7 @@ export default function InstructorDashboardScreen() {
   const { width } = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [status, setStatus] = useState<InstructorStatus | null>(null);
+  const [declineReason, setDeclineReason] = useState('');
   const [courses, setCourses] = useState<InstructorCourse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -44,8 +45,9 @@ export default function InstructorDashboardScreen() {
     if (!activeUserId) { setIsLoading(false); setStatus('none'); return; }
     setLoadError(null);
     try {
-      const [instructorStatus, myCourses] = await Promise.all([instructorService.getStatus(activeUserId), instructorService.getMyCourses(activeUserId)]);
-      setStatus(instructorStatus);
+      const [application, myCourses] = await Promise.all([instructorService.getApplicationState(activeUserId), instructorService.getMyCourses(activeUserId)]);
+      setStatus(application.status);
+      setDeclineReason(application.declineReason);
       setCourses(myCourses);
     } catch (loadFailure: unknown) {
       console.error('[InstructorDashboardScreen.load] Error:', loadFailure instanceof Error ? loadFailure.message : 'Unknown error');
@@ -74,6 +76,23 @@ export default function InstructorDashboardScreen() {
     }
   };
 
+  /** A draft, declined or archived course: verified instructors publish it, others send it back to the review queue. */
+  const handleResubmit = async (course: InstructorCourse) => {
+    setWorkingCourseId(course.id);
+    setActionError(null);
+    try {
+      const next = await instructorService.resubmitCourse(course.id);
+      setCourses((current) => current.map((item) => (item.id === course.id
+        ? { ...item, status: next, reviewStatus: next === 'published' ? undefined : 'resubmitted', reviewNote: undefined }
+        : item)));
+    } catch (resubmitError: unknown) {
+      console.error('[InstructorDashboardScreen.handleResubmit] Error:', resubmitError instanceof Error ? resubmitError.message : 'Unknown error');
+      setActionError(`"${course.title}" could not be submitted. Please try again.`);
+    } finally {
+      setWorkingCourseId(null);
+    }
+  };
+
   const handleDelete = async () => {
     if (!courseToDelete) return;
     setWorkingCourseId(courseToDelete.id);
@@ -92,7 +111,7 @@ export default function InstructorDashboardScreen() {
 
   const totalStudents = courses.reduce((sum, course) => sum + course.enrolledStudents, 0);
   const publishedCount = courses.filter((course) => course.status === 'published').length;
-  const isInstructor = status === 'pending' || status === 'verified';
+  const isInstructor = status === 'pending' || status === 'verified' || status === 'declined';
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
@@ -127,6 +146,16 @@ export default function InstructorDashboardScreen() {
                 <Text accessibilityRole="header" style={styles.heroTitle}>Teach on Ourlime</Text>
                 <Text style={styles.heroText}>Share what you know with learners across Trinidad and Tobago. Apply once; an administrator verifies your profile before your courses go live.</Text>
                 <ELearningButton label="Become an instructor" onPress={() => router.push('/eLearning/instructor/register' as Href)} style={styles.stretch} />
+              </View>
+            ) : status === 'declined' ? (
+              <View style={[styles.statusCard, styles.statusPending]}>
+                <AlertCircle size={22} color={colors.warningText} />
+                <View style={styles.flexText}>
+                  <Text style={[styles.statusTitle, { color: colors.warningText }]}>Application not approved</Text>
+                  {declineReason ? <Text style={[styles.statusText, { color: colors.warningText }]}>Reason: {declineReason}</Text> : null}
+                  <Text style={[styles.statusText, { color: colors.warningText }]}>Update your application and send it again; your courses wait for review until you are verified.</Text>
+                  <ELearningButton label="Apply again" onPress={() => router.push('/eLearning/instructor/register' as Href)} style={styles.statusAction} />
+                </View>
               </View>
             ) : (
               <View style={[styles.statusCard, status === 'verified' ? styles.statusVerified : styles.statusPending]}>
@@ -165,6 +194,9 @@ export default function InstructorDashboardScreen() {
                   const isWorking = workingCourseId === course.id;
                   const work = workLine(course);
                   const isPublished = course.status === 'published';
+                  const isDeclined = course.status === 'draft' && course.reviewStatus === 'declined';
+                  // Verified instructors publish straight away; everyone else submits the course for review.
+                  const resubmitLabel = status === 'verified' ? 'Publish' : 'Submit for review';
                   return (
                     <View key={course.id} style={styles.courseCard}>
                       <Pressable accessibilityRole="button" accessibilityLabel={`Open ${course.title}, ${STATUS_LABEL[course.status]}`} onPress={() => router.push(`/eLearning/instructor/course/${courseQuery(course)}` as Href)} android_ripple={RIPPLE} style={styles.courseTop}>
@@ -172,7 +204,7 @@ export default function InstructorDashboardScreen() {
                           {course.image ? <Image source={{ uri: course.image }} contentFit="cover" style={{ width: THUMB_SIZE, height: THUMB_SIZE }} /> : <BookOpen size={22} color={colors.mutedText} />}
                         </View>
                         <View style={styles.courseCopy}>
-                          <StatusPill label={STATUS_LABEL[course.status]} tone={STATUS_TONE[course.status]} />
+                          <StatusPill label={isDeclined ? 'Not approved' : STATUS_LABEL[course.status]} tone={isDeclined ? 'danger' : STATUS_TONE[course.status]} />
                           <Text style={styles.courseTitle} numberOfLines={2}>{course.title}</Text>
                           <View style={styles.metaRow}>
                             <Text style={styles.muted} numberOfLines={1}>{pluralize(course.enrolledStudents, 'learner', 'learners')}</Text>
@@ -181,6 +213,13 @@ export default function InstructorDashboardScreen() {
                           {work ? <Text style={styles.muted} numberOfLines={1}>{work}</Text> : null}
                         </View>
                       </Pressable>
+                      {isDeclined ? (
+                        <View accessible accessibilityLabel={`Administrator's note: ${course.reviewNote ?? 'This course was not approved.'}`} style={styles.declinedNote}>
+                          <Text style={styles.declinedTitle}>Administrator’s note</Text>
+                          <Text style={styles.declinedText}>{course.reviewNote ?? 'This course was not approved.'}</Text>
+                          <Text style={styles.declinedHint}>Make the changes, then submit it again. It goes back to the review queue.</Text>
+                        </View>
+                      ) : null}
                       <View style={styles.tiles}>
                         <Pressable accessibilityRole="button" accessibilityLabel={`Add a quiz to ${course.title}`} onPress={() => router.push(`/eLearning/instructor/quiz/${courseQuery(course)}` as Href)} android_ripple={RIPPLE} style={styles.tile}>
                           <HelpCircle size={18} color={colors.icon} /><Text numberOfLines={2} style={styles.tileText}>Add quiz</Text>
@@ -197,15 +236,25 @@ export default function InstructorDashboardScreen() {
                           <View style={[styles.pendingNote, styles.flexText]}>
                             <Clock size={16} color={colors.warningText} /><Text numberOfLines={2} style={styles.pendingText}>Waiting for an administrator to approve it</Text>
                           </View>
-                        ) : (
+                        ) : isPublished ? (
                           <ELearningButton
-                            label={isPublished ? 'Unpublish' : 'Publish'}
-                            accessibilityLabel={`${isPublished ? 'Unpublish' : 'Publish'} ${course.title}`}
-                            variant={isPublished ? 'secondary' : 'primary'}
-                            icon={isPublished ? <EyeOff size={18} color={colors.text} /> : <Eye size={18} color="#ffffff" />}
+                            label="Unpublish"
+                            accessibilityLabel={`Unpublish ${course.title}`}
+                            variant="secondary"
+                            icon={<EyeOff size={18} color={colors.text} />}
                             busyLabel="Saving…"
                             isBusy={isWorking}
-                            onPress={() => void handleSetStatus(course, isPublished ? 'draft' : 'published')}
+                            onPress={() => void handleSetStatus(course, 'draft')}
+                            style={styles.flexText}
+                          />
+                        ) : (
+                          <ELearningButton
+                            label={resubmitLabel}
+                            accessibilityLabel={`${resubmitLabel}: ${course.title}`}
+                            icon={status === 'verified' ? <Eye size={18} color="#ffffff" /> : <Send size={18} color="#ffffff" />}
+                            busyLabel="Sending…"
+                            isBusy={isWorking}
+                            onPress={() => void handleResubmit(course)}
                             style={styles.flexText}
                           />
                         )}
@@ -274,6 +323,11 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   tile: { flex: 1, minWidth: 0, minHeight: 64, paddingHorizontal: 4, paddingVertical: 8, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, backgroundColor: colors.control, overflow: 'hidden' },
   tileText: { color: colors.text, fontSize: 12, fontWeight: '700', textAlign: 'center' },
   actions: { flexDirection: 'row', gap: 8, alignItems: 'stretch' },
+  statusAction: { alignSelf: 'flex-start', marginTop: 8 },
+  declinedNote: { padding: 12, gap: 4, borderRadius: 12, backgroundColor: colors.destructiveSurface },
+  declinedTitle: { color: colors.destructiveText, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  declinedText: { color: colors.destructiveText, fontSize: 14, lineHeight: 20 },
+  declinedHint: { color: colors.destructiveText, fontSize: 12, lineHeight: 17 },
   pendingNote: { minHeight: 48, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, backgroundColor: colors.warningSurface },
   pendingText: { flex: 1, color: colors.warningText, fontSize: 13, fontWeight: '700' },
   deleteButton: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },

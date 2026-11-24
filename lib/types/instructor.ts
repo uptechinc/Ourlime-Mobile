@@ -1,7 +1,16 @@
 import type { AssignmentFile } from '@/lib/types/course';
 
-/** none: no instructors/{uid}; pending: applied, waiting for an administrator; verified: can publish. */
-export type InstructorStatus = 'none' | 'pending' | 'verified';
+/**
+ * none: no instructors/{uid}; pending: applied, waiting for an administrator; verified: can publish; declined: an
+ * administrator did not approve the application (the reason is in InstructorApplicationState) and they can apply again.
+ */
+export type InstructorStatus = 'none' | 'pending' | 'verified' | 'declined';
+
+/** The member's own application: its status and, when declined, the administrator's reason. */
+export type InstructorApplicationState = { status: InstructorStatus; declineReason: string };
+
+/** How an administrator's review left a course: declined back to draft with a note, or resubmitted by the instructor. */
+export type InstructorCourseReviewStatus = 'approved' | 'declined' | 'resubmitted';
 
 /** courses/{id}.status. pending_review is set by the server for courses from instructors who are not yet verified. */
 export type InstructorCourseStatus = 'draft' | 'pending_review' | 'published' | 'archived';
@@ -23,6 +32,9 @@ export type InstructorCourse = {
   /** null when the lessons can't be read yet (modules and lessons are readable only once the course is published). */
   quizCount: number | null;
   assignmentCount: number | null;
+  reviewStatus?: InstructorCourseReviewStatus;
+  /** The administrator's reason when the course was declined. */
+  reviewNote?: string;
 };
 
 export type InstructorCourseDetail = InstructorCourse & {
@@ -88,7 +100,11 @@ export type QuizQuestionInput = {
   points: number;
 };
 
-export type NewQuiz = { courseId: string; title: string; description: string; questions: QuizQuestionInput[] };
+/** maxAttempts: attempts each learner may make; null means unlimited (the default). */
+export type NewQuiz = { courseId: string; title: string; description: string; questions: QuizQuestionInput[]; maxAttempts: number | null };
+
+/** A draft grade the instructor saved; it stays on the server until they publish it. */
+export type InstructorGradeDraft = { submissionId: string; lessonId: string; score: number; feedback: string };
 
 export type NewAssignment = {
   courseId: string;

@@ -1,7 +1,7 @@
+/** A course's instructor as learners see it. Course documents no longer carry the instructor's email (it is server-only). */
 export type CourseInstructor = {
   id: string;
   name: string;
-  email?: string;
   avatar?: string;
   bio?: string;
   role?: string;
@@ -47,8 +47,10 @@ export type CourseLesson = {
   content?: string;
   /** The lesson's video or file: contentUrl, attachedFile, or a URL stored in content. */
   mediaUrl?: string;
-  /** Multiple-choice questions for quiz lessons; the server scores the answers. */
+  /** Quiz questions without the answer key (the server keeps it and marks every attempt). */
   quizQuestions?: CourseQuizQuestion[];
+  /** Attempts a learner may make at this quiz; undefined means unlimited. */
+  maxAttempts?: number;
   duration?: number; // in minutes
   order: number;
   isRequired?: boolean;
@@ -65,16 +67,53 @@ export type CourseLesson = {
 
 export type CourseQuizQuestionType = 'multiple_choice' | 'true_false' | 'short_answer';
 
+/** A quiz question as a learner holds it: never the correct option or the explanation (the server returns those as feedback). */
 export type CourseQuizQuestion = {
   id: string;
   title: string;
   options: string[];
-  correctIndex?: number;
-  explanation?: string;
   /** Decoded from the stored 'mcq' | 'tf' | 'short' (or the long names); short-answer questions have no options. */
   type?: CourseQuizQuestionType;
   points?: number;
 };
+
+/** How the server marked one question. correctIndex and explanation are present only when the quiz releases feedback. */
+export type QuizQuestionResult = {
+  questionId: string;
+  index: number;
+  scored: boolean;
+  correct: boolean;
+  chosenIndex: number;
+  points: number;
+  earned: number;
+  correctIndex?: number;
+  explanation?: string;
+};
+
+/** One quiz attempt as completeCourseLesson returns it. */
+export type QuizAttemptResult = {
+  id: string;
+  attemptNumber: number;
+  score: number;
+  maxScore: number;
+  /** null when the quiz has no scored question. */
+  percent: number | null;
+  correctCount: number;
+  markableCount: number;
+  feedbackReleased: boolean;
+  results?: QuizQuestionResult[];
+  attemptsUsed: number;
+  maxAttempts: number | null;
+  attemptsRemaining: number | null;
+  bestPercent: number | null;
+  submittedAt: string;
+};
+
+/** enrollments/{id}.quizSummary.{lessonId}: attempts used and the best score, which is the one that counts. */
+export type QuizAttemptSummary = { attempts: number; bestPercent: number | null; latestPercent: number | null };
+
+/** A past attempt from quizAttempts (the learner's own history; it never carries the answer key). */
+export type QuizAttemptRecord = { id: string; attemptNumber: number; percent: number | null; submittedAt?: string };
 
 export type CourseResource = {
   id: string;
@@ -111,6 +150,8 @@ export type Enrollment = {
   completedLessons?: string[];
   certificateIssued?: boolean;
   certificateUrl?: string;
+  /** The learner's quiz record per quiz lesson id, kept by the server. */
+  quizSummary?: { [lessonId: string]: QuizAttemptSummary };
   course?: Course;
 };
 

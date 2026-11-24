@@ -357,7 +357,7 @@ export default function CreateCourseScreen() {
       <KeyboardSafeView style={styles.flex}>
         <ELearningScrollView scrollRef={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
           <View style={[styles.column, { width: columnWidth }]}>
-            {instructorStatus === 'pending' ? (
+            {instructorStatus === 'pending' || instructorStatus === 'declined' ? (
               <View style={styles.notice}>
                 <Clock size={16} color={colors.warningText} />
                 <Text style={[styles.noticeText, styles.flexText]}>Your instructor profile is waiting for verification, so this course will be sent for review when you publish it.</Text>
