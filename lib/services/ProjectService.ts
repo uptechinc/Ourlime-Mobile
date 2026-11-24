@@ -28,6 +28,8 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebaseConfig';
 import { reliabilityDecoder } from './ReliabilityDecoderService';
 import { PROJECT_TIMER_DOCUMENT, projectTimerRules } from './ProjectTimerRules';
+import { projectModuleRules } from './ProjectModuleRules';
+import { projectScheduleRules } from './ProjectScheduleRules';
 import { accountLifecycleVisibilityService } from '@/lib/services/AccountLifecycleVisibilityService';
 import type {
   ActiveTaskTimer,
@@ -56,6 +58,7 @@ import type {
   CommunityLinkCandidate,
   CommunityLinkResultStatus,
   ProjectTransitionInput,
+  ProjectOutcomeInput,
   ProjectRecord,
   ProjectRole,
   ProjectSettingsUpdate,
@@ -90,6 +93,8 @@ type ProjectDocument = {
   statusChangedAt?: unknown;
   statusChangedBy?: unknown;
   communityLink?: unknown;
+  modules?: unknown;
+  latestOutcomeId?: unknown;
   teamMembers?: Record<string, { role?: unknown; membershipStatus?: unknown; invitedByName?: unknown; inviteExpiresAt?: unknown }>;
   memberUids?: string[];
 };
@@ -99,8 +104,16 @@ const PROJECT_ACTIVITY_TYPES: readonly Exclude<ProjectActivityType, 'unknown'>[]
   'member.invited', 'member.invite_cancelled', 'member.joined', 'member.declined', 'member.left', 'member.removed', 'member.role_changed',
   'milestone.created', 'milestone.updated', 'milestone.completed', 'milestone.reopened', 'milestone.deleted',
   'community.link_requested', 'community.link_cancelled', 'community.link_approved', 'community.link_declined', 'community.link_ended',
+  'project.modules_changed', 'project.outcome_recorded',
+  'deliverable.created', 'deliverable.updated', 'deliverable.evidence_added', 'deliverable.evidence_removed', 'deliverable.submitted',
+  'deliverable.accepted', 'deliverable.changes_requested', 'deliverable.reopened', 'deliverable.shared', 'deliverable.deleted',
+  'register.created', 'register.updated', 'register.status_changed', 'register.deleted',
+  'stakeholder.invited', 'stakeholder.joined', 'stakeholder.declined', 'stakeholder.left', 'stakeholder.removed', 'stakeholder.role_changed',
+  'milestone.shared', 'question.asked', 'question.answered',
 ];
-const PROJECT_ACTIVITY_SUBJECTS: readonly ProjectActivityEvent['subjectKind'][] = ['project', 'member', 'email_invite', 'milestone', 'community'];
+const PROJECT_ACTIVITY_SUBJECTS: readonly ProjectActivityEvent['subjectKind'][] = [
+  'project', 'member', 'email_invite', 'milestone', 'community', 'deliverable', 'risk', 'issue', 'decision', 'change_request', 'stakeholder', 'question', 'outcome',
+];
 export const PROJECT_ACTIVITY_PAGE_SIZE = 20;
 /** Same limits the server enforces (website functions/src/ProjectMilestoneService.ts). */
 export const MILESTONE_NAME_LIMIT = 120;
@@ -313,11 +326,16 @@ export class ProjectService {
   public async transitionProject(projectId: string, input: ProjectTransitionInput): Promise<void> {
     const userId = this.requireUserId();
     const reason = input.reason?.trim() ?? '';
-    const identity = JSON.stringify([userId, projectId, input.expectedStatus, input.toStatus, reason]);
+    // Completing records an outcome report (accepted deliverables plus this summary); other moves send none.
+    const outcome = input.toStatus === 'completed' && input.outcome ? {
+      summary: input.outcome.summary.trim().slice(0, 2000), beneficiaries: input.outcome.beneficiaries.trim().slice(0, 1000),
+      results: input.outcome.results.trim().slice(0, 2000), lessons: input.outcome.lessons.trim().slice(0, 2000),
+    } : null;
+    const identity = JSON.stringify([userId, projectId, input.expectedStatus, input.toStatus, reason, outcome]);
     const operationId = this.transitionOperations.get(identity) ?? await contentDraftService.newId();
     this.transitionOperations.set(identity, operationId);
     try {
-      await this.membershipMutation({ action: 'transition', projectId, operationId, expectedStatus: input.expectedStatus, toStatus: input.toStatus, ...(reason ? { reason } : {}) });
+      await this.membershipMutation({ action: 'transition', projectId, operationId, expectedStatus: input.expectedStatus, toStatus: input.toStatus, ...(reason ? { reason } : {}), ...(outcome ? { outcome } : {}) });
       this.transitionOperations.delete(identity);
     } catch (error: unknown) {
       if (this.isDefiniteRefusal(error)) this.transitionOperations.delete(identity);
@@ -365,6 +383,11 @@ export class ProjectService {
       from: this.readString(data.from), to: this.readString(data.to), role: this.readString(data.role), reason: this.readString(data.reason), channel: this.readString(data.channel),
       changed: Array.isArray(data.changed) ? data.changed.filter((entry): entry is string => typeof entry === 'string') : [],
       title: this.readString(data.title), by: this.readString(data.by), selfApproved: data.selfApproved === true,
+      kind: this.readString(data.kind), revision: typeof data.revision === 'number' ? data.revision : null, byRole: this.readString(data.byRole),
+      shared: typeof data.shared === 'boolean' ? data.shared : null,
+      enabled: Array.isArray(data.enabled) ? data.enabled.filter((entry): entry is string => typeof entry === 'string') : [],
+      disabled: Array.isArray(data.disabled) ? data.disabled.filter((entry): entry is string => typeof entry === 'string') : [],
+      acceptedCount: typeof data.acceptedCount === 'number' ? data.acceptedCount : null,
     };
   }
 
@@ -537,12 +560,21 @@ export class ProjectService {
   }
 
   private async uploadAttachment(projectId: string, taskId: string, file: PickedTaskFile): Promise<FileAttachment> {
+    return await this.uploadProjectFile(`projects/${projectId}/tasks/${taskId}`, file);
+  }
+
+  /**
+   * Uploads one picked file (10 MB at most) under a project folder the Storage rules allow: a task's attachments
+   * (projects/{p}/tasks/{t}) or a deliverable's evidence (projects/{p}/deliverables/{d}). The server re-checks the
+   * folder, size and type before it records the file.
+   */
+  public async uploadProjectFile(folder: string, file: PickedTaskFile): Promise<FileAttachment> {
     const ownerId = this.requireUserId();
     await nativeSessionService.ensure(ownerId);
     pageAccessService.assertMutation('/projectManagement');
     if (!file.size || file.size > 10 * 1024 * 1024) throw new Error('Choose a nonempty attachment up to 10 MB.');
     const id = await contentDraftService.newId();
-    const path = `projects/${projectId}/tasks/${taskId}/${id}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const path = `${folder}/${id}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const blob = await (await fetch(file.uri)).blob();
     const reference = ref(storage, path);
     await uploadBytes(reference, blob, { contentType: file.mimeType || blob.type || 'application/octet-stream' });
@@ -598,6 +630,7 @@ export class ProjectService {
       completed: data.completed === true,
       createdBy: this.readString(data.createdBy),
       ...(this.readString(data.ownerId) ? { ownerId: this.readString(data.ownerId) } : {}),
+      sharedWithStakeholders: data.sharedWithStakeholders === true,
     };
   }
 
@@ -831,7 +864,7 @@ export class ProjectService {
   public async transferOwnership(projectId: string, newOwnerId: string): Promise<void> {
     await this.membershipMutation({ action: 'transfer', projectId, targetId: newOwnerId });
   }
-  private async membershipMutation(input: { action: 'claim' | 'email_invites' | 'accept' | 'decline' | 'invite' | 'cancel' | 'resend' | 'role' | 'remove' | 'leave' | 'transfer' | 'create' | 'delete_project' | 'settings' | 'transition'; fields?: { name: string; description: string }; projectId?: string; targetId?: string; recipient?: string; role?: ProjectRole; planTier?: ProjectPlanTier; automationRules?: { [ruleId: string]: boolean }; operationId?: string; expectedStatus?: ProjectStatus; toStatus?: ProjectStatus; reason?: string }): Promise<{ claimed?: unknown; invitations?: unknown }> {
+  private async membershipMutation(input: { action: 'claim' | 'email_invites' | 'accept' | 'decline' | 'invite' | 'cancel' | 'resend' | 'role' | 'remove' | 'leave' | 'transfer' | 'create' | 'delete_project' | 'settings' | 'transition'; fields?: { name: string; description: string }; projectId?: string; targetId?: string; recipient?: string; role?: ProjectRole; planTier?: ProjectPlanTier; automationRules?: { [ruleId: string]: boolean }; operationId?: string; expectedStatus?: ProjectStatus; toStatus?: ProjectStatus; reason?: string; outcome?: ProjectOutcomeInput }): Promise<{ claimed?: unknown; invitations?: unknown }> {
     pageAccessService.assertMutation('/projectManagement');
     const ownerId = this.requireUserId();
     await nativeSessionService.ensure(ownerId);
@@ -876,6 +909,7 @@ export class ProjectService {
         if (!timestamp) return [];
         return [{ id: this.readString(record.id) || timestamp, action: this.readString(record.action), detail: this.readString(record.detail), userId: this.readString(record.userId), timestamp }];
       }) : [],
+      schedule: data.schedule && typeof data.schedule === 'object' && !Array.isArray(data.schedule) ? projectScheduleRules.read(data.schedule) : null,
     };
   }
 
@@ -938,6 +972,8 @@ export class ProjectService {
       statusChangedAt: this.readDate(data.statusChangedAt).getTime() === 0 ? null : this.readDate(data.statusChangedAt),
       statusChangedBy: this.readString(data.statusChangedBy),
       communityLink: this.mapCommunityLink(data.communityLink),
+      modules: projectModuleRules.read(data.modules),
+      latestOutcomeId: this.readString(data.latestOutcomeId),
     };
   }
 

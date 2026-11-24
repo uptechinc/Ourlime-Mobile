@@ -6,18 +6,21 @@ import { projectLifecycleRules } from '@/lib/services/ProjectLifecycleRules';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import CustomModal from '@/components/ui/CustomModal';
 import { ProjectButton } from '@/components/projectManagement/ProjectUiParts';
+import ProjectModulesSection from '@/components/projectManagement/ProjectModulesSection';
 import type { ProjectRecord } from '@/lib/types/project';
 
 type ProjectSettingsExtrasProps = {
   project: ProjectRecord;
   onDelete: () => Promise<void>;
+  /** Called after a module is switched on or off, so the screen reloads the project. */
+  onModulesChanged: () => void;
 };
 
 /**
  * Under the project details form: where status and team changes live now, and the owner's danger zone. Team roles
  * moved to the project's Team tab; status changes to the ⋯ menu (a recorded server transition).
  */
-export default function ProjectSettingsExtras({ project, onDelete }: ProjectSettingsExtrasProps) {
+export default function ProjectSettingsExtras({ project, onDelete, onModulesChanged }: ProjectSettingsExtrasProps) {
   const { colors } = useAppTheme();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -43,6 +46,8 @@ export default function ProjectSettingsExtras({ project, onDelete }: ProjectSett
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Users size={16} color={colors.accentText} /><Text style={{ color: colors.mutedText, fontSize: 13, flex: 1 }}>Invite people and change roles on the project&apos;s Team tab.</Text></View>
         </View>
       ) : null}
+
+      <ProjectModulesSection projectId={project.id} modules={project.modules} canManage={canManage} onChanged={onModulesChanged} />
 
       {isOwner ? (
         <View style={[card, { borderColor: colors.destructiveText }]}>

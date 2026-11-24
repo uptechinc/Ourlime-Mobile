@@ -18,7 +18,9 @@ import {
 } from '@/components/projectManagement/projectFormat';
 import { projectService } from '@/lib/services/ProjectService';
 import { projectInsightRules } from '@/lib/services/ProjectInsightRules';
-import type { ActiveTaskTimer, Milestone, ProjectRecord, Status, Task, TaskFieldUpdate, TeamMember } from '@/lib/types/project';
+import { projectOperationsService } from '@/lib/services/ProjectOperationsService';
+import { projectScheduleRules } from '@/lib/services/ProjectScheduleRules';
+import type { ActiveTaskTimer, Milestone, ProjectRecord, ProjectTimeEntry, Status, Task, TaskFieldUpdate, TeamMember } from '@/lib/types/project';
 
 type TaskDetailSheetProps = {
   task: Task | null;
@@ -65,11 +67,24 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
   const [busy, setBusy] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ kind: 'task' | 'comment' | 'attachment'; id: string } | null>(null);
 
+  // Your own entries on this task from the private time log (nobody else's entries are readable).
+  const [ownTime, setOwnTime] = useState<ProjectTimeEntry[]>([]);
+  const [timeVersion, setTimeVersion] = useState(0);
+
   const taskId = task?.id ?? null;
   useEffect(() => {
     setTab('details'); setMenuOpen(false); setEditingTitle(false); setEditingDescription(false); setNewSubtask(''); setNewComment('');
-    setMentionIds([]); setEditingCommentId(null); setMinutesInput(''); setConfirm(null);
+    setMentionIds([]); setEditingCommentId(null); setMinutesInput(''); setConfirm(null); setOwnTime([]);
   }, [taskId]);
+
+  useEffect(() => {
+    if (tab !== 'time' || !taskId) return;
+    let active = true;
+    projectOperationsService.listOwnTime(project.id)
+      .then((entries) => { if (active) setOwnTime(entries.filter((entry) => entry.taskId === taskId && entry.status === 'active')); })
+      .catch((error: unknown) => console.error('[TaskDetailSheet.loadOwnTime] Error:', error));
+    return () => { active = false; };
+  }, [project.id, tab, taskId, timeVersion]);
 
   const memberById = useMemo(() => new Map(teamMembers.map((member) => [member.id, member])), [teamMembers]);
   const mentionQuery = useMemo(() => {
@@ -80,7 +95,9 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
   const mentionSuggestions = mentionQuery === null ? [] : teamMembers.filter((member) => member.membershipStatus !== 'pending' && member.name.toLowerCase().includes(mentionQuery)).slice(0, 6);
 
   if (!task) return null;
-  const totalMinutes = taskMinutes(task);
+  // Only your own time: older entries kept inside the task plus your entries in the time log.
+  const ownLegacy = task.timeEntries.filter((entry) => entry.userId === currentUserId);
+  const totalMinutes = taskMinutes({ ...task, timeEntries: ownLegacy }) + ownTime.reduce((sum, entry) => sum + entry.minutes, 0);
   const isAssignedToMe = task.assignee === currentUserId || (task.assignees ?? []).includes(currentUserId);
   const timerOnThisTask = activeTimer?.taskId === task.id && activeTimer.projectId === project.id;
   const tasksById = projectInsightRules.indexById(tasks);
@@ -89,6 +106,11 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
     return dependency ? [dependency] : [];
   });
   const waitingOn = projectInsightRules.blockers(task, tasksById);
+  // When the tasks it waits on are due, worked out from the loaded tasks (the server keeps the same in task.schedule).
+  const ownPlan = projectScheduleRules.derive(task, dependencies.map((dependency) => ({ id: dependency.id, status: dependency.status, dueDate: dependency.dueDate || null, available: dependency.archived !== true })));
+  const scheduleNote = ownPlan.earliestStart
+    ? { conflict: ownPlan.conflict, text: ownPlan.conflict ? `Its dates start before the tasks it waits on are due (the last is due ${formatCalendarDate(ownPlan.earliestStart)}). Move its dates or theirs.` : `It can start once the tasks it waits on are done; the last is due ${formatCalendarDate(ownPlan.earliestStart)}.` }
+    : dependencies.some((dependency) => dependency.status !== 'done' && !dependency.dueDate) ? { conflict: false, text: 'A task it waits on has no due date, so when this can start is unknown.' } : null;
   const assignedIds = [...new Set([task.assignee, ...(task.assignees ?? [])].filter(Boolean))];
   const acceptedMembers = teamMembers.filter((member) => member.isOwner || member.membershipStatus !== 'pending');
   const tabCount = (tab: DetailTab): number | null => (tab === 'subtasks' ? task.subTasks.length : tab === 'comments' ? task.comments.length : tab === 'files' ? task.attachments.length : null);
@@ -150,12 +172,13 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
   const handleLogMinutes = async (): Promise<void> => {
     const minutes = Number(minutesInput);
     if (!Number.isSafeInteger(minutes) || minutes <= 0 || minutes > 1440) { toast.error('Enter a whole number of minutes between 1 and 1440.'); return; }
-    if (await run('time', () => projectService.addTimeEntry(project.id, task.id, minutes), `Logged ${minutes} minutes.`)) setMinutesInput('');
+    if (await run('time', () => projectOperationsService.logTime(project.id, task.id, minutes, '', ''), `Logged ${minutes} minutes.`)) { setMinutesInput(''); setTimeVersion((value) => value + 1); }
   };
   const handleStartTimer = (): Promise<boolean> => run('timer', () => projectService.startTimer(project.id, task), 'Timer started');
   const handleStopTimer = (): Promise<boolean> => run('timer', async () => {
     const minutes = await projectService.stopTimer(project.id, task.id, activeTimer?.startedAt ?? null);
     toast.success(minutes > 0 ? `Logged ${formatDuration(minutes)}.` : 'Timer stopped (under a minute, nothing logged).');
+    setTimeVersion((value) => value + 1);
   });
   const handleUpload = async (): Promise<void> => {
     if (!canWrite) { toast.error(writeBlockedReason); return; }
@@ -318,6 +341,7 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
                         <Text style={{ color: colors.mutedText, fontSize: 12 }}>{STATUS_LABELS[dependency.status]}</Text>
                       </TouchableOpacity>
                     ))}
+                    {scheduleNote ? <Text style={{ color: scheduleNote.conflict ? colors.destructiveText : colors.mutedText, fontSize: 12, lineHeight: 17 }}>{scheduleNote.text}</Text> : null}
                   </View>
                 ) : null}
                 <View style={{ gap: 6 }}>
@@ -429,7 +453,7 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
             {tab === 'time' ? (
               <>
                 <View style={{ padding: 14, borderRadius: 14, backgroundColor: colors.control, gap: 10 }}>
-                  <Text style={sectionTitle}>Total Time Spent</Text>
+                  <Text style={sectionTitle}>Your time on this task</Text>
                   <Text style={{ color: colors.accent, fontSize: 26, fontWeight: '900' }}>{formatDuration(totalMinutes)}</Text>
                   {canWrite || timerOnThisTask ? (
                     timerOnThisTask ? (
@@ -451,13 +475,17 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
                     <TouchableOpacity disabled={busy !== null || !minutesInput.trim()} onPress={() => void handleLogMinutes()} style={[sendButton(!minutesInput.trim()), { width: 64 }]}><Text style={{ color: colors.onAccent, fontWeight: '800' }}>Log</Text></TouchableOpacity>
                   </View>
                 ) : null}
-                {task.timeEntries.length === 0 ? <Text style={{ color: colors.mutedText, fontSize: 13 }}>No time logged yet.</Text> : [...task.timeEntries].reverse().map((entry) => (
+                <Text style={{ color: colors.mutedText, fontSize: 12 }}>Only you see your entries. Correct or remove them in Time log from the project menu.</Text>
+                {ownTime.length === 0 && ownLegacy.length === 0 ? <Text style={{ color: colors.mutedText, fontSize: 13 }}>You have not logged time on this task.</Text> : [
+                  ...ownTime.map((entry) => ({ id: entry.id, note: entry.note, date: entry.date, minutes: entry.minutes })),
+                  ...ownLegacy.map((entry) => ({ id: `legacy_${entry.id}`, note: entry.description, date: entry.date, minutes: entry.duration })),
+                ].sort((first, second) => second.date.localeCompare(first.date)).map((entry) => (
                   <View key={entry.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, backgroundColor: colors.control }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{entry.description || 'Time entry'}</Text>
-                      <Text style={{ color: colors.mutedText, fontSize: 11 }}>{entry.date ? formatCalendarDate(entry.date) : ''} - {memberById.get(entry.userId)?.name ?? 'Member'}</Text>
+                      <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{entry.note || 'Time entry'}</Text>
+                      <Text style={{ color: colors.mutedText, fontSize: 11 }}>{entry.date ? formatCalendarDate(entry.date) : ''}</Text>
                     </View>
-                    <Text style={{ color: colors.accent, fontWeight: '900' }}>{formatDuration(entry.duration)}</Text>
+                    <Text style={{ color: colors.accent, fontWeight: '900' }}>{formatDuration(entry.minutes)}</Text>
                   </View>
                 ))}
               </>

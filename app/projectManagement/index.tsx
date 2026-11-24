@@ -13,6 +13,7 @@ import ProjectLifecycleSheet from '@/components/projectManagement/ProjectLifecyc
 import ProjectActionSheet from '@/components/projectManagement/ProjectActionSheet';
 import ProjectCard, { ROLE_LABELS } from '@/components/projectManagement/ProjectCard';
 import SessionRetryBanner from '@/components/projectManagement/SessionRetryBanner';
+import ProjectReviewAccessSection from '@/components/projectManagement/ProjectReviewAccessSection';
 import { ProjectManagementSkeleton } from '@/components/projectManagement/ProjectSkeletons';
 import {
   PROJECT_GUTTER, PROJECT_RIPPLE, ProjectButton, ProjectChip, ProjectEmptyState, ProjectScreenHeader, ProjectSheetRow,
@@ -24,7 +25,7 @@ import { useProjectPulses } from '@/lib/hooks/useProjectPulses';
 import { projectService } from '@/lib/services/ProjectService';
 import { projectInsightRules } from '@/lib/services/ProjectInsightRules';
 import { projectTemplateService } from '@/lib/services/ProjectTemplateService';
-import type { ProjectRecord, ProjectRole, ProjectStatus } from '@/lib/types/project';
+import type { ProjectOutcomeInput, ProjectRecord, ProjectRole, ProjectStatus } from '@/lib/types/project';
 
 type StatusFilter = 'open' | 'completed' | 'archived' | 'all';
 type RoleFilter = ProjectRole | 'all';
@@ -119,7 +120,10 @@ export default function ProjectManagementScreen() {
   const summary = acceptedProjects.length === 0 ? 'Plan work with others: tasks, milestones and the team in one place.'
     : [plural(openCount, 'open project', 'open projects'), mineTotal > 0 ? plural(mineTotal, 'task for you', 'tasks for you') : '', overdueTotal > 0 ? `${overdueTotal} overdue` : ''].filter(Boolean).join(' · ');
 
+  // Bumped on pull-to-refresh so the review invitations and access are read again.
+  const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
   const handleRefresh = async (): Promise<void> => {
+    setReviewRefreshKey((value) => value + 1);
     await refreshProjects();
     void reloadPulses();
   };
@@ -171,10 +175,10 @@ export default function ProjectManagementScreen() {
   };
 
   /** Status change from the card menu, checked against the status this list shows (the sheet shows any error). */
-  const handleTransition = async (project: ProjectRecord, toStatus: ProjectStatus, reason: string): Promise<void> => {
+  const handleTransition = async (project: ProjectRecord, toStatus: ProjectStatus, reason: string, outcome?: ProjectOutcomeInput): Promise<void> => {
     setWorkingProjectId(project.id);
     try {
-      await projectService.transitionProject(project.id, { expectedStatus: project.status, toStatus, reason });
+      await projectService.transitionProject(project.id, { expectedStatus: project.status, toStatus, reason, ...(outcome ? { outcome } : {}) });
       await refreshProjects();
     } finally {
       setWorkingProjectId(null);
@@ -240,6 +244,8 @@ export default function ProjectManagementScreen() {
           </View>
         ) : null}
         {loading ? <ProjectManagementSkeleton /> : null}
+
+        {showList && activeUserId ? <ProjectReviewAccessSection refreshKey={reviewRefreshKey} canRespond={canMutate && mutationReady} /> : null}
 
         {showList && invitations.length > 0 ? (
           <View style={styles.section}>
@@ -348,7 +354,7 @@ export default function ProjectManagementScreen() {
         status={statusTarget?.status ?? 'active'}
         initialTarget={statusTarget?.status === 'archived' ? 'active' : null}
         onClose={() => setStatusTarget(null)}
-        onConfirm={async (toStatus, reason) => { if (statusTarget) await handleTransition(statusTarget, toStatus, reason); }}
+        onConfirm={async (toStatus, reason, outcome) => { if (statusTarget) await handleTransition(statusTarget, toStatus, reason, outcome); }}
         onStale={() => { setStatusTarget(null); toast.error('This project changed since the list loaded. The list was refreshed.'); void refreshProjects(); }}
       />
       <CustomModal

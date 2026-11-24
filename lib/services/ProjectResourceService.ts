@@ -1,6 +1,7 @@
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { LocalCacheService } from './LocalCacheService';
 import { ProjectService } from './ProjectService';
+import { projectModuleRules } from './ProjectModuleRules';
 import { ResourceErrorService } from './ResourceErrorService';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import type { ProjectRecord } from '@/lib/types/project';
@@ -106,7 +107,12 @@ export class ProjectResourceService {
   private fromCached(project: CachedProjectRecord): ProjectRecord {
     const updatedAt = new Date(project.updatedAt);
     // Records saved before plan tiers existed have no planTier / automationRules.
-    return { ...project, planTier: project.planTier === 'premium' ? 'premium' : 'free', automationRules: project.automationRules ?? {}, updatedAt: Number.isNaN(updatedAt.getTime()) ? new Date(0) : updatedAt };
+    // Records saved before Phase 3 have no modules / latestOutcomeId.
+    return {
+      ...project, planTier: project.planTier === 'premium' ? 'premium' : 'free', automationRules: project.automationRules ?? {},
+      modules: projectModuleRules.read(project.modules), latestOutcomeId: typeof project.latestOutcomeId === 'string' ? project.latestOutcomeId : '',
+      updatedAt: Number.isNaN(updatedAt.getTime()) ? new Date(0) : updatedAt,
+    };
   }
 
   private withState(current: ResourceState<ProjectRecord[]> | null | undefined, patch: Partial<ResourceState<ProjectRecord[]>>): ResourceState<ProjectRecord[]> {

@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { mobileExportService } from '@/lib/services/MobileExportService';
-import type { Milestone, ProjectRecord, Task, TeamMember } from '@/lib/types/project';
+import type { Milestone, ProjectRecord, ProjectReport, Task, TeamMember } from '@/lib/types/project';
 
 const escapeHtml = (value: string): string => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const fileSafe = (value: string): string => value.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
@@ -63,6 +63,41 @@ export class ProjectExportService {
       { header: 'Date', key: 'date' }, { header: 'Team Member', key: 'userName' }, { header: 'Task Title', key: 'taskTitle' },
       { header: 'Duration (Minutes)', key: 'duration' }, { header: 'Hours', key: 'hours' }, { header: 'Notes', key: 'description' },
     ], entries.map((entry) => ({ ...entry, duration: String(entry.duration), hours: (entry.duration / 60).toFixed(2) })));
+  }
+
+  /**
+   * The server's project report (project_report) as one CSV: a row per figure and per listed record. Every number comes
+   * from the report; nothing is totalled here. Cells that a spreadsheet would run as a formula are prefixed with '.
+   */
+  public async exportReportToCsv(report: ProjectReport, nameOf: (uid: string) => string): Promise<void> {
+    const safe = (value: string | number): string => { const text = String(value); return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text; };
+    const rows: { section: string; item: string; detail: string; value: string }[] = [];
+    const add = (section: string, item: string, detail: string, value: string | number): void => { rows.push({ section: safe(section), item: safe(item), detail: safe(detail), value: safe(value) }); };
+    add('Project', report.project.name, `Status ${report.project.status}`, `${report.project.progress}%`);
+    add('Tasks', 'Total', '', report.tasks.total);
+    add('Tasks', 'To do / In progress / Done', '', `${report.tasks.todo} / ${report.tasks.inProgress} / ${report.tasks.done}`);
+    add('Tasks', 'Overdue', '', report.tasks.overdue);
+    add('Tasks', 'Waiting on other tasks', '', report.tasks.waiting);
+    add('Tasks', 'Date conflicts', '', report.tasks.conflicts);
+    add('Tasks', 'Estimated hours', '', report.tasks.estimateHours);
+    for (const task of report.tasks.rows) add('Task', task.title, [task.status, task.dueDate ? `due ${task.dueDate}` : '', task.overdue ? 'overdue' : '', task.waiting ? 'waiting' : ''].filter(Boolean).join(', '), task.estimateHours);
+    for (const milestone of report.milestones) add('Milestone', milestone.name, milestone.dueDate ? `due ${milestone.dueDate}` : 'no date', `${milestone.doneCount}/${milestone.taskCount} tasks done${milestone.completed ? ', complete' : ''}`);
+    if (report.deliverables) for (const deliverable of report.deliverables.rows) add('Deliverable', deliverable.title, `owner ${nameOf(deliverable.ownerId)}${deliverable.dueDate ? `, due ${deliverable.dueDate}` : ''}`, `${deliverable.status} (version ${deliverable.revision})`);
+    if (report.registers) {
+      for (const risk of report.registers.risks.rows) add('Risk', risk.title, `likelihood ${risk.likelihood}, impact ${risk.impact}`, risk.status);
+      for (const issue of report.registers.issues.rows) add('Issue', issue.title, `severity ${issue.severity}`, issue.status);
+      for (const [status, count] of Object.entries(report.registers.changeRequests.counts)) add('Change requests', status, '', count);
+      add('Decisions', 'Recorded', '', report.registers.decisions);
+    }
+    if (report.time) {
+      add('Time', report.time.scope === 'team' ? 'Team total (minutes)' : 'Your total (minutes)', '', report.time.totalMinutes);
+      for (const member of report.time.byMember) add('Time by person', nameOf(member.userId), 'minutes', member.minutes);
+    }
+    if (report.outcome) add('Outcome', 'Summary', `${report.outcome.acceptedCount} accepted deliverables`, report.outcome.summary);
+    if (report.truncated.length) add('Note', 'Report limited', `Only the first records of: ${report.truncated.join(', ')}`, '');
+    await mobileExportService.exportToCsv(`${fileSafe(report.project.name)}_report_${today()}`, [
+      { header: 'Section', key: 'section' }, { header: 'Item', key: 'item' }, { header: 'Detail', key: 'detail' }, { header: 'Value', key: 'value' },
+    ], rows);
   }
 
   /** Website exportProjectSummaryToPdf: the same summary page, shared as an HTML file to print or save as PDF. */

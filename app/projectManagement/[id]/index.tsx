@@ -5,7 +5,7 @@ import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  Archive, Clock, Download, FileText, FolderKanban, FolderOpen, Layers, LogOut, MoreHorizontal, Pencil, Sparkles, Timer, Users,
+  Archive, BarChart3, Clock, Download, Eye, FileText, FolderKanban, FolderOpen, Layers, LogOut, MoreHorizontal, Package, Pencil, Scale, Sparkles, Timer, Users,
 } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
@@ -33,6 +33,15 @@ import ProjectOverviewPanel, { type ProjectSectionId } from '@/components/projec
 import ProjectTasksPanel, { type TaskView } from '@/components/projectManagement/ProjectTasksPanel';
 import ProjectTeamPanel from '@/components/projectManagement/ProjectTeamPanel';
 import ProjectCommunityLinkCard from '@/components/projectManagement/ProjectCommunityLinkCard';
+import ProjectDeliverablesPanel from '@/components/projectManagement/ProjectDeliverablesPanel';
+import ProjectRegistersPanel from '@/components/projectManagement/ProjectRegistersPanel';
+import ProjectClientsPanel from '@/components/projectManagement/ProjectClientsPanel';
+import ProjectReportPanel from '@/components/projectManagement/ProjectReportPanel';
+import ProjectOutcomeCard from '@/components/projectManagement/ProjectOutcomeCard';
+import { projectModuleRules } from '@/lib/services/ProjectModuleRules';
+import { projectOperationsService } from '@/lib/services/ProjectOperationsService';
+import { settleAll } from '@/lib/utils/settleAll';
+import { projectReviewHref } from '@/components/projectManagement/projectReviewRoute';
 import { ROLE_LABELS } from '@/components/projectManagement/ProjectCard';
 import {
   PROJECT_GUTTER, PROJECT_RIPPLE, ProjectAvatarStack, ProjectButton, ProjectEmptyState, ProjectIconButton, ProjectPill, ProjectProgressBar,
@@ -48,16 +57,19 @@ import { projectExportService } from '@/lib/services/ProjectExportService';
 import { projectLifecycleRules } from '@/lib/services/ProjectLifecycleRules';
 import { DEFAULT_TASK_FILTERS, type TaskFilters, type TaskQuickFilter } from '@/lib/services/ProjectInsightRules';
 import type {
-  ActiveTaskTimer, Milestone, ProjectEmailInvitation, ProjectLoadError, ProjectRecord, ProjectRole, ProjectStatus, ProjectTeamMember, Status, Task, TaskTemplate, TeamMember,
+  ActiveTaskTimer, Milestone, ProjectDeliverable, ProjectEmailInvitation, ProjectLoadError, ProjectOutcomeInput, ProjectRecord, ProjectRole, ProjectStakeholder, ProjectStatus,
+  ProjectTeamMember, Status, Task, TaskTemplate, TeamMember,
 } from '@/lib/types/project';
 
-type ModuleView = 'files' | 'timeline' | 'workload' | 'timesheets';
+type ModuleView = 'files' | 'timeline' | 'workload' | 'timesheets' | 'deliverables' | 'registers' | 'clients' | 'report';
 type CreateTaskTarget = { status?: Status; milestoneId?: string };
 
 const SECTIONS: { value: ProjectSectionId; label: string }[] = [
   { value: 'overview', label: 'Overview' }, { value: 'tasks', label: 'Tasks' }, { value: 'milestones', label: 'Milestones' }, { value: 'team', label: 'Team' },
 ];
-const MODULE_TITLES: { [module in ModuleView]: string } = { files: 'Files', timeline: 'Timeline', workload: 'Workload', timesheets: 'Timesheets' };
+const MODULE_TITLES: { [module in ModuleView]: string } = {
+  files: 'Files', timeline: 'Timeline', workload: 'Workload', timesheets: 'Time log', deliverables: 'Deliverables', registers: 'Risks and decisions', clients: 'Clients and reviewers', report: 'Project report',
+};
 
 // Same messages as the website's project page error states.
 const LOAD_ERRORS: { [error in ProjectLoadError]: { title: string; message: string; retry: boolean } } = {
@@ -104,6 +116,14 @@ export default function ProjectBoardScreen() {
 
   // Email invitations (pending and expired) for owners and admins, loaded with the Team section.
   const [emailInvitations, setEmailInvitations] = useState<ProjectEmailInvitation[]>([]);
+
+  // Phase 3 optional modules: deliverables (also shown on the timeline) and clients/reviewers, read once when switched on.
+  const modules = project?.modules ?? projectModuleRules.read(undefined);
+  const [deliverables, setDeliverables] = useState<ProjectDeliverable[]>([]);
+  const [deliverablesLoading, setDeliverablesLoading] = useState(false);
+  const [deliverablesError, setDeliverablesError] = useState('');
+  const [stakeholders, setStakeholders] = useState<ProjectStakeholder[]>([]);
+  const [stakeholderNames, setStakeholderNames] = useState<{ [uid: string]: string }>({});
 
   // Sections, views and sheets
   const [section, setSection] = useState<ProjectSectionId>('overview');
@@ -204,6 +224,46 @@ export default function ProjectBoardScreen() {
     if (section === 'team') void loadEmailInvitations();
   }, [loadEmailInvitations, section]);
 
+  const memberAccepted = project?.membershipStatus === 'accepted';
+  const loadDeliverables = useCallback(async (): Promise<void> => {
+    if (!projectId || !sessionReady || !memberAccepted || !modules.deliverables) { setDeliverables([]); return; }
+    setDeliverablesLoading(true);
+    setDeliverablesError('');
+    try {
+      setDeliverables(await projectOperationsService.listDeliverables(projectId));
+    } catch (error: unknown) {
+      console.error('[ProjectBoardScreen.loadDeliverables] Error:', error);
+      setDeliverablesError('Deliverables could not be loaded. Try again.');
+    } finally {
+      setDeliverablesLoading(false);
+    }
+  }, [memberAccepted, modules.deliverables, projectId, sessionReady]);
+
+  const loadStakeholders = useCallback(async (): Promise<void> => {
+    if (!projectId || !sessionReady || !memberAccepted || !modules.stakeholders) { setStakeholders([]); return; }
+    try {
+      const list = await projectOperationsService.listStakeholders(projectId);
+      setStakeholders(list);
+      const names = await settleAll(list.map((stakeholder) => projectOperationsService.displayName(stakeholder.uid)));
+      setStakeholderNames(Object.fromEntries(list.map((stakeholder, index) => [stakeholder.uid, names[index].status === 'fulfilled' ? names[index].value : 'Ourlime member'])));
+    } catch (error: unknown) {
+      console.error('[ProjectBoardScreen.loadStakeholders] Error:', error);
+    }
+  }, [memberAccepted, modules.stakeholders, projectId, sessionReady]);
+
+  useEffect(() => { void loadDeliverables(); }, [loadDeliverables]);
+  useEffect(() => { void loadStakeholders(); }, [loadStakeholders]);
+
+  // Someone who is a client or reviewer (not a member) opening the project link goes to the review page instead.
+  useEffect(() => {
+    if (project || (loadError !== 'permission-denied' && loadError !== 'not-found') || !projectId) return;
+    let active = true;
+    void projectOperationsService.reviewAccess(projectId).then((record) => {
+      if (active && record) router.replace(projectReviewHref(projectId));
+    });
+    return () => { active = false; };
+  }, [loadError, project, projectId, router]);
+
   // A project created from the list arrives with ?invite=1: open the friend picker once (website "Initial Members").
   useEffect(() => {
     if (invite !== '1' || inviteOpenedRef.current || !project || !canInvite) return;
@@ -260,9 +320,9 @@ export default function ProjectBoardScreen() {
   };
 
   /** Pause, resume, complete, archive, restore or reopen, checked against the status this screen shows. */
-  const handleTransition = async (toStatus: ProjectStatus, reason: string): Promise<void> => {
+  const handleTransition = async (toStatus: ProjectStatus, reason: string, outcome?: ProjectOutcomeInput): Promise<void> => {
     if (!project) return;
-    await projectService.transitionProject(projectId, { expectedStatus: project.status, toStatus, reason });
+    await projectService.transitionProject(projectId, { expectedStatus: project.status, toStatus, reason, ...(outcome ? { outcome } : {}) });
     setProject((current) => current ? { ...current, status: toStatus, statusChangedAt: new Date(), statusChangedBy: currentUserId } : current);
     void loadProject();
   };
@@ -460,7 +520,14 @@ export default function ProjectBoardScreen() {
                   refreshKey={`${project.status}|${project.statusChangedAt?.getTime() ?? 0}|${project.communityLink?.status ?? ''}|${teamMembers.map((member) => `${member.id}:${member.role}:${member.membershipStatus ?? ''}`).join(',')}`}
                 />
               )}
-              community={<ProjectCommunityLinkCard project={project} canManage={canManageSettings} />}
+              community={(
+                <>
+                  {project.latestOutcomeId && (project.status === 'completed' || project.status === 'archived') ? (
+                    <ProjectOutcomeCard projectId={projectId} outcomeId={project.latestOutcomeId} nameOf={(uid) => (uid === currentUserId ? 'you' : teamMembers.find((member) => member.id === uid)?.name ?? 'a former member')} />
+                  ) : null}
+                  <ProjectCommunityLinkCard project={project} canManage={canManageSettings} />
+                </>
+              )}
             />
           ) : null}
           {section === 'tasks' ? (
@@ -525,20 +592,55 @@ export default function ProjectBoardScreen() {
         {canManageSettings ? <ProjectSheetRow label="Project status…" detail="Pause, complete, archive or restore" icon={<Archive size={18} color={colors.icon} />} onPress={closeMoreThen(() => setLifecycleSheet({ initialTarget: null }))} /> : null}
         <ProjectSheetRow label={canManageSettings ? 'Edit details' : 'Project details'} detail="Name, purpose, colour, target date and tags" icon={<Pencil size={18} color={colors.icon} />} onPress={closeMoreThen(() => setSettingsOpen(true))} />
         <ProjectSheetRow label="Files" detail={fileCount > 0 ? `${plural(fileCount, 'file', 'files')} attached to tasks` : 'Files attached to tasks'} icon={<FileText size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('files'))} />
-        <ProjectSheetRow label="Timeline" detail="Tasks and milestones across four weeks" icon={<Layers size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('timeline'))} />
+        {modules.deliverables ? <ProjectSheetRow label="Deliverables" detail={deliverables.length > 0 ? `${plural(deliverables.length, 'deliverable', 'deliverables')}, with review and sign-off` : 'What each milestone hands over, with sign-off'} icon={<Package size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('deliverables'))} /> : null}
+        {modules.registers ? <ProjectSheetRow label="Risks and decisions" detail="Risks, issues, the decision log and change requests" icon={<Scale size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('registers'))} /> : null}
+        {modules.stakeholders ? <ProjectSheetRow label="Clients and reviewers" detail={stakeholders.length > 0 ? `${plural(stakeholders.length, 'person', 'people')} outside the team` : 'Share chosen work with people outside the team'} icon={<Eye size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('clients'))} /> : null}
+        {modules.timeline ? <ProjectSheetRow label="Timeline" detail="Dates, what tasks wait on, and the critical chain" icon={<Layers size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('timeline'))} /> : null}
         <ProjectSheetRow label="Workload" detail="How much open work each person has" icon={<Users size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('workload'))} />
-        <ProjectSheetRow label="Timesheets" detail={isPremium ? 'Time logged on tasks, with CSV export' : 'Time logged on tasks'} icon={<Clock size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('timesheets'))} />
+        {modules.time ? <ProjectSheetRow label="Time log" detail="Your time, private to you; managers see totals" icon={<Clock size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('timesheets'))} /> : null}
+        <ProjectSheetRow label="Project report" detail="Progress, milestones, risks and time, with CSV" icon={<BarChart3 size={18} color={colors.icon} />} onPress={closeMoreThen(() => setModuleView('report'))} />
         <ProjectSheetRow label="Export tasks (CSV)" detail="A spreadsheet of every task" icon={exporting === 'csv' ? <ActivityIndicator size="small" color={colors.accent} /> : <Download size={18} color={colors.icon} />} onPress={closeMoreThen(() => void handleExport('csv'))} />
         <ProjectSheetRow label="Export summary" detail="A readable report of the project" icon={exporting === 'summary' ? <ActivityIndicator size="small" color={colors.accent} /> : <FileText size={18} color={colors.icon} />} onPress={closeMoreThen(() => void handleExport('summary'))} />
-        {canManageSettings && !isPremium ? <ProjectSheetRow label="Premium plan" detail="Adds timesheet export" icon={<Sparkles size={18} color={colors.icon} />} onPress={closeMoreThen(() => setUpgradeOpen(true))} /> : null}
+        {canManageSettings && !isPremium ? <ProjectSheetRow label="Premium plan" detail="Plan options for this project" icon={<Sparkles size={18} color={colors.icon} />} onPress={closeMoreThen(() => setUpgradeOpen(true))} /> : null}
         {!project.isOwner ? <ProjectSheetRow label="Leave project" tone="danger" icon={<LogOut size={18} color={colors.destructive} />} onPress={closeMoreThen(() => setLeaveConfirmOpen(true))} /> : null}
       </ProjectActionSheet>
 
       <ProjectModuleSheet visible={moduleView !== null} title={moduleView ? MODULE_TITLES[moduleView] : ''} subtitle={project.name} onClose={() => setModuleView(null)}>
         {moduleView === 'files' ? <ProjectFilesPanel project={project} tasks={tasks} teamMembers={teamMembers} onOpenUpgrade={() => setUpgradeOpen(true)} onSelectTask={handleOpenTask} /> : null}
-        {moduleView === 'timeline' ? <ProjectTimelinePanel tasks={tasks} milestones={milestones} onSelectTask={handleOpenTask} /> : null}
+        {moduleView === 'timeline' ? <ProjectTimelinePanel tasks={tasks} milestones={milestones} deliverables={modules.deliverables ? deliverables : []} onSelectTask={handleOpenTask} /> : null}
         {moduleView === 'workload' ? <ProjectWorkloadPanel tasks={tasks} teamMembers={acceptedMembers} onSelectTask={handleOpenTask} /> : null}
-        {moduleView === 'timesheets' ? <ProjectTimesheetsPanel project={project} tasks={tasks} teamMembers={teamMembers} onOpenUpgrade={() => { setModuleView(null); setUpgradeOpen(true); }} /> : null}
+        {moduleView === 'timesheets' ? <ProjectTimesheetsPanel project={project} tasks={tasks} teamMembers={teamMembers} currentUserId={currentUserId} canManage={canManageSettings} canLog={canWrite} /> : null}
+        {moduleView === 'deliverables' ? (
+          <ProjectDeliverablesPanel
+            projectId={projectId}
+            deliverables={deliverables}
+            milestones={milestones}
+            members={acceptedMembers}
+            stakeholders={stakeholders}
+            stakeholderNames={stakeholderNames}
+            currentUserId={currentUserId}
+            canWrite={canWrite}
+            canManage={canWrite && canManageSettings}
+            stakeholdersEnabled={modules.stakeholders}
+            isLoading={deliverablesLoading}
+            loadError={deliverablesError}
+            onReload={loadDeliverables}
+          />
+        ) : null}
+        {moduleView === 'registers' ? <ProjectRegistersPanel projectId={projectId} members={acceptedMembers} currentUserId={currentUserId} canWrite={canWrite} canManage={canWrite && canManageSettings} /> : null}
+        {moduleView === 'clients' ? (
+          <ProjectClientsPanel
+            projectId={projectId}
+            milestones={milestones}
+            stakeholders={stakeholders}
+            stakeholderNames={stakeholderNames}
+            canManage={canWrite && canManageSettings}
+            canWrite={canWrite}
+            onReload={loadStakeholders}
+            onOpenReview={() => { setModuleView(null); router.push(projectReviewHref(projectId)); }}
+          />
+        ) : null}
+        {moduleView === 'report' ? <ProjectReportPanel projectId={projectId} nameOf={(uid) => (uid === currentUserId ? 'You' : teamMembers.find((member) => member.id === uid)?.name ?? stakeholderNames[uid] ?? 'A former member')} /> : null}
       </ProjectModuleSheet>
 
       {currentUserId ? (
@@ -611,7 +713,7 @@ export default function ProjectBoardScreen() {
         onClose={() => setSettingsOpen(false)}
         onSubmit={handleSaveSettings}
         footer={(
-          <ProjectSettingsExtras project={project} onDelete={handleDeleteProject} />
+          <ProjectSettingsExtras project={project} onDelete={handleDeleteProject} onModulesChanged={() => void loadProject()} />
         )}
       />
 
@@ -623,6 +725,7 @@ export default function ProjectBoardScreen() {
         onClose={() => setLifecycleSheet(null)}
         onConfirm={handleTransition}
         onStale={() => void loadProject()}
+        acceptedDeliverableCount={modules.deliverables ? deliverables.filter((deliverable) => deliverable.status === 'accepted').length : null}
       />
 
       <ProjectUpgradeSheet

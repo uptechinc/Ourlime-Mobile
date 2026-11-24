@@ -6,7 +6,7 @@ import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { projectService } from '@/lib/services/ProjectService';
 import { PROJECT_TRANSITION_REASON_LIMIT, projectLifecycleRules, type ProjectTransitionKind } from '@/lib/services/ProjectLifecycleRules';
-import type { ProjectStatus } from '@/lib/types/project';
+import type { ProjectOutcomeInput, ProjectStatus } from '@/lib/types/project';
 
 type ProjectLifecycleSheetProps = {
   visible: boolean;
@@ -15,8 +15,10 @@ type ProjectLifecycleSheetProps = {
   /** Open straight on the confirmation for this status (the banner's Restore); null starts on the list of choices. */
   initialTarget?: ProjectStatus | null;
   onClose: () => void;
-  /** Runs the transition; throw to keep the sheet open with the error shown. */
-  onConfirm: (toStatus: ProjectStatus, reason: string) => Promise<void>;
+  /** Runs the transition (with the outcome report when completing); throw to keep the sheet open with the error shown. */
+  onConfirm: (toStatus: ProjectStatus, reason: string, outcome?: ProjectOutcomeInput) => Promise<void>;
+  /** Accepted deliverables the outcome will record (null when the deliverables module is off). */
+  acceptedDeliverableCount?: number | null;
   /** Called when the server says the project changed meanwhile, so the screen can reload it. */
   onStale?: () => void;
 };
@@ -25,13 +27,21 @@ const KIND_ICON: { [kind in ProjectTransitionKind]: typeof Archive } = {
   pause: PauseCircle, resume: PlayCircle, complete: CheckCircle2, archive: Archive, restore: ArchiveRestore, reopen: RotateCcw,
 };
 const RIPPLE = { color: 'rgba(15,23,42,0.12)' };
+const EMPTY_OUTCOME: ProjectOutcomeInput = { summary: '', beneficiaries: '', results: '', lessons: '' };
+const OUTCOME_FIELDS: { key: keyof ProjectOutcomeInput; label: string; limit: number; placeholder: string }[] = [
+  { key: 'summary', label: 'What the project achieved', limit: 2000, placeholder: 'For example: the garden opened with 24 beds' },
+  { key: 'beneficiaries', label: 'Who benefited (optional)', limit: 1000, placeholder: 'For example: 40 families on the estate' },
+  { key: 'results', label: 'Results (optional)', limit: 2000, placeholder: 'What changed, with numbers where you have them' },
+  { key: 'lessons', label: 'Lessons learned (optional)', limit: 2000, placeholder: 'What you would do differently next time' },
+];
 
 /** Project status actions (pause, complete, archive, restore, reopen) and the confirmation with its reason field. */
-export default function ProjectLifecycleSheet({ visible, projectName, status, initialTarget = null, onClose, onConfirm, onStale }: ProjectLifecycleSheetProps) {
+export default function ProjectLifecycleSheet({ visible, projectName, status, initialTarget = null, onClose, onConfirm, onStale, acceptedDeliverableCount = null }: ProjectLifecycleSheetProps) {
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [target, setTarget] = useState<ProjectStatus | null>(initialTarget);
   const [reason, setReason] = useState('');
+  const [outcome, setOutcome] = useState<ProjectOutcomeInput>(EMPTY_OUTCOME);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -40,6 +50,7 @@ export default function ProjectLifecycleSheet({ visible, projectName, status, in
     if (!visible) return;
     setTarget(initialTarget);
     setReason('');
+    setOutcome(EMPTY_OUTCOME);
     setError('');
     setSaving(false);
   }, [initialTarget, visible]);
@@ -50,11 +61,13 @@ export default function ProjectLifecycleSheet({ visible, projectName, status, in
     if (!target || savingRef.current) return;
     const trimmed = reason.trim();
     if (projectLifecycleRules.reasonRequired(status, target) && !trimmed) { setError('Add a short reason so the team knows why.'); return; }
+    const completing = target === 'completed';
+    if (completing && !outcome.summary.trim()) { setError('Add a short outcome summary: what the project achieved.'); return; }
     savingRef.current = true;
     setSaving(true);
     setError('');
     try {
-      await onConfirm(target, trimmed);
+      await onConfirm(target, trimmed, completing ? outcome : undefined);
       toast.success(projectLifecycleRules.copy(status, target).doneMessage);
       onClose();
     } catch (failure: unknown) {
@@ -128,6 +141,30 @@ export default function ProjectLifecycleSheet({ visible, projectName, status, in
                   </View>
                 </View>
                 <Text style={styles.body}>{copy.description}</Text>
+                {target === 'completed' ? (
+                  <View style={{ gap: 10 }}>
+                    <Text style={styles.label}>OUTCOME REPORT</Text>
+                    <Text style={styles.hint}>
+                      {acceptedDeliverableCount === null ? 'A short record of what the project achieved.' : `${acceptedDeliverableCount} accepted ${acceptedDeliverableCount === 1 ? 'deliverable is' : 'deliverables are'} recorded with it.`} Visible to project members only. Nothing is published.
+                    </Text>
+                    {OUTCOME_FIELDS.map((field) => (
+                      <View key={field.key} style={{ gap: 4 }}>
+                        <Text style={styles.label}>{field.label}{field.key === 'summary' ? ' *' : ''}</Text>
+                        <TextInput
+                          value={outcome[field.key]}
+                          onChangeText={(value) => { setOutcome((current) => ({ ...current, [field.key]: value.slice(0, field.limit) })); if (error) setError(''); }}
+                          editable={!saving}
+                          multiline
+                          maxLength={field.limit}
+                          placeholder={field.placeholder}
+                          placeholderTextColor={colors.mutedText}
+                          accessibilityLabel={field.label}
+                          style={[styles.input, { minHeight: 72 }]}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
                 <View style={{ gap: 6 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                     <Text style={styles.label}>{copy.reasonLabel}{required ? ' *' : ''}</Text>

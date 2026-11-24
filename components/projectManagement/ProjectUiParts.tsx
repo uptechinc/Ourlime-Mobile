@@ -106,7 +106,9 @@ export function ProjectSegmented<T extends string>({ options, value, onChange, a
       const isSelected = option.value === value;
       const label = option.count === undefined ? option.label : `${option.label} ${option.count}`;
       return <Pressable key={option.value} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: isSelected }} onPress={() => onChange(option.value)} android_ripple={PROJECT_RIPPLE} style={[styles.segment, isSelected && styles.segmentSelected]}>
-        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[styles.segmentText, isSelected && styles.segmentTextSelected]}>{label}</Text>
+        {/* Android can leave a one-line label blank after its weight changes from bold back to normal, so the label is
+            remounted when the selection changes. No adjustsFontSizeToFit: it shrinks text unevenly in flex segments. */}
+        <Text key={isSelected ? 'selected' : 'idle'} numberOfLines={1} ellipsizeMode="tail" style={[styles.segmentText, isSelected && styles.segmentTextSelected]}>{label}</Text>
       </Pressable>;
     })}
   </View>;

@@ -294,6 +294,26 @@ export class NotificationDestinationRegistry {
 				data
 			);
 		}
+		// eProjects Phase 3: a client or reviewer's notice opens the review page (they are not project members, so the
+		// notice carries no projectId); a notice to members about a deliverable, change request or question opens the project.
+		if (type === 'project_review') {
+			const reviewProjectId = this.pathSegment(data.path || data.actionUrl, '/projectManagement/');
+			// A plain path (the generated typed routes learn about the review screen when Metro next starts).
+			return this.navigate(
+				reviewProjectId ? (`/projectManagement/${encodeURIComponent(reviewProjectId)}/review` as Href) : null,
+				fallbackRoute,
+				data
+			);
+		}
+		if (type === 'project_update') {
+			return this.navigate(
+				data.projectId
+					? { pathname: '/projectManagement', params: { projectId: data.projectId } }
+					: '/projectManagement',
+				fallbackRoute,
+				data
+			);
+		}
 		if (type === 'beta_management') {
 			const path = data.path || data.actionUrl || '';
 			const isAdministratorAlert =
