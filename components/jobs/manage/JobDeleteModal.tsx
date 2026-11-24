@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Lock, Trash2 } from 'lucide-react-native';
+import { CheckCircle2, Lock, Trash2 } from 'lucide-react-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
@@ -48,7 +48,7 @@ export default function JobDeleteModal({ visible, mode, jobTitle, applicationCou
               <View style={[styles.iconContainer, { backgroundColor: isDeleteMode ? colors.destructiveSurface : colors.warningSurface }]}>
                 {isDeleteMode ? <Trash2 size={28} color={colors.destructiveText} /> : <Lock size={28} color={colors.warningText} />}
               </View>
-              <Text style={styles.title}>{isDeleteMode ? 'Delete job' : 'Close job first'}</Text>
+              <Text accessibilityRole="header" style={styles.title}>{isDeleteMode ? 'Delete this job?' : 'Close this job first'}</Text>
               {isDeleteMode ? (
                 <Text style={styles.message}>
                   This will permanently delete <Text style={styles.strong}>“{jobTitle}”</Text>, its screening questions and its uploaded files.
@@ -74,8 +74,15 @@ export default function JobDeleteModal({ visible, mode, jobTitle, applicationCou
                     autoFocus
                     editable={!isProcessing}
                     accessibilityLabel="Job title confirmation"
-                    style={styles.input}
+                    accessibilityHint="Type the job title exactly to enable Delete"
+                    style={[styles.input, titleMatches && styles.inputMatched]}
                   />
+                  <View style={styles.matchRow} accessibilityLiveRegion="polite">
+                    {titleMatches ? <CheckCircle2 size={14} color={colors.successText} /> : null}
+                    <Text style={[styles.matchText, titleMatches && styles.matchTextOk]}>
+                      {titleMatches ? 'Title matches. You can delete now.' : 'Type it exactly as shown, including capitals.'}
+                    </Text>
+                  </View>
                 </View>
               ) : null}
               <View style={styles.buttons}>
@@ -90,11 +97,11 @@ export default function JobDeleteModal({ visible, mode, jobTitle, applicationCou
                     style={[styles.confirmButton, styles.deleteButton, (!titleMatches || isProcessing) && styles.disabled]}
                     accessibilityLabel="Permanently delete job"
                   >
-                    {isProcessing ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.confirmText}>Delete</Text>}
+                    {isProcessing ? <ActivityIndicator size="small" color="#ffffff" /> : <Text numberOfLines={1} style={styles.confirmText}>Delete forever</Text>}
                   </AnimatedActionButton>
                 ) : (
                   <AnimatedActionButton onPress={onCloseJob} disabled={isProcessing} style={[styles.confirmButton, styles.closeButton]} accessibilityLabel="Close job">
-                    {isProcessing ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.confirmText}>Close job</Text>}
+                    {isProcessing ? <ActivityIndicator size="small" color="#ffffff" /> : <Text numberOfLines={1} style={styles.confirmText}>Close job</Text>}
                   </AnimatedActionButton>
                 )}
               </View>
@@ -119,13 +126,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   danger: { color: colors.destructiveText, fontWeight: '800' },
   field: { width: '100%', marginTop: 16, gap: 6 },
   label: { color: colors.secondaryText, fontSize: 12, fontWeight: '800' },
-  input: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.input, color: colors.text, paddingHorizontal: 12, paddingVertical: 10 },
+  input: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.input, color: colors.text, fontSize: 15, paddingHorizontal: 12, paddingVertical: 10 },
+  inputMatched: { borderColor: colors.accent },
+  matchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  matchText: { flex: 1, color: colors.mutedText, fontSize: 12, lineHeight: 17 },
+  matchTextOk: { color: colors.successText, fontWeight: '700' },
   buttons: { flexDirection: 'row', gap: 10, width: '100%', marginTop: 20 },
-  cancelButton: { flex: 1, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
-  cancelText: { color: colors.secondaryText, fontWeight: '800' },
-  confirmButton: { flex: 1, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  deleteButton: { backgroundColor: '#ef4444' },
-  closeButton: { backgroundColor: '#f59e0b' },
-  confirmText: { color: '#ffffff', fontWeight: '900' },
+  cancelButton: { flex: 1, minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control, paddingHorizontal: 8 },
+  cancelText: { color: colors.secondaryText, fontSize: 15, fontWeight: '800' },
+  confirmButton: { flex: 1, minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  // White text on #ef4444 / #f59e0b was 3.8:1 and 2.1:1; these darker fills pass 4.5:1 in both themes.
+  deleteButton: { backgroundColor: '#b91c1c' },
+  closeButton: { backgroundColor: '#b45309' },
+  confirmText: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
   disabled: { opacity: 0.5 },
 });

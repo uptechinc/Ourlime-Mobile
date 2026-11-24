@@ -716,16 +716,20 @@ export function InstructorGradingSkeleton(): ReactElement {
   const { width } = useWindowDimensions();
   return (
     <View style={[styles.instructorCourseColumn, { width: Math.min(width, 820) }]}>
-      <SkeletonLine width="70%" fontSize={20} />
-      <SkeletonLine width="85%" fontSize={12} />
-      {[0, 1, 2].map((groupIndex) => (
-        <View key={groupIndex} style={styles.gradingGroup}>
-          <SkeletonIcon size={20} />
+      <SkeletonLine width="80%" fontSize={14} />
+      <View style={[styles.chipRow, styles.clipRow]}>
+        {[124, 84, 84, 64].map((chipWidth) => <Skeleton key={chipWidth} width={chipWidth} height={36} borderRadius={18} />)}
+      </View>
+      {[0, 1, 2].map((rowIndex) => (
+        <View key={rowIndex} style={styles.gradingGroup}>
           <View style={styles.flex}>
-            <SkeletonLine width={groupIndex === 1 ? '75%' : '60%'} fontSize={15} />
-            <SkeletonLine width="80%" fontSize={12} />
+            <View style={styles.chipRow}>
+              <View style={styles.flex}><SkeletonLine width={rowIndex === 1 ? '70%' : '55%'} fontSize={15} /></View>
+              <Skeleton width={96} height={22} borderRadius={11} />
+            </View>
+            <SkeletonLine width="75%" fontSize={13} />
+            <SkeletonLine width="50%" fontSize={12} />
           </View>
-          <SkeletonIcon size={18} />
         </View>
       ))}
     </View>

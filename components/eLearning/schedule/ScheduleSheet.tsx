@@ -31,7 +31,7 @@ export default function ScheduleSheet({ visible, title, description, onClose, fo
               <Text style={styles.title}>{title}</Text>
               {description ? <Text style={styles.description}>{description}</Text> : null}
             </View>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={10} style={styles.closeButton}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={styles.closeButton}>
               <X size={20} color={colors.mutedText} />
             </TouchableOpacity>
           </View>
@@ -47,11 +47,11 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: colors.modalScrim },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   sheet: { maxHeight: '88%', backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 18 },
-  header: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 20, paddingBottom: 12 },
-  headerCopy: { flex: 1, gap: 4 },
+  header: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingLeft: 20, paddingRight: 8, paddingBottom: 12 },
+  headerCopy: { flex: 1, minWidth: 0, gap: 4, paddingTop: 10 },
   title: { color: colors.text, fontSize: 18, fontWeight: '800' },
   description: { color: colors.mutedText, fontSize: 13, lineHeight: 19 },
-  closeButton: { padding: 4 },
+  closeButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   body: { paddingHorizontal: 20, paddingBottom: 12, gap: 18 },
   footer: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 10, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
 });

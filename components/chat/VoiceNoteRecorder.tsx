@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/Feather';
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -40,8 +40,18 @@ export default function VoiceNoteRecorder({ onCancel, onSend, onError }: VoiceNo
   const callbacksRef = useRef({ onCancel, onSend, onError });
   callbacksRef.current = { onCancel, onSend, onError };
 
+  // The red dot pulses through short timed fades started from JS. An endless Reanimated withRepeat keeps running after
+  // the view unmounts on RN 0.86 and floods the UI thread with errors (the cause of earlier freezes).
   useEffect(() => {
-    pulse.value = withRepeat(withTiming(0.25, { duration: 700 }), -1, true);
+    let dimmed = false;
+    const timer = setInterval(() => {
+      dimmed = !dimmed;
+      pulse.value = withTiming(dimmed ? 0.25 : 1, { duration: 700 });
+    }, 700);
+    return () => clearInterval(timer);
+  }, [pulse]);
+
+  useEffect(() => {
     let cancelled = false;
     const start = async (): Promise<void> => {
       try {

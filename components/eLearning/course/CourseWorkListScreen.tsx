@@ -3,8 +3,8 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ClipboardList, HelpCircle } from 'lucide-react-native';
-import PageHeader from '@/components/ui/PageHeader';
 import { CourseWorkListSkeleton } from '@/components/eLearning/ELearningSkeletons';
+import { ELearningEmptyState, ELearningHeader, ELEARNING_GUTTER } from '@/components/eLearning/ELearningParts';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useCourseWorkspace } from '@/lib/hooks/useCourseWorkspace';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
@@ -30,27 +30,29 @@ export default function CourseWorkListScreen({ kind }: CourseWorkListScreenProps
   const total = groups.reduce((count, group) => count + group.items.length, 0);
   const title = kind === 'quiz' ? 'Quizzes' : 'Assignments';
   const Icon = kind === 'quiz' ? HelpCircle : ClipboardList;
+  const doneCount = groups.reduce((count, group) => count + group.items.filter((lesson) => completed.has(lesson.id) || (kind === 'assignment' && workspace?.submissions.has(lesson.id))).length, 0);
 
   return (
-    <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
-      <PageHeader title={title} onBackPress={() => router.back()} />
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <ELearningHeader title={title} subtitle={workspace?.course.title} onBack={() => router.back()} />
       {loading ? (
         <ScrollView contentContainerStyle={styles.scroll}><CourseWorkListSkeleton /></ScrollView>
       ) : !workspace || !isActiveEnrollment(enrollment) ? (
         <WorkspaceScreenState message={error ?? `Enroll in this course to see its ${title.toLowerCase()}.`} actionLabel="Back to course" onAction={() => router.replace(courseHref(id))} />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh(true)} tintColor={colors.accent} />}>
-          <Text style={styles.title} numberOfLines={2}>{workspace.course.title}</Text>
-          <Text style={styles.muted}>{pluralize(total, kind === 'quiz' ? 'quiz' : 'assignment', title.toLowerCase())} in total</Text>
+          {total > 0 ? <Text style={styles.summary}>{pluralize(total, kind === 'quiz' ? 'quiz' : 'assignment', title.toLowerCase())} · {doneCount} {kind === 'quiz' ? 'completed' : 'submitted'}</Text> : null}
           {total === 0 ? (
-            <View style={styles.empty}>
-              <Icon size={44} color={colors.border} />
-              <Text style={styles.emptyTitle}>No {title.toLowerCase()} yet</Text>
-              <Text style={styles.muted}>There are no {title.toLowerCase()} for this course at the moment.</Text>
-            </View>
+            <ELearningEmptyState
+              icon={<Icon size={40} color={colors.mutedText} />}
+              title={`No ${title.toLowerCase()} yet`}
+              hint={`This course has no ${title.toLowerCase()} at the moment.`}
+              actionLabel="Back to course"
+              onAction={() => router.back()}
+            />
           ) : groups.map((group) => (
             <View key={group.module.id} style={styles.group}>
-              <Text style={styles.groupTitle}>{group.module.title}</Text>
+              <Text accessibilityRole="header" style={styles.groupTitle}>{group.module.title}</Text>
               {group.items.map((lesson) => {
                 const submission = workspace.submissions.get(lesson.id);
                 const isDone = completed.has(lesson.id) || (kind === 'assignment' && Boolean(submission));
@@ -82,11 +84,8 @@ export default function CourseWorkListScreen({ kind }: CourseWorkListScreenProps
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
-  scroll: { padding: 16, gap: 12, paddingBottom: 40 },
-  title: { color: colors.text, fontSize: 22, fontWeight: '900' },
-  muted: { color: colors.mutedText, fontSize: 13, textAlign: 'left' },
+  scroll: { padding: ELEARNING_GUTTER, gap: 12, paddingBottom: 40 },
+  summary: { color: colors.text, fontSize: 15, fontWeight: '700' },
   group: { gap: 10 },
-  groupTitle: { color: colors.mutedText, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 6 },
-  empty: { alignItems: 'center', gap: 8, padding: 32, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  emptyTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
+  groupTitle: { color: colors.mutedText, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 6 },
 });

@@ -7,7 +7,6 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withDelay,
-  withRepeat,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
@@ -19,6 +18,8 @@ const DOT_RISE = 5;
 const RISE_MS = 280;
 /** Each dot starts a little after the previous one, so they move as a wave. */
 const STAGGER_MS = 150;
+/** One rise and fall, plus a rest so the three dots read as one wave before it repeats. */
+const WAVE_MS = RISE_MS * 2 + STAGGER_MS * 2;
 
 type TypingDotProps = {
   index: number;
@@ -28,20 +29,21 @@ type TypingDotProps = {
 function TypingDot({ index, color }: TypingDotProps) {
   const offset = useSharedValue(0);
 
+  // Each wave is a short finite animation started from a JS timer. An endless withRepeat keeps running after the view
+  // unmounts on RN 0.86 and floods the UI thread with errors (the cause of earlier freezes).
   useEffect(() => {
-    offset.value = withDelay(
-      index * STAGGER_MS,
-      withRepeat(
-        withSequence(
-          withTiming(-DOT_RISE, { duration: RISE_MS }),
-          withTiming(0, { duration: RISE_MS }),
-          // Rest so the three dots read as one wave before it repeats.
-          withTiming(0, { duration: STAGGER_MS * 2 }),
-        ),
-        -1,
-      ),
-    );
-    return () => cancelAnimation(offset);
+    const rise = (): void => {
+      offset.value = withDelay(
+        index * STAGGER_MS,
+        withSequence(withTiming(-DOT_RISE, { duration: RISE_MS }), withTiming(0, { duration: RISE_MS })),
+      );
+    };
+    rise();
+    const timer = setInterval(rise, WAVE_MS);
+    return () => {
+      clearInterval(timer);
+      cancelAnimation(offset);
+    };
   }, [index, offset]);
 
   const animatedStyle = useAnimatedStyle(() => ({

@@ -30,14 +30,14 @@ export default function CourseFilePreview({ file, onClose }: CourseFilePreviewPr
     <Modal visible={Boolean(file && url)} animationType="slide" onRequestClose={onClose} supportedOrientations={['portrait', 'landscape']}>
       <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={styles.safeArea}>
         <View style={styles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Close preview" hitSlop={8} onPress={onClose} style={styles.iconButton}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close preview" onPress={onClose} android_ripple={{ color: 'rgba(15,23,42,0.12)', borderless: true }} style={styles.iconButton}>
             <X size={22} color={colors.text} />
           </Pressable>
           <View style={styles.flex}>
             <Text style={styles.title} numberOfLines={1}>{file?.name ?? 'Preview'}</Text>
-            {file ? <Text style={styles.meta}>{file.kind.toUpperCase()} • {formatCourseFileSize(file.size)}</Text> : null}
+            {file ? <Text style={styles.meta} numberOfLines={1}>{file.kind.toUpperCase()} · {formatCourseFileSize(file.size)}</Text> : null}
           </View>
-          <Pressable accessibilityRole="link" accessibilityLabel="Open the original file" onPress={handleOpen} style={styles.openButton}>
+          <Pressable accessibilityRole="link" accessibilityLabel="Open the original file" onPress={handleOpen} android_ripple={{ color: 'rgba(15,23,42,0.12)' }} style={styles.openButton}>
             <ExternalLink size={16} color={colors.text} />
             <Text style={styles.openText}>Open</Text>
           </Pressable>
@@ -60,12 +60,12 @@ export default function CourseFilePreview({ file, onClose }: CourseFilePreviewPr
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
-  flex: { flex: 1 },
+  flex: { flex: 1, minWidth: 0 },
   header: { minHeight: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
-  iconButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   title: { color: colors.text, fontSize: 15, fontWeight: '800' },
   meta: { color: colors.mutedText, fontSize: 12 },
-  openButton: { minHeight: 38, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, borderWidth: 1, borderColor: colors.border },
+  openButton: { minHeight: 44, paddingHorizontal: 14, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, borderWidth: 1, borderColor: colors.border },
   openText: { color: colors.text, fontSize: 13, fontWeight: '800' },
   stage: { flex: 1, justifyContent: 'center', backgroundColor: colors.control },
   media: { width: '100%', height: '100%' },

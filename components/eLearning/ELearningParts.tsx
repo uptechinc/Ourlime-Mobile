@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
-import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import type { ReactElement, ReactNode, RefObject } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'react-native';
+import { jsx as createNativeElement } from 'react/jsx-runtime';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, BookOpen, CheckCircle2, Star } from 'lucide-react-native';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
@@ -164,23 +166,163 @@ export function CourseCard({ course, width, onOpen, enrollment, lessonCount, act
   </View>;
 }
 
-type EmptyStateProps = { icon: ReactNode; title: string; hint?: string; actionLabel?: string; onAction?: () => void };
+type EmptyStateProps = {
+  icon: ReactNode;
+  title: string;
+  hint?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  /** An outlined second choice under the main action (e.g. "Go back"). */
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
+};
 
 /** One line, a hint and a call to action (NN/g actionable empty state). */
-export function ELearningEmptyState({ icon, title, hint, actionLabel, onAction }: EmptyStateProps) {
+export function ELearningEmptyState({ icon, title, hint, actionLabel, onAction, secondaryActionLabel, onSecondaryAction }: EmptyStateProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return <View style={styles.empty}>
     {icon}
-    <Text style={styles.emptyTitle}>{title}</Text>
+    <Text accessibilityRole="header" style={styles.emptyTitle}>{title}</Text>
     {hint ? <Text style={styles.emptyHint}>{hint}</Text> : null}
     {actionLabel && onAction ? <Pressable accessibilityRole="button" onPress={onAction} android_ripple={RIPPLE} style={styles.emptyButton}>
       <Text numberOfLines={1} style={styles.emptyButtonText}>{actionLabel}</Text>
     </Pressable> : null}
+    {secondaryActionLabel && onSecondaryAction ? <Pressable accessibilityRole="button" onPress={onSecondaryAction} android_ripple={RIPPLE} style={styles.emptySecondaryButton}>
+      <Text numberOfLines={1} style={styles.emptySecondaryText}>{secondaryActionLabel}</Text>
+    </Pressable> : null}
   </View>;
 }
 
+type ScrollWithRefProps = ScrollViewProps & { scrollRef: RefObject<ScrollView | null> };
+
+/**
+ * A ScrollView whose ref works (NativeWind's wrapper drops ScrollView refs in this app), so a wizard can jump back to
+ * the top when the step changes. Same plain-JSX-runtime workaround as EHubScrollView.
+ */
+export function ELearningScrollView({ scrollRef, ...props }: ScrollWithRefProps) {
+  return createNativeElement(ScrollView, { ...props, ref: scrollRef }) as ReactElement<ScrollViewProps>;
+}
+
+export type ELearningTone = 'success' | 'warning' | 'danger' | 'neutral' | 'info';
+
+/** Surface and text colours for a status tone; the text colours are the theme's contrast-safe ones. */
+export function toneColors(colors: AppThemeColors, tone: ELearningTone): { background: string; text: string } {
+  if (tone === 'success') return { background: colors.successSurface, text: colors.successText };
+  if (tone === 'warning') return { background: colors.warningSurface, text: colors.warningText };
+  if (tone === 'danger') return { background: colors.destructiveSurface, text: colors.destructiveText };
+  if (tone === 'info') return { background: colors.control, text: colors.text };
+  return { background: colors.control, text: colors.secondaryText };
+}
+
+type StatusPillProps = { label: string; tone: ELearningTone; icon?: ReactNode };
+
+/** A status in words ("Needs grading", "Published"), never colour alone. */
+export function StatusPill({ label, tone, icon }: StatusPillProps) {
+  const { colors } = useAppTheme();
+  const palette = toneColors(colors, tone);
+  return <View style={[sharedStyles.pill, { backgroundColor: palette.background }]}>
+    {icon}
+    <Text numberOfLines={1} style={[sharedStyles.pillText, { color: palette.text }]}>{label}</Text>
+  </View>;
+}
+
+type ButtonProps = {
+  label: string;
+  onPress: () => void;
+  variant?: 'primary' | 'secondary' | 'danger';
+  icon?: ReactNode;
+  /** Shows a spinner and the busyLabel (or the label) and ignores presses. */
+  isBusy?: boolean;
+  busyLabel?: string;
+  isDisabled?: boolean;
+  accessibilityLabel?: string;
+  style?: StyleProp<ViewStyle>;
+};
+
+/** The E-Learning button: 48dp, filled #047857 (primary), outlined (secondary) or red-outlined (danger). */
+export function ELearningButton({ label, onPress, variant = 'primary', icon, isBusy = false, busyLabel, isDisabled = false, accessibilityLabel, style }: ButtonProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const isPrimary = variant === 'primary';
+  const textColor = isPrimary ? '#ffffff' : variant === 'danger' ? colors.destructiveText : colors.text;
+  const isInactive = isBusy || isDisabled;
+  return <Pressable
+    accessibilityRole="button"
+    accessibilityLabel={accessibilityLabel ?? label}
+    accessibilityState={{ disabled: isInactive, busy: isBusy }}
+    disabled={isInactive}
+    onPress={onPress}
+    android_ripple={isPrimary ? { color: 'rgba(255,255,255,0.2)' } : RIPPLE}
+    style={[styles.button, isPrimary ? styles.buttonPrimary : variant === 'danger' ? styles.buttonDanger : styles.buttonSecondary, isDisabled && !isBusy && styles.buttonDisabled, style]}
+  >
+    {isBusy ? <ActivityIndicator size="small" color={textColor} /> : icon}
+    <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={[styles.buttonText, { color: textColor }]}>{isBusy && busyLabel ? busyLabel : label}</Text>
+  </Pressable>;
+}
+
+type StepProgressProps = {
+  steps: readonly string[];
+  /** 0-based index of the current step. */
+  current: number;
+  /** Earlier steps can be tapped to go back to them. */
+  onStepPress?: (index: number) => void;
+};
+
+/** "Step 2 of 4 · Content" over one bar per step (done and current filled), for multi-step forms. */
+export function StepProgress({ steps, current, onStepPress }: StepProgressProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  return <View style={styles.steps}>
+    <Text accessibilityRole="header" numberOfLines={1} style={styles.stepCaption}>
+      Step {current + 1} of {steps.length}<Text style={styles.stepCaptionName}> · {steps[current]}</Text>
+    </Text>
+    <View accessible accessibilityRole="progressbar" accessibilityLabel={`Step ${current + 1} of ${steps.length}: ${steps[current]}`} accessibilityValue={{ min: 1, max: steps.length, now: current + 1 }} style={styles.stepBars}>
+      {steps.map((label, index) => {
+        const isReached = index <= current;
+        const canPress = Boolean(onStepPress) && index < current;
+        return <Pressable key={label} accessibilityRole="button" accessibilityLabel={`Back to ${label}`} disabled={!canPress} onPress={() => onStepPress?.(index)} hitSlop={{ top: 14, bottom: 14 }} style={styles.stepHit}>
+          <View style={[styles.stepBar, isReached && styles.stepBarReached]} />
+        </Pressable>;
+      })}
+    </View>
+  </View>;
+}
+
+/**
+ * The fixed bottom bar for forms (Back / Next, Save): it stays on screen while the form scrolls and rises with the
+ * keyboard when it sits inside KeyboardSafeView. It pads itself for the home indicator.
+ */
+export function StickyActionBar({ children, note }: { children: ReactNode; note?: string | null }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+  return <View style={[styles.actionBar, { paddingBottom: Math.max(12, insets.bottom) }]}>
+    {note ? <Text numberOfLines={2} style={styles.actionBarNote}>{note}</Text> : null}
+    <View style={styles.actionBarRow}>{children}</View>
+  </View>;
+}
+
+const parseTime = (value: string | undefined): number => (value ? Date.parse(value) : NaN);
+
+/** "Today at 2:15 PM", "Yesterday at 9:00 AM", "Nov 3 at 2:15 PM" or "Nov 3, 2025"; empty without a date. */
+export function formatWhen(value: string | undefined, now = new Date()): string {
+  const time = parseTime(value);
+  if (!Number.isFinite(time)) return '';
+  const date = new Date(time);
+  const clock = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
+  const startOfDay = new Date(time).setHours(0, 0, 0, 0);
+  const days = Math.round((startOfToday - startOfDay) / 86400000);
+  if (days === 0) return `Today at ${clock}`;
+  if (days === 1) return `Yesterday at ${clock}`;
+  if (date.getFullYear() !== now.getFullYear()) return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at ${clock}`;
+}
+
 const sharedStyles = StyleSheet.create({
+  pill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, maxWidth: '100%' },
+  pillText: { fontSize: 12, fontWeight: '700', flexShrink: 1 },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   ratingValue: { fontSize: 13, fontWeight: '700' },
   ratingCount: { fontSize: 12 },
@@ -222,5 +364,26 @@ function createStyles(colors: AppThemeColors) {
     emptyHint: { color: colors.mutedText, fontSize: 14, lineHeight: 20, textAlign: 'center', maxWidth: 300 },
     emptyButton: { marginTop: 8, minHeight: 48, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: ELEARNING_ACTION_GREEN, overflow: 'hidden' },
     emptyButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+    emptySecondaryButton: { minHeight: 48, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
+    emptySecondaryText: { color: colors.text, fontSize: 15, fontWeight: '700' },
+
+    button: { minHeight: 48, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, overflow: 'hidden' },
+    buttonPrimary: { backgroundColor: ELEARNING_ACTION_GREEN },
+    buttonSecondary: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+    buttonDanger: { borderWidth: 1, borderColor: colors.destructiveText, backgroundColor: colors.surface },
+    buttonDisabled: { opacity: 0.5 },
+    buttonText: { flexShrink: 1, fontSize: 15, fontWeight: '700' },
+
+    steps: { gap: 8, paddingHorizontal: ELEARNING_GUTTER, paddingTop: 12, paddingBottom: 12, backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+    stepCaption: { color: colors.mutedText, fontSize: 13, fontWeight: '600' },
+    stepCaptionName: { color: colors.text, fontWeight: '700' },
+    stepBars: { flexDirection: 'row', gap: 6 },
+    stepHit: { flex: 1 },
+    stepBar: { height: 4, borderRadius: 2, backgroundColor: colors.control },
+    stepBarReached: { backgroundColor: ELEARNING_ACTION_GREEN },
+
+    actionBar: { paddingHorizontal: ELEARNING_GUTTER, paddingTop: 12, gap: 8, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+    actionBarNote: { color: colors.mutedText, fontSize: 13, lineHeight: 18, textAlign: 'center' },
+    actionBarRow: { flexDirection: 'row', gap: 10 },
   });
 }

@@ -5,6 +5,7 @@ import { CalendarDays, Check, Copy, Download, LayoutList, Mail, MessageCircle, P
 import CustomModal from '@/components/ui/CustomModal';
 import { Skeleton } from '@/components/ui/Skeleton';
 import ScheduleSheet from './ScheduleSheet';
+import { ELEARNING_ACTION_GREEN } from '@/components/eLearning/ELearningParts';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useClassSchedule } from '@/lib/hooks/useClassSchedule';
 import {
@@ -26,7 +27,8 @@ type Notice = { visible: boolean; title: string; message: string };
 const HOUR_ROW = 56;
 const TIME_COLUMN = 52;
 const DAY_COLUMN = 116;
-const GREEN = '#10b981';
+/** Fills under white text use the contrast-safe E-Learning green (brand #10b981 is only ~2.5:1 with white). */
+const GREEN = ELEARNING_ACTION_GREEN;
 
 const errorMessage = (error: unknown, fallback: string): string =>
   error instanceof ScheduleEditingUnavailableError ? error.message : fallback;
@@ -233,7 +235,7 @@ export default function ClassSchedule({ userId }: ClassScheduleProps) {
                             accessibilityState={{ checked: isSelected }}
                             accessibilityLabel={isSelected ? `Unselect ${schedule.subject}` : `Select ${schedule.subject} for a template`}
                             onPress={() => toggleSelected(schedule.id)}
-                            hitSlop={8}
+                            hitSlop={13}
                             style={[styles.selectToggle, isSelected && styles.selectToggleActive]}
                           >
                             {isSelected ? <Check size={11} color="#ffffff" strokeWidth={3} /> : null}
@@ -481,16 +483,16 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   center: { textAlign: 'center' },
   flex: { flex: 1, minWidth: 0 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  actionButton: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control, paddingHorizontal: 12 },
+  actionButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 14 },
   actionPrimary: { backgroundColor: GREEN, borderColor: GREEN },
-  actionText: { color: colors.text, fontSize: 13, fontWeight: '600' },
+  actionText: { color: colors.text, fontSize: 14, fontWeight: '600' },
   disabled: { opacity: 0.5 },
   errorCard: { backgroundColor: colors.destructiveSurface, borderRadius: 12, padding: 14, gap: 10 },
   errorText: { color: colors.destructiveText, fontSize: 13 },
-  retryButton: { alignSelf: 'flex-start', minHeight: 40, justifyContent: 'center', backgroundColor: GREEN, borderRadius: 999, paddingHorizontal: 18 },
+  retryButton: { alignSelf: 'flex-start', minHeight: 48, justifyContent: 'center', backgroundColor: GREEN, borderRadius: 12, paddingHorizontal: 20 },
   inlineButton: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  primaryText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
-  emptyCard: { alignItems: 'center', gap: 6, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control, paddingHorizontal: 20, paddingVertical: 20 },
+  primaryText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+  emptyCard: { alignItems: 'center', gap: 6, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 20, paddingVertical: 20 },
   emptyIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.successSurface, marginBottom: 4 },
   emptyTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
 
@@ -498,7 +500,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   dayHeaderRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.control },
   dayHeader: { width: DAY_COLUMN, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10 },
   dayHeaderText: { color: colors.secondaryText, fontSize: 13, fontWeight: '600' },
-  todayBadge: { color: '#ffffff', backgroundColor: GREEN, fontSize: 9, fontWeight: '800', borderRadius: 999, paddingHorizontal: 5, paddingVertical: 1, overflow: 'hidden' },
+  todayBadge: { color: '#ffffff', backgroundColor: GREEN, fontSize: 10, fontWeight: '800', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1, overflow: 'hidden' },
   gridBody: { flexDirection: 'row' },
   hourLabel: { height: HOUR_ROW, paddingRight: 6, paddingTop: 3, textAlign: 'right', color: colors.mutedText, fontSize: 11 },
   dayColumn: { width: DAY_COLUMN, borderLeftWidth: 1, borderLeftColor: colors.border },
@@ -522,20 +524,20 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   alert: { borderRadius: 12, borderWidth: 1, borderColor: colors.destructive, backgroundColor: colors.destructiveSurface, paddingHorizontal: 12, paddingVertical: 10 },
   alertText: { color: colors.destructiveText, fontSize: 13 },
   segmented: { flexDirection: 'row', gap: 4, borderRadius: 12, backgroundColor: colors.control, padding: 4 },
-  segment: { flex: 1, minHeight: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 9 },
+  segment: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 9 },
   segmentActive: { backgroundColor: GREEN },
   segmentText: { color: colors.secondaryText, fontSize: 13, fontWeight: '600' },
   segmentTextActive: { color: '#ffffff' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  timeChip: { minHeight: 34, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.control, paddingHorizontal: 12 },
+  timeChip: { minHeight: 40, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.control, paddingHorizontal: 14 },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  swatch: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
+  swatch: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  toggleChip: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14 },
+  toggleChip: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16 },
   toggleChipActive: { borderColor: GREEN, backgroundColor: colors.successSurface },
   toggleChipActiveText: { color: colors.accentText },
 
-  footerButton: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingHorizontal: 16 },
+  footerButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingHorizontal: 16 },
   primaryButton: { backgroundColor: GREEN },
   secondaryButton: { backgroundColor: colors.control },
   deleteButton: { marginRight: 'auto' },

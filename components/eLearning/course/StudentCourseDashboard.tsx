@@ -17,11 +17,14 @@ import {
   TrendingUp,
 } from 'lucide-react-native';
 import CourseReviews from '@/components/eLearning/CourseReviews';
+import { ELEARNING_ACTION_GREEN, ProgressBar } from '@/components/eLearning/ELearningParts';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { courseService } from '@/lib/services/CourseService';
 import type { AssignmentSubmission, Course, CourseModule, Enrollment } from '@/lib/types/course';
 import LessonTypeIcon from './LessonTypeIcon';
-import { courseHref, formatDate, lessonHref, openExternalLink } from './workspaceHelpers';
+import { courseHref, formatDate, lessonHref, lessonTypeLabel, openExternalLink } from './workspaceHelpers';
+
+const RIPPLE = { color: 'rgba(15,23,42,0.12)' };
 
 type StudentCourseDashboardProps = {
   course: Course;
@@ -75,10 +78,10 @@ export default function StudentCourseDashboard({ course, enrollment, modules, su
           <Text style={styles.muted}>Progress</Text>
           <Text style={styles.progressValue}>{progress}%</Text>
         </View>
-        <View style={styles.track}><View style={[styles.fill, { width: `${progress}%` }]} /></View>
+        <ProgressBar value={progress} height={8} accessibilityLabel={`${course.title} progress`} />
         <View style={styles.navGrid}>
           {navItems.map((item) => (
-            <Pressable key={item.key} accessibilityRole="button" onPress={item.onPress} style={styles.navItem}>
+            <Pressable key={item.key} accessibilityRole="button" onPress={item.onPress} android_ripple={RIPPLE} style={styles.navItem}>
               {item.icon}
               <Text style={styles.navText}>{item.label}</Text>
             </Pressable>
@@ -89,7 +92,7 @@ export default function StudentCourseDashboard({ course, enrollment, modules, su
       {nextItem ? (
         <View style={[styles.card, styles.noPadding]}>
           <View style={styles.nextHeader}>
-            <Text style={styles.nextHeaderText}>NEXT UP</Text>
+            <Text style={styles.nextHeaderText}>Next up</Text>
             <Clock size={16} color="#ffffff" />
           </View>
           <View style={styles.nextBody}>
@@ -98,8 +101,8 @@ export default function StudentCourseDashboard({ course, enrollment, modules, su
               <Text style={styles.muted}>{nextItem.moduleTitle}</Text>
               <Text style={styles.cardTitle}>{nextItem.lesson.title}</Text>
               {nextItem.lesson.description ? <Text style={styles.muted} numberOfLines={2}>{nextItem.lesson.description}</Text> : null}
-              <Pressable accessibilityRole="button" onPress={() => router.push(lessonHref(course.id, nextItem.lesson.id))} style={styles.primaryButton}>
-                <Text style={styles.primaryButtonText}>{progress > 0 ? 'Resume Learning' : 'Start Learning'}</Text>
+              <Pressable accessibilityRole="button" onPress={() => router.push(lessonHref(course.id, nextItem.lesson.id))} android_ripple={{ color: 'rgba(255,255,255,0.2)' }} style={styles.primaryButton}>
+                <Text style={styles.primaryButtonText}>{progress > 0 ? 'Resume learning' : 'Start learning'}</Text>
                 <ChevronRight size={16} color="#ffffff" />
               </Pressable>
             </View>
@@ -123,39 +126,43 @@ export default function StudentCourseDashboard({ course, enrollment, modules, su
       )}
 
       <View style={styles.card}>
-        <View style={styles.sectionHeader}><Calendar size={18} color={colors.destructiveText} /><Text style={styles.cardTitle}>To Do</Text></View>
-        {todo.length === 0 ? <Text style={styles.empty}>Nothing on your plate! Great job.</Text> : todo.map((task) => (
-          <Pressable key={task.id} accessibilityRole="button" onPress={() => router.push(lessonHref(course.id, task.id))} style={styles.listRow}>
-            <View style={styles.smallIcon}>{task.type === 'assignment' ? <FileText size={18} color={colors.mutedText} /> : <HelpCircle size={18} color={colors.mutedText} />}</View>
-            <View style={styles.flex}>
-              <Text style={styles.rowTitle} numberOfLines={1}>{task.title}</Text>
-              <View style={styles.inline}>
-                <AlertCircle size={12} color={courseService.isOverdue(task, false) ? colors.destructiveText : colors.mutedText} />
-                <Text style={[styles.small, courseService.isOverdue(task, false) && { color: colors.destructiveText }]}>Due: {formatDate(task.dueDate)}</Text>
+        <View style={styles.sectionHeader}><Calendar size={18} color={colors.icon} /><Text accessibilityRole="header" style={styles.cardTitle}>To do</Text></View>
+        {todo.length === 0 ? <Text style={styles.empty}>Nothing due. You're all caught up.</Text> : todo.map((task) => {
+          const isOverdue = courseService.isOverdue(task, false);
+          const kind = task.type === 'assignment' ? 'Assignment' : 'Quiz';
+          return (
+            <Pressable key={task.id} accessibilityRole="button" accessibilityLabel={`${task.title}, ${kind}${task.dueDate ? `, due ${formatDate(task.dueDate)}` : ''}${isOverdue ? ', overdue' : ''}`} onPress={() => router.push(lessonHref(course.id, task.id))} android_ripple={RIPPLE} style={styles.listRow}>
+              <View style={styles.smallIcon}>{task.type === 'assignment' ? <FileText size={18} color={colors.mutedText} /> : <HelpCircle size={18} color={colors.mutedText} />}</View>
+              <View style={styles.flex}>
+                <Text style={styles.rowTitle} numberOfLines={2}>{task.title}</Text>
+                <View style={styles.inline}>
+                  {isOverdue ? <AlertCircle size={12} color={colors.destructiveText} /> : null}
+                  <Text style={[styles.small, isOverdue && styles.overdueText]}>{kind}{task.dueDate ? ` · due ${formatDate(task.dueDate)}` : ''}{isOverdue ? ' · overdue' : ''}</Text>
+                </View>
               </View>
-            </View>
-            <ChevronRight size={16} color={colors.mutedText} />
-          </Pressable>
-        ))}
+              <ChevronRight size={16} color={colors.mutedText} />
+            </Pressable>
+          );
+        })}
       </View>
 
       <View style={styles.card}>
-        <View style={styles.sectionHeader}><TrendingUp size={18} color="#3b82f6" /><Text style={styles.cardTitle}>Recent Activity</Text></View>
-        {recent.length === 0 ? <Text style={styles.empty}>No activity yet. Start your first lesson!</Text> : recent.map((lesson) => (
-          <Pressable key={lesson.id} accessibilityRole="button" onPress={() => router.push(lessonHref(course.id, lesson.id))} style={styles.listRow}>
-            <View style={[styles.smallIcon, { backgroundColor: colors.control }]}><CheckCircle2 size={16} color="#2563eb" /></View>
+        <View style={styles.sectionHeader}><TrendingUp size={18} color={colors.icon} /><Text accessibilityRole="header" style={styles.cardTitle}>Recently completed</Text></View>
+        {recent.length === 0 ? <Text style={styles.empty}>Lessons you finish show up here.</Text> : recent.map((lesson) => (
+          <Pressable key={lesson.id} accessibilityRole="button" onPress={() => router.push(lessonHref(course.id, lesson.id))} android_ripple={RIPPLE} style={styles.listRow}>
+            <View style={[styles.smallIcon, { backgroundColor: colors.successSurface, borderColor: colors.successSurface }]}><CheckCircle2 size={16} color={colors.successText} /></View>
             <View style={styles.flex}>
-              <Text style={styles.rowTitle} numberOfLines={1}>Completed: {lesson.title}</Text>
-              <Text style={styles.small}>Recently</Text>
+              <Text style={styles.rowTitle} numberOfLines={2}>{lesson.title}</Text>
+              <Text style={styles.small}>{lessonTypeLabel(lesson.type)} · completed</Text>
             </View>
           </Pressable>
         ))}
       </View>
 
       <View style={styles.card}>
-        <View style={styles.sectionHeader}><FileText size={18} color="#f97316" /><Text style={styles.cardTitle}>Helpful Resources</Text></View>
+        <View style={styles.sectionHeader}><FileText size={18} color={colors.icon} /><Text accessibilityRole="header" style={styles.cardTitle}>Helpful resources</Text></View>
         {resources.length === 0 ? <Text style={styles.empty}>No resources available yet.</Text> : resources.map((resource) => (
-          <Pressable key={resource.id} accessibilityRole="link" onPress={() => void handleOpenResource(resource.url)} style={styles.listRow}>
+          <Pressable key={resource.id} accessibilityRole="link" onPress={() => void handleOpenResource(resource.url)} android_ripple={RIPPLE} style={styles.listRow}>
             <FileText size={16} color={colors.accentText} />
             <Text style={[styles.rowTitle, styles.flex]} numberOfLines={1}>{resource.title}</Text>
             <ChevronRight size={16} color={colors.mutedText} />
@@ -175,34 +182,33 @@ export default function StudentCourseDashboard({ course, enrollment, modules, su
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   wrapper: { gap: 14 },
-  card: { padding: 16, gap: 10, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  card: { padding: 16, gap: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
   noPadding: { padding: 0, overflow: 'hidden', gap: 0 },
   centerCard: { alignItems: 'center', paddingVertical: 24 },
   center: { textAlign: 'center' },
-  welcome: { color: colors.text, fontSize: 20, fontWeight: '900' },
+  welcome: { color: colors.text, fontSize: 20, fontWeight: '800' },
   muted: { color: colors.mutedText, fontSize: 13, lineHeight: 19 },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
-  progressValue: { color: colors.accentText, fontSize: 13, fontWeight: '800' },
-  track: { height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.control },
-  fill: { height: '100%', borderRadius: 4, backgroundColor: colors.accent },
+  progressValue: { color: colors.accentText, fontSize: 14, fontWeight: '800' },
   navGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  navItem: { flexGrow: 1, flexBasis: '30%', minHeight: 64, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas, paddingHorizontal: 6 },
-  navText: { color: colors.text, fontSize: 12, fontWeight: '700' },
-  nextHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#059669' },
-  nextHeaderText: { color: '#ffffff', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
+  navItem: { flexGrow: 1, flexBasis: '30%', minHeight: 64, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.canvas, paddingHorizontal: 6, overflow: 'hidden' },
+  navText: { color: colors.text, fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  nextHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: ELEARNING_ACTION_GREEN },
+  nextHeaderText: { color: '#ffffff', fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
   nextBody: { flexDirection: 'row', gap: 12, padding: 16 },
   nextIcon: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.successSurface },
-  flex: { flex: 1, gap: 3 },
+  flex: { flex: 1, minWidth: 0, gap: 3 },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '800' },
-  primaryButton: { alignSelf: 'flex-start', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, borderRadius: 12, backgroundColor: colors.accent, marginTop: 8 },
-  primaryButtonText: { color: colors.onAccent, fontSize: 14, fontWeight: '800' },
-  linkButton: { minHeight: 40, justifyContent: 'center' },
-  linkText: { color: colors.accentText, fontSize: 14, fontWeight: '800' },
+  primaryButton: { alignSelf: 'flex-start', minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, borderRadius: 12, backgroundColor: ELEARNING_ACTION_GREEN, marginTop: 8, overflow: 'hidden' },
+  primaryButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+  linkButton: { minHeight: 44, justifyContent: 'center' },
+  linkText: { color: colors.accentText, fontSize: 14, fontWeight: '700' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  empty: { color: colors.mutedText, fontSize: 13, fontStyle: 'italic' },
-  listRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  smallIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
+  empty: { color: colors.mutedText, fontSize: 13, lineHeight: 19 },
+  listRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 10, overflow: 'hidden' },
+  smallIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   rowTitle: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  inline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  small: { color: colors.mutedText, fontSize: 11 },
+  inline: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
+  small: { color: colors.mutedText, fontSize: 12 },
+  overdueText: { color: colors.destructiveText, fontWeight: '700' },
 });

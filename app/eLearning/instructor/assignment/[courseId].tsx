@@ -1,13 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
-import { FileText, Trash2, Upload } from 'lucide-react-native';
-import PageHeader from '@/components/ui/PageHeader';
+import { ClipboardList, FileText, Trash2, Upload } from 'lucide-react-native';
+import CustomModal from '@/components/ui/CustomModal';
 import DateTimeField from '@/components/ui/DateTimeField';
-import { ErrorList, FormButton, FormField, ToggleRow } from '@/components/eLearning/instructor/InstructorForm';
+import { ErrorList, FieldMessage, FormField, FormSection, ToggleRow } from '@/components/eLearning/instructor/InstructorForm';
+import { ELearningButton, ELearningEmptyState, ELearningHeader, ELearningScrollView, ELEARNING_GUTTER, StickyActionBar } from '@/components/eLearning/ELearningParts';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { instructorService } from '@/lib/services/InstructorService';
 import type { AssignmentFile } from '@/lib/types/course';
@@ -16,6 +17,7 @@ import type { PickedUpload } from '@/lib/types/instructor';
 const CONTENT_MAX_WIDTH = 760;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 20;
+const RIPPLE = { color: 'rgba(15,23,42,0.12)' };
 // Types storage.rules accepts in courseFiles/{courseId}/{uid}/.
 const ATTACHMENT_TYPES = [
   'application/pdf', 'application/zip', 'application/msword', 'text/plain', 'text/csv',
@@ -24,6 +26,8 @@ const ATTACHMENT_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/*', 'audio/*',
 ];
+
+type AssignmentField = 'title' | 'instructions' | 'dueDate' | 'points';
 
 const defaultDueDate = (): Date => {
   const date = new Date();
@@ -34,14 +38,17 @@ const defaultDueDate = (): Date => {
 
 const formatSize = (bytes?: number): string => (bytes && bytes > 0 ? (bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${(bytes / 1024).toFixed(1)} KB`) : '');
 
-/** Create an assignment for one of the instructor's courses (the website's assignment editor). */
+/** Create an assignment for one of the instructor's courses (the website's assignment editor), in three grouped cards. */
 export default function CreateAssignmentScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { courseId, title: courseTitle } = useLocalSearchParams<{ courseId: string; title?: string }>();
   const id = typeof courseId === 'string' ? courseId : '';
+  const courseName = typeof courseTitle === 'string' && courseTitle ? courseTitle : undefined;
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const scrollRef = useRef<ScrollView | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [instructions, setInstructions] = useState('');
@@ -49,10 +56,23 @@ export default function CreateAssignmentScreen() {
   const [points, setPoints] = useState('100');
   const [allowLate, setAllowLate] = useState(false);
   const [attachments, setAttachments] = useState<PickedUpload[]>([]);
-  const [errors, setErrors] = useState<string[]>([]);
+  const [showErrors, setShowErrors] = useState(false);
+  const [fileNotice, setFileNotice] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isDone, setIsDone] = useState(false);
+  const [isLeaveVisible, setIsLeaveVisible] = useState(false);
+  const pendingLeaveRef = useRef<(() => void) | null>(null);
+
+  const hasWork = Boolean(title.trim() || description.trim() || instructions.trim() || attachments.length > 0);
+  const shouldConfirmLeaveRef = useRef(false);
+  shouldConfirmLeaveRef.current = hasWork && !isDone && !progress;
+  useEffect(() => navigation.addListener('beforeRemove', (event) => {
+    if (!shouldConfirmLeaveRef.current) return;
+    event.preventDefault();
+    pendingLeaveRef.current = () => navigation.dispatch(event.data.action);
+    setIsLeaveVisible(true);
+  }), [navigation]);
 
   const handlePickAttachments = async () => {
     const picked = await DocumentPicker.getDocumentAsync({ type: ATTACHMENT_TYPES, multiple: true, copyToCacheDirectory: true });
@@ -60,24 +80,26 @@ export default function CreateAssignmentScreen() {
     const tooLarge = picked.assets.filter((asset) => (asset.size ?? 0) > MAX_ATTACHMENT_BYTES).map((asset) => asset.name);
     const accepted = picked.assets.filter((asset) => (asset.size ?? 0) <= MAX_ATTACHMENT_BYTES).map((asset): PickedUpload => ({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType, size: asset.size }));
     setAttachments((current) => [...current, ...accepted].slice(0, MAX_ATTACHMENTS));
-    setErrors(tooLarge.length > 0 ? [`Larger than 10 MB, not added: ${tooLarge.join(', ')}`] : []);
+    setFileNotice(tooLarge.length > 0 ? `Larger than 10 MB, not added: ${tooLarge.join(', ')}` : null);
   };
 
-  const validate = (): string[] => {
-    const found: string[] = [];
-    if (!title.trim()) found.push('Enter an assignment title.');
-    if (!instructions.trim()) found.push('Add instructions for students.');
-    if (!dueDate) found.push('Choose a due date and time.');
+  const fieldErrors = (): Partial<Record<AssignmentField, string>> => {
+    const found: Partial<Record<AssignmentField, string>> = {};
+    if (!title.trim()) found.title = 'Enter an assignment title.';
+    if (!instructions.trim()) found.instructions = 'Add instructions for students.';
+    if (!dueDate) found.dueDate = 'Choose a due date and time.';
     const value = Number(points);
-    if (!Number.isInteger(value) || value < 1 || value > 10000) found.push('Points must be a whole number from 1 to 10000.');
+    if (!Number.isInteger(value) || value < 1 || value > 10000) found.points = 'Points must be a whole number from 1 to 10000.';
     return found;
   };
+  const shownErrors = showErrors ? fieldErrors() : {};
+  const errorList = Object.values(shownErrors).filter((message): message is string => Boolean(message));
 
   const handleSave = async () => {
-    const found = validate();
-    setErrors(found);
+    const found = Object.values(fieldErrors()).filter(Boolean);
+    setShowErrors(true);
     setSaveError(null);
-    if (found.length > 0 || !id || !dueDate) return;
+    if (found.length > 0 || !id || !dueDate) { scrollRef.current?.scrollTo({ y: 0, animated: true }); return; }
     try {
       const uploaded: AssignmentFile[] = [];
       for (const [index, file] of attachments.entries()) {
@@ -92,7 +114,7 @@ export default function CreateAssignmentScreen() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : '';
       console.error('[CreateAssignmentScreen.handleSave] Error:', message || 'Unknown error');
-      setSaveError(message.includes('instructor') ? 'Only the course instructor can add assignments to this course.' : 'The assignment could not be created. Please try again.');
+      setSaveError(message.includes('instructor') ? 'Only the course instructor can add assignments to this course.' : 'The assignment could not be created. Check your connection and try again.');
     } finally {
       setProgress(null);
     }
@@ -100,57 +122,82 @@ export default function CreateAssignmentScreen() {
 
   if (isDone) {
     return (
-      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
-        <PageHeader title="Assignment created" onBackPress={() => router.back()} />
-        <View style={styles.done}>
-          <FileText size={44} color={colors.accent} />
-          <Text style={styles.doneTitle}>Assignment added</Text>
-          <Text style={styles.doneText}>Students see it in the course's quizzes and assignments. Grade their work from your instructor dashboard.</Text>
-          <FormButton label="Back" onPress={() => router.back()} />
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <ELearningHeader title="Assignment added" subtitle={courseName} onBack={() => router.back()} />
+        <View style={styles.centerFill}>
+          <ELearningEmptyState
+            icon={<ClipboardList size={44} color={colors.accentText} />}
+            title="Assignment added"
+            hint="Students see it in the course's quizzes and assignments. Grade their work from Grading on your instructor dashboard."
+            actionLabel="Done"
+            onAction={() => router.back()}
+          />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
-      <PageHeader title="New assignment" onBackPress={() => router.back()} />
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <ELearningHeader title="New assignment" subtitle={courseName} onBack={() => router.back()} />
       <KeyboardSafeView style={styles.flex}>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <ELearningScrollView scrollRef={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
           <View style={[styles.column, { width: Math.min(width, CONTENT_MAX_WIDTH) }]}>
-            {typeof courseTitle === 'string' && courseTitle ? <Text style={styles.course} numberOfLines={2}>{courseTitle}</Text> : null}
-            <FormField label="Assignment title" required value={title} onChange={setTitle} placeholder="e.g. Financial Planning Project" maxLength={200} />
-            <FormField label="Description" value={description} onChange={setDescription} multiline placeholder="Brief overview of the assignment" />
-            <FormField label="Instructions" required value={instructions} onChange={setInstructions} multiline placeholder="Detailed instructions for students…" />
-            <DateTimeField label="Due date" mode="datetime" required value={dueDate} onChange={setDueDate} placeholder="Choose the due date and time" minimumDate={new Date()} />
-            <FormField label="Points" required value={points} onChange={(value) => setPoints(value.replace(/[^0-9]/g, ''))} keyboardType="number-pad" hint="The maximum score you can give." />
-            <ToggleRow label="Allow late submissions" description="Late work is accepted with a penalty." value={allowLate} onChange={setAllowLate} />
+            <ErrorList errors={errorList} title={`Fix ${errorList.length === 1 ? 'this' : `these ${errorList.length}`} to save`} />
+            <FormSection title="What students do">
+              <FormField label="Assignment title" required value={title} onChange={setTitle} placeholder="e.g. Financial Planning Project" maxLength={200} error={shownErrors.title} />
+              <FormField label="Description" value={description} onChange={setDescription} multiline placeholder="A short overview" hint="Shown under the title in the assignment list." />
+              <FormField label="Instructions" required value={instructions} onChange={setInstructions} multiline placeholder="Step-by-step instructions for students" error={shownErrors.instructions} />
+            </FormSection>
 
-            <Text style={styles.label}>Attachments (optional)</Text>
-            <Pressable accessibilityRole="button" onPress={() => void handlePickAttachments()} style={styles.dropZone}>
-              <Upload size={22} color={colors.mutedText} />
-              <Text style={styles.dropTitle}>Upload attachments</Text>
-              <Text style={styles.hint}>PDF, Word, ZIP, images and more (max 10 MB per file)</Text>
-            </Pressable>
-            {attachments.map((file, index) => (
-              <View key={`${file.uri}-${index}`} style={styles.fileRow}>
-                <FileText size={18} color={colors.accentText} />
-                <View style={styles.flex}>
-                  <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
-                  {file.size ? <Text style={styles.hint}>{formatSize(file.size)}</Text> : null}
-                </View>
-                <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${file.name}`} hitSlop={8} onPress={() => setAttachments((current) => current.filter((_entry, position) => position !== index))}>
-                  <Trash2 size={16} color={colors.mutedText} />
-                </Pressable>
+            <FormSection title="Due date and grading">
+              <View style={styles.field}>
+                <DateTimeField label="Due date" mode="datetime" required value={dueDate} onChange={setDueDate} placeholder="Choose the due date and time" minimumDate={new Date()} />
+                <FieldMessage error={shownErrors.dueDate} />
               </View>
-            ))}
+              <FormField label="Points" required value={points} onChange={(value) => setPoints(value.replace(/[^0-9]/g, ''))} keyboardType="number-pad" maxLength={5} hint="The highest score you can give." error={shownErrors.points} />
+              <ToggleRow label="Accept late work" description={allowLate ? 'After the due date, students see it as late and are told late work is accepted.' : 'After the due date, work not handed in shows as missing.'} value={allowLate} onChange={setAllowLate} />
+            </FormSection>
 
-            <ErrorList errors={errors} />
-            {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
-            <FormButton label={progress ?? 'Save assignment'} disabled={Boolean(progress)} onPress={() => void handleSave()} />
+            <FormSection title="Reference files" description="Optional. PDF, Word, ZIP, images and more, up to 10 MB each.">
+              {attachments.map((file, index) => (
+                <View key={`${file.uri}-${index}`} style={styles.fileRow}>
+                  <FileText size={18} color={colors.accentText} />
+                  <View style={styles.flexText}>
+                    <Text style={styles.fileName} numberOfLines={2}>{file.name}</Text>
+                    {file.size ? <Text style={styles.hint}>{formatSize(file.size)}</Text> : null}
+                  </View>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${file.name}`} onPress={() => setAttachments((current) => current.filter((_entry, position) => position !== index))} android_ripple={RIPPLE} style={styles.iconButton}>
+                    <Trash2 size={18} color={colors.mutedText} />
+                  </Pressable>
+                </View>
+              ))}
+              {attachments.length < MAX_ATTACHMENTS ? (
+                <Pressable accessibilityRole="button" onPress={() => void handlePickAttachments()} android_ripple={RIPPLE} style={styles.dropZone}>
+                  <Upload size={20} color={colors.accentText} />
+                  <Text style={styles.dropTitle}>{attachments.length > 0 ? 'Add more files' : 'Add files'}</Text>
+                </Pressable>
+              ) : <Text style={styles.hint}>You've added the most files an assignment can have ({MAX_ATTACHMENTS}).</Text>}
+              {fileNotice ? <FieldMessage error={fileNotice} /> : null}
+            </FormSection>
+            {saveError ? <FieldMessage error={saveError} /> : null}
           </View>
-        </ScrollView>
+        </ELearningScrollView>
+        <StickyActionBar note={progress}>
+          <ELearningButton label="Save assignment" busyLabel="Saving…" isBusy={Boolean(progress)} onPress={() => void handleSave()} style={styles.flex} />
+        </StickyActionBar>
       </KeyboardSafeView>
+      <CustomModal
+        visible={isLeaveVisible}
+        type="warning"
+        title="Leave without saving?"
+        message="This assignment is not saved yet. If you leave now, what you've entered will be lost."
+        confirmText="Leave"
+        cancelText="Keep editing"
+        onConfirm={() => { setIsLeaveVisible(false); const leave = pendingLeaveRef.current; pendingLeaveRef.current = null; leave?.(); }}
+        onCancel={() => { setIsLeaveVisible(false); pendingLeaveRef.current = null; }}
+        onClose={() => { setIsLeaveVisible(false); pendingLeaveRef.current = null; }}
+      />
     </SafeAreaView>
   );
 }
@@ -158,17 +205,15 @@ export default function CreateAssignmentScreen() {
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
   flex: { flex: 1 },
-  scroll: { alignItems: 'center', paddingBottom: 40 },
-  column: { padding: 16, gap: 12 },
-  course: { color: colors.mutedText, fontSize: 13, fontWeight: '700' },
-  label: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  hint: { color: colors.mutedText, fontSize: 12 },
-  dropZone: { paddingVertical: 20, paddingHorizontal: 14, alignItems: 'center', gap: 6, borderRadius: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.border, backgroundColor: colors.surface },
-  dropTitle: { color: colors.text, fontSize: 14, fontWeight: '800' },
-  fileRow: { minHeight: 52, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  flexText: { flex: 1, minWidth: 0 },
+  centerFill: { flex: 1, justifyContent: 'center' },
+  scroll: { alignItems: 'center', paddingBottom: 24 },
+  column: { padding: ELEARNING_GUTTER, gap: 16 },
+  field: { gap: 6 },
+  hint: { color: colors.mutedText, fontSize: 12, lineHeight: 17 },
+  dropZone: { minHeight: 52, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.border, backgroundColor: colors.canvas, overflow: 'hidden' },
+  dropTitle: { color: colors.accentText, fontSize: 15, fontWeight: '700' },
+  fileRow: { minHeight: 56, paddingLeft: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.canvas },
   fileName: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  error: { color: colors.destructiveText, fontSize: 13 },
-  done: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 28 },
-  doneTitle: { color: colors.text, fontSize: 22, fontWeight: '900' },
-  doneText: { color: colors.secondaryText, fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
 });

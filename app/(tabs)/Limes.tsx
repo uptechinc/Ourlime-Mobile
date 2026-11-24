@@ -68,7 +68,7 @@ import { LimeVisualPlaceholder } from '@/components/limes/LimeVisualPlaceholder'
 import { useLimeFeedResource } from '@/lib/hooks/useLimeFeedResource';
 import { ensureMediaUrl } from '@/lib/helpers/mediaUrl';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
-import Animated, { Easing, interpolate, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
+import Animated, { cancelAnimation, Easing, interpolate, useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components/ui/PlayfulFloatingHeart';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import { useResourceStore } from '@/lib/store/useResourceStore';
@@ -175,11 +175,24 @@ function useFloatingBubbleStyle(durationMs: number, delayFraction: number, rever
   const progress = useSharedValue(delayFraction);
   useEffect(() => {
     if (reduceMotion) return;
+    // Finite loops restarted from JS timers: an endless withRepeat keeps running after the view unmounts on RN 0.86
+    // and floods the UI thread with errors (the cause of earlier freezes).
+    const firstLapMs = durationMs * (1 - delayFraction);
     progress.value = delayFraction;
-    progress.value = withSequence(
-      withTiming(1, { duration: durationMs * (1 - delayFraction), easing: Easing.linear }),
-      withRepeat(withSequence(withTiming(0, { duration: 0 }), withTiming(1, { duration: durationMs, easing: Easing.linear })), -1),
-    );
+    progress.value = withTiming(1, { duration: firstLapMs, easing: Easing.linear });
+    let loopTimer: ReturnType<typeof setInterval> | null = null;
+    const lap = (): void => {
+      progress.value = withSequence(withTiming(0, { duration: 0 }), withTiming(1, { duration: durationMs, easing: Easing.linear }));
+    };
+    const firstLapTimer = setTimeout(() => {
+      lap();
+      loopTimer = setInterval(lap, durationMs);
+    }, firstLapMs);
+    return () => {
+      clearTimeout(firstLapTimer);
+      if (loopTimer) clearInterval(loopTimer);
+      cancelAnimation(progress);
+    };
   }, [delayFraction, durationMs, progress, reduceMotion]);
   return useAnimatedStyle(() => {
     const point = reverse ? 1 - progress.value : progress.value;

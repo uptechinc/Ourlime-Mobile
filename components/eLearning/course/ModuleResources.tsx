@@ -26,7 +26,7 @@ export default function ModuleResources({ resources, onOpenError }: ModuleResour
     <View style={styles.wrapper}>
       <Text style={styles.label}>Resources</Text>
       {resources.map((resource) => (
-        <Pressable key={resource.id} accessibilityRole="link" accessibilityLabel={`Open ${resource.title}`} onPress={() => void handleOpen(resource)} style={styles.row}>
+        <Pressable key={resource.id} accessibilityRole="link" accessibilityLabel={`Open ${resource.title}`} onPress={() => void handleOpen(resource)} android_ripple={{ color: colors.control }} style={styles.row}>
           <FileText size={16} color={colors.accentText} />
           <View style={styles.copy}>
             <Text style={styles.title} numberOfLines={2}>{resource.title}</Text>
@@ -44,8 +44,8 @@ export default function ModuleResources({ resources, onOpenError }: ModuleResour
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   wrapper: { gap: 6, paddingVertical: 8 },
   label: { color: colors.mutedText, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
-  row: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas },
-  copy: { flex: 1, gap: 2 },
-  title: { color: colors.text, fontSize: 13, fontWeight: '700' },
-  meta: { color: colors.mutedText, fontSize: 11 },
+  row: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.canvas, overflow: 'hidden' },
+  copy: { flex: 1, minWidth: 0, gap: 2 },
+  title: { color: colors.text, fontSize: 14, fontWeight: '700' },
+  meta: { color: colors.mutedText, fontSize: 12 },
 });

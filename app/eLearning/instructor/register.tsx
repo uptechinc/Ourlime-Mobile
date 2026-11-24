@@ -4,11 +4,11 @@ import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
-import { Building2, Check, Clock, GraduationCap, Lock, ShieldAlert, ShieldCheck, User } from 'lucide-react-native';
-import PageHeader from '@/components/ui/PageHeader';
+import { AlertCircle, Building2, Check, ChevronLeft, Clock, GraduationCap, Lock, ShieldAlert, ShieldCheck, User, X } from 'lucide-react-native';
 import IdentityVerificationModal from '@/components/jobs/IdentityVerificationModal';
-import { CheckRow, ChoiceChips, ErrorList, FilePickRow, FormButton, FormField, FormSection, Segmented, TagInput, ToggleRow } from '@/components/eLearning/instructor/InstructorForm';
+import { CheckRow, ChoiceChips, ErrorList, FieldMessage, FilePickRow, FormField, FormSection, Segmented, TagInput, ToggleRow } from '@/components/eLearning/instructor/InstructorForm';
 import { InstructorApplicationSkeleton } from '@/components/eLearning/ELearningSkeletons';
+import { ELearningButton, ELearningEmptyState, ELearningHeader, ELearningScrollView, ELEARNING_ACTION_GREEN, ELEARNING_GUTTER, StepProgress, StickyActionBar } from '@/components/eLearning/ELearningParts';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { COURSE_MAIN_CATEGORIES, getUniqueSubcategories } from '@/lib/constants/courseCategories';
@@ -73,6 +73,7 @@ export default function InstructorRegisterScreen() {
   const { activeUserId } = useAppData();
   const { width } = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const scrollRef = useRef<ScrollView | null>(null);
   const [gate, setGate] = useState<Gate>({ kind: 'loading' });
   const [isVerificationOpen, setIsVerificationOpen] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
@@ -233,17 +234,32 @@ export default function InstructorRegisterScreen() {
     return next;
   };
 
+  // Step changes and failed checks jump back to the top, where the step's first field and the error summary are.
+  const [scrollRequest, setScrollRequest] = useState(0);
+  useEffect(() => {
+    if (scrollRequest > 0) scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [scrollRequest]);
+  const scrollToTop = () => setScrollRequest((current) => current + 1);
+
   const handleNext = () => {
     const found = validateStep(step.id);
     setErrors(found);
+    scrollToTop();
     if (Object.keys(found).length > 0) return;
     setStepIndex((current) => Math.min(current + 1, steps.length - 1));
   };
 
   const handleBack = () => {
     setErrors({});
-    if (stepIndex === 0) router.back();
-    else setStepIndex((current) => current - 1);
+    if (stepIndex === 0) { router.back(); return; }
+    setStepIndex((current) => current - 1);
+    scrollToTop();
+  };
+
+  const handleJumpToStep = (index: number) => {
+    setErrors({});
+    setStepIndex(index);
+    scrollToTop();
   };
 
   const handleSubmit = async () => {
@@ -291,17 +307,18 @@ export default function InstructorRegisterScreen() {
   if (isDone || gate.kind === 'existing') {
     const verified = gate.kind === 'existing' && gate.status === 'verified';
     return (
-      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
-        <PageHeader title="Become an instructor" onBackPress={() => router.back()} />
-        <View style={styles.center}>
-          {verified ? <ShieldCheck size={44} color={colors.successText} /> : isDone ? <GraduationCap size={44} color={colors.accent} /> : <Clock size={44} color={colors.warningText} />}
-          <Text style={styles.centerTitle}>{isDone ? 'Application submitted' : verified ? 'You are a verified instructor' : 'Application under review'}</Text>
-          <Text style={styles.centerText}>
-            {isDone ? 'An administrator will review your profile. You can prepare courses meanwhile; publishing opens once you are verified.'
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <ELearningHeader title="Become an instructor" onBack={() => router.back()} />
+        <View style={styles.centerFill}>
+          <ELearningEmptyState
+            icon={verified ? <ShieldCheck size={44} color={colors.successText} /> : isDone ? <GraduationCap size={44} color={colors.accentText} /> : <Clock size={44} color={colors.warningText} />}
+            title={isDone ? 'Application submitted' : verified ? 'You are a verified instructor' : 'Application under review'}
+            hint={isDone ? 'An administrator will review your profile. You can prepare courses meanwhile; publishing opens once you are verified.'
               : verified ? 'You already have an instructor profile. Manage your courses from the instructor dashboard.'
                 : 'You already applied. An administrator is reviewing your profile; publishing opens once you are verified.'}
-          </Text>
-          <FormButton label="Go to instructor dashboard" onPress={() => router.replace('/eLearning/instructor' as Href)} />
+            actionLabel="Go to instructor dashboard"
+            onAction={() => router.replace('/eLearning/instructor' as Href)}
+          />
         </View>
       </SafeAreaView>
     );
@@ -309,8 +326,8 @@ export default function InstructorRegisterScreen() {
 
   if (gate.kind === 'loading') {
     return (
-      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
-        <PageHeader title="Become an instructor" onBackPress={() => router.back()} />
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <ELearningHeader title="Become an instructor" onBack={() => router.back()} />
         <InstructorApplicationSkeleton />
       </SafeAreaView>
     );
@@ -318,11 +335,16 @@ export default function InstructorRegisterScreen() {
 
   if (gate.kind === 'error') {
     return (
-      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
-        <PageHeader title="Become an instructor" onBackPress={() => router.back()} />
-        <View style={styles.center}>
-          <Text style={styles.centerText}>The application could not be loaded.</Text>
-          <FormButton label="Try again" onPress={() => void loadGate()} />
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <ELearningHeader title="Become an instructor" onBack={() => router.back()} />
+        <View style={styles.centerFill}>
+          <ELearningEmptyState
+            icon={<AlertCircle size={40} color={colors.mutedText} />}
+            title="The application could not load"
+            hint="Check your connection and try again."
+            actionLabel="Try again"
+            onAction={() => void loadGate()}
+          />
         </View>
       </SafeAreaView>
     );
@@ -331,33 +353,31 @@ export default function InstructorRegisterScreen() {
   if (gate.kind === 'unverified') {
     const inReview = gate.status === 'pending' || gate.status === 'in_progress';
     return (
-      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
-        <PageHeader title="Become an instructor" onBackPress={() => router.back()} />
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <ELearningHeader title="Become an instructor" onBack={() => router.back()} />
         <ScrollView contentContainerStyle={styles.scroll}>
           <View style={[styles.column, column]}>
             <View style={styles.gateCard}>
-              <ShieldAlert size={40} color={colors.accent} />
-              <Text style={styles.centerTitle}>Identity Verification Required</Text>
-              <Text style={styles.centerText}>Access to the Instructor Application is restricted to identity-verified accounts. Before you can apply to become an instructor or represent an educational organization, we must verify your details.</Text>
+              <View style={styles.gateIcon}><ShieldAlert size={28} color={colors.accentText} /></View>
+              <Text accessibilityRole="header" style={styles.centerTitle}>Verify your identity first</Text>
+              <Text style={styles.centerText}>Only identity-verified accounts can apply to teach or to represent a school or company. We need to confirm your details before you start.</Text>
               {inReview ? (
                 <View style={styles.reviewBox}>
                   <Clock size={18} color={colors.warningText} />
-                  <View style={styles.flex}>
-                    <Text style={styles.reviewTitle}>Documents in Review</Text>
-                    <Text style={styles.reviewText}>Your verification documents have been received and are being reviewed by our administrators. The form unlocks once approved.</Text>
+                  <View style={styles.flexText}>
+                    <Text style={styles.reviewTitle}>Documents in review</Text>
+                    <Text style={styles.reviewText}>We have your verification documents and an administrator is reviewing them. The application unlocks once they're approved.</Text>
                   </View>
                 </View>
               ) : (
                 <>
-                  {['Ensures student safety and maintains high educational trust', 'Unlocks course generation and global student enrollment', 'Verifies representative credentials for private custom portals'].map((line) => (
-                    <View key={line} style={styles.benefit}><Check size={15} color={colors.successText} /><Text style={[styles.hint, styles.flex]}>{line}</Text></View>
+                  {['Keeps learners safe and the courses trustworthy', 'Lets you publish courses and enrol learners', 'Confirms representatives for private school portals'].map((line) => (
+                    <View key={line} style={styles.benefit}><Check size={16} color={colors.successText} /><Text style={[styles.benefitText, styles.flexText]}>{line}</Text></View>
                   ))}
-                  <Pressable accessibilityRole="button" onPress={() => setIsVerificationOpen(true)} style={styles.verifyButton}>
-                    <Lock size={16} color={colors.onAccent} /><Text style={styles.verifyText}>Verify Identity Now</Text>
-                  </Pressable>
+                  <ELearningButton label="Verify my identity" icon={<Lock size={18} color="#ffffff" />} onPress={() => setIsVerificationOpen(true)} style={styles.stretch} />
                 </>
               )}
-              <Pressable accessibilityRole="button" onPress={() => void loadGate()} style={styles.linkButton}><Text style={styles.linkText}>I've been verified — check again</Text></Pressable>
+              <Pressable accessibilityRole="button" onPress={() => void loadGate()} android_ripple={{ color: 'rgba(15,23,42,0.12)' }} style={styles.linkButton}><Text style={styles.linkText}>I've been verified — check again</Text></Pressable>
             </View>
           </View>
         </ScrollView>
@@ -372,22 +392,22 @@ export default function InstructorRegisterScreen() {
   }
 
   return (
-    <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
-      <PageHeader title="Become an instructor" onBackPress={() => router.back()} />
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <ELearningHeader title="Become an instructor" onBack={() => router.back()} />
+      <StepProgress steps={steps.map((item) => item.label)} current={stepIndex} onStepPress={progress ? undefined : handleJumpToStep} />
       <KeyboardSafeView style={styles.flex}>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <ELearningScrollView scrollRef={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
           <View style={[styles.column, column]}>
-            <View style={styles.progressRow}>
-              {steps.map((item, index) => <View key={item.id} style={[styles.progressBar, index <= stepIndex && styles.progressBarActive]} />)}
-            </View>
-            <Text style={styles.stepCount}>Step {stepIndex + 1} of {steps.length} · {step.label}</Text>
             {restoredNotice ? (
               <View accessibilityRole="alert" style={styles.restoredBox}>
                 <Check size={16} color={colors.successText} />
-                <Text style={[styles.restoredText, styles.flex]}>{restoredNotice}</Text>
-                <Pressable accessibilityRole="button" accessibilityLabel="Dismiss" onPress={() => setRestoredNotice(null)} hitSlop={10}><Text style={styles.restoredDismiss}>OK</Text></Pressable>
+                <Text style={[styles.restoredText, styles.flexText]}>{restoredNotice}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="Dismiss notice" onPress={() => setRestoredNotice(null)} android_ripple={{ color: 'rgba(15,23,42,0.12)', borderless: true }} style={styles.dismissButton}>
+                  <X size={18} color={colors.successText} />
+                </Pressable>
               </View>
             ) : null}
+            {Object.keys(errors).length > 0 && step.id !== 'agreements' ? <ErrorList errors={['The highlighted fields below need your attention.']} title="Fix the highlighted fields to continue" /> : null}
 
             {step.id === 'type' ? (
               <FormSection title="Select application type" description="Choose the registration profile that matches your role best.">
@@ -395,13 +415,15 @@ export default function InstructorRegisterScreen() {
                   {APPLICATION_TYPES.map((option) => {
                     const selected = applicationType === option.value;
                     return (
-                      <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => setApplicationType(option.value)} style={[styles.typeCard, selected && styles.typeCardSelected]}>
-                        {option.value === 'individual' ? <User size={22} color={selected ? colors.accent : colors.mutedText} /> : <Building2 size={22} color={selected ? colors.accent : colors.mutedText} />}
-                        <View style={styles.flex}>
+                      <Pressable key={option.value} accessibilityRole="radio" accessibilityLabel={`${option.title}. ${option.description}`} accessibilityState={{ checked: selected }} onPress={() => setApplicationType(option.value)} android_ripple={{ color: 'rgba(15,23,42,0.12)' }} style={[styles.typeCard, selected && styles.typeCardSelected]}>
+                        <View style={[styles.typeIcon, selected && styles.typeIconSelected]}>
+                          {option.value === 'individual' ? <User size={22} color={selected ? colors.accentText : colors.mutedText} /> : <Building2 size={22} color={selected ? colors.accentText : colors.mutedText} />}
+                        </View>
+                        <View style={styles.flexText}>
                           <Text style={styles.typeTitle}>{option.title}</Text>
                           <Text style={styles.hint}>{option.description}</Text>
                         </View>
-                        {selected ? <Check size={18} color={colors.accent} /> : null}
+                        <View style={[styles.radio, selected && styles.radioSelected]}>{selected ? <Check size={14} color="#ffffff" strokeWidth={3} /> : null}</View>
                       </Pressable>
                     );
                   })}
@@ -421,13 +443,13 @@ export default function InstructorRegisterScreen() {
                 <TagInput label="Fields of expertise" required values={expertise} onChange={setExpertise} placeholder="Add your own" hint="Pick from the list or add your own." suggestions={expertiseSuggestions} maximum={30} error={errors.expertise} />
                 <FormField label="Years of professional experience" required value={years} onChange={(value) => setYears(value.replace(/[^0-9]/g, ''))} keyboardType="number-pad" error={errors.years} />
                 <TagInput label="Languages taught" required values={languages} onChange={setLanguages} placeholder="e.g. Spanish" maximum={20} error={errors.languages} />
-                <FormField label="Short bio" required value={bio} onChange={setBio} multiline placeholder="Your teaching style, background and what learners can expect" hint={`${bio.trim().length}/50 characters minimum`} error={errors.bio} />
-                <FormField label="Previous teaching experience" value={previousTeaching} onChange={setPreviousTeaching} multiline placeholder="Where and what you have taught (optional)" />
+                <FormField label="Short bio" required value={bio} onChange={setBio} multiline placeholder="Your teaching style, background and what learners can expect" hint="At least 50 characters." minLength={50} error={errors.bio} />
+                <FormField label="Previous teaching experience" value={previousTeaching} onChange={setPreviousTeaching} multiline placeholder="Where and what you have taught" />
                 <FilePickRow label="Resume / CV" required fileName={resume?.name} placeholder="Attach a PDF or Word file" onPick={() => void pickDocument(WORD_AND_PDF, false).then((files) => { if (files[0]) setResume(files[0]); })} onRemove={() => setResume(null)} error={errors.resume} />
                 <FilePickRow label="Certificates" fileName={certificates.length > 0 ? `${certificates.length} file${certificates.length === 1 ? '' : 's'}: ${certificates.map((file) => file.name).join(', ')}` : undefined} placeholder="Attach certificates (optional)" onPick={() => void pickDocument(DOCUMENTS_AND_IMAGES, true).then((files) => setCertificates((current) => [...current, ...files].slice(0, 20)))} onRemove={() => setCertificates([])} hint="PDF, Word or images." />
                 <FormField label="Website" value={website} onChange={setWebsite} keyboardType="url" autoCapitalize="none" placeholder="https://" />
                 <FormField label="LinkedIn" value={linkedin} onChange={setLinkedin} keyboardType="url" autoCapitalize="none" placeholder="https://linkedin.com/in/…" />
-                {errors.files ? <Text style={styles.error}>{errors.files}</Text> : null}
+                <FieldMessage error={errors.files} />
               </FormSection>
             ) : null}
 
@@ -435,13 +457,15 @@ export default function InstructorRegisterScreen() {
               <FormSection title="Teaching information" description="What and how you plan to teach.">
                 <ChoiceChips label="Subject categories" required options={COURSE_MAIN_CATEGORIES} selected={subjects} onToggle={(value) => setSubjects((current) => toggleValue(current, value))} hint="Select all categories you plan to teach." error={errors.subjects} />
                 <ChoiceChips label="Target student level(s)" required options={STUDENT_LEVELS} selected={levels} onToggle={(value) => setLevels((current) => toggleValue(current, value))} error={errors.levels} />
-                <Text style={styles.label}>Course delivery method <Text style={styles.required}>*</Text></Text>
-                {DELIVERY_METHODS.map((method) => (
-                  <CheckRow key={method.id} label={method.id} description={method.description} checked={methods.includes(method.id)} onToggle={() => setMethods((current) => toggleValue(current, method.id))} />
-                ))}
-                {errors.methods ? <Text style={styles.error}>{errors.methods}</Text> : <Text style={styles.hint}>Select every way you plan to teach.</Text>}
+                <View style={styles.field}>
+                  <Text style={styles.label}>Course delivery method <Text style={styles.required}>*</Text></Text>
+                  {DELIVERY_METHODS.map((method) => (
+                    <CheckRow key={method.id} label={method.id} description={method.description} checked={methods.includes(method.id)} hasError={Boolean(errors.methods) && methods.length === 0} onToggle={() => setMethods((current) => toggleValue(current, method.id))} />
+                  ))}
+                  <FieldMessage error={errors.methods} hint="Select every way you plan to teach." />
+                </View>
                 <Segmented label="Course pricing" options={AVAILABILITY} value={availability} onChange={setAvailability} />
-                <FormField label="Intended courses" required value={intended} onChange={setIntended} multiline placeholder="Describe the courses you plan to create" hint={`${intended.trim().length}/50 characters minimum`} error={errors.intended} />
+                <FormField label="Intended courses" required value={intended} onChange={setIntended} multiline placeholder="Describe the courses you plan to create" hint="At least 50 characters." minLength={50} error={errors.intended} />
               </FormSection>
             ) : null}
 
@@ -465,42 +489,48 @@ export default function InstructorRegisterScreen() {
 
             {step.id === 'sample' ? (
               <FormSection title="Sample lesson or course outline" description="Optionally upload a course outline, PDF slides, or a short introductory video to show the structure and quality of your lessons.">
-                <FilePickRow label="Sample file" fileName={sample?.name} placeholder="Attach a PDF, Word file or video (optional)" onPick={() => void pickDocument(DOCUMENTS_AND_VIDEO, false).then((files) => { if (files[0]) setSample(files[0]); })} onRemove={() => setSample(null)} hint="Up to 50 MB." />
-                {errors.files ? <Text style={styles.error}>{errors.files}</Text> : null}
+                <FilePickRow label="Sample file" fileName={sample?.name} placeholder="Attach a PDF, Word file or video" onPick={() => void pickDocument(DOCUMENTS_AND_VIDEO, false).then((files) => { if (files[0]) setSample(files[0]); })} onRemove={() => setSample(null)} hint="Up to 50 MB." />
+                <FieldMessage error={errors.files} />
               </FormSection>
             ) : null}
 
             {step.id === 'agreements' ? (
               <FormSection title="Agreements & submit" description="Check your details, then confirm the statements below.">
                 <View style={styles.summary}>
-                  <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Type: </Text>{APPLICATION_TYPES.find((option) => option.value === applicationType)?.title}</Text>
-                  <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Name: </Text>{`${firstName} ${lastName}`.trim()}</Text>
-                  <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Role: </Text>{jobTitle} · {qualification}</Text>
-                  <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Expertise: </Text>{expertise.join(', ')}</Text>
-                  <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Experience: </Text>{years || '0'} {years === '1' ? 'year' : 'years'}</Text>
-                  {hasOrganization ? <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Organization: </Text>{orgName}</Text> : null}
-                  <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Subjects: </Text>{subjects.join(', ')}</Text>
-                  <Text style={styles.summaryLine}><Text style={styles.summaryKey}>Documents: </Text>{[resume ? 'CV' : '', certificates.length ? `${certificates.length} certificate(s)` : '', sample ? 'sample lesson' : '', hasOrganization && proof ? 'proof of authorization' : ''].filter(Boolean).join(', ')}</Text>
+                  {[
+                    { key: 'Type', value: APPLICATION_TYPES.find((option) => option.value === applicationType)?.title ?? '' },
+                    { key: 'Name', value: `${firstName} ${lastName}`.trim() },
+                    { key: 'Role', value: [jobTitle, qualification].filter(Boolean).join(' · ') },
+                    { key: 'Expertise', value: expertise.join(', ') },
+                    { key: 'Experience', value: `${years || '0'} ${years === '1' ? 'year' : 'years'}` },
+                    ...(hasOrganization ? [{ key: 'Organization', value: orgName }] : []),
+                    { key: 'Subjects', value: subjects.join(', ') },
+                    { key: 'Documents', value: [resume ? 'CV' : '', certificates.length ? `${certificates.length} ${certificates.length === 1 ? 'certificate' : 'certificates'}` : '', sample ? 'sample lesson' : '', hasOrganization && proof ? 'proof of authorization' : ''].filter(Boolean).join(', ') },
+                  ].map((row) => (
+                    <View key={row.key} style={styles.summaryRow}>
+                      <Text style={styles.summaryKey}>{row.key}</Text>
+                      <Text style={styles.summaryValue}>{row.value || '—'}</Text>
+                    </View>
+                  ))}
                 </View>
-                {AGREEMENTS.map((agreement) => (
-                  <CheckRow key={agreement.id} label={agreement.label} checked={agreed.includes(agreement.id)} onToggle={() => setAgreed((current) => (current.includes(agreement.id) ? current.filter((item) => item !== agreement.id) : [...current, agreement.id]))} />
-                ))}
-                {errors.agreements ? <Text accessibilityRole="alert" style={styles.error}>{errors.agreements}</Text> : null}
+                <View style={styles.field}>
+                  {AGREEMENTS.map((agreement) => (
+                    <CheckRow key={agreement.id} label={agreement.label} checked={agreed.includes(agreement.id)} hasError={Boolean(errors.agreements)} onToggle={() => setAgreed((current) => (current.includes(agreement.id) ? current.filter((item) => item !== agreement.id) : [...current, agreement.id]))} />
+                  ))}
+                  <FieldMessage error={errors.agreements} />
+                </View>
               </FormSection>
             ) : null}
 
-            {Object.keys(errors).length > 0 && step.id !== 'agreements' ? <ErrorList errors={['Fix the highlighted fields to continue.']} /> : null}
-            {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
-            <View style={styles.navRow}>
-              <View style={styles.flex}><FormButton variant="secondary" label={stepIndex === 0 ? 'Cancel' : 'Back'} disabled={Boolean(progress)} onPress={handleBack} /></View>
-              <View style={styles.flex}>
-                {isLastStep
-                  ? <FormButton label={progress ?? 'Submit application'} disabled={Boolean(progress)} onPress={() => void handleSubmit()} />
-                  : <FormButton label="Continue" onPress={handleNext} />}
-              </View>
-            </View>
+            {submitError ? <FieldMessage error={submitError} /> : null}
           </View>
-        </ScrollView>
+        </ELearningScrollView>
+        <StickyActionBar note={progress}>
+          <ELearningButton variant="secondary" label={stepIndex === 0 ? 'Cancel' : 'Back'} icon={stepIndex === 0 ? undefined : <ChevronLeft size={18} color={colors.text} />} isDisabled={Boolean(progress)} onPress={handleBack} style={styles.flex} />
+          {isLastStep
+            ? <ELearningButton label="Submit application" busyLabel="Sending…" isBusy={Boolean(progress)} onPress={() => void handleSubmit()} style={styles.primaryAction} />
+            : <ELearningButton label="Continue" onPress={handleNext} style={styles.primaryAction} />}
+        </StickyActionBar>
       </KeyboardSafeView>
     </SafeAreaView>
   );
@@ -509,38 +539,41 @@ export default function InstructorRegisterScreen() {
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
   flex: { flex: 1 },
-  scroll: { alignItems: 'center', paddingBottom: 40 },
-  column: { padding: 16, gap: 12 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 28 },
-  centerTitle: { color: colors.text, fontSize: 21, fontWeight: '900', textAlign: 'center' },
+  flexText: { flex: 1, minWidth: 0 },
+  primaryAction: { flex: 1.4 },
+  stretch: { alignSelf: 'stretch' },
+  centerFill: { flex: 1, justifyContent: 'center' },
+  scroll: { alignItems: 'center', paddingBottom: 24 },
+  column: { padding: ELEARNING_GUTTER, gap: 16 },
+  field: { gap: 8 },
+  centerTitle: { color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
   centerText: { color: colors.secondaryText, fontSize: 15, lineHeight: 22, textAlign: 'center' },
-  gateCard: { padding: 20, gap: 12, alignItems: 'center', borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  restoredBox: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, backgroundColor: colors.successSurface },
-  restoredText: { color: colors.successText, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  restoredDismiss: { color: colors.successText, fontSize: 13, fontWeight: '900' },
-  reviewBox: { padding: 12, flexDirection: 'row', gap: 10, borderRadius: 14, backgroundColor: colors.warningSurface },
+  gateCard: { padding: 20, gap: 14, alignItems: 'center', borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
+  gateIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.successSurface },
+  restoredBox: { paddingLeft: 12, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, backgroundColor: colors.successSurface },
+  restoredText: { color: colors.successText, fontSize: 13, lineHeight: 18, fontWeight: '600', paddingVertical: 8 },
+  dismissButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  reviewBox: { alignSelf: 'stretch', padding: 12, flexDirection: 'row', gap: 10, borderRadius: 12, backgroundColor: colors.warningSurface },
   reviewTitle: { color: colors.warningText, fontSize: 14, fontWeight: '800' },
-  reviewText: { color: colors.warningText, fontSize: 12, lineHeight: 18 },
-  benefit: { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 8 },
-  verifyButton: { minHeight: 48, alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: colors.accent },
-  verifyText: { color: colors.onAccent, fontSize: 15, fontWeight: '800' },
-  linkButton: { minHeight: 40, justifyContent: 'center' },
-  linkText: { color: colors.accentText, fontSize: 13, fontWeight: '800' },
-  progressRow: { flexDirection: 'row', gap: 6 },
-  progressBar: { flex: 1, height: 5, borderRadius: 3, backgroundColor: colors.control },
-  progressBarActive: { backgroundColor: colors.accent },
-  stepCount: { color: colors.mutedText, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
+  reviewText: { color: colors.warningText, fontSize: 13, lineHeight: 19 },
+  benefit: { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  benefitText: { color: colors.secondaryText, fontSize: 14, lineHeight: 20 },
+  linkButton: { minHeight: 44, paddingHorizontal: 8, justifyContent: 'center', borderRadius: 8, overflow: 'hidden' },
+  linkText: { color: colors.accentText, fontSize: 14, fontWeight: '700' },
   typeList: { gap: 10 },
-  typeCard: { minHeight: 72, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  typeCardSelected: { borderColor: colors.accent, borderWidth: 2 },
-  typeTitle: { color: colors.text, fontSize: 15, fontWeight: '800' },
+  typeCard: { minHeight: 76, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
+  typeCardSelected: { borderColor: ELEARNING_ACTION_GREEN, borderWidth: 2, padding: 13 },
+  typeIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
+  typeIconSelected: { backgroundColor: colors.successSurface },
+  typeTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  radio: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.mutedText },
+  radioSelected: { borderColor: ELEARNING_ACTION_GREEN, backgroundColor: ELEARNING_ACTION_GREEN },
   pair: { flexDirection: 'row', gap: 10 },
   label: { color: colors.text, fontSize: 14, fontWeight: '700' },
   required: { color: colors.destructiveText },
   hint: { color: colors.mutedText, fontSize: 12, lineHeight: 17 },
-  error: { color: colors.destructiveText, fontSize: 13 },
-  summary: { padding: 12, gap: 4, borderRadius: 14, backgroundColor: colors.control },
-  summaryLine: { color: colors.secondaryText, fontSize: 13, lineHeight: 19 },
-  summaryKey: { color: colors.text, fontWeight: '800' },
-  navRow: { marginTop: 6, flexDirection: 'row', gap: 10 },
+  summary: { padding: 12, gap: 8, borderRadius: 12, backgroundColor: colors.canvas, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  summaryRow: { flexDirection: 'row', gap: 12 },
+  summaryKey: { width: 96, color: colors.mutedText, fontSize: 13, lineHeight: 19 },
+  summaryValue: { flex: 1, minWidth: 0, color: colors.text, fontSize: 13, lineHeight: 19, fontWeight: '600' },
 });

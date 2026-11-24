@@ -45,6 +45,7 @@ export default function CategoryBrowser({ courses, onOpenCategory, onOpenCxc, on
                 accessibilityRole="link"
                 accessibilityLabel={`${category}, ${count} courses`}
                 onPress={() => (category === 'CXC' ? onOpenCxc() : onOpenCategory(category))}
+                android_ripple={{ color: colors.control }}
                 style={styles.rowMain}
               >
                 <Text style={styles.rowText} numberOfLines={1}>{category}</Text>
@@ -68,9 +69,10 @@ export default function CategoryBrowser({ courses, onOpenCategory, onOpenCxc, on
                     key={subcategory}
                     accessibilityRole="link"
                     onPress={() => (category === 'CXC' ? onOpenCxc() : onOpenCategory(category, subcategory))}
+                    android_ripple={{ color: 'rgba(15,23,42,0.12)' }}
                     style={styles.chip}
                   >
-                    <Text style={styles.chipText}>{subcategory}</Text>
+                    <Text numberOfLines={1} style={styles.chipText}>{subcategory}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -83,17 +85,17 @@ export default function CategoryBrowser({ courses, onOpenCategory, onOpenCxc, on
 }
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 17, padding: 14, gap: 2 },
+  card: { backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: 16, padding: 14, gap: 2 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   title: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '800' },
-  viewAll: { paddingVertical: 4, paddingHorizontal: 6 },
-  viewAllText: { color: colors.accentText, fontSize: 14, fontWeight: '600' },
+  viewAll: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
+  viewAllText: { color: colors.accentText, fontSize: 14, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center' },
-  rowMain: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 6 },
-  rowText: { flex: 1, color: colors.text, fontSize: 14, fontWeight: '600' },
-  count: { color: colors.mutedText, fontSize: 12, fontWeight: '700' },
-  expand: { width: 40, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  rowMain: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 6, borderRadius: 10, overflow: 'hidden' },
+  rowText: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '600' },
+  count: { color: colors.mutedText, fontSize: 13, fontWeight: '700' },
+  expand: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   subcategories: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 6, paddingBottom: 10 },
-  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.control },
-  chipText: { color: colors.text, fontSize: 12, fontWeight: '700' },
+  chip: { minHeight: 36, maxWidth: '100%', justifyContent: 'center', paddingHorizontal: 12, borderRadius: 999, backgroundColor: colors.control, overflow: 'hidden' },
+  chipText: { color: colors.text, fontSize: 13, fontWeight: '600' },
 });

@@ -22,16 +22,15 @@ export default function WorkItemRow({ lesson, isDone, isOverdue, statusLabel, de
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${lesson.title}, ${statusLabel}`} onPress={onPress} android_ripple={{ color: colors.control }} style={styles.card}>
+    <Pressable accessibilityRole="button" accessibilityLabel={[lesson.title, statusLabel, lesson.dueDate ? `due ${formatDate(lesson.dueDate)}` : null, isOverdue ? 'overdue' : null, detail ?? null].filter(Boolean).join(', ')} onPress={onPress} android_ripple={{ color: colors.control }} style={styles.card}>
       <View style={[styles.icon, { backgroundColor: isDone ? colors.successSurface : colors.control }]}>
         {isDone ? <CheckCircle2 size={22} color={colors.successText} /> : <LessonTypeIcon type={lesson.type} size={22} />}
       </View>
       <View style={styles.copy}>
         <Text style={styles.title} numberOfLines={2}>{lesson.title}</Text>
         <View style={styles.metaRow}>
-          <Calendar size={12} color={colors.mutedText} />
-          <Text style={styles.meta}>Due: {formatDate(lesson.dueDate)}</Text>
-          <Text style={styles.meta}>· {lesson.points ?? 0} pts</Text>
+          {lesson.dueDate ? <><Calendar size={12} color={colors.mutedText} /><Text style={styles.meta}>Due {formatDate(lesson.dueDate)}</Text></> : null}
+          {lesson.points !== undefined ? <Text style={styles.meta}>{lesson.dueDate ? '· ' : ''}{lesson.points} pts</Text> : null}
         </View>
         {isOverdue ? (
           <View style={styles.metaRow}><AlertCircle size={12} color={colors.destructiveText} /><Text style={styles.overdue}>Overdue</Text></View>

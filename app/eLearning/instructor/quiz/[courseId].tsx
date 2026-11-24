@@ -1,43 +1,89 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Check, HelpCircle, Plus, Trash2, X } from 'lucide-react-native';
-import PageHeader from '@/components/ui/PageHeader';
-import { ErrorList, FormButton, FormField, Segmented } from '@/components/eLearning/instructor/InstructorForm';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { ArrowDown, ArrowUp, Check, HelpCircle, Plus, Trash2, X } from 'lucide-react-native';
+import CustomModal from '@/components/ui/CustomModal';
+import { ErrorList, FieldMessage, FormField, FormSection, Segmented } from '@/components/eLearning/instructor/InstructorForm';
+import { ELearningButton, ELearningEmptyState, ELearningHeader, ELearningScrollView, ELEARNING_ACTION_GREEN, ELEARNING_GUTTER, StickyActionBar } from '@/components/eLearning/ELearningParts';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { instructorService } from '@/lib/services/InstructorService';
 import type { QuizQuestionInput, QuizQuestionType } from '@/lib/types/instructor';
 
 const CONTENT_MAX_WIDTH = 760;
 const MAX_OPTIONS = 10;
+const MAX_QUESTIONS = 100;
 const QUESTION_TYPES: { value: QuizQuestionType; label: string }[] = [{ value: 'mcq', label: 'Multiple choice' }, { value: 'tf', label: 'True / False' }, { value: 'short', label: 'Short answer' }];
 const TRUE_FALSE = ['True', 'False'];
+const RIPPLE = { color: 'rgba(15,23,42,0.12)' };
 
 type QuestionDraft = { key: string; title: string; type: QuizQuestionType; options: string[]; correctIndex: number | null; points: string };
 
 let keyCounter = 0;
 const nextKey = (): string => `q${Date.now()}_${keyCounter++}`;
 const newQuestion = (): QuestionDraft => ({ key: nextKey(), title: '', type: 'mcq', options: ['', ''], correctIndex: null, points: '1' });
+const optionLetter = (index: number): string => String.fromCharCode(65 + index);
 
-/** Create a quiz for one of the instructor's courses (the website's quiz editor): multiple choice, true/false and short answer. */
+/** What is wrong with one question, worded for its own card ("Needs at least two answers."). */
+const questionProblems = (question: QuestionDraft): string[] => {
+  const found: string[] = [];
+  if (!question.title.trim()) found.push('Write the question.');
+  const points = Number(question.points);
+  if (!Number.isInteger(points) || points < 0 || points > 1000) found.push('Points must be a whole number from 0 to 1000.');
+  if (question.type === 'mcq') {
+    if (question.options.filter((option) => option.trim()).length < 2) found.push('Needs at least two answers.');
+    if (question.options.some((option) => !option.trim())) found.push('Fill in or remove the empty answer.');
+  }
+  if (question.type !== 'short' && question.correctIndex === null) found.push('Mark the correct answer.');
+  return found;
+};
+
+/**
+ * Create a quiz for one of the instructor's courses (the website's quiz editor): multiple choice, true/false and short
+ * answer. Each question is its own card that can be moved or removed; problems show on the card they belong to.
+ */
 export default function CreateQuizScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { courseId, title: courseTitle } = useLocalSearchParams<{ courseId: string; title?: string }>();
   const id = typeof courseId === 'string' ? courseId : '';
+  const courseName = typeof courseTitle === 'string' && courseTitle ? courseTitle : undefined;
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const scrollRef = useRef<ScrollView | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [questions, setQuestions] = useState<QuestionDraft[]>([newQuestion()]);
-  const [errors, setErrors] = useState<string[]>([]);
+  const [showErrors, setShowErrors] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isDone, setIsDone] = useState(false);
+  const [questionToRemove, setQuestionToRemove] = useState<string | null>(null);
+  const [isLeaveVisible, setIsLeaveVisible] = useState(false);
+  const pendingLeaveRef = useRef<(() => void) | null>(null);
+
+  // The quiz is saved only by Save quiz, so leaving with questions written asks first.
+  const hasWork = Boolean(title.trim() || description.trim() || questions.some((question) => question.title.trim() || question.options.some((option) => option.trim())));
+  const shouldConfirmLeaveRef = useRef(false);
+  shouldConfirmLeaveRef.current = hasWork && !isDone && !isSaving;
+  useEffect(() => navigation.addListener('beforeRemove', (event) => {
+    if (!shouldConfirmLeaveRef.current) return;
+    event.preventDefault();
+    pendingLeaveRef.current = () => navigation.dispatch(event.data.action);
+    setIsLeaveVisible(true);
+  }), [navigation]);
 
   const updateQuestion = (key: string, change: Partial<QuestionDraft>) => setQuestions((current) => current.map((question) => (question.key === key ? { ...question, ...change } : question)));
+
+  const moveQuestion = (index: number, offset: -1 | 1) => setQuestions((current) => {
+    const target = index + offset;
+    if (target < 0 || target >= current.length) return current;
+    const next = [...current];
+    [next[index], next[target]] = [next[target], next[index]];
+    return next;
+  });
 
   const handleChangeType = (question: QuestionDraft, type: QuizQuestionType) => {
     if (type === question.type) return;
@@ -48,29 +94,29 @@ export default function CreateQuizScreen() {
     });
   };
 
+  const handleRequestRemove = (question: QuestionDraft) => {
+    if (!question.title.trim() && !question.options.some((option) => option.trim())) setQuestions((current) => current.filter((item) => item.key !== question.key));
+    else setQuestionToRemove(question.key);
+  };
+
   const validate = (): string[] => {
     const found: string[] = [];
     if (!title.trim()) found.push('Enter a quiz title.');
     if (questions.length === 0) found.push('Add at least one question.');
     questions.forEach((question, index) => {
-      const label = `Question ${index + 1}`;
-      if (!question.title.trim()) found.push(`${label} needs its question text.`);
-      const points = Number(question.points);
-      if (!Number.isInteger(points) || points < 0 || points > 1000) found.push(`${label}: points must be a whole number from 0 to 1000.`);
-      if (question.type === 'mcq') {
-        if (question.options.filter((option) => option.trim()).length < 2) found.push(`${label} needs at least two options.`);
-        if (question.options.some((option) => !option.trim())) found.push(`${label} has an empty option.`);
-      }
-      if (question.type !== 'short' && question.correctIndex === null) found.push(`${label}: mark the correct answer.`);
+      questionProblems(question).forEach((problem) => found.push(`Question ${index + 1}: ${problem.charAt(0).toLowerCase()}${problem.slice(1)}`));
     });
     return found;
   };
 
+  const errors = showErrors ? validate() : [];
+  const totalPoints = questions.reduce((sum, question) => sum + (Number(question.points) || 0), 0);
+
   const handleSave = async () => {
     const found = validate();
-    setErrors(found);
+    setShowErrors(true);
     setSaveError(null);
-    if (found.length > 0 || !id) return;
+    if (found.length > 0 || !id) { scrollRef.current?.scrollTo({ y: 0, animated: true }); return; }
     setIsSaving(true);
     try {
       const built: QuizQuestionInput[] = questions.map((question) => ({
@@ -86,123 +132,189 @@ export default function CreateQuizScreen() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : '';
       console.error('[CreateQuizScreen.handleSave] Error:', message || 'Unknown error');
-      setSaveError(message.includes('instructor') ? 'Only the course instructor can add quizzes to this course.' : 'The quiz could not be saved. Please try again.');
+      setSaveError(message.includes('instructor') ? 'Only the course instructor can add quizzes to this course.' : 'The quiz could not be saved. Check your connection and try again.');
     } finally {
       setIsSaving(false);
     }
   };
 
+  const handleStartAnother = () => {
+    setTitle('');
+    setDescription('');
+    setQuestions([newQuestion()]);
+    setShowErrors(false);
+    setSaveError(null);
+    setIsDone(false);
+  };
+
   if (isDone) {
     return (
-      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
-        <PageHeader title="Quiz created" onBackPress={() => router.back()} />
-        <View style={styles.done}>
-          <HelpCircle size={44} color={colors.accent} />
-          <Text style={styles.doneTitle}>Quiz added</Text>
-          <Text style={styles.doneText}>Enrolled learners see it with the course's quizzes and assignments.</Text>
-          <FormButton label="Back" onPress={() => router.back()} />
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <ELearningHeader title="Quiz added" subtitle={courseName} onBack={() => router.back()} />
+        <View style={styles.centerFill}>
+          <ELearningEmptyState
+            icon={<HelpCircle size={44} color={colors.accentText} />}
+            title="Quiz added"
+            hint="Enrolled learners see it with the course's quizzes and assignments."
+            actionLabel="Done"
+            onAction={() => router.back()}
+            secondaryActionLabel="Add another quiz"
+            onSecondaryAction={handleStartAnother}
+          />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
-      <PageHeader title="New quiz" onBackPress={() => router.back()} />
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <ELearningHeader title="New quiz" subtitle={courseName} onBack={() => router.back()} />
       <KeyboardSafeView style={styles.flex}>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <ELearningScrollView scrollRef={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
           <View style={[styles.column, { width: Math.min(width, CONTENT_MAX_WIDTH) }]}>
-            {typeof courseTitle === 'string' && courseTitle ? <Text style={styles.course} numberOfLines={2}>{courseTitle}</Text> : null}
-            <FormField label="Quiz title" required value={title} onChange={setTitle} placeholder="e.g. Module 1 check-in" maxLength={200} />
-            <FormField label="Description" value={description} onChange={setDescription} multiline placeholder="What the quiz covers (optional)" />
-            <Text style={styles.hint}>The quiz is added to the course's assessments module.</Text>
+            <ErrorList errors={errors} title={`Fix ${errors.length === 1 ? 'this' : `these ${errors.length}`} to save`} />
+            <FormSection title="Quiz details" description="The quiz is added to the course's assessments module.">
+              <FormField label="Quiz title" required value={title} onChange={setTitle} placeholder="e.g. Module 1 check-in" maxLength={200} error={showErrors && !title.trim() ? 'Enter a quiz title.' : undefined} />
+              <FormField label="Description" value={description} onChange={setDescription} multiline placeholder="What the quiz covers" />
+            </FormSection>
 
-            <Text style={styles.section}>Questions</Text>
-            {questions.map((question, index) => (
-              <View key={question.key} style={styles.card}>
-                <View style={styles.row}>
-                  <Text style={styles.number}>Question {index + 1}</Text>
-                  {questions.length > 1 ? (
-                    <Pressable accessibilityRole="button" accessibilityLabel={`Delete question ${index + 1}`} hitSlop={8} onPress={() => setQuestions((current) => current.filter((item) => item.key !== question.key))}>
-                      <Trash2 size={16} color={colors.mutedText} />
+            <View style={styles.sectionHead}>
+              <Text accessibilityRole="header" style={[styles.section, styles.flexText]}>Questions</Text>
+              <Text style={styles.muted}>{questions.length} {questions.length === 1 ? 'question' : 'questions'} · {totalPoints} {totalPoints === 1 ? 'point' : 'points'}</Text>
+            </View>
+
+            {questions.map((question, index) => {
+              const problems = showErrors ? questionProblems(question) : [];
+              const options = question.type === 'tf' ? TRUE_FALSE : question.options;
+              return (
+                <View key={question.key} style={[styles.card, problems.length > 0 && styles.cardError]}>
+                  <View style={styles.cardHead}>
+                    <Text style={[styles.eyebrow, styles.flexText]}>Question {index + 1}</Text>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Move question ${index + 1} up`} accessibilityState={{ disabled: index === 0 }} disabled={index === 0} onPress={() => moveQuestion(index, -1)} android_ripple={RIPPLE} style={[styles.iconButton, index === 0 && styles.dimmed]}>
+                      <ArrowUp size={18} color={colors.icon} />
                     </Pressable>
-                  ) : null}
-                </View>
-                <TextInput accessibilityLabel={`Question ${index + 1} text`} value={question.title} onChangeText={(value) => updateQuestion(question.key, { title: value })} placeholder="Question" placeholderTextColor={colors.mutedText} multiline style={[styles.input, styles.shortMultiline]} />
-                <Segmented options={QUESTION_TYPES} value={question.type} onChange={(type) => handleChangeType(question, type)} />
-                <View style={styles.row}>
-                  <Text style={[styles.label, styles.flex]}>Points</Text>
-                  <TextInput accessibilityLabel={`Question ${index + 1} points`} value={question.points} onChangeText={(value) => updateQuestion(question.key, { points: value.replace(/[^0-9]/g, '') })} keyboardType="number-pad" style={[styles.input, styles.pointsInput]} />
-                </View>
-
-                {question.type === 'short' ? (
-                  <Text style={styles.note}>Short answers are graded by you.</Text>
-                ) : (
-                  <View accessibilityRole="radiogroup" style={styles.options}>
-                    <Text style={styles.hint}>Tap the circle next to the correct answer.</Text>
-                    {(question.type === 'tf' ? TRUE_FALSE : question.options).map((option, optionIndex) => {
-                      const isCorrect = question.correctIndex === optionIndex;
-                      return (
-                        <View key={`${question.key}-${optionIndex}`} style={styles.row}>
-                          <Pressable
-                            accessibilityRole="radio"
-                            accessibilityState={{ checked: isCorrect }}
-                            accessibilityLabel={`Mark option ${optionIndex + 1} as correct`}
-                            hitSlop={6}
-                            onPress={() => updateQuestion(question.key, { correctIndex: optionIndex })}
-                            style={[styles.radio, isCorrect && styles.radioChecked]}
-                          >
-                            {isCorrect ? <Check size={14} color={colors.onAccent} strokeWidth={3} /> : null}
-                          </Pressable>
-                          {question.type === 'tf' ? (
-                            <Text style={[styles.tfText, styles.flex]}>{option}</Text>
-                          ) : (
-                            <TextInput
-                              accessibilityLabel={`Option ${optionIndex + 1}`}
-                              value={option}
-                              onChangeText={(value) => updateQuestion(question.key, { options: question.options.map((entry, position) => (position === optionIndex ? value : entry)) })}
-                              placeholder={`Option ${optionIndex + 1}`}
-                              placeholderTextColor={colors.mutedText}
-                              style={[styles.input, styles.flex]}
-                            />
-                          )}
-                          {question.type === 'mcq' && question.options.length > 2 ? (
-                            <Pressable
-                              accessibilityRole="button"
-                              accessibilityLabel={`Remove option ${optionIndex + 1}`}
-                              hitSlop={6}
-                              onPress={() => updateQuestion(question.key, {
-                                options: question.options.filter((_entry, position) => position !== optionIndex),
-                                correctIndex: question.correctIndex === null || question.correctIndex === optionIndex ? null : question.correctIndex > optionIndex ? question.correctIndex - 1 : question.correctIndex,
-                              })}
-                            >
-                              <X size={18} color={colors.mutedText} />
-                            </Pressable>
-                          ) : null}
-                        </View>
-                      );
-                    })}
-                    {question.type === 'mcq' && question.options.length < MAX_OPTIONS ? (
-                      <Pressable accessibilityRole="button" onPress={() => updateQuestion(question.key, { options: [...question.options, ''] })} style={styles.inlineAdd}>
-                        <Plus size={14} color={colors.accentText} /><Text style={styles.inlineAddText}>Add option</Text>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Move question ${index + 1} down`} accessibilityState={{ disabled: index === questions.length - 1 }} disabled={index === questions.length - 1} onPress={() => moveQuestion(index, 1)} android_ripple={RIPPLE} style={[styles.iconButton, index === questions.length - 1 && styles.dimmed]}>
+                      <ArrowDown size={18} color={colors.icon} />
+                    </Pressable>
+                    {questions.length > 1 ? (
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Delete question ${index + 1}`} onPress={() => handleRequestRemove(question)} android_ripple={RIPPLE} style={styles.iconButton}>
+                        <Trash2 size={18} color={colors.destructiveText} />
                       </Pressable>
                     ) : null}
                   </View>
-                )}
-              </View>
-            ))}
-            {questions.length < 100 ? (
-              <Pressable accessibilityRole="button" onPress={() => setQuestions((current) => [...current, newQuestion()])} style={styles.addButton}>
-                <Plus size={16} color={colors.accentText} /><Text style={styles.addText}>Add question</Text>
+
+                  <View style={styles.field}>
+                    <Text style={styles.label}>Question <Text style={styles.required}>*</Text></Text>
+                    <TextInput accessibilityLabel={`Question ${index + 1} text`} value={question.title} onChangeText={(value) => updateQuestion(question.key, { title: value })} placeholder="Type the question" placeholderTextColor={colors.mutedText} multiline style={[styles.input, styles.shortMultiline]} />
+                  </View>
+                  <Segmented label="Answer type" options={QUESTION_TYPES} value={question.type} onChange={(type) => handleChangeType(question, type)} />
+
+                  {question.type === 'short' ? (
+                    <Text style={styles.note}>Learners type their own answer. Short answers are graded by you.</Text>
+                  ) : (
+                    <View style={styles.field}>
+                      <Text style={styles.label}>Answers</Text>
+                      <Text style={styles.hint}>Tap the circle next to the correct answer.</Text>
+                      <View accessibilityRole="radiogroup" style={styles.options}>
+                        {options.map((option, optionIndex) => {
+                          const isCorrect = question.correctIndex === optionIndex;
+                          const answerName = question.type === 'tf' ? option : `Answer ${optionLetter(optionIndex)}`;
+                          return (
+                            <View key={`${question.key}-${optionIndex}`} style={[styles.optionRow, isCorrect && styles.optionRowCorrect]}>
+                              <Pressable
+                                accessibilityRole="radio"
+                                accessibilityState={{ checked: isCorrect }}
+                                accessibilityLabel={`Mark ${answerName} as correct`}
+                                onPress={() => updateQuestion(question.key, { correctIndex: optionIndex })}
+                                android_ripple={{ ...RIPPLE, borderless: true }}
+                                style={styles.radioHit}
+                              >
+                                <View style={[styles.radio, isCorrect && styles.radioChecked]}>{isCorrect ? <Check size={14} color="#ffffff" strokeWidth={3} /> : null}</View>
+                              </Pressable>
+                              {question.type === 'tf' ? (
+                                <Pressable accessibilityElementsHidden importantForAccessibility="no-hide-descendants" onPress={() => updateQuestion(question.key, { correctIndex: optionIndex })} style={styles.optionTextHit}>
+                                  <Text style={styles.tfText}>{option}</Text>
+                                </Pressable>
+                              ) : (
+                                <TextInput
+                                  accessibilityLabel={answerName}
+                                  value={option}
+                                  onChangeText={(value) => updateQuestion(question.key, { options: question.options.map((entry, position) => (position === optionIndex ? value : entry)) })}
+                                  placeholder={answerName}
+                                  placeholderTextColor={colors.mutedText}
+                                  style={styles.optionInput}
+                                />
+                              )}
+                              {isCorrect ? <Text style={styles.correctTag}>Correct</Text> : null}
+                              {question.type === 'mcq' && question.options.length > 2 ? (
+                                <Pressable
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Remove ${answerName}`}
+                                  onPress={() => updateQuestion(question.key, {
+                                    options: question.options.filter((_entry, position) => position !== optionIndex),
+                                    correctIndex: question.correctIndex === null || question.correctIndex === optionIndex ? null : question.correctIndex > optionIndex ? question.correctIndex - 1 : question.correctIndex,
+                                  })}
+                                  android_ripple={{ ...RIPPLE, borderless: true }}
+                                  style={styles.iconButton}
+                                >
+                                  <X size={18} color={colors.mutedText} />
+                                </Pressable>
+                              ) : null}
+                            </View>
+                          );
+                        })}
+                      </View>
+                      {question.type === 'mcq' && question.options.length < MAX_OPTIONS ? (
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Add an answer to question ${index + 1}`} onPress={() => updateQuestion(question.key, { options: [...question.options, ''] })} android_ripple={RIPPLE} style={styles.inlineAdd}>
+                          <Plus size={16} color={colors.accentText} /><Text style={styles.inlineAddText}>Add answer</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  )}
+
+                  <View style={styles.pointsRow}>
+                    <Text style={[styles.label, styles.flexText]}>Points</Text>
+                    <TextInput accessibilityLabel={`Question ${index + 1} points`} value={question.points} onChangeText={(value) => updateQuestion(question.key, { points: value.replace(/[^0-9]/g, '') })} keyboardType="number-pad" maxLength={4} style={[styles.input, styles.pointsInput]} />
+                    <Text style={styles.hint}>pts</Text>
+                  </View>
+                  {problems.map((problem) => <FieldMessage key={problem} error={problem} />)}
+                </View>
+              );
+            })}
+            {questions.length < MAX_QUESTIONS ? (
+              <Pressable accessibilityRole="button" onPress={() => setQuestions((current) => [...current, newQuestion()])} android_ripple={RIPPLE} style={styles.addButton}>
+                <Plus size={18} color={colors.accentText} /><Text style={styles.addText}>Add question</Text>
               </Pressable>
             ) : null}
-
-            <ErrorList errors={errors} />
-            {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
-            <FormButton label={isSaving ? 'Saving…' : 'Save quiz'} disabled={isSaving} onPress={() => void handleSave()} />
+            {saveError ? <FieldMessage error={saveError} /> : null}
           </View>
-        </ScrollView>
+        </ELearningScrollView>
+        <StickyActionBar>
+          <ELearningButton label="Save quiz" busyLabel="Saving…" isBusy={isSaving} onPress={() => void handleSave()} style={styles.flex} />
+        </StickyActionBar>
       </KeyboardSafeView>
+      <CustomModal
+        visible={Boolean(questionToRemove)}
+        type="warning"
+        title="Delete this question?"
+        message="The question and its answers will be removed from this quiz."
+        confirmText="Delete"
+        cancelText="Keep"
+        onConfirm={() => { setQuestions((current) => current.filter((item) => item.key !== questionToRemove)); setQuestionToRemove(null); }}
+        onCancel={() => setQuestionToRemove(null)}
+        onClose={() => setQuestionToRemove(null)}
+      />
+      <CustomModal
+        visible={isLeaveVisible}
+        type="warning"
+        title="Leave without saving?"
+        message="This quiz is not saved yet. If you leave now, its questions will be lost."
+        confirmText="Leave"
+        cancelText="Keep editing"
+        onConfirm={() => { setIsLeaveVisible(false); const leave = pendingLeaveRef.current; pendingLeaveRef.current = null; leave?.(); }}
+        onCancel={() => { setIsLeaveVisible(false); pendingLeaveRef.current = null; }}
+        onClose={() => { setIsLeaveVisible(false); pendingLeaveRef.current = null; }}
+      />
     </SafeAreaView>
   );
 }
@@ -210,29 +322,40 @@ export default function CreateQuizScreen() {
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
   flex: { flex: 1 },
-  scroll: { alignItems: 'center', paddingBottom: 40 },
-  column: { padding: 16, gap: 12 },
-  course: { color: colors.mutedText, fontSize: 13, fontWeight: '700' },
-  section: { marginTop: 10, color: colors.text, fontSize: 18, fontWeight: '900' },
+  flexText: { flex: 1, minWidth: 0 },
+  centerFill: { flex: 1, justifyContent: 'center' },
+  scroll: { alignItems: 'center', paddingBottom: 24 },
+  column: { padding: ELEARNING_GUTTER, gap: 16 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  section: { color: colors.text, fontSize: 18, fontWeight: '800' },
+  muted: { color: colors.mutedText, fontSize: 13 },
+  field: { gap: 6 },
   label: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  hint: { color: colors.mutedText, fontSize: 12 },
-  note: { padding: 12, borderRadius: 12, backgroundColor: colors.control, color: colors.secondaryText, fontSize: 13 },
-  card: { padding: 12, gap: 10, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  number: { flex: 1, color: colors.mutedText, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  required: { color: colors.destructiveText },
+  hint: { color: colors.mutedText, fontSize: 12, lineHeight: 17 },
+  note: { padding: 12, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.control, color: colors.secondaryText, fontSize: 13, lineHeight: 19 },
+  card: { padding: 14, gap: 14, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
+  cardError: { borderWidth: 1, borderColor: colors.destructiveText },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 2, marginRight: -8, marginTop: -6 },
+  eyebrow: { color: colors.mutedText, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  dimmed: { opacity: 0.35 },
   input: { minHeight: 48, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 16 },
-  shortMultiline: { minHeight: 64, textAlignVertical: 'top' },
-  pointsInput: { width: 90, textAlign: 'center' },
+  shortMultiline: { minHeight: 72, textAlignVertical: 'top' },
   options: { gap: 8 },
-  radio: { width: 26, height: 26, alignItems: 'center', justifyContent: 'center', borderRadius: 13, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.input },
-  radioChecked: { borderColor: colors.accent, backgroundColor: colors.accent },
-  tfText: { minHeight: 44, textAlignVertical: 'center', paddingVertical: 12, color: colors.text, fontSize: 15, fontWeight: '700' },
-  inlineAdd: { minHeight: 36, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 },
-  inlineAddText: { color: colors.accentText, fontSize: 13, fontWeight: '800' },
-  addButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
-  addText: { color: colors.accentText, fontSize: 14, fontWeight: '800' },
-  error: { color: colors.destructiveText, fontSize: 13 },
-  done: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 28 },
-  doneTitle: { color: colors.text, fontSize: 22, fontWeight: '900' },
-  doneText: { color: colors.secondaryText, fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  optionRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 4, paddingRight: 4, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input },
+  optionRowCorrect: { borderColor: ELEARNING_ACTION_GREEN, backgroundColor: colors.successSurface },
+  radioHit: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  radio: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 2, borderColor: colors.mutedText, backgroundColor: colors.surface },
+  radioChecked: { borderColor: ELEARNING_ACTION_GREEN, backgroundColor: ELEARNING_ACTION_GREEN },
+  optionInput: { flex: 1, minWidth: 0, minHeight: 48, paddingVertical: 10, color: colors.text, fontSize: 16 },
+  optionTextHit: { flex: 1, minHeight: 48, justifyContent: 'center' },
+  tfText: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  correctTag: { color: colors.successText, fontSize: 12, fontWeight: '800', paddingHorizontal: 6 },
+  inlineAdd: { minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 },
+  inlineAddText: { color: colors.accentText, fontSize: 14, fontWeight: '700' },
+  pointsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pointsInput: { width: 88, textAlign: 'center' },
+  addButton: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
+  addText: { color: colors.accentText, fontSize: 15, fontWeight: '700' },
 });
