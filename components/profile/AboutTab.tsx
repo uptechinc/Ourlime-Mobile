@@ -7,6 +7,7 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { Skeleton } from '@/components/ui/Skeleton';
 import CustomModal from '@/components/ui/CustomModal';
 import SocialLinksRow from '@/components/profile/SocialLinksRow';
+import VerifiedCertificatesCard from '@/components/profile/VerifiedCertificatesCard';
 import AboutEntryFormSheet, { type AboutEntryFormKind, type AboutEntryFormValues } from '@/components/profile/AboutEntryFormSheet';
 import {
   CONTACT_TYPES,
@@ -212,6 +213,9 @@ export default function AboutTab({ profile, isOwnProfile = false, onEditBasicInf
           />
         ))}
       </SectionCard>
+
+      {/* Verified course certificates the member chose to show, kept apart from the self-reported sections. */}
+      <VerifiedCertificatesCard userId={profile.uid} isOwnProfile={isOwnProfile} />
 
       {(['interests', 'skills'] as const).map((kind) => (
         <SectionCard key={kind} icon={kind === 'interests' ? 'heart-outline' : 'code-slash-outline'} title={kind === 'interests' ? 'Interests' : 'Skills'}>

@@ -38,7 +38,7 @@ export type InstructorApplicationState = { status: InstructorStatus; declineReas
 export type InstructorCourseReviewStatus = 'approved' | 'declined' | 'resubmitted';
 
 /** courses/{id}.status. pending_review is set by the server for courses from instructors who are not yet verified. */
-export type InstructorCourseStatus = 'draft' | 'pending_review' | 'published' | 'archived';
+export type InstructorCourseStatus = 'draft' | 'pending_review' | 'published' | 'archived' | 'deleted';
 
 /** The statuses update_course accepts (pending_review is server-only). */
 export type InstructorSettableStatus = 'draft' | 'published' | 'archived';

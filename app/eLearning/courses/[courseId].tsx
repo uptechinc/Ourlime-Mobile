@@ -55,7 +55,11 @@ import { contentShareService } from '@/lib/services/ContentShareService';
 import CourseClassCard from '@/components/eLearning/course/CourseClassCard';
 import ClassPickerSheet from '@/components/eLearning/course/ClassPickerSheet';
 import { serverMessage } from '@/lib/services/TeachingWorkflowService';
-import type { CourseCohort, CourseLesson } from '@/lib/types/course';
+import type { CourseCohort, CourseLesson, PrerequisiteStatus } from '@/lib/types/course';
+import CourseCertificateCard from '@/components/eLearning/course/CourseCertificateCard';
+import PrerequisiteCoursesCard from '@/components/eLearning/course/PrerequisiteCoursesCard';
+import { learningDepthService } from '@/lib/services/LearningDepthService';
+import { prerequisiteBlockMessage } from '@/lib/services/LearningDepthRules';
 
 const LANGUAGE_NAMES: { [code: string]: string } = { en: 'English', es: 'Spanish', fr: 'French', pt: 'Portuguese', hi: 'Hindi', zh: 'Chinese' };
 
@@ -79,7 +83,9 @@ const enrollErrorMessage = (error: unknown): string => {
   const message = error instanceof Error ? error.message : '';
   // Class problems (full, closed, a class is required) come back in words the learner can act on.
   if (code.endsWith('failed-precondition') && /class/i.test(message)) return serverMessage(error, 'This class cannot be joined right now.');
-  if (code.endsWith('failed-precondition') || /payment/i.test(message)) return 'Payments are unavailable for this course in the app.';
+  if (/payment/i.test(message)) return 'Payments are unavailable for this course in the app.';
+  // A required course not completed yet (and other refusals) come back in words the learner can act on.
+  if (code.endsWith('failed-precondition')) return serverMessage(error, 'Enrollment could not be completed. Please try again.');
   if (code.endsWith('not-found')) return 'This course is no longer available for enrollment.';
   if (code.endsWith('permission-denied') || code.endsWith('unauthenticated')) return 'E-Learning is not available for your account right now.';
   if (code.endsWith('unavailable') || code.endsWith('deadline-exceeded') || /network/i.test(message)) return 'You appear to be offline. Check your connection and try again.';
@@ -114,6 +120,19 @@ export default function CourseDetailScreen() {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [pickerCohorts, setPickerCohorts] = useState<CourseCohort[]>([]);
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const [prerequisiteStatus, setPrerequisiteStatus] = useState<PrerequisiteStatus | null>(null);
+  const prerequisiteLinks = course?.prerequisiteCourses ?? [];
+  const hasPrerequisites = prerequisiteLinks.length > 0;
+
+  // Which prerequisite courses the learner already completed (the server reads their own enrollments).
+  useEffect(() => {
+    if (!id || !activeUserId || !hasPrerequisites || isEnrolled) return;
+    let isActive = true;
+    learningDepthService.getPrerequisiteStatus(id)
+      .then((status) => { if (isActive) setPrerequisiteStatus(status); })
+      .catch((statusError: unknown) => console.warn('[CourseDetailScreen.prerequisites] Unavailable:', statusError instanceof Error ? statusError.message : 'Unknown error'));
+    return () => { isActive = false; };
+  }, [id, activeUserId, hasPrerequisites, isEnrolled]);
 
   // Visitors get the website's About / Curriculum / Quizzes & Assignments / Reviews tabs; enrolled learners reach their
   // quizzes, assignments and the review form from the course home.
@@ -202,6 +221,11 @@ export default function CourseDetailScreen() {
     }
     if (course.price > 0) {
       setDialogState({ visible: true, type: 'info', title: 'Payments unavailable', message: 'Paid course enrollment is not available in this release.' });
+      return;
+    }
+    // Required courses first (the server refuses the enrollment too, with the same words).
+    if (prerequisiteStatus && prerequisiteStatus.missingRequired.length > 0) {
+      setDialogState({ visible: true, type: 'info', title: 'Take another course first', message: prerequisiteBlockMessage(prerequisiteStatus.missingRequired) });
       return;
     }
     setEnrolling(true);
@@ -335,6 +359,16 @@ export default function CourseDetailScreen() {
                   <CourseClassCard courseId={id} enrollment={enrollment} onJoined={() => void refresh(true)} onOpenError={showOpenError} />
                 ) : null}
 
+                {activeTab === 'home' && isEnrolled && (course.status === 'deleted' || course.status === 'archived') ? (
+                  <View style={styles.retiredNote}>
+                    <Text style={styles.retiredText}>
+                      {course.status === 'deleted'
+                        ? 'This course was removed by its instructor. You can still read it and see your grades and certificate, but nothing new can be saved.'
+                        : 'This course is closed to new learners. You can keep studying it.'}
+                    </Text>
+                  </View>
+                ) : null}
+
                 {activeTab === 'home' && isEnrolled && enrollment && workspace ? (
                   <StudentCourseDashboard
                     course={course}
@@ -344,6 +378,10 @@ export default function CourseDetailScreen() {
                     currentUserId={activeUserId}
                     onOpenError={showOpenError}
                   />
+                ) : null}
+
+                {activeTab === 'home' && isEnrolled && enrollment && lessonCount > 0 ? (
+                  <CourseCertificateCard courseId={id} enrollment={enrollment} />
                 ) : null}
 
                 {activeTab === 'overview' ? (
@@ -375,7 +413,9 @@ export default function CourseDetailScreen() {
                       ))}
                     </View> : null}
 
-                    {/* No hidden rules: what counts towards finishing, as the server applies it. No certificate is promised. */}
+                    {!isEnrolled && hasPrerequisites ? <PrerequisiteCoursesCard links={prerequisiteLinks} status={prerequisiteStatus} /> : null}
+
+                    {/* No hidden rules: what counts towards finishing, as the server applies it, and what finishing earns. */}
                     <View style={styles.card}>
                       <Text style={styles.cardTitle}>How you finish this course</Text>
                       {[
@@ -388,7 +428,7 @@ export default function CourseDetailScreen() {
                           <Text style={styles.objectiveText}>{rule}</Text>
                         </View>
                       ))}
-                      <Text style={styles.mutedBody}>Ourlime does not issue certificates for courses yet.</Text>
+                      <Text style={styles.mutedBody}>When you finish, Ourlime checks your work and issues a verified completion certificate you can share. It is an Ourlime course completion, not an accredited qualification.</Text>
                     </View>
 
                     {course.prerequisites && course.prerequisites.length > 0 ? (
@@ -608,6 +648,8 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   sectionHeading: { color: colors.text, fontSize: 18, fontWeight: '800' },
   bodyText: { color: colors.text, fontSize: 15, lineHeight: 23 },
   mutedBody: { color: colors.mutedText, fontSize: 14, lineHeight: 21 },
+  retiredNote: { marginHorizontal: 16, marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: colors.warningSurface },
+  retiredText: { color: colors.warningText, fontSize: 13, lineHeight: 19, fontWeight: '600' },
   card: { padding: 16, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, gap: 10 },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '800' },
   objectiveRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },

@@ -19,6 +19,7 @@ import { lessonHref } from '@/components/eLearning/course/workspaceHelpers';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
 import type { Enrollment, MyLearningSort, MyLearningStatus } from '@/lib/types/course';
+import MyCertificatesSection from '@/components/eLearning/course/MyCertificatesSection';
 
 const STATUS_FILTERS: MyLearningStatus[] = ['All', 'In progress', 'Not started', 'Completed'];
 const SORTS: { value: MyLearningSort; label: string }[] = [{ value: 'recent', label: 'Recent' }, { value: 'progress', label: 'Progress' }];
@@ -56,6 +57,7 @@ export default function MyLearningScreen() {
   const [sort, setSort] = useState<MyLearningSort>('recent');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [nextLessonTitle, setNextLessonTitle] = useState<{ courseId: string; lessonId: string; title: string } | null>(null);
+  const [certificateReloadKey, setCertificateReloadKey] = useState(0);
   const loadGenerationRef = useRef(0);
 
   const loadEnrollments = useCallback(async () => {
@@ -134,7 +136,7 @@ export default function MyLearningScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void loadEnrollments(); }} tintColor={colors.accent} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); setCertificateReloadKey((key) => key + 1); void loadEnrollments(); }} tintColor={colors.accent} />}
       >
         {loading ? (
           <MyLearningListSkeleton />
@@ -249,6 +251,7 @@ export default function MyLearningScreen() {
             )}
           </>
         )}
+        {!loading && activeUserId ? <MyCertificatesSection reloadKey={certificateReloadKey} /> : null}
       </ScrollView>
     </SafeAreaView>
   );

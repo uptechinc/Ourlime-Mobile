@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { CheckCircle2, ClipboardCheck, ClipboardList, FileText, HelpCircle, History, Inbox, MessageSquareWarning, Settings2 } from 'lucide-react-native';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { CalendarClock, CheckCircle2, ClipboardCheck, ClipboardList, FileText, HelpCircle, History, Inbox, MessageSquareWarning, Settings2 } from 'lucide-react-native';
 import GradeEntryFields, { gradeEntryFrom, readGradeEntry, type GradeEntry } from '@/components/eLearning/instructor/GradeEntryFields';
 import ReviewResponseSheet from '@/components/eLearning/instructor/ReviewResponseSheet';
 import AssignmentSettingsSheet from '@/components/eLearning/instructor/AssignmentSettingsSheet';
@@ -13,7 +13,7 @@ import { serverMessage, teachingWorkflowService } from '@/lib/services/TeachingW
 import type { GradeAppeal, SubmissionHistory } from '@/lib/types/course';
 import { InstructorGradingSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { FieldMessage } from '@/components/eLearning/instructor/InstructorForm';
-import { ELearningButton, ELearningChip, ELearningEmptyState, ELearningHeader, ELEARNING_GUTTER, StatusPill, formatWhen, type ELearningTone } from '@/components/eLearning/ELearningParts';
+import { ELearningButton, ELearningChip, ELearningEmptyState, ELearningHeader, ELearningHeaderButton, ELEARNING_GUTTER, StatusPill, formatWhen, type ELearningTone } from '@/components/eLearning/ELearningParts';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { instructorService, type InstructorLesson, type InstructorSubmission } from '@/lib/services/InstructorService';
 import { openCourseFile } from '@/components/eLearning/course/workspaceHelpers';
@@ -316,7 +316,17 @@ export default function InstructorGradingScreen() {
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
-      <ELearningHeader title="Grading" subtitle={courseName} onBack={() => router.back()} />
+      <ELearningHeader
+        title="Grading"
+        subtitle={courseName}
+        onBack={() => router.back()}
+        right={isAssistant ? (
+          // Assistants schedule live classes, office hours and deadlines for the classes they assist.
+          <ELearningHeaderButton accessibilityLabel="Sessions for your classes" onPress={() => router.push(`/eLearning/instructor/classes/${encodeURIComponent(id)}?title=${encodeURIComponent(courseName ?? '')}&cohorts=${encodeURIComponent(assistantCohortIds.join(','))}` as Href)}>
+            <CalendarClock size={21} color={colors.accentText} />
+          </ELearningHeaderButton>
+        ) : undefined}
+      />
       {isLoading ? (
         <ScrollView contentContainerStyle={styles.scroll}><InstructorGradingSkeleton /></ScrollView>
       ) : error && submissions.length === 0 ? (

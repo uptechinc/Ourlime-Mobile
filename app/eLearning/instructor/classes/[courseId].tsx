@@ -37,9 +37,13 @@ type PendingConfirm =
  */
 export default function InstructorClassesScreen() {
   const router = useRouter();
-  const { courseId, title } = useLocalSearchParams<{ courseId: string; title?: string }>();
+  const { courseId, title, cohorts: assistedParam } = useLocalSearchParams<{ courseId: string; title?: string; cohorts?: string }>();
   const id = typeof courseId === 'string' ? courseId : '';
   const courseName = typeof title === 'string' && title ? title : undefined;
+  // An assistant opens this from grading with the classes they assist: they schedule sessions for those classes only
+  // (the server checks the same); classes, assistants and the roster stay with the instructor.
+  const assistedCohortIds = useMemo(() => (typeof assistedParam === 'string' && assistedParam ? assistedParam.split(',').filter(Boolean) : null), [assistedParam]);
+  const isAssistant = assistedCohortIds !== null;
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -78,7 +82,7 @@ export default function InstructorClassesScreen() {
     const [cohortResult, sessionResult, courseResult] = await settleAll([
       teachingWorkflowService.getCohorts(id),
       teachingWorkflowService.getSessions(id, showPastSessions ? 'all' : 'upcoming'),
-      instructorService.getCourse(id),
+      isAssistant ? Promise.resolve(null) : instructorService.getCourse(id),
     ] as const);
     if (cohortResult.status === 'fulfilled') setCohorts(cohortResult.value);
     else {
@@ -90,12 +94,12 @@ export default function InstructorClassesScreen() {
     if (courseResult.status === 'fulfilled' && courseResult.value) setCohortRequired(courseResult.value.cohortRequired);
     setIsLoading(false);
     setIsRefreshing(false);
-  }, [id, showPastSessions]);
+  }, [id, showPastSessions, isAssistant]);
 
   useEffect(() => { void load(); }, [load]);
 
   const loadRoster = useCallback(async () => {
-    if (!id) return;
+    if (!id || isAssistant) return;
     setIsRosterLoading(true);
     setRosterError(null);
     try {
@@ -108,7 +112,7 @@ export default function InstructorClassesScreen() {
     } finally {
       setIsRosterLoading(false);
     }
-  }, [id, rosterFilter]);
+  }, [id, rosterFilter, isAssistant]);
 
   useEffect(() => { void loadRoster(); }, [loadRoster]);
 
@@ -199,10 +203,12 @@ export default function InstructorClassesScreen() {
   };
   const copy = confirmCopy();
   const activeCohorts = cohorts.filter((cohort) => cohort.status === 'active');
+  const schedulableCohorts = isAssistant ? cohorts.filter((cohort) => assistedCohortIds.includes(cohort.id)) : cohorts;
+  const canManageSession = (session: CourseSession): boolean => !isAssistant || (session.cohortId !== '' && assistedCohortIds.includes(session.cohortId));
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
-      <ELearningHeader title="Classes and sessions" subtitle={courseName} onBack={() => router.back()} />
+      <ELearningHeader title={isAssistant ? 'Sessions' : 'Classes and sessions'} subtitle={courseName} onBack={() => router.back()} />
       {isLoading ? (
         <View style={styles.centerFill}><ActivityIndicator color={colors.accent} /></View>
       ) : loadError && cohorts.length === 0 ? (
@@ -219,6 +225,13 @@ export default function InstructorClassesScreen() {
             ) : null}
             <FieldMessage error={actionError ?? undefined} />
 
+            {isAssistant ? (
+              <Text style={styles.muted}>
+                You assist {schedulableCohorts.length === 1 ? schedulableCohorts[0].name : `${schedulableCohorts.length} classes`} here. Schedule live classes, office hours and deadlines for {schedulableCohorts.length === 1 ? 'that class' : 'those classes'}; the instructor manages the classes themselves.
+              </Text>
+            ) : null}
+
+            {!isAssistant ? <>
             <View style={styles.card}>
               <ToggleRow
                 label="Learners must join a class"
@@ -291,6 +304,7 @@ export default function InstructorClassesScreen() {
               ))}
               {rosterTruncated ? <Text style={styles.muted}>Showing the first 300 learners.</Text> : null}
             </View>
+            </> : null}
 
             {/* ── Sessions ── */}
             <View style={styles.sectionHeader}>
@@ -306,8 +320,8 @@ export default function InstructorClassesScreen() {
                 <SessionRow
                   key={session.id}
                   session={session}
-                  onEdit={() => { setEditingSession(session); setIsSessionFormOpen(true); }}
-                  onCancel={() => setPending({ kind: 'cancelSession', session })}
+                  onEdit={canManageSession(session) ? () => { setEditingSession(session); setIsSessionFormOpen(true); } : undefined}
+                  onCancel={canManageSession(session) ? () => setPending({ kind: 'cancelSession', session }) : undefined}
                 />
               ))}
             </View>
@@ -316,7 +330,7 @@ export default function InstructorClassesScreen() {
       )}
 
       <CohortFormSheet visible={isCohortFormOpen} courseId={id} cohort={editingCohort} onClose={() => setIsCohortFormOpen(false)} onSaved={(saved) => { replaceCohort(saved); setNotice(`${saved.name} saved.`); }} />
-      <SessionFormSheet visible={isSessionFormOpen} courseId={id} cohorts={cohorts} session={editingSession} onClose={() => setIsSessionFormOpen(false)} onSaved={() => { setNotice('Session saved.'); void load(); }} />
+      <SessionFormSheet visible={isSessionFormOpen} courseId={id} cohorts={schedulableCohorts} allowWholeCourse={!isAssistant} session={editingSession} onClose={() => setIsSessionFormOpen(false)} onSaved={() => { setNotice('Session saved. Its learners are notified.'); void load(); }} />
 
       <ScheduleSheet
         visible={assistantCohort !== null}

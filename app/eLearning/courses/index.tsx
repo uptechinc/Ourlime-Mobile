@@ -21,6 +21,7 @@ import { CourseCard, ELearningChip, ELearningEmptyState, ELearningHeader, ELearn
 import { courseService, isActiveEnrollment } from '@/lib/services/CourseService';
 import { instructorService } from '@/lib/services/InstructorService';
 import type { CatalogPriceFilter, CatalogSort, Course, Enrollment } from '@/lib/types/course';
+import LearningPathsSection from '@/components/eLearning/course/LearningPathsSection';
 
 const LEVELS = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
 const PRICE_FILTERS: CatalogPriceFilter[] = ['All', 'Free', 'Paid'];
@@ -70,6 +71,7 @@ export default function CoursesCatalogScreen() {
   const [sort, setSort] = useState<CatalogSort>('featured');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [pathsReloadKey, setPathsReloadKey] = useState(0);
   const [error, setError] = useState('');
   const [enrollingId, setEnrollingId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>({ visible: false, type: 'success', title: '', message: '' });
@@ -223,7 +225,7 @@ export default function CoursesCatalogScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void loadCourses(); }} tintColor={colors.accent} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); setPathsReloadKey((key) => key + 1); void loadCourses(); }} tintColor={colors.accent} />}
         >
           <View style={styles.searchBox}>
             <Search size={18} color={colors.mutedText} />
@@ -252,6 +254,8 @@ export default function CoursesCatalogScreen() {
           ) : null}
           {renderChips('Level', LEVELS, level, setLevel)}
           {renderChips('Price', PRICE_FILTERS, price, setPrice)}
+
+          {!loading && !error && !hasFilters && activeUserId ? <LearningPathsSection reloadKey={pathsReloadKey} /> : null}
 
           {!loading && !error && rails.map((rail) => (
             <View key={rail.key} style={styles.rail}>

@@ -15,6 +15,8 @@ type SessionFormSheetProps = {
   session: CourseSession | null;
   onClose: () => void;
   onSaved: () => void;
+  /** false for an assistant: sessions only for the classes passed in `cohorts`, never the whole course. */
+  allowWholeCourse?: boolean;
 };
 
 const KINDS: readonly { value: SessionKind; label: string }[] = [
@@ -28,7 +30,7 @@ const MAX_LENGTH_MS = 24 * 60 * 60 * 1000;
  * Schedule or edit a session for the whole course or one class. Live classes and office hours take an external https
  * meeting link (Ourlime hosts no video); a recorded session must say what is recorded and who can watch it.
  */
-export default function SessionFormSheet({ visible, courseId, cohorts, session, onClose, onSaved }: SessionFormSheetProps) {
+export default function SessionFormSheet({ visible, courseId, cohorts, session, onClose, onSaved, allowWholeCourse = true }: SessionFormSheetProps) {
   const [kind, setKind] = useState<SessionKind>('live_class');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -50,7 +52,9 @@ export default function SessionFormSheet({ visible, courseId, cohorts, session, 
     setKind(session?.kind ?? 'live_class');
     setTitle(session?.title ?? '');
     setDescription(session?.description ?? '');
-    setCohortName(session?.cohortId ? cohorts.find((cohort) => cohort.id === session.cohortId)?.name ?? WHOLE_COURSE : WHOLE_COURSE);
+    // An assistant schedules only for the classes they assist (no whole-course option): their first class by default.
+    const fallbackName = allowWholeCourse ? WHOLE_COURSE : cohorts.find((cohort) => cohort.status === 'active')?.name ?? '';
+    setCohortName(session?.cohortId ? cohorts.find((cohort) => cohort.id === session.cohortId)?.name ?? fallbackName : fallbackName);
     setStartsAt(session?.startsAt ? new Date(session.startsAt) : null);
     setEndsAt(session?.endsAt ? new Date(session.endsAt) : null);
     setJoinUrl(session?.joinUrl ?? '');
@@ -58,12 +62,13 @@ export default function SessionFormSheet({ visible, courseId, cohorts, session, 
     setRecordingNote(session?.recordingNote ?? '');
     setErrors([]);
     setSaveError(null);
-  }, [cohorts, session, visible]);
+  }, [allowWholeCourse, cohorts, session, visible]);
 
   const handleSave = async () => {
     const found: string[] = [];
     if (!title.trim()) found.push('Give the session a title.');
     if (!startsAt) found.push('Choose when it starts.');
+    if (!allowWholeCourse && !activeCohorts.some((cohort) => cohort.name === cohortName)) found.push('Choose one of your classes.');
     if (startsAt && endsAt && (endsAt < startsAt || endsAt.getTime() - startsAt.getTime() > MAX_LENGTH_MS)) found.push('A session ends after it starts and lasts at most 24 hours.');
     const urlProblem = kind === 'deadline' ? null : joinUrlProblem(joinUrl);
     if (urlProblem) found.push(urlProblem);
@@ -100,7 +105,7 @@ export default function SessionFormSheet({ visible, courseId, cohorts, session, 
       <Segmented label="Type" options={KINDS} value={kind} onChange={setKind} />
       <FormField label="Title" required value={title} onChange={setTitle} placeholder={kind === 'deadline' ? 'e.g. Project proposal due' : 'e.g. Week 3 live class'} maxLength={200} />
       <FormField label="Description" value={description} onChange={setDescription} multiline maxLength={2000} />
-      <ChoiceChips label="For" options={[WHOLE_COURSE, ...activeCohorts.map((cohort) => cohort.name)]} selected={[cohortName]} onToggle={setCohortName} single hint="A class's session is shown only to that class." />
+      <ChoiceChips label="For" options={[...(allowWholeCourse ? [WHOLE_COURSE] : []), ...activeCohorts.map((cohort) => cohort.name)]} selected={[cohortName]} onToggle={setCohortName} single hint="A class's session is shown only to that class." />
       <DateTimeField label={kind === 'deadline' ? 'Due' : 'Starts'} mode="datetime" required value={startsAt} onChange={setStartsAt} placeholder="Choose the date and time" />
       {kind !== 'deadline' ? <DateTimeField label="Ends" mode="datetime" value={endsAt} onChange={setEndsAt} onClear={() => setEndsAt(null)} placeholder="No end time" minimumDate={startsAt ?? undefined} /> : null}
       {kind !== 'deadline' ? (

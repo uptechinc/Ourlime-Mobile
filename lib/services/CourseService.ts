@@ -17,6 +17,7 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import { nativeSessionService } from './NativeSessionService';
 import { learnerPublicName } from './LearnerNameRules';
+import { readPrerequisiteLinks } from './LearningDepthRules';
 import {
   decodeAppliedPenalty,
   decodeCohort,
@@ -664,14 +665,16 @@ export class CourseService {
   private course(id: string, data: Data): Course | null {
     const instructor = this.object(data.instructor);
     const level = data.level === 'beginner' || data.level === 'intermediate' || data.level === 'advanced' ? data.level : null;
-    if (!level || data.status !== 'published' || !this.text(data.title) || !this.text(data.description) || !this.text(data.category) || !instructor || !this.text(instructor.id) || !this.text(instructor.name)) return null;
+    // Archived and (soft) deleted courses reach only their enrolled learners (the rules), who keep read access.
+    const status = data.status === 'published' || data.status === 'archived' || data.status === 'deleted' ? data.status : null;
+    if (!level || !status || !this.text(data.title) || !this.text(data.description) || !this.text(data.category) || !instructor || !this.text(instructor.id) || !this.text(instructor.name)) return null;
     return { id, title: this.text(data.title), description: this.text(data.description), shortDescription: this.optionalText(data.shortDescription),
       // Older course documents still carry the instructor's email; it is never decoded or shown.
       instructor: { id: this.text(instructor.id), name: this.text(instructor.name), avatar: this.optionalText(instructor.avatar), role: this.optionalText(instructor.role) },
       category: this.text(data.category), subcategory: this.optionalText(data.subcategory), level, duration: this.number(data.duration), price: this.number(data.price),
       image: this.text(data.image), thumbnail: this.optionalText(data.thumbnail), rating: this.number(data.rating), totalRatings: this.integer(data.totalRatings),
-      enrolledStudents: this.integer(data.enrolledStudents), status: 'published', isPublic: data.isPublic !== false, tags: this.textList(data.tags),
-      prerequisites: this.textList(data.prerequisites), learningObjectives: this.textList(data.learningObjectives), featured: data.featured === true,
+      enrolledStudents: this.integer(data.enrolledStudents), status, isPublic: data.isPublic !== false, tags: this.textList(data.tags),
+      prerequisites: this.textList(data.prerequisites), prerequisiteCourses: readPrerequisiteLinks(data.prerequisiteCourses), learningObjectives: this.textList(data.learningObjectives), featured: data.featured === true,
       difficulty: this.integer(data.difficulty), language: this.optionalText(data.language), cohortRequired: data.cohortRequired === true,
       createdAt: this.timestamp(data.createdAt), updatedAt: this.timestamp(data.updatedAt) };
   }
@@ -682,7 +685,7 @@ export class CourseService {
       status, progress: Math.max(0, Math.min(100, this.number(data.progress))), lastAccessed: this.timestamp(data.lastAccessed),
       // Both names hold completed lesson ids (website: completedModules); merge them like the website and the server do.
       completedLessons: [...new Set([...this.textList(data.completedLessons), ...this.textList(data.completedModules)])], certificateIssued: data.certificateIssued === true,
-      certificateUrl: this.optionalText(data.certificateUrl), quizSummary: this.quizSummaries(data.quizSummary),
+      certificateUrl: this.optionalText(data.certificateUrl), certificateCode: this.optionalText(data.certificateCode), quizSummary: this.quizSummaries(data.quizSummary),
       ...(this.text(data.cohortId) ? { cohortId: this.text(data.cohortId) } : {}) };
   }
   private quizSummaries(value: unknown): { [lessonId: string]: QuizAttemptSummary } {

@@ -80,6 +80,7 @@ type ManageLearningRequest =
   | { action: 'update_course'; courseId: string; updates: { status: InstructorSettableStatus } }
   | { action: 'resubmit_course'; courseId: string }
   | { action: 'delete_course'; courseId: string }
+  | { action: 'restore_course'; courseId: string }
   | { action: 'create_assessment'; kind: 'quiz'; courseId: string; title: string; description: string; questions: NewQuiz['questions']; maxAttempts?: number }
   | ({
     action: 'create_assessment'; kind: 'assignment'; courseId: string; title: string; description: string; instructions: string; dueDate: string;
@@ -267,8 +268,17 @@ export class InstructorService {
     return result.status === 'published' ? 'published' : 'pending_review';
   }
 
+  /**
+   * A soft delete: the course leaves the catalog, its learners keep read-only access and their records, its classes
+   * close and upcoming sessions are cancelled. restoreCourse brings it back as a draft.
+   */
   public async deleteCourse(courseId: string): Promise<void> {
     await this.call({ action: 'delete_course', courseId });
+  }
+
+  public async restoreCourse(courseId: string): Promise<'draft' | 'archived'> {
+    const result = await this.call<{ status?: string }>({ action: 'restore_course', courseId });
+    return result.status === 'archived' ? 'archived' : 'draft';
   }
 
   // ── Quizzes and assignments ──
@@ -522,7 +532,7 @@ export class InstructorService {
   }
 
   private toCourse(id: string, data: DocumentData): InstructorCourse {
-    const status: InstructorCourseStatus = data.status === 'published' || data.status === 'archived' || data.status === 'pending_review' ? data.status : 'draft';
+    const status: InstructorCourseStatus = data.status === 'published' || data.status === 'archived' || data.status === 'pending_review' || data.status === 'deleted' ? data.status : 'draft';
     const subcategory = this.text(data.subcategory);
     return {
       id, status,

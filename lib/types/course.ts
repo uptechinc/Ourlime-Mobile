@@ -23,10 +23,13 @@ export type Course = {
   rating: number;
   totalRatings: number;
   enrolledStudents: number;
-  status: 'draft' | 'published' | 'archived';
+  /** archived and deleted (a soft delete) reach only enrolled learners, who keep read access. */
+  status: 'draft' | 'published' | 'archived' | 'deleted';
   isPublic: boolean;
   tags: string[];
   prerequisites?: string[];
+  /** Courses to complete first (required: enrollment is refused until then) or recommended (advice only). */
+  prerequisiteCourses?: PrerequisiteLink[];
   learningObjectives?: string[];
   featured?: boolean;
   difficulty?: number; // 1-5 scale
@@ -273,6 +276,8 @@ export type Enrollment = {
   completedLessons?: string[];
   certificateIssued?: boolean;
   certificateUrl?: string;
+  /** The verification code of the certificate the server issued for this course (slice 4). */
+  certificateCode?: string;
   /** The learner's quiz record per quiz lesson id, kept by the server. */
   quizSummary?: { [lessonId: string]: QuizAttemptSummary };
   /** The class (cohort) the learner is in; empty for self-paced study. */
@@ -387,3 +392,60 @@ export type CatalogSort = 'featured' | 'recent' | 'rating';
 export type CatalogPriceFilter = 'All' | 'Free' | 'Paid';
 export type MyLearningStatus = 'All' | 'In progress' | 'Not started' | 'Completed';
 export type MyLearningSort = 'recent' | 'progress';
+
+// ── Learning depth (E-Learning slice 4): paths, prerequisites, suggestions, certificates ──
+
+export type PrerequisiteLink = { courseId: string; title: string; required: boolean };
+export type PrerequisiteStatus = {
+  courseId: string;
+  links: (PrerequisiteLink & { completed: boolean })[];
+  missingRequired: PrerequisiteLink[];
+  missingRecommended: PrerequisiteLink[];
+};
+export type LearnerCourseState = 'completed' | 'in_progress' | 'not_started' | 'unavailable';
+export type LearningPathStep = { courseId: string; title: string; state: LearnerCourseState; progress: number };
+export type LearningPath = {
+  id: string;
+  title: string;
+  description: string;
+  level: string;
+  ownerName: string;
+  courses: { courseId: string; title: string; image: string; available: boolean }[];
+  progress: { steps: LearningPathStep[]; completedCount: number; availableCount: number; percent: number; nextCourseId: string | null; nextReason: string } | null;
+};
+export type CourseSuggestion = { courseId: string; title: string; image: string; category: string; instructorName: string; reasons: string[] };
+export type CertificateStatus = 'valid' | 'revoked';
+/** name: the display-safe name (a minor's is "First L."); short: "First L."; hidden: no name on the public check. */
+export type CertificateNameDisplay = 'name' | 'short' | 'hidden';
+export type CertificateMissingReason = 'not_completed' | 'quiz_not_attempted' | 'assignment_not_submitted';
+export type CertificateEligibility = {
+  eligible: boolean;
+  requiredCount: number;
+  completedCount: number;
+  missing: { lessonId: string; title: string; reason: CertificateMissingReason }[];
+};
+/** The public facts of a certificate (certificateVerifications/{code}): no account id, no reasons. */
+export type PublicCertificate = {
+  code: string;
+  courseId: string;
+  courseTitle: string;
+  courseVersion: number;
+  instructorName: string;
+  criteria: string;
+  completedAt: string | null;
+  issuedAt: string | null;
+  status: CertificateStatus;
+  statusChangedAt: string | null;
+  correctedAt: string | null;
+  learnerName: string;
+};
+/** The learner's own certificate (certificates/{uid}_{courseId}_v{version}). */
+export type Certificate = PublicCertificate & {
+  id: string;
+  statusReason: string;
+  nameDisplay: CertificateNameDisplay;
+  showOnProfile: boolean;
+  isMinor: boolean;
+};
+/** A certificate its learner chose to show on their profile (profileCertificates/{code}). */
+export type ProfileCertificate = { code: string; courseTitle: string; instructorName: string; completedAt: string | null };

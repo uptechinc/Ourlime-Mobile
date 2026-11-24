@@ -101,12 +101,28 @@ export default function InstructorDashboardScreen() {
     setWorkingCourseId(courseToDelete.id);
     try {
       await instructorService.deleteCourse(courseToDelete.id);
-      setCourses((current) => current.filter((item) => item.id !== courseToDelete.id));
+      // A soft delete: the course stays in the list as Deleted, with Restore.
+      setCourses((current) => current.map((item) => (item.id === courseToDelete.id ? { ...item, status: 'deleted' } : item)));
       setCourseToDelete(null);
     } catch (deleteError: unknown) {
       console.error('[InstructorDashboardScreen.handleDelete] Error:', deleteError instanceof Error ? deleteError.message : 'Unknown error');
       setCourseToDelete(null);
       setActionError('The course could not be deleted. Please try again.');
+    } finally {
+      setWorkingCourseId(null);
+    }
+  };
+
+  /** A deleted course comes back as a draft (or archived), never straight into the catalog. */
+  const handleRestore = async (course: InstructorCourse) => {
+    setWorkingCourseId(course.id);
+    setActionError(null);
+    try {
+      const next = await instructorService.restoreCourse(course.id);
+      setCourses((current) => current.map((item) => (item.id === course.id ? { ...item, status: next } : item)));
+    } catch (restoreError: unknown) {
+      console.error('[InstructorDashboardScreen.handleRestore] Error:', restoreError instanceof Error ? restoreError.message : 'Unknown error');
+      setActionError(`"${course.title}" could not be restored. Please try again.`);
     } finally {
       setWorkingCourseId(null);
     }
@@ -252,7 +268,17 @@ export default function InstructorDashboardScreen() {
                         </Pressable>
                       </View>
                       <View style={styles.actions}>
-                        {course.status === 'pending_review' ? (
+                        {course.status === 'deleted' ? (
+                          <ELearningButton
+                            label="Restore as draft"
+                            accessibilityLabel={`Restore ${course.title} as a draft`}
+                            variant="secondary"
+                            busyLabel="Restoring…"
+                            isBusy={isWorking}
+                            onPress={() => void handleRestore(course)}
+                            style={styles.flexText}
+                          />
+                        ) : course.status === 'pending_review' ? (
                           <View style={[styles.pendingNote, styles.flexText]}>
                             <Clock size={16} color={colors.warningText} /><Text numberOfLines={2} style={styles.pendingText}>Waiting for an administrator to review it</Text>
                           </View>
@@ -278,9 +304,11 @@ export default function InstructorDashboardScreen() {
                             style={styles.flexText}
                           />
                         )}
-                        <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${course.title}`} disabled={isWorking} onPress={() => setCourseToDelete(course)} android_ripple={{ color: colors.destructiveSurface }} style={styles.deleteButton}>
-                          <Trash2 size={18} color={colors.destructiveText} />
-                        </Pressable>
+                        {course.status !== 'deleted' ? (
+                          <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${course.title}`} disabled={isWorking} onPress={() => setCourseToDelete(course)} android_ripple={{ color: colors.destructiveSurface }} style={styles.deleteButton}>
+                            <Trash2 size={18} color={colors.destructiveText} />
+                          </Pressable>
+                        ) : null}
                       </View>
                     </View>
                   );
@@ -311,8 +339,8 @@ export default function InstructorDashboardScreen() {
         type="warning"
         title="Delete this course?"
         message={courseToDelete && courseToDelete.enrolledStudents > 0
-          ? `"${courseToDelete.title}" has ${pluralize(courseToDelete.enrolledStudents, 'enrolled learner', 'enrolled learners')}. Deleting removes its modules, lessons and resources for good, and those learners lose the course. To hide it for now, unpublish it instead. This cannot be undone.`
-          : `"${courseToDelete?.title ?? ''}" and all of its modules, lessons and resources will be permanently removed. This cannot be undone.`}
+          ? `"${courseToDelete.title}" leaves the catalog and nobody new can enroll. Its ${pluralize(courseToDelete.enrolledStudents, 'enrolled learner', 'enrolled learners')} keep read-only access, their grades and certificates. Its classes close and upcoming sessions are cancelled. You can restore it as a draft later.`
+          : `"${courseToDelete?.title ?? ''}" leaves the catalog. Its classes close and upcoming sessions are cancelled. You can restore it as a draft later.`}
         confirmText="Delete course"
         cancelText="Cancel"
         isLoading={Boolean(courseToDelete && workingCourseId === courseToDelete.id)}
