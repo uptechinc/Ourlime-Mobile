@@ -4,9 +4,14 @@ Written on 2026-10-04 after an emulator test run, based on the current code (not
 comes from, a concrete scenario, and a suggested fix. Severity: **High** (data loss, privacy, or a feature stops
 working), **Medium** (wrong numbers, duplicates, confusing states), **Low** (polish).
 
-> **Applies to every page:** the Firestore rules are currently open ("keep it simple and open for now"). Many checks
-> below (blocks, edit windows, counts, roles, visibility) only run inside the app, so anyone calling Firestore
-> directly can skip them. Locking the rules down is the biggest single risk reducer once you're ready.
+> **Update 2026-11-24:** the shared `firestore.rules` (web repo root) are now locked down. Admin writes need
+> `isAdministrator()` (`isAdmin`, `role == 'admin'` or `accountType == 'admin'` on the user doc), and many
+> collections are server-write only. Items below that say a check is "app only" (for example 7.3, the edit window,
+> and 7.7, blocks) still need their own rule or server check. See `docs/ui-review/RECON.md` §3 and
+> `docs/ui-review/ADMIN_BUG_REPORT.md`.
+>
+> *Original note (2026-10-04, now out of date):* the Firestore rules were open, so checks that run only in the app
+> could be skipped by calling Firestore directly.
 
 ---
 
