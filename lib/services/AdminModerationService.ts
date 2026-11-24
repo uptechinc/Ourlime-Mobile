@@ -1,5 +1,5 @@
 import { AdminApiService, AdminApiError } from './AdminApiService';
-import { collection, getDocs, limit, orderBy, query, Timestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, orderBy, query, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { adminAccessService } from './AdminAccessService';
 
@@ -73,16 +73,20 @@ export class AdminModerationService {
     }
   }
 
+  /** Reads the one report directly, so reports older than the newest 100 in the list still open. */
   public async fetchReport(reportId: string): Promise<AdminModerationReport> {
-    const reports = await this.fetchReportsFromFirestore();
-    const report = reports.find((candidate) => candidate.id === reportId);
+    await adminAccessService.requireReviewer();
+    const snapshot = await getDoc(doc(db, 'reports', reportId));
+    if (!snapshot.exists()) throw new Error('Moderation report not found');
+    const [report] = this.normalizeReports([{ ...snapshot.data(), id: snapshot.id }]);
     if (!report) throw new Error('Moderation report not found');
     return report;
   }
 
   public async deleteReport(reportId: string): Promise<void> {
     try {
-      await this.apiService.request<{ success: boolean }>(`/api/moderation/reports/${encodeURIComponent(reportId)}`, { method: 'DELETE' });
+      const response = await this.apiService.request<{ success?: boolean; error?: string } | null>(`/api/moderation/reports/${encodeURIComponent(reportId)}`, { method: 'DELETE' });
+      if (response?.success === false) throw new Error(response.error || 'The report could not be deleted.');
     } catch (error: unknown) {
       if (error instanceof AdminApiError && error.code === 'REQUEST_TIMEOUT') throw new Error('Deleting a report requires the secure Ourlime server, which is currently unavailable.');
       throw error;

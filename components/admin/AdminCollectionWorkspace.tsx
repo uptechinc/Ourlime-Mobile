@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
+	ActivityIndicator,
 	Image,
 	Modal,
 	ScrollView,
@@ -14,11 +16,13 @@ import CustomModal from '@/components/ui/CustomModal';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import AdminWorkspaceShell from './AdminWorkspaceShell';
+import AdminDialog from './AdminDialog';
 import {
 	AdminWorkspaceService,
 	type AdminStickerFields,
 	type AdminWorkspaceItem,
 	type AdminWorkspaceKind,
+	type AdminWorkspaceStats,
 	type AdminWorkspaceStatus,
 } from '@/lib/services/AdminWorkspaceService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -117,6 +121,13 @@ export default function AdminCollectionWorkspace({
 	const [error, setError] = useState<string | null>(null);
 	const [message, setMessage] = useState<string | null>(null);
 	const [reviewReason, setReviewReason] = useState('');
+	const [nextCursor, setNextCursor] = useState<string | null>(null);
+	const [loadingMore, setLoadingMore] = useState(false);
+	const [serverStats, setServerStats] = useState<AdminWorkspaceStats | null>(null);
+	const [confirmingDelete, setConfirmingDelete] = useState(false);
+	/** Ignores responses from an older load so a slow first page cannot overwrite a newer one. */
+	const loadRequestRef = useRef(0);
+	const hasFocusedRef = useRef(false);
 
 	const [stickerFields, setStickerFields] = useState<AdminStickerFields | null>(null);
 
@@ -166,30 +177,78 @@ export default function AdminCollectionWorkspace({
 					{ key: 'keywords', label: 'Keywords (comma separated)', placeholder: 'happy, smile, lol' },
 				];
 
+	const refreshStats = useCallback(async () => {
+		try {
+			setServerStats(await workspaceService.fetchWorkspaceStats(kind));
+		} catch (statsError: unknown) {
+			// The cards fall back to the loaded records.
+			console.warn('[AdminCollectionWorkspace.refreshStats] Warning:', statsError instanceof Error ? statsError.message : statsError);
+			setServerStats(null);
+		}
+	}, [kind]);
+
+	/** 'initial' shows the skeleton, 'refresh' the pull-to-refresh spinner, 'silent' (on return to the screen) neither. */
 	const load = useCallback(
-		async (isRefresh = false) => {
-			if (isRefresh) setRefreshing(true);
-			else setLoading(true);
-			setError(null);
+		async (mode: 'initial' | 'refresh' | 'silent' = 'initial') => {
+			const requestId = loadRequestRef.current + 1;
+			loadRequestRef.current = requestId;
+			if (mode === 'refresh') setRefreshing(true);
+			else if (mode === 'initial') setLoading(true);
+			if (mode !== 'silent') setError(null);
+			void refreshStats();
 			try {
-				setItems(await workspaceService.fetchWorkspaceItems(kind));
+				const page = await workspaceService.fetchWorkspacePage(kind);
+				if (loadRequestRef.current !== requestId) return;
+				setItems(page.items);
+				setNextCursor(page.nextCursor);
+				setError(null);
 			} catch (loadError: unknown) {
-				setError(
-					loadError instanceof Error
-						? loadError.message
-						: `${title} could not be loaded.`
-				);
+				if (loadRequestRef.current !== requestId) return;
+				console.error('[AdminCollectionWorkspace.load] Error:', loadError instanceof Error ? loadError.message : loadError);
+				// A failed background refresh keeps the records already on screen.
+				if (mode !== 'silent') {
+					setError(
+						loadError instanceof Error
+							? loadError.message
+							: `${title} could not be loaded.`
+					);
+				}
 			} finally {
-				setLoading(false);
-				setRefreshing(false);
+				if (loadRequestRef.current === requestId) {
+					setLoading(false);
+					setRefreshing(false);
+				}
 			}
 		},
-		[kind, title]
+		[kind, refreshStats, title]
 	);
 
-	useEffect(() => {
-		void load();
-	}, [load]);
+	useFocusEffect(
+		useCallback(() => {
+			void load(hasFocusedRef.current ? 'silent' : 'initial');
+			hasFocusedRef.current = true;
+		}, [load])
+	);
+
+	const handleLoadMore = async () => {
+		if (!nextCursor || loadingMore) return;
+		const requestId = loadRequestRef.current;
+		setLoadingMore(true);
+		try {
+			const page = await workspaceService.fetchWorkspacePage(kind, nextCursor);
+			if (loadRequestRef.current !== requestId) return;
+			setItems((current) => {
+				const knownIds = new Set(current.map((item) => item.id));
+				return [...current, ...page.items.filter((item) => !knownIds.has(item.id))];
+			});
+			setNextCursor(page.nextCursor);
+		} catch (loadError: unknown) {
+			console.error('[AdminCollectionWorkspace.handleLoadMore] Error:', loadError instanceof Error ? loadError.message : loadError);
+			setMessage(loadError instanceof Error ? loadError.message : 'More records could not be loaded.');
+		} finally {
+			setLoadingMore(false);
+		}
+	};
 
 	const visibleItems = useMemo(() => {
 		const normalizedQuery = query.trim().toLowerCase();
@@ -215,24 +274,27 @@ export default function AdminCollectionWorkspace({
 	}, [items, kind, priceFilter, privacyFilter, query, sort, status]);
 
 	const statCards = useMemo(() => {
+		// Server totals cover every page; the loaded records are only the fallback when counting fails.
 		if (kind === 'products') {
+			const stats = serverStats?.kind === 'products' ? serverStats : null;
 			return [
-				{ label: 'Total Products', value: items.length },
-				{ label: 'Pending Review', value: items.filter((item) => item.status === 'pending').length },
-				{ label: 'Approved', value: items.filter((item) => item.status === 'approved' || item.status === 'active').length },
-				{ label: 'Rejected', value: items.filter((item) => item.status === 'rejected').length },
+				{ label: 'Total Products', value: stats ? stats.total : items.length },
+				{ label: 'Pending Review', value: stats ? stats.pending : items.filter((item) => item.status === 'pending').length },
+				{ label: 'Approved', value: stats ? stats.approved : items.filter((item) => item.status === 'approved' || item.status === 'active').length },
+				{ label: 'Rejected', value: stats ? stats.rejected : items.filter((item) => item.status === 'rejected').length },
 			];
 		}
 		if (kind === 'communities') {
+			const stats = serverStats?.kind === 'communities' ? serverStats : null;
 			return [
-				{ label: 'Total Communities', value: items.length },
-				{ label: 'Public Communities', value: items.filter((item) => item.privacy === 'public').length },
-				{ label: 'Private Communities', value: items.filter((item) => item.privacy === 'private').length },
-				{ label: 'Total Memberships', value: items.reduce((total, item) => total + item.memberCount, 0) },
+				{ label: 'Total Communities', value: stats ? stats.total : items.length },
+				{ label: 'Public Communities', value: stats ? stats.publicCount : items.filter((item) => item.privacy === 'public').length },
+				{ label: 'Private Communities', value: stats ? stats.privateCount : items.filter((item) => item.privacy === 'private').length },
+				{ label: 'Total Memberships', value: stats ? stats.memberships : items.reduce((total, item) => total + item.memberCount, 0) },
 			];
 		}
 		return [];
-	}, [items, kind]);
+	}, [items, kind, serverStats]);
 
 	const handleStatus = async (nextStatus: AdminWorkspaceStatus) => {
 		if (!selected || busy) return;
@@ -243,23 +305,22 @@ export default function AdminCollectionWorkspace({
 		}
 		setBusy(true);
 		try {
-			await workspaceService.setWorkspaceStatus(kind, selected.id, nextStatus, needsReason ? reviewReason.trim() : undefined);
+			// The server may store a different status than the one picked (products keep every hiding decision as 'rejected').
+			const appliedStatus = await workspaceService.setWorkspaceStatus(kind, selected.id, nextStatus, needsReason ? reviewReason.trim() : undefined);
 			if (needsReason) setReviewReason('');
+			const isActive = appliedStatus === 'active' || appliedStatus === 'approved';
 			setItems((current) =>
 				current.map((item) =>
 					item.id === selected.id
-						? {
-								...item,
-								status: nextStatus,
-								isActive: nextStatus === 'active' || nextStatus === 'approved',
-							}
+						? { ...item, status: appliedStatus, isActive }
 						: item
 				)
 			);
 			setSelected((current) =>
-				current ? { ...current, status: nextStatus } : null
+				current ? { ...current, status: appliedStatus, isActive } : null
 			);
-			setMessage(`${selected.title} is now ${nextStatus}.`);
+			setMessage(`${selected.title} is now ${appliedStatus}.`);
+			void refreshStats();
 		} catch (actionError: unknown) {
 			setMessage(
 				actionError instanceof Error
@@ -277,9 +338,12 @@ export default function AdminCollectionWorkspace({
 		try {
 			await workspaceService.deleteWorkspaceItem(kind, selected.id);
 			setItems((current) => current.filter((item) => item.id !== selected.id));
+			setConfirmingDelete(false);
 			setMessage(`${selected.title} was deleted.`);
 			setSelected(null);
+			void refreshStats();
 		} catch (actionError: unknown) {
+			setConfirmingDelete(false);
 			setMessage(
 				actionError instanceof Error
 					? actionError.message
@@ -297,7 +361,7 @@ export default function AdminCollectionWorkspace({
 			loading={loading}
 			refreshing={refreshing}
 			error={error}
-			onRefresh={() => void load(true)}
+			onRefresh={() => void load('refresh')}
 		>
 			{accessory}
 			<View
@@ -416,7 +480,7 @@ export default function AdminCollectionWorkspace({
 				))}
 			</ScrollView>
 			<Text style={{ marginBottom: 10, color: colors.mutedText, fontSize: 12 }}>
-				{visibleItems.length} of {items.length} records
+				{visibleItems.length} of {items.length} {nextCursor ? 'loaded ' : ''}records
 			</Text>
 			{visibleItems.map((item) => (
 				<TouchableOpacity
@@ -510,6 +574,19 @@ export default function AdminCollectionWorkspace({
 						No matching records.
 					</Text>
 				</View>
+			) : null}
+			{nextCursor ? (
+				<TouchableOpacity
+					disabled={loadingMore}
+					onPress={() => void handleLoadMore()}
+					accessibilityLabel="Load more records"
+					style={{ marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 13, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control }}
+				>
+					{loadingMore ? <ActivityIndicator size="small" color={colors.accent} /> : null}
+					<Text style={{ marginLeft: loadingMore ? 8 : 0, color: colors.secondaryText, fontWeight: '800' }}>
+						{loadingMore ? 'Loading…' : 'Load more'}
+					</Text>
+				</TouchableOpacity>
 			) : null}
 
 			<Modal
@@ -688,7 +765,7 @@ export default function AdminCollectionWorkspace({
 								))}
 								<TouchableOpacity
 									disabled={busy}
-									onPress={() => void handleDelete()}
+									onPress={() => setConfirmingDelete(true)}
 									style={{
 										marginTop: 18,
 										alignItems: 'center',
@@ -698,7 +775,7 @@ export default function AdminCollectionWorkspace({
 									}}
 								>
 									<Text style={{ color: colors.onAccent, fontWeight: '900' }}>
-										Delete permanently
+										{kind === 'products' ? 'Delete listing' : 'Delete permanently'}
 									</Text>
 								</TouchableOpacity>
 							</ScrollView>
@@ -706,6 +783,20 @@ export default function AdminCollectionWorkspace({
 						) : null}
 					</SafeAreaView>
 				</SwipeDismissSurface>
+				<AdminDialog
+					visible={confirmingDelete && Boolean(selected)}
+					tone="danger"
+					title={`Delete ${selected?.title ?? 'this record'}?`}
+					description={
+						kind === 'products'
+							? 'The listing is removed from the marketplace, the seller is notified, and it can be restored from Moderation > Deleted.'
+							: 'This permanently removes the record. It cannot be undone.'
+					}
+					confirmLabel="Delete"
+					busy={busy}
+					onConfirm={() => void handleDelete()}
+					onClose={() => setConfirmingDelete(false)}
+				/>
 			</Modal>
 			<CustomModal
 				visible={Boolean(message)}

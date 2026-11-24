@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import CustomModal from '@/components/ui/CustomModal';
 import AdminWorkspaceShell from './AdminWorkspaceShell';
+import AdminDialog from './AdminDialog';
 import {
 	AdminWorkspaceService,
 	type AdminCategoryKind,
@@ -35,6 +36,7 @@ export default function AdminCategoryWorkspace({
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [message, setMessage] = useState<string | null>(null);
+	const [confirmingDelete, setConfirmingDelete] = useState(false);
 
 	const load = useCallback(
 		async (isRefresh = false) => {
@@ -139,9 +141,11 @@ export default function AdminCategoryWorkspace({
 			setCategories((current) =>
 				current.filter((category) => category.id !== editing.id)
 			);
+			setConfirmingDelete(false);
 			setIsCreating(false);
 			setMessage('Category deleted.');
 		} catch (deleteError: unknown) {
+			setConfirmingDelete(false);
 			setMessage(
 				deleteError instanceof Error
 					? deleteError.message
@@ -354,7 +358,7 @@ export default function AdminCategoryWorkspace({
 							{editing ? (
 								<TouchableOpacity
 									disabled={saving}
-									onPress={() => void handleDelete()}
+									onPress={() => setConfirmingDelete(true)}
 									style={{
 										marginTop: 9,
 										alignItems: 'center',
@@ -373,6 +377,16 @@ export default function AdminCategoryWorkspace({
 						</View>
 					</KeyboardSafeView>
 				</SafeAreaView>
+				<AdminDialog
+					visible={confirmingDelete && Boolean(editing)}
+					tone="danger"
+					title={`Delete ${editing?.name ?? 'this category'}?`}
+					description="This permanently removes the category. Records already using it keep their category name. It cannot be undone."
+					confirmLabel="Delete"
+					busy={saving}
+					onConfirm={() => void handleDelete()}
+					onClose={() => setConfirmingDelete(false)}
+				/>
 			</Modal>
 			<CustomModal
 				visible={Boolean(message)}

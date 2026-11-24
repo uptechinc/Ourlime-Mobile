@@ -16,6 +16,7 @@ export default function AdminStickerSeedWorkspace() {
   const [confirming, setConfirming] = useState(false);
 
   const handleSeed = async (): Promise<void> => {
+    if (running) return;
     setConfirming(false);
     setRunning(true);
     setStatus('Seeding...');
@@ -36,7 +37,10 @@ export default function AdminStickerSeedWorkspace() {
       loading={false}
       refreshing={false}
       error={null}
-      onRefresh={() => setStatus('')}
+      // The page loads no data; pulling only clears the last result, and never while a seed is still running.
+      onRefresh={() => {
+        if (!running) setStatus('');
+      }}
     >
       <View style={{ alignItems: 'center', padding: 24, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
         <View style={{ width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.successSurface }}>

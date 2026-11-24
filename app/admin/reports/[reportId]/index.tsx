@@ -15,6 +15,7 @@ import { Image } from 'expo-image';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import CustomModal from '@/components/ui/CustomModal';
+import AdminDialog from '@/components/admin/AdminDialog';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import UserAvatar from '@/components/ui/UserAvatar';
 import {
@@ -154,6 +155,7 @@ export default function AdminReportDetailRoute() {
 	const [durationDays, setDurationDays] = useState('7');
 	const [busy, setBusy] = useState(false);
 	const [message, setMessage] = useState<string | null>(null);
+	const [confirmingDelete, setConfirmingDelete] = useState(false);
 
 	const loadTargetDetails = useCallback(async (reportItem: AdminModerationReport) => {
 		const { contentType, targetId, parentContentId, targetSnapshot, routePath, reportedUserId, reporterId } = reportItem;
@@ -635,8 +637,10 @@ export default function AdminReportDetailRoute() {
 		setBusy(true);
 		try {
 			await moderationService.deleteReport(report.id);
+			setConfirmingDelete(false);
 			router.back();
 		} catch (deleteError: unknown) {
+			setConfirmingDelete(false);
 			setMessage(
 				deleteError instanceof Error
 					? deleteError.message
@@ -678,7 +682,8 @@ export default function AdminReportDetailRoute() {
 				</Text>
 				<TouchableOpacity
 					disabled={!report || busy}
-					onPress={() => void handleDelete()}
+					onPress={() => setConfirmingDelete(true)}
+					accessibilityLabel="Delete report"
 				>
 					<Icon name="trash-2" size={20} color={colors.destructive} />
 				</TouchableOpacity>
@@ -1523,6 +1528,16 @@ export default function AdminReportDetailRoute() {
 					</KeyboardSafeView>
 				</SafeAreaView>
 			</Modal>
+			<AdminDialog
+				visible={confirmingDelete}
+				tone="danger"
+				title="Delete this report?"
+				description="The report is removed from the moderation queue. Any action already taken on the content stays in place. This cannot be undone."
+				confirmLabel="Delete"
+				busy={busy}
+				onConfirm={() => void handleDelete()}
+				onClose={() => setConfirmingDelete(false)}
+			/>
 			<CustomModal
 				visible={Boolean(message)}
 				title="Report moderation"

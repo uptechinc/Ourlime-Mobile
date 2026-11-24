@@ -3,6 +3,7 @@ import { auth, db } from '@/lib/firebaseConfig';
 import { AdminApiService } from '@/lib/services/AdminApiService';
 import { adminAccessService } from '@/lib/services/AdminAccessService';
 import { DiagnosticLogService } from '@/lib/services/DiagnosticLogService';
+import { isServerUnreachableError, planAppealFallback } from '@/lib/services/AdminAppealRules';
 import type {
   AdminDeleteContentRequest,
   AdminRestoreContentRequest,
@@ -471,7 +472,7 @@ export class AdminContentService {
     await adminAccessService.requireAdmin();
 
     try {
-      const response = await this.apiService.request<{ success: boolean; error?: string }>(
+      const response = await this.apiService.request<{ success?: boolean; error?: string } | null>(
         '/api/admin/appeals',
         {
           method: 'POST',
@@ -479,8 +480,14 @@ export class AdminContentService {
         }
       );
       if (response?.success) return { success: true };
-    } catch {
-      // Fallback
+      return { success: false, error: response?.error || 'The appeal could not be reviewed.' };
+    } catch (error: unknown) {
+      // A server answer (4xx/5xx) is final; only an unreachable server may use the direct Firestore path.
+      if (!isServerUnreachableError(error)) {
+        console.error('[AdminContentService.reviewAppeal] Error:', error instanceof Error ? error.message : error);
+        return { success: false, error: error instanceof Error ? error.message : 'The appeal could not be reviewed.' };
+      }
+      console.warn('[AdminContentService.reviewAppeal] Warning: server unreachable, using the Firestore fallback.');
     }
 
     const appealRef = doc(db, 'contentAppeals', appealId);
@@ -488,19 +495,34 @@ export class AdminContentService {
     if (!snap.exists()) return { success: false, error: 'Appeal not found' };
 
     const data = snap.data();
+    const contentId = readString(data.contentId);
+    const contentType = DELETABLE_CONTENT_TYPES.find((type) => type === data.contentType) ?? null;
+    const plan = planAppealFallback(data.status, decision, Boolean(contentId && contentType));
+    if (plan === 'already_reviewed') return { success: false, error: 'This appeal was already reviewed. Refresh the list.' };
+    if (plan === 'missing_content') return { success: false, error: 'This appeal does not reference restorable content, so it was left pending.' };
+
+    if (plan === 'restore_then_mark' && contentType) {
+      // Restore first: the appeal is only marked approved once the content is actually back.
+      try {
+        const restored = await this.restoreContent({
+          contentType,
+          contentId,
+          restoreReason: `Appeal approved: ${reviewNote || 'Approved'}`,
+        });
+        if (!restored.success) {
+          return { success: false, error: `The content could not be restored, so the appeal was left pending. ${restored.error ?? ''}`.trim() };
+        }
+      } catch (restoreError: unknown) {
+        console.error('[AdminContentService.reviewAppeal] Error:', restoreError instanceof Error ? restoreError.message : restoreError);
+        return { success: false, error: 'The content could not be restored, so the appeal was left pending. Try again when the server is reachable.' };
+      }
+    }
+
     await updateDoc(appealRef, {
       status: decision,
       reviewedAt: serverTimestamp(),
       reviewNote: reviewNote || '',
     });
-
-    if (decision === 'approved' && data.contentId && data.contentType) {
-      await this.restoreContent({
-        contentType: data.contentType,
-        contentId: data.contentId,
-        restoreReason: `Appeal approved: ${reviewNote || 'Approved'}`,
-      });
-    }
 
     return { success: true };
   }

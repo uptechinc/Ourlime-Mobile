@@ -1,23 +1,40 @@
 import {
   addDoc,
   collection,
+  count,
   deleteDoc,
   doc,
+  documentId,
+  getAggregateFromServer,
   getCountFromServer,
   getDoc,
   getDocs,
   limit,
+  orderBy,
   query,
   serverTimestamp,
   setDoc,
+  startAfter,
+  sum,
   updateDoc,
   where,
+  type QueryFieldFilterConstraint,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { adminAccessService } from './AdminAccessService';
 import { adminApiService } from './AdminApiService';
 import { appServerService } from './AppServerService';
 import { privateProfileService } from './PrivateProfileService';
+import {
+  ADMIN_WORKSPACE_PAGE_SIZE,
+  buildWorkspacePage,
+  isWorkspaceRecordActive,
+  resolveCommunityPrivacy,
+  resolveWorkspaceStatus,
+  type AdminWorkspaceStatus,
+} from './AdminWorkspaceRules';
+
+export type { AdminWorkspaceStatus } from './AdminWorkspaceRules';
 
 type FirebaseDateValue = { toMillis?: () => number; seconds?: number } | string | number | Date | null | undefined;
 type AdminDocumentData = {
@@ -26,6 +43,8 @@ type AdminDocumentData = {
   description?: unknown;
   status?: unknown;
   privacy?: unknown;
+  isPrivate?: unknown;
+  isDeleted?: unknown;
   category?: unknown;
   categoryName?: unknown;
   creatorId?: unknown;
@@ -68,7 +87,6 @@ type AdminDocumentData = {
 
 export type AdminWorkspaceKind = 'products' | 'communities' | 'stickers' | 'sticker_packs';
 export type AdminCategoryKind = 'products' | 'communities';
-export type AdminWorkspaceStatus = 'active' | 'pending' | 'approved' | 'rejected' | 'archived' | 'disabled' | 'other';
 export type AdminWorkspaceItem = {
   id: string;
   title: string;
@@ -99,6 +117,12 @@ export type AdminStickerFields = {
   packId: string;
   imageUrl: string;
 };
+/** One page of a workspace list; `nextCursor` is the last document id read, or null on the last page. */
+export type AdminWorkspacePage = { items: AdminWorkspaceItem[]; nextCursor: string | null };
+/** Collection-wide totals for the workspace stat cards (counted on the server, so they cover every page). */
+export type AdminWorkspaceStats =
+  | { kind: 'products'; total: number; pending: number; approved: number; rejected: number }
+  | { kind: 'communities'; total: number; publicCount: number; privateCount: number; memberships: number };
 export type AdminCategoryRecord = {
   id: string;
   name: string;
@@ -133,15 +157,10 @@ export type AdminBetaOverview = {
   registrationMode: 'open' | 'invite_only' | 'closed';
 };
 export type AdminBetaInvitationResult = { success: boolean; inviteUrl?: string; emailDelivery?: string };
+type AdminApiWriteResponse = { success?: boolean; error?: string; message?: string } | null;
 
 const readString = (value: unknown): string => typeof value === 'string' ? value : '';
 const readNumber = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) ? value : 0;
-const readStatus = (value: unknown): AdminWorkspaceStatus => {
-  const status = readString(value).toLowerCase();
-  return status === 'active' || status === 'pending' || status === 'approved' || status === 'rejected' || status === 'archived' || status === 'disabled'
-    ? status
-    : 'other';
-};
 const readDateMs = (value: FirebaseDateValue): number => {
   if (value instanceof Date) return value.getTime();
   if (typeof value === 'number') return value;
@@ -170,18 +189,66 @@ export class AdminWorkspaceService {
     return AdminWorkspaceService.instance;
   }
 
-  public async fetchWorkspaceItems(kind: AdminWorkspaceKind, maxResults = 100): Promise<AdminWorkspaceItem[]> {
+  /**
+   * One page of records ordered by document id, like the website's admin lists. This needs no composite index and
+   * includes records without `createdAt`. Soft-deleted records (`isDeleted` / `status: 'deleted'`) are left out.
+   */
+  public async fetchWorkspacePage(kind: AdminWorkspaceKind, cursor: string | null = null, pageSize = ADMIN_WORKSPACE_PAGE_SIZE): Promise<AdminWorkspacePage> {
     await adminAccessService.requireAdmin();
-    const snapshot = await getDocs(query(collection(db, getWorkspaceCollection(kind)), limit(Math.min(200, Math.max(1, maxResults)))));
-    return snapshot.docs.map((document) => this.normalizeWorkspaceItem(kind, document.id, document.data() as AdminDocumentData));
+    const size = Math.min(100, Math.max(1, Math.trunc(pageSize)));
+    const source = collection(db, getWorkspaceCollection(kind));
+    const snapshot = await getDocs(cursor
+      ? query(source, orderBy(documentId()), startAfter(cursor), limit(size + 1))
+      : query(source, orderBy(documentId()), limit(size + 1)));
+    const page = buildWorkspacePage(snapshot.docs.map((document) => ({ id: document.id, data: document.data() as AdminDocumentData })), size);
+    return {
+      items: page.visible.map((document) => this.normalizeWorkspaceItem(kind, document.id, document.data)),
+      nextCursor: page.nextCursor,
+    };
   }
 
-  /** For products, hiding decisions (rejected, disabled, archived) need a reason; it is shown to the seller like on the web. */
-  public async setWorkspaceStatus(kind: AdminWorkspaceKind, itemId: string, status: AdminWorkspaceStatus, reason?: string): Promise<void> {
+  /** Server-side totals for the product and community stat cards, without soft-deleted records. Null for stickers. */
+  public async fetchWorkspaceStats(kind: AdminWorkspaceKind): Promise<AdminWorkspaceStats | null> {
+    await adminAccessService.requireAdmin();
+    if (kind !== 'products' && kind !== 'communities') return null;
+    const source = collection(db, getWorkspaceCollection(kind));
+    const countOf = async (filter?: QueryFieldFilterConstraint): Promise<number> =>
+      (await getCountFromServer(filter ? query(source, filter) : source)).data().count;
+    if (kind === 'products') {
+      // Deleted listings carry status 'deleted', so the status counts already leave them out.
+      const [all, deleted, pending, approved, rejected] = await Promise.all([
+        countOf(),
+        countOf(where('isDeleted', '==', true)),
+        countOf(where('status', '==', 'pending')),
+        countOf(where('status', 'in', ['approved', 'active'])),
+        countOf(where('status', '==', 'rejected')),
+      ]);
+      return { kind, total: Math.max(0, all - deleted), pending, approved, rejected };
+    }
+    const aggregateSpec = { total: count(), memberships: sum('membershipCount') };
+    const [totals, deletedTotals, privateCount] = await Promise.all([
+      getAggregateFromServer(source, aggregateSpec),
+      getAggregateFromServer(query(source, where('isDeleted', '==', true)), aggregateSpec),
+      countOf(where('isPrivate', '==', true)),
+    ]);
+    const total = Math.max(0, totals.data().total - deletedTotals.data().total);
+    return {
+      kind,
+      total,
+      privateCount: Math.min(total, privateCount),
+      publicCount: Math.max(0, total - privateCount),
+      memberships: Math.max(0, (totals.data().memberships || 0) - (deletedTotals.data().memberships || 0)),
+    };
+  }
+
+  /**
+   * Returns the status the record now has. For products, hiding decisions (rejected, disabled, archived) need a
+   * reason shown to the seller like on the web, and the server stores every hiding decision as 'rejected'.
+   */
+  public async setWorkspaceStatus(kind: AdminWorkspaceKind, itemId: string, status: AdminWorkspaceStatus, reason?: string): Promise<AdminWorkspaceStatus> {
     const administrator = await adminAccessService.requireAdmin();
     if (kind === 'products') {
-      await this.reviewProduct(itemId, status, reason ?? '');
-      return;
+      return this.reviewProduct(itemId, status, reason ?? '');
     }
     const statusFields = kind === 'stickers' || kind === 'sticker_packs'
       // The website's sticker picker and manager read `enabled`.
@@ -189,6 +256,7 @@ export class AdminWorkspaceService {
       : { status };
     await updateDoc(doc(db, getWorkspaceCollection(kind), itemId), { ...statusFields, updatedAt: serverTimestamp() });
     await this.writeAudit(administrator.userId, `admin_${kind}_status`, itemId, status);
+    return status;
   }
 
   /**
@@ -223,10 +291,11 @@ export class AdminWorkspaceService {
     const administrator = await adminAccessService.requireAdmin();
     if (kind === 'products') {
       // Products are server-managed: the admin content route soft-deletes the listing, notifies the seller and audits it.
-      await adminApiService.request('/api/admin/content/delete', {
+      const response = await adminApiService.request<{ success?: boolean; error?: string } | null>('/api/admin/content/delete', {
         method: 'POST',
         body: { contentType: 'product', contentId: itemId, category: 'custom', customReason: 'Removed by an administrator.' },
       });
+      if (response?.success === false) throw new Error(response.error || 'The product could not be deleted.');
       return;
     }
     await deleteDoc(doc(db, getWorkspaceCollection(kind), itemId));
@@ -334,47 +403,55 @@ export class AdminWorkspaceService {
   public async updateBetaRecord(record: AdminBetaRecord, status: string, notes: string): Promise<void> {
     await adminAccessService.requireAdmin();
     if (record.kind === 'tester') {
-      await adminApiService.request(`/api/beta/admin/testers/${encodeURIComponent(record.id)}`, { method: 'PATCH', body: { status, notes } });
+      this.requireApiSuccess(await adminApiService.request<AdminApiWriteResponse>(`/api/beta/admin/testers/${encodeURIComponent(record.id)}`, { method: 'PATCH', body: { status, notes } }), 'The tester could not be updated.');
       return;
     }
     if (record.kind === 'application') {
       const action = status === 'approved' ? 'approve' : status === 'rejected' ? 'reject' : 'note';
-      await adminApiService.request(`/api/beta/admin/applications/${encodeURIComponent(record.id)}`, { method: 'PATCH', body: { action, adminNotes: notes, sendInvitation: status === 'approved' } });
+      this.requireApiSuccess(await adminApiService.request<AdminApiWriteResponse>(`/api/beta/admin/applications/${encodeURIComponent(record.id)}`, { method: 'PATCH', body: { action, adminNotes: notes, sendInvitation: status === 'approved' } }), 'The application could not be updated.');
       return;
     }
     const action = status === 'revoked' ? 'revoke' : status === 'invited' ? 'resend' : 'note';
-    await adminApiService.request(`/api/beta/admin/invitations/${encodeURIComponent(record.id)}`, { method: 'PATCH', body: { action, notes } });
+    this.requireApiSuccess(await adminApiService.request<AdminApiWriteResponse>(`/api/beta/admin/invitations/${encodeURIComponent(record.id)}`, { method: 'PATCH', body: { action, notes } }), 'The invitation could not be updated.');
   }
 
   public async setRegistrationMode(mode: AdminBetaOverview['registrationMode']): Promise<void> {
     await adminAccessService.requireAdmin();
-    await adminApiService.request('/api/beta/registration-mode', { method: 'PATCH', body: { mode } });
+    this.requireApiSuccess(await adminApiService.request<AdminApiWriteResponse>('/api/beta/registration-mode', { method: 'PATCH', body: { mode } }), 'The registration mode could not be changed.');
   }
 
   public async inviteBetaTester(fullName: string, email: string, notes: string): Promise<AdminBetaInvitationResult> {
     await adminAccessService.requireAdmin();
-    return adminApiService.request<AdminBetaInvitationResult>('/api/beta/admin/invitations', { method: 'POST', body: { fullName: fullName.trim(), email: email.trim(), notes: notes.trim() } });
+    const response = await adminApiService.request<(AdminBetaInvitationResult & { error?: string }) | null>('/api/beta/admin/invitations', { method: 'POST', body: { fullName: fullName.trim(), email: email.trim(), notes: notes.trim() } });
+    this.requireApiSuccess(response, 'The invitation could not be created.');
+    return { success: true, inviteUrl: response?.inviteUrl, emailDelivery: response?.emailDelivery };
+  }
+
+  /** A 2xx body of `{ success: false }` is still a failure; the request helper only throws on HTTP errors. */
+  private requireApiSuccess(response: AdminApiWriteResponse, fallbackMessage: string): void {
+    if (response?.success === false) throw new Error(response.error || response.message || fallbackMessage);
   }
 
   /** Runs the website's sticker seed (upserts the default packs, adds missing stickers) and returns its summary. */
   public async seedStickers(): Promise<string> {
     await adminAccessService.requireAdmin();
-    const response = await adminApiService.request<{ success?: boolean; message?: string }>('/api/admin/stickers/seed', { method: 'POST' });
-    return response.message || 'Done';
+    const response = await adminApiService.request<{ success?: boolean; message?: string; error?: string } | null>('/api/admin/stickers/seed', { method: 'POST' });
+    if (response?.success === false) throw new Error(response.error || response.message || 'The sticker seed did not run.');
+    return response?.message || 'Done';
   }
 
   private normalizeWorkspaceItem(kind: AdminWorkspaceKind, id: string, value: AdminDocumentData): AdminWorkspaceItem {
     const title = readString(value.title) || readString(value.name) || 'Untitled';
     const ownerId = readString(value.creatorId) || readString(value.userId) || readString(value.ownerId) || null;
     const imageUrl = readString(value.imageUrl) || readString(value.imageURL) || readString(value.image) || readString(value.coverImage) || null;
-    const active = value.isActive !== false && value.isPublished !== false && value.enabled !== false;
-    const explicitStatus = readStatus(value.status);
-    const status = explicitStatus === 'other' ? active ? 'active' : 'disabled' : explicitStatus;
+    const active = isWorkspaceRecordActive(value);
+    const status = resolveWorkspaceStatus(value);
+    const privacy = kind === 'communities' ? resolveCommunityPrivacy(value.privacy, value.isPrivate) : '';
     const memberCount = readNumber(value.membershipCount) || readNumber(value.members);
     return {
       id,
       title,
-      subtitle: kind === 'communities' ? readString(value.privacy) || 'public' : kind === 'stickers' ? readString(value.packId) || 'Unassigned pack' : readString(value.category) || 'Uncategorized',
+      subtitle: kind === 'communities' ? privacy : kind === 'stickers' ? readString(value.packId) || 'Unassigned pack' : readString(value.category) || 'Uncategorized',
       description: readString(value.description),
       status,
       category: readString(value.category),
@@ -385,7 +462,7 @@ export class AdminWorkspaceService {
       isActive: active,
       price: readNumber(value.price),
       memberCount,
-      privacy: kind === 'communities' ? readString(value.privacy) || 'public' : '',
+      privacy,
       stickerFields: kind === 'stickers' || kind === 'sticker_packs'
         ? {
             name: readString(value.name),
@@ -446,7 +523,7 @@ export class AdminWorkspaceService {
    * Listing decisions go through the reviewProductListing callable (the rules let no client change a product):
    * active/approved publishes, rejected/disabled/archived hides the listing; other states are not review decisions.
    */
-  private async reviewProduct(productId: string, status: AdminWorkspaceStatus, reason: string): Promise<void> {
+  private async reviewProduct(productId: string, status: AdminWorkspaceStatus, reason: string): Promise<AdminWorkspaceStatus> {
     const decision = status === 'active' || status === 'approved' ? 'approved'
       : status === 'rejected' || status === 'disabled' || status === 'archived' ? 'rejected' : null;
     if (!decision) throw new Error('Listings can only be approved or rejected here.');
@@ -456,17 +533,26 @@ export class AdminWorkspaceService {
     const product = await getDoc(doc(db, 'products', productId));
     if (!product.exists()) throw new Error('Product not found.');
     const revision: unknown = product.data().revision;
-    await appServerService.call('reviewProductListing', {
+    const result = await appServerService.call<{ status?: unknown } | null>('reviewProductListing', {
       productId,
       decision,
       expectedRevision: typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0 ? revision : 0,
       operationId: doc(collection(db, 'operationIds')).id,
       ...(decision === 'rejected' ? { reason: trimmedReason } : {}),
     });
+    return result?.status === 'approved' || result?.status === 'rejected' ? result.status : decision;
   }
 
+  /**
+   * Records the change in adminLogs once the main write has succeeded. An audit failure is logged as a warning and
+   * never reported as a failed change, because the change itself was saved.
+   */
   private async writeAudit(adminId: string, action: string, targetId: string, details: string): Promise<void> {
-    await addDoc(collection(db, 'adminLogs'), { adminId, action, targetId, details, timestamp: serverTimestamp(), createdAt: serverTimestamp() });
+    try {
+      await addDoc(collection(db, 'adminLogs'), { adminId, action, targetId, details, timestamp: serverTimestamp(), createdAt: serverTimestamp() });
+    } catch (auditError: unknown) {
+      console.warn('[AdminWorkspaceService.writeAudit] Warning: the change was saved but its audit entry was not.', action, targetId, auditError instanceof Error ? auditError.message : auditError);
+    }
   }
 }
 

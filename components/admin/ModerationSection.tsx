@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
 	Text,
 	TextInput,
 	TouchableOpacity,
 	View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
 import CustomModal from '@/components/ui/CustomModal';
@@ -55,6 +55,8 @@ export default function ModerationSection() {
 	const [loading, setLoading] = useState(true);
 	const [appealsLoading, setAppealsLoading] = useState(false);
 	const [message, setMessage] = useState<string | null>(null);
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const hasFocusedRef = useRef(false);
 	const [filtersOpen, setFiltersOpen] = useState(false);
 	const filterGroups: FilterGroup[] = [
 		{ key: 'status', label: 'Status', options: STATUS_FILTERS.map((filter) => ({ value: filter, label: toFilterLabel(filter, 'Any status') })), value: status, defaultValue: 'all' },
@@ -69,31 +71,41 @@ export default function ModerationSection() {
 		if (groupKey === 'severity') setSeverity('all');
 	};
 
-	const load = useCallback(async () => {
-		setLoading(true);
+	/** 'silent' refreshes on return to the screen (e.g. after acting on a report) without the skeleton. */
+	const load = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
+		if (mode === 'initial') setLoading(true);
 		try {
-			const [reportsData, appealsData] = await Promise.all([
-				moderationService.fetchReports().catch(() => []),
-				adminContentService.getPendingAppeals().catch(() => []),
+			const [reportsResult, appealsResult] = await Promise.allSettled([
+				moderationService.fetchReports(),
+				adminContentService.getPendingAppeals(),
 			]);
-			setReports(reportsData);
-			setAppeals(appealsData);
-		} catch (loadError: unknown) {
-			setMessage(
-				loadError instanceof Error
-					? loadError.message
-					: 'Reports could not be loaded'
-			);
+			const failures: string[] = [];
+			if (reportsResult.status === 'fulfilled') setReports(reportsResult.value);
+			else {
+				console.error('[ModerationSection.load] Error:', reportsResult.reason instanceof Error ? reportsResult.reason.message : reportsResult.reason);
+				failures.push(reportsResult.reason instanceof Error ? `Reports: ${reportsResult.reason.message}` : 'Reports could not be loaded.');
+			}
+			if (appealsResult.status === 'fulfilled') setAppeals(appealsResult.value);
+			else {
+				console.error('[ModerationSection.load] Error:', appealsResult.reason instanceof Error ? appealsResult.reason.message : appealsResult.reason);
+				failures.push(appealsResult.reason instanceof Error ? `Appeals: ${appealsResult.reason.message}` : 'Appeals could not be loaded.');
+			}
+			// A failed background refresh keeps what is already on screen and says nothing new.
+			if (mode === 'initial' || failures.length === 0) setLoadError(failures.length ? failures.join('\n') : null);
 		} finally {
 			setLoading(false);
 		}
 	}, []);
 
-	useEffect(() => {
-		void load();
-	}, [load]);
+	useFocusEffect(
+		useCallback(() => {
+			void load(hasFocusedRef.current ? 'silent' : 'initial');
+			hasFocusedRef.current = true;
+		}, [load])
+	);
 
 	const handleReviewAppeal = async (appealId: string, decision: 'approved' | 'rejected') => {
+		if (appealsLoading) return;
 		try {
 			setAppealsLoading(true);
 			void interactionFeedbackService.play('post');
@@ -164,6 +176,15 @@ export default function ModerationSection() {
 				))}
 			</View>
 
+			{loadError && (activeSubTab === 'reports' || activeSubTab === 'appeals') ? (
+				<View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.destructiveSurface }}>
+					<Icon name="alert-circle" size={17} color={colors.destructiveText} />
+					<Text style={{ flex: 1, marginLeft: 8, color: colors.destructiveText, fontSize: 12 }}>{loadError}</Text>
+					<TouchableOpacity onPress={() => void load()} accessibilityLabel="Retry loading moderation" style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
+						<Text style={{ color: colors.destructiveText, fontWeight: '900' }}>Retry</Text>
+					</TouchableOpacity>
+				</View>
+			) : null}
 			{activeSubTab === 'deleted' ? (
 				<AdminDeletedContentPanel />
 			) : activeSubTab === 'bulk' ? (
