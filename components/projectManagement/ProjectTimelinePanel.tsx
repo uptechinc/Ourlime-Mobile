@@ -137,6 +137,9 @@ export default function ProjectTimelinePanel({ tasks, milestones, deliverables =
               return (
                 <Pressable key={task.id} onPress={() => onSelectTask(task)} android_ripple={PROJECT_RIPPLE} accessibilityRole="button" accessibilityLabel={rowLabel(task, entry)} style={{ height: 46, borderTopWidth: 1, borderTopColor: colors.border, justifyContent: 'center', overflow: 'hidden' }}>
                   {todayIndex >= 0 && todayIndex < DAYS_TO_SHOW ? <View style={{ position: 'absolute', top: 0, bottom: 0, left: todayIndex * DAY_WIDTH, width: DAY_WIDTH, backgroundColor: colors.successSurface, opacity: 0.5 }} /> : null}
+                  {/* A bar that starts several days in can sit off the right edge of the phone, leaving the row looking
+                      empty, so its title is also shown at the start of the row. */}
+                  {visible && visibleStart > 4 ? <Text numberOfLines={1} style={{ position: 'absolute', left: 8, width: (visibleStart - 1) * DAY_WIDTH - 12, color: colors.mutedText, fontSize: 11 }}>{task.title} →</Text> : null}
                   {visible ? (
                     <View style={{ position: 'absolute', left: visibleStart * DAY_WIDTH + 1, width: Math.max((visibleEnd - visibleStart + 1) * DAY_WIDTH - 2, 26), height: 28, borderRadius: 8, backgroundColor: BAR_COLORS[task.priority], borderWidth: entry.critical ? 2 : 0, borderColor: '#f59e0b', justifyContent: 'center', paddingHorizontal: 6, opacity: task.status === 'done' ? 0.55 : 1 }}>
                       <Text numberOfLines={1} style={{ color: '#ffffff', fontSize: 10, fontWeight: '800' }}>{entry.conflict ? '! ' : ''}{task.title}</Text>
