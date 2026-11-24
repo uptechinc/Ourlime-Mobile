@@ -6,17 +6,16 @@ import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { AlertCircle, BookOpen, ClipboardCheck, ClipboardList, Clock, Eye, EyeOff, GraduationCap, HelpCircle, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react-native';
 import CustomModal from '@/components/ui/CustomModal';
 import { InstructorDashboardSkeleton } from '@/components/eLearning/ELearningSkeletons';
-import { CourseRating, ELearningButton, ELearningEmptyState, ELearningHeader, ELearningHeaderButton, ELEARNING_ACTION_GREEN, ELEARNING_GUTTER, StatusPill, type ELearningTone } from '@/components/eLearning/ELearningParts';
+import { CourseRating, ELearningButton, ELearningEmptyState, ELearningHeader, ELearningHeaderButton, ELEARNING_ACTION_GREEN, ELEARNING_GUTTER, StatusPill } from '@/components/eLearning/ELearningParts';
 import { pluralize } from '@/components/eLearning/course/workspaceHelpers';
+import { courseStage, courseStagePresentation } from '@/components/eLearning/instructor/courseStatus';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
-import { instructorService, type InstructorCourse, type InstructorCourseStatus, type InstructorSettableStatus, type InstructorStatus } from '@/lib/services/InstructorService';
+import { instructorService, type InstructorCourse, type InstructorSettableStatus, type InstructorStatus } from '@/lib/services/InstructorService';
 
 const CONTENT_MAX_WIDTH = 900;
 const THUMB_SIZE = 72;
 const RIPPLE = { color: 'rgba(15,23,42,0.12)' };
-const STATUS_LABEL: Record<InstructorCourseStatus, string> = { draft: 'Draft', pending_review: 'In review', published: 'Published', archived: 'Archived' };
-const STATUS_TONE: Record<InstructorCourseStatus, ELearningTone> = { draft: 'neutral', pending_review: 'warning', published: 'success', archived: 'neutral' };
 const courseQuery = (course: InstructorCourse): string => `${encodeURIComponent(course.id)}?title=${encodeURIComponent(course.title)}`;
 
 /** "2 quizzes · 1 assignment", or nothing while the lessons can't be read (draft and in-review courses). */
@@ -40,6 +39,8 @@ export default function InstructorDashboardScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [workingCourseId, setWorkingCourseId] = useState<string | null>(null);
   const [courseToDelete, setCourseToDelete] = useState<InstructorCourse | null>(null);
+  const [waitingCounts, setWaitingCounts] = useState<Map<string, number>>(new Map());
+  const [courseToUnpublish, setCourseToUnpublish] = useState<InstructorCourse | null>(null);
 
   const load = useCallback(async () => {
     if (!activeUserId) { setIsLoading(false); setStatus('none'); return; }
@@ -49,6 +50,8 @@ export default function InstructorDashboardScreen() {
       setStatus(application.status);
       setDeclineReason(application.declineReason);
       setCourses(myCourses);
+      // Hand-ins waiting for a grade (server counts; a course whose count is refused simply shows none).
+      setWaitingCounts(await instructorService.getWaitingCounts(myCourses));
     } catch (loadFailure: unknown) {
       console.error('[InstructorDashboardScreen.load] Error:', loadFailure instanceof Error ? loadFailure.message : 'Unknown error');
       setLoadError('Your instructor dashboard could not be loaded. Check your connection and try again.');
@@ -111,6 +114,8 @@ export default function InstructorDashboardScreen() {
 
   const totalStudents = courses.reduce((sum, course) => sum + course.enrolledStudents, 0);
   const publishedCount = courses.filter((course) => course.status === 'published').length;
+  const totalWaiting = waitingCounts.size > 0 ? [...waitingCounts.values()].reduce((sum, count) => sum + count, 0) : null;
+  const needsAttention = courses.filter((course) => courseStage(course) === 'declined').length;
   const isInstructor = status === 'pending' || status === 'verified' || status === 'declined';
 
   return (
@@ -169,11 +174,21 @@ export default function InstructorDashboardScreen() {
 
             {isInstructor || courses.length > 0 ? (
               <>
+                {/* Counts from the course documents and server-side submission counts; nothing estimated. */}
                 <View style={styles.stats}>
-                  <View accessible accessibilityLabel={`${courses.length} courses`} style={styles.statCard}><Text numberOfLines={1} style={styles.statValue}>{courses.length}</Text><Text numberOfLines={1} style={styles.statLabel}>Courses</Text></View>
-                  <View accessible accessibilityLabel={`${publishedCount} published`} style={styles.statCard}><Text numberOfLines={1} style={styles.statValue}>{publishedCount}</Text><Text numberOfLines={1} style={styles.statLabel}>Published</Text></View>
-                  <View accessible accessibilityLabel={`${totalStudents} learners`} style={styles.statCard}><Text numberOfLines={1} style={styles.statValue}>{totalStudents}</Text><Text numberOfLines={1} style={styles.statLabel}>Learners</Text></View>
+                  <View accessible accessibilityLabel={`${publishedCount} of ${courses.length} courses published`} style={styles.statCard}><Text numberOfLines={1} style={styles.statValue}>{publishedCount}/{courses.length}</Text><Text numberOfLines={1} style={styles.statLabel}>Published</Text></View>
+                  <View accessible accessibilityLabel={`${totalStudents} enrollments`} style={styles.statCard}><Text numberOfLines={1} style={styles.statValue}>{totalStudents}</Text><Text numberOfLines={1} style={styles.statLabel}>Enrollments</Text></View>
+                  <Pressable accessibilityRole="button" accessibilityLabel={totalWaiting === null ? 'Grading' : `${totalWaiting} hand-ins to grade. Open grading`} onPress={() => router.push('/eLearning/instructor/grading' as Href)} android_ripple={RIPPLE} style={[styles.statCard, totalWaiting ? styles.statCardAlert : null]}>
+                    <Text numberOfLines={1} style={[styles.statValue, totalWaiting ? { color: colors.warningText } : null]}>{totalWaiting ?? '—'}</Text>
+                    <Text numberOfLines={1} style={[styles.statLabel, totalWaiting ? { color: colors.warningText } : null]}>To grade</Text>
+                  </Pressable>
                 </View>
+                {needsAttention > 0 ? (
+                  <View accessibilityRole="alert" style={styles.errorBanner}>
+                    <AlertCircle size={16} color={colors.destructiveText} />
+                    <Text style={[styles.errorText, styles.flexText]}>{needsAttention === 1 ? 'One course was' : `${needsAttention} courses were`} declined. The administrator's note is on the course below.</Text>
+                  </View>
+                ) : null}
 
                 <View style={styles.coursesHeader}>
                   <Text accessibilityRole="header" style={[styles.sectionTitle, styles.flexText]}>My courses</Text>
@@ -194,17 +209,22 @@ export default function InstructorDashboardScreen() {
                   const isWorking = workingCourseId === course.id;
                   const work = workLine(course);
                   const isPublished = course.status === 'published';
-                  const isDeclined = course.status === 'draft' && course.reviewStatus === 'declined';
+                  const presentation = courseStagePresentation(course, status);
+                  const isDeclined = presentation.stage === 'declined';
+                  const waiting = waitingCounts.get(course.id);
                   // Verified instructors publish straight away; everyone else submits the course for review.
                   const resubmitLabel = status === 'verified' ? 'Publish' : 'Submit for review';
                   return (
                     <View key={course.id} style={styles.courseCard}>
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Open ${course.title}, ${STATUS_LABEL[course.status]}`} onPress={() => router.push(`/eLearning/instructor/course/${courseQuery(course)}` as Href)} android_ripple={RIPPLE} style={styles.courseTop}>
+                      <Pressable accessibilityRole="button" accessibilityLabel={[`Open ${course.title}`, presentation.label, waiting ? `${waiting} to grade` : null].filter(Boolean).join(', ')} onPress={() => router.push(`/eLearning/instructor/course/${courseQuery(course)}` as Href)} android_ripple={RIPPLE} style={styles.courseTop}>
                         <View style={styles.thumb}>
                           {course.image ? <Image source={{ uri: course.image }} contentFit="cover" style={{ width: THUMB_SIZE, height: THUMB_SIZE }} /> : <BookOpen size={22} color={colors.mutedText} />}
                         </View>
                         <View style={styles.courseCopy}>
-                          <StatusPill label={isDeclined ? 'Not approved' : STATUS_LABEL[course.status]} tone={isDeclined ? 'danger' : STATUS_TONE[course.status]} />
+                          <View style={styles.pills}>
+                            <StatusPill label={presentation.label} tone={presentation.tone} />
+                            {waiting ? <StatusPill label={`${waiting} to grade`} tone="warning" /> : null}
+                          </View>
                           <Text style={styles.courseTitle} numberOfLines={2}>{course.title}</Text>
                           <View style={styles.metaRow}>
                             <Text style={styles.muted} numberOfLines={1}>{pluralize(course.enrolledStudents, 'learner', 'learners')}</Text>
@@ -234,7 +254,7 @@ export default function InstructorDashboardScreen() {
                       <View style={styles.actions}>
                         {course.status === 'pending_review' ? (
                           <View style={[styles.pendingNote, styles.flexText]}>
-                            <Clock size={16} color={colors.warningText} /><Text numberOfLines={2} style={styles.pendingText}>Waiting for an administrator to approve it</Text>
+                            <Clock size={16} color={colors.warningText} /><Text numberOfLines={2} style={styles.pendingText}>Waiting for an administrator to review it</Text>
                           </View>
                         ) : isPublished ? (
                           <ELearningButton
@@ -244,7 +264,7 @@ export default function InstructorDashboardScreen() {
                             icon={<EyeOff size={18} color={colors.text} />}
                             busyLabel="Saving…"
                             isBusy={isWorking}
-                            onPress={() => void handleSetStatus(course, 'draft')}
+                            onPress={() => (course.enrolledStudents > 0 ? setCourseToUnpublish(course) : void handleSetStatus(course, 'draft'))}
                             style={styles.flexText}
                           />
                         ) : (
@@ -271,10 +291,28 @@ export default function InstructorDashboardScreen() {
         </ScrollView>
       )}
       <CustomModal
+        visible={Boolean(courseToUnpublish)}
+        type="warning"
+        title="Unpublish this course?"
+        message={`${pluralize(courseToUnpublish?.enrolledStudents ?? 0, 'enrolled learner', 'enrolled learners')} can't open its lessons while it is unpublished. Their progress and grades are kept and come back when you publish it again.`}
+        confirmText="Unpublish"
+        cancelText="Keep published"
+        isLoading={Boolean(courseToUnpublish && workingCourseId === courseToUnpublish.id)}
+        onConfirm={() => {
+          const target = courseToUnpublish;
+          setCourseToUnpublish(null);
+          if (target) void handleSetStatus(target, 'draft');
+        }}
+        onCancel={() => setCourseToUnpublish(null)}
+        onClose={() => setCourseToUnpublish(null)}
+      />
+      <CustomModal
         visible={Boolean(courseToDelete)}
         type="warning"
         title="Delete this course?"
-        message={`"${courseToDelete?.title ?? ''}" and all of its modules, lessons and resources will be permanently removed. This cannot be undone.`}
+        message={courseToDelete && courseToDelete.enrolledStudents > 0
+          ? `"${courseToDelete.title}" has ${pluralize(courseToDelete.enrolledStudents, 'enrolled learner', 'enrolled learners')}. Deleting removes its modules, lessons and resources for good, and those learners lose the course. To hide it for now, unpublish it instead. This cannot be undone.`
+          : `"${courseToDelete?.title ?? ''}" and all of its modules, lessons and resources will be permanently removed. This cannot be undone.`}
         confirmText="Delete course"
         cancelText="Cancel"
         isLoading={Boolean(courseToDelete && workingCourseId === courseToDelete.id)}
@@ -308,6 +346,8 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   statCard: { flex: 1, minWidth: 0, paddingVertical: 12, paddingHorizontal: 12, gap: 2, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
   statValue: { color: colors.text, fontSize: 22, fontWeight: '800' },
   statLabel: { color: colors.mutedText, fontSize: 12 },
+  statCardAlert: { backgroundColor: colors.warningSurface, borderColor: colors.warningSurface },
+  pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   coursesHeader: { marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 10 },
   createButton: { minHeight: 44, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 12, backgroundColor: ELEARNING_ACTION_GREEN, overflow: 'hidden' },
   createText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },

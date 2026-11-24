@@ -103,7 +103,7 @@ export function ELearningHeaderButton({ accessibilityLabel, onPress, disabled = 
 
 type ChipProps = { label: string; isSelected: boolean; onPress: () => void };
 
-/** A filter chip: 36 tall with hit slop to 44, selected = filled accent with white text. */
+/** A filter chip: 44 tall (a full touch target on its own), selected = filled accent with white text. */
 export function ELearningChip({ label, isSelected, onPress }: ChipProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -337,7 +337,7 @@ function createStyles(colors: AppThemeColors) {
     headerTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
     headerSubtitle: { color: colors.mutedText, fontSize: 12, marginTop: 1 },
 
-    chip: { minHeight: 36, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
+    chip: { minHeight: 44, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
     chipSelected: { backgroundColor: ELEARNING_ACTION_GREEN, borderColor: ELEARNING_ACTION_GREEN },
     chipText: { color: colors.secondaryText, fontSize: 14, fontWeight: '600' },
     chipTextSelected: { color: '#ffffff' },

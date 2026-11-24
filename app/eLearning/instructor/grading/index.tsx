@@ -9,12 +9,12 @@ import { ELearningEmptyState, ELearningHeader, ELEARNING_GUTTER, StatusPill } fr
 import { pluralize } from '@/components/eLearning/course/workspaceHelpers';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
-import { instructorService, type InstructorCourse, type InstructorCourseStatus, type InstructorStatus } from '@/lib/services/InstructorService';
+import { instructorService, type InstructorCourse, type InstructorStatus } from '@/lib/services/InstructorService';
+import { courseStagePresentation } from '@/components/eLearning/instructor/courseStatus';
 
 const CONTENT_MAX_WIDTH = 820;
 const THUMB_WIDTH = 72;
 const THUMB_HEIGHT = 48;
-const STATUS_LABEL: Record<InstructorCourseStatus, string> = { draft: 'Draft', pending_review: 'In review', published: 'Published', archived: 'Archived' };
 
 /** "Quizzes and assignments" counts when the course's lessons can be read; nothing invented when they can't. */
 const workLine = (course: InstructorCourse): string => {
@@ -34,6 +34,7 @@ export default function InstructorGradingCoursesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [waitingCounts, setWaitingCounts] = useState<Map<string, number>>(new Map());
 
   const load = useCallback(async () => {
     if (!activeUserId) { setIsLoading(false); setStatus('none'); return; }
@@ -42,6 +43,8 @@ export default function InstructorGradingCoursesScreen() {
       const [instructorStatus, myCourses] = await Promise.all([instructorService.getStatus(activeUserId), instructorService.getMyCourses(activeUserId)]);
       setStatus(instructorStatus);
       setCourses(myCourses);
+      // Counts are a guide for where to start; the list works without them.
+      setWaitingCounts(await instructorService.getWaitingCounts(myCourses));
     } catch (loadError: unknown) {
       console.error('[InstructorGradingCoursesScreen.load] Error:', loadError instanceof Error ? loadError.message : 'Unknown error');
       setError('Your courses could not be loaded. Check your connection and try again.');
@@ -52,6 +55,9 @@ export default function InstructorGradingCoursesScreen() {
   }, [activeUserId]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  const totalWaiting = waitingCounts.size > 0 ? [...waitingCounts.values()].reduce((sum, count) => sum + count, 0) : null;
+  const orderedCourses = [...courses].sort((left, right) => (waitingCounts.get(right.id) ?? 0) - (waitingCounts.get(left.id) ?? 0));
 
   const openCourse = (course: InstructorCourse) => router.push(`/eLearning/instructor/grading/${encodeURIComponent(course.id)}?title=${encodeURIComponent(course.title)}` as Href);
 
@@ -87,20 +93,30 @@ export default function InstructorGradingCoursesScreen() {
               />
             ) : (
               <>
-                <Text style={styles.intro}>Pick a course to see its submissions, oldest first.</Text>
-                {courses.map((course) => (
-                  <Pressable key={course.id} accessibilityRole="button" accessibilityLabel={`Grade ${course.title}, ${STATUS_LABEL[course.status]}, ${workLine(course)}`} onPress={() => openCourse(course)} android_ripple={{ color: colors.control }} style={styles.card}>
-                    <View style={styles.thumb}>
-                      {course.image ? <Image source={{ uri: course.image }} contentFit="cover" style={{ width: THUMB_WIDTH, height: THUMB_HEIGHT }} /> : <BookOpen size={20} color={colors.mutedText} />}
-                    </View>
-                    <View style={styles.flexText}>
-                      <Text style={styles.courseTitle} numberOfLines={2}>{course.title}</Text>
-                      <Text style={styles.muted} numberOfLines={2}>{workLine(course)}</Text>
-                      <StatusPill label={STATUS_LABEL[course.status]} tone={course.status === 'published' ? 'success' : course.status === 'pending_review' ? 'warning' : 'neutral'} />
-                    </View>
-                    <ChevronRight size={20} color={colors.mutedText} />
-                  </Pressable>
-                ))}
+                <Text style={styles.intro}>
+                  {totalWaiting === null ? 'Pick a course to see its submissions.' : totalWaiting === 0 ? 'Nothing is waiting for a grade. Courses are listed so you can review graded work.' : `${pluralize(totalWaiting, 'hand-in is', 'hand-ins are')} waiting for a grade. Courses with work to grade come first.`}
+                </Text>
+                {orderedCourses.map((course) => {
+                  const presentation = courseStagePresentation(course, status);
+                  const waiting = waitingCounts.get(course.id);
+                  const waitingLabel = waiting === undefined ? null : waiting === 0 ? 'All graded' : `${waiting} to grade`;
+                  return (
+                    <Pressable key={course.id} accessibilityRole="button" accessibilityLabel={[`Grade ${course.title}`, presentation.label, waitingLabel, workLine(course)].filter(Boolean).join(', ')} onPress={() => openCourse(course)} android_ripple={{ color: colors.control }} style={styles.card}>
+                      <View style={styles.thumb}>
+                        {course.image ? <Image source={{ uri: course.image }} contentFit="cover" style={{ width: THUMB_WIDTH, height: THUMB_HEIGHT }} /> : <BookOpen size={20} color={colors.mutedText} />}
+                      </View>
+                      <View style={styles.flexText}>
+                        <Text style={styles.courseTitle} numberOfLines={2}>{course.title}</Text>
+                        <Text style={styles.muted} numberOfLines={2}>{workLine(course)}</Text>
+                        <View style={styles.pills}>
+                          <StatusPill label={presentation.label} tone={presentation.tone} />
+                          {waitingLabel ? <StatusPill label={waitingLabel} tone={waiting ? 'warning' : 'success'} /> : null}
+                        </View>
+                      </View>
+                      <ChevronRight size={20} color={colors.mutedText} />
+                    </Pressable>
+                  );
+                })}
               </>
             )}
           </View>
@@ -121,4 +137,5 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   card: { minHeight: 72, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
   thumb: { width: THUMB_WIDTH, height: THUMB_HEIGHT, borderRadius: 8, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
   courseTitle: { color: colors.text, fontSize: 15, fontWeight: '700', lineHeight: 20 },
+  pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 });

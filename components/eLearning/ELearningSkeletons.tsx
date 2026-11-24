@@ -982,4 +982,43 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
 
   // Reviews
   reviewCard: { padding: 14, gap: 8, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+
+  // Hub (app/eLearning/index.tsx)
+  hubCard: { padding: 16, gap: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
+  hubRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  hubGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  hubTile: { flexGrow: 1, flexBasis: '45%', height: 64, borderRadius: 12 },
 });
+
+/** The hub below its search field: the continue card, the shortcut tiles and two course cards. */
+export function ELearningHubSkeleton(): ReactElement {
+  const styles = useSkeletonStyles();
+  const { width } = useWindowDimensions();
+  const cardWidth = width - 32;
+  return (
+    <>
+      <View style={styles.hubCard}>
+        <SkeletonLine width={140} fontSize={12} />
+        <View style={styles.hubRow}>
+          <Skeleton width={96} height={54} borderRadius={8} />
+          <View style={styles.flexCopy}>
+            <SkeletonLine width="85%" fontSize={16} />
+            <SkeletonLine width="50%" fontSize={13} />
+          </View>
+        </View>
+        <Skeleton width="100%" height={6} borderRadius={3} />
+        <Skeleton width="100%" height={48} borderRadius={12} />
+      </View>
+      <View style={styles.hubGrid}>
+        {[0, 1, 2, 3].map((tileIndex) => <Skeleton key={tileIndex} width="48%" height={64} borderRadius={12} style={styles.hubTile} />)}
+      </View>
+      {[0, 1].map((cardIndex) => (
+        <View key={cardIndex} style={styles.hubCard}>
+          <Skeleton width={cardWidth - 32} height={Math.round((cardWidth - 32) * 9 / 16)} borderRadius={12} />
+          <SkeletonLine width="80%" fontSize={16} />
+          <SkeletonLine width="40%" fontSize={13} />
+        </View>
+      ))}
+    </>
+  );
+}

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { BookOpen, ExternalLink, FileText, GraduationCap, Search, X } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { CxcHubContentSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { ELearningEmptyState, ELearningHeader, ELEARNING_ACTION_GREEN, ELEARNING_GUTTER } from '@/components/eLearning/ELearningParts';
 import { courseService } from '@/lib/services/CourseService';
@@ -59,6 +60,7 @@ export default function CxcStudyCenterScreen() {
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <ELearningHeader title="CXC revision" subtitle="CSEC and CAPE past papers" onBack={() => router.back()} />
 
+      <KeyboardSafeView style={styles.flexFill}>
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
         <View style={styles.banner}>
           <View style={styles.bannerIcon}><GraduationCap size={26} color={colors.accentText} /></View>
@@ -135,7 +137,7 @@ export default function CxcStudyCenterScreen() {
                         <ExternalLink size={14} color="#ffffff" />
                       </Pressable>
                     ) : (
-                      <Text style={styles.soonText}>Coming soon</Text>
+                      <Text accessibilityLabel={`${paper.title}: no file has been added yet`} style={styles.soonText}>No file yet</Text>
                     )}
                   </View>
                 ))}
@@ -144,12 +146,14 @@ export default function CxcStudyCenterScreen() {
           </>
         )}
       </ScrollView>
+      </KeyboardSafeView>
     </SafeAreaView>
   );
 }
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas },
+  flexFill: { flex: 1 },
   flexText: { flex: 1, minWidth: 0 },
   scrollContent: { padding: ELEARNING_GUTTER, paddingBottom: 48, gap: 16 },
   muted: { color: colors.mutedText, fontSize: 13, lineHeight: 18 },

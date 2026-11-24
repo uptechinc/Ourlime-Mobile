@@ -16,11 +16,13 @@ import { app, auth, db, storage } from '@/lib/firebaseConfig';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import { nativeSessionService } from './NativeSessionService';
-import type { AssignmentFile, AssignmentSubmission, Course, CourseAnnouncement, CourseReview, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, CourseQuizQuestionType, CourseResource, CourseWorkspace, Enrollment, InstructorProfile, CxcSubject, LearningStats, QuizAttemptRecord, QuizAttemptResult, QuizAttemptSummary, QuizQuestionResult } from '@/lib/types/course';
+import { learnerPublicName } from './LearnerNameRules';
+import type { AssignmentFile, AssignmentSubmission, Course, CourseAnnouncement, CourseCompletion, CourseNextStep, CourseReview, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, CourseQuizQuestionType, CourseResource, CourseWorkspace, Enrollment, GradeRow, Gradebook, InstructorProfile, CxcSubject, LearningStats, QuizAttemptRecord, QuizAttemptResult, QuizAttemptSummary, QuizQuestionResult } from '@/lib/types/course';
 
 type Data = DocumentData;
 type QueryDocument = QueryDocumentSnapshot<Data>;
-export type LearningOverview = { courses: Course[]; announcements: CourseAnnouncement[]; instructors: InstructorProfile[]; categories: CourseCategory[]; stats: LearningStats };
+/** The hub's data. `enrollments` is the learner's own record by course id (for "Continue learning"); it may be empty. */
+export type LearningOverview = { courses: Course[]; enrollments: Map<string, Enrollment>; announcements: CourseAnnouncement[]; instructors: InstructorProfile[]; categories: CourseCategory[]; stats: LearningStats };
 type MutationResponse = { id: string };
 /** completeCourseLesson's reply: `score` is the attempt's percentage; `attempt` is the full marked attempt. */
 type LessonCompletionResponse = { id: string; score?: number; attempt?: unknown };
@@ -42,16 +44,44 @@ export class CourseService {
 
   public async getOverview(userId: string): Promise<LearningOverview> {
     this.assertWebSession(userId);
-    // Courses decide whether the page works at all; announcements, tutors and categories are extras that must not take
-    // the whole page down when one of them is refused (the website loads them the same way).
-    const [courses, announcements, instructors, categories] = await Promise.all([
+    // Courses decide whether the page works at all; the learner's enrollments, announcements, tutors and categories are
+    // extras that must not take the whole page down when one of them is refused (the website loads them the same way).
+    // Announcements reuse the one enrollment read instead of reading the enrollments again.
+    const enrollmentsRequest = this.optional('enrollments', this.getEnrollmentIndex(userId), new Map<string, Enrollment>());
+    const [courses, enrollments, announcements, instructors, categories] = await Promise.all([
       this.getCourses(),
-      this.optional('announcements', this.getAnnouncements(userId), [] as CourseAnnouncement[]),
+      enrollmentsRequest,
+      enrollmentsRequest.then((index) => this.optional('announcements', this.getAnnouncementsFor([...index.values()]), [] as CourseAnnouncement[])),
       this.optional('instructors', this.getInstructors(), [] as InstructorProfile[]),
       this.optional('categories', this.getCategories(), [] as CourseCategory[]),
     ]);
     nativeSessionService.assertOwner(userId);
-    return { courses, announcements, instructors, categories, stats: this.getStats(courses) };
+    return { courses, enrollments, announcements, instructors, categories, stats: this.getStats(courses) };
+  }
+
+  /**
+   * The course the learner should continue: their most recently opened active enrollment that is not finished and is
+   * still in the catalog, with its course. Null when there is none.
+   */
+  public continueLearning(courses: Course[], enrollments: Map<string, Enrollment>): { course: Course; enrollment: Enrollment } | null {
+    const byId = new Map(courses.map((course) => [course.id, course]));
+    const candidates = [...enrollments.values()]
+      .filter((enrollment) => enrollment.status === 'active' && enrollment.progress < 100 && byId.has(enrollment.courseId))
+      .sort((left, right) => this.activityTime(right) - this.activityTime(left));
+    const enrollment = candidates[0];
+    const course = enrollment ? byId.get(enrollment.courseId) : undefined;
+    return enrollment && course ? { course, enrollment } : null;
+  }
+
+  private activityTime(enrollment: Enrollment): number {
+    const read = (value: Enrollment['lastAccessed']): number => {
+      if (!value) return 0;
+      if (typeof value === 'string') return Date.parse(value) || 0;
+      if (value instanceof Date) return value.getTime();
+      if (typeof value.toDate === 'function') return value.toDate().getTime();
+      return typeof value.seconds === 'number' ? value.seconds * 1000 : 0;
+    };
+    return read(enrollment.lastAccessed) || read(enrollment.enrolledAt);
   }
 
   /** Every published course, read in pages of 100 (the website loads the whole catalog too). */
@@ -191,6 +221,79 @@ export class CourseService {
     return !isDone && Number.isFinite(due) && due < now;
   }
 
+  /** Counts behind "4 of 9 done": every lesson, split into reading/video lessons, quizzes and assignments. */
+  public completion(modules: CourseModule[], enrollment: Enrollment | null, submissions: Map<string, AssignmentSubmission> = new Map()): CourseCompletion {
+    const completed = new Set(enrollment?.completedLessons ?? []);
+    const empty = () => ({ total: 0, done: 0 });
+    const result: CourseCompletion = { all: empty(), lessons: empty(), quizzes: empty(), assignments: empty() };
+    this.flattenLessons(modules).forEach((lesson) => {
+      const isDone = completed.has(lesson.id) || (lesson.type === 'assignment' && submissions.has(lesson.id));
+      const part = lesson.type === 'quiz' ? result.quizzes : lesson.type === 'assignment' ? result.assignments : result.lessons;
+      part.total += 1;
+      result.all.total += 1;
+      if (isDone) { part.done += 1; result.all.done += 1; }
+    });
+    return result;
+  }
+
+  /**
+   * Overdue quiz or assignment first (it is the one with a consequence), then the next unfinished lesson in syllabus
+   * order, then "finished" or "empty".
+   */
+  public nextStep(modules: CourseModule[], enrollment: Enrollment | null, submissions: Map<string, AssignmentSubmission> = new Map(), now = Date.now()): CourseNextStep {
+    const completed = new Set(enrollment?.completedLessons ?? []);
+    const isDone = (lesson: CourseLesson) => completed.has(lesson.id) || (lesson.type === 'assignment' && submissions.has(lesson.id));
+    for (const courseModule of modules) {
+      const overdue = (courseModule.lessons ?? []).find((lesson) => (lesson.type === 'quiz' || lesson.type === 'assignment') && this.isOverdue(lesson, isDone(lesson), now));
+      if (overdue) return { kind: 'overdue', lesson: overdue, moduleTitle: courseModule.title };
+    }
+    for (const courseModule of modules) {
+      const lesson = (courseModule.lessons ?? []).find((candidate) => !isDone(candidate));
+      if (lesson) return { kind: 'lesson', lesson, moduleTitle: courseModule.title };
+    }
+    return this.flattenLessons(modules).length > 0 ? { kind: 'finished' } : { kind: 'empty' };
+  }
+
+  /**
+   * The learner's quizzes and assignments with what counts for each: the best quiz attempt (enrollment.quizSummary,
+   * kept by the server; older attempts fall back to courseProgress scores) and a graded assignment's score out of its
+   * points. The average is over scored items only and is labelled that way on screen; it is not a course grade.
+   */
+  public gradebook(modules: CourseModule[], enrollment: Enrollment | null, submissions: Map<string, AssignmentSubmission>, legacyScores: Map<string, number> = new Map(), now = Date.now()): Gradebook {
+    const completed = new Set(enrollment?.completedLessons ?? []);
+    const rows: GradeRow[] = [];
+    modules.forEach((courseModule) => (courseModule.lessons ?? []).forEach((lesson) => {
+      if (lesson.type === 'quiz') {
+        const summary = enrollment?.quizSummary?.[lesson.id];
+        const legacy = legacyScores.get(lesson.id);
+        const attempts = summary?.attempts ?? (legacy !== undefined ? 1 : 0);
+        const percent = summary?.bestPercent ?? legacy ?? null;
+        const isDone = attempts > 0 || completed.has(lesson.id);
+        rows.push({
+          lessonId: lesson.id, title: lesson.title, moduleTitle: courseModule.title, kind: 'quiz',
+          status: isDone ? 'attempted' : this.isOverdue(lesson, false, now) ? 'overdue' : 'not_started',
+          percent: percent === null ? null : Math.round(percent), attempts, latestPercent: summary?.latestPercent ?? null,
+          maxAttempts: lesson.maxAttempts ?? null, dueDate: lesson.dueDate,
+        });
+        return;
+      }
+      if (lesson.type !== 'assignment') return;
+      const submission = submissions.get(lesson.id);
+      const maxScore = submission?.maxScore ?? lesson.points;
+      const isGraded = submission?.status === 'graded' && typeof submission.score === 'number';
+      const percent = isGraded && maxScore && maxScore > 0 && submission.score !== undefined ? Math.round((submission.score / maxScore) * 100) : null;
+      rows.push({
+        lessonId: lesson.id, title: lesson.title, moduleTitle: courseModule.title, kind: 'assignment',
+        status: isGraded ? 'graded' : submission || completed.has(lesson.id) ? 'submitted' : this.isOverdue(lesson, false, now) ? 'overdue' : 'not_started',
+        percent, attempts: 0, latestPercent: null, maxAttempts: null, dueDate: lesson.dueDate,
+        ...(isGraded && submission.score !== undefined ? { score: submission.score } : {}), ...(maxScore !== undefined ? { maxScore } : {}),
+        ...(isGraded && submission.feedback ? { feedback: submission.feedback } : {}),
+      });
+    }));
+    const scored = rows.filter((row) => row.percent !== null).map((row) => row.percent ?? 0);
+    return { rows, scoredCount: scored.length, averagePercent: scored.length ? Math.round(scored.reduce((total, value) => total + value, 0) / scored.length) : null };
+  }
+
   /** Hub numbers like the website's: published courses, learners across them and the average of rated courses. */
   public getStats(courses: Course[]): LearningStats {
     const rated = courses.filter((course) => course.rating > 0);
@@ -266,7 +369,7 @@ export class CourseService {
     this.requireUserId();
     const snapshot = await getDocs(query(collection(this.database, 'courseReviews'), where('courseId', '==', courseId), limit(50)));
     // The stored title falls back to the account's userName, which for some accounts is their email address: show the
-    // profile's name instead, and never an email.
+    // profile's name instead, and never an email. Student (minor) accounts show a first name and last initial.
     const reviewerIds = [...new Set(snapshot.docs.map((item) => this.text(item.data().userId)).filter(Boolean))];
     const profiles = await this.optional('reviewers', firestoreBatchReadService.getDocumentsByIds('users', reviewerIds), new Map<string, Data>());
     return snapshot.docs.flatMap((item): CourseReview[] => {
@@ -274,15 +377,8 @@ export class CourseService {
       const rating = this.integer(data.rating);
       if (rating < 1 || rating > 5) return [];
       const userId = this.text(data.userId);
-      return [{ id: item.id, userId, reviewerName: this.reviewerName(profiles.get(userId), this.text(data.title)), rating, comment: this.text(data.comment), createdAt: this.timestamp(data.createdAt) }];
+      return [{ id: item.id, userId, reviewerName: learnerPublicName(profiles.get(userId), this.text(data.title)), rating, comment: this.text(data.comment), createdAt: this.timestamp(data.createdAt) }];
     }).sort((left, right) => (right.createdAt ?? '').localeCompare(left.createdAt ?? ''));
-  }
-
-  private reviewerName(profile: Data | undefined, storedTitle: string): string {
-    const fullName = profile ? [this.text(profile.firstName), this.text(profile.lastName)].filter(Boolean).join(' ') : '';
-    const candidates = [this.text(profile?.displayName), fullName, storedTitle, this.text(profile?.userName)];
-    const name = candidates.find((candidate) => candidate && !candidate.includes('@'));
-    return name || 'Student';
   }
 
   /** Rates a course through manageLearning (add_review), the same server action the website uses; one review per learner. */
@@ -414,7 +510,11 @@ export class CourseService {
   }
 
   public async getAnnouncements(userId: string): Promise<CourseAnnouncement[]> {
-    const enrollments = [...(await this.getEnrollmentIndex(userId)).values()];
+    return this.getAnnouncementsFor([...(await this.getEnrollmentIndex(userId)).values()]);
+  }
+
+  /** Announcements of the learner's active courses (at most 10 courses, 5 each), from enrollments already read. */
+  private async getAnnouncementsFor(enrollments: Enrollment[]): Promise<CourseAnnouncement[]> {
     const courseIds = [...new Set(enrollments.filter((item) => isActiveEnrollment(item)).map((item) => item.courseId))].slice(0, 10);
     if (!courseIds.length) return [];
     // One equality query per course: the rules can only prove access course by course, so a single `in` query is refused
@@ -515,7 +615,10 @@ export class CourseService {
     const contentIsUrl = /^https?:\/\//i.test(content);
     const mediaUrl = this.optionalText(data.contentUrl) ?? this.optionalText(data.attachedFile) ?? (contentIsUrl ? content : undefined);
     return { id, courseId: this.text(data.courseId), moduleId: this.text(data.moduleId), title: this.text(data.title), description: this.optionalText(data.description),
-      type, content: contentIsUrl ? undefined : this.plainText(content), mediaUrl, quizQuestions: this.quizQuestions(data.quizQuestions),
+      type, content: contentIsUrl ? undefined : this.plainText(content),
+      // Formatted text keeps its HTML for RichBlogContent, which rebuilds it from a closed set of native blocks.
+      ...(!contentIsUrl && /<[a-z][^>]*>/i.test(content) ? { contentHtml: content.slice(0, 200000) } : {}),
+      mediaUrl, quizQuestions: this.quizQuestions(data.quizQuestions),
       ...(typeof data.maxAttempts === 'number' && Number.isInteger(data.maxAttempts) && data.maxAttempts > 0 ? { maxAttempts: data.maxAttempts } : {}),
       duration: this.integer(data.duration), order: this.integer(data.order),
       isRequired: data.isRequired === true, isPublished: data.isPublished !== false, isFree: data.isFree === true || data.isPreview === true,

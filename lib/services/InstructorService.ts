@@ -1,7 +1,8 @@
-import { collection, doc, getDoc, getDocs, limit, query, where, type DocumentData } from 'firebase/firestore';
+import { collection, doc, getCountFromServer, getDoc, getDocs, limit, query, where, type DocumentData } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { app, auth, db, storage } from '@/lib/firebaseConfig';
+import { settleAll } from '@/lib/utils/settleAll';
 import { nativeSessionService } from './NativeSessionService';
 import type { AssignmentFile } from '@/lib/types/course';
 import type {
@@ -297,6 +298,30 @@ export class InstructorService {
       .map((submission) => this.toSubmission(submission.id, submission.data()))
       // Ungraded first, then newest.
       .sort((left, right) => Number(left.status === 'graded') - Number(right.status === 'graded') || (right.submittedAt ?? '').localeCompare(left.submittedAt ?? ''));
+  }
+
+  /**
+   * Hand-ins waiting for a grade, per course, as server-side counts (one aggregate read per course, no documents
+   * downloaded). Only courses that can have submissions are asked; a course whose count is refused is left out, so the
+   * screen shows no number rather than a wrong one.
+   */
+  public async getWaitingCounts(courses: InstructorCourse[]): Promise<Map<string, number>> {
+    const askable = courses.filter((course) => course.status === 'published' || course.status === 'archived').slice(0, 50);
+    const settled = await settleAll(askable.map((course) => getCountFromServer(query(
+      collection(db, 'assignmentSubmissions'), where('courseId', '==', course.id), where('status', '==', 'submitted'),
+    ))));
+    const counts = new Map<string, number>();
+    settled.forEach((result, index) => {
+      if (result.status === 'fulfilled') counts.set(askable[index].id, result.value.data().count);
+      else console.warn('[InstructorService.getWaitingCounts] Error:', result.reason instanceof Error ? result.reason.message : 'Unknown error');
+    });
+    return counts;
+  }
+
+  /** "12 handed in · 3 waiting · 9 graded" numbers for one course, from submissions already read. */
+  public submissionSummary(submissions: InstructorSubmission[]): { total: number; waiting: number; graded: number } {
+    const graded = submissions.filter((submission) => submission.status === 'graded').length;
+    return { total: submissions.length, waiting: submissions.length - graded, graded };
   }
 
   /** draft: saves the score and feedback on the server only (gradeDrafts); the student sees nothing until it is published. */

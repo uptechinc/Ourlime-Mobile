@@ -111,20 +111,30 @@ export default function CourseDetailScreen() {
   // quizzes, assignments and the review form from the course home.
   const tabs: CourseTab[] = isEnrolled ? ['home', 'overview', 'syllabus', 'instructor'] : ['overview', 'syllabus', 'work', 'reviews', 'instructor'];
   const lessonCount = curriculum.reduce((total, courseModule) => total + (courseModule.lessons?.length ?? 0), 0);
-  // What the course really contains, from its syllabus (no blanket claims such as certificates or downloads).
+  const isOwnCourse = Boolean(course && activeUserId && course.instructor.id === activeUserId);
+  // What the course really contains, from its syllabus (no blanket claims such as certificates or downloads). Before
+  // enrolling only the preview lessons can be read, so they are counted as previews rather than as the whole course.
   const includedItems = useMemo(() => {
     const lessons = curriculum.flatMap((courseModule) => courseModule.lessons ?? []);
     const countOf = (type: string) => lessons.filter((lesson) => lesson.type === type).length;
     const fileCount = countOf('document') + countOf('resource');
+    const durationLine = course && course.duration > 0 ? `${pluralize(course.duration, 'hour', 'hours')} of content (instructor's estimate)` : null;
+    if (!isEnrolled) {
+      return [
+        durationLine,
+        curriculum.length > 0 ? pluralize(curriculum.length, 'module', 'modules') : null,
+        lessons.length > 0 ? `${pluralize(lessons.length, 'preview lesson', 'preview lessons')} you can open now` : null,
+      ].filter((item): item is string => Boolean(item));
+    }
     return [
-      course && course.duration > 0 ? `${pluralize(course.duration, 'hour', 'hours')} of content` : null,
+      durationLine,
       lessons.length > 0 ? pluralize(lessons.length, 'lesson', 'lessons') : null,
       countOf('video') > 0 ? pluralize(countOf('video'), 'video', 'videos') : null,
       countOf('quiz') > 0 ? pluralize(countOf('quiz'), 'quiz', 'quizzes') : null,
       countOf('assignment') > 0 ? pluralize(countOf('assignment'), 'assignment', 'assignments') : null,
       fileCount > 0 ? pluralize(fileCount, 'downloadable resource', 'downloadable resources') : null,
     ].filter((item): item is string => Boolean(item));
-  }, [course, curriculum]);
+  }, [course, curriculum, isEnrolled]);
   const nextItem = courseService.nextLesson(curriculum, enrollment);
   const firstLesson = courseService.flattenLessons(curriculum)[0];
   const progress = roundProgress(enrollment?.progress);
@@ -161,6 +171,10 @@ export default function CourseDetailScreen() {
 
   const handleEnrollOrResume = async () => {
     if (!course) return;
+    if (isOwnCourse && !isEnrolled) {
+      router.push(`/eLearning/instructor/course/${encodeURIComponent(course.id)}?title=${encodeURIComponent(course.title)}` as Href);
+      return;
+    }
     if (isEnrolled) {
       if (lessonCount === 0) {
         setDialogState({ visible: true, type: 'info', title: 'Lessons are on the way', message: 'The instructor has not published lessons yet. You will find them here once they do.' });
@@ -197,10 +211,11 @@ export default function CourseDetailScreen() {
 
   // Short labels (1–3 words) so the bar never truncates on a 360dp phone. Paid and empty courses stay tappable and
   // explain why instead of showing a dead, greyed-out button.
-  const ctaLabel = isEnrolled
-    ? (lessonCount > 0 && !nextItem ? 'Review course' : progress > 0 ? 'Continue' : 'Start learning')
-    : enrollment ? `Enrollment ${enrollment.status}` : course && course.price > 0 ? 'Not in app yet' : 'Enroll for free';
-  const isCtaMuted = (!isEnrolled && (Boolean(enrollment) || Boolean(course && course.price > 0))) || (isEnrolled && lessonCount === 0);
+  const ctaLabel = isOwnCourse && !isEnrolled ? 'Manage course'
+    : isEnrolled
+      ? (lessonCount > 0 && !nextItem ? 'Review course' : progress > 0 ? 'Continue' : 'Start learning')
+      : enrollment ? `Enrollment ${enrollment.status}` : course && course.price > 0 ? 'Not in app yet' : 'Enroll for free';
+  const isCtaMuted = !isOwnCourse && ((!isEnrolled && (Boolean(enrollment) || Boolean(course && course.price > 0))) || (isEnrolled && lessonCount === 0));
   const heroHeight = Math.min(HERO_MAX_HEIGHT, Math.round(width * 9 / 16));
 
   return (
@@ -263,6 +278,13 @@ export default function CourseDetailScreen() {
                   </View>
                 ) : null}
 
+                {isOwnCourse && !isEnrolled ? (
+                  <View style={[styles.notice, { backgroundColor: colors.control }]}>
+                    <Info size={16} color={colors.text} />
+                    <Text style={[styles.noticeText, { color: colors.text }]}>This is your course, shown as learners see it before they enroll. Manage lessons, quizzes and grading from the instructor workspace.</Text>
+                  </View>
+                ) : null}
+
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={styles.tabBarContent}>
                   {tabs.map((tab) => {
                     const isActive = activeTab === tab;
@@ -319,6 +341,22 @@ export default function CourseDetailScreen() {
                         </View>
                       ))}
                     </View> : null}
+
+                    {/* No hidden rules: what counts towards finishing, as the server applies it. No certificate is promised. */}
+                    <View style={styles.card}>
+                      <Text style={styles.cardTitle}>How you finish this course</Text>
+                      {[
+                        'Open and complete every lesson. Your progress saves as you go and resumes where you stopped.',
+                        'Quizzes count once you submit an attempt. Your best score is the one that counts.',
+                        'Assignments count once you hand them in. Your instructor grades them and adds feedback.',
+                      ].map((rule) => (
+                        <View key={rule} style={styles.objectiveRow}>
+                          <CheckCircle2 size={16} color={colors.mutedText} />
+                          <Text style={styles.objectiveText}>{rule}</Text>
+                        </View>
+                      ))}
+                      <Text style={styles.mutedBody}>Ourlime does not issue certificates for courses yet.</Text>
+                    </View>
 
                     {course.prerequisites && course.prerequisites.length > 0 ? (
                       <View style={styles.card}>
@@ -517,7 +555,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   noticeText: { flex: 1, fontSize: 13, lineHeight: 19, fontWeight: '600' },
   tabBar: { flexGrow: 0, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
   tabBarContent: { flexGrow: 1, padding: 4, gap: 4 },
-  tabItem: { flexGrow: 1, minHeight: 40, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
+  tabItem: { flexGrow: 1, minHeight: 44, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
   tabItemActive: { backgroundColor: ELEARNING_ACTION_GREEN },
   tabItemText: { color: colors.secondaryText, fontSize: 14, fontWeight: '600' },
   tabItemTextActive: { color: '#ffffff', fontWeight: '700' },

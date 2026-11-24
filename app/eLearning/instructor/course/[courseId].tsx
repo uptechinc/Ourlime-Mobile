@@ -3,18 +3,20 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindo
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { BookOpen, ClipboardCheck, ClipboardList, Clock, ExternalLink, HelpCircle, Lock } from 'lucide-react-native';
+import { AlertCircle, BookOpen, ClipboardCheck, ClipboardList, Clock, ExternalLink, Eye, EyeOff, HelpCircle, Lock, Send } from 'lucide-react-native';
+import CustomModal from '@/components/ui/CustomModal';
 import { InstructorCourseSkeleton } from '@/components/eLearning/ELearningSkeletons';
-import { CourseRating, ELearningEmptyState, ELearningHeader, ELEARNING_GUTTER, StatusPill, type ELearningTone } from '@/components/eLearning/ELearningParts';
+import { CourseRating, ELearningButton, ELearningEmptyState, ELearningHeader, ELEARNING_GUTTER, StatusPill } from '@/components/eLearning/ELearningParts';
 import LessonTypeIcon from '@/components/eLearning/course/LessonTypeIcon';
 import { pluralize } from '@/components/eLearning/course/workspaceHelpers';
+import { courseStagePresentation } from '@/components/eLearning/instructor/courseStatus';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
-import { instructorService, type InstructorCourseDetail, type InstructorCourseStatus, type InstructorCurriculum, type InstructorLesson } from '@/lib/services/InstructorService';
+import { useAppData } from '@/lib/contexts/AppDataContext';
+import { settleAll } from '@/lib/utils/settleAll';
+import { instructorService, type InstructorCourseDetail, type InstructorCourseStatus, type InstructorCurriculum, type InstructorLesson, type InstructorStatus, type InstructorSubmission } from '@/lib/services/InstructorService';
 
 const CONTENT_MAX_WIDTH = 860;
 const RIPPLE = { color: 'rgba(15,23,42,0.12)' };
-const STATUS_LABEL: Record<InstructorCourseStatus, string> = { draft: 'Draft', pending_review: 'In review', published: 'Published', archived: 'Archived' };
-const STATUS_TONE: Record<InstructorCourseStatus, ELearningTone> = { draft: 'neutral', pending_review: 'warning', published: 'success', archived: 'neutral' };
 const UNAVAILABLE_TEXT: Record<InstructorCourseStatus, string> = {
   pending_review: 'An administrator is reviewing this course. Its modules and lessons appear here once it is approved and published.',
   draft: 'This course is unpublished. Its modules and lessons appear here while it is published.',
@@ -37,21 +39,28 @@ const iconType = (type: InstructorLesson['type']): 'video' | 'text' | 'quiz' | '
   type === 'video' || type === 'text' || type === 'quiz' || type === 'assignment' ? type : 'resource';
 
 /**
- * The instructor's own course in any status (draft and pending-review courses included, which the learner course page
- * cannot open): details, curriculum once published, and shortcuts to add quizzes, assignments and grade.
+ * The instructor's own course in any state (draft, waiting for review, declined with the administrator's note,
+ * published, archived): what the state means and the one action that moves it on, real numbers (enrollments, rating,
+ * hand-ins waiting and graded), shortcuts to the quiz and assignment builders and grading, and the curriculum.
  */
 export default function InstructorCourseScreen() {
   const router = useRouter();
   const { courseId, title: titleParam } = useLocalSearchParams<{ courseId: string; title?: string }>();
   const id = typeof courseId === 'string' ? courseId : '';
   const { colors } = useAppTheme();
+  const { activeUserId } = useAppData();
   const { width } = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [course, setCourse] = useState<InstructorCourseDetail | null>(null);
   const [curriculum, setCurriculum] = useState<InstructorCurriculum>({ kind: 'unavailable' });
+  const [instructorStatus, setInstructorStatus] = useState<InstructorStatus | null>(null);
+  const [submissions, setSubmissions] = useState<InstructorSubmission[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isWorking, setIsWorking] = useState(false);
+  const [confirmUnpublish, setConfirmUnpublish] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) { setIsLoading(false); setError('This course could not be found.'); return; }
@@ -63,7 +72,18 @@ export default function InstructorCourseScreen() {
         setError('This course could not be found, or it belongs to another instructor.');
         return;
       }
-      setCurriculum(await instructorService.getCurriculum(id, detail.status));
+      // The curriculum, the instructor's status (it decides "Publish" or "Submit for review") and the hand-ins are
+      // read side by side; any of them failing leaves its section out instead of failing the page.
+      const hasWork = detail.status === 'published' || detail.status === 'archived';
+      const [curriculumResult, statusResult, submissionResult] = await settleAll([
+        instructorService.getCurriculum(id, detail.status),
+        activeUserId ? instructorService.getStatus(activeUserId) : Promise.resolve<InstructorStatus>('none'),
+        hasWork ? instructorService.getSubmissions(id) : Promise.resolve<InstructorSubmission[]>([]),
+      ] as const);
+      setCurriculum(curriculumResult.status === 'fulfilled' ? curriculumResult.value : { kind: 'unavailable' });
+      setInstructorStatus(statusResult.status === 'fulfilled' ? statusResult.value : null);
+      setSubmissions(submissionResult.status === 'fulfilled' ? submissionResult.value : null);
+      if (submissionResult.status === 'rejected') console.warn('[InstructorCourseScreen.load] Submissions unavailable:', submissionResult.reason instanceof Error ? submissionResult.reason.message : 'Unknown error');
     } catch (loadError: unknown) {
       console.error('[InstructorCourseScreen.load] Error:', loadError instanceof Error ? loadError.message : 'Unknown error');
       setError('The course could not be loaded. Check your connection and try again.');
@@ -71,15 +91,52 @@ export default function InstructorCourseScreen() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [id]);
+  }, [activeUserId, id]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  const handleResubmit = async () => {
+    if (!course) return;
+    setIsWorking(true);
+    setActionError(null);
+    try {
+      const next = await instructorService.resubmitCourse(course.id);
+      setCourse({ ...course, status: next, reviewStatus: next === 'published' ? course.reviewStatus : 'resubmitted', reviewNote: next === 'published' ? course.reviewNote : undefined });
+      void load();
+    } catch (resubmitError: unknown) {
+      console.error('[InstructorCourseScreen.handleResubmit] Error:', resubmitError instanceof Error ? resubmitError.message : 'Unknown error');
+      setActionError('The course could not be sent. Check your connection and try again.');
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const handleUnpublish = async () => {
+    if (!course) return;
+    setConfirmUnpublish(false);
+    setIsWorking(true);
+    setActionError(null);
+    try {
+      await instructorService.setCourseStatus(course.id, 'draft');
+      setCourse({ ...course, status: 'draft' });
+      setCurriculum({ kind: 'unavailable' });
+    } catch (statusError: unknown) {
+      console.error('[InstructorCourseScreen.handleUnpublish] Error:', statusError instanceof Error ? statusError.message : 'Unknown error');
+      setActionError('The course could not be unpublished. Please try again.');
+    } finally {
+      setIsWorking(false);
+    }
+  };
 
   const query = course ? `${encodeURIComponent(course.id)}?title=${encodeURIComponent(course.title)}` : '';
   const columnWidth = Math.min(width, CONTENT_MAX_WIDTH);
   const coverWidth = columnWidth - ELEARNING_GUTTER * 2;
   const coverHeight = Math.min(240, Math.round(coverWidth * 9 / 16));
   const headerTitle = course?.title ?? (typeof titleParam === 'string' && titleParam ? titleParam : 'Course');
+  const presentation = course ? courseStagePresentation(course, instructorStatus) : null;
+  const summary = submissions ? instructorService.submissionSummary(submissions) : null;
+  const canResubmit = presentation ? presentation.stage === 'draft' || presentation.stage === 'declined' || presentation.stage === 'archived' : false;
+  const resubmitLabel = instructorStatus === 'verified' ? 'Publish course' : 'Submit for review';
   const meta = course ? [
     course.level ? course.level.charAt(0).toUpperCase() + course.level.slice(1) : null,
     course.price > 0 ? `$${course.price.toFixed(2)}` : 'Free',
@@ -91,7 +148,7 @@ export default function InstructorCourseScreen() {
       <ELearningHeader title={headerTitle} subtitle="Your course" onBack={() => router.back()} />
       {isLoading ? (
         <ScrollView contentContainerStyle={styles.scroll}><InstructorCourseSkeleton /></ScrollView>
-      ) : !course ? (
+      ) : !course || !presentation ? (
         <View style={styles.centerFill}>
           <ELearningEmptyState icon={<BookOpen size={40} color={colors.mutedText} />} title="Course unavailable" hint={error ?? 'This course could not be found.'} actionLabel="Try again" onAction={() => { setIsLoading(true); void load(); }} secondaryActionLabel="Go back" onSecondaryAction={() => router.back()} />
         </View>
@@ -101,22 +158,65 @@ export default function InstructorCourseScreen() {
             {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
             {course.image ? <Image source={{ uri: course.image }} contentFit="cover" style={[styles.cover, { width: coverWidth, height: coverHeight }]} /> : null}
             <View style={styles.heading}>
-              <StatusPill label={STATUS_LABEL[course.status]} tone={STATUS_TONE[course.status]} />
+              <StatusPill label={presentation.label} tone={presentation.tone} />
               <Text accessibilityRole="header" style={styles.title}>{course.title}</Text>
               {course.shortDescription ? <Text style={styles.subtitle}>{course.shortDescription}</Text> : null}
-              <View style={styles.metaRow}>
-                <Text style={styles.muted}>{pluralize(course.enrolledStudents, 'learner', 'learners')}</Text>
-                <CourseRating rating={course.rating} count={course.totalRatings} />
-              </View>
               {meta ? <Text style={styles.muted}>{meta}</Text> : null}
             </View>
 
-            {course.status === 'pending_review' ? (
-              <View style={styles.notice}>
-                <Clock size={18} color={colors.warningText} />
-                <Text style={[styles.noticeText, styles.flexText]}>Waiting for an administrator to approve this course. You can still add quizzes and assignments.</Text>
+            {/* What this state means, the administrator's note when declined, and the action that moves it on. */}
+            <View style={[styles.stateCard, presentation.stage === 'declined' ? styles.stateDanger : presentation.stage === 'waiting' ? styles.stateWarning : null]}>
+              <View style={styles.stateRow}>
+                {presentation.stage === 'declined' ? <AlertCircle size={18} color={colors.destructiveText} /> : presentation.stage === 'waiting' ? <Clock size={18} color={colors.warningText} /> : presentation.stage === 'published' ? <Eye size={18} color={colors.successText} /> : <EyeOff size={18} color={colors.mutedText} />}
+                <Text style={[styles.stateText, presentation.stage === 'declined' ? { color: colors.destructiveText } : presentation.stage === 'waiting' ? { color: colors.warningText } : null]}>{presentation.explanation}</Text>
               </View>
-            ) : null}
+              {presentation.stage === 'declined' ? (
+                <View accessible accessibilityLabel={`Administrator's note: ${course.reviewNote ?? 'No reason was given.'}`} style={styles.note}>
+                  <Text style={styles.noteTitle}>Administrator’s note</Text>
+                  <Text style={styles.noteText}>{course.reviewNote ?? 'No reason was given. Contact support if you are unsure what to change.'}</Text>
+                </View>
+              ) : null}
+              {presentation.stage === 'waiting' ? <Text style={styles.stateHint}>You can still add quizzes and assignments while you wait.</Text> : null}
+              {actionError ? <Text accessibilityRole="alert" style={styles.actionError}>{actionError}</Text> : null}
+              {canResubmit ? (
+                <ELearningButton
+                  label={presentation.stage === 'declined' ? (instructorStatus === 'verified' ? 'Publish again' : 'Submit again') : resubmitLabel}
+                  icon={instructorStatus === 'verified' ? <Eye size={18} color="#ffffff" /> : <Send size={18} color="#ffffff" />}
+                  isBusy={isWorking}
+                  busyLabel="Sending…"
+                  onPress={() => void handleResubmit()}
+                />
+              ) : presentation.stage === 'published' ? (
+                <ELearningButton
+                  label="Unpublish"
+                  variant="secondary"
+                  icon={<EyeOff size={18} color={colors.text} />}
+                  isBusy={isWorking}
+                  busyLabel="Saving…"
+                  onPress={() => (course.enrolledStudents > 0 ? setConfirmUnpublish(true) : void handleUnpublish())}
+                />
+              ) : null}
+            </View>
+
+            <View style={styles.stats}>
+              <View accessible accessibilityLabel={pluralize(course.enrolledStudents, 'enrollment', 'enrollments')} style={styles.statCard}>
+                <Text numberOfLines={1} style={styles.statValue}>{course.enrolledStudents}</Text>
+                <Text numberOfLines={1} style={styles.statLabel}>{course.enrolledStudents === 1 ? 'Enrollment' : 'Enrollments'}</Text>
+              </View>
+              <View accessible accessibilityLabel={summary ? `${summary.waiting} hand-ins waiting for a grade` : 'Hand-ins not available'} style={[styles.statCard, summary && summary.waiting > 0 ? styles.statAlert : null]}>
+                <Text numberOfLines={1} style={[styles.statValue, summary && summary.waiting > 0 ? { color: colors.warningText } : null]}>{summary ? summary.waiting : '—'}</Text>
+                <Text numberOfLines={1} style={[styles.statLabel, summary && summary.waiting > 0 ? { color: colors.warningText } : null]}>To grade</Text>
+              </View>
+              <View accessible accessibilityLabel={summary ? `${summary.graded} graded` : 'Graded not available'} style={styles.statCard}>
+                <Text numberOfLines={1} style={styles.statValue}>{summary ? summary.graded : '—'}</Text>
+                <Text numberOfLines={1} style={styles.statLabel}>Graded</Text>
+              </View>
+            </View>
+            <View style={styles.metaRow}>
+              <CourseRating rating={course.rating} count={course.totalRatings} />
+              {course.totalRatings === 0 ? <Text style={styles.muted}>No ratings yet</Text> : null}
+              {summary && summary.total >= 200 ? <Text style={styles.muted}>Showing the latest 200 hand-ins</Text> : null}
+            </View>
 
             <View style={styles.tiles}>
               <Pressable accessibilityRole="button" accessibilityLabel="Add a quiz" onPress={() => router.push(`/eLearning/instructor/quiz/${query}` as Href)} android_ripple={RIPPLE} style={styles.tile}>
@@ -127,8 +227,9 @@ export default function InstructorCourseScreen() {
                 <ClipboardList size={20} color={colors.icon} /><Text numberOfLines={2} style={styles.tileText}>Add assignment</Text>
                 {course.assignmentCount !== null ? <Text style={styles.tileMeta}>{course.assignmentCount} so far</Text> : null}
               </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel="Grade student work" onPress={() => router.push(`/eLearning/instructor/grading/${query}` as Href)} android_ripple={RIPPLE} style={styles.tile}>
+              <Pressable accessibilityRole="button" accessibilityLabel={summary && summary.waiting > 0 ? `Grade work, ${summary.waiting} waiting` : 'Grade work'} onPress={() => router.push(`/eLearning/instructor/grading/${query}` as Href)} android_ripple={RIPPLE} style={styles.tile}>
                 <ClipboardCheck size={20} color={colors.icon} /><Text numberOfLines={2} style={styles.tileText}>Grade work</Text>
+                {summary && summary.waiting > 0 ? <Text style={[styles.tileMeta, { color: colors.warningText }]}>{summary.waiting} waiting</Text> : null}
               </Pressable>
             </View>
             {course.status === 'published' ? (
@@ -191,6 +292,17 @@ export default function InstructorCourseScreen() {
           </View>
         </ScrollView>
       )}
+      <CustomModal
+        visible={confirmUnpublish}
+        type="warning"
+        title="Unpublish this course?"
+        message={`${pluralize(course?.enrolledStudents ?? 0, 'enrolled learner', 'enrolled learners')} can't open its lessons while it is unpublished. Their progress and grades are kept and come back when you publish it again.`}
+        confirmText="Unpublish"
+        cancelText="Keep published"
+        onConfirm={() => void handleUnpublish()}
+        onCancel={() => setConfirmUnpublish(false)}
+        onClose={() => setConfirmUnpublish(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -208,9 +320,22 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   subtitle: { color: colors.secondaryText, fontSize: 15, lineHeight: 21 },
   muted: { flexShrink: 1, color: colors.mutedText, fontSize: 13, lineHeight: 18 },
   mutedBody: { color: colors.mutedText, fontSize: 14, lineHeight: 20 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  notice: { padding: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: 12, backgroundColor: colors.warningSurface },
-  noticeText: { color: colors.warningText, fontSize: 13, lineHeight: 19 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: -6 },
+  stateCard: { padding: 14, gap: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
+  stateDanger: { backgroundColor: colors.destructiveSurface, borderColor: colors.destructiveSurface },
+  stateWarning: { backgroundColor: colors.warningSurface, borderColor: colors.warningSurface },
+  stateRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  stateText: { flex: 1, color: colors.text, fontSize: 14, lineHeight: 20, fontWeight: '600' },
+  stateHint: { color: colors.warningText, fontSize: 13, lineHeight: 18 },
+  note: { padding: 12, gap: 4, borderRadius: 12, backgroundColor: colors.surface },
+  noteTitle: { color: colors.destructiveText, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  noteText: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  actionError: { color: colors.destructiveText, fontSize: 13, lineHeight: 18 },
+  stats: { flexDirection: 'row', gap: 8 },
+  statCard: { flex: 1, minWidth: 0, paddingVertical: 12, paddingHorizontal: 12, gap: 2, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
+  statAlert: { backgroundColor: colors.warningSurface, borderColor: colors.warningSurface },
+  statValue: { color: colors.text, fontSize: 22, fontWeight: '800' },
+  statLabel: { color: colors.mutedText, fontSize: 12 },
   tiles: { flexDirection: 'row', gap: 8 },
   tile: { flex: 1, minWidth: 0, minHeight: 72, paddingHorizontal: 4, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
   tileText: { color: colors.text, fontSize: 13, fontWeight: '700', textAlign: 'center' },

@@ -14,6 +14,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app, auth, db } from '@/lib/firebaseConfig';
 import type { CourseDiscussion, CourseDiscussionReply, DiscussionCursor, DiscussionPage } from '@/lib/types/course';
 import { firestoreBatchReadService } from './FirestoreBatchReadService';
+import { learnerPublicName } from './LearnerNameRules';
 import { nativeSessionService } from './NativeSessionService';
 
 type Data = DocumentData;
@@ -76,24 +77,21 @@ export class CourseInteractionService {
     return { id, discussionId: this.text(data.discussionId), courseId: this.text(data.courseId), authorId: this.text(data.authorId), authorName: this.optionalText(data.authorName), body: this.text(data.body), createdAt: this.timestamp(data.createdAt) };
   }
 
+  /**
+   * The name other learners see on each post (LearnerNameRules): student (minor) accounts as "First L.", never an email.
+   * Every author's profile is read (one batch for the page) because the stored authorName cannot tell a minor apart;
+   * when profiles can't be read the stored names are shortened the same way.
+   */
   private async withAuthorNames<T extends { authorId: string; authorName?: string }>(items: T[]): Promise<T[]> {
-    const missingIds = [...new Set(items.filter((item) => !item.authorName).map((item) => item.authorId))];
-    if (missingIds.length === 0) return items;
+    const authorIds = [...new Set(items.map((item) => item.authorId))];
+    if (authorIds.length === 0) return items;
+    let profiles: Map<string, Data> | null = null;
     try {
-      const profiles = await firestoreBatchReadService.getDocumentsByIds('users', missingIds);
-      return items.map((item) => item.authorName ? item : { ...item, authorName: this.profileName(profiles.get(item.authorId)) });
-    } catch (error) {
-      console.error('[CourseInteractionService.withAuthorNames] Error:', error);
-      return items;
+      profiles = await firestoreBatchReadService.getDocumentsByIds('users', authorIds);
+    } catch (error: unknown) {
+      console.error('[CourseInteractionService.withAuthorNames] Error:', error instanceof Error ? error.message : 'Unknown error');
     }
-  }
-
-  private profileName(profile: Data | undefined): string | undefined {
-    if (!profile) return undefined;
-    const fullName = [this.text(profile.firstName), this.text(profile.lastName)].filter(Boolean).join(' ');
-    // Some accounts' userName is their email address; never show that publicly.
-    const userName = this.optionalText(profile.userName);
-    return this.optionalText(profile.displayName) ?? (fullName || (userName && !userName.includes('@') ? userName : undefined));
+    return items.map((item) => ({ ...item, authorName: learnerPublicName(profiles?.get(item.authorId) ?? null, item.authorName ?? '') }));
   }
 
   private requireUserId(): string { const userId = auth.currentUser?.uid; if (!userId) throw new Error('You must be signed in to join course discussions.'); return userId; }

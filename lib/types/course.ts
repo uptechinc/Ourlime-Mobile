@@ -45,6 +45,8 @@ export type CourseLesson = {
   type: 'video' | 'text' | 'quiz' | 'assignment' | 'resource' | 'document';
   /** Readable lesson text (the website stores it as HTML; tags are stripped). */
   content?: string;
+  /** The instructor's formatted text when it was written as HTML; RichBlogContent parses it into native blocks (no WebView). */
+  contentHtml?: string;
   /** The lesson's video or file: contentUrl, attachedFile, or a URL stored in content. */
   mediaUrl?: string;
   /** Quiz questions without the answer key (the server keeps it and marks every attempt). */
@@ -182,6 +184,45 @@ export type CourseDiscussion = { id: string; courseId: string; authorId: string;
 export type CourseDiscussionReply = { id: string; discussionId: string; courseId: string; authorId: string; authorName?: string; body: string; createdAt?: string };
 export type DiscussionCursor = { createdAt: string; id: string };
 export type DiscussionPage = { items: CourseDiscussion[]; cursor: DiscussionCursor | null };
+
+/** Done and total for one part of what completes a course. */
+export type CompletionPart = { total: number; done: number };
+
+/**
+ * What finishing a course takes, from its syllabus and the learner's record: every lesson counts; a quiz counts once an
+ * attempt is submitted (no pass mark yet) and an assignment once it is handed in, which is how the server completes them.
+ */
+export type CourseCompletion = { all: CompletionPart; lessons: CompletionPart; quizzes: CompletionPart; assignments: CompletionPart };
+
+/** A quiz or assignment as the learner's gradebook shows it. */
+export type GradeStatus = 'not_started' | 'overdue' | 'attempted' | 'submitted' | 'graded';
+
+export type GradeRow = {
+  lessonId: string;
+  title: string;
+  moduleTitle: string;
+  kind: 'quiz' | 'assignment';
+  status: GradeStatus;
+  /** The percentage that counts: the best quiz attempt, or a graded assignment's score out of its points. */
+  percent: number | null;
+  /** Quiz attempts used (0 for assignments). */
+  attempts: number;
+  latestPercent: number | null;
+  maxAttempts: number | null;
+  score?: number;
+  maxScore?: number;
+  feedback?: string;
+  dueDate?: string;
+};
+
+export type Gradebook = { rows: GradeRow[]; averagePercent: number | null; scoredCount: number };
+
+/** The single most useful thing to do next in a course (overdue work first, then the next unfinished lesson). */
+export type CourseNextStep =
+  | { kind: 'overdue'; lesson: CourseLesson; moduleTitle: string }
+  | { kind: 'lesson'; lesson: CourseLesson; moduleTitle: string }
+  | { kind: 'finished' }
+  | { kind: 'empty' };
 
 /** Everything a learner's course workspace shows (web StudentCourseDashboard + modules/quizzes/assignments pages). */
 export type CourseWorkspace = { course: Course; enrollment: Enrollment | null; modules: CourseModule[]; submissions: Map<string, AssignmentSubmission> };

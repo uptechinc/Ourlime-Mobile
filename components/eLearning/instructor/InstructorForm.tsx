@@ -378,7 +378,7 @@ export const createInstructorFormStyles = (colors: AppThemeColors) => StyleSheet
   chipError: { borderColor: colors.destructiveSurface },
   chipText: { flexShrink: 1, color: colors.text, fontSize: 13, fontWeight: '700' },
   chipTextSelected: { color: '#ffffff' },
-  suggestion: { minHeight: 36, maxWidth: '100%', paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 18, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, overflow: 'hidden' },
+  suggestion: { minHeight: 44, maxWidth: '100%', paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 18, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, overflow: 'hidden' },
   suggestionText: { flexShrink: 1, color: colors.secondaryText, fontSize: 12, fontWeight: '600' },
   segment: { flexDirection: 'row', gap: 4, padding: 4, borderRadius: 12, backgroundColor: colors.control },
   segmentOption: { flex: 1, minWidth: 0, minHeight: 44, paddingHorizontal: 6, paddingVertical: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 9, overflow: 'hidden' },

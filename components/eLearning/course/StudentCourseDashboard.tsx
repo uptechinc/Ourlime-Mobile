@@ -43,7 +43,13 @@ export default function StudentCourseDashboard({ course, enrollment, modules, su
 
   const lessons = useMemo(() => courseService.flattenLessons(modules), [modules]);
   const completed = useMemo(() => new Set(enrollment.completedLessons ?? []), [enrollment.completedLessons]);
-  const nextItem = courseService.nextLesson(modules, enrollment);
+  const step = courseService.nextStep(modules, enrollment, submissions);
+  const completion = courseService.completion(modules, enrollment, submissions);
+  const breakdown = [
+    completion.lessons.total > 0 ? `${completion.lessons.done}/${completion.lessons.total} lessons` : null,
+    completion.quizzes.total > 0 ? `${completion.quizzes.done}/${completion.quizzes.total} quizzes` : null,
+    completion.assignments.total > 0 ? `${completion.assignments.done}/${completion.assignments.total} assignments` : null,
+  ].filter(Boolean).join(' · ');
   const resources = modules.flatMap((courseModule) => courseModule.resources ?? []).slice(0, 3);
   const isWorkDone = (lessonId: string): boolean => completed.has(lessonId) || submissions.has(lessonId);
   const todo = lessons
@@ -55,12 +61,13 @@ export default function StudentCourseDashboard({ course, enrollment, modules, su
     .filter((lesson): lesson is NonNullable<typeof lesson> => Boolean(lesson));
   const progress = Math.max(0, Math.min(100, Math.round(enrollment.progress)));
 
+  // One icon colour (the theme's) so the tiles read the same in light and dark mode; the label carries the meaning.
   const navItems = [
     { key: 'modules', label: 'Modules', icon: <BookOpen size={18} color={colors.accentText} />, onPress: () => router.push(courseHref(course.id, 'modules')) },
-    { key: 'assignments', label: 'Assignments', icon: <ClipboardList size={18} color="#ea580c" />, onPress: () => router.push(courseHref(course.id, 'assignments')) },
-    { key: 'quizzes', label: 'Quizzes', icon: <HelpCircle size={18} color="#9333ea" />, onPress: () => router.push(courseHref(course.id, 'quizzes')) },
-    { key: 'grades', label: 'Grades', icon: <BarChart2 size={18} color="#2563eb" />, onPress: () => router.push(courseHref(course.id, 'grades')) },
-    { key: 'discussions', label: 'Discussions', icon: <MessageSquare size={18} color="#7c3aed" />, onPress: () => router.push(courseHref(course.id, 'discussions')) },
+    { key: 'assignments', label: 'Assignments', icon: <ClipboardList size={18} color={colors.accentText} />, onPress: () => router.push(courseHref(course.id, 'assignments')) },
+    { key: 'quizzes', label: 'Quizzes', icon: <HelpCircle size={18} color={colors.accentText} />, onPress: () => router.push(courseHref(course.id, 'quizzes')) },
+    { key: 'grades', label: 'Grades', icon: <BarChart2 size={18} color={colors.accentText} />, onPress: () => router.push(courseHref(course.id, 'grades')) },
+    { key: 'discussions', label: 'Discussions', icon: <MessageSquare size={18} color={colors.accentText} />, onPress: () => router.push(courseHref(course.id, 'discussions')) },
   ];
 
   const handleOpenResource = async (url: string) => {
@@ -70,15 +77,14 @@ export default function StudentCourseDashboard({ course, enrollment, modules, su
   return (
     <View style={styles.wrapper}>
       <View style={styles.card}>
-        <Text style={styles.welcome}>Welcome back!</Text>
-        <Text style={styles.muted}>
-          {lessons.length > 0 && !nextItem ? 'You’ve finished every lesson in this course.' : `You’ve completed ${progress}% of this course. Keep going!`}
-        </Text>
         <View style={styles.progressHeader}>
-          <Text style={styles.muted}>Progress</Text>
+          <Text accessibilityRole="header" style={styles.welcome}>Your progress</Text>
           <Text style={styles.progressValue}>{progress}%</Text>
         </View>
         <ProgressBar value={progress} height={8} accessibilityLabel={`${course.title} progress`} />
+        <Text style={styles.muted}>
+          {completion.all.total === 0 ? 'No lessons are available to you yet.' : `${completion.all.done} of ${completion.all.total} done${breakdown ? ` · ${breakdown}` : ''}`}
+        </Text>
         <View style={styles.navGrid}>
           {navItems.map((item) => (
             <Pressable key={item.key} accessibilityRole="button" onPress={item.onPress} android_ripple={RIPPLE} style={styles.navItem}>
@@ -89,38 +95,40 @@ export default function StudentCourseDashboard({ course, enrollment, modules, su
         </View>
       </View>
 
-      {nextItem ? (
+      {step.kind === 'overdue' || step.kind === 'lesson' ? (
         <View style={[styles.card, styles.noPadding]}>
-          <View style={styles.nextHeader}>
-            <Text style={styles.nextHeaderText}>Next up</Text>
-            <Clock size={16} color="#ffffff" />
+          <View style={[styles.nextHeader, step.kind === 'overdue' && { backgroundColor: colors.destructiveSurface }]}>
+            <Text style={[styles.nextHeaderText, step.kind === 'overdue' && { color: colors.destructiveText }]}>{step.kind === 'overdue' ? 'Overdue' : 'Next up'}</Text>
+            {step.kind === 'overdue' ? <AlertCircle size={16} color={colors.destructiveText} /> : <Clock size={16} color="#ffffff" />}
           </View>
           <View style={styles.nextBody}>
-            <View style={styles.nextIcon}><LessonTypeIcon type={nextItem.lesson.type} size={24} /></View>
+            <View style={styles.nextIcon}><LessonTypeIcon type={step.lesson.type} size={24} /></View>
             <View style={styles.flex}>
-              <Text style={styles.muted}>{nextItem.moduleTitle}</Text>
-              <Text style={styles.cardTitle}>{nextItem.lesson.title}</Text>
-              {nextItem.lesson.description ? <Text style={styles.muted} numberOfLines={2}>{nextItem.lesson.description}</Text> : null}
-              <Pressable accessibilityRole="button" onPress={() => router.push(lessonHref(course.id, nextItem.lesson.id))} android_ripple={{ color: 'rgba(255,255,255,0.2)' }} style={styles.primaryButton}>
-                <Text style={styles.primaryButtonText}>{progress > 0 ? 'Resume learning' : 'Start learning'}</Text>
+              <Text style={styles.muted}>{step.moduleTitle} · {lessonTypeLabel(step.lesson.type)}</Text>
+              <Text style={styles.cardTitle}>{step.lesson.title}</Text>
+              {step.kind === 'overdue' && step.lesson.dueDate ? (
+                <Text style={[styles.small, styles.overdueText]}>Was due {formatDate(step.lesson.dueDate)}{step.lesson.type === 'assignment' ? (step.lesson.allowLateSubmission ? ' · late hand-ins accepted' : ' · ask your instructor about a late hand-in') : ''}</Text>
+              ) : step.lesson.description ? <Text style={styles.muted} numberOfLines={2}>{step.lesson.description}</Text> : null}
+              <Pressable accessibilityRole="button" onPress={() => router.push(lessonHref(course.id, step.lesson.id))} android_ripple={{ color: 'rgba(255,255,255,0.2)' }} style={styles.primaryButton}>
+                <Text numberOfLines={1} style={styles.primaryButtonText}>{step.kind === 'overdue' ? 'Open it now' : progress > 0 ? 'Resume learning' : 'Start learning'}</Text>
                 <ChevronRight size={16} color="#ffffff" />
               </Pressable>
             </View>
           </View>
         </View>
-      ) : lessons.length === 0 ? (
+      ) : step.kind === 'empty' ? (
         <View style={[styles.card, styles.centerCard]}>
           <BookOpen size={32} color={colors.mutedText} />
           <Text style={styles.cardTitle}>Lessons are on the way</Text>
-          <Text style={[styles.muted, styles.center]}>This course has no lessons available to you yet. Check back soon or read the course announcements.</Text>
+          <Text style={[styles.muted, styles.center]}>This course has no lessons available to you yet. They appear here as soon as the instructor publishes them.</Text>
         </View>
       ) : (
         <View style={[styles.card, styles.centerCard]}>
-          <Award size={32} color="#eab308" />
-          <Text style={styles.cardTitle}>Congratulations!</Text>
-          <Text style={[styles.muted, styles.center]}>You’ve completed all the lessons in this course.</Text>
+          <Award size={32} color={colors.accentText} />
+          <Text style={styles.cardTitle}>You finished every lesson</Text>
+          <Text style={[styles.muted, styles.center]}>Check your quiz scores and any feedback on your assignments. You can reopen any lesson to review it.</Text>
           <Pressable accessibilityRole="link" onPress={() => router.push(courseHref(course.id, 'grades'))} style={styles.linkButton}>
-            <Text style={styles.linkText}>View your final grade</Text>
+            <Text style={styles.linkText}>See your grades and feedback</Text>
           </Pressable>
         </View>
       )}

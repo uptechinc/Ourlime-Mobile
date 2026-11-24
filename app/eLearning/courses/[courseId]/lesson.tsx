@@ -69,11 +69,13 @@ export default function LessonScreen() {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isAssignmentSubmitted, setIsAssignmentSubmitted] = useState(false);
   const [quizHistory, setQuizHistory] = useState<{ lessonId: string; attempts: QuizAttemptRecord[] } | null>(null);
+  // `action` turns the dialog's button into a next step (open the work still left, or the grades) with a "Not now" choice.
   const [dialogState, setDialogState] = useState<{
     visible: boolean;
     type: 'error' | 'warning' | 'info' | 'success';
     title: string;
     message: string;
+    action?: { label: string; onPress: () => void };
   }>({
     visible: false,
     type: 'info',
@@ -171,7 +173,7 @@ export default function LessonScreen() {
       if (currentLessonIndex < allLessons.length - 1) {
         setCurrentLessonIndex((index) => index + 1);
       } else {
-        setDialogState({ visible: true, type: 'success', title: 'Course complete', message: 'You reached the last lesson. Check your progress and grades from the course home.' });
+        showEndOfCourse(updated);
       }
     } catch (error) {
       console.error('[LessonScreen] Completion failed:', error);
@@ -184,6 +186,30 @@ export default function LessonScreen() {
     } finally {
       setSavingCompletion(false);
     }
+  };
+
+  /**
+   * At the last lesson: "finished" only when every lesson really is done; otherwise name the first open item and offer
+   * to jump to it, because reaching the end of the list is not the same as finishing the course.
+   */
+  const showEndOfCourse = (latest: Enrollment | null) => {
+    const step = courseService.nextStep(curriculum, latest ?? enrollment);
+    if (step.kind === 'lesson' || step.kind === 'overdue') {
+      const remaining = courseService.completion(curriculum, latest ?? enrollment);
+      const left = remaining.all.total - remaining.all.done;
+      const targetId = step.lesson.id;
+      setDialogState({
+        visible: true, type: 'info', title: 'Last lesson reached',
+        message: `${left === 1 ? 'One item is' : `${left} items are`} still open, starting with "${step.lesson.title}".`,
+        action: { label: 'Open it', onPress: () => handleSelectLesson(targetId) },
+      });
+      return;
+    }
+    setDialogState({
+      visible: true, type: 'success', title: 'You finished the course',
+      message: 'Every lesson is done. Your quiz scores and assignment feedback are on your grades page.',
+      action: { label: 'See grades', onPress: () => router.push(courseHref(id, 'grades')) },
+    });
   };
 
   const handleSubmitQuiz = async (answers: number[], operationId: string): Promise<QuizAttemptResult | null> => {
@@ -336,9 +362,10 @@ export default function LessonScreen() {
                 />
               ) : (
                 <View style={styles.contentCard}>
-                  {/* Instructors write lesson text in the web's rich editor, so it is HTML there (rendered with dangerouslySetInnerHTML). */}
-                  {currentLesson.content && /<[a-z][\s\S]*>/i.test(currentLesson.content) ? (
-                    <RichBlogContent content={currentLesson.content} />
+                  {/* Instructors write lesson text in the web's rich editor, so it is HTML there. RichBlogContent turns it into
+                      native headings, lists, links and images (no WebView, nothing runs); plain lessons stay plain text. */}
+                  {currentLesson.contentHtml ? (
+                    <RichBlogContent content={currentLesson.contentHtml} />
                   ) : (
                     <Text style={styles.contentText}>
                       {currentLesson.content || currentLesson.description || (currentLesson.mediaUrl ? 'Open the lesson material below.' : 'No text content was provided for this lesson.')}
@@ -382,6 +409,9 @@ export default function LessonScreen() {
       {/* Sticky bottom bar inside the safe area: Previous · Mark complete (or Next) · Next. */}
       {currentLesson && !loading ? (
         <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.bottomBar}>
+          {hasNext && allLessons[currentLessonIndex + 1] ? (
+            <Text numberOfLines={1} style={styles.upNext}>Next: {allLessons[currentLessonIndex + 1].title}</Text>
+          ) : null}
           <View style={styles.bottomRow}>
             <Pressable
               onPress={handlePrev}
@@ -428,7 +458,14 @@ export default function LessonScreen() {
         type={dialogState.type}
         title={dialogState.title}
         message={dialogState.message}
-        onClose={() => setDialogState((prev) => ({ ...prev, visible: false }))}
+        confirmText={dialogState.action?.label ?? 'OK'}
+        cancelText={dialogState.action ? 'Not now' : undefined}
+        onConfirm={dialogState.action ? () => {
+          const action = dialogState.action;
+          setDialogState((prev) => ({ ...prev, visible: false, action: undefined }));
+          action?.onPress();
+        } : undefined}
+        onClose={() => setDialogState((prev) => ({ ...prev, visible: false, action: undefined }))}
       />
     </SafeAreaView>
   );
@@ -465,6 +502,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   contentText: { color: colors.text, fontSize: 16, lineHeight: 25 },
   bottomBar: { backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   bottomRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: ELEARNING_GUTTER, paddingVertical: 12 },
+  upNext: { paddingHorizontal: ELEARNING_GUTTER, paddingTop: 8, marginBottom: -6, color: colors.mutedText, fontSize: 12, fontWeight: '600' },
   navButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
   navButtonDisabled: { backgroundColor: colors.control, borderColor: colors.control },
   primaryButton: { flex: 1, minWidth: 0, height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: ELEARNING_ACTION_GREEN, overflow: 'hidden' },

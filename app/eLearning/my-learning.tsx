@@ -272,7 +272,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   chips: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
   sortRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: -8 },
   sortLabel: { color: colors.mutedText, fontSize: 13, fontWeight: '600', marginRight: 4 },
-  sortChip: { minHeight: 36, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 10 },
+  sortChip: { minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 10 },
   sortChipActive: { backgroundColor: colors.control },
   sortText: { color: colors.mutedText, fontSize: 14, fontWeight: '600' },
   sortTextActive: { color: colors.accentText, fontWeight: '700' },

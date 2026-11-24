@@ -96,6 +96,6 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   count: { color: colors.mutedText, fontSize: 13, fontWeight: '700' },
   expand: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   subcategories: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 6, paddingBottom: 10 },
-  chip: { minHeight: 36, maxWidth: '100%', justifyContent: 'center', paddingHorizontal: 12, borderRadius: 999, backgroundColor: colors.control, overflow: 'hidden' },
+  chip: { minHeight: 44, maxWidth: '100%', justifyContent: 'center', paddingHorizontal: 12, borderRadius: 999, backgroundColor: colors.control, overflow: 'hidden' },
   chipText: { color: colors.text, fontSize: 13, fontWeight: '600' },
 });

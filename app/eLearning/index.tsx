@@ -1,124 +1,85 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Image, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import {
-  BookOpen, BookText, Calendar, ClipboardCheck, FolderOpen, GraduationCap, Library, Megaphone, MessageSquare,
-  PenSquare, PlayCircle, Presentation, Search, Users,
-} from 'lucide-react-native';
+import { BookOpen, BookText, Calendar, ChevronRight, ClipboardCheck, GraduationCap, Library, Megaphone, PlayCircle, Presentation, Search, Users } from 'lucide-react-native';
 import PageHeader from '@/components/ui/PageHeader';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
-import CategoryBrowser from '@/components/eLearning/course/CategoryBrowser';
+import CachedImage from '@/components/ui/CachedImage';
+import UserAvatar from '@/components/ui/UserAvatar';
 import ClassSchedule from '@/components/eLearning/schedule/ClassSchedule';
+import { ELearningHubSkeleton } from '@/components/eLearning/ELearningSkeletons';
+import { CourseCard, ELearningEmptyState, ELEARNING_ACTION_GREEN, ELEARNING_GUTTER, ProgressBar, formatWhen, roundProgress } from '@/components/eLearning/ELearningParts';
+import { lessonHref, pluralize } from '@/components/eLearning/course/workspaceHelpers';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useLearningOverview } from '@/lib/hooks/useLearningOverview';
-import { useProfileResource } from '@/lib/hooks/useProfileResource';
-import { AuthService } from '@/lib/services/AuthService';
+import { useAppData } from '@/lib/contexts/AppDataContext';
+import { courseService } from '@/lib/services/CourseService';
 import { COURSE_MAIN_CATEGORIES, getSubcategories } from '@/lib/constants/courseCategories';
-import { ELearningHomeContentSkeleton, ELearningInlineStatsSkeleton } from '@/components/eLearning/ELearningSkeletons';
-import { CourseCard, ELEARNING_ACTION_GREEN } from '@/components/eLearning/ELearningParts';
-import type { CourseAnnouncement, InstructorProfile } from '@/lib/types/course';
+import type { CourseAnnouncement, Enrollment, InstructorProfile } from '@/lib/types/course';
+import type { LucideIcon } from 'lucide-react-native';
 
-/** Web app/eLearning/page.tsx as it renders on a phone: welcome card, hero + search, course updates, tabbed materials. */
-type LearningTab = 'materials' | 'resources' | 'tutors';
-type LearningSection = 'courseMaterials' | 'schedule';
+type HubSection = 'courses' | 'schedule';
 type Styles = ReturnType<typeof createStyles>;
+type Shortcut = { key: string; label: string; hint: string; icon: LucideIcon; route: string };
 
-const GREEN = '#10b981';
-const POPULAR_TOPIC_COUNT = 3;
-const COURSE_PREVIEW_COUNT = 9;
-const UPDATE_PREVIEW_COUNT = 6;
+const RIPPLE = { color: 'rgba(15,23,42,0.12)' };
+const COURSE_PREVIEW_COUNT = 6;
 const TUTOR_PREVIEW_COUNT = 5;
-const SLIDE_INTERVAL_MS = 5000;
-const authService = AuthService.getInstance();
-
-// Web components/eLearning/heroSection slides (images, copy and green gradient overlays).
-const HERO_SLIDES = [
-  { image: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=900&q=70', title: 'Welcome to Limes Academy', subtitle: 'Start your learning journey today', gradient: ['rgba(16,185,129,0.9)', 'rgba(34,197,94,0.72)', 'rgba(74,222,128,0.54)'] },
-  { image: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=900&q=70', title: 'Learn from the Best', subtitle: 'Expert instructors to guide your path', gradient: ['rgba(22,163,74,0.9)', 'rgba(16,185,129,0.72)', 'rgba(74,222,128,0.63)'] },
-  { image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=900&q=70', title: 'Grow Your Skills', subtitle: 'Discover new opportunities', gradient: ['rgba(16,185,129,0.9)', 'rgba(74,222,128,0.72)', 'rgba(134,239,172,0.54)'] },
-] as const;
-
-// Web app/eLearning/page.tsx sections: course materials, or the learner's class schedule.
-const SECTIONS: { id: LearningSection; label: string; icon: typeof BookOpen }[] = [
-  { id: 'courseMaterials', label: 'Course Materials', icon: BookOpen },
-  { id: 'schedule', label: 'Schedule Work', icon: Calendar },
-];
-
-const TABS: { id: LearningTab; label: string; icon: typeof BookOpen }[] = [
-  { id: 'materials', label: 'Learning Materials', icon: BookOpen },
-  { id: 'resources', label: 'Resources', icon: FolderOpen },
-  { id: 'tutors', label: 'Tutors', icon: Users },
-];
+const CONTINUE_THUMB_WIDTH = 96;
+const CONTINUE_THUMB_HEIGHT = 54;
 
 const catalogHref = (params: { category?: string; subcategory?: string; q?: string }): Href => {
   const query = Object.entries(params).filter(([, value]) => Boolean(value)).map(([key, value]) => `${key}=${encodeURIComponent(value ?? '')}`).join('&');
   return (query ? `/eLearning/courses?${query}` : '/eLearning/courses') as Href;
 };
 
-/** Web courseMessages formatAge. */
-const formatAge = (createdAt?: string): string => {
-  if (!createdAt) return '';
-  const time = new Date(createdAt).getTime();
-  if (!Number.isFinite(time)) return '';
-  const minutes = Math.floor((Date.now() - time) / 60000);
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} d ago`;
-  return new Date(time).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-};
-
+/**
+ * The E-Learning hub, learner first: search, the course to continue, shortcuts (My learning, all courses, CXC revision,
+ * the instructor workspace), real course announcements, then courses by category and verified instructors. Everything
+ * shown comes from Firestore; sections with nothing in them are left out instead of being filled with sample content.
+ * No stock photos or carousels, so it opens quickly on a slow connection.
+ */
 export default function ELearningScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const { activeUserId } = useAppData();
   const { data, instructorStatus, loading, refreshing, error, refresh } = useLearningOverview();
-  const user = authService.getCurrentUser();
-  const { resource: profileResource } = useProfileResource({ kind: 'own', userId: user?.uid ?? '' });
-  const profile = profileResource.data?.profile;
-  const isInstructor = instructorStatus !== 'none';
   const [search, setSearch] = useState('');
-  const [section, setSection] = useState<LearningSection>('courseMaterials');
-  const [tab, setTab] = useState<LearningTab>('materials');
+  const [section, setSection] = useState<HubSection>('courses');
   const [category, setCategory] = useState('All');
   const [subcategory, setSubcategory] = useState('');
   const [showAllTutors, setShowAllTutors] = useState(false);
-  const allCourses = useMemo(() => data?.courses ?? [], [data?.courses]);
+  const courses = useMemo(() => data?.courses ?? [], [data?.courses]);
+  const enrollments = data?.enrollments ?? new Map<string, Enrollment>();
+  const isInstructor = instructorStatus !== 'none';
+  const continueItem = data ? courseService.continueLearning(courses, data.enrollments) : null;
+  const activeEnrollmentCount = [...enrollments.values()].filter((enrollment) => enrollment.status === 'active' || enrollment.status === 'completed').length;
 
-  const popularTopics = useMemo(() => {
+  // Only categories that have courses get a chip, so no chip leads to an empty list.
+  const categories = useMemo(() => {
     const counts = new Map<string, number>();
-    allCourses.forEach((course) => counts.set(course.category, (counts.get(course.category) ?? 0) + 1));
-    return [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0])).slice(0, POPULAR_TOPIC_COUNT).map(([topic]) => topic);
-  }, [allCourses]);
+    courses.forEach((course) => counts.set(course.category, (counts.get(course.category) ?? 0) + 1));
+    const known = (COURSE_MAIN_CATEGORIES as readonly string[]).filter((name) => counts.has(name));
+    const other = [...counts.keys()].filter((name) => !known.includes(name)).sort((left, right) => left.localeCompare(right));
+    return [...known, ...other].map((name) => ({ name, count: counts.get(name) ?? 0 }));
+  }, [courses]);
+  const subcategories = category === 'All' ? [] : getSubcategories(category).filter((name) => courses.some((course) => course.category === category && course.subcategory === name));
+  const filtered = courses.filter((course) => (category === 'All' || course.category === category) && (!subcategory || course.subcategory === subcategory));
 
-  const categoryCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    allCourses.forEach((course) => counts.set(course.category, (counts.get(course.category) ?? 0) + 1));
-    return counts;
-  }, [allCourses]);
-
-  const subcategories = category === 'All' ? [] : getSubcategories(category);
-  const filteredCourses = allCourses.filter((course) => (category === 'All' || course.category === category) && (!subcategory || course.subcategory === subcategory));
-
-  const handleSearchSubmit = () => { router.push(catalogHref({ q: search.trim() })); };
-  const handleSelectCategory = (next: string) => { setCategory(next); setSubcategory(''); };
-  const handleOpenCourse = (courseId: string) => { router.push(('/eLearning/courses/' + courseId) as Href); };
-
-  const quickLinks: { label: string; icon: typeof BookOpen; route: string }[] = [
-    { label: 'Courses', icon: Library, route: '/eLearning/courses' },
-    { label: 'My Learning', icon: PlayCircle, route: '/eLearning/my-learning' },
-    { label: 'CXC Hub', icon: BookText, route: '/eLearning/cxc' },
-    ...(isInstructor ? [
-      { label: 'Create Course', icon: PenSquare, route: '/eLearning/instructor/create' },
-      { label: 'Instructor', icon: Presentation, route: '/eLearning/instructor' },
-      { label: 'Grading', icon: ClipboardCheck, route: '/eLearning/instructor/grading' },
-    ] : []),
+  const shortcuts: Shortcut[] = [
+    { key: 'mine', label: 'My learning', hint: activeEnrollmentCount ? pluralize(activeEnrollmentCount, 'course', 'courses') : 'Your courses', icon: PlayCircle, route: '/eLearning/my-learning' },
+    { key: 'all', label: 'All courses', hint: courses.length ? pluralize(courses.length, 'course', 'courses') : 'Catalog', icon: Library, route: '/eLearning/courses' },
+    { key: 'cxc', label: 'CXC revision', hint: 'CSEC and CAPE', icon: BookText, route: '/eLearning/cxc' },
+    isInstructor
+      ? { key: 'teach', label: 'Instructor', hint: 'Courses and grading', icon: Presentation, route: '/eLearning/instructor' }
+      : { key: 'teach', label: 'Teach', hint: 'Become an instructor', icon: GraduationCap, route: '/eLearning/instructor' },
   ];
+
+  const handleSearch = () => router.push(catalogHref({ q: search.trim() }));
+  const handleOpenCourse = (courseId: string) => router.push(`/eLearning/courses/${encodeURIComponent(courseId)}` as Href);
+  const handleCategory = (next: string) => { setCategory(next); setSubcategory(''); };
 
   return (
     <View style={styles.screen}>
@@ -129,168 +90,125 @@ export default function ELearningScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh(true)} tintColor={colors.accent} />}
           contentContainerStyle={styles.content}
         >
-          {profile ? (
-            <View style={styles.card}>
-              <View style={styles.welcomeRow}>
-                {profile.profilePicture ? <Image source={{ uri: profile.profilePicture }} style={styles.welcomeAvatar} /> : (
-                  <View style={[styles.welcomeAvatar, styles.initialAvatar]}><Text style={styles.initialText}>{(profile.firstName || profile.userName || '?').charAt(0).toUpperCase()}</Text></View>
-                )}
-                <View style={styles.flexCopy}>
-                  <Text numberOfLines={1} style={styles.welcomeTitle}>Welcome back, {profile.firstName || profile.userName}</Text>
-                  <Text numberOfLines={1} style={styles.muted}>@{profile.userName} · Pick up where you left off</Text>
-                </View>
-              </View>
-              <View style={styles.welcomeStatsRow}>
-                {data ? (
-                  <View style={styles.inlineStats}>
-                    <InlineStat value={String(data.stats.totalCourses)} label="Courses" styles={styles} />
-                    <InlineStat value={data.stats.totalLearners.toLocaleString()} label="Learners" styles={styles} />
-                    <InlineStat value={data.stats.averageRating.toFixed(1)} label="Avg rating" styles={styles} />
-                  </View>
-                ) : <ELearningInlineStatsSkeleton />}
-                {!loading && !isInstructor ? (
-                  <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/eLearning/instructor/register' as Href)} style={styles.becomeInstructor}>
-                    <GraduationCap size={16} color="#ffffff" />
-                    <Text style={styles.becomeInstructorText}>Become an instructor</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickLinksDivider} contentContainerStyle={styles.chipRow}>
-                {quickLinks.map(({ label, icon: Icon, route }) => (
-                  <TouchableOpacity key={label} accessibilityRole="link" onPress={() => router.push(route as Href)} style={styles.quickChip}>
-                    <Icon size={16} color={colors.secondaryText} />
-                    <Text style={styles.quickChipText}>{label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          ) : null}
-
-          <View style={[styles.card, styles.heroCard]}>
-            <HeroBanner width={width - 32} styles={styles} surfaceColor={colors.surface} />
-            <View style={styles.heroSearchArea}>
-              <View style={styles.searchPill}>
-                <Search size={18} color={colors.mutedText} />
-                <TextInput value={search} onChangeText={setSearch} onSubmitEditing={handleSearchSubmit} returnKeyType="search" placeholder="Search courses" numberOfLines={1} placeholderTextColor={colors.mutedText} style={styles.searchInput} />
-                <TouchableOpacity accessibilityRole="button" onPress={handleSearchSubmit} style={styles.searchButton}><Text style={styles.searchButtonText}>Search</Text></TouchableOpacity>
-              </View>
-              {popularTopics.length > 0 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.popularRow}>
-                  <Text style={styles.popularLabel}>Popular:</Text>
-                  {popularTopics.map((topic) => (
-                    <TouchableOpacity key={topic} accessibilityRole="link" onPress={() => router.push(catalogHref({ category: topic }))} style={styles.popularChip}>
-                      <Text style={styles.popularChipText}>{topic}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              ) : null}
-            </View>
+          <View style={styles.searchBox}>
+            <Search size={18} color={colors.mutedText} />
+            <TextInput
+              accessibilityLabel="Search courses"
+              value={search}
+              onChangeText={setSearch}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
+              placeholder="Search courses"
+              placeholderTextColor={colors.mutedText}
+              numberOfLines={1}
+              style={styles.searchInput}
+            />
+            <Pressable accessibilityRole="button" accessibilityLabel="Search" onPress={handleSearch} android_ripple={{ color: 'rgba(255,255,255,0.2)' }} style={styles.searchButton}>
+              <Text style={styles.searchButtonText}>Search</Text>
+            </Pressable>
           </View>
 
-          {loading ? <ELearningHomeContentSkeleton /> : null}
-          {!loading && error ? (
-            <View style={styles.errorCard}>
-              <Text style={styles.cardTitle}>E-Learning could not load</Text>
-              <Text style={styles.muted}>{error}</Text>
-              <TouchableOpacity accessibilityRole="button" onPress={() => void refresh(true)} style={styles.primaryPill}><Text style={styles.primaryPillText}>Try Again</Text></TouchableOpacity>
-            </View>
-          ) : null}
-
-          {!loading && !error && data ? (
+          {loading ? <ELearningHubSkeleton /> : error ? (
+            <ELearningEmptyState icon={<BookOpen size={40} color={colors.mutedText} />} title="E-Learning could not load" hint={error} actionLabel="Try again" onAction={() => void refresh(true)} />
+          ) : data ? (
             <>
-              <CourseUpdates announcements={data.announcements} cardWidth={(width - 64) * 0.85} onOpen={handleOpenCourse} styles={styles} colors={colors} />
+              {continueItem ? (
+                <View style={styles.card}>
+                  <Text style={styles.eyebrow}>Continue learning</Text>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Open ${continueItem.course.title}`} onPress={() => handleOpenCourse(continueItem.course.id)} android_ripple={RIPPLE} style={styles.continueRow}>
+                    <View style={styles.continueThumb}>
+                      {continueItem.course.thumbnail || continueItem.course.image
+                        ? <CachedImage uri={continueItem.course.thumbnail || continueItem.course.image} style={{ width: CONTINUE_THUMB_WIDTH, height: CONTINUE_THUMB_HEIGHT }} />
+                        : <BookOpen size={22} color={colors.mutedText} />}
+                    </View>
+                    <View style={styles.flex}>
+                      <Text numberOfLines={2} style={styles.continueTitle}>{continueItem.course.title}</Text>
+                      <Text numberOfLines={1} style={styles.muted}>{roundProgress(continueItem.enrollment.progress)}% complete · {continueItem.course.instructor.name}</Text>
+                    </View>
+                  </Pressable>
+                  <ProgressBar value={continueItem.enrollment.progress} accessibilityLabel={`${continueItem.course.title} progress`} />
+                  <Pressable accessibilityRole="button" accessibilityLabel={`${continueItem.enrollment.progress > 0 ? 'Resume' : 'Start'} ${continueItem.course.title}`} onPress={() => router.push(lessonHref(continueItem.course.id))} android_ripple={{ color: 'rgba(255,255,255,0.2)' }} style={styles.primaryButton}>
+                    <PlayCircle size={18} color="#ffffff" />
+                    <Text numberOfLines={1} style={styles.primaryButtonText}>{continueItem.enrollment.progress > 0 ? 'Resume where you left off' : 'Start the first lesson'}</Text>
+                  </Pressable>
+                </View>
+              ) : activeEnrollmentCount === 0 ? (
+                <View style={styles.card}>
+                  <Text accessibilityRole="header" style={styles.sectionTitle}>Learn at your own pace</Text>
+                  <Text style={styles.muted}>Enroll in a free course and your progress, quizzes and grades are kept here. Lessons work on mobile data; videos only load when you press play.</Text>
+                </View>
+              ) : null}
 
-              <View accessibilityRole="tablist" style={styles.sectionSwitch}>
-                {SECTIONS.map(({ id, label, icon: Icon }) => {
+              <View style={styles.shortcutGrid}>
+                {shortcuts.map(({ key, label, hint, icon: Icon, route }) => (
+                  <Pressable key={key} accessibilityRole="button" accessibilityLabel={`${label}, ${hint}`} onPress={() => router.push(route as Href)} android_ripple={RIPPLE} style={styles.shortcut}>
+                    <Icon size={20} color={colors.accentText} />
+                    <View style={styles.flex}>
+                      <Text numberOfLines={1} style={styles.shortcutLabel}>{label}</Text>
+                      <Text numberOfLines={1} style={styles.shortcutHint}>{hint}</Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+              {isInstructor ? (
+                <Pressable accessibilityRole="button" onPress={() => router.push('/eLearning/instructor/grading' as Href)} android_ripple={RIPPLE} style={styles.linkRow}>
+                  <ClipboardCheck size={18} color={colors.icon} />
+                  <Text numberOfLines={1} style={[styles.linkRowText, styles.flex]}>Grade your learners' work</Text>
+                  <ChevronRight size={18} color={colors.mutedText} />
+                </Pressable>
+              ) : null}
+
+              {data.announcements.length > 0 ? <Announcements announcements={data.announcements} width={width} onOpen={handleOpenCourse} styles={styles} colors={colors} /> : null}
+
+              <View accessibilityRole="tablist" style={styles.segment}>
+                {([['courses', 'Courses', BookOpen], ['schedule', 'My schedule', Calendar]] as const).map(([id, label, Icon]) => {
                   const isActive = section === id;
                   return (
-                    <TouchableOpacity key={id} accessibilityRole="tab" accessibilityState={{ selected: isActive }} onPress={() => setSection(id)} style={[styles.sectionSwitchItem, isActive && styles.sectionSwitchItemActive]}>
+                    <Pressable key={id} accessibilityRole="tab" accessibilityState={{ selected: isActive }} onPress={() => setSection(id)} android_ripple={RIPPLE} style={[styles.segmentItem, isActive && styles.segmentItemActive]}>
                       <Icon size={16} color={isActive ? '#ffffff' : colors.secondaryText} />
-                      <Text numberOfLines={1} style={[styles.sectionSwitchText, isActive && styles.sectionSwitchTextActive]}>{label}</Text>
-                    </TouchableOpacity>
+                      <Text numberOfLines={1} style={[styles.segmentText, isActive && styles.segmentTextActive]}>{label}</Text>
+                    </Pressable>
                   );
                 })}
               </View>
 
               {section === 'schedule' ? (
-                <View style={styles.card}>
-                  <ClassSchedule userId={user?.uid ?? null} />
-                </View>
-              ) : null}
-
-              {section === 'courseMaterials' ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                {TABS.map(({ id, label, icon: Icon }) => {
-                  const isActive = tab === id;
-                  return (
-                    <TouchableOpacity key={id} accessibilityRole="tab" accessibilityState={{ selected: isActive }} onPress={() => setTab(id)} style={[styles.tabChip, isActive && styles.tabChipActive]}>
-                      <Icon size={16} color={isActive ? colors.canvas : colors.secondaryText} />
-                      <Text style={[styles.tabChipText, isActive && styles.tabChipTextActive]}>{label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-              ) : null}
-
-              {section === 'courseMaterials' && tab === 'materials' ? (
-                <View style={[styles.card, styles.materialsCard]}>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                    {['All', ...COURSE_MAIN_CATEGORIES].map((item) => {
-                      const isActive = category === item;
-                      const count = item === 'All' ? allCourses.length : categoryCounts.get(item) ?? 0;
-                      return (
-                        <TouchableOpacity key={item} onPress={() => handleSelectCategory(item)} style={[styles.categoryPill, isActive && styles.categoryPillActive]}>
-                          <Text style={[styles.categoryPillText, isActive && styles.categoryPillTextActive]}>{item} ({count})</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+                <View style={styles.card}><ClassSchedule userId={activeUserId} /></View>
+              ) : courses.length === 0 ? (
+                <ELearningEmptyState
+                  icon={<BookOpen size={40} color={colors.mutedText} />}
+                  title="No courses published yet"
+                  hint={isInstructor ? 'Your published courses will be the first ones here.' : 'Courses appear here as instructors publish them.'}
+                  actionLabel={isInstructor ? 'Open the instructor workspace' : undefined}
+                  onAction={isInstructor ? () => router.push('/eLearning/instructor' as Href) : undefined}
+                />
+              ) : (
+                <View style={styles.coursesBlock}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.chipRow}>
+                    {[{ name: 'All', count: courses.length }, ...categories].map((item) => (
+                      <CategoryChip key={item.name} label={`${item.name} (${item.count})`} isSelected={category === item.name} onPress={() => handleCategory(item.name)} styles={styles} />
+                    ))}
                   </ScrollView>
                   {subcategories.length > 0 ? (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.chipRow, styles.subcategoryRow]}>
-                      {['', ...subcategories].map((item) => {
-                        const isActive = subcategory === item;
-                        const count = allCourses.filter((course) => course.category === category && (!item || course.subcategory === item)).length;
-                        return (
-                          <TouchableOpacity key={item || 'all'} onPress={() => setSubcategory(item)} style={[styles.subcategoryChip, isActive && styles.subcategoryChipActive]}>
-                            <Text style={[styles.subcategoryText, isActive && styles.subcategoryTextActive]}>{item || `All ${category}`} ({count})</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                      {['', ...subcategories].map((item) => (
+                        <CategoryChip key={item || 'all'} label={item || `All ${category}`} isSelected={subcategory === item} onPress={() => setSubcategory(item)} styles={styles} isSecondary />
+                      ))}
                     </ScrollView>
                   ) : null}
-                  <View style={styles.divider} />
-                  {filteredCourses.length ? (
-                    <View style={styles.courseList}>
-                      {filteredCourses.slice(0, COURSE_PREVIEW_COUNT).map((course) => <CourseCard key={course.id} course={course} width={width - 56} onOpen={handleOpenCourse} />)}
-                    </View>
-                  ) : (
-                    <View style={styles.emptyState}>
-                      <BookOpen size={28} color={colors.mutedText} />
-                      <Text style={styles.cardTitle}>No courses found</Text>
-                      <Text style={[styles.muted, styles.centerText]}>Try selecting a different category or subcategory</Text>
-                    </View>
-                  )}
-                  {filteredCourses.length > COURSE_PREVIEW_COUNT ? (
-                    <TouchableOpacity accessibilityRole="link" onPress={() => router.push(catalogHref({ category: category === 'All' ? undefined : category, subcategory }))} style={styles.viewAllButton}>
-                      <Text style={styles.viewAllText}>View all {filteredCourses.length} courses</Text>
-                    </TouchableOpacity>
+                  {filtered.slice(0, COURSE_PREVIEW_COUNT).map((course) => (
+                    <CourseCard key={course.id} course={course} width={width - ELEARNING_GUTTER * 2} enrollment={enrollments.get(course.id) ?? null} onOpen={handleOpenCourse} />
+                  ))}
+                  {filtered.length > COURSE_PREVIEW_COUNT || category !== 'All' ? (
+                    <Pressable accessibilityRole="link" onPress={() => router.push(catalogHref({ category: category === 'All' ? undefined : category, subcategory }))} android_ripple={RIPPLE} style={styles.outlineButton}>
+                      <Text style={styles.outlineButtonText}>{filtered.length > COURSE_PREVIEW_COUNT ? `See all ${filtered.length} courses` : 'Filter and sort in the catalog'}</Text>
+                    </Pressable>
                   ) : null}
                 </View>
-              ) : null}
+              )}
 
-              {section === 'courseMaterials' && tab === 'resources' ? (
-                <View style={styles.card}>
-                  <CategoryBrowser
-                    courses={allCourses}
-                    onOpenCategory={(nextCategory, nextSubcategory) => router.push(catalogHref({ category: nextCategory, subcategory: nextSubcategory }))}
-                    onOpenCxc={() => router.push('/eLearning/cxc' as Href)}
-                    onViewAll={() => router.push('/eLearning/courses' as Href)}
-                  />
-                </View>
-              ) : null}
-
-              {section === 'courseMaterials' && tab === 'tutors' ? (
-                <TutorList instructors={data.instructors} showAll={showAllTutors} onToggleShowAll={() => setShowAllTutors((current) => !current)} styles={styles} colors={colors} />
+              {section === 'courses' && data.instructors.length > 0 ? (
+                <Tutors instructors={data.instructors} showAll={showAllTutors} onToggle={() => setShowAllTutors((current) => !current)} styles={styles} colors={colors} />
               ) : null}
             </>
           ) : null}
@@ -300,121 +218,73 @@ export default function ELearningScreen() {
   );
 }
 
-type InlineStatProps = { value: string; label: string; styles: Styles };
-function InlineStat({ value, label, styles }: InlineStatProps) {
-  return <View style={styles.inlineStat}><Text style={styles.inlineStatValue}>{value}</Text><Text style={styles.inlineStatLabel}>{label}</Text></View>;
+type CategoryChipProps = { label: string; isSelected: boolean; onPress: () => void; styles: Styles; isSecondary?: boolean };
+
+function CategoryChip({ label, isSelected, onPress, styles, isSecondary = false }: CategoryChipProps) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityState={{ selected: isSelected }} onPress={onPress} android_ripple={RIPPLE} style={[styles.chip, isSecondary && styles.chipSecondary, isSelected && styles.chipSelected]}>
+      <Text numberOfLines={1} style={[styles.chipText, isSelected && styles.chipTextSelected]}>{label}</Text>
+    </Pressable>
+  );
 }
 
-type HeroBannerProps = { width: number; styles: Styles; surfaceColor: string };
-/** Logo on the left; three crossfading photos with a green gradient and a slanted left edge on the right. */
-function HeroBanner({ width, styles, surfaceColor }: HeroBannerProps) {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const slideWidth = width * 0.75;
+type AnnouncementsProps = { announcements: CourseAnnouncement[]; width: number; onOpen: (courseId: string) => void; styles: Styles; colors: AppThemeColors };
 
-  useEffect(() => {
-    const timer = setInterval(() => setActiveIndex((current) => (current + 1) % HERO_SLIDES.length), SLIDE_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, []);
-
+/** Announcements instructors posted in the learner's courses (only shown when there are some). */
+function Announcements({ announcements, width, onOpen, styles, colors }: AnnouncementsProps) {
+  const cardWidth = Math.round((width - ELEARNING_GUTTER * 2) * 0.86);
   return (
-    <View style={styles.heroBanner}>
-      <View style={styles.heroLogo}>
-        <Image source={require('@/assets/images/limey-elearning.png')} style={styles.heroLogoImage} resizeMode="contain" />
-        <Text style={styles.heroLogoCaption}>e-Learning</Text>
+    <View style={styles.sectionBlock}>
+      <View style={styles.sectionHeaderRow}>
+        <Megaphone size={18} color={colors.icon} />
+        <Text accessibilityRole="header" style={styles.sectionTitle}>Course announcements</Text>
       </View>
-      <View style={[styles.heroSlides, { width: slideWidth }]}>
-        {HERO_SLIDES.map((slide, index) => <HeroSlide key={slide.title} slide={slide} isActive={index === activeIndex} slideWidth={slideWidth} styles={styles} />)}
-        {/* clipPath polygon(25% 0, 100% 0, 100% 100%, 0 100%): cover the top-left triangle with the card colour. */}
-        <View style={[styles.heroSlant, { borderTopColor: surfaceColor, borderRightWidth: slideWidth * 0.25 }]} />
-      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={cardWidth + 12} decelerationRate="fast" contentContainerStyle={styles.chipRow}>
+        {announcements.slice(0, 6).map((announcement) => (
+          <Pressable key={announcement.id} accessibilityRole="button" accessibilityLabel={`${announcement.important ? 'Important: ' : ''}${announcement.title}, from ${announcement.authorName}`} onPress={() => onOpen(announcement.courseId)} android_ripple={RIPPLE} style={[styles.announcement, { width: cardWidth }]}>
+            {announcement.important ? <Text style={styles.importantPill}>Important</Text> : null}
+            <Text numberOfLines={2} style={styles.announcementTitle}>{announcement.title}</Text>
+            <Text numberOfLines={3} style={styles.muted}>{announcement.body}</Text>
+            <Text numberOfLines={1} style={styles.meta}>{[announcement.authorName, formatWhen(announcement.createdAt)].filter(Boolean).join(' · ')}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
     </View>
   );
 }
 
-type HeroSlideProps = { slide: (typeof HERO_SLIDES)[number]; isActive: boolean; slideWidth: number; styles: Styles };
-/**
- * One crossfading slide. React Native's core Animated never reaches views in this app (NativeWind interop), so the
- * banner used to stay on the first slide; a finite Reanimated withTiming per change does reach them.
- */
-function HeroSlide({ slide, isActive, slideWidth, styles }: HeroSlideProps) {
-  const opacity = useSharedValue(isActive ? 1 : 0);
-  useEffect(() => { opacity.value = withTiming(isActive ? 1 : 0, { duration: 700 }); }, [isActive, opacity]);
-  const fadeStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  return (
-    <Animated.View pointerEvents="none" accessibilityElementsHidden={!isActive} importantForAccessibility={isActive ? 'auto' : 'no-hide-descendants'} style={[StyleSheet.absoluteFill, fadeStyle]}>
-      <Image source={{ uri: slide.image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-      <LinearGradient colors={[...slide.gradient]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
-      <View style={[styles.heroSlideCopy, { paddingLeft: slideWidth * 0.28 }]}>
-        <Text numberOfLines={1} style={styles.heroSlideTitle}>{slide.title}</Text>
-        <Text numberOfLines={1} style={styles.heroSlideSubtitle}>{slide.subtitle}</Text>
-      </View>
-    </Animated.View>
-  );
-}
+type TutorsProps = { instructors: InstructorProfile[]; showAll: boolean; onToggle: () => void; styles: Styles; colors: AppThemeColors };
 
-type CourseUpdatesProps = { announcements: CourseAnnouncement[]; cardWidth: number; onOpen: (courseId: string) => void; styles: Styles; colors: AppThemeColors };
-function CourseUpdates({ announcements, cardWidth, onOpen, styles, colors }: CourseUpdatesProps) {
-  return (
-    <View style={styles.card}>
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionTitleRow}><MessageSquare size={20} color={GREEN} /><Text style={styles.sectionTitle}>Course updates</Text></View>
-        <Text style={styles.countBadge}>{announcements.length} {announcements.length === 1 ? 'update' : 'updates'}</Text>
-      </View>
-      {announcements.length === 0 ? (
-        <View style={styles.updatesEmpty}>
-          <Megaphone size={20} color={colors.mutedText} />
-          <Text style={[styles.muted, styles.flexCopy]}>No course updates yet. Announcements from courses you join will appear here.</Text>
-        </View>
-      ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={cardWidth + 12} decelerationRate="fast" contentContainerStyle={styles.updatesRow}>
-          {announcements.slice(0, UPDATE_PREVIEW_COUNT).map((announcement) => (
-            <TouchableOpacity key={announcement.id} accessibilityRole="button" onPress={() => onOpen(announcement.courseId)} style={[styles.updateCard, { width: cardWidth }]}>
-              <View style={styles.updateAuthorRow}>
-                {announcement.authorAvatar ? <Image source={{ uri: announcement.authorAvatar }} style={styles.updateAvatar} /> : (
-                  <View style={[styles.updateAvatar, styles.updateAvatarFallback]}><Text style={styles.updateAvatarText}>{(announcement.authorName || '?').charAt(0).toUpperCase()}</Text></View>
-                )}
-                <View style={styles.flexCopy}>
-                  <Text numberOfLines={1} style={styles.updateAuthor}>{announcement.authorName || 'Instructor'}</Text>
-                  {formatAge(announcement.createdAt) ? <Text style={styles.meta}>{formatAge(announcement.createdAt)}</Text> : null}
-                </View>
-              </View>
-              {announcement.important ? <Text style={styles.importantPill}>Important</Text> : null}
-              <Text numberOfLines={1} style={styles.updateTitle}>{announcement.title}</Text>
-              <Text numberOfLines={2} style={styles.muted}>{announcement.body}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-    </View>
-  );
-}
-
-type TutorListProps = { instructors: InstructorProfile[]; showAll: boolean; onToggleShowAll: () => void; styles: Styles; colors: AppThemeColors };
-function TutorList({ instructors, showAll, onToggleShowAll, styles, colors }: TutorListProps) {
+/** Verified instructors. Counts and ratings appear only when they are recorded, so nobody reads "0.0 · 0 courses". */
+function Tutors({ instructors, showAll, onToggle, styles, colors }: TutorsProps) {
   const visible = showAll ? instructors : instructors.slice(0, TUTOR_PREVIEW_COUNT);
   return (
     <View style={styles.card}>
-      <View style={styles.sectionTitleRow}><Users size={20} color={GREEN} /><Text style={styles.sectionTitle}>Tutors</Text></View>
-      {instructors.length === 0 ? <Text style={[styles.muted, styles.tutorEmpty]}>Verified instructor profiles will appear here.</Text> : (
-        <View style={styles.tutorList}>
-          {visible.map((instructor) => (
-            <View key={instructor.id} style={styles.tutorRow}>
-              {instructor.avatar ? <Image source={{ uri: instructor.avatar }} style={styles.tutorAvatar} /> : (
-                <View style={[styles.tutorAvatar, styles.tutorAvatarFallback]}><Text style={styles.updateAvatarText}>{(instructor.name || '?').charAt(0).toUpperCase()}</Text></View>
-              )}
-              <View style={styles.flexCopy}>
-                <Text numberOfLines={1} style={styles.cardTitle}>{instructor.name}</Text>
-                <Text numberOfLines={1} style={styles.muted}>{instructor.specialties.join(', ') || 'Instructor'}</Text>
-                <Text style={styles.meta}>★ {instructor.rating.toFixed(1)} · {instructor.totalCourses} {instructor.totalCourses === 1 ? 'course' : 'courses'} · {instructor.totalStudents} {instructor.totalStudents === 1 ? 'learner' : 'learners'}</Text>
-              </View>
+      <View style={styles.sectionHeaderRow}>
+        <Users size={18} color={colors.icon} />
+        <Text accessibilityRole="header" style={styles.sectionTitle}>Instructors</Text>
+      </View>
+      {visible.map((instructor) => {
+        const facts = [
+          instructor.totalCourses > 0 ? pluralize(instructor.totalCourses, 'course', 'courses') : null,
+          instructor.totalStudents > 0 ? pluralize(instructor.totalStudents, 'learner', 'learners') : null,
+          instructor.rating > 0 ? `★ ${instructor.rating.toFixed(1)}` : null,
+        ].filter(Boolean).join(' · ');
+        return (
+          <View key={instructor.id} accessible accessibilityLabel={[instructor.name, instructor.specialties.join(', '), facts].filter(Boolean).join(', ')} style={styles.tutorRow}>
+            <UserAvatar profileImage={instructor.avatar} firstName={instructor.name} size={44} />
+            <View style={styles.flex}>
+              <Text numberOfLines={1} style={styles.tutorName}>{instructor.name}</Text>
+              <Text numberOfLines={1} style={styles.muted}>{instructor.specialties.join(', ') || 'Verified instructor'}</Text>
+              {facts ? <Text numberOfLines={1} style={styles.meta}>{facts}</Text> : null}
             </View>
-          ))}
-        </View>
-      )}
+          </View>
+        );
+      })}
       {instructors.length > TUTOR_PREVIEW_COUNT ? (
-        <TouchableOpacity accessibilityRole="button" onPress={onToggleShowAll} style={styles.viewAllButton}>
-          <Text style={[styles.viewAllText, { color: colors.accentText }]}>{showAll ? 'Show fewer' : `Show all ${instructors.length}`}</Text>
-        </TouchableOpacity>
+        <Pressable accessibilityRole="button" onPress={onToggle} android_ripple={RIPPLE} style={styles.outlineButton}>
+          <Text style={styles.outlineButtonText}>{showAll ? 'Show fewer' : `Show all ${instructors.length}`}</Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -422,99 +292,54 @@ function TutorList({ instructors, showAll, onToggleShowAll, styles, colors }: Tu
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
-  content: { padding: 16, paddingBottom: 40, gap: 16 },
-  card: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, shadowColor: '#000000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  flexCopy: { flex: 1, minWidth: 0 },
-  centerText: { textAlign: 'center' },
-  cardTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  content: { padding: ELEARNING_GUTTER, paddingBottom: 40, gap: 16 },
+  flex: { flex: 1, minWidth: 0 },
   muted: { color: colors.mutedText, fontSize: 13, lineHeight: 19 },
   meta: { color: colors.mutedText, fontSize: 12 },
+  eyebrow: { color: colors.accentText, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  card: { padding: 16, gap: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
+  sectionBlock: { gap: 10 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
+
+  searchBox: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 14, paddingRight: 4, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input },
+  searchInput: { flex: 1, minWidth: 0, minHeight: 44, color: colors.text, fontSize: 15, paddingVertical: 0 },
+  searchButton: { minHeight: 44, paddingHorizontal: 16, justifyContent: 'center', borderRadius: 10, backgroundColor: ELEARNING_ACTION_GREEN, overflow: 'hidden' },
+  searchButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
+
+  continueRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 12, overflow: 'hidden' },
+  continueThumb: { width: CONTINUE_THUMB_WIDTH, height: CONTINUE_THUMB_HEIGHT, borderRadius: 8, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
+  continueTitle: { color: colors.text, fontSize: 16, fontWeight: '800', lineHeight: 21 },
+  primaryButton: { minHeight: 48, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, backgroundColor: ELEARNING_ACTION_GREEN, overflow: 'hidden' },
+  primaryButtonText: { flexShrink: 1, color: '#ffffff', fontSize: 15, fontWeight: '800' },
+
+  shortcutGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  shortcut: { flexGrow: 1, flexBasis: '45%', minWidth: 0, minHeight: 64, paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
+  shortcutLabel: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  shortcutHint: { color: colors.mutedText, fontSize: 12, marginTop: 1 },
+  linkRow: { minHeight: 48, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, backgroundColor: colors.control, overflow: 'hidden', marginTop: -8 },
+  linkRowText: { color: colors.text, fontSize: 14, fontWeight: '700' },
+
+  announcement: { padding: 14, gap: 6, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
+  announcementTitle: { color: colors.text, fontSize: 15, fontWeight: '800', lineHeight: 20 },
+  importantPill: { alignSelf: 'flex-start', overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: colors.warningSurface, color: colors.warningText, fontSize: 12, fontWeight: '700' },
+
+  segment: { flexDirection: 'row', gap: 4, padding: 4, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface },
+  segmentItem: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, paddingHorizontal: 8, overflow: 'hidden' },
+  segmentItemActive: { backgroundColor: ELEARNING_ACTION_GREEN },
+  segmentText: { color: colors.secondaryText, fontSize: 14, fontWeight: '700' },
+  segmentTextActive: { color: '#ffffff' },
+
+  coursesBlock: { gap: 12 },
   chipRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  chip: { minHeight: 44, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
+  chipSecondary: { backgroundColor: colors.control, borderColor: colors.control },
+  chipSelected: { backgroundColor: ELEARNING_ACTION_GREEN, borderColor: ELEARNING_ACTION_GREEN },
+  chipText: { color: colors.secondaryText, fontSize: 14, fontWeight: '600' },
+  chipTextSelected: { color: '#ffffff', fontWeight: '700' },
+  outlineButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
+  outlineButtonText: { color: colors.accentText, fontSize: 14, fontWeight: '700' },
 
-  welcomeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  welcomeAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.control },
-  initialAvatar: { backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center' },
-  initialText: { color: '#ffffff', fontSize: 18, fontWeight: '600' },
-  welcomeTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
-  welcomeStatsRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', rowGap: 12, columnGap: 16 },
-  inlineStats: { flexDirection: 'row', gap: 20 },
-  inlineStat: { alignItems: 'center' },
-  inlineStatValue: { color: GREEN, fontSize: 16, fontWeight: '800' },
-  inlineStatLabel: { color: colors.mutedText, fontSize: 12 },
-  becomeInstructor: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: ELEARNING_ACTION_GREEN, borderRadius: 999, paddingHorizontal: 16 },
-  becomeInstructorText: { color: '#ffffff', fontSize: 14, fontWeight: '600' },
-  quickLinksDivider: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14, marginTop: 2 },
-  quickChip: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.control, paddingHorizontal: 16 },
-  quickChipText: { color: colors.secondaryText, fontSize: 14, fontWeight: '500' },
-
-  heroCard: { padding: 0, gap: 0, overflow: 'hidden' },
-  heroBanner: { height: 128, flexDirection: 'row', alignItems: 'center' },
-  heroLogo: { width: 96, alignItems: 'center', paddingLeft: 12 },
-  heroLogoImage: { width: 64, height: 64 },
-  heroLogoCaption: { color: colors.mutedText, fontSize: 10, fontStyle: 'italic' },
-  heroSlides: { position: 'absolute', right: 0, top: 0, bottom: 0, overflow: 'hidden' },
-  heroSlideCopy: { flex: 1, justifyContent: 'center', paddingRight: 24 },
-  heroSlideTitle: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
-  heroSlideSubtitle: { color: 'rgba(240,253,244,0.9)', fontSize: 12, marginTop: 4, maxWidth: 200 },
-  heroSlant: { position: 'absolute', left: 0, top: 0, width: 0, height: 0, borderTopWidth: 128, borderRightColor: 'transparent' },
-  heroSearchArea: { borderTopWidth: 1, borderTopColor: colors.border, padding: 16, gap: 12 },
-  searchPill: { height: 48, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, paddingLeft: 16, paddingRight: 6 },
-  searchInput: { flex: 1, color: colors.text, fontSize: 15, paddingVertical: 0 },
-  searchButton: { height: 36, justifyContent: 'center', borderRadius: 999, backgroundColor: ELEARNING_ACTION_GREEN, paddingHorizontal: 16 },
-  searchButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '600' },
-  popularRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  popularLabel: { color: colors.mutedText, fontSize: 12 },
-  popularChip: { minHeight: 32, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.successSurface, paddingHorizontal: 12 },
-  popularChipText: { color: colors.accentText, fontSize: 12, fontWeight: '500' },
-
-  errorCard: { backgroundColor: colors.destructiveSurface, borderRadius: 16, padding: 18, gap: 10 },
-  primaryPill: { alignSelf: 'flex-start', minHeight: 48, justifyContent: 'center', backgroundColor: ELEARNING_ACTION_GREEN, borderRadius: 999, paddingHorizontal: 18 },
-  primaryPillText: { color: '#ffffff', fontWeight: '700' },
-
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  countBadge: { color: colors.accentText, backgroundColor: colors.successSurface, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2, fontSize: 12, overflow: 'hidden' },
-  updatesEmpty: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.control, borderRadius: 12, padding: 14 },
-  updatesRow: { gap: 12 },
-  updateCard: { borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control, padding: 16, gap: 8 },
-  updateAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  updateAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.successSurface },
-  updateAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  updateAvatarText: { color: colors.accentText, fontWeight: '700' },
-  updateAuthor: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  importantPill: { alignSelf: 'flex-start', backgroundColor: colors.warningSurface, color: colors.warningText, fontSize: 11, fontWeight: '600', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
-  updateTitle: { color: colors.text, fontSize: 14, fontWeight: '600' },
-
-  sectionSwitch: { flexDirection: 'row', gap: 4, borderRadius: 999, backgroundColor: colors.surface, padding: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-  sectionSwitchItem: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 8 },
-  sectionSwitchItemActive: { backgroundColor: ELEARNING_ACTION_GREEN },
-  sectionSwitchText: { color: colors.secondaryText, fontSize: 14, fontWeight: '600' },
-  sectionSwitchTextActive: { color: '#ffffff' },
-  tabChip: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, backgroundColor: colors.surface, paddingHorizontal: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-  tabChipActive: { backgroundColor: colors.text, borderColor: colors.text },
-  tabChipText: { color: colors.secondaryText, fontSize: 14, fontWeight: '500' },
-  tabChipTextActive: { color: colors.canvas },
-
-  materialsCard: { padding: 12 },
-  categoryPill: { minHeight: 40, justifyContent: 'center', borderRadius: 999, backgroundColor: colors.control, paddingHorizontal: 16 },
-  categoryPillActive: { backgroundColor: ELEARNING_ACTION_GREEN },
-  categoryPillText: { color: colors.secondaryText, fontSize: 14, fontWeight: '500' },
-  categoryPillTextActive: { color: '#ffffff' },
-  subcategoryRow: { marginTop: -2 },
-  subcategoryChip: { minHeight: 36, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 },
-  subcategoryChipActive: { borderColor: GREEN, backgroundColor: colors.successSurface },
-  subcategoryText: { color: colors.secondaryText, fontSize: 12 },
-  subcategoryTextActive: { color: colors.accentText, fontWeight: '600' },
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: 4 },
-  courseList: { gap: 12 },
-  emptyState: { alignItems: 'center', paddingVertical: 28, gap: 6 },
-  viewAllButton: { minHeight: 48, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, justifyContent: 'center', alignItems: 'center' },
-  viewAllText: { color: colors.accentText, fontSize: 14, fontWeight: '600' },
-
-  tutorList: { gap: 14 },
-  tutorRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  tutorAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.successSurface },
-  tutorAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  tutorEmpty: { paddingVertical: 8 },
+  tutorRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  tutorName: { color: colors.text, fontSize: 15, fontWeight: '700' },
 });
