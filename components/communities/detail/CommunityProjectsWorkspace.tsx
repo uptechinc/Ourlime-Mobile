@@ -117,7 +117,7 @@ export default function CommunityProjectsWorkspace({ communityId, refreshKey }: 
 
       {loading && list.active.length === 0 ? (
         <ActivityIndicator color={colors.accentText} style={{ marginVertical: 24 }} accessibilityLabel="Loading projects" />
-      ) : list.active.length === 0 ? (
+      ) : list.active.length === 0 && error ? null : list.active.length === 0 ? (
         <View style={styles.empty}>
           <FolderKanban size={36} color={colors.mutedText} />
           <Text style={styles.cardTitle}>No projects yet</Text>
