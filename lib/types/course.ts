@@ -31,6 +31,8 @@ export type Course = {
   featured?: boolean;
   difficulty?: number; // 1-5 scale
   language?: string;
+  /** The instructor requires learners to join a class (cohort) when they enroll. */
+  cohortRequired?: boolean;
   createdAt?: { seconds?: number; toDate?: () => Date } | string | Date;
   updatedAt?: { seconds?: number; toDate?: () => Date } | string | Date;
 };
@@ -65,6 +67,125 @@ export type CourseLesson = {
   allowLateSubmission?: boolean;
   /** Reference files an instructor attached to an assignment. */
   attachments?: AssignmentFile[];
+  /** Assignment rubric (criteria and levels); learners see it before they hand in. Points follow its total. */
+  rubric?: AssignmentRubric;
+  /** How late work loses points (none when the lesson defines no penalty). Enforced by the server when grading. */
+  latePenalty?: LatePenaltyPolicy;
+  /** Whether a new version may be handed in after a grade is published, how many times and until when. */
+  resubmission?: ResubmissionPolicy;
+};
+
+// ── Assignment teaching workflows (rubrics, late policy, resubmission, review requests) ──
+
+export type RubricLevel = { id: string; title: string; description: string; points: number };
+export type RubricCriterion = { id: string; title: string; description: string; levels: RubricLevel[]; maxPoints: number };
+/** courseLessons/{id}.rubric: totalPoints is the sum of each criterion's best level. */
+export type AssignmentRubric = { criteria: RubricCriterion[]; totalPoints: number };
+/** One criterion as graded (titles and points copied, so a later rubric edit never rewrites a published grade). */
+export type RubricScore = { criterionId: string; criterionTitle: string; levelId: string; levelTitle: string; points: number; maxPoints: number; feedback: string };
+/** percent: a fixed share of the score comes off late work; percent_per_day: that share per started day, up to maxPercent. */
+export type LatePenaltyType = 'none' | 'percent' | 'percent_per_day';
+export type LatePenaltyPolicy = { type: LatePenaltyType; percent: number; maxPercent: number };
+/** `until` is an ISO date (null: no resubmission deadline). */
+export type ResubmissionPolicy = { allowed: boolean; maxResubmissions: number; until: string | null };
+/** The penalty a published grade carries: the share and points taken off, or waived by the grader. */
+export type AppliedLatePenalty = { lateDays: number; percent: number; points: number; waived: boolean };
+export type GradeAppealStatus = 'open' | 'upheld' | 'adjusted' | 'withdrawn';
+/** One hand-in version (assignmentSubmissionVersions); the grade fields are present only once it is graded. */
+export type SubmissionVersion = {
+  id: string;
+  version: number;
+  textResponse: string;
+  files: AssignmentFile[];
+  submittedAt: string | null;
+  isLate: boolean;
+  lateDays: number;
+  status: 'submitted' | 'graded';
+  score: number | null;
+  rawScore: number | null;
+  maxScore: number | null;
+  latePenalty: AppliedLatePenalty | null;
+  rubricScores: RubricScore[];
+  feedback: string;
+  gradedAt: string | null;
+};
+export type GradeEventKind = 'graded' | 'regraded' | 'appeal_upheld' | 'appeal_adjusted';
+/** One published grade event (assignmentGradeHistory). */
+export type GradeEvent = {
+  id: string;
+  version: number;
+  event: GradeEventKind;
+  score: number;
+  rawScore: number;
+  maxScore: number;
+  latePenalty: AppliedLatePenalty | null;
+  rubricScores: RubricScore[];
+  feedback: string;
+  note: string;
+  actorRole: string;
+  createdAt: string | null;
+};
+/** A learner's request for a review of a published grade (gradeAppeals/{submissionId}_v{n}). */
+export type GradeAppeal = {
+  id: string;
+  submissionId: string;
+  courseId: string;
+  lessonId: string;
+  lessonTitle: string;
+  studentId: string;
+  studentName: string;
+  cohortId: string;
+  version: number;
+  reason: string;
+  status: GradeAppealStatus;
+  originalScore: number;
+  maxScore: number;
+  resultScore: number | null;
+  responseNote: string;
+  respondedByRole: string;
+  createdAt: string | null;
+  resolvedAt: string | null;
+};
+/** manageLearning submission_history: every version, published grade and review request of one submission. */
+export type SubmissionHistory = { submissionId: string; versions: SubmissionVersion[]; grades: GradeEvent[]; appeals: GradeAppeal[] };
+
+// ── Cohorts (classes) and scheduled sessions ──
+
+export type CohortAssistant = { id: string; name: string };
+/** courseCohorts/{id}: dates, capacity and assistants, never learners. */
+export type CourseCohort = {
+  id: string;
+  courseId: string;
+  name: string;
+  description: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  capacity: number | null;
+  memberCount: number;
+  enrollmentOpensAt: string | null;
+  enrollmentClosesAt: string | null;
+  status: 'active' | 'archived';
+  assistants: CohortAssistant[];
+};
+/** One learner on a staff roster (course_roster); names are display-safe (a minor shows as "First L."). */
+export type RosterLearner = { userId: string; displayName: string; cohortId: string; enrollmentStatus: string; progress: number; enrolledAt: string | null };
+export type SessionKind = 'live_class' | 'office_hours' | 'deadline';
+export type SessionRecording = 'not_recorded' | 'recorded';
+/** A scheduled course session (course_sessions); the join link is an external https meeting. */
+export type CourseSession = {
+  id: string;
+  courseId: string;
+  cohortId: string;
+  cohortName: string;
+  kind: SessionKind;
+  title: string;
+  description: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  joinUrl: string;
+  recording: SessionRecording;
+  recordingNote: string;
+  status: 'scheduled' | 'cancelled';
 };
 
 export type CourseQuizQuestionType = 'multiple_choice' | 'true_false' | 'short_answer';
@@ -154,6 +275,8 @@ export type Enrollment = {
   certificateUrl?: string;
   /** The learner's quiz record per quiz lesson id, kept by the server. */
   quizSummary?: { [lessonId: string]: QuizAttemptSummary };
+  /** The class (cohort) the learner is in; empty for self-paced study. */
+  cohortId?: string;
   course?: Course;
 };
 
@@ -175,14 +298,39 @@ export type CxcSubject = {
 };
 
 export type AssignmentFile = { name: string; url: string; size: number };
-export type AssignmentSubmission = { id: string; lessonId?: string; status: 'submitted' | 'graded'; textResponse: string; files: AssignmentFile[]; score?: number; maxScore?: number; feedback?: string; submittedAt?: string };
+/**
+ * The learner's current hand-in. Grade fields (score, rawScore, latePenalty, rubricScores, feedback, gradedAt) are set
+ * only once the grade is published (status 'graded'); a draft grade never reaches the learner.
+ */
+export type AssignmentSubmission = {
+  id: string;
+  lessonId?: string;
+  status: 'submitted' | 'graded';
+  textResponse: string;
+  files: AssignmentFile[];
+  score?: number;
+  maxScore?: number;
+  feedback?: string;
+  submittedAt?: string;
+  /** 1 for the first hand-in; each resubmission after a grade adds one. */
+  version?: number;
+  isLate?: boolean;
+  lateDays?: number;
+  resubmissionsUsed?: number;
+  appealStatus?: GradeAppealStatus;
+  rawScore?: number;
+  latePenalty?: AppliedLatePenalty;
+  rubricScores?: RubricScore[];
+  gradedAt?: string;
+};
 export type CourseReview = { id: string; userId: string; reviewerName: string; rating: number; comment: string; createdAt?: string };
 /** Which course file a short-lived signed link is asked for (manageLearning media_link). */
 export type CourseMediaRequest =
   | { kind: 'lesson'; lessonId: string }
   | { kind: 'resource'; resourceId: string }
   | { kind: 'lesson_attachment'; lessonId: string; index: number }
-  | { kind: 'submission_file'; submissionId: string; index: number };
+  /** `version`: a file of an earlier hand-in version, not the current one. */
+  | { kind: 'submission_file'; submissionId: string; index: number; version?: number };
 export type CourseMediaLink = { url: string; expiresAt: string | null; signed: boolean; name: string };
 export type CourseAnnouncement = { id: string; courseId: string; title: string; body: string; authorName: string; authorAvatar?: string; important: boolean; createdAt?: string };
 export type InstructorProfile = { id: string; name: string; avatar?: string; bio?: string; specialties: string[]; rating: number; totalStudents: number; totalCourses: number; isVerified: true };

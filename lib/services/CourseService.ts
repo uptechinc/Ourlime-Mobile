@@ -17,7 +17,18 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import { nativeSessionService } from './NativeSessionService';
 import { learnerPublicName } from './LearnerNameRules';
-import type { AssignmentFile, AssignmentSubmission, Course, CourseAnnouncement, CourseCompletion, CourseNextStep, CourseReview, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, CourseQuizQuestionType, CourseResource, CourseWorkspace, Enrollment, GradeRow, Gradebook, InstructorProfile, CxcSubject, LearningStats, QuizAttemptRecord, QuizAttemptResult, QuizAttemptSummary, QuizQuestionResult } from '@/lib/types/course';
+import {
+  decodeAppliedPenalty,
+  decodeCohort,
+  decodeGradeAppeal,
+  decodeLatePenalty,
+  decodeResubmission,
+  decodeRubric,
+  decodeRubricScores,
+  decodeSessions,
+  decodeSubmissionHistory,
+} from './AssignmentPolicy';
+import type { AssignmentFile, AssignmentSubmission, Course, CourseAnnouncement, CourseCohort, CourseCompletion, CourseNextStep, CourseReview, CourseCategory, CourseModule, CourseLesson, CourseQuizQuestion, CourseQuizQuestionType, CourseResource, CourseSession, CourseWorkspace, Enrollment, GradeAppeal, GradeRow, Gradebook, InstructorProfile, CxcSubject, LearningStats, QuizAttemptRecord, QuizAttemptResult, QuizAttemptSummary, QuizQuestionResult, SubmissionHistory } from '@/lib/types/course';
 
 type Data = DocumentData;
 type QueryDocument = QueryDocumentSnapshot<Data>;
@@ -327,12 +338,63 @@ export class CourseService {
     return legacyDocument ? this.enrollment(legacyDocument.id, legacyDocument.data()) : null;
   }
 
-  public async enrollInCourse(userId: string, courseId: string, operationId = userId + '_' + courseId): Promise<Enrollment> {
+  /**
+   * Enrolls through enrollInCourse. `cohortId` also puts the learner in that open class in the same server transaction
+   * (a course whose instructor requires a class refuses enrollment without one).
+   */
+  public async enrollInCourse(userId: string, courseId: string, operationId = userId + '_' + courseId, cohortId = ''): Promise<Enrollment> {
     await nativeSessionService.ensure(userId);
-    await httpsCallable<{ courseId: string; operationId: string }, MutationResponse>(getFunctions(app), 'enrollInCourse')({ courseId, operationId });
+    await httpsCallable<{ courseId: string; operationId: string; cohortId?: string }, MutationResponse>(getFunctions(app), 'enrollInCourse')({ courseId, operationId, ...(cohortId ? { cohortId } : {}) });
     const value = await this.getEnrollmentStatus(userId, courseId);
     if (!value) throw new Error('Enrollment could not be confirmed.');
     return value;
+  }
+
+  // ── Classes (cohorts), sessions and grade reviews ──
+
+  /** The course's classes, soonest first (courseCohorts; readable for a published course, no learner data in them). */
+  public async getCohorts(courseId: string): Promise<CourseCohort[]> {
+    this.requireUserId();
+    const snapshot = await getDocs(query(collection(this.database, 'courseCohorts'), where('courseId', '==', courseId), limit(50)));
+    return snapshot.docs.map((item) => decodeCohort(item.data(), item.id))
+      .filter((item): item is CourseCohort => item !== null)
+      .sort((left, right) => (left.startsAt ?? '9999').localeCompare(right.startsAt ?? '9999') || left.name.localeCompare(right.name));
+  }
+
+  /** An enrolled learner without a class joins an open one (join_cohort). Moving between classes goes through the instructor. */
+  public async joinCohort(courseId: string, cohortId: string): Promise<void> {
+    await this.manage({ action: 'join_cohort', courseId, cohortId });
+  }
+
+  /** Upcoming sessions the learner may see: whole-course ones and their own class's (course_sessions). */
+  public async getUpcomingSessions(courseId: string): Promise<CourseSession[]> {
+    const result = await this.manage<{ sessions?: unknown }>({ action: 'course_sessions', courseId });
+    return decodeSessions(result.sessions);
+  }
+
+  /** Every version, published grade and review request of the learner's own submission (submission_history). */
+  public async getSubmissionHistory(submissionId: string): Promise<SubmissionHistory> {
+    return decodeSubmissionHistory(await this.manage({ action: 'submission_history', submissionId }));
+  }
+
+  /** Asks for a review of a published grade; one request per graded version. A retry with the same reason returns the same request. */
+  public async requestGradeReview(submissionId: string, reason: string): Promise<GradeAppeal> {
+    const result = await this.manage<{ appeal?: unknown }>({ action: 'request_grade_review', submissionId, reason: reason.trim() });
+    const appeal = decodeGradeAppeal(result.appeal);
+    if (!appeal) throw new Error('The review request was not confirmed. Pull down to refresh.');
+    return appeal;
+  }
+
+  public async withdrawGradeReview(appealId: string): Promise<void> {
+    await this.manage({ action: 'withdraw_grade_review', appealId });
+  }
+
+  private async manage<Result = unknown>(request: { action: string } & { [field: string]: unknown }): Promise<Result> {
+    const userId = this.requireUserId();
+    await nativeSessionService.ensure(userId);
+    const result = await httpsCallable<typeof request, Result>(getFunctions(app), 'manageLearning')(request);
+    nativeSessionService.assertOwner(userId);
+    return result.data;
   }
 
   public async getMyEnrollments(userId: string): Promise<Enrollment[]> {
@@ -408,11 +470,25 @@ export class CourseService {
     return item ? this.submission(item.id, item.data()) : null;
   }
 
+  /**
+   * The learner's submission. Grade fields are read only once the grade is published (status 'graded'): older records
+   * can still carry a draft score, and a learner must never see a grade the instructor has not released.
+   */
   private submission(id: string, data: Data): AssignmentSubmission {
+    const isGraded = data.status === 'graded';
+    const appealStatus = data.appealStatus === 'open' || data.appealStatus === 'upheld' || data.appealStatus === 'adjusted' || data.appealStatus === 'withdrawn' ? data.appealStatus : undefined;
+    const latePenalty = isGraded ? decodeAppliedPenalty(data.latePenalty) : null;
+    const rubricScores = isGraded ? decodeRubricScores(data.rubricScores) : [];
     return {
-      id, lessonId: this.optionalText(data.lessonId), status: data.status === 'graded' ? 'graded' : 'submitted', textResponse: this.text(data.textResponse), files: this.files(data.files),
-      score: typeof data.score === 'number' ? data.score : undefined, maxScore: typeof data.maxScore === 'number' ? data.maxScore : undefined,
-      feedback: this.optionalText(data.feedback), submittedAt: this.timestamp(data.submittedAt ?? data.createdAt),
+      id, lessonId: this.optionalText(data.lessonId), status: isGraded ? 'graded' : 'submitted', textResponse: this.text(data.textResponse), files: this.files(data.files),
+      score: isGraded && typeof data.score === 'number' ? data.score : undefined, maxScore: typeof data.maxScore === 'number' ? data.maxScore : undefined,
+      feedback: isGraded ? this.optionalText(data.feedback) : undefined, submittedAt: this.timestamp(data.submittedAt ?? data.createdAt),
+      version: Math.max(1, this.integer(data.version) || 1), isLate: data.isLate === true, lateDays: this.integer(data.lateDays), resubmissionsUsed: this.integer(data.resubmissionsUsed),
+      ...(appealStatus ? { appealStatus } : {}),
+      ...(isGraded && typeof data.rawScore === 'number' ? { rawScore: data.rawScore } : {}),
+      ...(latePenalty ? { latePenalty } : {}),
+      ...(rubricScores.length > 0 ? { rubricScores } : {}),
+      ...(isGraded && this.timestamp(data.gradedAt) ? { gradedAt: this.timestamp(data.gradedAt) } : {}),
     };
   }
 
@@ -433,14 +509,16 @@ export class CourseService {
     return { name: file.name, url: await getDownloadURL(fileReference), size: file.size ?? blob.size };
   }
 
-  /** Hands an assignment in through manageLearning (submit_assignment), as the website does; resubmitting replaces it until graded. */
-  public async submitAssignment(courseId: string, lessonId: string, textResponse: string, files: AssignmentFile[]): Promise<void> {
-    const userId = this.requireUserId();
-    await nativeSessionService.ensure(userId);
-    await httpsCallable<{ action: 'submit_assignment'; courseId: string; lessonId: string; textResponse: string; files: AssignmentFile[] }, { submissionId: string }>(getFunctions(app), 'manageLearning')({
+  /**
+   * Hands an assignment in through manageLearning (submit_assignment), as the website does. The server enforces the due
+   * date and late policy, keeps every hand-in as a version, and after a published grade accepts a new version only when
+   * the assignment allows resubmissions. Repeating the same request changes the ungraded version, so a retry is safe.
+   */
+  public async submitAssignment(courseId: string, lessonId: string, textResponse: string, files: AssignmentFile[]): Promise<{ submissionId: string; version: number; isLate: boolean }> {
+    const result = await this.manage<{ submissionId?: unknown; version?: unknown; isLate?: unknown }>({
       action: 'submit_assignment', courseId, lessonId, textResponse: textResponse.trim(), files,
     });
-    nativeSessionService.assertOwner(userId);
+    return { submissionId: this.text(result.submissionId), version: Math.max(1, this.integer(result.version) || 1), isLate: result.isLate === true };
   }
 
   /**
@@ -594,7 +672,8 @@ export class CourseService {
       image: this.text(data.image), thumbnail: this.optionalText(data.thumbnail), rating: this.number(data.rating), totalRatings: this.integer(data.totalRatings),
       enrolledStudents: this.integer(data.enrolledStudents), status: 'published', isPublic: data.isPublic !== false, tags: this.textList(data.tags),
       prerequisites: this.textList(data.prerequisites), learningObjectives: this.textList(data.learningObjectives), featured: data.featured === true,
-      difficulty: this.integer(data.difficulty), language: this.optionalText(data.language), createdAt: this.timestamp(data.createdAt), updatedAt: this.timestamp(data.updatedAt) };
+      difficulty: this.integer(data.difficulty), language: this.optionalText(data.language), cohortRequired: data.cohortRequired === true,
+      createdAt: this.timestamp(data.createdAt), updatedAt: this.timestamp(data.updatedAt) };
   }
   private enrollment(id: string, data: Data): Enrollment | null {
     const status = data.status === 'active' || data.status === 'completed' || data.status === 'dropped' || data.status === 'suspended' ? data.status : null;
@@ -603,7 +682,8 @@ export class CourseService {
       status, progress: Math.max(0, Math.min(100, this.number(data.progress))), lastAccessed: this.timestamp(data.lastAccessed),
       // Both names hold completed lesson ids (website: completedModules); merge them like the website and the server do.
       completedLessons: [...new Set([...this.textList(data.completedLessons), ...this.textList(data.completedModules)])], certificateIssued: data.certificateIssued === true,
-      certificateUrl: this.optionalText(data.certificateUrl), quizSummary: this.quizSummaries(data.quizSummary) };
+      certificateUrl: this.optionalText(data.certificateUrl), quizSummary: this.quizSummaries(data.quizSummary),
+      ...(this.text(data.cohortId) ? { cohortId: this.text(data.cohortId) } : {}) };
   }
   private quizSummaries(value: unknown): { [lessonId: string]: QuizAttemptSummary } {
     const summaries: { [lessonId: string]: QuizAttemptSummary } = {};
@@ -632,7 +712,13 @@ export class CourseService {
       duration: this.integer(data.duration), order: this.integer(data.order),
       isRequired: data.isRequired === true, isPublished: data.isPublished !== false, isFree: data.isFree === true || data.isPreview === true,
       dueDate: this.timestamp(data.dueDate), points: typeof data.points === 'number' && Number.isFinite(data.points) ? Math.max(0, data.points) : undefined,
-      allowLateSubmission: data.allowLateSubmission === true, attachments: this.files(data.attachments) };
+      allowLateSubmission: data.allowLateSubmission === true, attachments: this.files(data.attachments), ...this.assignmentPolicies(data) };
+  }
+  /** An assignment's rubric, late penalty and resubmission policy (left out when the lesson has none). */
+  private assignmentPolicies(data: Data): Pick<CourseLesson, 'rubric' | 'latePenalty' | 'resubmission'> {
+    if (data.type !== 'assignment') return {};
+    const rubric = decodeRubric(data.rubric);
+    return { ...(rubric ? { rubric } : {}), latePenalty: decodeLatePenalty(data.latePenalty), resubmission: decodeResubmission(data.resubmission) };
   }
   /**
    * Every stored question, in server order: the server marks answers[index] against quizQuestions[index], so dropping

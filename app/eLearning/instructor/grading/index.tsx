@@ -3,7 +3,9 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindo
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
-import { BookOpen, ChevronRight, ClipboardCheck, GraduationCap } from 'lucide-react-native';
+import { BookOpen, ChevronRight, ClipboardCheck, GraduationCap, Users } from 'lucide-react-native';
+import { teachingWorkflowService } from '@/lib/services/TeachingWorkflowService';
+import type { StaffCourse } from '@/lib/types/instructor';
 import { InstructorDashboardSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { ELearningEmptyState, ELearningHeader, ELEARNING_GUTTER, StatusPill } from '@/components/eLearning/ELearningParts';
 import { pluralize } from '@/components/eLearning/course/workspaceHelpers';
@@ -35,14 +37,43 @@ export default function InstructorGradingCoursesScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [waitingCounts, setWaitingCounts] = useState<Map<string, number>>(new Map());
+  const [staffCourses, setStaffCourses] = useState<StaffCourse[]>([]);
+
+  const openStaffCourse = (staffCourse: StaffCourse) =>
+    router.push(`/eLearning/instructor/grading/${encodeURIComponent(staffCourse.courseId)}?title=${encodeURIComponent(staffCourse.title)}&cohorts=${encodeURIComponent(staffCourse.cohortIds.join(','))}` as Href);
+
+  const staffSection = staffCourses.length > 0 ? (
+    <View style={styles.staffSection}>
+      <Text accessibilityRole="header" style={styles.sectionTitle}>Classes you assist</Text>
+      {staffCourses.map((staffCourse) => (
+        <Pressable key={staffCourse.courseId} accessibilityRole="button" accessibilityLabel={`Grade ${staffCourse.title} as an assistant, ${pluralize(staffCourse.cohortIds.length, 'class', 'classes')}`} onPress={() => openStaffCourse(staffCourse)} android_ripple={{ color: 'rgba(15,23,42,0.12)' }} style={styles.card}>
+          <View style={styles.thumb}><Users size={20} color={colors.mutedText} /></View>
+          <View style={styles.flexText}>
+            <Text style={styles.courseTitle} numberOfLines={2}>{staffCourse.title}</Text>
+            <Text style={styles.muted}>Assistant · {pluralize(staffCourse.cohortIds.length, 'class', 'classes')}</Text>
+          </View>
+          <ChevronRight size={20} color={colors.mutedText} />
+        </Pressable>
+      ))}
+    </View>
+  ) : null;
 
   const load = useCallback(async () => {
     if (!activeUserId) { setIsLoading(false); setStatus('none'); return; }
     setError(null);
     try {
-      const [instructorStatus, myCourses] = await Promise.all([instructorService.getStatus(activeUserId), instructorService.getMyCourses(activeUserId)]);
+      const [instructorStatus, myCourses, assisted] = await Promise.all([
+        instructorService.getStatus(activeUserId),
+        instructorService.getMyCourses(activeUserId),
+        // Classes the member assists in (any member can be an assistant, instructor or not).
+        teachingWorkflowService.getStaffCourses(activeUserId).catch((staffError: unknown) => {
+          console.warn('[InstructorGradingCoursesScreen.load] Assisted courses unavailable:', staffError instanceof Error ? staffError.message : 'Unknown error');
+          return [] as StaffCourse[];
+        }),
+      ]);
       setStatus(instructorStatus);
       setCourses(myCourses);
+      setStaffCourses(assisted.filter((staffCourse) => !myCourses.some((course) => course.id === staffCourse.courseId)));
       // Counts are a guide for where to start; the list works without them.
       setWaitingCounts(await instructorService.getWaitingCounts(myCourses));
     } catch (loadError: unknown) {
@@ -66,7 +97,7 @@ export default function InstructorGradingCoursesScreen() {
       <ELearningHeader title="Grading" subtitle="Choose a course" onBack={() => router.back()} />
       {isLoading ? (
         <ScrollView contentContainerStyle={styles.scroll}><InstructorDashboardSkeleton /></ScrollView>
-      ) : status === 'none' ? (
+      ) : status === 'none' && staffCourses.length === 0 ? (
         <View style={styles.centerFill}>
           <ELearningEmptyState
             icon={<GraduationCap size={44} color={colors.accentText} />}
@@ -76,6 +107,10 @@ export default function InstructorGradingCoursesScreen() {
             onAction={() => router.replace('/eLearning/instructor/register' as Href)}
           />
         </View>
+      ) : status === 'none' ? (
+        <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => { setIsRefreshing(true); void load(); }} tintColor={colors.accent} />}>
+          <View style={[styles.column, { width: Math.min(width, CONTENT_MAX_WIDTH) }]}>{staffSection}</View>
+        </ScrollView>
       ) : error && courses.length === 0 ? (
         <View style={styles.centerFill}>
           <ELearningEmptyState icon={<ClipboardCheck size={40} color={colors.mutedText} />} title="Your courses could not load" hint={error} actionLabel="Try again" onAction={() => { setIsLoading(true); void load(); }} />
@@ -119,6 +154,7 @@ export default function InstructorGradingCoursesScreen() {
                 })}
               </>
             )}
+            {staffSection}
           </View>
         </ScrollView>
       )}
@@ -138,4 +174,6 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   thumb: { width: THUMB_WIDTH, height: THUMB_HEIGHT, borderRadius: 8, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
   courseTitle: { color: colors.text, fontSize: 15, fontWeight: '700', lineHeight: 20 },
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  staffSection: { gap: 12, marginTop: 8 },
+  sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '800' },
 });

@@ -4,6 +4,7 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { app, auth, db, storage } from '@/lib/firebaseConfig';
 import { settleAll } from '@/lib/utils/settleAll';
 import { nativeSessionService } from './NativeSessionService';
+import { decodeAppliedPenalty, decodeLatePenalty, decodeResubmission, decodeRubric, decodeRubricScores } from './AssignmentPolicy';
 import type { AssignmentFile } from '@/lib/types/course';
 import type {
   CourseReviewOutline,
@@ -80,10 +81,10 @@ type ManageLearningRequest =
   | { action: 'resubmit_course'; courseId: string }
   | { action: 'delete_course'; courseId: string }
   | { action: 'create_assessment'; kind: 'quiz'; courseId: string; title: string; description: string; questions: NewQuiz['questions']; maxAttempts?: number }
-  | {
+  | ({
     action: 'create_assessment'; kind: 'assignment'; courseId: string; title: string; description: string; instructions: string; dueDate: string;
     points: number; allowLateSubmission: boolean; attachments: AssignmentFile[];
-  }
+  } & Pick<NewAssignment, 'latePenalty' | 'resubmission' | 'rubric'>)
   | { action: 'grade_submission'; submissionId: string; score: number; feedback: string; draft: boolean }
   | { action: 'grade_drafts'; courseId: string }
   // Course announcements and insights (the course's instructor or an administrator).
@@ -190,6 +191,7 @@ export class InstructorService {
       prerequisites: this.texts(data.prerequisites),
       learningObjectives: this.texts(data.learningObjectives),
       durationHours: this.number(data.duration),
+      cohortRequired: data.cohortRequired === true,
     };
   }
 
@@ -299,15 +301,23 @@ export class InstructorService {
       action: 'create_assessment', kind: 'assignment', courseId: assignment.courseId, title: assignment.title.trim(), description: assignment.description.trim(),
       instructions: assignment.instructions.trim(), dueDate: assignment.dueDate.toISOString(), points: Math.max(0, Math.floor(assignment.points)),
       allowLateSubmission: assignment.allowLateSubmission, attachments: assignment.attachments,
+      // The server enforces the late policy, resubmissions and rubric; with a rubric the points follow its total.
+      latePenalty: assignment.latePenalty, resubmission: assignment.resubmission, rubric: assignment.rubric,
     });
     return result.lessonId;
   }
 
   // ── Grading ──
 
-  public async getSubmissions(courseId: string): Promise<InstructorSubmission[]> {
-    const snapshot = await getDocs(query(collection(db, 'assignmentSubmissions'), where('courseId', '==', courseId), limit(200)));
-    return snapshot.docs
+  /**
+   * The course's submissions. An assistant passes the cohorts they assist: the rules let them read only work whose
+   * cohortId is one of those, so the query names each cohort (one query per cohort).
+   */
+  public async getSubmissions(courseId: string, cohortIds?: string[]): Promise<InstructorSubmission[]> {
+    const snapshots = cohortIds
+      ? await Promise.all(cohortIds.slice(0, 10).map((cohortId) => getDocs(query(collection(db, 'assignmentSubmissions'), where('courseId', '==', courseId), where('cohortId', '==', cohortId), limit(200)))))
+      : [await getDocs(query(collection(db, 'assignmentSubmissions'), where('courseId', '==', courseId), limit(200)))];
+    return snapshots.flatMap((snapshot) => snapshot.docs)
       .map((submission) => this.toSubmission(submission.id, submission.data()))
       // Ungraded first, then newest.
       .sort((left, right) => Number(left.status === 'graded') - Number(right.status === 'graded') || (right.submittedAt ?? '').localeCompare(left.submittedAt ?? ''));
@@ -348,7 +358,11 @@ export class InstructorService {
     return Array.isArray(result.drafts) ? result.drafts.flatMap((entry: unknown): InstructorGradeDraft[] => {
       if (!entry || typeof entry !== 'object') return [];
       const draft = entry as DocumentData;
-      return this.text(draft.submissionId) ? [{ submissionId: this.text(draft.submissionId), lessonId: this.text(draft.lessonId), score: this.number(draft.score), feedback: this.text(draft.feedback) }] : [];
+      return this.text(draft.submissionId) ? [{
+        submissionId: this.text(draft.submissionId), lessonId: this.text(draft.lessonId), score: this.number(draft.score),
+        rawScore: typeof draft.rawScore === 'number' ? draft.rawScore : this.number(draft.score), feedback: this.text(draft.feedback),
+        rubricScores: decodeRubricScores(draft.rubricScores), waiveLatePenalty: draft.waiveLatePenalty === true,
+      }] : [];
     }) : [];
   }
 
@@ -462,8 +476,14 @@ export class InstructorService {
         id: lesson.id, moduleId: this.text(data.moduleId), title: this.text(data.title) || 'Lesson', type, order: this.number(data.order),
         duration: this.number(data.duration), points: typeof data.points === 'number' && data.points >= 0 ? data.points : undefined,
         dueDate: this.isoDate(data.dueDate), questionCount: Array.isArray(data.quizQuestions) ? data.quizQuestions.length : 0,
+        ...(type === 'assignment' ? this.assignmentPolicies(data) : {}),
       }];
     });
+  }
+
+  private assignmentPolicies(data: DocumentData): Pick<InstructorLesson, 'allowLateSubmission' | 'rubric' | 'latePenalty' | 'resubmission'> {
+    const rubric = decodeRubric(data.rubric);
+    return { allowLateSubmission: data.allowLateSubmission === true, ...(rubric ? { rubric } : {}), latePenalty: decodeLatePenalty(data.latePenalty), resubmission: decodeResubmission(data.resubmission) };
   }
 
   private async assessmentCounts(courseId: string): Promise<{ quizCount: number | null; assignmentCount: number | null }> {
@@ -529,6 +549,9 @@ export class InstructorService {
       return typeof value.url === 'string' ? [{ name: typeof value.name === 'string' ? value.name : 'Attachment', url: value.url, size: this.number(value.size) }] : [];
     }) : [];
     const studentName = typeof data.studentName === 'string' && data.studentName.trim() && !data.studentName.includes('@') ? data.studentName.trim() : 'Student';
+    const appealStatus = data.appealStatus === 'open' || data.appealStatus === 'upheld' || data.appealStatus === 'adjusted' || data.appealStatus === 'withdrawn' ? data.appealStatus : undefined;
+    const latePenalty = decodeAppliedPenalty(data.latePenalty);
+    const rubricScores = decodeRubricScores(data.rubricScores);
     return {
       id, files, studentName,
       lessonId: this.text(data.lessonId),
@@ -539,6 +562,14 @@ export class InstructorService {
       feedback: typeof data.feedback === 'string' && data.feedback ? data.feedback : undefined,
       submittedAt: this.isoDate(data.submittedAt ?? data.createdAt),
       gradedAt: this.isoDate(data.gradedAt),
+      version: typeof data.version === 'number' && data.version >= 1 ? Math.floor(data.version) : 1,
+      isLate: data.isLate === true,
+      lateDays: typeof data.lateDays === 'number' && data.lateDays > 0 ? Math.floor(data.lateDays) : 0,
+      cohortId: this.text(data.cohortId),
+      ...(appealStatus ? { appealStatus } : {}),
+      ...(typeof data.rawScore === 'number' ? { rawScore: data.rawScore } : {}),
+      ...(latePenalty ? { latePenalty } : {}),
+      ...(rubricScores.length > 0 ? { rubricScores } : {}),
     };
   }
 

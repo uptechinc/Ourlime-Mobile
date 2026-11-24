@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { CheckCircle2, ClipboardCheck, ClipboardList, FileText, HelpCircle, Inbox } from 'lucide-react-native';
+import { CheckCircle2, ClipboardCheck, ClipboardList, FileText, HelpCircle, History, Inbox, MessageSquareWarning, Settings2 } from 'lucide-react-native';
+import GradeEntryFields, { gradeEntryFrom, readGradeEntry, type GradeEntry } from '@/components/eLearning/instructor/GradeEntryFields';
+import ReviewResponseSheet from '@/components/eLearning/instructor/ReviewResponseSheet';
+import AssignmentSettingsSheet from '@/components/eLearning/instructor/AssignmentSettingsSheet';
+import SubmissionHistoryList from '@/components/eLearning/assignment/SubmissionHistoryList';
+import { describeLatePolicy, NO_LATE_PENALTY } from '@/lib/services/AssignmentPolicy';
+import { serverMessage, teachingWorkflowService } from '@/lib/services/TeachingWorkflowService';
+import type { GradeAppeal, SubmissionHistory } from '@/lib/types/course';
 import { InstructorGradingSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { FieldMessage } from '@/components/eLearning/instructor/InstructorForm';
 import { ELearningButton, ELearningChip, ELearningEmptyState, ELearningHeader, ELEARNING_GUTTER, StatusPill, formatWhen, type ELearningTone } from '@/components/eLearning/ELearningParts';
@@ -26,9 +33,15 @@ const FILTERS: { value: QueueFilter; label: string }[] = [
 ];
 const STATE_ORDER: Record<QueueState, number> = { needs: 0, draft: 1, graded: 2 };
 
-/** The score the server accepts: the lesson's points (as on the website), never above the submission's own maximum. */
-const maximumFor = (submission: InstructorSubmission, lesson: InstructorLesson | undefined): number =>
-  lesson?.points !== undefined && lesson.points > 0 ? Math.min(lesson.points, submission.maxScore) : submission.maxScore;
+/**
+ * The score the server accepts: with a rubric, its total; otherwise the lesson's points (as on the website), never above
+ * the submission's own maximum.
+ */
+const maximumFor = (submission: InstructorSubmission, lesson: InstructorLesson | undefined): number => {
+  if (lesson?.rubric) return lesson.rubric.totalPoints;
+  return lesson?.points !== undefined && lesson.points > 0 ? Math.min(lesson.points, submission.maxScore) : submission.maxScore;
+};
+const EMPTY_ENTRY: GradeEntry = { score: '', rubric: { levels: {}, feedback: {} }, waive: false };
 
 const stateOf = (submission: InstructorSubmission): QueueState =>
   submission.status === 'graded' ? 'graded' : submission.score !== undefined ? 'draft' : 'needs';
@@ -42,9 +55,12 @@ const timeOf = (submission: InstructorSubmission): number => (submission.submitt
  */
 export default function InstructorGradingScreen() {
   const router = useRouter();
-  const { courseId, title } = useLocalSearchParams<{ courseId: string; title?: string }>();
+  const { courseId, title, cohorts } = useLocalSearchParams<{ courseId: string; title?: string; cohorts?: string }>();
   const id = typeof courseId === 'string' ? courseId : '';
   const courseName = typeof title === 'string' && title ? title : undefined;
+  // An assistant opens this with the cohorts they assist: they read and grade only those cohorts' work.
+  const assistantCohortIds = useMemo(() => (typeof cohorts === 'string' && cohorts ? cohorts.split(',').filter(Boolean) : null), [cohorts]);
+  const isAssistant = assistantCohortIds !== null;
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -56,8 +72,13 @@ export default function InstructorGradingScreen() {
   const [filter, setFilter] = useState<QueueFilter | null>(null);
   const [itemFilter, setItemFilter] = useState<string>(ALL_ITEMS);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [score, setScore] = useState('');
+  const [entry, setEntry] = useState<GradeEntry>(EMPTY_ENTRY);
   const [feedback, setFeedback] = useState('');
+  const [note, setNote] = useState('');
+  const [reviews, setReviews] = useState<GradeAppeal[]>([]);
+  const [answeringReview, setAnsweringReview] = useState<GradeAppeal | null>(null);
+  const [settingsLesson, setSettingsLesson] = useState<InstructorLesson | null>(null);
+  const [histories, setHistories] = useState<Map<string, SubmissionHistory | 'loading' | 'error'>>(new Map());
   const [formError, setFormError] = useState<string | null>(null);
   const [formNotice, setFormNotice] = useState<string | null>(null);
   const [publishedNotice, setPublishedNotice] = useState<string | null>(null);
@@ -68,20 +89,26 @@ export default function InstructorGradingScreen() {
     setError(null);
     try {
       // Draft grades stay on the server until published (the student never sees them), so they are loaded separately.
-      const [items, lessons, drafts] = await Promise.all([
-        instructorService.getSubmissions(id),
+      const [items, lessons, drafts, openReviews] = await Promise.all([
+        instructorService.getSubmissions(id, assistantCohortIds ?? undefined),
         instructorService.getAssessments(id),
         instructorService.getGradeDrafts(id).catch((draftError: unknown) => {
           console.warn('[InstructorGradingScreen.load] Draft grades unavailable:', draftError instanceof Error ? draftError.message : 'Unknown error');
           return [];
         }),
+        teachingWorkflowService.getGradeReviews(id).catch((reviewError: unknown) => {
+          console.warn('[InstructorGradingScreen.load] Review requests unavailable:', reviewError instanceof Error ? reviewError.message : 'Unknown error');
+          return [] as GradeAppeal[];
+        }),
       ]);
       const draftsBySubmission = new Map(drafts.map((draft) => [draft.submissionId, draft]));
       setSubmissions(items.map((item) => {
         const draft = item.status === 'graded' ? undefined : draftsBySubmission.get(item.id);
-        return draft ? { ...item, score: draft.score, feedback: draft.feedback || undefined } : item;
+        return draft ? { ...item, score: draft.score, rawScore: draft.rawScore, feedback: draft.feedback || undefined, ...(draft.rubricScores.length ? { rubricScores: draft.rubricScores } : {}), waiveLatePenalty: draft.waiveLatePenalty } : item;
       }));
       setAssessments(lessons);
+      setReviews(openReviews);
+      setHistories(new Map());
     } catch (loadError: unknown) {
       console.error('[InstructorGradingScreen.load] Error:', loadError instanceof Error ? loadError.message : 'Unknown error');
       setError('Submissions could not be loaded. Check your connection and try again.');
@@ -89,9 +116,24 @@ export default function InstructorGradingScreen() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [id]);
+  }, [assistantCohortIds, id]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const toggleHistory = async (submissionId: string) => {
+    if (histories.has(submissionId)) {
+      setHistories((current) => { const next = new Map(current); next.delete(submissionId); return next; });
+      return;
+    }
+    setHistories((current) => new Map(current).set(submissionId, 'loading'));
+    try {
+      const history = await teachingWorkflowService.getSubmissionHistory(submissionId);
+      setHistories((current) => new Map(current).set(submissionId, history));
+    } catch (historyError: unknown) {
+      console.error('[InstructorGradingScreen.toggleHistory] Error:', historyError instanceof Error ? historyError.message : 'Unknown error');
+      setHistories((current) => new Map(current).set(submissionId, 'error'));
+    }
+  };
 
   const lessonsById = useMemo(() => new Map(assessments.map((lesson) => [lesson.id, lesson])), [assessments]);
   const counts = useMemo(() => {
@@ -118,34 +160,46 @@ export default function InstructorGradingScreen() {
 
   const handleOpen = (submission: InstructorSubmission) => {
     setOpenId(openId === submission.id ? null : submission.id);
-    setScore(submission.score !== undefined ? String(submission.score) : '');
+    setEntry(gradeEntryFrom(submission));
     setFeedback(submission.feedback ?? '');
+    setNote('');
     setFormError(null);
     setFormNotice(null);
   };
 
   const handleGrade = async (submission: InstructorSubmission, draft: boolean) => {
-    const maximum = maximumFor(submission, lessonsById.get(submission.lessonId));
-    const value = Number(score);
-    if (score.trim() === '' || !Number.isFinite(value) || value < 0 || value > maximum) {
-      setFormError(`Enter a score from 0 to ${maximum}.`);
-      return;
-    }
+    const lesson = lessonsById.get(submission.lessonId);
+    const maximum = maximumFor(submission, lesson);
+    const grade = readGradeEntry(entry, lesson, maximum);
+    if (!grade.ok) { setFormError(grade.error); return; }
     setSaving(draft ? 'draft' : 'publish');
     setFormError(null);
     setFormNotice(null);
     try {
-      await instructorService.grade(submission.id, value, feedback, draft);
-      setSubmissions((current) => current.map((item) => (item.id === submission.id ? { ...item, status: draft ? 'submitted' : 'graded', score: value, feedback: feedback.trim() || undefined } : item)));
+      const result = await teachingWorkflowService.grade({
+        submissionId: submission.id, version: submission.version, feedback, draft, waiveLatePenalty: entry.waive, note,
+        ...(grade.rubricScores ? { rubricScores: grade.rubricScores } : { score: grade.score }),
+      });
+      const rubric = lesson?.rubric;
+      setSubmissions((current) => current.map((item) => (item.id === submission.id ? {
+        ...item, status: draft ? 'submitted' : 'graded', score: result.score, rawScore: result.rawScore, maxScore: result.maxScore || item.maxScore,
+        feedback: feedback.trim() || undefined, waiveLatePenalty: entry.waive,
+        ...(rubric && grade.rubricScores ? { rubricScores: grade.rubricScores.map((score) => {
+          const criterion = rubric.criteria.find((entryCriterion) => entryCriterion.id === score.criterionId);
+          const level = criterion?.levels.find((entryLevel) => entryLevel.id === score.levelId);
+          return { criterionId: score.criterionId, criterionTitle: criterion?.title ?? '', levelId: score.levelId, levelTitle: level?.title ?? '', points: level?.points ?? 0, maxPoints: criterion?.maxPoints ?? 0, feedback: score.feedback };
+        }) } : {}),
+      } : item)));
+      setHistories((current) => { const next = new Map(current); next.delete(submission.id); return next; });
       if (draft) {
         setFormNotice('Draft saved. The student sees it once you publish the grade.');
       } else {
         setOpenId(null);
-        setPublishedNotice(`Grade published for ${submission.studentName}: ${value}/${maximum}.`);
+        setPublishedNotice(`Grade published for ${submission.studentName}: ${result.score}/${result.maxScore || maximum}.`);
       }
     } catch (saveError: unknown) {
       console.error('[InstructorGradingScreen.handleGrade] Error:', saveError instanceof Error ? saveError.message : 'Unknown error');
-      setFormError('The grade could not be saved. Please try again.');
+      setFormError(serverMessage(saveError, 'The grade could not be saved. Please try again.'));
     } finally {
       setSaving(null);
     }
@@ -161,7 +215,9 @@ export default function InstructorGradingScreen() {
     const itemKind = lesson?.type === 'quiz' ? 'Quiz' : lesson ? 'Assignment' : 'Lesson';
     const ItemIcon = lesson?.type === 'quiz' ? HelpCircle : FileText;
     const submittedWhen = formatWhen(submission.submittedAt);
-    const percent = score.trim() !== '' && Number.isFinite(Number(score)) && maximum > 0 ? Math.round((Number(score) / maximum) * 100) : null;
+    const isAppealOpen = submission.appealStatus === 'open';
+    const openReview = reviews.find((review) => review.submissionId === submission.id && review.status === 'open');
+    const history = histories.get(submission.id);
     return (
       <View key={submission.id} style={[styles.card, isOpen && styles.cardOpen]}>
         <Pressable
@@ -182,6 +238,13 @@ export default function InstructorGradingScreen() {
             <Text style={[styles.item, styles.flexText]} numberOfLines={1}>{itemKind} · {lesson?.title ?? 'Not in the course outline'}</Text>
           </View>
           <Text style={styles.muted} numberOfLines={1}>{submittedWhen ? `Submitted ${submittedWhen}` : 'Submitted'}{state === 'graded' && submission.gradedAt ? ` · graded ${formatWhen(submission.gradedAt)}` : ''}</Text>
+          {submission.version > 1 || submission.isLate || submission.appealStatus ? (
+            <View style={styles.pills}>
+              {submission.version > 1 ? <StatusPill label={`Version ${submission.version}`} tone="info" /> : null}
+              {submission.isLate ? <StatusPill label={`Late · ${submission.lateDays} ${submission.lateDays === 1 ? 'day' : 'days'}`} tone="warning" /> : null}
+              {isAppealOpen ? <StatusPill label="Review requested" tone="danger" /> : null}
+            </View>
+          ) : null}
         </Pressable>
         {isOpen ? (
           <View style={styles.cardBody}>
@@ -193,28 +256,44 @@ export default function InstructorGradingScreen() {
                 <Text style={styles.fileName} numberOfLines={2}>{file.name}</Text>
               </Pressable>
             ))}
-            <View style={styles.field}>
-              <Text style={styles.label}>Score</Text>
-              <View style={styles.scoreRow}>
-                <TextInput accessibilityLabel={`Score out of ${maximum}`} value={score} onChangeText={setScore} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.mutedText} maxLength={7} style={[styles.input, styles.scoreInput, formError ? styles.inputError : null]} />
-                <Text style={styles.scoreMax}>/ {maximum}</Text>
-                {percent !== null ? <Text style={styles.percent}>{percent}%</Text> : null}
+            {isAppealOpen ? (
+              // While a review request is open the grade is answered there (the server refuses a plain regrade).
+              <View style={styles.appealBox}>
+                <Text style={styles.label}>The learner asked for a review of this grade</Text>
+                {openReview?.reason ? <Text style={styles.response}>{openReview.reason}</Text> : null}
+                <ELearningButton label="Answer the review request" isDisabled={!openReview} onPress={() => setAnsweringReview(openReview ?? null)} />
               </View>
-            </View>
-            <View style={styles.field}>
-              <Text style={styles.label}>Feedback <Text style={styles.optional}>(optional)</Text></Text>
-              <TextInput accessibilityLabel="Feedback" value={feedback} onChangeText={setFeedback} multiline placeholder="What went well, and what to improve" placeholderTextColor={colors.mutedText} style={[styles.input, styles.multiline]} />
-            </View>
-            <FieldMessage error={formError ?? undefined} />
-            {formNotice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{formNotice}</Text> : null}
-            <View style={styles.buttonRow}>
-              {/* A published grade is changed by publishing again; it cannot go back to a private draft. */}
-              {state !== 'graded' ? (
-                <ELearningButton label="Save draft" variant="secondary" busyLabel="Saving…" isBusy={saving === 'draft'} isDisabled={saving !== null} onPress={() => void handleGrade(submission, true)} style={styles.flex} />
-              ) : null}
-              <ELearningButton label={state === 'graded' ? 'Update grade' : 'Publish grade'} busyLabel="Publishing…" isBusy={saving === 'publish'} isDisabled={saving !== null} onPress={() => void handleGrade(submission, false)} style={styles.flex} />
-            </View>
-            <Text style={styles.muted}>Drafts stay private. Publishing shows the score and feedback to the student.</Text>
+            ) : (
+              <>
+                <GradeEntryFields lesson={lesson} maximum={maximum} lateDays={submission.lateDays} value={entry} onChange={setEntry} hasError={Boolean(formError)} />
+                <View style={styles.field}>
+                  <Text style={styles.label}>Feedback <Text style={styles.optional}>(optional)</Text></Text>
+                  <TextInput accessibilityLabel="Feedback" value={feedback} onChangeText={setFeedback} multiline placeholder="What went well, and what to improve" placeholderTextColor={colors.mutedText} style={[styles.input, styles.multiline]} />
+                </View>
+                {state === 'graded' ? (
+                  <View style={styles.field}>
+                    <Text style={styles.label}>Why the grade changes <Text style={styles.optional}>(optional)</Text></Text>
+                    <TextInput accessibilityLabel="Why the grade changes" value={note} onChangeText={setNote} placeholder="Kept in the grade history" placeholderTextColor={colors.mutedText} maxLength={2000} style={styles.input} />
+                  </View>
+                ) : null}
+                <FieldMessage error={formError ?? undefined} />
+                {formNotice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{formNotice}</Text> : null}
+                <View style={styles.buttonRow}>
+                  {/* A published grade is changed by publishing again; it cannot go back to a private draft. */}
+                  {state !== 'graded' ? (
+                    <ELearningButton label="Save draft" variant="secondary" busyLabel="Saving…" isBusy={saving === 'draft'} isDisabled={saving !== null} onPress={() => void handleGrade(submission, true)} style={styles.flex} />
+                  ) : null}
+                  <ELearningButton label={state === 'graded' ? 'Update grade' : 'Publish grade'} busyLabel="Publishing…" isBusy={saving === 'publish'} isDisabled={saving !== null} onPress={() => void handleGrade(submission, false)} style={styles.flex} />
+                </View>
+                <Text style={styles.muted}>Drafts stay private. Publishing shows the score, rubric and feedback to the student and adds it to the grade history.</Text>
+              </>
+            )}
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: history !== undefined }} onPress={() => void toggleHistory(submission.id)} android_ripple={RIPPLE} style={styles.historyToggle}>
+              <History size={16} color={colors.text} />
+              <Text style={[styles.label, styles.flexText]}>Versions and grade history</Text>
+              <Text style={styles.link}>{history !== undefined ? 'Hide' : 'Show'}</Text>
+            </Pressable>
+            {history === 'loading' ? <ActivityIndicator color={colors.accent} /> : history === 'error' ? <Text style={styles.muted}>The history could not load.</Text> : history ? <SubmissionHistoryList history={history} currentVersion={submission.version} /> : null}
           </View>
         ) : null}
       </View>
@@ -263,6 +342,35 @@ export default function InstructorGradingScreen() {
                 </Pressable>
               ) : null}
 
+              {isAssistant ? <Text style={styles.muted}>You are an assistant here: you see and grade the work of your {assistantCohortIds.length === 1 ? 'class' : 'classes'} only.</Text> : null}
+
+              {reviews.length > 0 ? (
+                <View style={styles.reviewSection}>
+                  <View style={styles.headRow}>
+                    <MessageSquareWarning size={18} color={colors.warningText} />
+                    <Text accessibilityRole="header" style={[styles.label, styles.flexText]}>Review requests ({reviews.length})</Text>
+                  </View>
+                  {reviews.map((review) => (
+                    <View key={review.id} style={styles.reviewCard}>
+                      <Text style={styles.student} numberOfLines={1}>{review.studentName}</Text>
+                      <Text style={styles.item} numberOfLines={1}>{review.lessonTitle || 'Assignment'} · version {review.version} · {review.originalScore}/{review.maxScore}</Text>
+                      <Text style={styles.muted} numberOfLines={3}>{review.reason}</Text>
+                      <ELearningButton label="Respond" variant="secondary" onPress={() => setAnsweringReview(review)} />
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              {selectedItem?.type === 'assignment' && !isAssistant ? (
+                <Pressable accessibilityRole="button" accessibilityHint="Due date, late policy, resubmissions and rubric" onPress={() => setSettingsLesson(selectedItem)} android_ripple={RIPPLE} style={styles.settingsButton}>
+                  <Settings2 size={18} color={colors.text} />
+                  <View style={styles.flexText}>
+                    <Text style={styles.label}>Assignment settings</Text>
+                    <Text style={styles.muted} numberOfLines={2}>{describeLatePolicy(selectedItem.allowLateSubmission === true, selectedItem.latePenalty ?? NO_LATE_PENALTY)}{selectedItem.rubric ? ` · rubric of ${selectedItem.rubric.criteria.length}` : ''}</Text>
+                  </View>
+                </Pressable>
+              ) : null}
+
               <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.chips}>
                 {FILTERS.map((option) => <ELearningChip key={option.value} label={`${option.label} (${counts[option.value]})`} isSelected={activeFilter === option.value} onPress={() => { setFilter(option.value); setOpenId(null); }} />)}
               </ScrollView>
@@ -285,6 +393,14 @@ export default function InstructorGradingScreen() {
           </ScrollView>
         </KeyboardSafeView>
       )}
+      <ReviewResponseSheet
+        appeal={answeringReview}
+        lesson={answeringReview ? lessonsById.get(answeringReview.lessonId) : undefined}
+        submission={answeringReview ? submissions.find((item) => item.id === answeringReview.submissionId) : undefined}
+        onClose={() => setAnsweringReview(null)}
+        onAnswered={() => { setOpenId(null); void load(); }}
+      />
+      <AssignmentSettingsSheet lesson={settingsLesson} onClose={() => setSettingsLesson(null)} onSaved={() => void load()} />
     </SafeAreaView>
   );
 }
@@ -318,12 +434,14 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   response: { padding: 12, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.canvas, color: colors.text, fontSize: 15, lineHeight: 22 },
   fileRow: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
   fileName: { flex: 1, color: colors.text, fontSize: 14, fontWeight: '600' },
-  scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  scoreInput: { width: 104, textAlign: 'center', fontSize: 18, fontWeight: '700' },
-  scoreMax: { color: colors.secondaryText, fontSize: 16, fontWeight: '600' },
-  percent: { marginLeft: 'auto', color: colors.mutedText, fontSize: 14, fontWeight: '700' },
   input: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 16 },
-  inputError: { borderColor: colors.destructiveText },
   multiline: { minHeight: 110, textAlignVertical: 'top' },
   buttonRow: { flexDirection: 'row', gap: 10 },
+  pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  appealBox: { padding: 12, gap: 8, borderRadius: 12, backgroundColor: colors.warningSurface },
+  historyToggle: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, overflow: 'hidden' },
+  link: { color: colors.accentText, fontSize: 14, fontWeight: '700' },
+  reviewSection: { padding: 12, gap: 10, borderRadius: 16, borderWidth: 1, borderColor: colors.warningText, backgroundColor: colors.surface },
+  reviewCard: { gap: 4, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  settingsButton: { minHeight: 60, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
 });

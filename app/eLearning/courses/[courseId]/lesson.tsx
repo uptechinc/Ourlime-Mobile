@@ -416,7 +416,7 @@ export default function LessonScreen() {
                   key={currentLesson.id}
                   userId={activeUserId}
                   courseId={id}
-                  lessonId={currentLesson.id}
+                  lesson={currentLesson}
                   onSubmitted={() => void courseService.getEnrollmentStatus(enrollment.userId, id).then(setEnrollment).catch(() => undefined)}
                   onSubmissionChange={(submission) => setIsAssignmentSubmitted(Boolean(submission))}
                 />

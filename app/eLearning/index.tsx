@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { BookOpen, BookText, Calendar, ChevronRight, ClipboardCheck, GraduationCap, Library, Megaphone, PlayCircle, Presentation, Search, Users } from 'lucide-react-native';
@@ -14,6 +14,7 @@ import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { useLearningOverview } from '@/lib/hooks/useLearningOverview';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import { courseService } from '@/lib/services/CourseService';
+import { teachingWorkflowService } from '@/lib/services/TeachingWorkflowService';
 import { COURSE_MAIN_CATEGORIES, getSubcategories } from '@/lib/constants/courseCategories';
 import type { CourseAnnouncement, Enrollment, InstructorProfile } from '@/lib/types/course';
 import type { LucideIcon } from 'lucide-react-native';
@@ -51,6 +52,16 @@ export default function ELearningScreen() {
   const [category, setCategory] = useState('All');
   const [subcategory, setSubcategory] = useState('');
   const [showAllTutors, setShowAllTutors] = useState(false);
+  // Members who assist in a class (courseStaff) grade that class's work even when they are not instructors.
+  const [isAssistant, setIsAssistant] = useState(false);
+  useEffect(() => {
+    if (!activeUserId) { setIsAssistant(false); return; }
+    let isCurrent = true;
+    teachingWorkflowService.getStaffCourses(activeUserId)
+      .then((courses) => { if (isCurrent) setIsAssistant(courses.length > 0); })
+      .catch((staffError: unknown) => console.warn('[ELearningHub.isAssistant] Error:', staffError instanceof Error ? staffError.message : 'Unknown error'));
+    return () => { isCurrent = false; };
+  }, [activeUserId]);
   const courses = useMemo(() => data?.courses ?? [], [data?.courses]);
   const enrollments = data?.enrollments ?? new Map<string, Enrollment>();
   const isInstructor = instructorStatus !== 'none';
@@ -150,10 +161,10 @@ export default function ELearningScreen() {
                   </Pressable>
                 ))}
               </View>
-              {isInstructor ? (
+              {isInstructor || isAssistant ? (
                 <Pressable accessibilityRole="button" onPress={() => router.push('/eLearning/instructor/grading' as Href)} android_ripple={RIPPLE} style={styles.linkRow}>
                   <ClipboardCheck size={18} color={colors.icon} />
-                  <Text numberOfLines={1} style={[styles.linkRowText, styles.flex]}>Grade your learners' work</Text>
+                  <Text numberOfLines={1} style={[styles.linkRowText, styles.flex]}>{isInstructor ? "Grade your learners' work" : "Grade your class's work"}</Text>
                   <ChevronRight size={18} color={colors.mutedText} />
                 </Pressable>
               ) : null}

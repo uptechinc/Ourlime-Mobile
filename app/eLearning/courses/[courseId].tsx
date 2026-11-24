@@ -52,7 +52,10 @@ import { courseService, isActiveEnrollment } from '@/lib/services/CourseService'
 import { useCourseWorkspace } from '@/lib/hooks/useCourseWorkspace';
 import { OURLIME_SITE_URL } from '@/lib/constants/site';
 import { contentShareService } from '@/lib/services/ContentShareService';
-import type { CourseLesson } from '@/lib/types/course';
+import CourseClassCard from '@/components/eLearning/course/CourseClassCard';
+import ClassPickerSheet from '@/components/eLearning/course/ClassPickerSheet';
+import { serverMessage } from '@/lib/services/TeachingWorkflowService';
+import type { CourseCohort, CourseLesson } from '@/lib/types/course';
 
 const LANGUAGE_NAMES: { [code: string]: string } = { en: 'English', es: 'Spanish', fr: 'French', pt: 'Portuguese', hi: 'Hindi', zh: 'Chinese' };
 
@@ -74,6 +77,8 @@ const HERO_MAX_HEIGHT = 280;
 const enrollErrorMessage = (error: unknown): string => {
   const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
   const message = error instanceof Error ? error.message : '';
+  // Class problems (full, closed, a class is required) come back in words the learner can act on.
+  if (code.endsWith('failed-precondition') && /class/i.test(message)) return serverMessage(error, 'This class cannot be joined right now.');
   if (code.endsWith('failed-precondition') || /payment/i.test(message)) return 'Payments are unavailable for this course in the app.';
   if (code.endsWith('not-found')) return 'This course is no longer available for enrollment.';
   if (code.endsWith('permission-denied') || code.endsWith('unauthenticated')) return 'E-Learning is not available for your account right now.';
@@ -106,6 +111,9 @@ export default function CourseDetailScreen() {
   const [activeTab, setActiveTab] = useState<CourseTab>('overview');
   const [enrolling, setEnrolling] = useState(false);
   const [dialogState, setDialogState] = useState<DialogState>({ visible: false, type: 'info', title: '', message: '' });
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [pickerCohorts, setPickerCohorts] = useState<CourseCohort[]>([]);
+  const [pickerError, setPickerError] = useState<string | null>(null);
 
   // Visitors get the website's About / Curriculum / Quizzes & Assignments / Reviews tabs; enrolled learners reach their
   // quizzes, assignments and the review form from the course home.
@@ -197,13 +205,34 @@ export default function CourseDetailScreen() {
       return;
     }
     setEnrolling(true);
+    // A course taught in classes asks which one to join first (or offers self-paced study unless a class is required).
+    const cohorts = await courseService.getCohorts(id).catch((cohortError: unknown) => {
+      console.warn('[CourseDetailScreen.handleEnrollOrResume] Classes unavailable:', cohortError instanceof Error ? cohortError.message : 'Unknown error');
+      return [] as CourseCohort[];
+    });
+    if (course.cohortRequired || cohorts.some((cohort) => cohort.status === 'active')) {
+      setPickerCohorts(cohorts);
+      setPickerError(null);
+      setIsPickerOpen(true);
+      setEnrolling(false);
+      return;
+    }
+    await enroll('');
+  };
+
+  /** cohortId '' enrolls without a class (self-paced). */
+  const enroll = async (cohortId: string) => {
+    if (!course || !activeUserId) return;
+    setEnrolling(true);
     try {
-      await courseService.enrollInCourse(activeUserId, id);
+      await courseService.enrollInCourse(activeUserId, id, activeUserId + '_' + id, cohortId);
+      setIsPickerOpen(false);
       await refresh(true);
-      setDialogState({ visible: true, type: 'success', title: 'You’re enrolled', message: `Welcome to ${course.title}. Your course home shows what to do next.` });
+      setDialogState({ visible: true, type: 'success', title: 'You’re enrolled', message: `Welcome to ${course.title}. Your course home shows ${cohortId ? 'your class and ' : ''}what to do next.` });
     } catch (enrollError: unknown) {
-      console.error('[CourseDetailScreen.handleEnrollOrResume] Error:', enrollError instanceof Error ? enrollError.message : 'Unknown error');
-      setDialogState({ visible: true, type: 'error', title: 'Enrollment failed', message: enrollErrorMessage(enrollError) });
+      console.error('[CourseDetailScreen.enroll] Error:', enrollError instanceof Error ? enrollError.message : 'Unknown error');
+      if (isPickerOpen) setPickerError(enrollErrorMessage(enrollError));
+      else setDialogState({ visible: true, type: 'error', title: 'Enrollment failed', message: enrollErrorMessage(enrollError) });
     } finally {
       setEnrolling(false);
     }
@@ -301,6 +330,10 @@ export default function CourseDetailScreen() {
                     );
                   })}
                 </ScrollView>
+
+                {activeTab === 'home' && isEnrolled && enrollment ? (
+                  <CourseClassCard courseId={id} enrollment={enrollment} onJoined={() => void refresh(true)} onOpenError={showOpenError} />
+                ) : null}
 
                 {activeTab === 'home' && isEnrolled && enrollment && workspace ? (
                   <StudentCourseDashboard
@@ -527,6 +560,17 @@ export default function CourseDetailScreen() {
         title={dialogState.title}
         message={dialogState.message}
         onClose={() => setDialogState((previous) => ({ ...previous, visible: false }))}
+      />
+      <ClassPickerSheet
+        visible={isPickerOpen}
+        title="Choose how to take this course"
+        cohorts={pickerCohorts}
+        allowSelfPaced={course?.cohortRequired !== true}
+        confirmLabel="Enroll for free"
+        isBusy={enrolling}
+        error={pickerError}
+        onConfirm={(cohortId) => void enroll(cohortId)}
+        onClose={() => setIsPickerOpen(false)}
       />
     </SafeAreaView>
   );

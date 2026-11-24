@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AlertCircle, Calendar, CheckCircle2, Clock, Download, FileText } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { courseService } from '@/lib/services/CourseService';
+import { describeLatePolicy, describeResubmission, NO_LATE_PENALTY, NO_RESUBMISSION } from '@/lib/services/AssignmentPolicy';
 import type { CourseLesson } from '@/lib/types/course';
 import { formatDate, formatFileSize, openCourseFile } from './workspaceHelpers';
 
@@ -55,6 +56,7 @@ export default function AssignmentDetails({ lesson, isSubmitted, onOpenError }: 
     danger: { background: colors.destructiveSurface, text: colors.destructiveText },
   }[state.tone];
   const StateIcon = state.tone === 'success' ? CheckCircle2 : state.tone === 'neutral' ? Clock : AlertCircle;
+  const resubmissionLine = describeResubmission(lesson.resubmission ?? NO_RESUBMISSION);
 
   const handleOpen = async (index: number, url: string) => {
     if (!(await openCourseFile({ kind: 'lesson_attachment', lessonId: lesson.id, index }, url))) onOpenError?.();
@@ -77,11 +79,14 @@ export default function AssignmentDetails({ lesson, isSubmitted, onOpenError }: 
         <Text style={styles.meta}>Due {formatDate(lesson.dueDate)}</Text>
         {countdown && !isSubmitted ? <Text style={[styles.countdown, isPastDue && { color: toneColors.text }]}>· {countdown}</Text> : null}
       </View>
-      {isPastDue && !isSubmitted ? (
-        <Text style={[styles.meta, { color: toneColors.text }]}>
-          {lesson.allowLateSubmission ? 'Late submissions are accepted for this assignment.' : 'The due date has passed. Check with your instructor before submitting.'}
+      {/* The late policy as the server enforces it: no penalty is mentioned unless the assignment defines one. */}
+      {lesson.dueDate ? (
+        <Text style={[styles.meta, isPastDue && !isSubmitted ? { color: toneColors.text } : null]}>
+          {isPastDue && !isSubmitted && !lesson.allowLateSubmission ? 'The due date has passed and this assignment no longer accepts work.' : describeLatePolicy(lesson.allowLateSubmission === true, lesson.latePenalty ?? NO_LATE_PENALTY)}
         </Text>
       ) : null}
+      {resubmissionLine ? <Text style={styles.meta}>{resubmissionLine}</Text> : null}
+      {lesson.rubric ? <Text style={styles.meta}>Graded with a rubric ({lesson.rubric.criteria.length} {lesson.rubric.criteria.length === 1 ? 'criterion' : 'criteria'}), shown below.</Text> : null}
       {attachments.length > 0 ? (
         <View style={styles.files}>
           <Text style={styles.label}>Reference files</Text>

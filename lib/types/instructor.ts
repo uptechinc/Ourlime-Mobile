@@ -1,4 +1,29 @@
-import type { AssignmentFile } from '@/lib/types/course';
+import type { AppliedLatePenalty, AssignmentFile, AssignmentRubric, GradeAppealStatus, LatePenaltyPolicy, ResubmissionPolicy, RubricScore } from '@/lib/types/course';
+
+/** The rubric editor's working copy: points stay text until the instructor saves. */
+export type RubricLevelDraft = { id: string; title: string; description: string; points: string };
+export type RubricCriterionDraft = { id: string; title: string; description: string; levels: RubricLevelDraft[] };
+/** The late-policy and resubmission inputs (text fields stay text until saved). */
+export type AssignmentPolicyDraft = {
+  allowLateSubmission: boolean;
+  penaltyType: LatePenaltyPolicy['type'];
+  penaltyPercent: string;
+  penaltyMaxPercent: string;
+  resubmissionAllowed: boolean;
+  maxResubmissions: string;
+  resubmissionUntil: Date | null;
+};
+/** update_assignment_settings: every field optional; rubric null removes it. */
+export type AssignmentSettingsUpdate = {
+  dueDate?: string;
+  allowLateSubmission?: boolean;
+  latePenalty?: LatePenaltyPolicy;
+  resubmission?: { allowed: boolean; maxResubmissions: number; until: string | null };
+  rubric?: { criteria: { id: string; title: string; description: string; levels: { id: string; title: string; description: string; points: number }[] }[] } | null;
+  points?: number;
+};
+/** A course the member assists in (courseStaff/{courseId}_{uid}): only the listed cohorts' work is theirs to grade. */
+export type StaffCourse = { courseId: string; title: string; cohortIds: string[] };
 
 /**
  * none: no instructors/{uid}; pending: applied, waiting for an administrator; verified: can publish; declined: an
@@ -46,6 +71,8 @@ export type InstructorCourseDetail = InstructorCourse & {
   prerequisites: string[];
   learningObjectives: string[];
   durationHours: number;
+  /** Learners must join a class (cohort) to enroll. */
+  cohortRequired: boolean;
 };
 
 export type InstructorLessonType = 'video' | 'text' | 'quiz' | 'assignment' | 'resource' | 'pdf' | 'document' | 'image' | 'audio';
@@ -60,6 +87,11 @@ export type InstructorLesson = {
   points?: number;
   dueDate?: string;
   questionCount: number;
+  /** Assignment policies (absent on quizzes and other lessons). */
+  allowLateSubmission?: boolean;
+  rubric?: AssignmentRubric;
+  latePenalty?: LatePenaltyPolicy;
+  resubmission?: ResubmissionPolicy;
 };
 
 export type InstructorModule = {
@@ -86,6 +118,17 @@ export type InstructorSubmission = {
   feedback?: string;
   submittedAt?: string;
   gradedAt?: string;
+  /** Hand-in version (1 = first; resubmissions add one). Sent back when grading so a newer version is never graded unseen. */
+  version: number;
+  isLate: boolean;
+  lateDays: number;
+  cohortId: string;
+  appealStatus?: GradeAppealStatus;
+  rawScore?: number;
+  latePenalty?: AppliedLatePenalty;
+  rubricScores?: RubricScore[];
+  /** A saved draft's late-penalty waiver (drafts only). */
+  waiveLatePenalty?: boolean;
 };
 
 export type QuizQuestionType = 'mcq' | 'tf' | 'short';
@@ -104,7 +147,8 @@ export type QuizQuestionInput = {
 export type NewQuiz = { courseId: string; title: string; description: string; questions: QuizQuestionInput[]; maxAttempts: number | null };
 
 /** A draft grade the instructor saved; it stays on the server until they publish it. */
-export type InstructorGradeDraft = { submissionId: string; lessonId: string; score: number; feedback: string };
+/** score is after the late penalty; rawScore before it (what the grader entered). */
+export type InstructorGradeDraft = { submissionId: string; lessonId: string; score: number; rawScore: number; feedback: string; rubricScores: RubricScore[]; waiveLatePenalty: boolean };
 
 /** One announcement of the instructor's course (courseAnnouncements; written through manageLearning). */
 export type InstructorAnnouncement = { id: string; courseId: string; title: string; body: string; important: boolean; authorName: string; createdAt?: string; editedAt?: string };
@@ -138,6 +182,10 @@ export type NewAssignment = {
   points: number;
   allowLateSubmission: boolean;
   attachments: AssignmentFile[];
+  latePenalty: LatePenaltyPolicy;
+  resubmission: { allowed: boolean; maxResubmissions: number; until: string | null };
+  /** Criteria with numeric points; null for points-only grading. */
+  rubric: AssignmentSettingsUpdate['rubric'];
 };
 
 export type ApplicationType = 'individual' | 'school' | 'training_company';

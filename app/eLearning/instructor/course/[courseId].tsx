@@ -3,7 +3,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindo
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { AlertCircle, BookOpen, ChevronRight, ClipboardCheck, ClipboardList, Clock, ExternalLink, Eye, EyeOff, HelpCircle, Lock, Megaphone, Send } from 'lucide-react-native';
+import { AlertCircle, BookOpen, ChevronRight, ClipboardCheck, ClipboardList, Clock, ExternalLink, Eye, EyeOff, HelpCircle, Lock, Megaphone, Send, Users } from 'lucide-react-native';
 import CustomModal from '@/components/ui/CustomModal';
 import { InstructorCourseSkeleton } from '@/components/eLearning/ELearningSkeletons';
 import { CourseRating, ELearningButton, ELearningEmptyState, ELearningHeader, ELEARNING_GUTTER, StatusPill } from '@/components/eLearning/ELearningParts';
@@ -258,6 +258,14 @@ export default function InstructorCourseScreen() {
               <View style={styles.flexText}>
                 <Text style={styles.rowButtonTitle}>Announcements</Text>
                 <Text style={styles.muted}>Post news and reminders for enrolled learners</Text>
+              </View>
+              <ChevronRight size={18} color={colors.mutedText} />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Classes and sessions" accessibilityHint="Classes, assistants, roster and scheduled sessions" onPress={() => router.push(`/eLearning/instructor/classes/${query}` as Href)} android_ripple={RIPPLE} style={styles.rowButton}>
+              <Users size={20} color={colors.icon} />
+              <View style={styles.flexText}>
+                <Text style={styles.rowButtonTitle}>Classes and sessions</Text>
+                <Text style={styles.muted}>Cohorts, assistants, roster, live classes and deadlines</Text>
               </View>
               <ChevronRight size={18} color={colors.mutedText} />
             </Pressable>

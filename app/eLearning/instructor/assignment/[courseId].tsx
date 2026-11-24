@@ -7,7 +7,11 @@ import * as DocumentPicker from 'expo-document-picker';
 import { ClipboardList, FileText, Trash2, Upload } from 'lucide-react-native';
 import CustomModal from '@/components/ui/CustomModal';
 import DateTimeField from '@/components/ui/DateTimeField';
-import { ErrorList, FieldMessage, FormField, FormSection, ToggleRow } from '@/components/eLearning/instructor/InstructorForm';
+import { ErrorList, FieldMessage, FormField, FormSection } from '@/components/eLearning/instructor/InstructorForm';
+import AssignmentPolicyFields from '@/components/eLearning/instructor/AssignmentPolicyFields';
+import RubricEditor from '@/components/eLearning/instructor/RubricEditor';
+import { buildPolicyInput, buildRubricInput, NO_LATE_PENALTY, NO_RESUBMISSION, policyDraftFrom } from '@/lib/services/AssignmentPolicy';
+import type { AssignmentPolicyDraft, RubricCriterionDraft } from '@/lib/types/instructor';
 import { ELearningButton, ELearningEmptyState, ELearningHeader, ELearningScrollView, ELEARNING_GUTTER, StickyActionBar } from '@/components/eLearning/ELearningParts';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { instructorService } from '@/lib/services/InstructorService';
@@ -54,7 +58,8 @@ export default function CreateAssignmentScreen() {
   const [instructions, setInstructions] = useState('');
   const [dueDate, setDueDate] = useState<Date | null>(defaultDueDate());
   const [points, setPoints] = useState('100');
-  const [allowLate, setAllowLate] = useState(false);
+  const [policy, setPolicy] = useState<AssignmentPolicyDraft>(() => policyDraftFrom(false, NO_LATE_PENALTY, NO_RESUBMISSION));
+  const [rubric, setRubric] = useState<RubricCriterionDraft[]>([]);
   const [attachments, setAttachments] = useState<PickedUpload[]>([]);
   const [showErrors, setShowErrors] = useState(false);
   const [fileNotice, setFileNotice] = useState<string | null>(null);
@@ -89,14 +94,20 @@ export default function CreateAssignmentScreen() {
     if (!instructions.trim()) found.instructions = 'Add instructions for students.';
     if (!dueDate) found.dueDate = 'Choose a due date and time.';
     const value = Number(points);
-    if (!Number.isInteger(value) || value < 1 || value > 10000) found.points = 'Points must be a whole number from 1 to 10000.';
+    // With a rubric the assignment is worth the rubric's total, so the points field is not used.
+    if (rubric.length === 0 && (!Number.isInteger(value) || value < 1 || value > 10000)) found.points = 'Points must be a whole number from 1 to 10000.';
     return found;
   };
+  const rubricInput = buildRubricInput(rubric);
+  const policyInput = buildPolicyInput(policy);
   const shownErrors = showErrors ? fieldErrors() : {};
-  const errorList = Object.values(shownErrors).filter((message): message is string => Boolean(message));
+  const errorList = [
+    ...Object.values(shownErrors).filter((message): message is string => Boolean(message)),
+    ...(showErrors ? [...policyInput.errors, ...rubricInput.errors] : []),
+  ];
 
   const handleSave = async () => {
-    const found = Object.values(fieldErrors()).filter(Boolean);
+    const found = [...Object.values(fieldErrors()).filter(Boolean), ...policyInput.errors, ...rubricInput.errors];
     setShowErrors(true);
     setSaveError(null);
     if (found.length > 0 || !id || !dueDate) { scrollRef.current?.scrollTo({ y: 0, animated: true }); return; }
@@ -108,7 +119,10 @@ export default function CreateAssignmentScreen() {
       }
       setProgress('Saving…');
       await instructorService.createAssignment({
-        courseId: id, title, description, instructions, dueDate, points: Number(points), allowLateSubmission: allowLate, attachments: uploaded,
+        // create_assessment checks points (0–10000) before it replaces them with the rubric's total.
+        courseId: id, title, description, instructions, dueDate, points: rubricInput.rubric ? Math.min(10000, rubricInput.totalPoints) : Number(points),
+        allowLateSubmission: policy.allowLateSubmission, attachments: uploaded,
+        latePenalty: policyInput.latePenalty, resubmission: policyInput.resubmission, rubric: rubricInput.rubric,
       });
       setIsDone(true);
     } catch (error: unknown) {
@@ -155,8 +169,19 @@ export default function CreateAssignmentScreen() {
                 <DateTimeField label="Due date" mode="datetime" required value={dueDate} onChange={setDueDate} placeholder="Choose the due date and time" minimumDate={new Date()} />
                 <FieldMessage error={shownErrors.dueDate} />
               </View>
-              <FormField label="Points" required value={points} onChange={(value) => setPoints(value.replace(/[^0-9]/g, ''))} keyboardType="number-pad" maxLength={5} hint="The highest score you can give." error={shownErrors.points} />
-              <ToggleRow label="Accept late work" description={allowLate ? 'After the due date, students see it as late and are told late work is accepted.' : 'After the due date, work not handed in shows as missing.'} value={allowLate} onChange={setAllowLate} />
+              {rubric.length === 0 ? (
+                <FormField label="Points" required value={points} onChange={(value) => setPoints(value.replace(/[^0-9]/g, ''))} keyboardType="number-pad" maxLength={5} hint="The highest score you can give." error={shownErrors.points} />
+              ) : (
+                <Text style={styles.hint}>Points follow the rubric: {rubricInput.totalPoints} in total.</Text>
+              )}
+            </FormSection>
+
+            <FormSection title="Late work and resubmissions" description="The server enforces these: late work is refused unless you accept it, and penalties apply when you grade.">
+              <AssignmentPolicyFields draft={policy} onChange={setPolicy} />
+            </FormSection>
+
+            <FormSection title="Rubric" description="Optional. Learners see it before handing in; you grade by picking one level per criterion.">
+              <RubricEditor criteria={rubric} onChange={setRubric} />
             </FormSection>
 
             <FormSection title="Reference files" description="Optional. PDF, Word, ZIP, images and more, up to 10 MB each.">
