@@ -107,6 +107,12 @@ const REMAINING_ADMIN_WORKSPACES = [
 		route: '/admin/jobs' as Href,
 	},
 	{
+		id: 'elearning-review',
+		title: 'E-Learning Review',
+		icon: 'book-open' as const,
+		route: '/admin/elearning-review' as Href,
+	},
+	{
 		id: 'game-content',
 		title: 'Game Content',
 		icon: 'map-pin' as const,

@@ -5,6 +5,13 @@ import { app, auth, db, storage } from '@/lib/firebaseConfig';
 import { nativeSessionService } from './NativeSessionService';
 import type { AssignmentFile } from '@/lib/types/course';
 import type {
+  CourseReviewOutline,
+  CourseReviewResult,
+  InstructorReviewResult,
+  LearningReviewDecision,
+  LearningReviewQueue,
+} from '@/lib/types/learningReview';
+import type {
   InstructorApplicant,
   InstructorApplication,
   InstructorCourse,
@@ -65,7 +72,12 @@ type ManageLearningRequest =
     action: 'create_assessment'; kind: 'assignment'; courseId: string; title: string; description: string; instructions: string; dueDate: string;
     points: number; allowLateSubmission: boolean; attachments: AssignmentFile[];
   }
-  | { action: 'grade_submission'; submissionId: string; score: number; feedback: string; draft: boolean };
+  | { action: 'grade_submission'; submissionId: string; score: number; feedback: string; draft: boolean }
+  // Administrator review (the server refuses anyone else).
+  | { action: 'review_queue' }
+  | { action: 'review_course_outline'; courseId: string }
+  | { action: 'review_instructor'; instructorId: string; decision: LearningReviewDecision; reason?: string }
+  | { action: 'review_course'; courseId: string; decision: LearningReviewDecision; reason?: string };
 
 const LESSON_TYPES: readonly InstructorLessonType[] = ['video', 'text', 'quiz', 'assignment', 'resource', 'pdf', 'document', 'image', 'audio'];
 const DOCUMENT_PREFIX: Record<InstructorDocumentKind, string> = { resume: 'resume', certificate: 'certificate', sample: 'sample', proof: 'proof' };
@@ -263,6 +275,28 @@ export class InstructorService {
   /** draft: saves the score and feedback without releasing them (the submission stays "submitted"). */
   public async grade(submissionId: string, score: number, feedback: string, draft: boolean): Promise<void> {
     await this.call({ action: 'grade_submission', submissionId, score, feedback: feedback.trim(), draft });
+  }
+
+  // ── Administrator review ──
+
+  /** Instructor applications and courses waiting for an administrator, oldest first (admin only on the server). */
+  public async getReviewQueue(): Promise<LearningReviewQueue> {
+    return this.call<LearningReviewQueue>({ action: 'review_queue' });
+  }
+
+  /** Modules and lessons of a course waiting for review; the rules hide them from clients until it is published. */
+  public async getCourseReviewOutline(courseId: string): Promise<CourseReviewOutline> {
+    return this.call<CourseReviewOutline>({ action: 'review_course_outline', courseId });
+  }
+
+  /** Approve verifies the instructor; decline keeps them unverified with the (required) reason. */
+  public async reviewInstructor(instructorId: string, decision: LearningReviewDecision, reason: string): Promise<InstructorReviewResult> {
+    return this.call<InstructorReviewResult>({ action: 'review_instructor', instructorId, decision, ...(decision === 'decline' ? { reason: reason.trim() } : {}) });
+  }
+
+  /** Approve publishes the course; decline returns it to draft with the (required) reason. */
+  public async reviewCourse(courseId: string, decision: LearningReviewDecision, reason: string): Promise<CourseReviewResult> {
+    return this.call<CourseReviewResult>({ action: 'review_course', courseId, decision, ...(decision === 'decline' ? { reason: reason.trim() } : {}) });
   }
 
   // ── Internals ──

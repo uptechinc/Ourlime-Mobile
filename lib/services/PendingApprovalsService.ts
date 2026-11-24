@@ -33,7 +33,9 @@ type SnapshotListener = (snapshot: PendingApprovalsSnapshot) => void;
 type CountedQueue = { kind: 'counted'; collectionName: string; constraints: QueryConstraint[] };
 /** A queue that also needs in-memory checks (deleted accounts, legacy listings): read a bounded page and filter. */
 type ScannedQueue = { kind: 'scanned'; collectionName: string; queries: QueryConstraint[][] };
-type FirestoreQueue = CountedQueue | ScannedQueue;
+/** A counted queue minus the documents an extra equality filter matches (declined applications): two exact server counts. */
+type ExcludingQueue = { kind: 'excluding'; collectionName: string; constraints: QueryConstraint[]; excluded: QueryConstraint[] };
+type FirestoreQueue = CountedQueue | ScannedQueue | ExcludingQueue;
 
 const CACHE_TTL_MS = 30_000;
 /** Documents read for queues that are filtered in memory; a full page means the count is "100+". */
@@ -48,7 +50,8 @@ const FIRESTORE_QUEUES: Readonly<{ [key in Exclude<PendingApprovalCategoryKey, '
   pets: { kind: 'counted', collectionName: 'petListings', constraints: [where('moderationStatus', '==', 'pending')] },
   jobs: { kind: 'counted', collectionName: 'jobs', constraints: [where('basic_info.status', '==', 'pending_review')] },
   courses: { kind: 'counted', collectionName: 'courses', constraints: [where('status', '==', 'pending_review')] },
-  instructors: { kind: 'counted', collectionName: 'instructors', constraints: [where('isVerified', '==', false)] },
+  // Declined applications (manageLearning review_instructor) stay unverified but are no longer waiting.
+  instructors: { kind: 'excluding', collectionName: 'instructors', constraints: [where('isVerified', '==', false)], excluded: [where('applicationStatus', '==', 'declined')] },
   identity: { kind: 'scanned', collectionName: 'users', queries: [[where('verificationStatus', '==', 'pending')]] },
   beta: { kind: 'counted', collectionName: 'betaApplications', constraints: [where('status', '==', 'pending')] },
   reports: { kind: 'counted', collectionName: 'reports', constraints: [where('status', 'in', [...OPEN_REPORT_STATUSES])] },
@@ -140,7 +143,30 @@ export class PendingApprovalsService {
     if (key === 'childSafety') return this.loadChildSafety();
     if (key === 'support') return this.loadSupport();
     const definition = FIRESTORE_QUEUES[key];
+    if (definition.kind === 'excluding') return this.loadExcluding(key, definition, mode);
     return definition.kind === 'counted' ? this.loadCounted(key, definition, mode) : this.loadScanned(key, definition);
+  }
+
+  private async loadExcluding(key: PendingApprovalCategoryKey, definition: ExcludingQueue, mode: LoadMode): Promise<ReadyQueue> {
+    const reference = collection(db, definition.collectionName);
+    const [allSnapshot, excludedSnapshot, preview] = await Promise.all([
+      getCountFromServer(query(reference, ...definition.constraints)),
+      getCountFromServer(query(reference, ...definition.constraints, ...definition.excluded)),
+      // A wider page than the preview, since excluded documents are dropped from it.
+      mode === 'details' ? getDocs(query(reference, ...definition.constraints, limit(SCAN_LIMIT))) : Promise.resolve(null),
+    ]);
+    const items = preview
+      ? preview.docs
+        .filter((document) => isPendingDocument(key, document.data() as PendingApprovalFields))
+        .map((document) => mapPendingDocument(key, document.id, document.data() as PendingApprovalFields))
+      : [];
+    return {
+      key,
+      status: 'ready',
+      count: Math.max(0, allSnapshot.data().count - excludedSnapshot.data().count),
+      countIsLowerBound: false,
+      items: sortPendingItems(items).slice(0, PENDING_PREVIEW_LIMIT),
+    };
   }
 
   private async loadCounted(key: PendingApprovalCategoryKey, definition: CountedQueue, mode: LoadMode): Promise<ReadyQueue> {

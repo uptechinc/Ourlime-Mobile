@@ -34,8 +34,8 @@ export const PENDING_APPROVAL_CATEGORIES: readonly PendingApprovalCategory[] = [
   { key: 'products', label: 'Market listings', section: 'market', icon: 'shopping-bag', reviewRoute: '/admin/products' as Href },
   { key: 'pets', label: 'Pet adoption listings', section: 'market', icon: 'heart', reviewRoute: '/admin/pet-adoption' as Href },
   { key: 'jobs', label: 'Job listings', section: 'jobs', icon: 'briefcase', reviewRoute: '/admin/jobs' as Href },
-  { key: 'courses', label: 'Courses', section: 'learning', icon: 'book-open', reviewRoute: null },
-  { key: 'instructors', label: 'Instructor applications', section: 'learning', icon: 'award', reviewRoute: null },
+  { key: 'courses', label: 'Courses', section: 'learning', icon: 'book-open', reviewRoute: '/admin/elearning-review?tab=courses' as Href },
+  { key: 'instructors', label: 'Instructor applications', section: 'learning', icon: 'award', reviewRoute: '/admin/elearning-review' as Href },
   { key: 'identity', label: 'Identity checks', section: 'members', icon: 'credit-card', reviewRoute: '/admin?section=users' as Href },
   { key: 'beta', label: 'Beta tester applications', section: 'members', icon: 'user-plus', reviewRoute: '/admin/testers' as Href },
   { key: 'reports', label: 'Reports', section: 'safety', icon: 'flag', reviewRoute: '/admin?section=moderation' as Href },
@@ -94,6 +94,8 @@ export function isPendingDocument(key: PendingApprovalCategoryKey, data: Pending
     return publicationState ? publicationState === 'pending' : readString(data.status) === 'pending';
   }
   if (key === 'identity') return readString(data.verificationStatus) === 'pending' && !data.deletedAt && !data.accountLifecycleHiddenAt;
+  // Declined applications (manageLearning review_instructor) stay unverified but are no longer waiting.
+  if (key === 'instructors') return data.isVerified !== true && readString(data.applicationStatus) !== 'declined';
   return true;
 }
 
