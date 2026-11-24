@@ -156,7 +156,22 @@ export type TeamMember = {
   status: 'online' | 'offline' | 'away';
   joinedAt?: string;
   membershipStatus?: ProjectMembershipStatus;
+  /** A pending invitation that came by email and expired (website decision D3); owners and admins can resend it. */
+  inviteExpired?: boolean;
   isOwner?: boolean;
+};
+
+/**
+ * An email invitation as a project's owner and admins see it (mutateProjectMembership "email_invites"). It expires 14
+ * days after it was sent; sending it again starts a new 14 days.
+ */
+export type ProjectEmailInvitation = {
+  id: string;
+  email: string;
+  role: 'admin' | 'member' | 'viewer';
+  status: 'pending' | 'expired';
+  /** ISO time it expires (or expired). */
+  expiresAt: string;
 };
 
 export type ProjectTeamMember = {

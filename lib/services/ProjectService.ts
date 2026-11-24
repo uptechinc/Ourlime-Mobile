@@ -45,6 +45,7 @@ import type {
   TaskTemplate,
   TaskTemplateInput,
   ProjectMembershipStatus,
+  ProjectEmailInvitation,
   ProjectMutationAction,
   ProjectMutationCapability,
   ProjectActivityCursor,
@@ -89,7 +90,7 @@ type ProjectDocument = {
   statusChangedAt?: unknown;
   statusChangedBy?: unknown;
   communityLink?: unknown;
-  teamMembers?: Record<string, { role?: unknown; membershipStatus?: unknown; invitedByName?: unknown }>;
+  teamMembers?: Record<string, { role?: unknown; membershipStatus?: unknown; invitedByName?: unknown; inviteExpiresAt?: unknown }>;
   memberUids?: string[];
 };
 
@@ -162,6 +163,8 @@ export class ProjectService {
     ).values()];
     const projects: ProjectRecord[] = projectDocuments
       .filter((projectSnapshot: QueryDocumentSnapshot) => !this.isProjectHidden(projectSnapshot.data()))
+      // An invitation that came by email and expired is no longer shown to the invitee (website decision D3).
+      .filter((projectSnapshot: QueryDocumentSnapshot) => !this.isInviteExpired((projectSnapshot.data() as ProjectDocument).teamMembers?.[userId]))
       .map((projectSnapshot: QueryDocumentSnapshot) => this.mapProject(projectSnapshot, userId));
     const ownerIds = [...new Set(projects.map((project) => project.ownerId).filter(Boolean))];
     const ownerEntries = await Promise.all(ownerIds.map(async (ownerId) => [ownerId, await this.resolveUserName(ownerId)] as const));
@@ -185,6 +188,8 @@ export class ProjectService {
     const project = this.mapProject(projectDocument as QueryDocumentSnapshot, userId);
     project.ownerName = await this.resolveUserName(project.ownerId);
     const data = projectDocument.data() as ProjectDocument;
+    // An expired email invitation is hidden from the invitee, as if it were never sent.
+    if (project.ownerId !== userId && this.isInviteExpired(data.teamMembers?.[userId])) throw new Error('Project not found');
     const rawMembers = data.teamMembers ?? {};
     const memberUserIds = Object.keys(rawMembers);
     const teamMembers: TeamMember[] = await Promise.all(
@@ -198,6 +203,7 @@ export class ProjectService {
           avatar: userProfile.avatar,
           role: this.readRole(memberData?.role),
           membershipStatus: this.readMembershipStatus(memberData?.membershipStatus, memberId === project.ownerId),
+          inviteExpired: memberId !== project.ownerId && this.isInviteExpired(memberData),
           status: 'offline',
           isOwner: memberId === project.ownerId,
         };
@@ -786,6 +792,34 @@ export class ProjectService {
     await this.membershipMutation({ action: 'resend', projectId, targetId: targetUserId });
   }
 
+  /**
+   * True for a pending invitation that came by email and is past its expiry (`inviteExpiresAt`, written by the server;
+   * same rule as the website's ProjectInviteRules.memberExpired). Invitations by account and accepted members never expire.
+   */
+  public isInviteExpired(member: { membershipStatus?: unknown; inviteExpiresAt?: unknown } | undefined, nowMs = Date.now()): boolean {
+    if (!member || member.membershipStatus === 'accepted' || typeof member.inviteExpiresAt !== 'string') return false;
+    const expiresAt = Date.parse(member.inviteExpiresAt);
+    return Number.isFinite(expiresAt) && expiresAt <= nowMs;
+  }
+
+  /** A project's email invitations, pending and expired (owners and admins only; the server refuses anyone else). */
+  public async listEmailInvites(projectId: string): Promise<ProjectEmailInvitation[]> {
+    const result = await this.membershipMutation({ action: 'email_invites', projectId });
+    const invitations = Array.isArray(result.invitations) ? result.invitations : [];
+    return invitations.flatMap((entry: unknown): ProjectEmailInvitation[] => {
+      const invitation = reliabilityDecoder.object(entry);
+      const id = this.readString(invitation.id); const email = this.readString(invitation.email);
+      if (!id || !email) return [];
+      const role = invitation.role === 'admin' || invitation.role === 'viewer' ? invitation.role : 'member';
+      return [{ id, email, role, status: invitation.status === 'expired' ? 'expired' : 'pending', expiresAt: this.readString(invitation.expiresAt) }];
+    });
+  }
+
+  /** Sends an email invitation again: a new 14-day invitation that counts toward the hourly invite limits. */
+  public async resendEmailInvite(projectId: string, invitation: ProjectEmailInvitation): Promise<void> {
+    await this.inviteMember(projectId, invitation.email, invitation.role);
+  }
+
   public async changeMemberRole(projectId: string, targetUserId: string, role: ProjectRole): Promise<void> {
     await this.membershipMutation({ action: 'role', projectId, targetId: targetUserId, role });
   }
@@ -797,7 +831,7 @@ export class ProjectService {
   public async transferOwnership(projectId: string, newOwnerId: string): Promise<void> {
     await this.membershipMutation({ action: 'transfer', projectId, targetId: newOwnerId });
   }
-  private async membershipMutation(input: { action: 'claim' | 'accept' | 'decline' | 'invite' | 'cancel' | 'resend' | 'role' | 'remove' | 'leave' | 'transfer' | 'create' | 'delete_project' | 'settings' | 'transition'; fields?: { name: string; description: string }; projectId?: string; targetId?: string; recipient?: string; role?: ProjectRole; planTier?: ProjectPlanTier; automationRules?: { [ruleId: string]: boolean }; operationId?: string; expectedStatus?: ProjectStatus; toStatus?: ProjectStatus; reason?: string }): Promise<{ claimed?: unknown }> {
+  private async membershipMutation(input: { action: 'claim' | 'email_invites' | 'accept' | 'decline' | 'invite' | 'cancel' | 'resend' | 'role' | 'remove' | 'leave' | 'transfer' | 'create' | 'delete_project' | 'settings' | 'transition'; fields?: { name: string; description: string }; projectId?: string; targetId?: string; recipient?: string; role?: ProjectRole; planTier?: ProjectPlanTier; automationRules?: { [ruleId: string]: boolean }; operationId?: string; expectedStatus?: ProjectStatus; toStatus?: ProjectStatus; reason?: string }): Promise<{ claimed?: unknown; invitations?: unknown }> {
     pageAccessService.assertMutation('/projectManagement');
     const ownerId = this.requireUserId();
     await nativeSessionService.ensure(ownerId);

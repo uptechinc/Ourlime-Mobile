@@ -48,7 +48,7 @@ import { projectExportService } from '@/lib/services/ProjectExportService';
 import { projectLifecycleRules } from '@/lib/services/ProjectLifecycleRules';
 import { DEFAULT_TASK_FILTERS, type TaskFilters, type TaskQuickFilter } from '@/lib/services/ProjectInsightRules';
 import type {
-  ActiveTaskTimer, Milestone, ProjectLoadError, ProjectRecord, ProjectRole, ProjectStatus, ProjectTeamMember, Status, Task, TaskTemplate, TeamMember,
+  ActiveTaskTimer, Milestone, ProjectEmailInvitation, ProjectLoadError, ProjectRecord, ProjectRole, ProjectStatus, ProjectTeamMember, Status, Task, TaskTemplate, TeamMember,
 } from '@/lib/types/project';
 
 type ModuleView = 'files' | 'timeline' | 'workload' | 'timesheets';
@@ -101,6 +101,9 @@ export default function ProjectBoardScreen() {
   const canWrite = writeCapability.allowed;
   const canInvite = inviteCapability.allowed;
   const canManageSettings = project?.role === 'owner' || project?.role === 'admin';
+
+  // Email invitations (pending and expired) for owners and admins, loaded with the Team section.
+  const [emailInvitations, setEmailInvitations] = useState<ProjectEmailInvitation[]>([]);
 
   // Sections, views and sheets
   const [section, setSection] = useState<ProjectSectionId>('overview');
@@ -188,6 +191,19 @@ export default function ProjectBoardScreen() {
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, [projectId, sessionReady]);
 
+  const loadEmailInvitations = useCallback(async () => {
+    if (!projectId || !canInvite) { setEmailInvitations([]); return; }
+    try {
+      setEmailInvitations(await projectService.listEmailInvites(projectId));
+    } catch (error: unknown) {
+      console.error('[ProjectBoardScreen.loadEmailInvitations] Error:', error);
+    }
+  }, [canInvite, projectId]);
+
+  useEffect(() => {
+    if (section === 'team') void loadEmailInvitations();
+  }, [loadEmailInvitations, section]);
+
   // A project created from the list arrives with ?invite=1: open the friend picker once (website "Initial Members").
   useEffect(() => {
     if (invite !== '1' || inviteOpenedRef.current || !project || !canInvite) return;
@@ -223,6 +239,7 @@ export default function ProjectBoardScreen() {
       setInviteOpen(false);
       toast.success('Invitation sent');
       void loadProject();
+      void loadEmailInvitations();
     } catch (error: unknown) {
       setFeedback({ title: 'Invitation not sent', message: error instanceof Error ? error.message : 'Could not send the invitation.', type: 'danger' });
     } finally {
@@ -492,7 +509,9 @@ export default function ProjectBoardScreen() {
                 await loadProject();
               }}
               onTransfer={async (member) => { await projectService.transferOwnership(projectId, member.id); await loadProject(); }}
-              onResendInvite={(member) => projectService.resendInvite(projectId, member.id)}
+              onResendInvite={async (member) => { await projectService.resendInvite(projectId, member.id); if (member.inviteExpired) await loadProject(); }}
+              emailInvitations={emailInvitations}
+              onResendEmailInvite={async (invitation) => { await projectService.resendEmailInvite(projectId, invitation); await loadEmailInvitations(); }}
               autoAssignEnabled={projectEntitlementService.isAutomationRuleEnabled(project, '1')}
               onToggleAutoAssign={handleToggleAutoAssign}
               onLeave={() => setLeaveConfirmOpen(true)}

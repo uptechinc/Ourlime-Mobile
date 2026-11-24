@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Switch, Text, View } from 'react-native';
-import { Crown, LogOut, MoreHorizontal, Send, Shield, UserMinus, UserPlus, Users, UserX } from 'lucide-react-native';
+import { Crown, LogOut, Mail, MoreHorizontal, Send, Shield, UserMinus, UserPlus, Users, UserX } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import CustomModal from '@/components/ui/CustomModal';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -8,7 +8,7 @@ import ProjectActionSheet from '@/components/projectManagement/ProjectActionShee
 import { ROLE_LABELS } from '@/components/projectManagement/ProjectCard';
 import { ProjectButton, ProjectIconButton, ProjectPill, ProjectSection, ProjectSheetRow } from '@/components/projectManagement/ProjectUiParts';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
-import type { ProjectRecord, ProjectRole, TeamMember } from '@/lib/types/project';
+import type { ProjectEmailInvitation, ProjectRecord, ProjectRole, TeamMember } from '@/lib/types/project';
 
 type ProjectTeamPanelProps = {
   project: ProjectRecord;
@@ -21,6 +21,9 @@ type ProjectTeamPanelProps = {
   onRemove: (member: TeamMember) => Promise<void>;
   onTransfer: (member: TeamMember) => Promise<void>;
   onResendInvite: (member: TeamMember) => Promise<void>;
+  /** Email invitations, pending and expired (loaded for owners and admins only). */
+  emailInvitations: ProjectEmailInvitation[];
+  onResendEmailInvite: (invitation: ProjectEmailInvitation) => Promise<void>;
   /** The one automation that runs today: new tasks with nobody on them go to the project owner. */
   autoAssignEnabled: boolean;
   onToggleAutoAssign: () => Promise<void>;
@@ -30,12 +33,13 @@ type ProjectTeamPanelProps = {
 type PendingAction = { kind: 'remove' | 'transfer'; member: TeamMember } | null;
 
 /** Members and invitations, role changes, transfer and removal (owners and admins), and leaving the project. */
-export default function ProjectTeamPanel({ project, teamMembers, currentUserId, canInvite, onInvite, onChangeRole, onRemove, onTransfer, onResendInvite, autoAssignEnabled, onToggleAutoAssign, onLeave }: ProjectTeamPanelProps) {
+export default function ProjectTeamPanel({ project, teamMembers, currentUserId, canInvite, onInvite, onChangeRole, onRemove, onTransfer, onResendInvite, emailInvitations, onResendEmailInvite, autoAssignEnabled, onToggleAutoAssign, onLeave }: ProjectTeamPanelProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [menuMember, setMenuMember] = useState<TeamMember | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
+  const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
   const [togglingRule, setTogglingRule] = useState(false);
   const isOwner = project.role === 'owner';
   const canManage = isOwner || project.role === 'admin';
@@ -62,6 +66,26 @@ export default function ProjectTeamPanel({ project, teamMembers, currentUserId, 
     }
   };
 
+  // Sending an email invitation again gives it a new 14 days (it counts toward the hourly invite limits).
+  const handleResendEmail = async (invitation: ProjectEmailInvitation): Promise<void> => {
+    if (resendingEmailId) return;
+    setResendingEmailId(invitation.id);
+    try {
+      await onResendEmailInvite(invitation);
+      toast.success(`Invitation sent again to ${invitation.email}`);
+    } catch (error: unknown) {
+      console.error('[ProjectTeamPanel.handleResendEmail] Error:', error);
+      toast.error(error instanceof Error ? error.message : 'The invitation could not be sent.');
+    } finally {
+      setResendingEmailId(null);
+    }
+  };
+
+  const formatExpiry = (iso: string): string => {
+    const date = new Date(iso);
+    return Number.isFinite(date.getTime()) ? date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
+  };
+
   const handleToggleRule = async (): Promise<void> => {
     if (togglingRule) return;
     setTogglingRule(true);
@@ -80,7 +104,7 @@ export default function ProjectTeamPanel({ project, teamMembers, currentUserId, 
           <View style={styles.inline}>
             {member.isOwner ? <Crown size={13} color="#b45309" /> : member.role === 'admin' ? <Shield size={13} color={colors.secondaryText} /> : null}
             <Text style={styles.memberRole}>{roleLabel}</Text>
-            {isPending ? <ProjectPill label="Invited" tone="warning" /> : null}
+            {isPending ? <ProjectPill label={member.inviteExpired ? 'Expired' : 'Invited'} tone={member.inviteExpired ? 'danger' : 'warning'} /> : null}
           </View>
         </View>
         {manageable ? (
@@ -108,6 +132,39 @@ export default function ProjectTeamPanel({ project, teamMembers, currentUserId, 
         </ProjectSection>
       ) : null}
 
+      {canManage && emailInvitations.length > 0 ? (
+        <ProjectSection title={`Email invitations (${emailInvitations.length})`} icon={<Mail size={18} color={colors.accentText} />}>
+          <Text style={styles.hint}>Each invitation lasts 14 days. They join once they sign in to Ourlime with this address verified.</Text>
+          <View style={{ gap: 4 }}>
+            {emailInvitations.map((invitation) => (
+              <View key={invitation.id} style={styles.memberRow}>
+                <View style={styles.emailIcon}><Mail size={18} color={colors.secondaryText} /></View>
+                <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                  <Text numberOfLines={1} style={styles.memberName}>{invitation.email}</Text>
+                  <View style={styles.inline}>
+                    <Text style={styles.memberRole}>{ROLE_LABELS[invitation.role]}</Text>
+                    {invitation.status === 'expired'
+                      ? <ProjectPill label="Expired" tone="danger" />
+                      : <Text style={styles.memberRole}>· Expires {formatExpiry(invitation.expiresAt)}</Text>}
+                  </View>
+                </View>
+                {isActive ? (
+                  <ProjectButton
+                    label="Resend"
+                    variant="secondary"
+                    isCompact
+                    isBusy={resendingEmailId === invitation.id}
+                    isDisabled={resendingEmailId !== null && resendingEmailId !== invitation.id}
+                    accessibilityLabel={`Resend the invitation to ${invitation.email}`}
+                    onPress={() => void handleResendEmail(invitation)}
+                  />
+                ) : null}
+              </View>
+            ))}
+          </View>
+        </ProjectSection>
+      ) : null}
+
       <ProjectSection title="Roles">
         <Text style={styles.hint}><Text style={styles.strong}>Owner</Text> and <Text style={styles.strong}>admins</Text> manage the team, details and status. <Text style={styles.strong}>Members</Text> add and change tasks and milestones. <Text style={styles.strong}>Viewers</Text> can read everything but change nothing.</Text>
       </ProjectSection>
@@ -127,7 +184,7 @@ export default function ProjectTeamPanel({ project, teamMembers, currentUserId, 
       <ProjectActionSheet visible={menuMember !== null} title={menuMember?.name ?? ''} subtitle={menuMember ? (menuIsPending ? `Invited as ${ROLE_LABELS[menuMember.role].toLowerCase()}` : ROLE_LABELS[menuMember.role]) : undefined} onClose={() => { if (!busy) setMenuMember(null); }}>
         {busy ? <ActivityIndicator color={colors.accent} style={{ marginVertical: 8 }} /> : null}
         {menuMember && menuIsPending ? <>
-          <ProjectSheetRow label="Send a reminder" icon={<Send size={18} color={colors.icon} />} onPress={() => { const member = menuMember; void run(() => onResendInvite(member), 'Reminder sent'); }} />
+          <ProjectSheetRow label={menuMember.inviteExpired ? 'Resend invitation' : 'Send a reminder'} detail={menuMember.inviteExpired ? 'This invitation expired' : undefined} icon={<Send size={18} color={colors.icon} />} onPress={() => { const member = menuMember; void run(() => onResendInvite(member), member.inviteExpired ? 'Invitation sent again' : 'Reminder sent'); }} />
           <ProjectSheetRow label="Cancel invitation" tone="danger" icon={<UserX size={18} color={colors.destructive} />} onPress={() => setPendingAction({ kind: 'remove', member: menuMember })} />
         </> : null}
         {menuMember && !menuIsPending ? <>
@@ -166,6 +223,7 @@ export default function ProjectTeamPanel({ project, teamMembers, currentUserId, 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },
   memberName: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  emailIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
   memberRole: { color: colors.mutedText, fontSize: 13 },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   hint: { color: colors.mutedText, fontSize: 13, lineHeight: 19 },
