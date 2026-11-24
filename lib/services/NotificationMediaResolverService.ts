@@ -74,6 +74,7 @@ export class NotificationMediaResolverService {
       type === 'community_rejected' ||
       type === 'community_removed' ||
       type === 'community_report' ||
+      type === 'community_project_link' ||
       type === 'role_change'
     ) {
       return 'community';
@@ -165,6 +166,7 @@ export class NotificationMediaResolverService {
       case 'event':
         return { icon: 'calendar', bg: '#ec4899', color: '#ffffff' };
       case 'project_invite':
+      case 'community_project_link':
         return { icon: 'folder', bg: '#8b5cf6', color: '#ffffff' };
       case 'marketplace_listing':
       case 'listing_review':

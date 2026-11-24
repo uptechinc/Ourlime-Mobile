@@ -27,6 +27,7 @@ import {
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebaseConfig';
 import { reliabilityDecoder } from './ReliabilityDecoderService';
+import { PROJECT_TIMER_DOCUMENT, projectTimerRules } from './ProjectTimerRules';
 import { accountLifecycleVisibilityService } from '@/lib/services/AccountLifecycleVisibilityService';
 import type {
   ActiveTaskTimer,
@@ -694,23 +695,47 @@ export class ProjectService {
     await deleteDoc(doc(this.database, 'projects', projectId, 'taskTemplates', templateId));
   }
 
-  // ── Task timer (users/{uid}.activeTimer, shared with the website) ──
+  // ── Task timer (users/{uid}/private/projectTimer, shared with the website; see ProjectTimerRules) ──
 
+  /**
+   * The member's running timer. It is private now; a timer an older build left on the public profile
+   * (users/{uid}.activeTimer) still shows until the next start or stop clears it.
+   */
   public subscribeToActiveTimer(onUpdate: (timer: ActiveTaskTimer | null) => void): () => void {
     const userId = this.requireUserId();
-    return onSnapshot(doc(this.database, 'users', userId), (snapshot) => {
-      const timer = snapshot.data()?.activeTimer as { taskId?: unknown; projectId?: unknown; startedAt?: unknown } | undefined;
+    let privateSource: { ready: boolean; exists: boolean; data: unknown } = { ready: false, exists: false, data: undefined };
+    let legacySource: { ready: boolean; value: unknown } = { ready: false, value: undefined };
+    const emit = (): void => {
+      if (!privateSource.ready || !legacySource.ready) return;
+      const timer = projectTimerRules.resolve({ privateExists: privateSource.exists, privateData: privateSource.data, legacy: legacySource.value });
       const startedAt = timer ? this.readDate(timer.startedAt) : null;
-      if (!timer || typeof timer.taskId !== 'string' || typeof timer.projectId !== 'string' || !startedAt || startedAt.getTime() === 0) { onUpdate(null); return; }
+      if (!timer || !startedAt || startedAt.getTime() === 0) { onUpdate(null); return; }
       onUpdate({ taskId: timer.taskId, projectId: timer.projectId, startedAt });
-    }, () => onUpdate(null));
+    };
+    const stopPrivate = onSnapshot(this.timerReference(userId), (snapshot) => {
+      privateSource = { ready: true, exists: snapshot.exists(), data: snapshot.data() };
+      emit();
+    }, () => {
+      // Unreadable (for example before the rules allowing it are live): fall back to the legacy field.
+      privateSource = { ready: true, exists: false, data: undefined };
+      emit();
+    });
+    const stopLegacy = onSnapshot(doc(this.database, 'users', userId), (snapshot) => {
+      legacySource = { ready: true, value: snapshot.data()?.activeTimer };
+      emit();
+    }, () => {
+      legacySource = { ready: true, value: undefined };
+      emit();
+    });
+    return () => { stopPrivate(); stopLegacy(); };
   }
 
   /** Website startTimer: persist the timer and move a To Do task to In Progress. */
   public async startTimer(projectId: string, task: Task): Promise<void> {
     const userId = this.requireUserId();
     pageAccessService.assertMutation('/projectManagement');
-    await setDoc(doc(this.database, 'users', userId), { activeTimer: { taskId: task.id, projectId, startedAt: serverTimestamp() } }, { merge: true });
+    await setDoc(this.timerReference(userId), { taskId: task.id, projectId, startedAt: serverTimestamp() });
+    await this.clearLegacyTimer(userId);
     if (task.status === 'todo') await this.updateTaskStatus(projectId, task.id, 'in-progress');
   }
 
@@ -719,16 +744,33 @@ export class ProjectService {
     const userId = this.requireUserId();
     const minutes = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 60000)) : 0;
     if (minutes > 0) await this.addTimeEntry(projectId, taskId, Math.min(minutes, 1440), 'Timer session');
-    await setDoc(doc(this.database, 'users', userId), { activeTimer: deleteField() }, { merge: true });
+    await deleteDoc(this.timerReference(userId));
+    await this.clearLegacyTimer(userId);
     return minutes;
   }
 
+  /** Stops the timer without logging time when its task is archived or deleted. */
   private async clearTimerFor(projectId: string, taskId: string): Promise<void> {
     const userId = this.requireUserId();
-    const snapshot = await getDoc(doc(this.database, 'users', userId)).catch(() => null);
-    const timer = snapshot?.data()?.activeTimer as { taskId?: unknown; projectId?: unknown } | undefined;
-    if (timer?.taskId === taskId && timer.projectId === projectId) {
-      await setDoc(doc(this.database, 'users', userId), { activeTimer: deleteField() }, { merge: true }).catch(() => undefined);
+    const [stored, profile] = await Promise.all([
+      getDoc(this.timerReference(userId)).catch(() => null),
+      getDoc(doc(this.database, 'users', userId)).catch(() => null),
+    ]);
+    const timer = projectTimerRules.resolve({ privateExists: Boolean(stored?.exists()), privateData: stored?.data(), legacy: profile?.data()?.activeTimer });
+    if (timer?.taskId !== taskId || timer.projectId !== projectId) return;
+    await deleteDoc(this.timerReference(userId)).catch(() => undefined);
+    await this.clearLegacyTimer(userId).catch(() => undefined);
+  }
+
+  private timerReference(userId: string) {
+    return doc(this.database, 'users', userId, 'private', PROJECT_TIMER_DOCUMENT);
+  }
+
+  /** Removes the legacy public-profile timer, if it is still there. */
+  private async clearLegacyTimer(userId: string): Promise<void> {
+    const profile = await getDoc(doc(this.database, 'users', userId)).catch(() => null);
+    if (profile && projectTimerRules.hasLegacy(profile.data()?.activeTimer)) {
+      await setDoc(doc(this.database, 'users', userId), { activeTimer: deleteField() }, { merge: true });
     }
   }
 

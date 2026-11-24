@@ -277,6 +277,23 @@ export class NotificationDestinationRegistry {
 		if (type === 'community_removed' || type === 'event_cancelled') {
 			return this.navigate(fallbackRoute, fallbackRoute, data);
 		}
+		// A project asking a Community to sponsor it: the owner and admins decide on the Community's Projects tab.
+		// Checked before the push's generic "notifications" kind so a tapped push opens the same place.
+		if (type === 'community_project_link') {
+			const linkCommunityId =
+				data.communityId ||
+				this.pathSegment(data.path || data.actionUrl, '/communities/');
+			return this.navigate(
+				linkCommunityId
+					? {
+							pathname: '/communities/[id]',
+							params: { id: linkCommunityId, tab: 'projects' },
+						}
+					: null,
+				fallbackRoute,
+				data
+			);
+		}
 		if (type === 'beta_management') {
 			const path = data.path || data.actionUrl || '';
 			const isAdministratorAlert =

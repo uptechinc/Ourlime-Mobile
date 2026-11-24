@@ -1,6 +1,6 @@
 export const NOTIFICATION_TYPES = [
   'friend_request', 'friend_accepted', 'friend_declined', 'follow', 'like', 'comment', 'repost', 'mention',
-  'community_invite', 'community_join_request', 'project_invite', 'role_change', 'community_report', 'report_action',
+  'community_invite', 'community_join_request', 'project_invite', 'community_project_link', 'role_change', 'community_report', 'report_action',
   'community_accepted', 'community_rejected', 'community_removed', 'event_cancelled', 'beta_management',
   'child_safety_case', 'support_ticket',
   'content_deleted_by_admin', 'content_restored_by_admin', 'appeal_approved', 'appeal_rejected',

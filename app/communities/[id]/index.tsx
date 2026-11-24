@@ -117,7 +117,7 @@ const EMPTY_DASHBOARD: ResourceState<CommunityDashboardData> = {
 
 export default function CommunityDetailScreen() {
 	const router = useRouter();
-	const params = useLocalSearchParams<{ id: string; dashboard?: string }>();
+	const params = useLocalSearchParams<{ id: string; dashboard?: string; tab?: string }>();
 	const identifier = Array.isArray(params.id)
 		? (params.id[0] ?? '')
 		: (params.id ?? '');
@@ -200,6 +200,15 @@ export default function CommunityDetailScreen() {
 		handledDashboardTargetRef.current = `${communityId}:${dashboardTarget}`;
 		setDashboardVisible(true);
 	}, [communityId, dashboardTarget]);
+
+	// tab=projects (a project link request notice) opens the Projects tab once per Community.
+	const handledTabTargetRef = useRef('');
+	const tabTarget = params.tab === 'projects' ? params.tab : undefined;
+	useEffect(() => {
+		if (!communityId || !tabTarget || handledTabTargetRef.current === `${communityId}:${tabTarget}`) return;
+		handledTabTargetRef.current = `${communityId}:${tabTarget}`;
+		setActiveTab(tabTarget);
+	}, [communityId, tabTarget]);
 
 	useEffect(() => {
 		if (!communityId || !community?.permissions.canView) return;

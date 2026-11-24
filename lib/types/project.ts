@@ -134,7 +134,7 @@ export type TaskTemplate = {
 
 export type TaskTemplateInput = Omit<TaskTemplate, 'id' | 'createdBy'>;
 
-/** users/{uid}.activeTimer (the website's persisted task timer). */
+/** The member's running task timer (users/{uid}/private/projectTimer; legacy users/{uid}.activeTimer), shared with the website. */
 export type ActiveTaskTimer = { taskId: string; projectId: string; startedAt: Date };
 
 /** Website project page automation rules (enabled flags persist in projects/{id}.automationRules). */

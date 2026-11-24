@@ -76,6 +76,7 @@ const FILTER_OPTIONS: { id: FilterCategory; label: string }[] = [
   { id: 'report_action', label: 'Report Updates' },
   { id: 'event_cancelled', label: 'Cancelled Events' },
   { id: 'project_invite', label: 'E-Project Invites' },
+  { id: 'community_project_link', label: 'Project Link Requests' },
 ];
 type NotificationSection = 'unread' | 'read';
 type NotificationListRow =
