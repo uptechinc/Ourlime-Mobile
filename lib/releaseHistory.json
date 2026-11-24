@@ -1,6 +1,24 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-24-1",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-24",
+      "notes": [
+        "E-Projects redesigned: start from a template (class project, event, volunteer campaign and more) with starter tasks and milestones, or a blank project.",
+        "Each project has an Overview (what needs attention, next steps, recent activity), Tasks as a list or a board you swipe through, Milestones and Team.",
+        "Archiving, completing and reopening a project now asks first and is recorded in the project's activity. Fixed: invites, role changes and transfers failing on many projects.",
+        "Removed project options that did nothing, such as public visibility, repeating tasks and some automations, and plan limits and Premium claims that weren't real.",
+        "E-Learning redesigned: Continue learning on the hub, a clearer course page that explains how you finish, and lessons that keep their formatting.",
+        "Quizzes are marked by Ourlime, so your score, the right answers and explanations show after each attempt. Your best score counts and every attempt is kept in Grades.",
+        "Quizzes and assignments count once you submit them. Handing in an assignment completes that lesson.",
+        "Instructors: clearer course states, the reviewer's note when a course isn't approved with a way to submit again, real enrolment and to-grade numbers, and an attempts limit for quizzes.",
+        "Administrators: an E-Learning review screen to approve or decline instructor applications and courses."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-23-8",
       "version": "1.3.2",
       "versionCode": 11,
