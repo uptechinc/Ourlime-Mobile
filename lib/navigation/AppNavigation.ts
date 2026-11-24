@@ -35,6 +35,7 @@ const APP_NAVIGATION_ITEMS: readonly AppNavigationItem[] = [
   { id: 'policies', label: 'Policies & Guidelines', ionicon: 'document-text', featherIcon: 'file-text', route: '/policies' as Href, pageRoute: '/policies', section: 'support' },
   { id: 'child-safety', label: 'Child Safety Standards', ionicon: 'shield-checkmark', featherIcon: 'shield', route: '/child-safety-standards' as Href, pageRoute: '/child-safety-standards', section: 'support' },
   { id: 'chat', label: 'Chat', ionicon: 'chatbubbles', featherIcon: 'message-circle', route: '/(tabs)/Chat', pageRoute: '/chat', section: 'account' },
+  { id: 'pending-approvals', label: 'Pending approvals', ionicon: 'checkmark-done-circle', featherIcon: 'check-square', route: '/admin/approvals' as Href, pageRoute: '/admin/approvals', section: 'administration', adminOnly: true },
   { id: 'admin', label: 'Admin Portal', ionicon: 'shield-checkmark', featherIcon: 'shield', route: '/admin' as Href, pageRoute: '/admin', section: 'administration', adminOnly: true },
 ] as const;
 

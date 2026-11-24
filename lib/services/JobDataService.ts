@@ -1,3 +1,4 @@
+import { settleAll } from '@/lib/utils/settleAll';
 import {
   addDoc,
   collection,
@@ -401,7 +402,7 @@ export class JobDataService {
     if (applicationIds.length === 0) throw new Error('Application IDs array is required');
     if (!EMPLOYER_STATUSES.has(status)) throw new Error('Invalid application status.');
     await this.requireOwnedJob(jobId, userId);
-    const results = await Promise.allSettled(applicationIds.map(async (applicationId) => {
+    const results = await settleAll(applicationIds.map(async (applicationId) => {
       const applicationRef = doc(db, 'jobApplications', applicationId);
       const application = await getDoc(applicationRef);
       if (application.data()?.basic_info?.jobId !== jobId) throw new Error('Application does not belong to this job');

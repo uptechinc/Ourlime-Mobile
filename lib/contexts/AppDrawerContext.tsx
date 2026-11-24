@@ -7,6 +7,8 @@ import { AuthService } from '@/lib/services/AuthService';
 import { getAppNavigationItems } from '@/lib/navigation/AppNavigation';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useProfileResource } from '@/lib/hooks/useProfileResource';
+import { usePendingApprovalsCount } from '@/lib/hooks/usePendingApprovalsCount';
+import { formatPendingBadge } from '@/lib/services/PendingApprovalsRules';
 import type { AppDrawerState, MenuItem } from '@/lib/types/componentProps';
 
 export type { AppDrawerState } from '@/lib/types/componentProps';
@@ -20,6 +22,8 @@ export function AppDrawerProvider({ children }: AppDrawerProviderProps) {
   const { authorization, getDecision, triggerOverlay } = usePageAccess();
   const user = authService.getCurrentUser();
   const { resource } = useProfileResource({ kind: 'own', userId: user?.uid ?? '' });
+  const { total: pendingApprovals } = usePendingApprovalsCount();
+  const pendingApprovalsBadge = formatPendingBadge(pendingApprovals);
   const [state, setState] = useState<AppDrawerState>('closed');
   const pendingRoute = useRef<MenuItem['route'] | null>(null);
 
@@ -71,7 +75,9 @@ export function AppDrawerProvider({ children }: AppDrawerProviderProps) {
         return { visible: decision.isVisibleInNavigation, status: decision.status, badge: decision.setting?.badgeText };
       },
     }).map((item): MenuItem => {
-      const menuItem: MenuItem = { id: item.id, title: item.label, icon: item.ionicon, route: item.route, badge: item.badge, section: item.section };
+      // The approvals link shows how many items are waiting instead of a page-access badge.
+      const badge = item.id === 'pending-approvals' ? pendingApprovalsBadge : item.badge;
+      const menuItem: MenuItem = { id: item.id, title: item.label, icon: item.ionicon, route: item.route, badge, section: item.section };
       return { ...menuItem, onPress: () => navigateAfterClose(menuItem) };
     }),
     {
@@ -80,7 +86,7 @@ export function AppDrawerProvider({ children }: AppDrawerProviderProps) {
         void authService.logout().then(() => router.replace('/(auth)/login'));
       },
     },
-  ], [authorization.isAdmin, close, getDecision, navigateAfterClose]);
+  ], [authorization.isAdmin, close, getDecision, navigateAfterClose, pendingApprovalsBadge]);
 
   const profile = resource.data?.profile;
   return (

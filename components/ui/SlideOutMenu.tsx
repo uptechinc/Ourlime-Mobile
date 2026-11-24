@@ -154,7 +154,7 @@ export default function SlideOutMenu({
     const administrationSection: SectionItem[] = administrationItems.map((menuItem) => ({
         id: menuItem.id,
         title: menuItem.title,
-        icon: 'shield-checkmark-outline',
+        icon: menuItem.id === 'pending-approvals' ? 'checkmark-done-circle-outline' : 'shield-checkmark-outline',
         iconColor: '#dc2626',
         iconBgColor: '#fee2e2',
         onPress: menuItem.onPress,

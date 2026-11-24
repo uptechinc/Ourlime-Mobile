@@ -9,6 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNotifications } from '@/lib/contexts/NotificationContext';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { usePendingApprovalsCount } from '@/lib/hooks/usePendingApprovalsCount';
+import { formatPendingBadge } from '@/lib/services/PendingApprovalsRules';
 
 type AppHeaderProps = {
     title?: string;
@@ -37,6 +39,9 @@ export default function AppHeader({
 }: AppHeaderProps) {
     const { unreadCount } = useNotifications();
     const { isDark } = useAppTheme();
+    // Administrators see how many items wait for approval on the menu button (0 and non-admins: no badge).
+    const { total: pendingApprovals } = usePendingApprovalsCount();
+    const pendingApprovalsBadge = formatPendingBadge(pendingApprovals);
     const surfaceColor = isDark ? '#0f172a' : '#ffffff';
     const controlColor = isDark ? '#1e293b' : '#f8f9fa';
     const contentColor = isDark ? '#f8fafc' : '#333333';
@@ -232,17 +237,53 @@ export default function AppHeader({
                         )}
                         <TouchableOpacity 
                             accessibilityRole="button"
-                            accessibilityLabel="Open navigation menu"
+                            accessibilityLabel={pendingApprovalsBadge ? `Open navigation menu, ${pendingApprovalsBadge} pending approvals` : 'Open navigation menu'}
                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                            onPress={onMenuPress} 
+                            onPress={onMenuPress}
                             style={{
                                 padding: 8,
                                 borderRadius: 8,
                                 backgroundColor: controlColor,
+                                position: 'relative',
                             }}
                             activeOpacity={0.7}
                         >
                             <Ionicons name="menu" size={24} color={contentColor} />
+                            {pendingApprovalsBadge ? (
+                                <View
+                                    pointerEvents="none"
+                                    style={{
+                                        position: 'absolute',
+                                        top: -4,
+                                        right: pendingApprovalsBadge.length > 2 ? -8 : pendingApprovalsBadge.length > 1 ? -6 : -3,
+                                        backgroundColor: '#c64d53',
+                                        borderRadius: 10,
+                                        minWidth: pendingApprovalsBadge.length > 2 ? 30 : pendingApprovalsBadge.length > 1 ? 26 : 20,
+                                        height: 20,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        paddingHorizontal: 4,
+                                        borderWidth: 2,
+                                        borderColor: surfaceColor,
+                                        elevation: 3,
+                                        flexDirection: 'row',
+                                    }}
+                                >
+                                    <Text
+                                        numberOfLines={1}
+                                        ellipsizeMode="clip"
+                                        style={{
+                                            color: '#ffffff',
+                                            fontSize: pendingApprovalsBadge.length > 2 ? 9 : 10.5,
+                                            fontWeight: '800',
+                                            textAlign: 'center',
+                                            includeFontPadding: false,
+                                        }}
+                                    >
+                                        {pendingApprovalsBadge}
+                                    </Text>
+                                </View>
+                            ) : null}
                         </TouchableOpacity>
                     </View>
                 </View>

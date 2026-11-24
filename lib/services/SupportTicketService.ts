@@ -49,8 +49,8 @@ export class SupportTicketService {
 	public async list(cursor?: string): Promise<SupportTicketPage> {
 		return appServerService.call<SupportTicketPage>('listSupportTickets', { ...(await this.identity()), ...(cursor ? { cursor } : {}) });
 	}
-	public listStaff(filter: SupportTicketFilter): Promise<SupportTicketPage> {
-		return appServerService.call<SupportTicketPage>('listStaffSupportTickets', { filter });
+	public listStaff(filter: SupportTicketFilter, limit?: number): Promise<SupportTicketPage> {
+		return appServerService.call<SupportTicketPage>('listStaffSupportTickets', limit ? { filter, limit } : { filter });
 	}
 	public async get(ticketId: string): Promise<SupportTicket> {
 		return appServerService.call<SupportTicket>('getSupportTicket', { ...(await this.identity()), ticketId });

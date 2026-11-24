@@ -1,3 +1,4 @@
+import { settleAll } from '@/lib/utils/settleAll';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import { AuthService, type UserProfile } from './AuthService';
 import { auth, db } from '@/lib/firebaseConfig';
@@ -46,7 +47,7 @@ export class SearchService {
         && readString(user.accountPrivacy) !== 'private'
         && user.isPrivate !== true;
     });
-    const visibilityResults = await Promise.allSettled(
+    const visibilityResults = await settleAll(
       candidates.map(async (candidateDocument) => ({
         candidateDocument,
         visible: await this.isSearchVisible(candidateDocument.id),
@@ -55,7 +56,7 @@ export class SearchService {
     const visibleCandidates = visibilityResults.flatMap((result) => (
       result.status === 'fulfilled' && result.value.visible ? [result.value.candidateDocument] : []
     )).slice(0, resultLimit);
-    const profileResults = await Promise.allSettled(
+    const profileResults = await settleAll(
       visibleCandidates.map((candidateDocument) => this.authService.getUserProfile(candidateDocument.id)),
     );
     return profileResults.flatMap((result): UserProfile[] => (

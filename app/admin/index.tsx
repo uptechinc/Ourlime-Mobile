@@ -22,6 +22,8 @@ import AdminSecurityWorkspace from '@/components/admin/AdminSecurityWorkspace';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
+import { usePendingApprovalsCount } from '@/lib/hooks/usePendingApprovalsCount';
+import { formatPendingCount } from '@/lib/services/PendingApprovalsRules';
 
 const adminMetricsService = AdminMetricsService.getInstance();
 
@@ -123,6 +125,7 @@ export default function AdminPortalScreen() {
 	const { section } = useLocalSearchParams<{ section?: string }>();
 	const { authorization, loading: accessLoading } = usePageAccess();
 	const { colors } = useAppTheme();
+	const pendingApprovals = usePendingApprovalsCount();
 	const [activeSection, setActiveSection] = useState<
 		'overview' | 'users' | 'moderation' | 'page_access' | 'security' | 'seller_review'
 	>('overview');
@@ -344,6 +347,36 @@ export default function AdminPortalScreen() {
 								style={{ flex: 1 }}
 								contentContainerStyle={{ padding: 20, gap: 16 }}
 							>
+								<TouchableOpacity
+									accessibilityRole="button"
+									accessibilityLabel={`Pending approvals, ${formatPendingCount(pendingApprovals.total, pendingApprovals.totalIsLowerBound)} waiting`}
+									onPress={() => router.push('/admin/approvals' as Href)}
+									activeOpacity={0.8}
+									style={[
+										styles.approvalsTile,
+										{ backgroundColor: colors.surface, borderColor: pendingApprovals.total > 0 ? '#047857' : colors.border },
+									]}
+								>
+									<View style={[styles.approvalsIcon, { backgroundColor: colors.successSurface }]}>
+										<Icon name="check-square" size={20} color={colors.successText} />
+									</View>
+									<View style={{ flex: 1 }}>
+										<Text style={[styles.pendingRowTitle, { marginLeft: 0, color: colors.text }]}>
+											Pending approvals
+										</Text>
+										<Text style={{ marginTop: 2, fontSize: 12, color: colors.mutedText }}>
+											{pendingApprovals.total > 0
+												? 'Registrations, listings, reports and more waiting for review'
+												: 'Nothing waiting for approval'}
+										</Text>
+									</View>
+									{pendingApprovals.total > 0 ? (
+										<Text style={styles.approvalsCount}>
+											{formatPendingCount(pendingApprovals.total, pendingApprovals.totalIsLowerBound)}
+										</Text>
+									) : null}
+									<Icon name="chevron-right" size={18} color={colors.mutedText} />
+								</TouchableOpacity>
 								<Text style={[styles.sectionTitle, { color: colors.text }]}>
 									Overview & Metrics
 								</Text>
@@ -536,6 +569,34 @@ const styles = StyleSheet.create({
 		borderBottomColor: '#e2e8f0',
 	},
 	backBtn: { padding: 4 },
+	approvalsTile: {
+		minHeight: 68,
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 12,
+		padding: 14,
+		borderRadius: 16,
+		borderWidth: 1,
+	},
+	approvalsIcon: {
+		width: 40,
+		height: 40,
+		borderRadius: 12,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	approvalsCount: {
+		minWidth: 28,
+		paddingHorizontal: 9,
+		paddingVertical: 4,
+		borderRadius: 999,
+		overflow: 'hidden',
+		textAlign: 'center',
+		backgroundColor: '#047857',
+		color: '#ffffff',
+		fontSize: 12,
+		fontWeight: '900',
+	},
 	headerTitle: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
 	sectionTitle: { fontSize: 16, fontWeight: '800', color: '#0f172a' },
 	grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },

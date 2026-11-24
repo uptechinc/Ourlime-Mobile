@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-23-8",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-23",
+      "notes": [
+        "Administrators: a new Pending approvals screen lists everything waiting for a decision (couriers, sellers, listings, jobs, courses, instructors, identity checks, reports and more), grouped by section.",
+        "The menu button and the Pending approvals menu item show how many items are waiting. The count refreshes every minute and when you come back to the app; nothing is sent as a notification.",
+        "Fixed: moving several applicants at once, loading profiles and search could fail on some phones because of an unsupported feature."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-23-7",
       "version": "1.3.2",
       "versionCode": 11,

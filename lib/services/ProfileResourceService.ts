@@ -1,3 +1,4 @@
+import { settleAll } from '@/lib/utils/settleAll';
 import { AuthService, type UserProfile } from './AuthService';
 import { ProfileService, type PublicProfileResult } from './ProfileService';
 import { RelationshipService } from './RelationshipService';
@@ -115,7 +116,7 @@ export class ProfileResourceService {
         await this.commit(identifier, { profile, stats: initialStats }, 'network');
 
         try {
-          const [networkStatsResult, postsResult] = await Promise.allSettled([
+          const [networkStatsResult, postsResult] = await settleAll([
             this.timeoutService.run(
               this.relationshipService.getNetworkStats(identifier.userId),
               'Profile network statistics',

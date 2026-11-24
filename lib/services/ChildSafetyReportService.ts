@@ -52,6 +52,8 @@ export class ChildSafetyReportService {
 			priority?: ChildSafetyPriority;
 			assignedReviewerId?: string;
 			cursor?: string;
+			/** Page size; the server allows 1–100 and defaults to 30. */
+			limit?: number;
 		} = {}
 	): Promise<ReportPage> {
 		const result = await appServerService.call<{ page: ReportPage }>('listChildSafetyCases', filters);

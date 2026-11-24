@@ -1,3 +1,4 @@
+import { settleAll } from '@/lib/utils/settleAll';
 import { AppState, NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { appServerService } from './AppServerService';
@@ -288,7 +289,7 @@ export class NativeCallService {
 
   public async unregisterTokens(): Promise<void> {
     const tokens = await this.readStoredTokens();
-    await Promise.allSettled(tokens.map((token) => appServerService.call('registerNativePush', { token: token.token, remove: true })));
+    await settleAll(tokens.map((token) => appServerService.call('registerNativePush', { token: token.token, remove: true })));
     await AsyncStorage.removeItem(TOKENS_KEY);
   }
 
