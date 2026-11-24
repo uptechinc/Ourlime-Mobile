@@ -112,6 +112,8 @@ export type Milestone = {
   color: string;
   completed: boolean;
   createdBy: string;
+  /** Member responsible for the milestone (optional; set on the website). */
+  ownerId?: string;
 };
 
 /** projects/{id}/taskTemplates/{templateId} (same fields the website writes). */
@@ -191,7 +193,29 @@ export type ProjectRecord = {
   /** When and by whom the status last changed through a lifecycle transition (null / '' for older projects). */
   statusChangedAt?: Date | null;
   statusChangedBy?: string;
+  /** The project's link to a sponsoring Community (server-written; at most one waiting or approved). */
+  communityLink?: ProjectCommunityLink | null;
 };
+
+/** projects/{id}.communityLink: 'declined' stays until the project asks again; an ended link is removed. */
+export type ProjectCommunityLink = { communityId: string; communityName: string; status: 'pending' | 'active' | 'declined' };
+
+/** A card in a Community's Projects section (safe fields only: no description, members or tasks). */
+export type CommunityProjectCard = {
+  projectId: string;
+  projectName: string;
+  projectStatus: ProjectStatus;
+  progress: number;
+  ownerDisplayName: string;
+  status: 'pending' | 'active' | 'declined' | 'ended';
+};
+
+export type CommunityProjectList = { active: CommunityProjectCard[]; pending: CommunityProjectCard[]; canDecide: boolean };
+
+/** A Community the signed-in manager may ask to sponsor a project. */
+export type CommunityLinkCandidate = { id: string; title: string; isPrivate: boolean };
+
+export type CommunityLinkResultStatus = 'pending' | 'active' | 'declined' | 'ended' | 'none';
 
 export type ProjectVisibility = 'public' | 'private';
 
@@ -225,6 +249,8 @@ export type ProjectTransitionInput = { expectedStatus: ProjectStatus; toStatus: 
 export type ProjectActivityType =
   | 'project.created' | 'project.status_changed' | 'project.deleted' | 'project.ownership_transferred' | 'project.settings_changed'
   | 'member.invited' | 'member.invite_cancelled' | 'member.joined' | 'member.declined' | 'member.left' | 'member.removed' | 'member.role_changed'
+  | 'milestone.created' | 'milestone.updated' | 'milestone.completed' | 'milestone.reopened' | 'milestone.deleted'
+  | 'community.link_requested' | 'community.link_cancelled' | 'community.link_approved' | 'community.link_declined' | 'community.link_ended'
   | 'unknown';
 
 /** One decoded activity event. Names are never stored; screens resolve actorId and subjectId from the loaded team. */
@@ -232,7 +258,7 @@ export type ProjectActivityEvent = {
   id: string;
   type: ProjectActivityType;
   actorId: string;
-  subjectKind: 'project' | 'member' | 'email_invite' | 'unknown';
+  subjectKind: 'project' | 'member' | 'email_invite' | 'milestone' | 'community' | 'unknown';
   subjectId: string;
   /** Null until the server timestamp resolves. */
   at: Date | null;
@@ -242,6 +268,11 @@ export type ProjectActivityEvent = {
   reason: string;
   channel: string;
   changed: string[];
+  /** Milestone or Community name stored with the event (project content, never a person's name). */
+  title: string;
+  /** community.link_ended: who ended it ('project', 'community' or 'system'). */
+  by: string;
+  selfApproved: boolean;
 };
 
 /** A page of activity; pass `cursor` back to load the next page (null when there are no more). */

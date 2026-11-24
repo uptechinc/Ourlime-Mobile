@@ -58,6 +58,7 @@ import CommunityAboutWorkspace from '@/components/communities/detail/CommunityAb
 import CommunityMembersWorkspace from '@/components/communities/detail/CommunityMembersWorkspace';
 import CommunityEventsWorkspace from '@/components/communities/detail/CommunityEventsWorkspace';
 import CommunityPollsWorkspace from '@/components/communities/detail/CommunityPollsWorkspace';
+import CommunityProjectsWorkspace from '@/components/communities/detail/CommunityProjectsWorkspace';
 import CommunityDashboardSheet from '@/components/communities/detail/CommunityDashboardSheet';
 import EditCommunityModal from '@/components/communities/detail/EditCommunityModal';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
@@ -174,6 +175,7 @@ export default function CommunityDetailScreen() {
 	const [sharedEvent, setSharedEvent] = useState<Event | null>(null);
 	const [eventCreateRequestKey, setEventCreateRequestKey] = useState(0);
 	const [pollCreateRequestKey, setPollCreateRequestKey] = useState(0);
+	const [projectsRefreshKey, setProjectsRefreshKey] = useState(0);
 	const handledDashboardTargetRef = useRef('');
 	const dashboardTarget =
 		params.dashboard === 'requests' || params.dashboard === 'reports'
@@ -330,6 +332,7 @@ export default function CommunityDetailScreen() {
 		if (activeTab === 'members') await loadMembers(true);
 		if (activeTab === 'events') await loadEvents(true);
 		if (activeTab === 'polls') await loadPolls(true);
+		if (activeTab === 'projects') setProjectsRefreshKey((key) => key + 1);
 	};
 
 	const handlePostUpdate = (post: PostItem): void => {
@@ -677,6 +680,7 @@ export default function CommunityDetailScreen() {
 		{ value: 'posts', label: 'Posts' },
 		{ value: 'events', label: 'Events' },
 		{ value: 'polls', label: 'Polls' },
+		{ value: 'projects', label: 'Projects' },
 		{ value: 'about', label: 'About' },
 		{ value: 'members', label: 'Members' },
 	];
@@ -1206,6 +1210,9 @@ export default function CommunityDetailScreen() {
 									}
 									onReport={(poll) => setReportTarget({ kind: 'poll', poll })}
 								/>
+							) : null}
+							{activeTab === 'projects' ? (
+								<CommunityProjectsWorkspace communityId={community.id} refreshKey={projectsRefreshKey} />
 							) : null}
 							{activeTab === 'about' ? (
 								<CommunityAboutWorkspace

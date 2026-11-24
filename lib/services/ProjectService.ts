@@ -50,6 +50,9 @@ import type {
   ProjectActivityEvent,
   ProjectActivityPage,
   ProjectActivityType,
+  ProjectCommunityLink,
+  CommunityLinkCandidate,
+  CommunityLinkResultStatus,
   ProjectTransitionInput,
   ProjectRecord,
   ProjectRole,
@@ -84,6 +87,7 @@ type ProjectDocument = {
   tags?: unknown;
   statusChangedAt?: unknown;
   statusChangedBy?: unknown;
+  communityLink?: unknown;
   teamMembers?: Record<string, { role?: unknown; membershipStatus?: unknown; invitedByName?: unknown }>;
   memberUids?: string[];
 };
@@ -91,8 +95,13 @@ type ProjectDocument = {
 const PROJECT_ACTIVITY_TYPES: readonly Exclude<ProjectActivityType, 'unknown'>[] = [
   'project.created', 'project.status_changed', 'project.deleted', 'project.ownership_transferred', 'project.settings_changed',
   'member.invited', 'member.invite_cancelled', 'member.joined', 'member.declined', 'member.left', 'member.removed', 'member.role_changed',
+  'milestone.created', 'milestone.updated', 'milestone.completed', 'milestone.reopened', 'milestone.deleted',
+  'community.link_requested', 'community.link_cancelled', 'community.link_approved', 'community.link_declined', 'community.link_ended',
 ];
+const PROJECT_ACTIVITY_SUBJECTS: readonly ProjectActivityEvent['subjectKind'][] = ['project', 'member', 'email_invite', 'milestone', 'community'];
 export const PROJECT_ACTIVITY_PAGE_SIZE = 20;
+/** Same limits the server enforces (website functions/src/ProjectMilestoneService.ts). */
+export const MILESTONE_NAME_LIMIT = 120;
 
 export class ProjectService {
   private static instance: ProjectService;
@@ -344,11 +353,21 @@ export class ProjectService {
     const at = this.readDate(source.at);
     return {
       id, type, actorId: this.readString(source.actorId),
-      subjectKind: subject.kind === 'project' || subject.kind === 'member' || subject.kind === 'email_invite' ? subject.kind : 'unknown',
+      subjectKind: PROJECT_ACTIVITY_SUBJECTS.find((kind) => kind === subject.kind) ?? 'unknown',
       subjectId: this.readString(subject.id), at: at.getTime() === 0 ? null : at,
       from: this.readString(data.from), to: this.readString(data.to), role: this.readString(data.role), reason: this.readString(data.reason), channel: this.readString(data.channel),
       changed: Array.isArray(data.changed) ? data.changed.filter((entry): entry is string => typeof entry === 'string') : [],
+      title: this.readString(data.title), by: this.readString(data.by), selfApproved: data.selfApproved === true,
     };
+  }
+
+  /** projects/{id}.communityLink; anything malformed reads as no link. */
+  public mapCommunityLink(value: unknown): ProjectCommunityLink | null {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+    const status = source.status === 'pending' || source.status === 'active' || source.status === 'declined' ? source.status : null;
+    const communityId = this.readString(source.communityId);
+    if (!status || !communityId) return null;
+    return { communityId, communityName: this.readString(source.communityName) || 'Community', status };
   }
 
   /** Plan tier and automation rules are server-managed (website: mutateProjectMembership "settings"). */
@@ -531,7 +550,7 @@ export class ProjectService {
     await nativeTaskService.mutate(ownerId, projectId, taskId, operation);
   }
 
-  // ── Milestones & task templates (direct Firestore writes, same as the website) ──
+  // ── Milestones (server-written: mutateProjectMembership milestone_*) & task templates (direct writes) ──
 
   public subscribeToMilestones(projectId: string, onUpdate: (milestones: Milestone[]) => void, onError?: (error: Error) => void): () => void {
     this.requireUserId();
@@ -547,17 +566,19 @@ export class ProjectService {
     return snapshot.docs.map((document: QueryDocumentSnapshot) => this.mapMilestone(document.id, document.data()));
   }
 
-  /** Creates a milestone and returns its id (so a new project's starter tasks can be linked to it). */
-  public async createMilestone(projectId: string, input: { name: string; dueDate?: string; color?: string }): Promise<string> {
-    const ownerId = this.requireUserId();
-    pageAccessService.assertMutation('/projectManagement');
-    const name = input.name.trim();
+  /**
+   * Creates a milestone through the server (validated, recorded in the project activity) and returns its id, so a new
+   * project's starter tasks can be linked to it. The id is chosen here, so a retried create is applied once.
+   */
+  public async createMilestone(projectId: string, input: { name: string; dueDate?: string; color?: string; description?: string }): Promise<string> {
+    const name = input.name.trim().slice(0, MILESTONE_NAME_LIMIT);
     if (!name) throw new Error('Milestone title is required');
-    const created = await addDoc(collection(this.database, 'projects', projectId, 'milestones'), {
-      name, description: '', dueDate: input.dueDate || '', color: input.color || 'bg-blue-500', completed: false,
-      createdAt: serverTimestamp(), createdBy: ownerId,
+    const milestoneId = await contentDraftService.newId();
+    await this.projectAction(['milestone_create', projectId, milestoneId], {
+      action: 'milestone_create', projectId, milestoneId,
+      fields: { name, description: (input.description ?? '').trim(), dueDate: input.dueDate || '', color: input.color || 'bg-emerald-500', ownerId: '' },
     });
-    return created.id;
+    return milestoneId;
   }
 
   private mapMilestone(id: string, data: DocumentData): Milestone {
@@ -569,17 +590,69 @@ export class ProjectService {
       color: this.readString(data.color) || 'bg-blue-500',
       completed: data.completed === true,
       createdBy: this.readString(data.createdBy),
+      ...(this.readString(data.ownerId) ? { ownerId: this.readString(data.ownerId) } : {}),
     };
   }
 
   public async setMilestoneCompleted(projectId: string, milestoneId: string, completed: boolean): Promise<void> {
-    pageAccessService.assertMutation('/projectManagement');
-    await updateDoc(doc(this.database, 'projects', projectId, 'milestones', milestoneId), { completed, updatedAt: serverTimestamp() });
+    await this.projectAction(['milestone_complete', projectId, milestoneId, completed], { action: 'milestone_complete', projectId, milestoneId, completed });
   }
 
   public async deleteMilestone(projectId: string, milestoneId: string): Promise<void> {
+    await this.projectAction(['milestone_delete', projectId, milestoneId], { action: 'milestone_delete', projectId, milestoneId });
+  }
+
+  // ── Community link (one sponsoring Community; the server checks who may do what) ──
+
+  /** Communities the signed-in manager owns or belongs to. */
+  public async communityLinkCandidates(projectId: string): Promise<CommunityLinkCandidate[]> {
+    const result = await this.projectAction(null, { action: 'community_link_candidates', projectId });
+    const list = Array.isArray(result.communities) ? result.communities : [];
+    return list.flatMap((entry: unknown) => {
+      if (!entry || typeof entry !== 'object') return [];
+      const record = entry as { id?: unknown; title?: unknown; isPrivate?: unknown };
+      const id = this.readString(record.id);
+      return id ? [{ id, title: this.readString(record.title) || 'Community', isPrivate: record.isPrivate === true }] : [];
+    });
+  }
+
+  /** Asks a Community to sponsor the project ('active' straight away when the caller is its owner or an admin). */
+  public async requestCommunityLink(projectId: string, communityId: string): Promise<CommunityLinkResultStatus> {
+    const result = await this.projectAction(['community_link_request', projectId, communityId], { action: 'community_link_request', projectId, communityId });
+    return this.readLinkStatus(result.status);
+  }
+
+  /** Withdraws a waiting request or removes an approved link. */
+  public async removeCommunityLink(projectId: string, communityId: string): Promise<CommunityLinkResultStatus> {
+    const result = await this.projectAction(['community_link_remove', projectId, communityId], { action: 'community_link_remove', projectId, communityId });
+    return this.readLinkStatus(result.status);
+  }
+
+  private readLinkStatus(value: unknown): CommunityLinkResultStatus {
+    return value === 'pending' || value === 'active' || value === 'declined' || value === 'ended' ? value : 'none';
+  }
+
+  // One operation ID per intended milestone or link change, kept until the server answers definitely.
+  private readonly actionOperations = new Map<string, string>();
+
+  /** A milestone or Community-link action on mutateProjectMembership; `identity` null means a read (no operation ID). */
+  private async projectAction(identityParts: unknown[] | null, input: { action: string; projectId: string; [key: string]: unknown }): Promise<Record<string, unknown>> {
+    const userId = this.requireUserId();
     pageAccessService.assertMutation('/projectManagement');
-    await deleteDoc(doc(this.database, 'projects', projectId, 'milestones', milestoneId));
+    await nativeSessionService.ensure(userId);
+    const identity = identityParts ? JSON.stringify([userId, ...identityParts]) : null;
+    const operationId = identity ? this.actionOperations.get(identity) ?? await contentDraftService.newId() : null;
+    if (identity && operationId) this.actionOperations.set(identity, operationId);
+    try {
+      const { getFunctions, httpsCallable } = await import('@react-native-firebase/functions');
+      const result = await httpsCallable(getFunctions(), 'mutateProjectMembership')({ ...input, ...(operationId ? { operationId } : {}) });
+      nativeSessionService.assertOwner(userId);
+      if (identity) this.actionOperations.delete(identity);
+      return reliabilityDecoder.object(result.data) as Record<string, unknown>;
+    } catch (error: unknown) {
+      if (identity && this.isDefiniteRefusal(error)) this.actionOperations.delete(identity);
+      throw error;
+    }
   }
 
   public subscribeToTaskTemplates(projectId: string, onUpdate: (templates: TaskTemplate[]) => void, onError?: (error: Error) => void): () => void {
@@ -788,6 +861,7 @@ export class ProjectService {
       memberUids: data.memberUids ?? [],
       statusChangedAt: this.readDate(data.statusChangedAt).getTime() === 0 ? null : this.readDate(data.statusChangedAt),
       statusChangedBy: this.readString(data.statusChangedBy),
+      communityLink: this.mapCommunityLink(data.communityLink),
     };
   }
 

@@ -113,7 +113,8 @@ export default function ProjectMilestonesPanel({ project, milestones, tasks, can
         const linked = projectInsightRules.sortTasks(tasks.filter((task) => task.milestoneId === milestone.id));
         const progress = projectInsightRules.milestoneProgress(milestone.id, tasks);
         const status = statusOf(milestone);
-        const canDelete = canEdit && (canManage || milestone.createdBy === currentUserId);
+        // Completing, reopening and deleting: the person who added the milestone or a manager (the server enforces it).
+        const canChange = canEdit && (canManage || (Boolean(currentUserId) && milestone.createdBy === currentUserId));
         return (
           <View key={milestone.id} style={[styles.card, milestone.completed && { opacity: 0.85 }]}>
             <View style={styles.titleRow}>
@@ -125,7 +126,7 @@ export default function ProjectMilestonesPanel({ project, milestones, tasks, can
                   {milestone.dueDate && !milestone.completed ? <Text style={styles.muted}>{projectInsightRules.shortDate(milestone.dueDate, today)}</Text> : null}
                 </View>
               </View>
-              {canDelete ? (
+              {canChange ? (
                 <ProjectIconButton size={44} accessibilityLabel={`Delete ${milestone.name}`} onPress={() => setDeleteTarget(milestone)}>
                   <Trash2 size={18} color={colors.destructiveText} />
                 </ProjectIconButton>
@@ -151,17 +152,20 @@ export default function ProjectMilestonesPanel({ project, milestones, tasks, can
               </View>
             ) : null}
 
-            {canEdit ? (
+            {canEdit && (canChange || !milestone.completed) ? (
               <View style={styles.actions}>
-                <ProjectButton
-                  label={milestone.completed ? 'Reopen' : 'Mark complete'}
-                  variant="secondary"
-                  isCompact
-                  isBusy={busyId === milestone.id}
-                  icon={milestone.completed ? <RotateCcw size={16} color={colors.text} /> : <CheckCircle2 size={16} color={colors.accentText} />}
-                  onPress={() => void handleToggle(milestone)}
-                  style={{ flex: 1 }}
-                />
+                {canChange ? (
+                  <ProjectButton
+                    label={milestone.completed ? 'Reopen' : 'Mark complete'}
+                    variant="secondary"
+                    isCompact
+                    isBusy={busyId === milestone.id}
+                    icon={milestone.completed ? <RotateCcw size={16} color={colors.text} /> : <CheckCircle2 size={16} color={colors.accentText} />}
+                    onPress={() => void handleToggle(milestone)}
+                    accessibilityLabel={`${milestone.completed ? 'Reopen' : 'Mark complete'}: ${milestone.name}`}
+                    style={{ flex: 1 }}
+                  />
+                ) : null}
                 {!milestone.completed ? <ProjectButton label="Add task" variant="secondary" isCompact icon={<Plus size={16} color={colors.text} />} onPress={() => onAddTask(milestone.id)} accessibilityLabel={`Add a task to ${milestone.name}`} style={{ flex: 1 }} /> : null}
               </View>
             ) : null}

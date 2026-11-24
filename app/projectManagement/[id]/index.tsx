@@ -32,6 +32,7 @@ import ProjectModuleSheet from '@/components/projectManagement/ProjectModuleShee
 import ProjectOverviewPanel, { type ProjectSectionId } from '@/components/projectManagement/ProjectOverviewPanel';
 import ProjectTasksPanel, { type TaskView } from '@/components/projectManagement/ProjectTasksPanel';
 import ProjectTeamPanel from '@/components/projectManagement/ProjectTeamPanel';
+import ProjectCommunityLinkCard from '@/components/projectManagement/ProjectCommunityLinkCard';
 import { ROLE_LABELS } from '@/components/projectManagement/ProjectCard';
 import {
   PROJECT_GUTTER, PROJECT_RIPPLE, ProjectAvatarStack, ProjectButton, ProjectEmptyState, ProjectIconButton, ProjectPill, ProjectProgressBar,
@@ -439,9 +440,10 @@ export default function ProjectBoardScreen() {
                   projectId={projectId}
                   teamMembers={teamMembers}
                   currentUserId={currentUserId}
-                  refreshKey={`${project.status}|${project.statusChangedAt?.getTime() ?? 0}|${teamMembers.map((member) => `${member.id}:${member.role}:${member.membershipStatus ?? ''}`).join(',')}`}
+                  refreshKey={`${project.status}|${project.statusChangedAt?.getTime() ?? 0}|${project.communityLink?.status ?? ''}|${teamMembers.map((member) => `${member.id}:${member.role}:${member.membershipStatus ?? ''}`).join(',')}`}
                 />
               )}
+              community={<ProjectCommunityLinkCard project={project} canManage={canManageSettings} />}
             />
           ) : null}
           {section === 'tasks' ? (

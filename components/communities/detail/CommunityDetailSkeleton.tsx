@@ -16,8 +16,8 @@ type CommunityDetailSkeletonProps = {
   activeTab?: CommunityTab;
 };
 
-// Posts, Events, Polls, About, Members pills: 15px padding each side + 14px heavy label.
-const TAB_WIDTHS = [71, 80, 68, 75, 92];
+// Posts, Events, Polls, Projects, About, Members pills: 15px padding each side + 14px heavy label.
+const TAB_WIDTHS = [71, 80, 68, 89, 75, 92];
 
 /**
  * Body of app/communities/[id] while the community loads (the top bar above stays live):

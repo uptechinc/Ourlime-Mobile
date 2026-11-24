@@ -32,6 +32,8 @@ type ProjectOverviewPanelProps = {
   onChangeStatus: () => void;
   /** The project activity log panel (status and team changes). */
   activity: ReactNode;
+  /** The sponsoring Community card (shown above the activity). */
+  community?: ReactNode;
 };
 
 const MAX_ATTENTION = 5;
@@ -50,7 +52,7 @@ function timeAgo(timestamp: string): string {
 }
 
 /** The project at a glance: purpose, stage, next milestone, what needs attention, suggested next steps, team and activity. */
-export default function ProjectOverviewPanel({ project, tasks, milestones, acceptedMembers, pendingCount, currentUserId, canManage, canWrite, onOpenTask, onShowTasks, onShowSection, onCreateTask, onInvite, onEditDetails, onAddMilestone, onChangeStatus, activity }: ProjectOverviewPanelProps) {
+export default function ProjectOverviewPanel({ project, tasks, milestones, acceptedMembers, pendingCount, currentUserId, canManage, canWrite, onOpenTask, onShowTasks, onShowSection, onCreateTask, onInvite, onEditDetails, onAddMilestone, onChangeStatus, activity, community }: ProjectOverviewPanelProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const today = projectInsightRules.today();
@@ -169,6 +171,8 @@ export default function ProjectOverviewPanel({ project, tasks, milestones, accep
           <Text style={[styles.muted, { flexShrink: 1 }]}>{plural(acceptedMembers.length, 'member', 'members')}{pendingCount > 0 ? ` · ${pendingCount} invited` : ''}</Text>
         </View>
       </ProjectSection>
+
+      {community}
 
       {activity}
 
