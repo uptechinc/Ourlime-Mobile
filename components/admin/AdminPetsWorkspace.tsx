@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
+import { toast } from 'sonner-native';
 import AdminWorkspaceShell from './AdminWorkspaceShell';
 import { PET_HEALTH_LABELS, petsService } from '@/lib/services/PetsService';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
@@ -30,6 +31,7 @@ export default function AdminPetsWorkspace() {
       setListings(await petsService.fetchModerationListings());
       setError(null);
     } catch (loadError: unknown) {
+      console.error('[AdminPetsWorkspace.loadListings] Error:', loadError instanceof Error ? loadError.message : loadError);
       setError(loadError instanceof Error ? loadError.message : 'Could not load listings to review.');
     } finally {
       setLoading(false);
@@ -42,11 +44,13 @@ export default function AdminPetsWorkspace() {
   const handleDecision = async (listing: PetListing, decision: Decision) => {
     const reason = reasons[listing.id]?.trim() ?? '';
     if (decision === 'rejected' && !reason) return;
+    if (activeListingId) return;
     setActiveListingId(listing.id);
     setDecisionErrors((current) => ({ ...current, [listing.id]: '' }));
     try {
       await petsService.moderateListing(listing.id, decision, reason || undefined);
       setListings((current) => current.filter((entry) => entry.id !== listing.id));
+      toast.success(decision === 'approved' ? `${listing.name} approved and listed.` : `${listing.name} declined.`);
     } catch (decisionError: unknown) {
       setDecisionErrors((current) => ({ ...current, [listing.id]: decisionError instanceof Error ? decisionError.message : 'Could not save the decision.' }));
     } finally {

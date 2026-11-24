@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { toast } from 'sonner-native';
 import AdminWorkspaceShell from './AdminWorkspaceShell';
 import { courierAreasText } from '@/components/market/couriers/CourierCard';
 import { courierService } from '@/lib/services/CourierService';
@@ -28,6 +29,8 @@ export default function AdminCouriersWorkspace() {
   const [filter, setFilter] = useState<CourierStatus | 'all'>('pending');
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [loading, setLoading] = useState(true);
+  // Switching tabs reloads only the list; the shell's full-page skeleton (which hides the tabs) is for the first load.
+  const [listLoading, setListLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeCourierId, setActiveCourierId] = useState<string | null>(null);
@@ -35,23 +38,39 @@ export default function AdminCouriersWorkspace() {
   // A refused decision is shown on its own card; the page-level error is only for loading the list.
   const [decisionErrors, setDecisionErrors] = useState<{ [courierId: string]: string }>({});
 
+  // Only the newest request may fill the list, so a slow answer for the previous filter can't replace the current one.
+  const requestId = useRef(0);
   const loadCouriers = useCallback(async () => {
+    const currentRequest = ++requestId.current;
     try {
-      setCouriers(await courierService.fetchModerationCouriers(filter === 'all' ? undefined : filter));
+      const nextCouriers = await courierService.fetchModerationCouriers(filter === 'all' ? undefined : filter);
+      if (currentRequest !== requestId.current) return;
+      setCouriers(nextCouriers);
       setError(null);
     } catch (loadError: unknown) {
+      if (currentRequest !== requestId.current) return;
+      console.error('[AdminCouriersWorkspace.loadCouriers] Error:', loadError instanceof Error ? loadError.message : loadError);
       setError(loadError instanceof Error ? loadError.message : 'Could not load courier services.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (currentRequest === requestId.current) {
+        setLoading(false);
+        setListLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [filter]);
 
-  useEffect(() => { setLoading(true); void loadCouriers(); }, [loadCouriers]);
+  const hasLoaded = useRef(false);
+  useEffect(() => {
+    if (hasLoaded.current) setListLoading(true);
+    hasLoaded.current = true;
+    void loadCouriers();
+  }, [loadCouriers]);
 
   const handleDecision = async (courier: Courier, status: Exclude<CourierStatus, 'pending'>) => {
     const reason = reasons[courier.id]?.trim() ?? '';
     if (status !== 'approved' && !reason) return;
+    if (activeCourierId) return;
     setActiveCourierId(courier.id);
     setDecisionErrors((current) => ({ ...current, [courier.id]: '' }));
     try {
@@ -59,6 +78,7 @@ export default function AdminCouriersWorkspace() {
       setCouriers((current) => (filter === 'all'
         ? current.map((entry) => (entry.id === courier.id ? updatedCourier : entry))
         : current.filter((entry) => entry.id !== courier.id)));
+      toast.success(status === 'approved' ? `${courier.businessName} approved.` : status === 'suspended' ? `${courier.businessName} suspended.` : `${courier.businessName} declined.`);
     } catch (decisionError: unknown) {
       setDecisionErrors((current) => ({ ...current, [courier.id]: decisionError instanceof Error ? decisionError.message : 'Could not save the decision.' }));
     } finally {
@@ -75,7 +95,7 @@ export default function AdminCouriersWorkspace() {
         </Pressable>;
       })}
     </ScrollView>
-    {couriers.length ? couriers.map((courier) => {
+    {listLoading ? <ActivityIndicator style={{ marginVertical: 24 }} color={colors.accent} /> : couriers.length ? couriers.map((courier) => {
       const tone = statusColors(courier.status, colors);
       const isBusy = activeCourierId === courier.id;
       const canDecline = courier.status === 'pending' || courier.status === 'approved';

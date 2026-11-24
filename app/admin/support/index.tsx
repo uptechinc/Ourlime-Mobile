@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
 	RefreshControl,
 	ScrollView,
@@ -9,7 +9,7 @@ import {
 import { TicketListSkeleton } from '@/components/help/HelpSkeletons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { supportTicketService } from '@/lib/services/SupportTicketService';
 import {
@@ -37,24 +37,36 @@ export default function AdminSupportTicketsScreen({
 	const [items, setItems] = useState<SupportTicket[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState('');
+	// Only the newest request may update the list, so a slow response for an earlier filter can't overwrite it.
+	const requestId = useRef(0);
 	const load = useCallback(async () => {
+		const currentRequest = ++requestId.current;
 		setLoading(true);
 		setError('');
 		try {
-			setItems((await supportTicketService.listStaff(filter)).items);
+			const page = await supportTicketService.listStaff(filter);
+			if (currentRequest === requestId.current) setItems(page.items);
 		} catch (loadError: unknown) {
+			if (currentRequest !== requestId.current) return;
+			console.error(
+				'[AdminSupportTicketsScreen.load] Error:',
+				loadError instanceof Error ? loadError.message : loadError
+			);
 			setError(
 				loadError instanceof Error
 					? loadError.message
 					: 'Support queue could not be loaded.'
 			);
 		} finally {
-			setLoading(false);
+			if (currentRequest === requestId.current) setLoading(false);
 		}
 	}, [filter]);
-	useEffect(() => {
-		void load();
-	}, [load]);
+	// Reload on focus (and on filter change) so a ticket claimed, answered or resolved on its detail screen isn't shown stale.
+	useFocusEffect(
+		useCallback(() => {
+			void load();
+		}, [load])
+	);
 	return (
 		<SafeAreaView
 			edges={['top', 'bottom', 'left', 'right']}
@@ -140,7 +152,7 @@ export default function AdminSupportTicketsScreen({
 				{loading && !items.length ? (
 					<TicketListSkeleton variant="staff" />
 				) : null}
-				{!loading && !items.length ? (
+				{!loading && !error && !items.length ? (
 					<Text
 						style={{
 							marginTop: 45,

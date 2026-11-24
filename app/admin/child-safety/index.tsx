@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
 	RefreshControl,
 	ScrollView,
@@ -9,7 +9,7 @@ import {
 import { ChildSafetyListSkeleton } from '@/components/admin/AdminSkeletons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
 import FilterBar from '@/components/ui/FilterBar';
@@ -59,6 +59,10 @@ export default function ChildSafetyCasesScreen({
 				setNextCursor(page.nextCursor);
 				setHasMore(page.hasMore);
 			} catch (loadError: unknown) {
+				console.error(
+					'[ChildSafetyCasesScreen.loadCases] Error:',
+					loadError instanceof Error ? loadError.message : loadError
+				);
 				setError(
 					loadError instanceof Error
 						? loadError.message
@@ -70,10 +74,13 @@ export default function ChildSafetyCasesScreen({
 		},
 		[priority, status]
 	);
-	useEffect(() => {
-		setLoading(true);
-		void loadCases(null);
-	}, [loadCases]);
+	// Reload on focus (and when filters change) so a case updated or purged on the detail screen isn't shown stale.
+	useFocusEffect(
+		useCallback(() => {
+			setLoading(true);
+			void loadCases(null);
+		}, [loadCases])
+	);
 
 	const filterGroups: FilterGroup[] = [
 		{ key: 'priority', label: 'Priority', options: [{ value: 'all', label: 'Any priority' }, ...PRIORITY_OPTIONS.map((option) => ({ value: option, label: toLabel(option) }))], value: priority ?? 'all', defaultValue: 'all' },
@@ -148,6 +155,16 @@ export default function ChildSafetyCasesScreen({
 				) : null}
 				{loading && items.length === 0 ? (
 					<ChildSafetyListSkeleton />
+				) : !error && items.length === 0 ? (
+					<View style={{ paddingVertical: 48, alignItems: 'center' }}>
+						<Ionicons name="shield-checkmark-outline" size={36} color={colors.mutedText} />
+						<Text style={{ marginTop: 10, color: colors.text, fontWeight: '800' }}>
+							No cases found
+						</Text>
+						<Text style={{ marginTop: 4, color: colors.mutedText, textAlign: 'center' }}>
+							{priority || status ? 'Try clearing the filters.' : 'There are no child-safety cases right now.'}
+						</Text>
+					</View>
 				) : (
 					items.map((report) => (
 						<TouchableOpacity

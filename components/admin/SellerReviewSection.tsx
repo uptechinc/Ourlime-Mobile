@@ -5,6 +5,7 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { sellerVerificationService } from '@/lib/services/SellerVerificationService';
 import type { SellerApplication, SellerReviewDecision } from '@/lib/types/reliability';
 import { MarketButton, MarketField } from '@/components/market/MarketFormModal';
+import { toast } from 'sonner-native';
 
 export default function SellerReviewSection() {
   const { authorization, profile } = usePageAccess();
@@ -19,12 +20,19 @@ export default function SellerReviewSection() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [history, setHistory] = useState<SellerReviewDecision[]>([]);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const generation = useRef(0);
   const refresh = useCallback(async (nextCursor: string | null = null) => {
     if (!authorization.isAdmin || !ownerId) return;
     const current = ++generation.current;
+    setLoading(true);
     try { const result = await sellerVerificationService.queue(ownerId, filter, nextCursor); if (current !== generation.current) return; setQueue((previous) => nextCursor ? [...previous, ...result.applications] : result.applications); setCursor(result.cursor); setError(''); }
-    catch (failure: unknown) { setError(failure instanceof Error ? failure.message : 'Review queue unavailable.'); }
+    catch (failure: unknown) {
+      if (current !== generation.current) return;
+      console.error('[SellerReviewSection.refresh] Error:', failure instanceof Error ? failure.message : failure);
+      setError(failure instanceof Error ? failure.message : 'Review queue unavailable.');
+    }
+    finally { if (current === generation.current) setLoading(false); }
   }, [authorization.isAdmin, ownerId, filter]);
   useEffect(() => { const requests = generation; setSelected(null); setQueue([]); void refresh(); return () => { ++requests.current; }; }, [refresh]);
   useEffect(() => {
@@ -37,8 +45,15 @@ export default function SellerReviewSection() {
   const decide = async (status: SellerReviewDecision['status']) => {
     if (!selected || busy) return;
     setBusy(true);
-    try { await sellerVerificationService.review(ownerId, selected, status, reason); setSelected(null); setReason(''); await refresh(); }
-    catch (failure: unknown) { setError(failure instanceof Error ? failure.message : 'Decision failed. Refresh the revision before retrying.'); }
+    try {
+      await sellerVerificationService.review(ownerId, selected, status, reason);
+      toast.success(`${selected.storeName}: ${status.replaceAll('_', ' ')}.`);
+      setSelected(null); setReason(''); await refresh();
+    }
+    catch (failure: unknown) {
+      console.error('[SellerReviewSection.decide] Error:', failure instanceof Error ? failure.message : failure);
+      setError(failure instanceof Error ? failure.message : 'Decision failed. Refresh the revision before retrying.');
+    }
     finally { setBusy(false); }
   };
   return <View style={{ padding: 16, gap: 14 }}>
@@ -58,7 +73,8 @@ export default function SellerReviewSection() {
       {historyCursor ? <MarketButton label="Older decisions" onPress={() => { void sellerVerificationService.history(ownerId, selected.ownerId, historyCursor).then((result) => { setHistory((previous) => [...previous, ...result.decisions]); setHistoryCursor(result.cursor); }).catch(() => setError('History could not be loaded. Retry.')); }} /> : null}
       <MarketButton label="Back to queue" onPress={() => setSelected(null)} />
     </> : queue.map((application) => <MarketButton key={application.ownerId} label={`${application.storeName} · Revision ${application.revision}`} onPress={() => { setSelected(application); setReason(''); }} />)}
-    {cursor && !selected ? <MarketButton label="Load more applications" onPress={() => void refresh(cursor)} /> : null}
-    {!queue.length && !selected ? <Text style={{ color: colors.text }}>No submitted applications in this page.</Text> : null}
+    {cursor && !selected ? <MarketButton label={loading ? 'Loading…' : 'Load more applications'} disabled={loading} onPress={() => void refresh(cursor)} /> : null}
+    {loading && !queue.length && !selected ? <Text style={{ color: colors.mutedText }}>Loading applications…</Text> : null}
+    {!loading && !error && !queue.length && !selected ? <Text style={{ color: colors.text }}>No {filter.replaceAll('_', ' ')} applications.</Text> : null}
   </View>;
 }

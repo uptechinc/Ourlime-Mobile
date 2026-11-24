@@ -65,7 +65,8 @@ export default function AdminGameContentWorkspace() {
     } catch (loadError: unknown) {
       console.error('[AdminGameContentWorkspace.loadContent] Error:', loadError instanceof Error ? loadError.message : loadError);
       const text = loadError instanceof Error ? loadError.message : 'Unable to load game content';
-      if (mode === 'reload') setMessage(text);
+      // A reload follows a save that already succeeded: say so, so the admin doesn't save the same item twice.
+      if (mode === 'reload') setMessage(`Saved, but the list could not be refreshed (${text}). Pull down to refresh.`);
       else setError(text);
     } finally {
       setLoading(false);
@@ -182,8 +183,16 @@ export default function AdminGameContentWorkspace() {
     if (!deleteTarget || deleting) return;
     setDeleting(true);
     try {
-      if (deleteTarget.type === 'location') await adminGameContentService.deleteLocation(deleteTarget.item);
-      else await adminGameContentService.deleteWord(deleteTarget.item);
+      if (deleteTarget.type === 'location') {
+        const removed = deleteTarget.item;
+        await adminGameContentService.deleteLocation(removed);
+        // Drop it now so it isn't still listed if the reload below fails.
+        setLocations((current) => current.filter((location) => !(location.id === removed.id && location.difficulty === removed.difficulty)));
+      } else {
+        const removed = deleteTarget.item;
+        await adminGameContentService.deleteWord(removed);
+        setWords((current) => current.filter((entry) => entry.id !== removed.id));
+      }
       setDeleteTarget(null);
       setMessage('Content removed');
       await loadContent('reload');

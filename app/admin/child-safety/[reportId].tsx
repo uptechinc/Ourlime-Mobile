@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-	Alert,
 	ScrollView,
 	Text,
 	TextInput,
@@ -23,6 +22,8 @@ import {
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { SkeletonLine } from '@/components/ui/WorkspaceSkeletonParts';
 import { ChildSafetyCaseDetailSkeleton } from '@/components/admin/AdminSkeletons';
+import AdminDialog from '@/components/admin/AdminDialog';
+import { toast } from 'sonner-native';
 
 type ChildSafetyCaseDetailScreenProps = { queueRoute?: Href };
 
@@ -37,13 +38,24 @@ export default function ChildSafetyCaseDetailScreen({
 	const [busy, setBusy] = useState(false);
 	const [authorityName, setAuthorityName] = useState('');
 	const [authorityReference, setAuthorityReference] = useState('');
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [noteError, setNoteError] = useState<string | null>(null);
+	const [confirmPurge, setConfirmPurge] = useState(false);
+	// Synchronous guard against a second tap before `busy` re-renders the buttons as disabled.
+	const busyRef = useRef(false);
 	const loadCase = useCallback(async () => {
+		setLoadError(null);
 		try {
 			setReport(await childSafetyReportService.getCase(reportId));
 		} catch (error: unknown) {
-			Alert.alert(
-				'Case unavailable',
-				error instanceof Error ? error.message : 'Please try again.'
+			console.error(
+				'[ChildSafetyCaseDetailScreen.loadCase] Error:',
+				error instanceof Error ? error.message : error
+			);
+			setLoadError(
+				error instanceof Error && error.message
+					? error.message
+					: 'This case could not be loaded. Please try again.'
 			);
 		}
 	}, [reportId]);
@@ -55,11 +67,13 @@ export default function ChildSafetyCaseDetailScreen({
 		action: ChildSafetyAction,
 		extra: Partial<ChildSafetyCaseActionInput> = {}
 	) => {
-		if (note.trim().length < 3)
-			return Alert.alert(
-				'Reviewer note required',
-				'Enter the reason for this action first.'
-			);
+		if (busyRef.current) return;
+		if (note.trim().length < 3) {
+			setNoteError('Enter the reason for this action first (at least 3 characters).');
+			return;
+		}
+		setNoteError(null);
+		busyRef.current = true;
 		setBusy(true);
 		try {
 			const updated = await childSafetyReportService.applyAction(reportId, {
@@ -68,17 +82,25 @@ export default function ChildSafetyCaseDetailScreen({
 				...extra,
 			});
 			if (!updated) {
-				router.replace(queueRoute);
+				toast.success('Case purged.');
+				// Go back to the existing queue (it reloads on focus) instead of stacking a second copy on top of it.
+				if (router.canGoBack()) router.back();
+				else router.replace(queueRoute);
 				return;
 			}
 			setReport(updated);
 			setNote('');
+			toast.success('Case updated.');
 		} catch (error: unknown) {
-			Alert.alert(
-				'Action not saved',
-				error instanceof Error ? error.message : 'Please try again.'
+			console.error(
+				'[ChildSafetyCaseDetailScreen.handleAction] Error:',
+				error instanceof Error ? error.message : error
+			);
+			toast.error(
+				`Action not saved: ${error instanceof Error && error.message ? error.message : 'Please try again.'}`
 			);
 		} finally {
+			busyRef.current = false;
 			setBusy(false);
 		}
 	};
@@ -102,10 +124,35 @@ export default function ChildSafetyCaseDetailScreen({
 						<Ionicons name="chevron-back" size={26} color={colors.icon} />
 					</TouchableOpacity>
 					<View style={{ flex: 1, marginLeft: 10 }}>
-						<SkeletonLine fontSize={18} width={124} />
+						{loadError ? (
+							<Text style={{ color: colors.text, fontSize: 18, fontWeight: '900' }}>
+								Case unavailable
+							</Text>
+						) : (
+							<SkeletonLine fontSize={18} width={124} />
+						)}
 					</View>
 				</View>
-				<ChildSafetyCaseDetailSkeleton />
+				{loadError ? (
+					<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+						<Ionicons name="alert-circle-outline" size={40} color={colors.destructiveText} />
+						<Text style={{ marginTop: 12, color: colors.text, fontSize: 17, fontWeight: '900', textAlign: 'center' }}>
+							This case could not be loaded
+						</Text>
+						<Text style={{ marginTop: 6, color: colors.mutedText, textAlign: 'center', lineHeight: 20 }}>
+							{loadError}
+						</Text>
+						<TouchableOpacity
+							onPress={() => void loadCase()}
+							accessibilityRole="button"
+							style={{ marginTop: 18, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 13, backgroundColor: colors.accent }}
+						>
+							<Text style={{ color: colors.onAccent, fontWeight: '900' }}>Try again</Text>
+						</TouchableOpacity>
+					</View>
+				) : (
+					<ChildSafetyCaseDetailSkeleton />
+				)}
 			</SafeAreaView>
 		);
 	return (
@@ -220,7 +267,10 @@ export default function ChildSafetyCaseDetailScreen({
 						</Text>
 						<TextInput
 							value={note}
-							onChangeText={setNote}
+							onChangeText={(value) => {
+								setNote(value);
+								if (noteError) setNoteError(null);
+							}}
 							multiline
 							placeholder="Required reviewer note or reason"
 							placeholderTextColor={colors.mutedText}
@@ -236,6 +286,11 @@ export default function ChildSafetyCaseDetailScreen({
 								textAlignVertical: 'top',
 							}}
 						/>
+						{noteError ? (
+							<Text style={{ marginTop: 6, color: colors.destructiveText, fontSize: 12, fontWeight: '700' }}>
+								{noteError}
+							</Text>
+						) : null}
 						<Text
 							style={{
 								marginTop: 12,
@@ -391,7 +446,13 @@ export default function ChildSafetyCaseDetailScreen({
 							/>
 							<ActionButton
 								label="Purge (administrator only)"
-								onPress={() => void handleAction('purge')}
+								onPress={() => {
+									if (note.trim().length < 3) {
+										setNoteError('Enter the reason for this action first (at least 3 characters).');
+										return;
+									}
+									setConfirmPurge(true);
+								}}
 								disabled={busy || report.legalHold}
 								colors={colors}
 								danger
@@ -457,6 +518,19 @@ export default function ChildSafetyCaseDetailScreen({
 					</View>
 				</ScrollView>
 			</KeyboardSafeView>
+			<AdminDialog
+				visible={confirmPurge}
+				title="Purge this case?"
+				description="This permanently purges the case record. It cannot be undone."
+				confirmLabel="Purge case"
+				tone="danger"
+				busy={busy}
+				onConfirm={() => {
+					setConfirmPurge(false);
+					void handleAction('purge');
+				}}
+				onClose={() => setConfirmPurge(false)}
+			/>
 		</SafeAreaView>
 	);
 }

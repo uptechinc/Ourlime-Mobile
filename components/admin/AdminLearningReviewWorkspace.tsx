@@ -77,6 +77,8 @@ export default function AdminLearningReviewWorkspace({ initialTab }: AdminLearni
   const [decisionError, setDecisionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const hasLoaded = useRef(false);
+  // Synchronous guard: a quick second tap on Confirm arrives before `isSaving` disables the button.
+  const savingRef = useRef(false);
 
   const loadQueue = useCallback(async () => {
     try {
@@ -118,7 +120,8 @@ export default function AdminLearningReviewWorkspace({ initialTab }: AdminLearni
   const reasonInvalid = needsReason && (!trimmedReason || trimmedReason.length > REASON_MAX_LENGTH);
 
   const handleConfirmDecision = async () => {
-    if (!target || reasonInvalid) return;
+    if (!target || reasonInvalid || savingRef.current) return;
+    savingRef.current = true;
     setIsSaving(true);
     setDecisionError(null);
     try {
@@ -135,6 +138,7 @@ export default function AdminLearningReviewWorkspace({ initialTab }: AdminLearni
       console.error(`[AdminLearningReviewWorkspace.handleConfirmDecision] Error: ${saveError instanceof Error ? saveError.message : String(saveError)}`);
       setDecisionError(saveError instanceof Error && saveError.message ? saveError.message : 'Could not save the decision.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };

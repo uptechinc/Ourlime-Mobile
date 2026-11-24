@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import AdminWorkspaceShell from './AdminWorkspaceShell';
@@ -10,6 +10,7 @@ import {
   type AdminJob,
   type JobSuspensionDays,
 } from '@/lib/services/AdminJobsService';
+import { ADMIN_JOBS_FETCH_LIMIT, describeJobActionError } from '@/lib/services/AdminJobsRules';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 
 const ROWS_PER_PAGE = 20;
@@ -74,17 +75,22 @@ export default function AdminJobsWorkspace() {
   const [reason, setReason] = useState('');
   const [suspendDays, setSuspendDays] = useState<JobSuspensionDays>(7);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+  // Synchronous guard: two quick taps both see `busy === false` before React re-renders.
+  const busyRef = useRef(false);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
     try {
-      setJobs(await adminJobsService.fetchJobs());
+      const result = await adminJobsService.fetchJobs();
+      setJobs(result.jobs);
+      setIsTruncated(result.isTruncated);
     } catch (loadError: unknown) {
       console.error('[AdminJobsWorkspace.load] Error:', loadError instanceof Error ? loadError.message : loadError);
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load jobs');
+      setError(describeJobActionError(loadError, 'Failed to load jobs'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -113,22 +119,33 @@ export default function AdminJobsWorkspace() {
   const totalPages = Math.max(1, Math.ceil(filteredJobs.length / ROWS_PER_PAGE));
   const paginatedJobs = filteredJobs.slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE);
 
+  // Removing the last job on the last page would otherwise leave an empty page with jobs still listed.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   const updateJobStatus = (jobId: string, status: string): void => {
     setJobs((current) => current.map((job) => (job.id === jobId ? { ...job, status } : job)));
     setSelectedJob((current) => (current?.id === jobId ? { ...current, status } : current));
   };
 
+  const withAuditNote = (text: string, auditLogged: boolean): string => (
+    auditLogged ? text : `${text} The change was saved, but the audit log entry could not be written.`
+  );
+
   const handleApprove = async (job: AdminJob): Promise<void> => {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
-      await adminJobsService.approveJob(job.id);
+      const result = await adminJobsService.approveJob(job.id);
       updateJobStatus(job.id, 'published');
-      setMessage(`Job "${job.title}" approved and published!`);
+      setMessage({ text: withAuditNote(`Job "${job.title}" approved and published!`, result.auditLogged), isError: false });
     } catch (actionError: unknown) {
       console.error('[AdminJobsWorkspace.handleApprove] Error:', actionError instanceof Error ? actionError.message : actionError);
-      setMessage('Failed to approve job');
+      setMessage({ text: describeJobActionError(actionError, 'Failed to approve job'), isError: true });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -148,29 +165,32 @@ export default function AdminJobsWorkspace() {
   };
 
   const handleConfirmAction = async (): Promise<void> => {
-    if (!actionJob || !action || busy) return;
+    if (!actionJob || !action || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       if (action === 'reject') {
-        await adminJobsService.rejectJob(actionJob.id, reason);
+        const result = await adminJobsService.rejectJob(actionJob.id, reason);
         updateJobStatus(actionJob.id, 'rejected');
-        setMessage('Job rejected.');
+        setMessage({ text: withAuditNote('Job rejected.', result.auditLogged), isError: false });
       } else if (action === 'remove') {
-        await adminJobsService.removeListing(actionJob.id, reason);
+        const result = await adminJobsService.removeListing(actionJob.id, reason);
         const removedJobId = actionJob.id;
         setJobs((current) => current.filter((job) => job.id !== removedJobId));
         setSelectedJob((current) => (current?.id === removedJobId ? null : current));
-        setMessage('Listing removed. The job has been taken down and removed from this list.');
+        setMessage({ text: withAuditNote('Listing removed. The job has been taken down and removed from this list.', result.auditLogged), isError: false });
       } else {
-        await adminJobsService.suspendPoster(actionJob.userId, reason, suspendDays);
-        setMessage('User Suspended. The user has been suspended from job posting and applying.');
+        const result = await adminJobsService.suspendPoster(actionJob.userId, reason, suspendDays);
+        setMessage({ text: withAuditNote('User Suspended. The user has been suspended from job posting and applying.', result.auditLogged), isError: false });
       }
       setAction(null);
       setActionJob(null);
     } catch (actionError: unknown) {
       console.error('[AdminJobsWorkspace.handleConfirmAction] Error:', actionError instanceof Error ? actionError.message : actionError);
-      setMessage(action === 'reject' ? 'Failed to reject job' : action === 'remove' ? 'Failed to remove listing' : 'Failed to suspend user');
+      const fallback = action === 'reject' ? 'Failed to reject job' : action === 'remove' ? 'Failed to remove listing' : 'Failed to suspend user';
+      setMessage({ text: describeJobActionError(actionError, fallback), isError: true });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -286,6 +306,11 @@ export default function AdminJobsWorkspace() {
         })
       )}
 
+      {isTruncated ? (
+        <Text style={{ marginTop: 6, color: colors.mutedText, fontSize: 12 }}>
+          Showing the newest {ADMIN_JOBS_FETCH_LIMIT} jobs. Totals above count only these.
+        </Text>
+      ) : null}
       {filteredJobs.length > 0 ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
           <Text style={{ color: colors.mutedText, fontSize: 12 }}>
@@ -352,10 +377,11 @@ export default function AdminJobsWorkspace() {
         confirmLabel="Confirm Rejection"
         tone="danger"
         busy={busy}
+        confirmDisabled={!reason.trim()}
         onConfirm={() => void handleConfirmAction()}
         onClose={closeAction}
       >
-        <Text style={{ marginBottom: 6, color: colors.text, fontWeight: '700' }}>Rejection Reason</Text>
+        <Text style={{ marginBottom: 6, color: colors.text, fontWeight: '700' }}>Rejection Reason *</Text>
         <TextInput value={reason} onChangeText={setReason} multiline maxLength={2000} placeholder="Enter rejection reason..." placeholderTextColor={colors.mutedText} style={inputStyle} />
       </AdminDialog>
 
@@ -401,7 +427,7 @@ export default function AdminJobsWorkspace() {
         </View>
       </AdminDialog>
 
-      <CustomModal visible={Boolean(message)} type="info" title="Job Moderation" message={message ?? ''} onClose={() => setMessage(null)} />
+      <CustomModal visible={Boolean(message)} type={message?.isError ? 'error' : 'success'} title="Job Moderation" message={message?.text ?? ''} onClose={() => setMessage(null)} />
     </AdminWorkspaceShell>
   );
 }
