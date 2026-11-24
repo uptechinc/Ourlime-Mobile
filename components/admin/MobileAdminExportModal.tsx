@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { toast } from 'sonner-native';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import {
   mobileExportService,
@@ -39,7 +40,11 @@ export default function MobileAdminExportModal({
   const [exporting, setExporting] = useState<string | null>(null);
 
   const handleExport = async (format: 'excel' | 'csv' | 'doc') => {
-    if (data.length === 0) return;
+    if (exporting) return;
+    if (data.length === 0) {
+      toast.error('There are no records to export for this range.');
+      return;
+    }
     setExporting(format);
     const dateStr = new Date().toISOString().slice(0, 10);
     const fullFilename = `${filename}-${dateStr}`;
@@ -52,17 +57,18 @@ export default function MobileAdminExportModal({
       } else if (format === 'doc') {
         await mobileExportService.exportToDocument(fullFilename, title, periodLabel, columns, data);
       }
+      onClose();
     } catch (err) {
-      console.error('[MobileAdminExportModal] Error exporting:', err);
+      // Keep the sheet open so the admin can retry or pick another format.
+      console.error('[MobileAdminExportModal.handleExport] Error:', err);
+      toast.error(err instanceof Error && err.message ? err.message : 'The export could not be created.');
     } finally {
       setExporting(null);
-      onClose();
     }
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableWithoutFeedback onPress={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={exporting ? undefined : onClose}>
         <View
           style={{
             flex: 1,
@@ -72,7 +78,10 @@ export default function MobileAdminExportModal({
             padding: 24,
           }}
         >
-          <TouchableWithoutFeedback>
+          {/* Backdrop is a sibling behind the card, so taps inside the card never reach it. */}
+          <TouchableWithoutFeedback onPress={exporting ? undefined : onClose} accessibilityLabel="Close export">
+            <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
+          </TouchableWithoutFeedback>
             <View
               style={{
                 width: '100%',
@@ -94,7 +103,7 @@ export default function MobileAdminExportModal({
                     {data.length} records • {periodLabel}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity onPress={onClose} disabled={exporting !== null} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Icon name="x" size={20} color={colors.mutedText} />
                 </TouchableOpacity>
               </View>
@@ -233,9 +242,7 @@ export default function MobileAdminExportModal({
                 </TouchableOpacity>
               </View>
             </View>
-          </TouchableWithoutFeedback>
         </View>
-      </TouchableWithoutFeedback>
     </Modal>
   );
 }

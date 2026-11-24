@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Modal,
   ScrollView,
   Text,
@@ -9,6 +8,9 @@ import {
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { useFocusEffect } from 'expo-router';
+import { toast } from 'sonner-native';
+import AdminDialog from './AdminDialog';
 import AdminWorkspaceShell from './AdminWorkspaceShell';
 import MobileAdminDateFilter, { type MobileDateRangeValue } from './MobileAdminDateFilter';
 import MobileAdminExportModal from './MobileAdminExportModal';
@@ -75,6 +77,43 @@ type ActivityLogItem = {
   newData?: Record<string, unknown>;
 };
 
+const SEARCH_DEBOUNCE_MS = 350;
+
+const readText = (value: unknown): string => (typeof value === 'string' ? value : '');
+const readRecord = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+
+/** The API returns loosely typed rows; missing fields must not crash the list (e.g. `action.replace`). */
+function toActivityLogItem(raw: Record<string, unknown>, index: number): ActivityLogItem {
+  const changes = Array.isArray(raw.changes)
+    ? raw.changes.flatMap((change): NonNullable<ActivityLogItem['changes']> => {
+      const record = readRecord(change);
+      return record && readText(record.field) ? [{ field: readText(record.field), oldValue: record.oldValue, newValue: record.newValue }] : [];
+    })
+    : undefined;
+  return {
+    id: readText(raw.id) || `log-${index}`,
+    timestamp: readText(raw.timestamp),
+    userId: readText(raw.userId) || undefined,
+    username: readText(raw.username) || undefined,
+    action: readText(raw.action) || 'unknown',
+    resource: readText(raw.resource) || 'item',
+    resourceName: readText(raw.resourceName) || undefined,
+    details: readText(raw.details),
+    ipAddress: readText(raw.ipAddress) || undefined,
+    location: readText(raw.location) || undefined,
+    platform: readText(raw.platform) || undefined,
+    changes,
+    previousData: readRecord(raw.previousData),
+    newData: readRecord(raw.newData),
+  };
+}
+
+function formatLogTime(timestamp: string): string {
+  const time = new Date(timestamp);
+  return Number.isNaN(time.getTime()) ? 'Unknown time' : time.toLocaleString();
+}
+
 function formatLocationAndIp(location?: string, ipAddress?: string): string {
   const isLocal =
     !ipAddress ||
@@ -97,6 +136,9 @@ export default function AdminActivityLogsWorkspace() {
   const [logs, setLogs] = useState<ActivityLogItem[]>([]);
   const [selectedAction, setSelectedAction] = useState<string>('all');
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [restoreTarget, setRestoreTarget] = useState<ActivityLogItem | null>(null);
+  const hasLoadedRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
@@ -110,56 +152,60 @@ export default function AdminActivityLogsWorkspace() {
   });
   const [exportModalVisible, setExportModalVisible] = useState(false);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  // Only the first load shows the skeleton: the shell swaps its children for the skeleton while
+  // `loading`, which used to unmount the search box (and close the keyboard) on every keystroke.
   const load = useCallback(
     async (isRefresh = false) => {
-      if (isRefresh) setRefreshing(true);
+      if (isRefresh || hasLoadedRef.current) setRefreshing(true);
       else setLoading(true);
       setError(null);
       try {
         const rawLogs = await adminWorkspaceService.fetchActivityLogs(
-          query,
+          debouncedQuery,
           selectedAction,
           'all'
         );
-        setLogs(rawLogs as unknown as ActivityLogItem[]);
+        setLogs(rawLogs.map(toActivityLogItem));
+        hasLoadedRef.current = true;
       } catch (err) {
+        console.error('[AdminActivityLogsWorkspace.load] Error:', err);
         setError(err instanceof Error ? err.message : 'Failed to load activity logs');
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [query, selectedAction]
+    [debouncedQuery, selectedAction]
   );
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load])
+  );
 
-  const handleRestore = (log: ActivityLogItem) => {
-    Alert.alert(
-      'Restore Deleted Item',
-      `Are you sure you want to restore this ${log.resource}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Restore',
-          style: 'default',
-          onPress: async () => {
-            setRestoringId(log.id);
-            try {
-              await adminWorkspaceService.restoreActivityLog(log.id);
-              Alert.alert('Success', `Successfully restored ${log.resource}.`);
-              await load(true);
-            } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Failed to restore');
-            } finally {
-              setRestoringId(null);
-            }
-          },
-        },
-      ]
-    );
+  const handleRestore = (log: ActivityLogItem) => setRestoreTarget(log);
+
+  const handleConfirmRestore = async () => {
+    const log = restoreTarget;
+    if (!log || restoringId) return;
+    setRestoringId(log.id);
+    try {
+      await adminWorkspaceService.restoreActivityLog(log.id);
+      setRestoreTarget(null);
+      toast.success(`Restored ${log.resourceName || log.resource}.`);
+      await load(true);
+    } catch (err) {
+      console.error('[AdminActivityLogsWorkspace.handleConfirmRestore] Error:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to restore');
+    } finally {
+      setRestoringId(null);
+    }
   };
 
   const getActionColor = (action: string) => {
@@ -292,7 +338,11 @@ export default function AdminActivityLogsWorkspace() {
             }}
           >
             <Icon name="clock" size={28} color={colors.mutedText} style={{ marginBottom: 8 }} />
-            <Text style={{ color: colors.mutedText, fontSize: 13 }}>No activity logs recorded yet.</Text>
+            <Text style={{ color: colors.mutedText, fontSize: 13, textAlign: 'center' }}>
+              {logs.length > 0 || debouncedQuery || selectedAction !== 'all'
+                ? 'No activity logs match these filters.'
+                : 'No activity logs recorded yet.'}
+            </Text>
           </View>
         ) : (
           filteredLogs.map((log) => {
@@ -314,7 +364,7 @@ export default function AdminActivityLogsWorkspace() {
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={{ fontSize: 11, color: colors.mutedText, fontFamily: 'monospace' }}>
-                    {new Date(log.timestamp).toLocaleString()}
+                    {formatLogTime(log.timestamp)}
                   </Text>
                   <View
                     style={{
@@ -375,7 +425,7 @@ export default function AdminActivityLogsWorkspace() {
                   {isDelete && Boolean(log.previousData) && (
                     <TouchableOpacity
                       onPress={() => handleRestore(log)}
-                      disabled={isRestoringThis}
+                      disabled={Boolean(restoringId)}
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
@@ -475,6 +525,17 @@ export default function AdminActivityLogsWorkspace() {
           </View>
         </Modal>
       )}
+
+      <AdminDialog
+        visible={Boolean(restoreTarget)}
+        title="Restore deleted item?"
+        description={restoreTarget ? `This restores the ${restoreTarget.resourceName || restoreTarget.resource} from its saved snapshot.` : undefined}
+        confirmLabel="Restore"
+        tone="positive"
+        busy={Boolean(restoringId)}
+        onConfirm={() => void handleConfirmRestore()}
+        onClose={() => setRestoreTarget(null)}
+      />
 
       {/* Export Modal */}
       <MobileAdminExportModal

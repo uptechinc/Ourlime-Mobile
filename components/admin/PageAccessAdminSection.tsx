@@ -91,6 +91,7 @@ export default function PageAccessAdminSection() {
 	const [auditLogs, setAuditLogs] = useState<AdminPageAccessAuditEntry[]>([]);
 	const [activeTab, setActiveTab] = useState<'pages' | 'audit'>('pages');
 	const [loading, setLoading] = useState(true);
+	const [loadError, setLoadError] = useState<string | null>(null);
 	const [query, setQuery] = useState('');
 	const [statusFilter, setStatusFilter] = useState<PageAccessStatus | 'all'>(
 		'all'
@@ -113,6 +114,7 @@ export default function PageAccessAdminSection() {
 
 	const load = useCallback(async () => {
 		setLoading(true);
+		setLoadError(null);
 		try {
 			const [nextSettings, nextLogs] = await Promise.all([
 				adminPageAccessService.fetchSettings(),
@@ -121,6 +123,8 @@ export default function PageAccessAdminSection() {
 			setSettings(nextSettings);
 			setAuditLogs(nextLogs);
 		} catch (error: unknown) {
+			console.error('[PageAccessAdminSection.load] Error:', error);
+			setLoadError(error instanceof Error ? error.message : 'Could not load page settings.');
 			setFeedback({
 				visible: true,
 				type: 'danger',
@@ -138,6 +142,13 @@ export default function PageAccessAdminSection() {
 	useEffect(() => {
 		void load();
 	}, [load]);
+
+	// After a write, pull the audit log again so the Activity Log tab shows the new entries.
+	const refreshAuditLogs = useCallback(() => {
+		adminPageAccessService.fetchAuditLogs()
+			.then(setAuditLogs)
+			.catch((error: unknown) => console.warn('[PageAccessAdminSection.refreshAuditLogs] Error:', error));
+	}, []);
 
 	const filtered = useMemo(() => {
 		const normalized = query.trim().toLowerCase();
@@ -167,7 +178,8 @@ export default function PageAccessAdminSection() {
 		setSaving(true);
 		const updates: PageAccessUpdate = { ...editor };
 		try {
-			await adminPageAccessService.updateSetting(editing.id, updates);
+			await adminPageAccessService.updateSetting(editing.id, updates, { pageName: editing.pageName, status: editing.status });
+			refreshAuditLogs();
 			setSettings((current) =>
 				current.map((setting) =>
 					setting.id === editing.id ? { ...setting, ...editor } : setting
@@ -205,7 +217,12 @@ export default function PageAccessAdminSection() {
 			showPagePreview: status !== 'disabled',
 		};
 		try {
-			await adminPageAccessService.bulkUpdate(selectedIds, updates);
+			await adminPageAccessService.bulkUpdate(
+				selectedIds,
+				updates,
+				new Map(settings.filter((setting) => selectedIds.includes(setting.id)).map((setting) => [setting.id, { pageName: setting.pageName, status: setting.status }]))
+			);
+			refreshAuditLogs();
 			setSettings((current) =>
 				current.map((setting) =>
 					selectedIds.includes(setting.id)
@@ -278,6 +295,22 @@ export default function PageAccessAdminSection() {
 	};
 
 	if (loading) return <PageAccessSectionSkeleton />;
+	// Without stored settings the list would show registry defaults, and edits made from that
+	// baseline would overwrite the real values: show a retry state instead.
+	if (loadError && settings.length === 0) {
+		return (
+			<View style={{ alignItems: 'center', padding: 28 }}>
+				<Text style={{ textAlign: 'center', color: colors.destructiveText }}>{loadError}</Text>
+				<TouchableOpacity
+					accessibilityRole="button"
+					onPress={() => void load()}
+					style={{ marginTop: 14, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, backgroundColor: colors.accent }}
+				>
+					<Text style={{ color: colors.onAccent, fontWeight: '800' }}>Retry</Text>
+				</TouchableOpacity>
+			</View>
+		);
+	}
 
 	return (
 		<View style={{ flex: 1 }}>

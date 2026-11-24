@@ -47,6 +47,9 @@ export type PageAccessUpdate = {
   secondaryButtonRoute?: string;
 };
 
+/** What the page looked like before the change, so the audit log records real values instead of "unknown". */
+export type PageAccessPreviousState = Pick<PageAccessSetting, 'pageName' | 'status'>;
+
 export class AdminPageAccessService {
   private static instance: AdminPageAccessService;
 
@@ -63,24 +66,28 @@ export class AdminPageAccessService {
 
   private async fetchSettingsFromFirestore(): Promise<PageAccessSetting[]> {
     await adminAccessService.requireAdmin();
-    const snapshot = await getDocs(query(collection(db, 'pageAccessSettings'), orderBy('order', 'asc'))).catch(() => null);
-    const compatibleSnapshot = snapshot ?? await getDocs(collection(db, 'pageAccessSettings'));
-    return this.mergeWithDefaults(compatibleSnapshot.docs.map((document, index) => this.normalize({ ...document.data(), id: document.id }, index)));
+    // Read every document: orderBy('order') silently omits documents without an `order` field, so the
+    // admin saw the registry default instead of the stored status for those pages. mergeWithDefaults sorts.
+    const snapshot = await getDocs(collection(db, 'pageAccessSettings'));
+    return this.mergeWithDefaults(snapshot.docs.map((document, index) => this.normalize({ ...document.data(), id: document.id }, index)));
   }
 
-  public async updateSetting(id: string, updates: PageAccessUpdate): Promise<void> {
+  public async updateSetting(id: string, updates: PageAccessUpdate, previous?: PageAccessPreviousState): Promise<void> {
     const administrator = await adminAccessService.requireAdmin();
     const batch = writeBatch(db);
     batch.set(doc(db, 'pageAccessSettings', id), { ...updates, updatedAt: serverTimestamp(), updatedBy: administrator.userId }, { merge: true });
-    batch.set(doc(collection(db, 'pageAccessAuditLogs')), { pageId: id, pageName: id, action: 'setting_updated', previousStatus: 'unknown', newStatus: updates.status ?? 'unchanged', adminId: administrator.userId, adminName: administrator.userId, createdAt: serverTimestamp() });
+    batch.set(doc(collection(db, 'pageAccessAuditLogs')), { pageId: id, pageName: previous?.pageName || id, action: 'setting_updated', previousStatus: previous?.status ?? 'unknown', newStatus: updates.status ?? 'unchanged', adminId: administrator.userId, adminName: administrator.userId, createdAt: serverTimestamp() });
     await batch.commit();
   }
 
-  public async bulkUpdate(ids: string[], updates: PageAccessUpdate): Promise<void> {
+  public async bulkUpdate(ids: string[], updates: PageAccessUpdate, previousById?: ReadonlyMap<string, PageAccessPreviousState>): Promise<void> {
     const administrator = await adminAccessService.requireAdmin();
     const batch = writeBatch(db);
     ids.forEach((id) => batch.set(doc(db, 'pageAccessSettings', id), { ...updates, updatedAt: serverTimestamp(), updatedBy: administrator.userId }, { merge: true }));
-    ids.forEach((id) => batch.set(doc(collection(db, 'pageAccessAuditLogs')), { pageId: id, pageName: id, action: 'bulk_setting_updated', previousStatus: 'unknown', newStatus: updates.status ?? 'unchanged', adminId: administrator.userId, adminName: administrator.userId, createdAt: serverTimestamp() }));
+    ids.forEach((id) => {
+      const previous = previousById?.get(id);
+      batch.set(doc(collection(db, 'pageAccessAuditLogs')), { pageId: id, pageName: previous?.pageName || id, action: 'bulk_setting_updated', previousStatus: previous?.status ?? 'unknown', newStatus: updates.status ?? 'unchanged', adminId: administrator.userId, adminName: administrator.userId, createdAt: serverTimestamp() });
+    });
     await batch.commit();
   }
 

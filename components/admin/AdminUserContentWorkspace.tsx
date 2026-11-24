@@ -79,6 +79,8 @@ export default function AdminUserContentWorkspace({
   const [restoreReason, setRestoreReason] = useState('Restored after administrator review.');
   const [restoreMessage, setRestoreMessage] = useState('');
   const [restoring, setRestoring] = useState(false);
+  // Shown inside the restore dialog: the page-level error banner is hidden behind the open modal.
+  const [restoreError, setRestoreError] = useState<string | null>(null);
   // Transparent Modal: Android doesn't resize for the keyboard, so KeyboardSafeView keeps the restore form above it.
   const insets = useSafeAreaInsets();
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -132,6 +134,7 @@ export default function AdminUserContentWorkspace({
     if (!restoreTarget || restoring || !restoreReason.trim()) return;
     setRestoring(true);
     setError(null);
+    setRestoreError(null);
     try {
       const result = await adminContentService.restoreContent({
         contentType: restoreTarget.contentType,
@@ -146,8 +149,9 @@ export default function AdminUserContentWorkspace({
       setRestoreMessage('');
       await loadContent(null, false);
     } catch (restoreError: unknown) {
+      console.error('[AdminUserContentWorkspace.handleRestore] Error:', restoreError);
       void interactionFeedbackService.play('warning');
-      setError(restoreError instanceof Error ? restoreError.message : 'Content could not be restored.');
+      setRestoreError(restoreError instanceof Error ? restoreError.message : 'Content could not be restored.');
     } finally {
       setRestoring(false);
     }
@@ -427,6 +431,7 @@ export default function AdminUserContentWorkspace({
                     onPress={() => {
                       setRestoreReason('Restored after administrator review.');
                       setRestoreMessage('');
+                      setRestoreError(null);
                       setRestoreTarget(item);
                     }}
                     style={{ flex: 1, marginLeft: item.isDeleted ? 0 : 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, padding: 10, backgroundColor: colors.successSurface }}
@@ -532,6 +537,10 @@ export default function AdminUserContentWorkspace({
                 placeholderTextColor={colors.mutedText}
                 style={{ minHeight: 100, marginTop: 8, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 13, color: colors.text, backgroundColor: colors.control }}
               />
+
+              {restoreError ? (
+                <Text accessibilityRole="alert" style={{ marginTop: 14, color: colors.destructiveText, fontWeight: '700' }}>{restoreError}</Text>
+              ) : null}
 
               <View style={{ marginTop: 20, flexDirection: 'row', gap: 10 }}>
                 <TouchableOpacity

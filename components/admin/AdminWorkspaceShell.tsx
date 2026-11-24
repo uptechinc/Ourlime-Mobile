@@ -42,6 +42,15 @@ export default function AdminWorkspaceShell({
 		}
 		router.replace('/(tabs)');
 	};
+	// Header back: a workspace opened from a deep link or notification has no history, so fall back
+	// to the admin hub instead of doing nothing.
+	const handleHeaderBack = () => {
+		if (router.canGoBack()) {
+			router.back();
+			return;
+		}
+		router.replace('/admin');
+	};
 
 	return (
 		<SafeAreaView
@@ -60,7 +69,7 @@ export default function AdminWorkspaceShell({
 				}}
 			>
 				<TouchableOpacity
-					onPress={() => router.back()}
+					onPress={handleHeaderBack}
 					accessibilityRole="button"
 					accessibilityLabel="Go back"
 					style={{ padding: 7 }}

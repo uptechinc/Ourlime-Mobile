@@ -85,6 +85,10 @@ export default function UserManagementSection() {
 	const [deleteConfirmation, setDeleteConfirmation] = useState('');
 	const [lifecycleReason, setLifecycleReason] = useState('');
 	const [loading, setLoading] = useState(true);
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [nextCursor, setNextCursor] = useState<string | null>(null);
+	const [hasMoreUsers, setHasMoreUsers] = useState(false);
+	const [loadingMore, setLoadingMore] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [message, setMessage] = useState<string | null>(null);
 	const [lifecycleOperation, setLifecycleOperation] = useState<UserLifecycleOperation | null>(null);
@@ -113,12 +117,17 @@ export default function UserManagementSection() {
 
 	const loadUsers = useCallback(async () => {
 		setLoading(true);
+		setLoadError(null);
 		try {
-			setUsers((await adminUserService.fetchUsers()).items);
-		} catch (loadError: unknown) {
-			setMessage(
-				loadError instanceof Error
-					? loadError.message
+			const firstPage = await adminUserService.fetchUsers();
+			setUsers(firstPage.items);
+			setNextCursor(firstPage.nextCursor);
+			setHasMoreUsers(firstPage.hasMore && Boolean(firstPage.nextCursor));
+		} catch (error: unknown) {
+			console.error('[UserManagementSection.loadUsers] Error:', error);
+			setLoadError(
+				error instanceof Error
+					? error.message
 					: 'Users could not be loaded'
 			);
 		} finally {
@@ -128,6 +137,27 @@ export default function UserManagementSection() {
 	useEffect(() => {
 		void loadUsers();
 	}, [loadUsers]);
+
+	// The service pages 50 users at a time; search and filters only cover loaded users, so the
+	// admin can keep loading pages instead of the list silently stopping at the first 50.
+	const handleLoadMoreUsers = async () => {
+		if (loadingMore || !hasMoreUsers || !nextCursor) return;
+		setLoadingMore(true);
+		try {
+			const nextPage = await adminUserService.fetchUsers(nextCursor);
+			setUsers((current) => {
+				const knownIds = new Set(current.map((user) => user.id));
+				return [...current, ...nextPage.items.filter((user) => !knownIds.has(user.id))];
+			});
+			setNextCursor(nextPage.nextCursor);
+			setHasMoreUsers(nextPage.hasMore && Boolean(nextPage.nextCursor));
+		} catch (error: unknown) {
+			console.error('[UserManagementSection.handleLoadMoreUsers] Error:', error);
+			setMessage(error instanceof Error ? error.message : 'More users could not be loaded.');
+		} finally {
+			setLoadingMore(false);
+		}
+	};
 
 	const filteredUsers = useMemo(() => {
 		const normalizedQuery = search.trim().toLowerCase();
@@ -323,6 +353,21 @@ export default function UserManagementSection() {
 	};
 
 	if (loading) return <UserManagementSectionSkeleton />;
+	if (loadError && users.length === 0) {
+		return (
+			<View style={{ alignItems: 'center', padding: 28 }}>
+				<Icon name="alert-triangle" size={34} color={colors.destructive} />
+				<Text style={{ marginTop: 10, textAlign: 'center', color: colors.destructiveText }}>{loadError}</Text>
+				<TouchableOpacity
+					accessibilityRole="button"
+					onPress={() => void loadUsers()}
+					style={{ marginTop: 14, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, backgroundColor: colors.accent }}
+				>
+					<Text style={{ color: colors.onAccent, fontWeight: '800' }}>Retry</Text>
+				</TouchableOpacity>
+			</View>
+		);
+	}
 	const capitalize = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
 	const filterGroups: FilterGroup[] = [
 		{ key: 'status', label: 'Status', options: STATUSES.map((status) => ({ value: status, label: status === 'all' ? 'Any status' : capitalize(status) })), value: statusFilter, defaultValue: 'all' },
@@ -405,8 +450,13 @@ export default function UserManagementSection() {
 			<Text
 				style={{ marginVertical: 10, color: colors.mutedText, fontSize: 12 }}
 			>
-				Showing {visibleUsers.length} of {filteredUsers.length} users
+				Showing {visibleUsers.length} of {filteredUsers.length} {hasMoreUsers ? 'loaded ' : ''}users
 			</Text>
+			{visibleUsers.length === 0 ? (
+				<Text style={{ marginVertical: 18, textAlign: 'center', color: colors.mutedText }}>
+					{users.length === 0 ? 'No users found.' : hasMoreUsers ? 'No loaded users match. Load more users to keep searching.' : 'No users match these filters.'}
+				</Text>
+			) : null}
 			{visibleUsers.map((user) => (
 				<TouchableOpacity
 					key={user.id}
@@ -510,6 +560,17 @@ export default function UserManagementSection() {
 						/>
 					</TouchableOpacity>
 				</View>
+			) : null}
+			{hasMoreUsers ? (
+				<TouchableOpacity
+					accessibilityRole="button"
+					accessibilityState={{ busy: loadingMore, disabled: loadingMore }}
+					disabled={loadingMore}
+					onPress={() => void handleLoadMoreUsers()}
+					style={{ marginTop: 8, alignItems: 'center', paddingVertical: 12, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.elevated }}
+				>
+					{loadingMore ? <ActivityIndicator size="small" color={colors.accent} /> : <Text style={{ color: colors.accentText, fontWeight: '800' }}>Load more users</Text>}
+				</TouchableOpacity>
 			) : null}
 			<Modal
 				visible={Boolean(selectedUser)}

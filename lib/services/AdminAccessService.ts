@@ -1,6 +1,7 @@
-import { doc, getDoc } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebaseConfig';
 import { sharedDocumentReader } from './SharedDocumentReader';
+import { authorizationService } from './AuthorizationService';
 
 export type AdminAccessIdentity = {
   userId: string;
@@ -45,12 +46,13 @@ export class AdminAccessService {
     const snapshot = await sharedDocumentReader.read(doc(db, 'users', currentUser.uid));
     if (!snapshot.exists()) throw new Error('User profile was not found');
     const profile = snapshot.data();
-    const role = (typeof profile.role === 'string' ? profile.role : typeof profile.accountType === 'string' ? profile.accountType : typeof profile.userType === 'string' ? profile.userType : 'user').toLowerCase().replace('-', '_');
-    const isAdmin = profile.isAdmin === true || profile.isSuperAdmin === true || profile.isDeveloper === true || role === 'admin' || role === 'super_admin' || role === 'developer' || role === 'dev';
+    // Same definition as firestore.rules isAdministrator() / isModeratorOrAdministrator().
+    const isAdmin = authorizationService.isAdministratorRecord(profile);
+    const isModerator = !isAdmin && authorizationService.isReviewerRecord(profile);
     return {
       userId: currentUser.uid,
       isAdmin,
-      isModerator: role === 'moderator',
+      isModerator,
     };
   }
 }

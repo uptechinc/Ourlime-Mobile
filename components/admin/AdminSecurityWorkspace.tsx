@@ -15,6 +15,7 @@ import { adminSecurityService } from '@/lib/services/AdminSecurityService';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import CustomModal from '@/components/ui/CustomModal';
+import AdminDialog from '@/components/admin/AdminDialog';
 import { SecurityWorkspaceSkeleton } from '@/components/admin/AdminSkeletons';
 import { Skeleton } from '@/components/ui/Skeleton';
 import {
@@ -40,6 +41,8 @@ const REGIONS = [
   { code: 'GB', name: 'United Kingdom 🇬🇧' },
 ];
 
+type PendingSecurityRemoval = { kind: 'ip' | 'whitelist'; id: string; label: string };
+
 export default function AdminSecurityWorkspace() {
   const { colors, isDark } = useAppTheme();
   const [settings, setSettings] = useState<SecurityAccessSettings | null>(null);
@@ -49,6 +52,8 @@ export default function AdminSecurityWorkspace() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<PendingSecurityRemoval | null>(null);
   const [isCountryPickerVisible, setIsCountryPickerVisible] = useState(false);
 
   // Form states
@@ -68,10 +73,12 @@ export default function AdminSecurityWorkspace() {
   const loadSettings = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const data = await adminSecurityService.getSettings();
       setSettings(data);
     } catch (err: unknown) {
-      setMessage(err instanceof Error ? err.message : 'Could not load security settings');
+      console.error('[AdminSecurityWorkspace.loadSettings] Error:', err);
+      setLoadError(err instanceof Error ? err.message : 'Could not load security settings');
     } finally {
       setLoading(false);
     }
@@ -93,7 +100,8 @@ export default function AdminSecurityWorkspace() {
     }
   }, []);
 
-  const handleSave = async (updated: Partial<SecurityAccessSettings>) => {
+  /** Resolves true only when the settings were saved, so callers keep the admin's input on failure. */
+  const handleSave = async (updated: Partial<SecurityAccessSettings>): Promise<boolean> => {
     try {
       setSaving(true);
       void interactionFeedbackService.play('post');
@@ -101,9 +109,12 @@ export default function AdminSecurityWorkspace() {
       setSettings(saved);
       void interactionFeedbackService.play('success');
       setMessage('Security and access settings updated successfully!');
+      return true;
     } catch (err: unknown) {
+      console.error('[AdminSecurityWorkspace.handleSave] Error:', err);
       setMessage(err instanceof Error ? err.message : 'Failed to save settings');
       void interactionFeedbackService.play('warning');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -132,9 +143,10 @@ export default function AdminSecurityWorkspace() {
         createdBy: 'Admin',
       };
       const updated = { ...settings, ipRules: [...settings.ipRules, newRule] };
-      await handleSave(updated);
-      setNewIp('');
-      setNewIpLabel('');
+      if (await handleSave(updated)) {
+        setNewIp('');
+        setNewIpLabel('');
+      }
     } catch (err: unknown) {
       setMessage(err instanceof Error ? err.message : 'Failed to add IP rule');
     } finally {
@@ -142,13 +154,13 @@ export default function AdminSecurityWorkspace() {
     }
   };
 
-  const handleRemoveIpRule = async (id: string) => {
-    if (!settings) return;
+  const handleRemoveIpRule = async (id: string): Promise<boolean> => {
+    if (!settings) return false;
     const updated = {
       ...settings,
       ipRules: settings.ipRules.filter((r) => r.id !== id),
     };
-    await handleSave(updated);
+    return handleSave(updated);
   };
 
   const handleAddUserWhitelist = async () => {
@@ -163,10 +175,11 @@ export default function AdminSecurityWorkspace() {
         addedBy: 'Admin',
       };
       const updated = { ...settings, userWhitelist: [...settings.userWhitelist, newEntry] };
-      await handleSave(updated);
-      setNewUserId('');
-      setNewUserEmail('');
-      setNewUserReason('');
+      if (await handleSave(updated)) {
+        setNewUserId('');
+        setNewUserEmail('');
+        setNewUserReason('');
+      }
     } catch (err: unknown) {
       setMessage(err instanceof Error ? err.message : 'Failed to add whitelist user');
     } finally {
@@ -174,18 +187,42 @@ export default function AdminSecurityWorkspace() {
     }
   };
 
-  const handleRemoveUserWhitelist = async (userId: string) => {
-    if (!settings) return;
+  const handleRemoveUserWhitelist = async (userId: string): Promise<boolean> => {
+    if (!settings) return false;
     const updated = {
       ...settings,
       userWhitelist: settings.userWhitelist.filter((u) => u.userId !== userId),
     };
-    await handleSave(updated);
+    return handleSave(updated);
+  };
+
+  const handleConfirmRemoval = async () => {
+    if (!pendingRemoval || saving) return;
+    const saved = pendingRemoval.kind === 'ip'
+      ? await handleRemoveIpRule(pendingRemoval.id)
+      : await handleRemoveUserWhitelist(pendingRemoval.id);
+    if (saved) setPendingRemoval(null);
   };
 
   if (loading) return <SecurityWorkspaceSkeleton />;
 
-  if (!settings) return null;
+  if (!settings) {
+    return (
+      <View style={{ alignItems: 'center', padding: 28 }}>
+        <Ionicons name="warning-outline" size={34} color={colors.destructive} />
+        <Text style={{ marginTop: 10, textAlign: 'center', color: colors.destructiveText }}>
+          {loadError || 'Security settings could not be loaded.'}
+        </Text>
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={() => void loadSettings()}
+          style={{ marginTop: 14, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, backgroundColor: colors.accent }}
+        >
+          <Text style={{ color: colors.onAccent, fontWeight: '800' }}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View className="space-y-4">
@@ -636,7 +673,7 @@ export default function AdminSecurityWorkspace() {
                       </Text>
                     )}
                   </View>
-                  <TouchableOpacity onPress={() => void handleRemoveIpRule(rule.id)}>
+                  <TouchableOpacity disabled={saving} accessibilityLabel={`Remove IP rule ${rule.ip}`} onPress={() => setPendingRemoval({ kind: 'ip', id: rule.id, label: rule.ip })}>
                     <Ionicons name="trash-outline" size={18} color="#ef4444" />
                   </TouchableOpacity>
                 </View>
@@ -768,7 +805,7 @@ export default function AdminSecurityWorkspace() {
                       Reason: {entry.reason}
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={() => void handleRemoveUserWhitelist(entry.userId)}>
+                  <TouchableOpacity disabled={saving} accessibilityLabel={`Remove ${entry.email || entry.userId} from the whitelist`} onPress={() => setPendingRemoval({ kind: 'whitelist', id: entry.userId, label: entry.email || entry.userId })}>
                     <Ionicons name="trash-outline" size={18} color="#ef4444" />
                   </TouchableOpacity>
                 </View>
@@ -1135,6 +1172,20 @@ export default function AdminSecurityWorkspace() {
         </View>
       )}
 
+      <AdminDialog
+        visible={Boolean(pendingRemoval) && !message}
+        title={pendingRemoval?.kind === 'ip' ? 'Remove this IP rule?' : 'Remove this whitelist entry?'}
+        description={pendingRemoval
+          ? pendingRemoval.kind === 'ip'
+            ? `${pendingRemoval.label} will no longer be allowed or blocked by this rule. This applies to everyone straight away.`
+            : `${pendingRemoval.label} will lose their region and IP bypass straight away.`
+          : undefined}
+        confirmLabel="Remove"
+        tone="danger"
+        busy={saving}
+        onConfirm={() => void handleConfirmRemoval()}
+        onClose={() => setPendingRemoval(null)}
+      />
       <CustomModal
         visible={Boolean(message)}
         title="Security & Access Controls"

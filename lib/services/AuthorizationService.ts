@@ -12,6 +12,13 @@ export type AuthorizationState = {
   isPremium: boolean;
 };
 
+/** The user-document fields Firestore rules read to decide who is staff. */
+export type AdministratorRecord = {
+  isAdmin?: unknown;
+  role?: unknown;
+  accountType?: unknown;
+};
+
 export class AuthorizationService {
   private static instance: AuthorizationService;
 
@@ -22,9 +29,25 @@ export class AuthorizationService {
     return AuthorizationService.instance;
   }
 
+  /**
+   * Canonical admin check. Mirrors `isAdministrator()` in firestore.rules exactly
+   * (`isAdmin == true || role == 'admin' || accountType == 'admin'`, case-sensitive),
+   * so the app never shows admin tools the rules would refuse, or hides ones they allow.
+   */
+  public isAdministratorRecord(profile: AdministratorRecord | null | undefined): boolean {
+    if (!profile) return false;
+    return profile.isAdmin === true || profile.role === 'admin' || profile.accountType === 'admin';
+  }
+
+  /** Mirrors `isModeratorOrAdministrator()` in firestore.rules. */
+  public isReviewerRecord(profile: AdministratorRecord | null | undefined): boolean {
+    if (!profile) return false;
+    return this.isAdministratorRecord(profile) || profile.role === 'moderator';
+  }
+
   public resolve(profile: UserAccessProfile | null | undefined): AuthorizationState {
     const roleValue = (profile?.role || profile?.accountType || 'user').trim().toLowerCase();
-    const isAdmin = profile?.isAdmin === true || roleValue === 'admin';
+    const isAdmin = this.isAdministratorRecord(profile);
     const isTester = roleValue === 'tester';
     const isDeveloper = profile?.isDeveloper === true || roleValue === 'developer' || roleValue === 'dev';
     const isModerator = roleValue === 'moderator';

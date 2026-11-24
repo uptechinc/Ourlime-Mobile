@@ -47,6 +47,7 @@ export default function AdminTestersWorkspace() {
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
 	const [saving, setSaving] = useState(false);
+	const [modeSaving, setModeSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [message, setMessage] = useState<string | null>(null);
 	const [inviteOpen, setInviteOpen] = useState(false);
@@ -95,17 +96,28 @@ export default function AdminTestersWorkspace() {
 		});
 	}, [overview.records, query, tab]);
 
+	// Only healthy states read green; declined/ended states use the danger colour, waiting ones the warning colour.
+	const getStatusColor = (status: string): string => {
+		if (status === 'rejected' || status === 'revoked' || status === 'suspended' || status === 'removed' || status === 'expired') return colors.destructiveText;
+		if (status === 'pending' || status === 'invited') return colors.warningText;
+		return colors.successText;
+	};
 	const handleMode = async (mode: AdminBetaOverview['registrationMode']) => {
+		if (modeSaving || mode === overview.registrationMode) return;
+		setModeSaving(true);
 		try {
 			await workspaceService.setRegistrationMode(mode);
 			setOverview((current) => ({ ...current, registrationMode: mode }));
 			setMessage(`Registration is now ${mode.replace('_', ' ')}.`);
 		} catch (modeError: unknown) {
+			console.error('[AdminTestersWorkspace.handleMode] Error:', modeError);
 			setMessage(
 				modeError instanceof Error
 					? modeError.message
 					: 'Registration mode could not be updated.'
 			);
+		} finally {
+			setModeSaving(false);
 		}
 	};
 	const handleStatus = async (status: string) => {
@@ -125,7 +137,13 @@ export default function AdminTestersWorkspace() {
 				current ? { ...current, status, notes } : null
 			);
 			setMessage('Beta record updated.');
+			// Approving an application creates an invitation (and other side effects on the server):
+			// reload so the list and tab counts reflect them instead of only the patched row.
+			void workspaceService.fetchBetaOverview().then(setOverview).catch((refreshError: unknown) => {
+				console.warn('[AdminTestersWorkspace.handleStatus] Refresh failed:', refreshError);
+			});
 		} catch (statusError: unknown) {
+			console.error('[AdminTestersWorkspace.handleStatus] Error:', statusError);
 			setMessage(
 				statusError instanceof Error
 					? statusError.message
@@ -157,6 +175,7 @@ export default function AdminTestersWorkspace() {
 			);
 			await load(true);
 		} catch (inviteError: unknown) {
+			console.error('[AdminTestersWorkspace.handleInvite] Error:', inviteError);
 			setMessage(
 				inviteError instanceof Error
 					? inviteError.message
@@ -196,6 +215,7 @@ export default function AdminTestersWorkspace() {
 						<TouchableOpacity
 							key={mode}
 							onPress={() => void handleMode(mode)}
+							disabled={modeSaving}
 							style={{
 								flex: 1,
 								marginRight: mode === 'closed' ? 0 : 7,
@@ -313,7 +333,7 @@ export default function AdminTestersWorkspace() {
 						</Text>
 						<Text
 							style={{
-								color: colors.successText,
+								color: getStatusColor(record.status),
 								fontSize: 10,
 								fontWeight: '900',
 								textTransform: 'uppercase',

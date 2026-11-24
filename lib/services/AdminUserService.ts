@@ -1,8 +1,9 @@
 import { AdminApiService, AdminApiError } from './AdminApiService';
-import { addDoc, collection, documentId, doc, getDocs, limit, orderBy, query, serverTimestamp, startAfter, updateDoc, where } from 'firebase/firestore';
+import { collection, documentId, doc, getDocs, limit, orderBy, query, serverTimestamp, startAfter, where, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import type { PageResult } from '@/lib/types/serviceResults';
 import { adminAccessService } from './AdminAccessService';
+import { authorizationService } from './AuthorizationService';
 import { auth } from '@/lib/firebaseConfig';
 import { DiagnosticLogService } from './DiagnosticLogService';
 import type { ModerationDeliveryResult } from '@/lib/types/moderationDelivery';
@@ -215,8 +216,12 @@ export class AdminUserService {
 
   public async verifyEmail(userId: string): Promise<void> {
     const administrator = await adminAccessService.requireAdmin();
-    await updateDoc(doc(db, 'users', userId), { emailVerified: true, manuallyVerified: true, verifiedBy: administrator.userId, verifiedAt: serverTimestamp() });
-    await addDoc(collection(db, 'adminLogs'), { action: 'verify_user_email', adminId: administrator.userId, targetUserId: userId, createdAt: serverTimestamp(), timestamp: serverTimestamp() });
+    // One batch: the change and its audit entry land together, so an audit failure can no longer
+    // report an error for a verification that was in fact saved (or save one with no audit).
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'users', userId), { emailVerified: true, manuallyVerified: true, verifiedBy: administrator.userId, verifiedAt: serverTimestamp() });
+    batch.set(doc(collection(db, 'adminLogs')), { action: 'verify_user_email', adminId: administrator.userId, targetUserId: userId, createdAt: serverTimestamp(), timestamp: serverTimestamp() });
+    await batch.commit();
   }
 
   public async updateIdentityVerification(userId: string, status: 'verified' | 'rejected', reason: string): Promise<void> {
@@ -284,7 +289,7 @@ export class AdminUserService {
             || readImageUrl(value.photoURL)
             || null,
           role,
-          isAdmin: value.isAdmin === true || role === 'admin',
+          isAdmin: authorizationService.isAdministratorRecord(value),
           emailVerified: value.emailVerified === true,
           accountStatus: readString(value.accountStatus) || 'active',
           archived: value.deletedAt !== null && value.deletedAt !== undefined,

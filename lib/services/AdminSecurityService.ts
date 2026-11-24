@@ -60,6 +60,12 @@ export class AdminSecurityService {
           blockedMessage: updates.regionPolicy.blockedMessage?.slice(0, 500) || current.regionPolicy.blockedMessage,
         }
       : current.regionPolicy;
+    // A newly added rule that fails validation used to be dropped silently while the save reported
+    // success. Reject it instead; previously stored rules are still filtered as before.
+    const existingRuleIds = new Set(current.ipRules.map((rule) => rule.id));
+    const invalidNewRule = updates.ipRules?.find((rule) => rule && !existingRuleIds.has(rule.id)
+      && (!isValidIpRuleValue(rule.ip) || (rule.type !== 'whitelist' && rule.type !== 'blocklist')));
+    if (invalidNewRule) throw new Error(`"${invalidNewRule.ip}" is not a valid IP address or CIDR range.`);
     const ipRules = updates.ipRules
       ? updates.ipRules.filter((rule) => rule && isValidIpRuleValue(rule.ip) && (rule.type === 'whitelist' || rule.type === 'blocklist')).slice(0, 500)
       : current.ipRules;

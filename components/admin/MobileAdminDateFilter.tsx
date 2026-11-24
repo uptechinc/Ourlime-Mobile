@@ -29,6 +29,8 @@ export default function MobileAdminDateFilter({
 }: MobileAdminDateFilterProps) {
   const { colors } = useAppTheme();
 
+  // Rolling presets end at "now", left open (endDate null) so entries that arrive after the chip
+  // was tapped (pull-to-refresh, refetch on focus) are not filtered out.
   const handleSelectPreset = (presetId: string) => {
     const now = new Date();
     if (presetId === 'all') {
@@ -43,22 +45,22 @@ export default function MobileAdminDateFilter({
     }
     if (presetId === '24h') {
       const start = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      onChange({ preset: '24h', startDate: start, endDate: now, label: 'Last 24h' });
+      onChange({ preset: '24h', startDate: start, endDate: null, label: 'Last 24h' });
       return;
     }
     if (presetId === '7d') {
       const start = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      onChange({ preset: '7d', startDate: start, endDate: now, label: 'Last 7d' });
+      onChange({ preset: '7d', startDate: start, endDate: null, label: 'Last 7d' });
       return;
     }
     if (presetId === '30d') {
       const start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      onChange({ preset: '30d', startDate: start, endDate: now, label: 'Last 30d' });
+      onChange({ preset: '30d', startDate: start, endDate: null, label: 'Last 30d' });
       return;
     }
     if (presetId === 'this_month') {
       const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
-      onChange({ preset: 'this_month', startDate: start, endDate: now, label: 'This Month' });
+      onChange({ preset: 'this_month', startDate: start, endDate: null, label: 'This Month' });
       return;
     }
   };

@@ -1,16 +1,17 @@
 import SellerReviewSection from '@/components/admin/SellerReviewSection';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
 	View,
 	Text,
 	TouchableOpacity,
 	ScrollView,
 	StyleSheet,
+	RefreshControl,
 } from 'react-native';
 import { AdminOverviewSkeleton } from '@/components/admin/AdminSkeletons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import {
 	AdminMetricsService,
 	type AdminMetrics,
@@ -144,6 +145,9 @@ export default function AdminPortalScreen() {
 		reportsCount: 0,
 	});
 	const [error, setError] = useState<string | null>(null);
+	const [refreshing, setRefreshing] = useState(false);
+	const hasStatsRef = useRef(false);
+	const { refresh: refreshPendingApprovals } = pendingApprovals;
 
 	useEffect(() => {
 		if (
@@ -156,24 +160,40 @@ export default function AdminPortalScreen() {
 			setActiveSection(section);
 	}, [section]);
 
-	const fetchAdminStats = async () => {
+	// `force` bypasses the service's 5-minute cache (pull-to-refresh, Retry). The skeleton only shows
+	// before the first successful load, so refetching on focus does not blank the overview.
+	const fetchAdminStats = useCallback(async (force = false) => {
 		try {
-			setLoading(true);
+			if (!hasStatsRef.current) setLoading(true);
 			setError(null);
-			setStats(await adminMetricsService.fetchMetrics());
+			setStats(await adminMetricsService.fetchMetrics(force));
+			hasStatsRef.current = true;
 		} catch (err: unknown) {
-			console.error('[AdminPortal] Error loading stats:', err);
+			console.error('[AdminPortal.fetchAdminStats] Error:', err);
 			setError(
 				err instanceof Error ? err.message : 'Could not load admin metrics.'
 			);
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, []);
 
-	useEffect(() => {
-		if (!accessLoading && authorization.isAdmin) void fetchAdminStats();
-	}, [accessLoading, authorization.isAdmin]);
+	// Refetch when returning from a workspace (deleting users, resolving reports, approvals) so the
+	// counts and the pending-approvals badge do not stay stale.
+	useFocusEffect(
+		useCallback(() => {
+			if (accessLoading || !authorization.isAdmin) return;
+			void fetchAdminStats();
+			refreshPendingApprovals();
+		}, [accessLoading, authorization.isAdmin, fetchAdminStats, refreshPendingApprovals])
+	);
+
+	const handleRefreshOverview = async () => {
+		setRefreshing(true);
+		refreshPendingApprovals();
+		await fetchAdminStats(true);
+		setRefreshing(false);
+	};
 
 	const handleBack = () => {
 		if (router.canGoBack()) {
@@ -195,7 +215,7 @@ export default function AdminPortalScreen() {
 					{ backgroundColor: colors.surface, borderBottomColor: colors.border },
 				]}
 			>
-				<TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+				<TouchableOpacity onPress={handleBack} style={styles.backBtn}>
 					<Icon name="arrow-left" size={24} color={colors.icon} />
 				</TouchableOpacity>
 				<Text style={[styles.headerTitle, { color: colors.text }]}>
@@ -334,7 +354,7 @@ export default function AdminPortalScreen() {
 									{error}
 								</Text>
 								<TouchableOpacity
-									onPress={() => void fetchAdminStats()}
+									onPress={() => void fetchAdminStats(true)}
 									style={{
 										marginTop: 14,
 										paddingHorizontal: 18,
@@ -352,6 +372,13 @@ export default function AdminPortalScreen() {
 							<ScrollView
 								style={{ flex: 1 }}
 								contentContainerStyle={{ padding: 20, gap: 16 }}
+								refreshControl={
+									<RefreshControl
+										refreshing={refreshing}
+										onRefresh={() => void handleRefreshOverview()}
+										tintColor={colors.accent}
+									/>
+								}
 							>
 								<TouchableOpacity
 									accessibilityRole="button"
