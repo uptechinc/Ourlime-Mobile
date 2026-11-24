@@ -1,6 +1,23 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-23-7",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-23",
+      "notes": [
+        "Posting a job or a quick task is now 5 short steps with a progress bar. Next checks only that step and points to anything missing, and the last step shows a summary before you post.",
+        "Managing your listings: closing, archiving, accepting or rejecting now asks first and says what happens. Notes, activity and interview sheets have clearer layouts and Try again when something fails.",
+        "Selecting several applicants only offers the moves all of them can make, so accepted or rejected applicants can't be moved back by mistake.",
+        "Editing a listing keeps Save off until you change something and asks before throwing away unsaved edits. Delete and identity check screens are easier to read, including in dark mode.",
+        "Instructors: creating a course has a step bar, problems shown on the field or lesson they belong to, a warning before leaving with unsaved work, and Publish only once the checklist is done.",
+        "Quiz and assignment builders are laid out as cards with clear errors and a Save bar. Grading is one list with the student, what they handed in, when, and the status in words.",
+        "The instructor application, CXC, grades, discussions, class schedule and course work screens match the new E-Learning look.",
+        "Fixed: the typing dots in chat, the voice note recording dot and the floating repost bubbles on Limes could slow the app down or freeze it."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-23-6",
       "version": "1.3.2",
       "versionCode": 11,
