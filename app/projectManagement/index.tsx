@@ -219,12 +219,15 @@ export default function ProjectManagementScreen() {
       <ProjectScreenHeader title="E-Projects" onBack={() => router.back()} />
       <SessionRetryBanner />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={projectResource.status === 'refreshing'} onRefresh={() => void handleRefresh()} tintColor="#10b981" />}>
-        <View style={styles.intro}>
-          <Text accessibilityRole="header" style={styles.introTitle}>Your projects</Text>
-          {showList ? <Text style={styles.introText}>{summary}</Text> : null}
-          {sessionReady ? <ProjectButton label="New project" icon={<Plus size={18} color="#ffffff" />} onPress={handleOpenCreate} isDisabled={!createCapability.allowed} accessibilityHint="Start from a template or a blank project" /> : null}
-          {sessionReady && !createCapability.allowed && !loading ? <Text style={styles.hint}>{createCapability.reason}</Text> : null}
-        </View>
+        {/* With no projects, the empty state below already offers "Start a project", so the intro card would repeat it. */}
+        {showList && acceptedProjects.length === 0 && createCapability.allowed ? null : (
+          <View style={styles.intro}>
+            <Text accessibilityRole="header" style={styles.introTitle}>Your projects</Text>
+            {showList ? <Text style={styles.introText}>{summary}</Text> : null}
+            {sessionReady ? <ProjectButton label="New project" icon={<Plus size={18} color="#ffffff" />} onPress={handleOpenCreate} isDisabled={!createCapability.allowed} accessibilityHint="Start from a template or a blank project" /> : null}
+            {sessionReady && !createCapability.allowed && !loading ? <Text style={styles.hint}>{createCapability.reason}</Text> : null}
+          </View>
+        )}
 
         {!activeUserId ? <View style={styles.stateCard}><Text style={styles.stateTitle}>Sign in to use E-Projects</Text><Text style={styles.hint}>Your projects and invitations are private to your account.</Text></View> : null}
         {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
