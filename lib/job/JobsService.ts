@@ -9,7 +9,6 @@ import {
     addDoc,
     updateDoc,
     deleteDoc,
-    setDoc,
     serverTimestamp,
     Firestore,
     limit,
@@ -460,24 +459,6 @@ export class JobsService {
     /** Web JobsAuthorizationService: anything outside the known statuses counts as not_started. */
     private normalizeVerificationStatus(status: string): string {
         return ['pending', 'verified', 'rejected', 'expired'].includes(status) ? status : 'not_started';
-    }
-
-    /** Web JobsService.toggleSaveJob: users/{uid}/savedJobs/{jobId}. */
-    public async toggleSaveJob(userId: string, jobId: string, isSaving: boolean): Promise<void> {
-        const saveRef = doc(this.db, 'users', userId, 'savedJobs', jobId);
-        if (isSaving) await setDoc(saveRef, { jobId, savedAt: Timestamp.now() });
-        else await deleteDoc(saveRef);
-    }
-
-    public async getSavedJobIds(userId: string): Promise<Set<string>> {
-        if (!userId) return new Set<string>();
-        try {
-            const snapshot = await getDocs(collection(this.db, 'users', userId, 'savedJobs'));
-            return new Set(snapshot.docs.map((savedDoc) => savedDoc.id));
-        } catch (error: unknown) {
-            console.error('[JobsService.getSavedJobIds] Error:', error);
-            return new Set<string>();
-        }
     }
 
     public async updateJob(jobId: string, jobData: UpdateJobInput): Promise<boolean> {

@@ -19,6 +19,7 @@ import { contentDraftService } from '@/lib/services/ContentDraftService';
 import { nativeEngagementService } from '@/lib/services/NativeEngagementService';
 import { nativeSessionService } from '@/lib/services/NativeSessionService';
 import { pageAccessService } from '@/lib/services/PageAccessService';
+import { savedService } from '@/lib/services/SavedService';
 import type {
   BlogAuthorSummary,
   BlogCategory,
@@ -117,8 +118,7 @@ export class BlogsAndArticlesService {
 
     if (listQuery.category === 'Saved') {
       if (!viewerId) throw new Error('Please sign in to view your saved blogs.');
-      const saved = await getDocs(collection(db, 'users', viewerId, 'savedBlogs'));
-      const savedIds = new Set(saved.docs.map((document) => document.id));
+      const savedIds = new Set(await savedService.getSavedIds('blog', 1000));
       posts = posts.filter((post) => savedIds.has(post.detail.id));
     } else if (listQuery.category && listQuery.category !== 'All') {
       const category = listQuery.category.toLowerCase();
@@ -352,9 +352,9 @@ export class BlogsAndArticlesService {
     if (!userId) return { isLiked: false, isSaved: false };
     const [like, saved] = await Promise.all([
       getDoc(doc(db, 'blogsAndArticles', postId, 'likes', userId)),
-      getDoc(doc(db, 'users', userId, 'savedBlogs', postId)),
+      savedService.isSaved('blog', postId),
     ]);
-    return { isLiked: like.exists(), isSaved: saved.exists() };
+    return { isLiked: like.exists(), isSaved: saved };
   }
 
   /** Likes, saves and views go through mutateEngagement, which keeps one record per member and the totals. */

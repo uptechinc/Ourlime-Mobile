@@ -37,12 +37,15 @@ export class MarketplacePreferenceService {
     }
   }
 
-  public async toggleFavorite(productId: string): Promise<MarketplacePreferences> {
+  /**
+   * Hands over the product favorites kept on this device before they moved to the member's Saved list
+   * (users/{uid}/saved) and clears them here. Called once after sign-in.
+   */
+  public async takeDeviceFavorites(): Promise<string[]> {
     const current = await this.read();
-    const favoriteIds = current.favoriteIds.includes(productId)
-      ? current.favoriteIds.filter((savedId) => savedId !== productId)
-      : [productId, ...current.favoriteIds].slice(0, 500);
-    return this.write({ ...current, favoriteIds });
+    if (current.favoriteIds.length === 0) return [];
+    await this.write({ ...current, favoriteIds: [] });
+    return current.favoriteIds;
   }
 
   public async recordViewed(productId: string): Promise<MarketplacePreferences> {

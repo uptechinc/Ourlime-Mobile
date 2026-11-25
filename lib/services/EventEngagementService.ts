@@ -1,17 +1,17 @@
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, increment, query, serverTimestamp, where, writeBatch, type DocumentData } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, increment, query, serverTimestamp, where, writeBatch, type DocumentData } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { AuthService } from './AuthService';
 import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import type { RegistrationAnswers } from '@/types/eventTypes';
 
-export type EventViewerState = { liked: { [eventId: string]: boolean }; bookmarked: { [eventId: string]: boolean } };
+/** Saves (bookmarks) live in users/{uid}/saved (SavedService); this covers likes only. */
+export type EventViewerState = { liked: { [eventId: string]: boolean } };
 export type EventRegistration = { userId: string; name: string; userName: string | null; image: string | null; answers: RegistrationAnswers };
 
 const LIKES = 'eventVariantLikes';
 const LIKE_COUNTER = 'eventLikeCounter';
-const BOOKMARKS = 'eventBookmarks';
 
-/** Event likes, bookmarks and registration answers (the website's EventInteractionsService, direct to Firestore). */
+/** Event likes and registration answers (the website's EventInteractionsService, direct to Firestore). */
 export class EventEngagementService {
   private static instance: EventEngagementService;
   private readonly authService = AuthService.getInstance();
@@ -29,18 +29,14 @@ export class EventEngagementService {
     return userId;
   }
 
-  /** Which of these events the member liked or bookmarked. */
+  /** Which of these events the member liked. */
   public async fetchViewerState(eventIds: string[]): Promise<EventViewerState> {
-    const result: EventViewerState = { liked: {}, bookmarked: {} };
+    const result: EventViewerState = { liked: {} };
     const userId = this.authService.getVerifiedCurrentUser()?.uid;
     if (!userId || eventIds.length === 0) return result;
     const wanted = new Set(eventIds);
-    const [likes, bookmarks] = await Promise.all([
-      getDocs(query(collection(db, LIKES), where('userId', '==', userId))),
-      getDocs(query(collection(db, BOOKMARKS), where('userId', '==', userId))),
-    ]);
+    const likes = await getDocs(query(collection(db, LIKES), where('userId', '==', userId)));
     likes.docs.forEach((entry) => { const eventId = String(entry.data().eventVariantId ?? ''); if (wanted.has(eventId)) result.liked[eventId] = true; });
-    bookmarks.docs.forEach((entry) => { const eventId = String(entry.data().eventId ?? ''); if (wanted.has(eventId)) result.bookmarked[eventId] = true; });
     return result;
   }
 
@@ -68,18 +64,6 @@ export class EventEngagementService {
     }
     await batch.commit();
     return !isLiked;
-  }
-
-  /** Adds or removes the member's bookmark. Returns the new state. */
-  public async toggleBookmark(eventId: string, isBookmarked: boolean): Promise<boolean> {
-    const userId = this.requireUserId();
-    if (isBookmarked) {
-      const existing = await getDocs(query(collection(db, BOOKMARKS), where('eventId', '==', eventId), where('userId', '==', userId)));
-      await Promise.all(existing.docs.map((entry) => deleteDoc(entry.ref)));
-      return false;
-    }
-    await addDoc(collection(db, BOOKMARKS), { eventId, userId, createdAt: serverTimestamp() });
-    return true;
   }
 
   /** Attendees' answers to the registration questions (the website's "View registrations" for organisers). */

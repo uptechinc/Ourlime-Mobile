@@ -155,6 +155,18 @@ export class EHubCommerceService {
     return !isSaved;
   }
 
+  /**
+   * Hands over the saved products kept on this device before they moved to the member's Saved list
+   * (users/{uid}/saved) and clears them here. Called once after sign-in.
+   */
+  public async takeDeviceFavorites(): Promise<string[]> {
+    await this.load();
+    const favorites = this.state.favorites;
+    if (favorites.length === 0) return [];
+    this.setState({ ...this.state, favorites: [] });
+    return favorites;
+  }
+
   /** Newest first, one entry per product, at most 10 (the website records these but does not show them yet). */
   public addRecentlyViewed(item: Omit<EHubRecentlyViewedItem, 'viewedAt'>): void {
     if (!item.id) return;
