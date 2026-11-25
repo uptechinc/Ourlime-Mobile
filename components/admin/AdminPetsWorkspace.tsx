@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
-import Icon from 'react-native-vector-icons/Feather';
 import { toast } from 'sonner-native';
-import AdminWorkspaceShell from './AdminWorkspaceShell';
+import AdminDialog from './AdminDialog';
+import AdminReviewCard, { AdminReasonField } from './AdminReviewCard';
+import AdminScreen, { type AdminScreenState } from './AdminScreen';
+import { space } from '@/lib/admin/adminTokens';
 import { PET_HEALTH_LABELS, petsService } from '@/lib/services/PetsService';
-import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import type { PetListing } from '@/lib/types/pets';
 
 type Decision = 'approved' | 'rejected';
@@ -14,17 +15,19 @@ const CONTACT_LABELS: Readonly<Record<PetListing['contactPreference'], string>> 
 
 /** The website's /profile/admin/pet-adoption: approve pet listings waiting for review, or decline them with a reason. */
 export default function AdminPetsWorkspace() {
-  const { colors } = useAppTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const [listings, setListings] = useState<PetListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeListingId, setActiveListingId] = useState<string | null>(null);
-  const [reasons, setReasons] = useState<{ [listingId: string]: string }>({});
-  // A refused decision is shown on its own card; the page-level error is only for loading the list.
+  // A refused approval is shown on its own card, a refused decline inside its dialog; the page-level error is only for loading.
   const [decisionErrors, setDecisionErrors] = useState<{ [listingId: string]: string }>({});
+  const [declineTarget, setDeclineTarget] = useState<PetListing | null>(null);
+  const [reason, setReason] = useState('');
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  // In-flight guard: one decision at a time.
+  const activeRef = useRef(false);
 
   const loadListings = useCallback(async () => {
     try {
@@ -41,63 +44,118 @@ export default function AdminPetsWorkspace() {
 
   useEffect(() => { void loadListings(); }, [loadListings]);
 
-  const handleDecision = async (listing: PetListing, decision: Decision) => {
-    const reason = reasons[listing.id]?.trim() ?? '';
-    if (decision === 'rejected' && !reason) return;
-    if (activeListingId) return;
+  const handleDecision = async (listing: PetListing, decision: Decision, decisionReason: string): Promise<boolean> => {
+    const trimmedReason = decisionReason.trim();
+    if (decision === 'rejected' && !trimmedReason) return false;
+    if (activeRef.current) return false;
+    activeRef.current = true;
     setActiveListingId(listing.id);
     setDecisionErrors((current) => ({ ...current, [listing.id]: '' }));
     try {
-      await petsService.moderateListing(listing.id, decision, reason || undefined);
+      await petsService.moderateListing(listing.id, decision, trimmedReason || undefined);
       setListings((current) => current.filter((entry) => entry.id !== listing.id));
       toast.success(decision === 'approved' ? `${listing.name} approved and listed.` : `${listing.name} declined.`);
+      return true;
     } catch (decisionError: unknown) {
-      setDecisionErrors((current) => ({ ...current, [listing.id]: decisionError instanceof Error ? decisionError.message : 'Could not save the decision.' }));
+      console.error('[AdminPetsWorkspace.handleDecision] Error:', decisionError instanceof Error ? decisionError.message : decisionError);
+      const message = decisionError instanceof Error ? decisionError.message : 'Could not save the decision.';
+      if (decision === 'approved') setDecisionErrors((current) => ({ ...current, [listing.id]: message }));
+      else setDialogError(message);
+      return false;
     } finally {
+      activeRef.current = false;
       setActiveListingId(null);
     }
   };
 
-  return <AdminWorkspaceShell title="Pet adoption" subtitle="Approve listings before they are public" loading={loading} refreshing={refreshing} error={error} onRefresh={() => { setRefreshing(true); void loadListings(); }}>
-    {listings.length ? listings.map((listing) => {
-      const isBusy = activeListingId === listing.id;
-      const reason = reasons[listing.id] ?? '';
-      return <View key={listing.id} style={styles.card}>
-        {listing.imageUrls.length ? <View style={styles.photos}>{listing.imageUrls.slice(0, 3).map((imageUrl, index) => <Image key={imageUrl} source={{ uri: imageUrl }} style={styles.photo} accessibilityLabel={`${listing.name} photo ${index + 1}`} />)}</View> : null}
-        <Pressable accessibilityRole="link" onPress={() => router.push(`/market/pets/${listing.id}` as Href)}><Text style={styles.name}>{listing.name} ›</Text></Pressable>
-        <Text style={styles.meta}>{listing.breed || listing.petType} · {listing.age} · {listing.sex} · {listing.location}</Text>
-        <Text style={styles.body}>{listing.description}</Text>
-        <Text style={styles.body}><Text style={styles.strong}>Temperament: </Text>{listing.temperament}</Text>
-        <Text style={styles.body}><Text style={styles.strong}>Vaccinated: </Text>{PET_HEALTH_LABELS[listing.vaccinationStatus]} · <Text style={styles.strong}>Sterilised: </Text>{PET_HEALTH_LABELS[listing.sterilisationStatus]}</Text>
-        {listing.healthNotes ? <Text style={styles.body}><Text style={styles.strong}>Health: </Text>{listing.healthNotes}</Text> : null}
-        <Text style={styles.body}><Text style={styles.strong}>Requirements: </Text>{listing.adoptionRequirements}</Text>
-        <Text style={styles.body}><Text style={styles.strong}>Contact: </Text>{CONTACT_LABELS[listing.contactPreference]}{listing.contactDetail ? ` · ${listing.contactDetail}` : ''}</Text>
-        <TouchableOpacity accessibilityRole="button" disabled={isBusy} onPress={() => void handleDecision(listing, 'approved')} style={[styles.button, { backgroundColor: colors.successSurface, opacity: isBusy ? 0.5 : 1 }]}>
-          <Icon name="check" size={16} color={colors.successText} /><Text style={[styles.buttonText, { color: colors.successText }]}>Approve</Text>
-        </TouchableOpacity>
-        <TextInput accessibilityLabel="Reason for declining" value={reason} onChangeText={(text) => setReasons((current) => ({ ...current, [listing.id]: text }))}
-          placeholder="Reason for declining" placeholderTextColor={colors.mutedText} multiline style={styles.reason} />
-        <TouchableOpacity accessibilityRole="button" disabled={isBusy || !reason.trim()} onPress={() => void handleDecision(listing, 'rejected')}
-          style={[styles.button, { backgroundColor: colors.destructiveSurface, opacity: isBusy || !reason.trim() ? 0.5 : 1 }]}>
-          <Icon name="x" size={16} color={colors.destructiveText} /><Text style={[styles.buttonText, { color: colors.destructiveText }]}>Decline</Text>
-        </TouchableOpacity>
-        {decisionErrors[listing.id] ? <Text accessibilityRole="alert" style={styles.decisionError}>{decisionErrors[listing.id]}</Text> : null}
-      </View>;
-    }) : <Text style={styles.empty}>No pet listings are waiting for review.</Text>}
-  </AdminWorkspaceShell>;
-}
+  const openDecline = (listing: PetListing) => {
+    setDeclineTarget(listing);
+    setReason('');
+    setDialogError(null);
+  };
 
-const createStyles = (colors: AppThemeColors) => StyleSheet.create({
-  card: { marginBottom: 12, padding: 16, gap: 8, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  photos: { flexDirection: 'row', gap: 8 },
-  photo: { flex: 1, height: 96, borderRadius: 10, backgroundColor: colors.control },
-  name: { color: colors.text, fontSize: 18, fontWeight: '900' },
-  meta: { color: colors.mutedText, fontSize: 13 },
-  body: { color: colors.secondaryText, fontSize: 13, lineHeight: 19 },
-  strong: { fontWeight: '800', color: colors.text },
-  reason: { minHeight: 64, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 14, textAlignVertical: 'top' },
-  button: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 10 },
-  buttonText: { fontSize: 14, fontWeight: '800' },
-  decisionError: { color: colors.destructiveText, fontSize: 13, fontWeight: '700' },
-  empty: { padding: 24, textAlign: 'center', color: colors.mutedText, fontSize: 14 },
-});
+  const handleConfirmDecline = async () => {
+    if (!declineTarget) return;
+    const saved = await handleDecision(declineTarget, 'rejected', reason);
+    if (saved) setDeclineTarget(null);
+  };
+
+  const screenState: AdminScreenState = loading
+    ? { kind: 'loading', variant: 'list' }
+    : error
+      ? { kind: 'error', message: error }
+      : listings.length
+        ? { kind: 'ready' }
+        : { kind: 'empty', icon: 'heart', title: 'No pet listings are waiting for review.', description: 'New listings appear here before they are public.' };
+
+  const isDeclineBusy = Boolean(declineTarget && activeListingId === declineTarget.id);
+
+  return (
+    <AdminScreen
+      title="Pet adoption"
+      subtitle={loading || error ? 'Approve listings before they are public' : `${listings.length} waiting · approve before they are public`}
+      state={screenState}
+      refreshing={refreshing}
+      onRefresh={() => { setRefreshing(true); void loadListings(); }}
+    >
+      <View style={{ gap: space.md }}>
+        {listings.map((listing) => (
+          <AdminReviewCard
+            key={listing.id}
+            title={listing.name}
+            subtitle={[listing.breed || listing.petType, listing.age, listing.sex, listing.location].filter(Boolean).join(' · ')}
+            status={{ label: 'Waiting for review', tone: 'pending' }}
+            media={{ kind: 'strip', uris: listing.imageUrls, label: listing.name }}
+            onPress={() => router.push(`/market/pets/${listing.id}` as Href)}
+            accessibilityHint="Opens the pet profile"
+            details={[
+              { label: 'About', value: listing.description },
+              { label: 'Temperament', value: listing.temperament },
+              { label: 'Health', value: `Vaccinated: ${PET_HEALTH_LABELS[listing.vaccinationStatus]} · Sterilised: ${PET_HEALTH_LABELS[listing.sterilisationStatus]}` },
+              { label: 'Health notes', value: listing.healthNotes ?? '' },
+              { label: 'Requirements', value: listing.adoptionRequirements },
+              { label: 'Contact', value: `${CONTACT_LABELS[listing.contactPreference]}${listing.contactDetail ? ` · ${listing.contactDetail}` : ''}` },
+            ]}
+            inlineAction={{
+              key: 'approve',
+              label: 'Approve',
+              icon: 'check',
+              tone: 'positive',
+              busy: activeListingId === listing.id && !declineTarget,
+              disabled: Boolean(activeListingId),
+              onPress: () => void handleDecision(listing, 'approved', ''),
+            }}
+            overflowActions={[{ key: 'decline', label: 'Decline…', icon: 'x', tone: 'danger', disabled: Boolean(activeListingId), onPress: () => openDecline(listing) }]}
+            error={decisionErrors[listing.id] || undefined}
+          />
+        ))}
+      </View>
+
+      <AdminDialog
+        visible={Boolean(declineTarget)}
+        title={`Decline ${declineTarget?.name ?? ''}?`}
+        description="The listing is not published. The reason is kept on the listing."
+        confirmLabel="Decline"
+        tone="danger"
+        busy={isDeclineBusy}
+        confirmDisabled={!reason.trim()}
+        onConfirm={() => void handleConfirmDecline()}
+        onClose={() => {
+          if (!isDeclineBusy) setDeclineTarget(null);
+        }}
+      >
+        <AdminReasonField
+          label="Reason for declining (required)"
+          value={reason}
+          onChangeText={(next) => {
+            setReason(next);
+            if (dialogError) setDialogError(null);
+          }}
+          editable={!isDeclineBusy}
+          placeholder="Reason for declining"
+          error={dialogError}
+        />
+      </AdminDialog>
+    </AdminScreen>
+  );
+}

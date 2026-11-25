@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import Icon from 'react-native-vector-icons/Feather';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { View } from 'react-native';
 import { toast } from 'sonner-native';
-import AdminWorkspaceShell from './AdminWorkspaceShell';
+import AdminDialog from './AdminDialog';
+import AdminReviewCard, { AdminReasonField } from './AdminReviewCard';
+import AdminScreen, { type AdminScreenState } from './AdminScreen';
+import AdminToolbar from './AdminToolbar';
 import { courierAreasText } from '@/components/market/couriers/CourierCard';
+import { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
+import { space, type AdminToneName } from '@/lib/admin/adminTokens';
 import { courierService } from '@/lib/services/CourierService';
-import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { COURIER_SPEED_LABELS, COURIER_STATUS_LABELS, COURIER_VEHICLE_LABELS, type Courier, type CourierStatus } from '@/lib/types/couriers';
 
-const FILTERS: { value: CourierStatus | 'all'; label: string }[] = [
+type CourierFilter = CourierStatus | 'all';
+type CourierDecision = Exclude<CourierStatus, 'pending'>;
+type DeclineTarget = { courier: Courier; status: Exclude<CourierDecision, 'approved'> };
+
+const FILTERS: { value: CourierFilter; label: string }[] = [
   { value: 'pending', label: 'Waiting' },
   { value: 'approved', label: 'Approved' },
   { value: 'rejected', label: 'Not approved' },
@@ -16,27 +23,29 @@ const FILTERS: { value: CourierStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
 ];
 
-const statusColors = (status: CourierStatus, colors: AppThemeColors): { text: string; surface: string } => {
-  if (status === 'approved') return { text: colors.successText, surface: colors.successSurface };
-  if (status === 'pending') return { text: colors.warningText, surface: colors.warningSurface };
-  return { text: colors.destructiveText, surface: colors.destructiveSurface };
+const statusTone = (status: CourierStatus): AdminToneName => {
+  if (status === 'approved') return 'positive';
+  if (status === 'pending') return 'pending';
+  return 'danger';
 };
+
+const isCourierFilter = (value: string | undefined): value is CourierFilter => FILTERS.some((option) => option.value === value);
 
 /** The website's /profile/admin/couriers: approve courier registrations, decline them with a reason, or suspend. */
 export default function AdminCouriersWorkspace() {
-  const { colors } = useAppTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const [filter, setFilter] = useState<CourierStatus | 'all'>('pending');
+  const [filter, setFilter] = useState<CourierFilter>('pending');
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [loading, setLoading] = useState(true);
-  // Switching tabs reloads only the list; the shell's full-page skeleton (which hides the tabs) is for the first load.
+  // Switching the status filter reloads only the list; the toolbar stays mounted (first load uses `loading`).
   const [listLoading, setListLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeCourierId, setActiveCourierId] = useState<string | null>(null);
-  const [reasons, setReasons] = useState<{ [courierId: string]: string }>({});
-  // A refused decision is shown on its own card; the page-level error is only for loading the list.
+  // A refused approval is shown on its own card; a refused decline/suspend inside its dialog. The page-level error is only for loading.
   const [decisionErrors, setDecisionErrors] = useState<{ [courierId: string]: string }>({});
+  const [declineTarget, setDeclineTarget] = useState<DeclineTarget | null>(null);
+  const [reason, setReason] = useState('');
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   // Only the newest request may fill the list, so a slow answer for the previous filter can't replace the current one.
   const requestId = useRef(0);
@@ -67,79 +76,148 @@ export default function AdminCouriersWorkspace() {
     void loadCouriers();
   }, [loadCouriers]);
 
-  const handleDecision = async (courier: Courier, status: Exclude<CourierStatus, 'pending'>) => {
-    const reason = reasons[courier.id]?.trim() ?? '';
-    if (status !== 'approved' && !reason) return;
-    if (activeCourierId) return;
+  // In-flight guard: one decision at a time across the whole list.
+  const activeRef = useRef(false);
+  const handleDecision = async (courier: Courier, status: CourierDecision, decisionReason: string): Promise<boolean> => {
+    const trimmedReason = decisionReason.trim();
+    if (status !== 'approved' && !trimmedReason) return false;
+    if (activeRef.current) return false;
+    activeRef.current = true;
     setActiveCourierId(courier.id);
     setDecisionErrors((current) => ({ ...current, [courier.id]: '' }));
     try {
-      const updatedCourier = await courierService.updateCourierStatus(courier.id, status, reason || undefined);
+      const updatedCourier = await courierService.updateCourierStatus(courier.id, status, trimmedReason || undefined);
       setCouriers((current) => (filter === 'all'
         ? current.map((entry) => (entry.id === courier.id ? updatedCourier : entry))
         : current.filter((entry) => entry.id !== courier.id)));
       toast.success(status === 'approved' ? `${courier.businessName} approved.` : status === 'suspended' ? `${courier.businessName} suspended.` : `${courier.businessName} declined.`);
+      return true;
     } catch (decisionError: unknown) {
-      setDecisionErrors((current) => ({ ...current, [courier.id]: decisionError instanceof Error ? decisionError.message : 'Could not save the decision.' }));
+      console.error('[AdminCouriersWorkspace.handleDecision] Error:', decisionError instanceof Error ? decisionError.message : decisionError);
+      const message = decisionError instanceof Error ? decisionError.message : 'Could not save the decision.';
+      if (status === 'approved') setDecisionErrors((current) => ({ ...current, [courier.id]: message }));
+      else setDialogError(message);
+      return false;
     } finally {
+      activeRef.current = false;
       setActiveCourierId(null);
     }
   };
 
-  return <AdminWorkspaceShell title="Courier services" subtitle="Review registrations before they are listed" loading={loading} refreshing={refreshing} error={error} onRefresh={() => { setRefreshing(true); void loadCouriers(); }}>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-      {FILTERS.map((option) => {
-        const selected = filter === option.value;
-        return <Pressable key={option.value} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setFilter(option.value)} style={[styles.filter, selected && styles.filterSelected]}>
-          <Text style={[styles.filterText, selected && styles.filterTextSelected]}>{option.label}</Text>
-        </Pressable>;
-      })}
-    </ScrollView>
-    {listLoading ? <ActivityIndicator style={{ marginVertical: 24 }} color={colors.accent} /> : couriers.length ? couriers.map((courier) => {
-      const tone = statusColors(courier.status, colors);
-      const isBusy = activeCourierId === courier.id;
-      const canDecline = courier.status === 'pending' || courier.status === 'approved';
-      return <View key={courier.id} style={styles.card}>
-        <Text style={[styles.status, { color: tone.text, backgroundColor: tone.surface }]}>{COURIER_STATUS_LABELS[courier.status]}</Text>
-        <Text style={styles.name}>{courier.businessName}</Text>
-        <Text style={styles.meta}>{courier.contactName}{courier.startingPrice !== undefined ? ` · From $${courier.startingPrice.toFixed(2)} TTD` : ''}</Text>
-        <Text style={styles.body}>{courier.description}</Text>
-        <Text style={styles.body}><Text style={styles.strong}>Areas: </Text>{courierAreasText(courier)}</Text>
-        <Text style={styles.body}><Text style={styles.strong}>Vehicles: </Text>{courier.vehicles.map((vehicle) => COURIER_VEHICLE_LABELS[vehicle]).join(', ')} · <Text style={styles.strong}>Options: </Text>{courier.speeds.map((speed) => COURIER_SPEED_LABELS[speed]).join(', ')}</Text>
-        <Text style={styles.body}><Text style={styles.strong}>Phone: </Text>{courier.phone}{courier.whatsapp ? ` · WhatsApp ${courier.whatsapp}` : ''}{courier.email ? ` · ${courier.email}` : ''}</Text>
-        {courier.rejectionReason && courier.status !== 'approved' ? <Text style={[styles.body, { color: colors.destructiveText }]}><Text style={styles.strong}>Reason: </Text>{courier.rejectionReason}</Text> : null}
-        {courier.status !== 'approved' ? <TouchableOpacity accessibilityRole="button" disabled={isBusy} onPress={() => void handleDecision(courier, 'approved')} style={[styles.button, { backgroundColor: colors.successSurface, opacity: isBusy ? 0.5 : 1 }]}>
-          <Icon name="check" size={16} color={colors.successText} /><Text style={[styles.buttonText, { color: colors.successText }]}>Approve</Text>
-        </TouchableOpacity> : null}
-        {canDecline ? <>
-          <TextInput accessibilityLabel={courier.status === 'approved' ? 'Suspension reason' : 'Reason for declining'} value={reasons[courier.id] ?? ''} onChangeText={(text) => setReasons((current) => ({ ...current, [courier.id]: text }))}
-            placeholder={courier.status === 'approved' ? 'Suspension reason' : 'Reason for declining'} placeholderTextColor={colors.mutedText} multiline style={styles.reason} />
-          <TouchableOpacity accessibilityRole="button" disabled={isBusy || !reasons[courier.id]?.trim()} onPress={() => void handleDecision(courier, courier.status === 'approved' ? 'suspended' : 'rejected')}
-            style={[styles.button, { backgroundColor: colors.destructiveSurface, opacity: isBusy || !reasons[courier.id]?.trim() ? 0.5 : 1 }]}>
-            <Icon name={courier.status === 'approved' ? 'slash' : 'x'} size={16} color={colors.destructiveText} /><Text style={[styles.buttonText, { color: colors.destructiveText }]}>{courier.status === 'approved' ? 'Suspend' : 'Decline'}</Text>
-          </TouchableOpacity>
-        </> : null}
-        {decisionErrors[courier.id] ? <Text accessibilityRole="alert" style={styles.decisionError}>{decisionErrors[courier.id]}</Text> : null}
-      </View>;
-    }) : <Text style={styles.empty}>{filter === 'pending' ? 'No courier services are waiting for review.' : 'No courier services here.'}</Text>}
-  </AdminWorkspaceShell>;
-}
+  const openDecline = (courier: Courier, status: DeclineTarget['status']) => {
+    setDeclineTarget({ courier, status });
+    setReason('');
+    setDialogError(null);
+  };
 
-const createStyles = (colors: AppThemeColors) => StyleSheet.create({
-  filters: { gap: 8, paddingBottom: 12 },
-  filter: { minHeight: 36, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  filterSelected: { borderColor: colors.accent, backgroundColor: colors.successSurface },
-  filterText: { color: colors.mutedText, fontSize: 13, fontWeight: '700' },
-  filterTextSelected: { color: colors.successText },
-  card: { marginBottom: 12, padding: 16, gap: 8, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  status: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, overflow: 'hidden', fontSize: 11, fontWeight: '800' },
-  name: { color: colors.text, fontSize: 18, fontWeight: '900' },
-  meta: { color: colors.mutedText, fontSize: 13 },
-  body: { color: colors.secondaryText, fontSize: 13, lineHeight: 19 },
-  strong: { fontWeight: '800', color: colors.text },
-  reason: { minHeight: 64, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text, fontSize: 14, textAlignVertical: 'top' },
-  button: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 10 },
-  buttonText: { fontSize: 14, fontWeight: '800' },
-  decisionError: { color: colors.destructiveText, fontSize: 13, fontWeight: '700' },
-  empty: { padding: 24, textAlign: 'center', color: colors.mutedText, fontSize: 14 },
-});
+  const handleConfirmDecline = async () => {
+    if (!declineTarget) return;
+    const saved = await handleDecision(declineTarget.courier, declineTarget.status, reason);
+    if (saved) setDeclineTarget(null);
+  };
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    void loadCouriers();
+  };
+
+  const filterGroups: FilterGroup[] = [
+    { key: 'status', label: 'Status', options: FILTERS.map((option) => ({ value: option.value, label: option.label })), value: filter, defaultValue: 'pending' },
+  ];
+  const handleApplyFilters = (values: FilterValues) => {
+    const next = readSingleFilter(values, 'status');
+    setFilter(isCourierFilter(next) ? next : 'pending');
+  };
+  const filterLabel = FILTERS.find((option) => option.value === filter)?.label ?? 'Waiting';
+
+  const screenState: AdminScreenState = loading || listLoading
+    ? { kind: 'loading', variant: 'list' }
+    : error
+      ? { kind: 'error', message: error }
+      : couriers.length
+        ? { kind: 'ready' }
+        : {
+          kind: 'empty',
+          icon: 'truck',
+          title: filter === 'pending' ? 'No courier services are waiting for review.' : 'No courier services here.',
+          description: filter === 'pending' ? 'New registrations appear here before they are listed.' : `Nothing has the status "${filterLabel}".`,
+        };
+
+  const isDeclineBusy = Boolean(declineTarget && activeCourierId === declineTarget.courier.id);
+  const declineIsSuspend = declineTarget?.status === 'suspended';
+
+  return (
+    <AdminScreen
+      title="Courier services"
+      subtitle="Review registrations before they are listed"
+      state={screenState}
+      refreshing={refreshing}
+      onRefresh={handleRefresh}
+      toolbar={(
+        <AdminToolbar
+          filters={{ groups: filterGroups, onApply: handleApplyFilters, title: 'Filter couriers' }}
+          resultSummary={loading || listLoading || error ? `${filterLabel}` : `${filterLabel} · ${couriers.length}`}
+        />
+      )}
+    >
+      <View style={{ gap: space.md }}>
+        {couriers.map((courier) => {
+          const isBusy = activeCourierId === courier.id;
+          const canDecline = courier.status === 'pending' || courier.status === 'approved';
+          return (
+            <AdminReviewCard
+              key={courier.id}
+              title={courier.businessName}
+              subtitle={`${courier.contactName}${courier.startingPrice !== undefined ? ` · From $${courier.startingPrice.toFixed(2)} TTD` : ''}`}
+              status={{ label: COURIER_STATUS_LABELS[courier.status], tone: statusTone(courier.status) }}
+              leading={{ kind: 'icon', name: 'truck', tone: statusTone(courier.status) }}
+              details={[
+                { label: 'About', value: courier.description },
+                { label: 'Areas', value: courierAreasText(courier) },
+                { label: 'Vehicles', value: courier.vehicles.map((vehicle) => COURIER_VEHICLE_LABELS[vehicle]).join(', ') },
+                { label: 'Options', value: courier.speeds.map((speed) => COURIER_SPEED_LABELS[speed]).join(', ') },
+                { label: 'Contact', value: [courier.phone, courier.whatsapp ? `WhatsApp ${courier.whatsapp}` : '', courier.email ?? ''].filter(Boolean).join(' · ') },
+                { label: 'Reason', value: courier.rejectionReason && courier.status !== 'approved' ? courier.rejectionReason : '' },
+              ]}
+              inlineAction={courier.status !== 'approved'
+                ? { key: 'approve', label: 'Approve', icon: 'check', tone: 'positive', busy: isBusy && !declineTarget, disabled: Boolean(activeCourierId), onPress: () => void handleDecision(courier, 'approved', '') }
+                : undefined}
+              overflowActions={canDecline
+                ? [courier.status === 'approved'
+                  ? { key: 'suspend', label: 'Suspend…', icon: 'slash', tone: 'danger', disabled: Boolean(activeCourierId), onPress: () => openDecline(courier, 'suspended') }
+                  : { key: 'decline', label: 'Decline…', icon: 'x', tone: 'danger', disabled: Boolean(activeCourierId), onPress: () => openDecline(courier, 'rejected') }]
+                : undefined}
+              error={decisionErrors[courier.id] || undefined}
+            />
+          );
+        })}
+      </View>
+
+      <AdminDialog
+        visible={Boolean(declineTarget)}
+        title={declineIsSuspend ? `Suspend ${declineTarget?.courier.businessName ?? ''}?` : `Decline ${declineTarget?.courier.businessName ?? ''}?`}
+        description={declineIsSuspend ? 'The courier service is taken off the market until it is approved again.' : 'The registration is not listed. The reason is kept on the registration.'}
+        confirmLabel={declineIsSuspend ? 'Suspend' : 'Decline'}
+        tone="danger"
+        busy={isDeclineBusy}
+        confirmDisabled={!reason.trim()}
+        onConfirm={() => void handleConfirmDecline()}
+        onClose={() => {
+          if (!isDeclineBusy) setDeclineTarget(null);
+        }}
+      >
+        <AdminReasonField
+          label={declineIsSuspend ? 'Suspension reason (required)' : 'Reason for declining (required)'}
+          value={reason}
+          onChangeText={(next) => {
+            setReason(next);
+            if (dialogError) setDialogError(null);
+          }}
+          editable={!isDeclineBusy}
+          placeholder={declineIsSuspend ? 'Suspension reason' : 'Reason for declining'}
+          error={dialogError}
+        />
+      </AdminDialog>
+    </AdminScreen>
+  );
+}

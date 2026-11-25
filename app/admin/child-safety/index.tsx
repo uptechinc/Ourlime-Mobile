@@ -1,18 +1,13 @@
-import { useCallback, useState } from 'react';
-import {
-	RefreshControl,
-	ScrollView,
-	Text,
-	TouchableOpacity,
-	View,
-} from 'react-native';
-import { ChildSafetyListSkeleton } from '@/components/admin/AdminSkeletons';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { useCallback, useRef, useState } from 'react';
+import { View } from 'react-native';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
-import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
-import FilterBar from '@/components/ui/FilterBar';
+import AdminButton from '@/components/admin/AdminButton';
+import AdminListRow from '@/components/admin/AdminListRow';
+import AdminScreen, { type AdminScreenState } from '@/components/admin/AdminScreen';
+import AdminState from '@/components/admin/AdminState';
+import AdminToolbar from '@/components/admin/AdminToolbar';
+import { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
+import { space, type AdminToneName } from '@/lib/admin/adminTokens';
 import { childSafetyReportService } from '@/lib/services/ChildSafetyReportService';
 import {
 	CHILD_SAFETY_CATEGORY_LABELS,
@@ -22,6 +17,7 @@ import {
 } from '@/lib/types/childSafety';
 
 type ChildSafetyCasesScreenProps = { detailRoutePrefix?: string };
+type LoadMode = 'initial' | 'refresh' | 'more' | 'silent';
 
 const PRIORITY_OPTIONS: readonly ChildSafetyPriority[] = ['critical', 'high', 'medium', 'standard'];
 const STATUS_OPTIONS: readonly ChildSafetyStatus[] = ['submitted', 'under_review', 'escalated', 'action_required', 'resolved', 'reported_to_authority', 'closed'];
@@ -29,23 +25,32 @@ const toLabel = (value: string): string => {
 	const words = value.replaceAll('_', ' ');
 	return words.charAt(0).toUpperCase() + words.slice(1);
 };
+const priorityTone = (priority: ChildSafetyPriority): AdminToneName => (priority === 'critical' ? 'danger' : priority === 'high' ? 'pending' : 'neutral');
 
+/** Restricted child-safety queue; also the reviewer queue at /help/child-safety/review (staff, outside the admin gate). */
 export default function ChildSafetyCasesScreen({
 	detailRoutePrefix = '/admin/child-safety',
 }: ChildSafetyCasesScreenProps) {
 	const router = useRouter();
-	const { colors } = useAppTheme();
+	const isAdminRoute = detailRoutePrefix.startsWith('/admin');
 	const [items, setItems] = useState<ChildSafetyReportRecord[]>([]);
 	const [priority, setPriority] = useState<ChildSafetyPriority | undefined>();
 	const [status, setStatus] = useState<ChildSafetyStatus | undefined>();
 	const [loading, setLoading] = useState(true);
+	const [refreshing, setRefreshing] = useState(false);
+	const [loadingMore, setLoadingMore] = useState(false);
 	const [error, setError] = useState('');
 	const [nextCursor, setNextCursor] = useState<string | null>(null);
 	const [hasMore, setHasMore] = useState(false);
-	const [filtersOpen, setFiltersOpen] = useState(false);
+	// Only the newest request may update the list, so a slow answer for an earlier filter can't overwrite it.
+	const requestId = useRef(0);
 
 	const loadCases = useCallback(
-		async (cursor: string | null = null) => {
+		async (mode: LoadMode, cursor: string | null = null) => {
+			const currentRequest = ++requestId.current;
+			if (mode === 'refresh') setRefreshing(true);
+			else if (mode === 'more') setLoadingMore(true);
+			else if (mode === 'initial') setLoading(true);
 			setError('');
 			try {
 				const page = await childSafetyReportService.listCases({
@@ -53,32 +58,35 @@ export default function ChildSafetyCasesScreen({
 					status,
 					cursor: cursor ?? undefined,
 				});
-				setItems((current) =>
-					cursor ? [...current, ...page.items] : page.items
-				);
+				if (currentRequest !== requestId.current) return;
+				setItems((current) => (cursor ? [...current, ...page.items] : page.items));
 				setNextCursor(page.nextCursor);
 				setHasMore(page.hasMore);
 			} catch (loadError: unknown) {
+				if (currentRequest !== requestId.current) return;
 				console.error(
 					'[ChildSafetyCasesScreen.loadCases] Error:',
 					loadError instanceof Error ? loadError.message : loadError
 				);
-				setError(
-					loadError instanceof Error
-						? loadError.message
-						: 'Restricted cases could not be loaded.'
-				);
+				setError(loadError instanceof Error ? loadError.message : 'Restricted cases could not be loaded.');
 			} finally {
-				setLoading(false);
+				if (currentRequest === requestId.current) {
+					setLoading(false);
+					setRefreshing(false);
+					setLoadingMore(false);
+				}
 			}
 		},
 		[priority, status]
 	);
+
 	// Reload on focus (and when filters change) so a case updated or purged on the detail screen isn't shown stale.
+	// With cases already listed the reload is silent; the skeleton is only for an empty list.
+	const hasItemsRef = useRef(false);
+	hasItemsRef.current = items.length > 0;
 	useFocusEffect(
 		useCallback(() => {
-			setLoading(true);
-			void loadCases(null);
+			void loadCases(hasItemsRef.current ? 'silent' : 'initial', null);
 		}, [loadCases])
 	);
 
@@ -86,189 +94,84 @@ export default function ChildSafetyCasesScreen({
 		{ key: 'priority', label: 'Priority', options: [{ value: 'all', label: 'Any priority' }, ...PRIORITY_OPTIONS.map((option) => ({ value: option, label: toLabel(option) }))], value: priority ?? 'all', defaultValue: 'all' },
 		{ key: 'status', label: 'Status', options: [{ value: 'all', label: 'Any status' }, ...STATUS_OPTIONS.map((option) => ({ value: option, label: toLabel(option) }))], value: status ?? 'all', defaultValue: 'all' },
 	];
+	// A new filter starts from an empty list, so the skeleton shows instead of the previous filter's cases.
+	const applyFilters = (nextPriority: ChildSafetyPriority | undefined, nextStatus: ChildSafetyStatus | undefined): void => {
+		if (nextPriority === priority && nextStatus === status) return;
+		setItems([]);
+		setPriority(nextPriority);
+		setStatus(nextStatus);
+	};
 	const handleApplyFilters = (values: FilterValues): void => {
-		setPriority(PRIORITY_OPTIONS.find((option) => option === readSingleFilter(values, 'priority')));
-		setStatus(STATUS_OPTIONS.find((option) => option === readSingleFilter(values, 'status')));
+		applyFilters(
+			PRIORITY_OPTIONS.find((option) => option === readSingleFilter(values, 'priority')),
+			STATUS_OPTIONS.find((option) => option === readSingleFilter(values, 'status'))
+		);
 	};
-	const handleClearFilter = (groupKey: string): void => {
-		if (groupKey === 'priority') setPriority(undefined);
-		if (groupKey === 'status') setStatus(undefined);
-	};
+	const handleClearFilters = (): void => applyFilters(undefined, undefined);
+	const isFiltered = Boolean(priority || status);
+
+	const screenState: AdminScreenState = loading && !items.length
+		? { kind: 'loading', variant: 'list' }
+		: error && !items.length
+			? { kind: 'error', title: 'Cases could not be loaded', message: error }
+			: !items.length
+				? {
+					kind: 'empty',
+					icon: 'shield',
+					title: 'No cases found',
+					description: 'There are no child-safety cases right now.',
+					filtered: isFiltered,
+					onClearFilters: handleClearFilters,
+				}
+				: { kind: 'ready' };
 
 	return (
-		<SafeAreaView
-			edges={['top', 'bottom', 'left', 'right']}
-			style={{ flex: 1, backgroundColor: colors.canvas }}
+		<AdminScreen
+			title="Child Safety cases"
+			eyebrow={{ label: 'Restricted workspace', tone: 'danger' }}
+			// app/admin/_layout.tsx gates /admin; the /help reviewer route is gated by the server.
+			gate="none"
+			backFallback={isAdminRoute ? '/admin' : '/help'}
+			showHubShortcut={isAdminRoute}
+			state={screenState}
+			refreshing={refreshing}
+			onRefresh={() => loadCases('refresh', null)}
+			toolbar={(
+				<AdminToolbar
+					filters={{ groups: filterGroups, onApply: handleApplyFilters, title: 'Filter cases' }}
+					resultSummary={items.length ? `${items.length}${hasMore ? '+' : ''} ${items.length === 1 ? 'case' : 'cases'}` : undefined}
+				/>
+			)}
 		>
-			<View
-				style={{
-					flexDirection: 'row',
-					alignItems: 'center',
-					padding: 14,
-					borderBottomWidth: 1,
-					borderBottomColor: colors.border,
-					backgroundColor: colors.navigation,
-				}}
-			>
-				<TouchableOpacity onPress={() => router.back()} style={{ padding: 5 }}>
-					<Ionicons name="chevron-back" size={26} color={colors.icon} />
-				</TouchableOpacity>
-				<View style={{ flex: 1, marginLeft: 8 }}>
-					<Text
-						style={{
-							color: colors.destructive,
-							fontSize: 11,
-							fontWeight: '900',
-							textTransform: 'uppercase',
+			<View style={{ gap: space.sm }}>
+				{error ? <AdminState kind="inlineError" message={error} onRetry={() => void loadCases('refresh', null)} /> : null}
+				{items.map((report) => (
+					<AdminListRow
+						key={report.id}
+						title={report.reference}
+						subtitle={CHILD_SAFETY_CATEGORY_LABELS[report.category]}
+						meta={report.description}
+						leading={{ kind: 'icon', name: report.legalHold ? 'lock' : 'shield', tone: priorityTone(report.priority) }}
+						status={{
+							label: `${toLabel(report.priority)} · ${toLabel(report.status)}${report.legalHold ? ' · Legal hold' : ''}`,
+							tone: priorityTone(report.priority),
 						}}
-					>
-						Restricted workspace
-					</Text>
-					<Text style={{ color: colors.text, fontSize: 19, fontWeight: '900' }}>
-						Child Safety cases
-					</Text>
-				</View>
-			</View>
-			<ScrollView
-				refreshControl={
-					<RefreshControl
-						refreshing={loading}
-						onRefresh={() => void loadCases(null)}
-						tintColor={colors.accent}
+						onPress={() => router.push(`${detailRoutePrefix}/${encodeURIComponent(report.id)}` as Href)}
+						accessibilityHint="Opens the case"
 					/>
-				}
-				contentContainerStyle={{ padding: 15, paddingBottom: 35 }}
-			>
-				<View style={{ marginBottom: 13 }}>
-					<FilterBar groups={filterGroups} onOpen={() => setFiltersOpen(true)} onClear={handleClearFilter} />
-				</View>
-				{error ? (
-					<View
-						style={{
-							padding: 14,
-							borderRadius: 14,
-							backgroundColor: colors.destructiveSurface,
-						}}
-					>
-						<Text style={{ color: colors.destructiveText }}>{error}</Text>
-					</View>
-				) : null}
-				{loading && items.length === 0 ? (
-					<ChildSafetyListSkeleton />
-				) : !error && items.length === 0 ? (
-					<View style={{ paddingVertical: 48, alignItems: 'center' }}>
-						<Ionicons name="shield-checkmark-outline" size={36} color={colors.mutedText} />
-						<Text style={{ marginTop: 10, color: colors.text, fontWeight: '800' }}>
-							No cases found
-						</Text>
-						<Text style={{ marginTop: 4, color: colors.mutedText, textAlign: 'center' }}>
-							{priority || status ? 'Try clearing the filters.' : 'There are no child-safety cases right now.'}
-						</Text>
-					</View>
-				) : (
-					items.map((report) => (
-						<TouchableOpacity
-							key={report.id}
-							onPress={() =>
-								router.push(
-									`${detailRoutePrefix}/${encodeURIComponent(report.id)}` as Href
-								)
-							}
-							style={{
-								marginBottom: 10,
-								padding: 15,
-								borderRadius: 17,
-								borderWidth: 1,
-								borderColor:
-									report.priority === 'critical'
-										? colors.destructive
-										: colors.border,
-								backgroundColor: colors.surface,
-							}}
-						>
-							<View style={{ flexDirection: 'row' }}>
-								<Ionicons
-									name="shield"
-									size={21}
-									color={
-										report.priority === 'critical'
-											? colors.destructive
-											: colors.accent
-									}
-								/>
-								<View style={{ flex: 1, marginLeft: 10 }}>
-									<Text style={{ color: colors.text, fontWeight: '900' }}>
-										{report.reference}
-									</Text>
-									<Text
-										style={{
-											marginTop: 4,
-											color: colors.secondaryText,
-											fontWeight: '700',
-										}}
-									>
-										{CHILD_SAFETY_CATEGORY_LABELS[report.category]}
-									</Text>
-									<Text
-										numberOfLines={2}
-										style={{
-											marginTop: 6,
-											color: colors.mutedText,
-											lineHeight: 19,
-										}}
-									>
-										{report.description}
-									</Text>
-									<Text
-										style={{
-											marginTop: 9,
-											color:
-												report.priority === 'critical'
-													? colors.destructiveText
-													: colors.accentText,
-											fontSize: 11,
-											fontWeight: '900',
-											textTransform: 'uppercase',
-										}}
-									>
-										{report.priority} · {report.status.replaceAll('_', ' ')}
-										{report.legalHold ? ' · Legal hold' : ''}
-									</Text>
-								</View>
-								<Ionicons
-									name="chevron-forward"
-									size={18}
-									color={colors.icon}
-								/>
-							</View>
-						</TouchableOpacity>
-					))
-				)}
+				))}
 				{hasMore && nextCursor ? (
-					<TouchableOpacity
-						disabled={loading}
-						onPress={() => {
-							setLoading(true);
-							void loadCases(nextCursor);
-						}}
-						style={{
-							minHeight: 48,
-							alignItems: 'center',
-							justifyContent: 'center',
-							borderRadius: 15,
-							borderWidth: 1,
-							borderColor: colors.border,
-							backgroundColor: colors.surface,
-							opacity: loading ? 0.5 : 1,
-						}}
-					>
-						<Text style={{ color: colors.secondaryText, fontWeight: '900' }}>
-							{loading ? 'Loading…' : 'Load more cases'}
-						</Text>
-					</TouchableOpacity>
+					<AdminButton
+						label={loadingMore ? 'Loading…' : 'Load more cases'}
+						icon="chevron-down"
+						tone="neutral"
+						busy={loadingMore}
+						disabled={loading || refreshing}
+						fullWidth
+						onPress={() => void loadCases('more', nextCursor)}
+					/>
 				) : null}
-			</ScrollView>
-			<FilterSheet visible={filtersOpen} title="Filter cases" groups={filterGroups} applyLabel="Show cases" onApply={handleApplyFilters} onClose={() => setFiltersOpen(false)} />
-		</SafeAreaView>
+			</View>
+		</AdminScreen>
 	);
 }

@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import Icon from 'react-native-vector-icons/Feather';
-import AdminWorkspaceShell from './AdminWorkspaceShell';
+import { Text, View } from 'react-native';
+import { toast } from 'sonner-native';
+import AdminButton from './AdminButton';
 import AdminDialog from './AdminDialog';
-import CustomModal from '@/components/ui/CustomModal';
+import AdminListRow from './AdminListRow';
+import AdminScreen, { type AdminScreenState } from './AdminScreen';
+import AdminState from './AdminState';
+import AdminStatCard, { AdminStatGrid } from './AdminStatCard';
+import AdminStatusPill from './AdminStatusPill';
+import AdminToolbar from './AdminToolbar';
+import { AdminChoiceList, AdminReasonField } from './AdminReviewCard';
+import { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
 import {
   adminJobsService,
   JOB_SUSPENSION_DAYS,
@@ -11,13 +18,15 @@ import {
   type JobSuspensionDays,
 } from '@/lib/services/AdminJobsService';
 import { ADMIN_JOBS_FETCH_LIMIT, describeJobActionError } from '@/lib/services/AdminJobsRules';
-import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
+import { space, type, type AdminToneName } from '@/lib/admin/adminTokens';
+import type { AdminOverflowItem } from '@/lib/admin/adminTypes';
+import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const ROWS_PER_PAGE = 20;
 
 const STATUS_FILTERS = [
-  { value: 'all', label: 'All Statuses' },
-  { value: 'pending_review', label: 'Pending Review' },
+  { value: 'all', label: 'All statuses' },
+  { value: 'pending_review', label: 'Pending review' },
   { value: 'published', label: 'Published' },
   { value: 'rejected', label: 'Rejected' },
   { value: 'draft', label: 'Draft' },
@@ -26,8 +35,14 @@ const STATUS_FILTERS = [
 ] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number]['value'];
 
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+] as const;
+type SortOrder = (typeof SORT_OPTIONS)[number]['value'];
+
 const STATUS_LABELS: { [status: string]: string } = {
-  pending_review: 'Pending Review',
+  pending_review: 'Pending review',
   published: 'Published',
   draft: 'Draft',
   paused: 'Paused',
@@ -53,12 +68,15 @@ const EXPERIENCE_LEVEL_LABELS: { [level: string]: string } = {
 
 type JobAction = 'reject' | 'remove' | 'suspend';
 
-const statusColors = (status: string, colors: AppThemeColors): { text: string; surface: string } => {
-  if (status === 'published') return { text: colors.successText, surface: colors.successSurface };
-  if (status === 'pending_review' || status === 'paused') return { text: colors.warningText, surface: colors.warningSurface };
-  if (status === 'rejected' || status === 'closed') return { text: colors.destructiveText, surface: colors.destructiveSurface };
-  return { text: colors.mutedText, surface: colors.control };
+const statusTone = (status: string): AdminToneName => {
+  if (status === 'published') return 'positive';
+  if (status === 'pending_review' || status === 'paused') return 'pending';
+  if (status === 'rejected' || status === 'closed') return 'danger';
+  return 'neutral';
 };
+
+const isStatusFilter = (value: string | undefined): value is StatusFilter => STATUS_FILTERS.some((option) => option.value === value);
+const isSortOrder = (value: string | undefined): value is SortOrder => SORT_OPTIONS.some((option) => option.value === value);
 
 export default function AdminJobsWorkspace() {
   const { colors } = useAppTheme();
@@ -68,14 +86,16 @@ export default function AdminJobsWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [page, setPage] = useState(1);
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  const [visibleCount, setVisibleCount] = useState(ROWS_PER_PAGE);
   const [selectedJob, setSelectedJob] = useState<AdminJob | null>(null);
   const [actionJob, setActionJob] = useState<AdminJob | null>(null);
   const [action, setAction] = useState<JobAction | null>(null);
   const [reason, setReason] = useState('');
   const [suspendDays, setSuspendDays] = useState<JobSuspensionDays>(7);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [approvingJobId, setApprovingJobId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [isTruncated, setIsTruncated] = useState(false);
   // Synchronous guard: two quick taps both see `busy === false` before React re-renders.
   const busyRef = useRef(false);
@@ -101,28 +121,26 @@ export default function AdminJobsWorkspace() {
     void load();
   }, [load]);
 
+  // A new search, filter or sort starts again from the first page.
   useEffect(() => {
-    setPage(1);
-  }, [query, statusFilter]);
+    setVisibleCount(ROWS_PER_PAGE);
+  }, [query, statusFilter, sortOrder]);
 
   const stats = useMemo(() => adminJobsService.computeStats(jobs), [jobs]);
   const filteredJobs = useMemo(() => {
     const normalizedQuery = query.toLowerCase().trim();
-    return jobs.filter((job) => {
+    const matching = jobs.filter((job) => {
       const matchesSearch = !normalizedQuery
         || job.title.toLowerCase().includes(normalizedQuery)
         || job.posterName.toLowerCase().includes(normalizedQuery)
         || job.category.toLowerCase().includes(normalizedQuery);
       return matchesSearch && (statusFilter === 'all' || job.status === statusFilter);
     });
-  }, [jobs, query, statusFilter]);
-  const totalPages = Math.max(1, Math.ceil(filteredJobs.length / ROWS_PER_PAGE));
-  const paginatedJobs = filteredJobs.slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE);
-
-  // Removing the last job on the last page would otherwise leave an empty page with jobs still listed.
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+    // The service returns newest first; only "oldest" needs a reorder.
+    return sortOrder === 'oldest' ? [...matching].sort((first, second) => first.createdAtSeconds - second.createdAtSeconds) : matching;
+  }, [jobs, query, statusFilter, sortOrder]);
+  const visibleJobs = filteredJobs.slice(0, visibleCount);
+  const hasMore = filteredJobs.length > visibleJobs.length;
 
   const updateJobStatus = (jobId: string, status: string): void => {
     setJobs((current) => current.map((job) => (job.id === jobId ? { ...job, status } : job)));
@@ -137,16 +155,18 @@ export default function AdminJobsWorkspace() {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
+    setApprovingJobId(job.id);
     try {
       const result = await adminJobsService.approveJob(job.id);
       updateJobStatus(job.id, 'published');
-      setMessage({ text: withAuditNote(`Job "${job.title}" approved and published!`, result.auditLogged), isError: false });
-    } catch (actionError: unknown) {
-      console.error('[AdminJobsWorkspace.handleApprove] Error:', actionError instanceof Error ? actionError.message : actionError);
-      setMessage({ text: describeJobActionError(actionError, 'Failed to approve job'), isError: true });
+      toast.success(withAuditNote(`"${job.title}" approved and published.`, result.auditLogged));
+    } catch (approveError: unknown) {
+      console.error('[AdminJobsWorkspace.handleApprove] Error:', approveError instanceof Error ? approveError.message : approveError);
+      toast.error(describeJobActionError(approveError, 'Failed to approve job'));
     } finally {
       busyRef.current = false;
       setBusy(false);
+      setApprovingJobId(null);
     }
   };
 
@@ -155,6 +175,7 @@ export default function AdminJobsWorkspace() {
     setAction(nextAction);
     setReason('');
     setSuspendDays(7);
+    setActionError(null);
     setSelectedJob(null);
   };
 
@@ -166,292 +187,232 @@ export default function AdminJobsWorkspace() {
 
   const handleConfirmAction = async (): Promise<void> => {
     if (!actionJob || !action || busyRef.current) return;
+    // The reason is required for every action (the service checks it too).
+    if (!reason.trim()) {
+      setActionError('Enter a reason first.');
+      return;
+    }
     busyRef.current = true;
     setBusy(true);
+    setActionError(null);
     try {
       if (action === 'reject') {
         const result = await adminJobsService.rejectJob(actionJob.id, reason);
         updateJobStatus(actionJob.id, 'rejected');
-        setMessage({ text: withAuditNote('Job rejected.', result.auditLogged), isError: false });
+        toast.success(withAuditNote('Job rejected.', result.auditLogged));
       } else if (action === 'remove') {
         const result = await adminJobsService.removeListing(actionJob.id, reason);
         const removedJobId = actionJob.id;
         setJobs((current) => current.filter((job) => job.id !== removedJobId));
         setSelectedJob((current) => (current?.id === removedJobId ? null : current));
-        setMessage({ text: withAuditNote('Listing removed. The job has been taken down and removed from this list.', result.auditLogged), isError: false });
+        toast.success(withAuditNote('Listing removed. The job has been taken down and removed from this list.', result.auditLogged));
       } else {
         const result = await adminJobsService.suspendPoster(actionJob.userId, reason, suspendDays);
-        setMessage({ text: withAuditNote('User Suspended. The user has been suspended from job posting and applying.', result.auditLogged), isError: false });
+        toast.success(withAuditNote('User suspended from job posting and applying.', result.auditLogged));
       }
       setAction(null);
       setActionJob(null);
-    } catch (actionError: unknown) {
-      console.error('[AdminJobsWorkspace.handleConfirmAction] Error:', actionError instanceof Error ? actionError.message : actionError);
+    } catch (confirmError: unknown) {
+      console.error('[AdminJobsWorkspace.handleConfirmAction] Error:', confirmError instanceof Error ? confirmError.message : confirmError);
       const fallback = action === 'reject' ? 'Failed to reject job' : action === 'remove' ? 'Failed to remove listing' : 'Failed to suspend user';
-      setMessage({ text: describeJobActionError(actionError, fallback), isError: true });
+      setActionError(describeJobActionError(confirmError, fallback));
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
   };
 
-  const statCards = [
-    { label: 'Total Jobs', value: stats.total, icon: 'briefcase', color: colors.text, surface: colors.control },
-    { label: 'Pending Review', value: stats.pending, icon: 'shield', color: colors.warningText, surface: colors.warningSurface },
-    { label: 'Published', value: stats.published, icon: 'check', color: colors.successText, surface: colors.successSurface },
-    { label: 'Rejected', value: stats.rejected, icon: 'x', color: colors.destructiveText, surface: colors.destructiveSurface },
-  ] as const;
-
-  const inputStyle = {
-    minHeight: 90,
-    textAlignVertical: 'top' as const,
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.input,
-    color: colors.text,
+  const filterGroups: FilterGroup[] = [
+    { key: 'status', label: 'Status', options: STATUS_FILTERS.map((option) => ({ value: option.value, label: option.label })), value: statusFilter, defaultValue: 'all' },
+    { key: 'sort', label: 'Sort', options: SORT_OPTIONS.map((option) => ({ value: option.value, label: option.label })), value: sortOrder, defaultValue: 'newest' },
+  ];
+  const handleApplyFilters = (values: FilterValues): void => {
+    const nextStatus = readSingleFilter(values, 'status');
+    const nextSort = readSingleFilter(values, 'sort');
+    setStatusFilter(isStatusFilter(nextStatus) ? nextStatus : 'all');
+    setSortOrder(isSortOrder(nextSort) ? nextSort : 'newest');
+  };
+  const hasActiveFilters = Boolean(query.trim()) || statusFilter !== 'all';
+  const handleClearFilters = (): void => {
+    setQuery('');
+    setStatusFilter('all');
   };
 
+  const buildOverflow = (job: AdminJob): AdminOverflowItem[] => [
+    ...(job.status !== 'published' && job.status !== 'pending_review'
+      ? [{ key: 'approve', label: 'Approve & publish', icon: 'check' as const, disabled: busy, onPress: () => void handleApprove(job) }]
+      : []),
+    { key: 'view', label: 'View details', icon: 'eye', onPress: () => setSelectedJob(job) },
+    ...(job.status !== 'rejected' ? [{ key: 'reject', label: 'Reject…', icon: 'x' as const, tone: 'danger' as const, onPress: () => openAction(job, 'reject') }] : []),
+    { key: 'remove', label: 'Remove listing…', icon: 'trash-2', tone: 'danger', onPress: () => openAction(job, 'remove') },
+    { key: 'suspend', label: 'Suspend poster…', icon: 'user-x', tone: 'danger', onPress: () => openAction(job, 'suspend') },
+  ];
+
+  const screenState: AdminScreenState = loading ? { kind: 'loading', variant: 'list' } : error ? { kind: 'error', message: error } : { kind: 'ready' };
+
   const renderDetailRow = (label: string, value: string) => (
-    <View key={label} style={{ width: '50%', paddingRight: 8, marginBottom: 12 }}>
-      <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }}>{label}</Text>
-      <Text style={{ marginTop: 3, color: colors.text, fontWeight: '700', textTransform: label === 'Type' ? 'capitalize' : 'none' }}>{value}</Text>
+    <View key={label} style={{ width: '50%', paddingRight: space.sm, marginBottom: space.md, gap: space.xs }}>
+      <Text style={[type.label, { color: colors.mutedText }]}>{label}</Text>
+      <Text style={[type.bodyStrong, { color: colors.text, textTransform: label === 'Type' ? 'capitalize' : 'none' }]}>{value}</Text>
     </View>
   );
 
+  const suspendTarget = actionJob?.posterUsername ? `@${actionJob.posterUsername}` : `${actionJob?.userId.slice(0, 8) ?? ''}...`;
+  const actionCopy = action === 'reject'
+    ? { title: 'Reject job submission', description: `Provide a reason for rejecting "${actionJob?.title ?? ''}". This will be communicated to the poster.`, confirm: 'Confirm rejection', label: 'Rejection reason', placeholder: 'Enter rejection reason...' }
+    : action === 'remove'
+      ? { title: 'Remove job listing', description: `This will reject and hide the listing "${actionJob?.title ?? ''}".`, confirm: 'Remove listing', label: 'Reason', placeholder: 'Reason for removal...' }
+      : { title: 'Suspend user from jobs', description: `This will prevent ${suspendTarget} from posting or applying to jobs.`, confirm: 'Suspend user', label: 'Reason', placeholder: 'Reason for suspension...' };
+
   return (
-    <AdminWorkspaceShell
-      title="Job Moderation"
+    <AdminScreen
+      title="Job moderation"
       subtitle="Review and moderate job listings submitted by users."
-      loading={loading}
+      state={screenState}
       refreshing={refreshing}
-      error={error}
-      onRefresh={() => void load(true)}
-    >
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5, marginBottom: 8 }}>
-        {statCards.map((card) => (
-          <View key={card.label} style={{ width: '50%', padding: 5 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 13, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
-              <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: card.surface }}>
-                <Icon name={card.icon} size={18} color={card.color} />
-              </View>
-              <View style={{ marginLeft: 10, flex: 1 }}>
-                <Text numberOfLines={1} style={{ color: colors.mutedText, fontSize: 11 }}>{card.label}</Text>
-                <Text style={{ color: card.color, fontSize: 19, fontWeight: '900' }}>{card.value}</Text>
-              </View>
-            </View>
-          </View>
-        ))}
-      </View>
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, borderRadius: 14, backgroundColor: colors.input, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 }}>
-        <Icon name="search" size={17} color={colors.mutedText} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search by job title, poster, category..."
-          placeholderTextColor={colors.mutedText}
-          style={{ flex: 1, padding: 11, color: colors.text }}
+      onRefresh={() => load(true)}
+      toolbar={(
+        <AdminToolbar
+          search={{ value: query, placeholder: 'Search by title, poster, category', onChange: setQuery }}
+          filters={{ groups: filterGroups, onApply: handleApplyFilters, title: 'Filter jobs' }}
+          resultSummary={loading || error ? undefined : `${visibleJobs.length} of ${filteredJobs.length} ${filteredJobs.length === 1 ? 'job' : 'jobs'}`}
         />
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-        {STATUS_FILTERS.map((filter) => (
-          <TouchableOpacity
-            key={filter.value}
-            onPress={() => setStatusFilter(filter.value)}
-            style={{ marginRight: 8, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: statusFilter === filter.value ? colors.accent : colors.control }}
-          >
-            <Text style={{ color: statusFilter === filter.value ? colors.onAccent : colors.secondaryText, fontSize: 12, fontWeight: '800' }}>{filter.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {filteredJobs.length === 0 ? (
-        <View style={{ paddingVertical: 50, alignItems: 'center' }}>
-          <Icon name="briefcase" size={36} color={colors.mutedText} />
-          <Text style={{ marginTop: 10, color: colors.text, fontWeight: '800' }}>No jobs found</Text>
-          <Text style={{ marginTop: 4, color: colors.mutedText }}>Try adjusting your search or filter.</Text>
-        </View>
-      ) : (
-        paginatedJobs.map((job) => {
-          const tone = statusColors(job.status, colors);
-          return (
-            <View key={job.id} style={{ marginBottom: 10, padding: 14, borderRadius: 17, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
-              <TouchableOpacity onPress={() => setSelectedJob(job)} accessibilityRole="button" accessibilityLabel={`View details for ${job.title}`}>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text numberOfLines={2} style={{ color: colors.text, fontWeight: '900', fontSize: 15 }}>{job.title}</Text>
-                    <Text numberOfLines={1} style={{ marginTop: 2, color: colors.mutedText, fontSize: 12 }}>{job.category || 'Uncategorized'}</Text>
-                  </View>
-                  <Text style={{ overflow: 'hidden', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, fontSize: 10, fontWeight: '900', color: tone.text, backgroundColor: tone.surface }}>
-                    {STATUS_LABELS[job.status] ?? STATUS_LABELS.draft}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
-                  <Text style={{ marginRight: 12, color: colors.secondaryText, fontSize: 12, textTransform: 'capitalize' }}>{job.type}</Text>
-                  <Text style={{ marginRight: 12, color: colors.secondaryText, fontSize: 12 }}>{adminJobsService.formatPrice(job)}</Text>
-                  <Text style={{ color: colors.secondaryText, fontSize: 12 }}>{job.posterName}{job.posterUsername ? ` · @${job.posterUsername}` : ''}</Text>
-                </View>
-              </TouchableOpacity>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 }}>
-                <ActionChip icon="eye" label="View" color={colors.secondaryText} surface={colors.control} onPress={() => setSelectedJob(job)} />
-                {job.status !== 'published' ? <ActionChip icon="check" label="Approve" color={colors.successText} surface={colors.successSurface} disabled={busy} onPress={() => void handleApprove(job)} /> : null}
-                {job.status !== 'rejected' ? <ActionChip icon="x" label="Reject" color={colors.destructiveText} surface={colors.destructiveSurface} onPress={() => openAction(job, 'reject')} /> : null}
-                <ActionChip icon="trash-2" label="Remove" color={colors.destructiveText} surface={colors.destructiveSurface} onPress={() => openAction(job, 'remove')} />
-                <ActionChip icon="user-x" label="Suspend" color={colors.warningText} surface={colors.warningSurface} onPress={() => openAction(job, 'suspend')} />
-              </View>
-            </View>
-          );
-        })
       )}
+    >
+      <View style={{ gap: space.md }}>
+        <AdminStatGrid>
+          <AdminStatCard label="Total jobs" value={stats.total} icon="briefcase" compact onPress={() => setStatusFilter('all')} />
+          <AdminStatCard label="Pending review" value={stats.pending} icon="clock" tone="pending" compact onPress={() => setStatusFilter('pending_review')} />
+          <AdminStatCard label="Published" value={stats.published} icon="check" tone="positive" compact onPress={() => setStatusFilter('published')} />
+          <AdminStatCard label="Rejected" value={stats.rejected} icon="x" tone="danger" compact onPress={() => setStatusFilter('rejected')} />
+        </AdminStatGrid>
 
-      {isTruncated ? (
-        <Text style={{ marginTop: 6, color: colors.mutedText, fontSize: 12 }}>
-          Showing the newest {ADMIN_JOBS_FETCH_LIMIT} jobs. Totals above count only these.
-        </Text>
-      ) : null}
-      {filteredJobs.length > 0 ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
-          <Text style={{ color: colors.mutedText, fontSize: 12 }}>
-            Showing {paginatedJobs.length} of {filteredJobs.length} {filteredJobs.length === 1 ? 'job' : 'jobs'}
+        {isTruncated ? (
+          <Text style={[type.meta, { color: colors.mutedText }]}>
+            Showing the newest {ADMIN_JOBS_FETCH_LIMIT} jobs. Totals above count only these.
           </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TouchableOpacity disabled={page <= 1} onPress={() => setPage((current) => current - 1)} accessibilityLabel="Previous page" style={{ padding: 8, opacity: page <= 1 ? 0.4 : 1 }}>
-              <Icon name="chevron-left" size={18} color={colors.icon} />
-            </TouchableOpacity>
-            <Text style={{ color: colors.secondaryText, fontWeight: '800', fontSize: 12 }}>{page} / {totalPages}</Text>
-            <TouchableOpacity disabled={page >= totalPages} onPress={() => setPage((current) => current + 1)} accessibilityLabel="Next page" style={{ padding: 8, opacity: page >= totalPages ? 0.4 : 1 }}>
-              <Icon name="chevron-right" size={18} color={colors.icon} />
-            </TouchableOpacity>
+        ) : null}
+
+        {filteredJobs.length === 0 ? (
+          <AdminState
+            kind="empty"
+            icon="briefcase"
+            title="No jobs found"
+            description={hasActiveFilters ? undefined : 'Job listings submitted by members appear here.'}
+            filtered={hasActiveFilters}
+            onClearFilters={handleClearFilters}
+          />
+        ) : (
+          <View style={{ gap: space.sm }}>
+            {visibleJobs.map((job) => (
+              <AdminListRow
+                key={job.id}
+                title={job.title}
+                subtitle={`${job.posterName}${job.posterUsername ? ` · @${job.posterUsername}` : ''}`}
+                meta={[job.category || 'Uncategorized', adminJobsService.formatPrice(job), job.type].filter(Boolean).join(' · ')}
+                status={{ label: STATUS_LABELS[job.status] ?? STATUS_LABELS.draft, tone: statusTone(job.status) }}
+                onPress={() => setSelectedJob(job)}
+                accessibilityHint="Opens the job details"
+                inlineAction={job.status === 'pending_review'
+                  ? { key: 'approve', label: 'Approve', icon: 'check', tone: 'positive', busy: approvingJobId === job.id, disabled: busy, onPress: () => void handleApprove(job) }
+                  : undefined}
+                overflowActions={buildOverflow(job)}
+              />
+            ))}
+            {hasMore ? (
+              <AdminButton
+                label={`Load more (${filteredJobs.length - visibleJobs.length} left)`}
+                icon="chevron-down"
+                tone="neutral"
+                fullWidth
+                onPress={() => setVisibleCount((current) => current + ROWS_PER_PAGE)}
+              />
+            ) : null}
           </View>
-        </View>
-      ) : null}
+        )}
+      </View>
 
       <AdminDialog
         visible={Boolean(selectedJob)}
-        title={selectedJob ? `Job Details — ${selectedJob.title}` : ''}
+        title={selectedJob?.title ?? ''}
+        icon={null}
+        confirmLabel={selectedJob && selectedJob.status !== 'published' ? 'Approve & publish' : undefined}
+        tone="positive"
+        busy={busy}
+        onConfirm={selectedJob && selectedJob.status !== 'published' ? () => { const job = selectedJob; setSelectedJob(null); void handleApprove(job); } : undefined}
         onClose={() => setSelectedJob(null)}
       >
         {selectedJob ? (
-          <View>
+          <View style={{ gap: space.md }}>
+            <AdminStatusPill label={STATUS_LABELS[selectedJob.status] ?? STATUS_LABELS.draft} tone={statusTone(selectedJob.status)} />
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
               {renderDetailRow('Type', selectedJob.type)}
               {renderDetailRow('Category', selectedJob.category || 'N/A')}
               {renderDetailRow('Compensation', adminJobsService.formatPrice(selectedJob))}
               {renderDetailRow('Location', selectedJob.location)}
-              {selectedJob.employmentType ? renderDetailRow('Employment Type', EMPLOYMENT_TYPE_LABELS[selectedJob.employmentType] ?? selectedJob.employmentType) : null}
-              {selectedJob.experienceLevel ? renderDetailRow('Experience Level', EXPERIENCE_LEVEL_LABELS[selectedJob.experienceLevel] ?? selectedJob.experienceLevel) : null}
+              {selectedJob.employmentType ? renderDetailRow('Employment type', EMPLOYMENT_TYPE_LABELS[selectedJob.employmentType] ?? selectedJob.employmentType) : null}
+              {selectedJob.experienceLevel ? renderDetailRow('Experience level', EXPERIENCE_LEVEL_LABELS[selectedJob.experienceLevel] ?? selectedJob.experienceLevel) : null}
             </View>
-            <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }}>Description</Text>
-            <Text style={{ marginTop: 4, color: colors.secondaryText, lineHeight: 20 }}>{selectedJob.description || 'No description provided.'}</Text>
+            <View style={{ gap: space.xs }}>
+              <Text style={[type.label, { color: colors.mutedText }]}>Description</Text>
+              <Text style={[type.body, { color: colors.secondaryText }]}>{selectedJob.description || 'No description provided.'}</Text>
+            </View>
             {selectedJob.skills.length > 0 ? (
-              <View style={{ marginTop: 12 }}>
-                <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }}>Skills</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 }}>
+              <View style={{ gap: space.xs }}>
+                <Text style={[type.label, { color: colors.mutedText }]}>Skills</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.xs }}>
                   {selectedJob.skills.map((skill, skillIndex) => (
-                    <Text key={`${skill}-${skillIndex}`} style={{ marginRight: 6, marginBottom: 6, overflow: 'hidden', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, fontSize: 12, color: colors.successText, backgroundColor: colors.successSurface }}>{skill}</Text>
+                    <AdminStatusPill key={`${skill}-${skillIndex}`} label={skill} tone="neutral" />
                   ))}
                 </View>
               </View>
             ) : null}
-            <Text style={{ marginTop: 12, color: colors.mutedText, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }}>Posted by</Text>
-            <Text style={{ marginTop: 3, color: colors.text, fontWeight: '800' }}>{selectedJob.posterName}</Text>
-            <Text style={{ color: colors.mutedText }}>@{selectedJob.posterUsername}</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 16 }}>
-              {selectedJob.status !== 'published' ? (
-                <ActionChip icon="check" label="Approve & Publish" color={colors.successText} surface={colors.successSurface} disabled={busy} onPress={() => { const job = selectedJob; setSelectedJob(null); void handleApprove(job); }} />
-              ) : null}
-              {selectedJob.status !== 'rejected' ? (
-                <ActionChip icon="x" label="Reject Job" color={colors.destructiveText} surface={colors.destructiveSurface} onPress={() => openAction(selectedJob, 'reject')} />
-              ) : null}
+            <View style={{ gap: space.xs }}>
+              <Text style={[type.label, { color: colors.mutedText }]}>Posted by</Text>
+              <Text style={[type.bodyStrong, { color: colors.text }]}>{selectedJob.posterName}</Text>
+              {selectedJob.posterUsername ? <Text style={[type.meta, { color: colors.mutedText }]}>@{selectedJob.posterUsername}</Text> : null}
             </View>
+            {selectedJob.status !== 'rejected' ? (
+              <AdminButton label="Reject job…" icon="x" tone="danger" emphasis="ghost" onPress={() => openAction(selectedJob, 'reject')} style={{ alignSelf: 'flex-start' }} />
+            ) : null}
           </View>
         ) : null}
       </AdminDialog>
 
       <AdminDialog
-        visible={action === 'reject'}
-        title="Reject Job Submission"
-        description={`Provide a reason for rejecting "${actionJob?.title ?? ''}". This will be communicated to the poster.`}
-        confirmLabel="Confirm Rejection"
-        tone="danger"
+        visible={Boolean(action)}
+        title={actionCopy.title}
+        description={actionCopy.description}
+        confirmLabel={actionCopy.confirm}
+        tone={action === 'suspend' ? 'pending' : 'danger'}
         busy={busy}
         confirmDisabled={!reason.trim()}
         onConfirm={() => void handleConfirmAction()}
         onClose={closeAction}
       >
-        <Text style={{ marginBottom: 6, color: colors.text, fontWeight: '700' }}>Rejection Reason *</Text>
-        <TextInput value={reason} onChangeText={setReason} multiline maxLength={2000} placeholder="Enter rejection reason..." placeholderTextColor={colors.mutedText} style={inputStyle} />
-      </AdminDialog>
-
-      <AdminDialog
-        visible={action === 'remove'}
-        title="Remove Job Listing"
-        description={`This will reject and hide the listing "${actionJob?.title ?? ''}".`}
-        confirmLabel="Remove Listing"
-        tone="danger"
-        busy={busy}
-        confirmDisabled={!reason.trim()}
-        onConfirm={() => void handleConfirmAction()}
-        onClose={closeAction}
-      >
-        <Text style={{ marginBottom: 6, color: colors.text, fontWeight: '700' }}>Reason *</Text>
-        <TextInput value={reason} onChangeText={setReason} multiline maxLength={2000} placeholder="Reason for removal..." placeholderTextColor={colors.mutedText} style={inputStyle} />
-      </AdminDialog>
-
-      <AdminDialog
-        visible={action === 'suspend'}
-        title="Suspend User from Jobs"
-        description={`This will prevent ${actionJob?.posterUsername ? `@${actionJob.posterUsername}` : `${actionJob?.userId.slice(0, 8) ?? ''}...`} from posting or applying to jobs.`}
-        confirmLabel="Suspend User"
-        tone="pending"
-        busy={busy}
-        confirmDisabled={!reason.trim()}
-        onConfirm={() => void handleConfirmAction()}
-        onClose={closeAction}
-      >
-        <Text style={{ marginBottom: 6, color: colors.text, fontWeight: '700' }}>Reason *</Text>
-        <TextInput value={reason} onChangeText={setReason} multiline maxLength={2000} placeholder="Reason for suspension..." placeholderTextColor={colors.mutedText} style={inputStyle} />
-        <Text style={{ marginTop: 14, marginBottom: 6, color: colors.text, fontWeight: '700' }}>Duration</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-          {JOB_SUSPENSION_DAYS.map((days) => (
-            <TouchableOpacity
-              key={days}
-              onPress={() => setSuspendDays(days)}
-              style={{ marginRight: 8, marginBottom: 8, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: suspendDays === days ? colors.accent : colors.control }}
-            >
-              <Text style={{ color: suspendDays === days ? colors.onAccent : colors.secondaryText, fontWeight: '800', fontSize: 12 }}>{days} {days === 1 ? 'day' : 'days'}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={{ gap: space.lg }}>
+          <AdminReasonField
+            label={`${actionCopy.label} (required)`}
+            value={reason}
+            onChangeText={(next) => {
+              setReason(next);
+              if (actionError) setActionError(null);
+            }}
+            editable={!busy}
+            placeholder={actionCopy.placeholder}
+            error={actionError}
+          />
+          {action === 'suspend' ? (
+            <AdminChoiceList
+              label="Duration"
+              value={suspendDays}
+              disabled={busy}
+              onChange={setSuspendDays}
+              options={JOB_SUSPENSION_DAYS.map((days) => ({ value: days, label: `${days} ${days === 1 ? 'day' : 'days'}` }))}
+            />
+          ) : null}
         </View>
       </AdminDialog>
-
-      <CustomModal visible={Boolean(message)} type={message?.isError ? 'error' : 'success'} title="Job Moderation" message={message?.text ?? ''} onClose={() => setMessage(null)} />
-    </AdminWorkspaceShell>
-  );
-}
-
-type ActionChipProps = {
-  icon: string;
-  label: string;
-  color: string;
-  surface: string;
-  disabled?: boolean;
-  onPress: () => void;
-};
-
-function ActionChip({ icon, label, color, surface, disabled = false, onPress }: ActionChipProps) {
-  return (
-    <TouchableOpacity
-      disabled={disabled}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={{ flexDirection: 'row', alignItems: 'center', marginRight: 7, marginBottom: 7, borderRadius: 11, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: surface, opacity: disabled ? 0.5 : 1 }}
-    >
-      <Icon name={icon} size={14} color={color} />
-      <Text style={{ marginLeft: 5, color, fontSize: 12, fontWeight: '800' }}>{label}</Text>
-    </TouchableOpacity>
+    </AdminScreen>
   );
 }

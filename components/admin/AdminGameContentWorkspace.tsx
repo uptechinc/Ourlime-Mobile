@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Image, Modal, Pressable, ScrollView, Text, TextInput, View, type TextStyle } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
-import AdminWorkspaceShell from './AdminWorkspaceShell';
+import { toast } from 'sonner-native';
+import AdminButton from './AdminButton';
 import AdminDialog from './AdminDialog';
+import AdminIconButton from './AdminIconButton';
+import AdminListRow from './AdminListRow';
+import AdminScreen, { type AdminScreenState } from './AdminScreen';
+import AdminSection from './AdminSection';
+import AdminState from './AdminState';
+import AdminToolbar from './AdminToolbar';
+import { AdminChoiceList } from './AdminReviewCard';
 import GuessMap from '@/components/games/GuessMap';
-import CustomModal from '@/components/ui/CustomModal';
-import { Skeleton } from '@/components/ui/Skeleton';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import {
   adminGameContentService,
   GAME_DIFFICULTIES,
@@ -14,6 +22,7 @@ import {
   type ManagedGeoLocation,
   type ManagedWordleWord,
 } from '@/lib/services/AdminGameContentService';
+import { ADMIN_MIN_TOUCH, getAdminTone, radius, space, type } from '@/lib/admin/adminTokens';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type ActiveTab = 'locations' | 'words';
@@ -22,9 +31,12 @@ type PickedImage = { base64: string; mimeType: 'image/jpeg'; previewUri: string 
 
 const INITIAL_COORDINATES = { lat: 10.45, lng: -61.25 };
 const formatCoordinate = (value: number): string => value.toFixed(6);
+const isActiveTab = (value: string): value is ActiveTab => value === 'locations' || value === 'words';
+const capitalize = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
 
 export default function AdminGameContentWorkspace() {
   const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<ActiveTab>('locations');
   const [locations, setLocations] = useState<ManagedGeoLocation[]>([]);
   const [words, setWords] = useState<ManagedWordleWord[]>([]);
@@ -33,10 +45,14 @@ export default function AdminGameContentWorkspace() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  // A save or delete that worked but whose list reload failed: shown above the list until the next good load.
+  const [listNotice, setListNotice] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Location form
   const [name, setName] = useState('');
@@ -62,11 +78,12 @@ export default function AdminGameContentWorkspace() {
       const content = await adminGameContentService.fetchContent();
       setLocations(content.locations);
       setWords(content.words);
+      setListNotice(null);
     } catch (loadError: unknown) {
       console.error('[AdminGameContentWorkspace.loadContent] Error:', loadError instanceof Error ? loadError.message : loadError);
       const text = loadError instanceof Error ? loadError.message : 'Unable to load game content';
       // A reload follows a save that already succeeded: say so, so the admin doesn't save the same item twice.
-      if (mode === 'reload') setMessage(`Saved, but the list could not be refreshed (${text}). Pull down to refresh.`);
+      if (mode === 'reload') setListNotice(`Saved, but the list could not be refreshed (${text}). Pull down to refresh.`);
       else setError(text);
     } finally {
       setLoading(false);
@@ -103,10 +120,11 @@ export default function AdminGameContentWorkspace() {
   };
 
   const handlePickImage = async (): Promise<void> => {
+    setFormError(null);
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        setMessage('Photo library permission is required to upload a location image.');
+        setFormError('Photo library permission is required to upload a location image.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.9 });
@@ -115,7 +133,7 @@ export default function AdminGameContentWorkspace() {
       setPickedImage(await adminGameContentService.prepareImage(asset.uri));
     } catch (pickError: unknown) {
       console.error('[AdminGameContentWorkspace.handlePickImage] Error:', pickError instanceof Error ? pickError.message : pickError);
-      setMessage(pickError instanceof Error ? pickError.message : 'Could not open photo library.');
+      setFormError(pickError instanceof Error ? pickError.message : 'Could not open photo library.');
     }
   };
 
@@ -136,10 +154,11 @@ export default function AdminGameContentWorkspace() {
     const latitude = adminGameContentService.validateCoordinate('latitude', latitudeInput);
     const longitude = adminGameContentService.validateCoordinate('longitude', longitudeInput);
     if (latitude === null || longitude === null) {
-      setMessage('Enter a valid latitude and longitude');
+      setFormError('Enter a valid latitude and longitude');
       return;
     }
     setSaving(true);
+    setFormError(null);
     try {
       await adminGameContentService.addLocation({
         name,
@@ -152,11 +171,12 @@ export default function AdminGameContentWorkspace() {
         longitude,
       });
       resetLocationForm();
-      setMessage('GeoGuesser location added');
+      setFormOpen(false);
+      toast.success('GeoGuesser location added');
       await loadContent('reload');
     } catch (saveError: unknown) {
       console.error('[AdminGameContentWorkspace.handleLocationSubmit] Error:', saveError instanceof Error ? saveError.message : saveError);
-      setMessage(saveError instanceof Error ? saveError.message : 'Unable to save location');
+      setFormError(saveError instanceof Error ? saveError.message : 'Unable to save location');
     } finally {
       setSaving(false);
     }
@@ -165,15 +185,17 @@ export default function AdminGameContentWorkspace() {
   const handleWordSubmit = async (): Promise<void> => {
     if (saving) return;
     setSaving(true);
+    setFormError(null);
     try {
       await adminGameContentService.addWord(word, definition);
       setWord('');
       setDefinition('');
-      setMessage('Wordle word added');
+      setFormOpen(false);
+      toast.success('Wordle word saved');
       await loadContent('reload');
     } catch (saveError: unknown) {
       console.error('[AdminGameContentWorkspace.handleWordSubmit] Error:', saveError instanceof Error ? saveError.message : saveError);
-      setMessage(saveError instanceof Error ? saveError.message : 'Unable to save word');
+      setFormError(saveError instanceof Error ? saveError.message : 'Unable to save word');
     } finally {
       setSaving(false);
     }
@@ -182,6 +204,7 @@ export default function AdminGameContentWorkspace() {
   const handleDelete = async (): Promise<void> => {
     if (!deleteTarget || deleting) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       if (deleteTarget.type === 'location') {
         const removed = deleteTarget.item;
@@ -194,198 +217,222 @@ export default function AdminGameContentWorkspace() {
         setWords((current) => current.filter((entry) => entry.id !== removed.id));
       }
       setDeleteTarget(null);
-      setMessage('Content removed');
+      toast.success('Content removed');
       await loadContent('reload');
-    } catch (deleteError: unknown) {
-      console.error('[AdminGameContentWorkspace.handleDelete] Error:', deleteError instanceof Error ? deleteError.message : deleteError);
-      setMessage(deleteError instanceof Error ? deleteError.message : 'Unable to delete content');
+    } catch (deleteFailure: unknown) {
+      console.error('[AdminGameContentWorkspace.handleDelete] Error:', deleteFailure instanceof Error ? deleteFailure.message : deleteFailure);
+      setDeleteError(deleteFailure instanceof Error ? deleteFailure.message : 'Unable to delete content');
     } finally {
       setDeleting(false);
     }
   };
 
-  const inputStyle = { marginTop: 5, padding: 11, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text };
-  const labelStyle = { marginTop: 12, color: colors.text, fontSize: 13, fontWeight: '700' as const };
-  const cardStyle = { marginBottom: 14, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface };
+  const openForm = (prefill?: ManagedWordleWord): void => {
+    setFormError(null);
+    if (prefill) {
+      setWord(prefill.word);
+      setDefinition(prefill.definition);
+    }
+    setFormOpen(true);
+  };
 
-  const submitButton = (label: string, busyLabel: string, onPress: () => void) => (
-    <TouchableOpacity
-      disabled={saving}
-      onPress={onPress}
-      style={{ marginTop: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 13, borderRadius: 14, backgroundColor: colors.successSurface, opacity: saving ? 0.6 : 1 }}
-    >
-      {saving ? <ActivityIndicator size="small" color={colors.successText} /> : <Icon name="plus" size={16} color={colors.successText} />}
-      <Text style={{ marginLeft: 7, color: colors.successText, fontWeight: '900' }}>{saving ? busyLabel : label}</Text>
-    </TouchableOpacity>
-  );
+  const closeForm = (): void => {
+    if (saving) return;
+    setFormOpen(false);
+  };
 
-  const listHeader = (title: string) => (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={{ color: colors.text, fontWeight: '900', fontSize: 16 }}>{title}</Text>
-      <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, paddingHorizontal: 11 }}>
-        <Icon name="search" size={16} color={colors.mutedText} />
-        <TextInput value={query} onChangeText={setQuery} placeholder="Search…" placeholderTextColor={colors.mutedText} style={{ flex: 1, padding: 10, color: colors.text }} />
-      </View>
+  const inputStyle: TextStyle[] = [
+    type.body,
+    { minHeight: ADMIN_MIN_TOUCH, paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text },
+  ];
+  const renderField = (label: string, field: ReactNode) => (
+    <View style={{ gap: space.xs }}>
+      <Text style={[type.label, { color: colors.secondaryText }]}>{label}</Text>
+      {field}
     </View>
   );
 
-  const listSkeleton = (
-    <View>
-      {[0, 1, 2].map((rowIndex) => (
-        <View key={rowIndex} style={{ flexDirection: 'row', marginBottom: 10, padding: 11, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas }}>
-          <Skeleton width={activeTab === 'locations' ? 84 : 76} height={activeTab === 'locations' ? 66 : 34} borderRadius={10} />
-          <View style={{ flex: 1, marginLeft: 11 }}>
-            <Skeleton width="60%" height={14} />
-            <Skeleton width="85%" height={11} style={{ marginTop: 8 }} />
+  const isLocations = activeTab === 'locations';
+  const visibleCount = isLocations ? filteredLocations.length : filteredWords.length;
+  const totalCount = isLocations ? locations.length : words.length;
+  const screenState: AdminScreenState = loading ? { kind: 'loading', variant: 'list' } : error ? { kind: 'error', message: error } : { kind: 'ready' };
+  const positive = getAdminTone(colors, 'positive');
+
+  const renderList = () => {
+    if (listLoading) return <AdminState kind="loading" variant="list" rows={3} />;
+    if (!visibleCount) {
+      return (
+        <AdminState
+          kind="empty"
+          icon={isLocations ? 'map-pin' : 'book-open'}
+          title={isLocations ? 'No locations yet' : 'No words yet'}
+          description={isLocations ? 'Add a landmark to the GeoGuesser pool.' : 'Add a five-letter answer to the Wordle dictionary.'}
+          filtered={Boolean(query.trim())}
+          onClearFilters={() => setQuery('')}
+        />
+      );
+    }
+    if (isLocations) {
+      return filteredLocations.map((location) => (
+        <AdminListRow
+          key={`${location.difficulty}-${location.id}`}
+          title={location.name}
+          subtitle={location.info || 'No description'}
+          leading={{ kind: 'thumb', uri: location.imageUrl || undefined }}
+          status={{ label: capitalize(location.difficulty), tone: 'neutral' }}
+          overflowActions={[{ key: 'delete', label: 'Delete…', icon: 'trash-2', tone: 'danger', onPress: () => { setDeleteError(null); setDeleteTarget({ type: 'location', item: location }); } }]}
+        />
+      ));
+    }
+    return filteredWords.map((entry) => (
+      <AdminListRow
+        key={entry.id}
+        title={entry.word}
+        subtitle={entry.definition}
+        leading={{ kind: 'icon', name: 'type', tone: 'positive' }}
+        overflowActions={[
+          { key: 'edit', label: 'Edit definition', icon: 'edit-2', onPress: () => openForm(entry) },
+          { key: 'delete', label: 'Delete…', icon: 'trash-2', tone: 'danger', onPress: () => { setDeleteError(null); setDeleteTarget({ type: 'word', item: entry }); } },
+        ]}
+      />
+    ));
+  };
+
+  const locationForm = (
+    <>
+      <AdminSection title="Details">
+        {renderField('Name', <TextInput value={name} onChangeText={setName} placeholderTextColor={colors.mutedText} accessibilityLabel="Name" style={inputStyle} />)}
+        <AdminChoiceList label="Difficulty" value={difficulty} onChange={setDifficulty} disabled={saving} options={GAME_DIFFICULTIES.map((level) => ({ value: level, label: capitalize(level) }))} />
+        {renderField('Description', <TextInput value={info} onChangeText={setInfo} multiline accessibilityLabel="Description" style={[...inputStyle, { minHeight: 76, textAlignVertical: 'top' }]} />)}
+        {renderField('Hint', <TextInput value={hint} onChangeText={setHint} accessibilityLabel="Hint" style={inputStyle} />)}
+      </AdminSection>
+
+      <AdminSection title="Image" description="Upload a landmark image, or paste an image URL.">
+        {/* The picker and the remove control are siblings, never nested touchables. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+          <Pressable
+            onPress={() => void handlePickImage()}
+            accessibilityRole="button"
+            accessibilityLabel={pickedImage ? 'Change image' : 'Upload image'}
+            style={({ pressed }) => ({
+              flex: 1,
+              minHeight: 56,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: space.sm,
+              padding: space.sm,
+              borderRadius: radius.md,
+              borderWidth: 1,
+              borderStyle: 'dashed',
+              borderColor: colors.border,
+              backgroundColor: colors.input,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            {pickedImage ? <Image source={{ uri: pickedImage.previewUri }} style={{ width: 44, height: 44, borderRadius: radius.sm }} /> : <Icon name="image" size={20} color={colors.accentText} />}
+            <Text style={[type.bodyStrong, { color: colors.text }]}>{pickedImage ? 'Change image' : 'Upload image'}</Text>
+          </Pressable>
+          {pickedImage ? <AdminIconButton icon="x" label="Remove picked image" tone="danger" variant="soft" onPress={() => setPickedImage(null)} /> : null}
+        </View>
+        {renderField('Or image URL', <TextInput value={imageUrl} onChangeText={setImageUrl} placeholder="https://…" placeholderTextColor={colors.mutedText} autoCapitalize="none" keyboardType="url" accessibilityLabel="Image URL" style={inputStyle} />)}
+      </AdminSection>
+
+      <AdminSection title="Map" description="Tap the exact point on the map, or type the coordinates.">
+        <View style={{ flexDirection: 'row', gap: space.sm }}>
+          <View style={{ flex: 1 }}>
+            {renderField('Latitude', <TextInput value={latitudeInput} onChangeText={(value) => handleCoordinateInputChange('latitude', value)} keyboardType="numbers-and-punctuation" accessibilityLabel="Latitude" style={inputStyle} />)}
+          </View>
+          <View style={{ flex: 1 }}>
+            {renderField('Longitude', <TextInput value={longitudeInput} onChangeText={(value) => handleCoordinateInputChange('longitude', value)} keyboardType="numbers-and-punctuation" accessibilityLabel="Longitude" style={inputStyle} />)}
           </View>
         </View>
+        <View style={{ height: 300, borderRadius: radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+          <GuessMap guess={coordinates} actual={null} locked={false} onGuess={handleMapPress} />
+        </View>
+        <View style={{ padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: positive.border, backgroundColor: positive.soft }}>
+          <Text style={[type.meta, { color: positive.text }]}>Selected: {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}</Text>
+        </View>
+      </AdminSection>
+    </>
+  );
+
+  const wordForm = (
+    <AdminSection title="Wordle answer" description="Five letters only. Saving an existing word updates its definition.">
+      {renderField('Word', (
+        <TextInput
+          value={word}
+          onChangeText={(value) => setWord(value.replace(/[^A-Za-z]/g, '').toUpperCase())}
+          maxLength={5}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          accessibilityLabel="Word"
+          style={[...inputStyle, { fontFamily: 'monospace', fontSize: 18, letterSpacing: 6 }]}
+        />
       ))}
-    </View>
+      {renderField('Definition', <TextInput value={definition} onChangeText={setDefinition} multiline accessibilityLabel="Definition" style={[...inputStyle, { minHeight: 96, textAlignVertical: 'top' }]} />)}
+    </AdminSection>
   );
 
   return (
-    <AdminWorkspaceShell
-      title="Game Content Studio"
-      subtitle="Manage live Trini GeoGuesser locations and the Trini Wordle dictionary."
-      loading={loading}
+    <AdminScreen
+      title="Game content"
+      subtitle="Trini GeoGuesser locations and the Trini Wordle dictionary"
+      state={screenState}
       refreshing={refreshing}
-      error={error}
-      onRefresh={() => void loadContent('refresh')}
+      onRefresh={() => loadContent('refresh')}
+      primaryAction={{ key: 'add', label: isLocations ? 'Add location' : 'Add word', icon: 'plus', onPress: () => openForm() }}
+      toolbar={(
+        <AdminToolbar
+          segments={{
+            value: activeTab,
+            options: [
+              { value: 'locations', label: 'GeoGuesser', count: loading ? undefined : locations.length },
+              { value: 'words', label: 'Wordle', count: loading ? undefined : words.length },
+            ],
+            onChange: (next) => {
+              if (!isActiveTab(next)) return;
+              setActiveTab(next);
+              setQuery('');
+            },
+          }}
+          search={{ value: query, placeholder: isLocations ? 'Search locations' : 'Search words', onChange: setQuery }}
+          resultSummary={loading || error ? undefined : `${visibleCount} of ${totalCount} ${isLocations ? 'locations' : 'words'}`}
+        />
+      )}
     >
-      <View style={{ flexDirection: 'row', marginBottom: 14 }}>
-        {([
-          { key: 'locations', label: 'GeoGuesser', icon: 'map-pin' },
-          { key: 'words', label: 'Wordle words', icon: 'book-open' },
-        ] as const).map((tab) => (
-          <TouchableOpacity
-            key={tab.key}
-            onPress={() => { setActiveTab(tab.key); setQuery(''); }}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: activeTab === tab.key }}
-            style={{ flexDirection: 'row', alignItems: 'center', marginRight: 8, borderRadius: 13, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: activeTab === tab.key ? colors.accent : colors.border, backgroundColor: activeTab === tab.key ? colors.successSurface : colors.control }}
-          >
-            <Icon name={tab.icon} size={15} color={activeTab === tab.key ? colors.successText : colors.mutedText} />
-            <Text style={{ marginLeft: 6, color: activeTab === tab.key ? colors.successText : colors.secondaryText, fontWeight: '800' }}>{tab.label}</Text>
-          </TouchableOpacity>
-        ))}
-        <TouchableOpacity onPress={() => void loadContent('reload')} accessibilityLabel="Refresh" style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', borderRadius: 13, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control }}>
-          <Icon name="refresh-cw" size={15} color={colors.icon} />
-        </TouchableOpacity>
+      <View style={{ gap: space.sm }}>
+        {listNotice ? <AdminState kind="inlineError" message={listNotice} onRetry={() => void loadContent('reload')} /> : null}
+        {renderList()}
       </View>
 
-      {activeTab === 'locations' ? (
-        <>
-          <View style={cardStyle}>
-            <Text style={{ color: colors.text, fontWeight: '900', fontSize: 16 }}>Add a location</Text>
-            <Text style={{ marginTop: 3, color: colors.mutedText, fontSize: 13 }}>Upload a landmark image, then tap the exact point on the map.</Text>
-            <Text style={labelStyle}>Name</Text>
-            <TextInput value={name} onChangeText={setName} placeholderTextColor={colors.mutedText} style={inputStyle} />
-            <Text style={labelStyle}>Difficulty</Text>
-            <View style={{ flexDirection: 'row', marginTop: 6 }}>
-              {GAME_DIFFICULTIES.map((level) => (
-                <TouchableOpacity key={level} onPress={() => setDifficulty(level)} style={{ marginRight: 8, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: difficulty === level ? colors.accent : colors.control }}>
-                  <Text style={{ color: difficulty === level ? colors.onAccent : colors.secondaryText, fontWeight: '800', textTransform: 'capitalize' }}>{level}</Text>
-                </TouchableOpacity>
-              ))}
+      <Modal visible={formOpen} animationType="slide" presentationStyle="fullScreen" onRequestClose={closeForm}>
+        <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+          <View style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingHorizontal: space.xs, backgroundColor: colors.navigation, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <AdminIconButton icon="x" label="Close form" iconSize={22} disabled={saving} onPress={closeForm} />
+            <Text accessibilityRole="header" numberOfLines={1} style={[type.title, { flex: 1, color: colors.text }]}>{isLocations ? 'Add a location' : 'Add a Wordle answer'}</Text>
+          </View>
+          {/* The header stays outside the keyboard-safe area; the body and the sticky Save stay above the keyboard. */}
+          <KeyboardSafeView style={{ flex: 1 }}>
+            <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, gap: space.lg, padding: space.lg, paddingBottom: space.xxl }}>
+              {isLocations ? locationForm : wordForm}
+              {formError ? <AdminState kind="inlineError" message={formError} /> : null}
+            </ScrollView>
+            <View style={{ flexDirection: 'row', gap: space.md, paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.md + insets.bottom, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.navigation }}>
+              <AdminButton label="Cancel" tone="neutral" disabled={saving} onPress={closeForm} style={{ flex: 1 }} />
+              <AdminButton
+                label={saving ? (isLocations ? 'Uploading…' : 'Saving…') : isLocations ? 'Add location' : 'Save word'}
+                icon="check"
+                tone="positive"
+                emphasis="primary"
+                busy={saving}
+                onPress={() => void (isLocations ? handleLocationSubmit() : handleWordSubmit())}
+                style={{ flex: 1 }}
+              />
             </View>
-            <Text style={labelStyle}>Description</Text>
-            <TextInput value={info} onChangeText={setInfo} multiline style={[inputStyle, { minHeight: 76, textAlignVertical: 'top' }]} />
-            <Text style={labelStyle}>Hint</Text>
-            <TextInput value={hint} onChangeText={setHint} style={inputStyle} />
-            <TouchableOpacity onPress={() => void handlePickImage()} style={{ marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 14, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, backgroundColor: colors.input }}>
-              {pickedImage ? (
-                <Image source={{ uri: pickedImage.previewUri }} style={{ width: 44, height: 44, borderRadius: 9, marginRight: 10 }} />
-              ) : (
-                <Icon name="image" size={19} color={colors.accent} />
-              )}
-              <Text style={{ marginLeft: pickedImage ? 0 : 8, color: colors.text, fontWeight: '800' }}>{pickedImage ? 'Change image' : 'Upload image'}</Text>
-              {pickedImage ? (
-                <TouchableOpacity onPress={() => setPickedImage(null)} accessibilityLabel="Remove picked image" style={{ marginLeft: 10, padding: 4 }}>
-                  <Icon name="x" size={17} color={colors.destructiveText} />
-                </TouchableOpacity>
-              ) : null}
-            </TouchableOpacity>
-            <Text style={labelStyle}>Or image URL</Text>
-            <TextInput value={imageUrl} onChangeText={setImageUrl} placeholder="https://…" placeholderTextColor={colors.mutedText} autoCapitalize="none" keyboardType="url" style={inputStyle} />
-            <View style={{ flexDirection: 'row' }}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={labelStyle}>Latitude</Text>
-                <TextInput value={latitudeInput} onChangeText={(value) => handleCoordinateInputChange('latitude', value)} keyboardType="numbers-and-punctuation" style={inputStyle} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={labelStyle}>Longitude</Text>
-                <TextInput value={longitudeInput} onChangeText={(value) => handleCoordinateInputChange('longitude', value)} keyboardType="numbers-and-punctuation" style={inputStyle} />
-              </View>
-            </View>
-            <View style={{ height: 300, marginTop: 14, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
-              <GuessMap guess={coordinates} actual={null} locked={false} onGuess={handleMapPress} />
-            </View>
-            <Text style={{ marginTop: 10, padding: 10, borderRadius: 12, overflow: 'hidden', color: colors.successText, backgroundColor: colors.successSurface, fontSize: 13 }}>
-              Selected: {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}
-            </Text>
-            {submitButton('Add location', 'Uploading…', () => void handleLocationSubmit())}
-          </View>
-
-          <View style={cardStyle}>
-            {listHeader(`${locations.length} managed locations`)}
-            {listLoading ? listSkeleton : filteredLocations.length === 0 ? (
-              <Text style={{ paddingVertical: 24, textAlign: 'center', color: colors.mutedText }}>No locations match.</Text>
-            ) : filteredLocations.map((location) => (
-              <View key={`${location.difficulty}-${location.id}`} style={{ flexDirection: 'row', marginBottom: 10, padding: 11, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas }}>
-                <View style={{ width: 84, height: 66, borderRadius: 10, overflow: 'hidden', backgroundColor: colors.control }}>
-                  {location.imageUrl ? <Image source={{ uri: location.imageUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" /> : null}
-                </View>
-                <View style={{ flex: 1, marginLeft: 11 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                    <View style={{ flex: 1 }}>
-                      <Text numberOfLines={1} style={{ color: colors.text, fontWeight: '800' }}>{location.name}</Text>
-                      <Text style={{ color: colors.successText, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }}>{location.difficulty}</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => setDeleteTarget({ type: 'location', item: location })} accessibilityLabel={`Delete ${location.name}`} style={{ padding: 6 }}>
-                      <Icon name="trash-2" size={16} color={colors.destructiveText} />
-                    </TouchableOpacity>
-                  </View>
-                  <Text numberOfLines={2} style={{ marginTop: 3, color: colors.mutedText, fontSize: 12 }}>{location.info || 'No description'}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </>
-      ) : (
-        <>
-          <View style={cardStyle}>
-            <Text style={{ color: colors.text, fontWeight: '900', fontSize: 16 }}>Add a Wordle answer</Text>
-            <Text style={{ marginTop: 3, color: colors.mutedText, fontSize: 13 }}>Five letters only. Saving an existing word updates its definition.</Text>
-            <Text style={labelStyle}>Word</Text>
-            <TextInput
-              value={word}
-              onChangeText={(value) => setWord(value.replace(/[^A-Za-z]/g, '').toUpperCase())}
-              maxLength={5}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              style={[inputStyle, { fontFamily: 'monospace', fontSize: 18, letterSpacing: 6 }]}
-            />
-            <Text style={labelStyle}>Definition</Text>
-            <TextInput value={definition} onChangeText={setDefinition} multiline style={[inputStyle, { minHeight: 96, textAlignVertical: 'top' }]} />
-            {submitButton('Add word', 'Saving…', () => void handleWordSubmit())}
-          </View>
-
-          <View style={cardStyle}>
-            {listHeader(`${words.length} managed words`)}
-            {listLoading ? listSkeleton : filteredWords.length === 0 ? (
-              <Text style={{ paddingVertical: 24, textAlign: 'center', color: colors.mutedText }}>No words match.</Text>
-            ) : filteredWords.map((entry) => (
-              <View key={entry.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas }}>
-                <Text style={{ overflow: 'hidden', borderRadius: 9, paddingHorizontal: 10, paddingVertical: 7, fontFamily: 'monospace', fontWeight: '900', letterSpacing: 3, color: colors.successText, backgroundColor: colors.successSurface }}>{entry.word}</Text>
-                <Text style={{ flex: 1, marginLeft: 11, color: colors.mutedText, fontSize: 13 }}>{entry.definition}</Text>
-                <TouchableOpacity onPress={() => setDeleteTarget({ type: 'word', item: entry })} accessibilityLabel={`Delete ${entry.word}`} style={{ padding: 6 }}>
-                  <Icon name="trash-2" size={16} color={colors.destructiveText} />
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </>
-      )}
+          </KeyboardSafeView>
+        </SafeAreaView>
+      </Modal>
 
       <AdminDialog
         visible={Boolean(deleteTarget)}
@@ -395,9 +442,12 @@ export default function AdminGameContentWorkspace() {
         tone="danger"
         busy={deleting}
         onConfirm={() => void handleDelete()}
-        onClose={() => setDeleteTarget(null)}
-      />
-      <CustomModal visible={Boolean(message)} type="info" title="Game Content Studio" message={message ?? ''} onClose={() => setMessage(null)} />
-    </AdminWorkspaceShell>
+        onClose={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+      >
+        {deleteError ? <AdminState kind="inlineError" message={deleteError} /> : null}
+      </AdminDialog>
+    </AdminScreen>
   );
 }
