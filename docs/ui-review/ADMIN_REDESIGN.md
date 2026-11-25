@@ -925,3 +925,31 @@ These are not part of the redesign. Agent B should confirm or fix them first.
 | `AdminTestersWorkspace.tsx` :316 | Every status is shown in `successText`. |
 | `AdminSkeletons.tsx` :15 | 13 rows versus 16 real hub rows. |
 | `AdminSecurityWorkspace.tsx`, `ModerationSection.tsx` :172 | `className="space-y-*"` gaps may not apply in RN. |
+
+---
+
+## Implementation status (2026-11-24)
+
+Built on Ourlime-Mobile `main` on top of the bug-sweep commits, which are all kept. Nothing has been run on a device or emulator: dark-mode contrast, measured touch targets, keyboard behaviour, and iOS/Android sheet and modal hand-offs are still unchecked.
+
+| Steps | Commit | Contents |
+|---|---|---|
+| 0 | `6667508` | Tokens (`lib/admin/adminTokens.ts`) and 4 theme keys |
+| 1 | `e6d0c19` | Primitives |
+| 2 | `ca6d96c` | `AdminScreen`, the `AdminDialog` restyle, `AdminToolbar`, `AdminFilterSheet` |
+| 3–4 | `8b5738a` | Hub, standalone section routes, `AdminTab`, analytics |
+| 3, 5–8 | `c1fb357` | Users, testers, security, page access, activity logs |
+| 3, 5–8 | `9c8b130` | Content and moderation, report detail |
+| 3, 5–8 | `824c169` | Jobs, couriers, pets, game content, e-learning, approvals, seller review, child safety, support queue |
+| 9 | cleanup commit | Removed `AdminWorkspaceShell`, `MobileAdminDateFilter` and the unused skeletons; added `bun run check:admin-tokens` (no raw hex and no 800/900 weights in `components/admin` and `app/admin`) |
+
+**Not changed:** `SupportTicketConversationScreen` (shared with members) and `app/admin/support/[ticketId].tsx`.
+
+**Primitive follow-ups the screen work asked for:**
+- `AdminToolbar` segments that scroll or wrap when there are more than 3 options.
+- A shared `AdminRadioRow`.
+- An `onToggle` callback on `AdminSection`.
+- Show a "Refresh"-only overflow menu when a screen has nothing else in it.
+- An in-modal toast host (iOS hides toasts behind full-screen modals).
+- A positive banner variant for `AdminState`.
+- An optional `accessibilityLabel` on `AdminHeaderAction`.

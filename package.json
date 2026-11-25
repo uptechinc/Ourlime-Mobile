@@ -18,6 +18,7 @@
     "lint:fix": "expo lint --fix",
     "typecheck": "tsc --noEmit",
     "check:discipline": "node scripts/check-discipline.cjs",
+    "check:admin-tokens": "node scripts/check-admin-tokens.cjs",
     "verify:ios-firebase": "node scripts/verify-ios-firebase.cjs",
     "audit:parity": "node scripts/generate-web-mobile-parity-inventory.cjs",
     "migrate:legacy-limes": "node scripts/migrate-legacy-limes.cjs",

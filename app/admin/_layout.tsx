@@ -1,8 +1,10 @@
 import { Stack, useRouter } from 'expo-router';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
+import AdminButton from '@/components/admin/AdminButton';
 import { AdminWorkspaceBodySkeleton } from '@/components/admin/AdminSkeletons';
+import { getAdminTone, radius, space, type } from '@/lib/admin/adminTokens';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
@@ -16,22 +18,26 @@ type AdminGateNoticeProps = {
 
 function AdminGateNotice({ icon, title, message, actionLabel, onAction }: AdminGateNoticeProps) {
 	const { colors } = useAppTheme();
+	const danger = getAdminTone(colors, 'danger');
 	return (
-		<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
-			<Icon name={icon} size={38} color={colors.destructive} />
-			<Text style={{ marginTop: 14, fontSize: 20, fontWeight: '900', color: colors.text, textAlign: 'center' }}>
-				{title}
-			</Text>
-			<Text style={{ marginTop: 8, fontSize: 14, lineHeight: 20, color: colors.mutedText, textAlign: 'center' }}>
-				{message}
-			</Text>
-			<TouchableOpacity
-				accessibilityRole="button"
-				onPress={onAction}
-				style={{ marginTop: 20, borderRadius: 999, backgroundColor: colors.accent, paddingHorizontal: 20, paddingVertical: 11 }}
+		<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl }}>
+			<View
+				style={{
+					width: 64,
+					height: 64,
+					borderRadius: radius.pill,
+					alignItems: 'center',
+					justifyContent: 'center',
+					backgroundColor: danger.soft,
+					borderWidth: 1,
+					borderColor: danger.border,
+				}}
 			>
-				<Text style={{ color: colors.onAccent, fontWeight: '800' }}>{actionLabel}</Text>
-			</TouchableOpacity>
+				<Icon name={icon} size={28} color={danger.text} />
+			</View>
+			<Text style={[type.title, { marginTop: space.lg, color: colors.text, textAlign: 'center' }]}>{title}</Text>
+			<Text style={[type.body, { marginTop: space.sm, color: colors.mutedText, textAlign: 'center' }]}>{message}</Text>
+			<AdminButton label={actionLabel} onPress={onAction} style={{ marginTop: space.xl }} />
 		</View>
 	);
 }
