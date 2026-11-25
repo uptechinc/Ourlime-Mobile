@@ -161,7 +161,7 @@ export default function JobsPage() {
         </View>
       );
     }
-    const listProps = { jobs: visibleJobs, savedJobIds: viewer.savedJobIds, appliedJobIds: viewer.appliedJobIds, onToggleSave: (jobId: string) => void viewer.toggleSave(jobId), onApply: handleApply, onViewDetails: setDetailJob };
+    const listProps = { jobs: visibleJobs, appliedJobIds: viewer.appliedJobIds, onApply: handleApply, onViewDetails: setDetailJob };
     return (
       <>
         {activeTab === 'professional' ? <ProfessionalJobsList {...listProps} /> : <QuickTasksList {...listProps} />}
@@ -273,8 +273,6 @@ export default function JobsPage() {
         isOpen={detailJob !== null}
         job={detailJob}
         isApplied={detailJob ? viewer.appliedJobIds.has(detailJob.id) : false}
-        isSaved={detailJob ? viewer.savedJobIds.has(detailJob.id) : false}
-        onToggleSave={(jobId) => void viewer.toggleSave(jobId)}
         onClose={() => setDetailJob(null)}
         onApply={handleApply}
       />

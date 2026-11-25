@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { Bookmark, Clock, FileText, Heart, MessageCircle, Share2 } from 'lucide-react-native';
+import { Clock, FileText, Heart, MessageCircle, Share2 } from 'lucide-react-native';
+import SaveButton from '@/components/ui/SaveButton';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { stripHtml } from '@/lib/utils/htmlUtils';
@@ -10,16 +11,16 @@ import type { BlogListItem } from '@/lib/types/blog';
 type BlogListCardProps = {
   blog: BlogListItem;
   isLiked: boolean;
-  isSaved: boolean;
   likesCount: number;
   onPress: () => void;
   onLikePress: () => void;
-  onSavePress: () => void;
+  /** Called after Save changes (the Saved filter refreshes on unsave). */
+  onSaveChange?: (isSaved: boolean) => void;
   onSharePress: () => void;
 };
 
 /** Mirrors Ourlime-Web components/blog/BlogCard.tsx. */
-export default function BlogListCard({ blog, isLiked, isSaved, likesCount, onPress, onLikePress, onSavePress, onSharePress }: BlogListCardProps) {
+export default function BlogListCard({ blog, isLiked, likesCount, onPress, onLikePress, onSaveChange, onSharePress }: BlogListCardProps) {
   const { colors } = useAppTheme();
   const [coverFailed, setCoverFailed] = useState(false);
   const dateLabel = blog.createdAtMs ? new Date(blog.createdAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
@@ -33,9 +34,7 @@ export default function BlogListCard({ blog, isLiked, isSaved, likesCount, onPre
           <View style={[styles.cover, styles.coverFallback]}><FileText size={36} color="#ffffff" /></View>
         )}
         <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{blog.categoryName || 'General'}</Text></View>
-        <Pressable onPress={onSavePress} hitSlop={8} style={[styles.bookmarkButton, { backgroundColor: isSaved ? '#10b981' : 'rgba(255,255,255,0.92)' }]} accessibilityRole="button" accessibilityLabel={isSaved ? 'Remove bookmark' : 'Bookmark'}>
-          <Bookmark size={16} color={isSaved ? '#ffffff' : '#0f172a'} fill={isSaved ? '#ffffff' : 'transparent'} />
-        </Pressable>
+        <SaveButton target={{ type: 'blog', itemId: blog.id, snapshot: { title: stripHtml(blog.title), thumbnail: blog.coverImage || null, authorId: blog.userId, subtitle: blog.excerpt ? stripHtml(blog.excerpt) : null } }} variant="overlay" iconSize={16} style={styles.bookmarkButton} onChange={onSaveChange} />
       </View>
 
       <View style={styles.body}>

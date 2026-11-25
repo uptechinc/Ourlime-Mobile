@@ -1,15 +1,17 @@
 import { Pressable, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Heart, Bookmark, MessageSquare, Share2 } from 'lucide-react-native';
+import { Heart, MessageSquare, Share2 } from 'lucide-react-native';
+import SaveButton from '@/components/ui/SaveButton';
+import type { SaveTarget } from '@/lib/types/saved';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type BlogEngagementBarProps = {
   likesCount: number;
   commentsCount: number;
   isLiked: boolean;
-  isBookmarked: boolean;
+  /** The blog as a saved item; Save is hidden until it is known. */
+  saveTarget: SaveTarget | null;
   interactionsReady?: boolean;
   onLikePress: () => void;
-  onBookmarkPress: () => void;
   onCommentPress: () => void;
   onSharePress: () => void;
 };
@@ -18,10 +20,9 @@ export default function BlogEngagementBar({
   likesCount,
   commentsCount,
   isLiked,
-  isBookmarked,
+  saveTarget,
   interactionsReady = true,
   onLikePress,
-  onBookmarkPress,
   onCommentPress,
   onSharePress,
 }: BlogEngagementBarProps) {
@@ -54,13 +55,7 @@ export default function BlogEngagementBar({
         <Text style={[styles.countText, { color: colors.text }]}>{commentsCount}</Text>
       </Pressable>
 
-      <TouchableOpacity disabled={!interactionsReady} activeOpacity={0.7} accessibilityLabel="Save blog" onPress={onBookmarkPress} style={styles.actionBtn}>
-        <Bookmark
-          size={20}
-          color={isBookmarked ? '#10b981' : colors.text}
-          fill={isBookmarked ? '#10b981' : 'transparent'}
-        />
-      </TouchableOpacity>
+      {saveTarget ? <SaveButton target={saveTarget} /> : null}
 
       <TouchableOpacity activeOpacity={0.7} accessibilityLabel="Share blog" onPress={onSharePress} style={styles.actionBtn}>
         <Share2 size={20} color={colors.text} />

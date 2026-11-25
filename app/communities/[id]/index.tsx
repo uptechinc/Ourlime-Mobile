@@ -18,6 +18,7 @@ import {
 	Plus,
 	Share2,
 } from 'lucide-react-native';
+import SaveButton from '@/components/ui/SaveButton';
 import { AuthService, type UserProfile } from '@/lib/services/AuthService';
 import { CommunityService } from '@/lib/services/CommunityService';
 import { CommunityDetailResourceService } from '@/lib/services/CommunityDetailResourceService';
@@ -751,6 +752,7 @@ export default function CommunityDetailScreen() {
 						>
 							<Share2 size={20} color={colors.icon} />
 						</TouchableOpacity>
+						<SaveButton target={{ type: 'community', itemId: community.id, snapshot: { title: community.title, thumbnail: community.imageUrl ?? null } }} iconSize={20} />
 						{community.permissions.canReport ? (
 							<TouchableOpacity
 								onPress={() => setReportTarget({ kind: 'community' })}

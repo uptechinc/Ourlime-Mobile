@@ -10,13 +10,13 @@ import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { auth } from '@/lib/firebaseConfig';
 import { formatJobLocation } from '@/lib/job/JobPresentation';
 
-type QuickTaskCardProps = Omit<JobListProps, 'jobs' | 'savedJobIds' | 'appliedJobIds'> & { task: JobRecord; isSaved: boolean; isApplied: boolean };
+type QuickTaskCardProps = Omit<JobListProps, 'jobs' | 'appliedJobIds'> & { task: JobRecord; isApplied: boolean };
 
 /**
  * A quick task in the TaskRabbit/Upwork order: the price leads, then the title, the duration · place · posted line
  * and who posted it. One badge at most (Applied, otherwise Urgent, otherwise closing soon) beside Share and Apply.
  */
-function QuickTaskCard({ task, isSaved, isApplied, onToggleSave, onApply, onViewDetails }: QuickTaskCardProps) {
+function QuickTaskCard({ task, isApplied, onApply, onViewDetails }: QuickTaskCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isCreator = auth.currentUser?.uid === task.basic_info.userId;
@@ -43,7 +43,7 @@ function QuickTaskCard({ task, isSaved, isApplied, onToggleSave, onApply, onView
           <Text numberOfLines={2} style={styles.taskTitle}>{task.basic_info.title}</Text>
         </View>
         <View style={styles.saveSlot}>
-          <JobSaveButton jobId={task.id} jobTitle={task.basic_info.title} isSaved={isSaved} onToggleSave={onToggleSave} />
+          <JobSaveButton jobId={task.id} jobTitle={task.basic_info.title} posterId={task.basic_info.userId} />
         </View>
       </View>
 
@@ -74,7 +74,7 @@ function QuickTaskCard({ task, isSaved, isApplied, onToggleSave, onApply, onView
 }
 
 /** Quick task cards (web components/jobs/QuickTasksList.tsx). */
-export function QuickTasksList({ jobs, savedJobIds, appliedJobIds, onToggleSave, onApply, onViewDetails }: JobListProps) {
+export function QuickTasksList({ jobs, appliedJobIds, onApply, onViewDetails }: JobListProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
@@ -83,9 +83,7 @@ export function QuickTasksList({ jobs, savedJobIds, appliedJobIds, onToggleSave,
         <QuickTaskCard
           key={task.id}
           task={task}
-          isSaved={savedJobIds.has(task.id)}
           isApplied={appliedJobIds.has(task.id)}
-          onToggleSave={onToggleSave}
           onApply={onApply}
           onViewDetails={onViewDetails}
         />

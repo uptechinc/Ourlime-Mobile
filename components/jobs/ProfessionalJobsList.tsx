@@ -10,14 +10,12 @@ import { formatJobLocation, getJobCompanyName } from '@/lib/job/JobPresentation'
 
 export type JobListProps = {
   jobs: JobRecord[];
-  savedJobIds: Set<string>;
   appliedJobIds: Set<string>;
-  onToggleSave: (jobId: string) => void;
   onApply: (job: JobRecord) => void;
   onViewDetails: (job: JobRecord) => void;
 };
 
-type ProfessionalJobCardProps = Omit<JobListProps, 'jobs' | 'savedJobIds' | 'appliedJobIds'> & { job: JobRecord; isSaved: boolean; isApplied: boolean };
+type ProfessionalJobCardProps = Omit<JobListProps, 'jobs' | 'appliedJobIds'> & { job: JobRecord; isApplied: boolean };
 
 /**
  * A job card in the LinkedIn/Indeed order: the whole card opens the details; logo beside a two-line title and the
@@ -25,7 +23,7 @@ type ProfessionalJobCardProps = Omit<JobListProps, 'jobs' | 'savedJobIds' | 'app
  * posted; at most two skills and "+n"; then a footer with the one state that matters (Applied or closing soon) and
  * Share + Apply.
  */
-function ProfessionalJobCard({ job, isSaved, isApplied, onToggleSave, onApply, onViewDetails }: ProfessionalJobCardProps) {
+function ProfessionalJobCard({ job, isApplied, onApply, onViewDetails }: ProfessionalJobCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const isCreator = auth.currentUser?.uid === job.basic_info.userId;
@@ -54,7 +52,7 @@ function ProfessionalJobCard({ job, isSaved, isApplied, onToggleSave, onApply, o
           <JobPosterLine name={companyName} isVerified={isVerified} />
         </View>
         <View style={styles.saveSlot}>
-          <JobSaveButton jobId={job.id} jobTitle={job.basic_info.title} isSaved={isSaved} onToggleSave={onToggleSave} />
+          <JobSaveButton jobId={job.id} jobTitle={job.basic_info.title} posterId={job.basic_info.userId} />
         </View>
       </View>
 
@@ -83,7 +81,7 @@ function ProfessionalJobCard({ job, isSaved, isApplied, onToggleSave, onApply, o
 }
 
 /** Professional job cards (web components/jobs/ProfessionalJobsList.tsx). */
-export function ProfessionalJobsList({ jobs, savedJobIds, appliedJobIds, onToggleSave, onApply, onViewDetails }: JobListProps) {
+export function ProfessionalJobsList({ jobs, appliedJobIds, onApply, onViewDetails }: JobListProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
@@ -92,9 +90,7 @@ export function ProfessionalJobsList({ jobs, savedJobIds, appliedJobIds, onToggl
         <ProfessionalJobCard
           key={job.id}
           job={job}
-          isSaved={savedJobIds.has(job.id)}
           isApplied={appliedJobIds.has(job.id)}
-          onToggleSave={onToggleSave}
           onApply={onApply}
           onViewDetails={onViewDetails}
         />

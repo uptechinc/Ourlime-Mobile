@@ -3,6 +3,7 @@ import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { CheckCircle2, Heart, Mail, MapPin, PawPrint, Phone, ShieldCheck, Syringe, type LucideIcon } from 'lucide-react-native';
+import SaveButton from '@/components/ui/SaveButton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { PET_ADOPTION_STATUS_LABELS, PET_HEALTH_LABELS, petsService } from '@/lib/services/PetsService';
@@ -75,6 +76,7 @@ export default function PetDetailScreen() {
   const header = <View style={styles.header}>
     <Pressable accessibilityRole="button" accessibilityLabel="Back to Pets for Adoption" onPress={() => router.canGoBack() ? router.back() : router.replace('/market/pets' as Href)} style={styles.backButton}><Text style={styles.backText}>‹</Text></Pressable>
     <Text numberOfLines={1} style={styles.headerTitle}>{listing ? `Meet ${listing.name}` : 'Pets for Adoption'}</Text>
+    {listing && petId ? <SaveButton target={{ type: 'pet_listing', itemId: petId, snapshot: { title: listing.name, thumbnail: listing.imageUrls[0] ?? null, subtitle: [listing.breed || listing.petType, listing.location].filter(Boolean).join(' · ') || null } }} /> : null}
   </View>;
 
   if (isLoading) return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>{header}<PetDetailSkeleton /></SafeAreaView>;

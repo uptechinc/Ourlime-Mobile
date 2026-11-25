@@ -1,7 +1,8 @@
 import { useMemo, type ReactNode } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
-import { Archive, BadgeCheck, Bookmark, CalendarDays, Flag, Heart, MapPin, Pencil, Share2, Trash2, Users } from 'lucide-react-native';
+import { Archive, BadgeCheck, CalendarDays, Flag, Heart, MapPin, Pencil, Share2, Trash2, Users } from 'lucide-react-native';
+import SaveButton from '@/components/ui/SaveButton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { linkPresentationService } from '@/lib/services/LinkPresentationService';
 import { eventService } from '@/lib/services/EventService';
@@ -15,7 +16,6 @@ type EventCardProps = {
   isAttending: boolean;
   waitlistPosition?: number | null;
   isLiked?: boolean;
-  isBookmarked?: boolean;
   isTargeted?: boolean;
   isWorking?: boolean;
   /** The viewer helps run this event: the website's "Co-organizer" badge. */
@@ -29,7 +29,6 @@ type EventCardProps = {
   onOpen: () => void;
   onAttend?: () => void;
   onLike?: () => void;
-  onBookmark?: () => void;
   onShare?: () => void;
   onReport?: () => void;
   onEdit?: () => void;
@@ -39,8 +38,8 @@ type EventCardProps = {
 
 /** An event in a listing: the website's events-page card laid out for phones. */
 export default function EventCard({
-  event, variant, attendeeCount, isAttending, waitlistPosition, isLiked, isBookmarked, isTargeted, isWorking, isCoOrganizer, canManage, canEdit, showDaysLeft, compactActions,
-  onOpen, onAttend, onLike, onBookmark, onShare, onReport, onEdit, onArchive, onCancel,
+  event, variant, attendeeCount, isAttending, waitlistPosition, isLiked, isTargeted, isWorking, isCoOrganizer, canManage, canEdit, showDaysLeft, compactActions,
+  onOpen, onAttend, onLike, onShare, onReport, onEdit, onArchive, onCancel,
 }: EventCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -112,7 +111,7 @@ export default function EventCard({
           ) : <View style={styles.flex} />}
           <View style={styles.iconRow}>
             {compactActions ? null : iconButton(isLiked ? 'Unlike' : 'Like', <Heart size={17} color={isLiked ? '#ef4444' : colors.icon} fill={isLiked ? '#ef4444' : 'transparent'} />, onLike, isLiked)}
-            {compactActions ? null : iconButton(isBookmarked ? 'Remove bookmark' : 'Bookmark', <Bookmark size={17} color={isBookmarked ? '#3b82f6' : colors.icon} fill={isBookmarked ? '#3b82f6' : 'transparent'} />, onBookmark, isBookmarked)}
+            {compactActions || !event.id ? null : <SaveButton target={{ type: 'event', itemId: event.id, snapshot: { title: event.title || 'Event', thumbnail: event.image || null, authorId: event.userId || null, subtitle: typeof event.location === 'string' ? event.location : null } }} iconSize={17} style={styles.iconButton} />}
             {compactActions ? null : iconButton('Share', <Share2 size={17} color={colors.icon} />, onShare)}
             {iconButton('Report', <Flag size={17} color={colors.icon} />, onReport)}
           </View>

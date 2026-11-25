@@ -20,6 +20,7 @@ import CustomModal from '@/components/ui/CustomModal';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { useAppData } from '@/lib/contexts/AppDataContext';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import SaveButton from '@/components/ui/SaveButton';
 import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 import { useLikeSync } from '@/lib/hooks/useLikeSync';
 import { screenToastService } from '@/lib/services/ScreenToastService';
@@ -389,6 +390,19 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
               <Text style={{ marginLeft: 7, color: colors.mutedText, fontWeight: '600' }}>{shareCount}</Text>
             </AnimatedActionButton>
             {!post.communityId ? <AnimatedActionButton onPress={handleRepostPress} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }} accessibilityLabel={isReposted ? 'Remove repost' : 'Repost'}><Icon name="repeat" size={22} color={isReposted ? '#10b981' : colors.icon} /></AnimatedActionButton> : null}
+            <SaveButton
+              target={{
+                type: 'post',
+                itemId: post.id,
+                snapshot: {
+                  title: post.caption || post.description || `Post by ${[post.user.firstName, post.user.lastName].filter(Boolean).join(' ') || 'a member'}`,
+                  thumbnail: post.thumbnailUrl || post.media[0]?.thumbnailUrl || (post.media[0]?.type === 'image' ? post.media[0].typeUrl : null) || null,
+                  authorId: post.userId,
+                  subtitle: [post.user.firstName, post.user.lastName].filter(Boolean).join(' ') || null,
+                },
+              }}
+              iconSize={21}
+            />
           </View>
 
           {/* Liked Users Display on the right */}

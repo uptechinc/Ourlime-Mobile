@@ -224,7 +224,6 @@ export default function EventsPage() {
                   isAttending={Boolean(state?.isAttending)}
                   waitlistPosition={state?.waitlistPosition}
                   isLiked={actions.liked[eventId]}
-                  isBookmarked={actions.bookmarked[eventId]}
                   isTargeted={eventId === targetId}
                   isWorking={actions.workingEventId === eventId}
                   canManage={canManage}
@@ -232,7 +231,6 @@ export default function EventsPage() {
                   onOpen={() => openEvent(event.id)}
                   onAttend={() => actions.requestAttendance(event)}
                   onLike={() => actions.toggleLike(event)}
-                  onBookmark={() => actions.toggleBookmark(event)}
                   onShare={() => actions.share(event)}
                   onReport={() => actions.report(event)}
                   onEdit={() => setEditingEvent(event)}

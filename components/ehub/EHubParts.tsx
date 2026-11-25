@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { ArrowRight, BriefcaseBusiness, Check, CheckCircle2, ChevronRight, Clock, Heart, MapPin, Package, ShoppingCart, Star, Store, Wrench } from 'lucide-react-native';
+import { ArrowRight, BriefcaseBusiness, Check, CheckCircle2, ChevronRight, Clock, MapPin, Package, ShoppingCart, Star, Store, Wrench } from 'lucide-react-native';
+import SaveButton from '@/components/ui/SaveButton';
 import { LinearGradient } from 'expo-linear-gradient';
 import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
@@ -111,9 +112,8 @@ type ProductCardProps = {
 export function EHubProductCard({ product, width, onOpen, isCompact = false, isCompared = false, onCompare, onAddedToCart, onOpenCart }: ProductCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { cart, addToCart, isFavorite, toggleFavorite } = useEHubCommerce();
+  const { cart, addToCart } = useEHubCommerce();
   const isAvailable = product.inventory > 0;
-  const isSaved = isFavorite(product.id);
   const isInCart = cart.some((item) => item.productId === product.id);
   const currentPrice = getEHubCurrentPrice(product.price, product.salePrice);
   const isOnSale = normalizeEHubSalePrice(product.salePrice, product.price) !== null;
@@ -149,9 +149,7 @@ export function EHubProductCard({ product, width, onOpen, isCompact = false, isC
       </View>
     </Pressable>
     {isCompact ? null : <>
-      <Pressable accessibilityRole="button" accessibilityLabel={isSaved ? `Remove ${product.title} from saved` : `Save ${product.title}`} accessibilityState={{ selected: isSaved }} onPress={() => toggleFavorite(product.id, product.title)} hitSlop={5} style={styles.heartButton}>
-        <Heart size={17} color={isSaved ? '#e11d48' : '#334155'} fill={isSaved ? '#e11d48' : 'transparent'} />
-      </Pressable>
+      <SaveButton target={{ type: 'ehub_product', itemId: product.id, snapshot: { title: product.title, thumbnail: product.imageUrl ?? null } }} variant="overlay" iconSize={17} style={styles.heartButton} />
       <View style={styles.productFooter}>
         {onCompare ? <Pressable accessibilityRole="checkbox" accessibilityLabel={`Compare ${product.title}`} accessibilityState={{ checked: isCompared }} onPress={() => onCompare(product.id)} style={styles.compareToggle}>
           <View style={[styles.checkbox, isCompared && styles.checkboxChecked]}>{isCompared ? <Check size={12} color="#ffffff" strokeWidth={3} /> : null}</View>

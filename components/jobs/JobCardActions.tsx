@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Bookmark, Share2 } from 'lucide-react-native';
+import { Share2 } from 'lucide-react-native';
+import SaveButton from '@/components/ui/SaveButton';
 import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
@@ -9,27 +10,16 @@ import { auth } from '@/lib/firebaseConfig';
 type JobSaveButtonProps = {
   jobId: string;
   jobTitle: string;
-  isSaved: boolean;
-  onToggleSave: (jobId: string) => void;
+  /** The poster's uid (lets the Saved list hide jobs from blocked members). */
+  posterId?: string | null;
+  subtitle?: string | null;
   /** 'plain' is a borderless 44dp icon (top-right of a card); 'outlined' is the 48dp bordered square of the job page bar. */
   variant?: 'plain' | 'outlined';
 };
 
-/** Bookmark toggle; useJobsViewer.toggleSave shows the "Job saved" toast. */
-export function JobSaveButton({ jobId, jobTitle, isSaved, onToggleSave, variant = 'plain' }: JobSaveButtonProps) {
-  const { colors } = useAppTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  return <Pressable
-    accessibilityRole="button"
-    accessibilityLabel={isSaved ? `Remove ${jobTitle} from saved` : `Save ${jobTitle}`}
-    accessibilityState={{ selected: isSaved }}
-    onPress={() => onToggleSave(jobId)}
-    hitSlop={4}
-    android_ripple={{ color: colors.control, borderless: variant === 'plain' }}
-    style={[variant === 'plain' ? styles.plain : styles.outlined, variant === 'outlined' && isSaved && styles.outlinedActive]}
-  >
-    <Bookmark size={20} color={isSaved ? colors.accentText : colors.icon} fill={isSaved ? colors.accentText : 'transparent'} />
-  </Pressable>;
+/** The shared SaveButton for a job (users/{uid}/saved/job_{id}). */
+export function JobSaveButton({ jobId, jobTitle, posterId = null, subtitle = null, variant = 'plain' }: JobSaveButtonProps) {
+  return <SaveButton target={{ type: 'job', itemId: jobId, snapshot: { title: jobTitle, authorId: posterId, subtitle } }} variant={variant} />;
 }
 
 type JobShareButtonProps = { jobId: string; jobTitle: string; variant?: 'plain' | 'outlined' };
@@ -60,16 +50,15 @@ export function JobShareButton({ jobId, jobTitle, variant = 'plain' }: JobShareB
 type JobCardActionsProps = {
   jobId: string;
   jobTitle: string;
-  isSaved: boolean;
-  onToggleSave: (jobId: string) => void;
+  posterId?: string | null;
 };
 
 /** Save and Share side by side (web components/jobs/JobCardActions.tsx). */
-export function JobCardActions({ jobId, jobTitle, isSaved, onToggleSave }: JobCardActionsProps) {
+export function JobCardActions({ jobId, jobTitle, posterId = null }: JobCardActionsProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return <View style={styles.row}>
-    <JobSaveButton jobId={jobId} jobTitle={jobTitle} isSaved={isSaved} onToggleSave={onToggleSave} />
+    <JobSaveButton jobId={jobId} jobTitle={jobTitle} posterId={posterId} />
     <JobShareButton jobId={jobId} jobTitle={jobTitle} />
   </View>;
 }

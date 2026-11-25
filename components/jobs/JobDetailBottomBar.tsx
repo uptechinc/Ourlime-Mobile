@@ -12,8 +12,8 @@ type JobDetailBottomBarProps = {
   isCreator: boolean;
   isApplied: boolean;
   isOpenForApplications: boolean;
-  isSaved?: boolean;
-  onToggleSave?: (jobId: string) => void;
+  /** Shows Save for members other than the poster (default true). */
+  canSave?: boolean;
   onApply: () => void;
   /** After applying the button reads "Applied · View status" and opens My applications. */
   onViewStatus: () => void;
@@ -25,7 +25,7 @@ type JobDetailBottomBarProps = {
  * The job page's sticky bar inside the bottom safe area: Save (48dp) and one full-width primary action that always
  * says what it does — Apply now, Applied · View status, Manage listing, or a clearly disabled "Applications closed".
  */
-export function JobDetailBottomBar({ jobId, jobTitle, isCreator, isApplied, isOpenForApplications, isSaved = false, onToggleSave, onApply, onViewStatus, onManage }: JobDetailBottomBarProps) {
+export function JobDetailBottomBar({ jobId, jobTitle, isCreator, isApplied, isOpenForApplications, canSave = true, onApply, onViewStatus, onManage }: JobDetailBottomBarProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -50,7 +50,7 @@ export function JobDetailBottomBar({ jobId, jobTitle, isCreator, isApplied, isOp
 
   return <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.bar}>
     <View style={styles.row}>
-      {onToggleSave && !isCreator ? <JobSaveButton jobId={jobId} jobTitle={jobTitle} isSaved={isSaved} onToggleSave={onToggleSave} variant="outlined" /> : null}
+      {canSave && !isCreator ? <JobSaveButton jobId={jobId} jobTitle={jobTitle} variant="outlined" /> : null}
       {renderPrimary()}
     </View>
   </SafeAreaView>;

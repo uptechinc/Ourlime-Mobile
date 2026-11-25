@@ -164,7 +164,7 @@ export default function ProductDetailsScreen({ productId }: ProductDetailsScreen
         <ChevronRight size={12} color={colors.mutedText} />
         <Text numberOfLines={1} style={styles.breadcrumbCurrent}>{product.title}</Text>
       </View>
-      <ProductGallery title={product.title} media={product.images} favorite={preferences.favoriteIds.includes(product.id)} onToggleFavorite={() => void preferences.toggleFavorite(product.id)} badges={badges} />
+      <ProductGallery title={product.title} media={product.images} saveTarget={{ type: 'market_product', itemId: product.id, snapshot: { title: product.title, thumbnail: product.images[0] ?? null, authorId: product.sellerId || null, subtitle: product.sellerName || null } }} badges={badges} />
 
       <View style={{ gap: 8 }}>
         <View style={styles.rowBetween}>
@@ -297,8 +297,8 @@ export default function ProductDetailsScreen({ productId }: ProductDetailsScreen
           <Text style={[styles.sectionTitle, { flex: 1 }]} numberOfLines={1}>More in {product.category}</Text>
           {product.category ? <Pressable accessibilityRole="link" accessibilityLabel={`View all in ${product.category}`} onPress={openCategory} hitSlop={8}><Text style={styles.breadcrumbLink}>View All</Text></Pressable> : null}
         </View>
-        <View style={styles.grid}>{detail.related.map((related: MarketProduct) => <MarketProductCard key={related.id} product={related} favorite={preferences.favoriteIds.includes(related.id)}
-          onOpen={(entry) => router.push(`/market/${encodeURIComponent(entry.id)}` as Href)} onToggleFavorite={(id) => void preferences.toggleFavorite(id)} onQuickAdd={(entry) => router.push(`/market/${encodeURIComponent(entry.id)}` as Href)} />)}</View>
+        <View style={styles.grid}>{detail.related.map((related: MarketProduct) => <MarketProductCard key={related.id} product={related}
+          onOpen={(entry) => router.push(`/market/${encodeURIComponent(entry.id)}` as Href)} onQuickAdd={(entry) => router.push(`/market/${encodeURIComponent(entry.id)}` as Href)} />)}</View>
       </View> : null}
     </ScrollView>
     {cartOpen ? <MarketCartModal ownerId={ownerId} canMutate={canMutate} cart={cart} onClose={() => setCartOpen(false)} /> : null}

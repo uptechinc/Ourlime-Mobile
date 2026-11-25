@@ -98,8 +98,6 @@ export default function JobDetailScreen() {
             isCreator={isCreator}
             isApplied={isApplied}
             isOpenForApplications={isOpenForApplications}
-            isSaved={viewer.savedJobIds.has(job.id)}
-            onToggleSave={(savedJobId) => void viewer.toggleSave(savedJobId)}
             onApply={handleApply}
             onViewStatus={() => router.push('/jobs/applications' as Href)}
             onManage={() => router.push('/jobs/manage' as Href)}

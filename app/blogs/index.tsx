@@ -65,7 +65,6 @@ export default function BlogsScreen() {
   const availableTags = catalog.data?.popularTags.length ? catalog.data.popularTags : POPULAR_TAGS;
 
   const [likedIds, setLikedIds] = useState<Set<string>>(() => new Set());
-  const [savedIds, setSavedIds] = useState<Set<string>>(() => new Set());
   const [likeCounts, setLikeCounts] = useState<Map<string, number>>(() => new Map());
   const fetchedInteractionIds = useRef(new Set<string>());
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
@@ -86,7 +85,6 @@ export default function BlogsScreen() {
   useEffect(() => {
     fetchedInteractionIds.current.clear();
     setLikedIds(new Set());
-    setSavedIds(new Set());
     setProfile(null);
   }, [activeUserId]);
 
@@ -99,7 +97,6 @@ export default function BlogsScreen() {
     void Promise.all(pending.map((blog) => blogService.getInteractions(blog.id).then((state) => ({ id: blog.id, ...state })).catch(() => null)))
       .then((results) => {
         setLikedIds((current) => { const next = new Set(current); results.forEach((result) => { if (result?.isLiked) next.add(result.id); }); return next; });
-        setSavedIds((current) => { const next = new Set(current); results.forEach((result) => { if (result?.isSaved) next.add(result.id); }); return next; });
       });
   }, [activeUserId, blogs]);
 
@@ -149,19 +146,6 @@ export default function BlogsScreen() {
       setLikedIds((current) => { const next = new Set(current); if (wasLiked) next.add(blog.id); else next.delete(blog.id); return next; });
       setLikeCounts((current) => new Map(current).set(blog.id, previousCount));
       setNotice({ title: 'Like not saved', message: 'Could not update your like.' });
-    }
-  };
-
-  const handleToggleSave = async (blog: BlogListItem) => {
-    if (!requireSignIn('Please sign in to save blogs.')) return;
-    const wasSaved = savedIds.has(blog.id);
-    setSavedIds((current) => { const next = new Set(current); if (wasSaved) next.delete(blog.id); else next.add(blog.id); return next; });
-    try {
-      await blogService.updateInteraction(blog.id, 'save', !wasSaved);
-      if (query.category === 'Saved' && wasSaved) void catalog.refresh();
-    } catch {
-      setSavedIds((current) => { const next = new Set(current); if (wasSaved) next.add(blog.id); else next.delete(blog.id); return next; });
-      setNotice({ title: 'Bookmark not saved', message: 'Could not update your bookmark.' });
     }
   };
 
@@ -295,11 +279,10 @@ export default function BlogsScreen() {
                 key={blog.id}
                 blog={blog}
                 isLiked={likedIds.has(blog.id)}
-                isSaved={savedIds.has(blog.id)}
                 likesCount={likeCounts.get(blog.id) ?? blog.likesCount}
                 onPress={() => handleOpenBlog(blog)}
                 onLikePress={() => void handleToggleLike(blog)}
-                onSavePress={() => void handleToggleSave(blog)}
+                onSaveChange={(isSaved) => { if (query.category === 'Saved' && !isSaved) void catalog.refresh(); }}
                 onSharePress={() => setShareBlog(blog)}
               />
             ))}

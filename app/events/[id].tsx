@@ -6,8 +6,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { toast } from 'sonner-native';
 import {
-  Accessibility, BadgeCheck, Bookmark, CalendarDays, Check, ClipboardList, Clock, Flag, Heart, MapPin, Pencil, Plus, Repeat, Share2, ShieldAlert, Trash2, Users, Video,
+  Accessibility, BadgeCheck, CalendarDays, Check, ClipboardList, Clock, Flag, Heart, MapPin, Pencil, Plus, Repeat, Share2, ShieldAlert, Trash2, Users, Video,
 } from 'lucide-react-native';
+import SaveButton from '@/components/ui/SaveButton';
 import PageHeader from '@/components/ui/PageHeader';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -72,9 +73,9 @@ export default function EventDetailScreen() {
       setOrganizer(detail.organizer);
       const [attendance, viewerState] = await Promise.all([
         eventService.getAttendance(eventId),
-        eventEngagementService.fetchViewerState([eventId]).catch((): EventViewerState => ({ liked: {}, bookmarked: {} })),
+        eventEngagementService.fetchViewerState([eventId]).catch((): EventViewerState => ({ liked: {} })),
       ]);
-      setStates(eventId, { attendance, liked: Boolean(viewerState.liked[eventId]), bookmarked: Boolean(viewerState.bookmarked[eventId]) });
+      setStates(eventId, { attendance, liked: Boolean(viewerState.liked[eventId]) });
     } catch (error: unknown) {
       console.error('[EventDetailScreen.load] Error:', error instanceof Error ? error.message : 'Unknown error');
       setLoadError({ kind: 'failed', message: 'Failed to load event details. Please try again later.' });
@@ -177,7 +178,7 @@ export default function EventDetailScreen() {
             </TouchableOpacity>
             <View style={styles.iconRow}>
               {iconButton(actions.liked[eventId] ? 'Unlike' : 'Like', <Heart size={19} color={actions.liked[eventId] ? '#ef4444' : colors.icon} fill={actions.liked[eventId] ? '#ef4444' : 'transparent'} />, () => actions.toggleLike(event))}
-              {iconButton(actions.bookmarked[eventId] ? 'Remove bookmark' : 'Bookmark', <Bookmark size={19} color={actions.bookmarked[eventId] ? '#3b82f6' : colors.icon} fill={actions.bookmarked[eventId] ? '#3b82f6' : 'transparent'} />, () => actions.toggleBookmark(event))}
+              {event.id ? <SaveButton target={{ type: 'event', itemId: event.id, snapshot: { title: event.title || 'Event', thumbnail: event.image || null, authorId: event.userId || null, subtitle: typeof event.location === 'string' ? event.location : null } }} iconSize={19} /> : null}
               {iconButton('Share event', <Share2 size={19} color={colors.icon} />, () => actions.share(event))}
               {iconButton('Report', <Flag size={19} color={colors.icon} />, () => actions.report(event))}
               {canEdit ? iconButton('Edit event', <Pencil size={19} color={colors.icon} />, () => setIsEditing(true)) : null}

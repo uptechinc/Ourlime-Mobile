@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, RefreshControl, Share, StyleSheet, Text, TextInput, View, type ScrollView } from 'react-native';
 import { BadgeCheck, Building2, Check, ChevronRight, Clock, Globe, MapPin, MessageCircle, Package, Send, Share2, Star, UserRound } from 'lucide-react-native';
+import SaveButton from '@/components/ui/SaveButton';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import PageHeader from '@/components/ui/PageHeader';
 import EHubSectionNav from '@/components/ehub/EHubSectionNav';
@@ -141,7 +142,10 @@ export default function EHubProviderProfileScreen() {
 
   const header = <>
     <PageHeader title={provider?.name ?? 'Provider'} onBackPress={() => router.back()}
-      rightComponent={provider ? <Pressable accessibilityRole="button" accessibilityLabel={`Share ${provider.name}`} onPress={handleShare} hitSlop={8} style={styles.headerButton}><Share2 size={21} color={colors.icon} /></Pressable> : undefined} />
+      rightComponent={provider ? <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <SaveButton target={{ type: 'ehub_provider', itemId: provider.id, snapshot: { title: provider.name, thumbnail: provider.logoUrl ?? provider.coverUrl ?? null, subtitle: provider.location || null } }} iconSize={21} />
+        <Pressable accessibilityRole="button" accessibilityLabel={`Share ${provider.name}`} onPress={handleShare} hitSlop={8} style={styles.headerButton}><Share2 size={21} color={colors.icon} /></Pressable>
+      </View> : undefined} />
     <EHubSectionNav currentLabel={provider?.name ?? 'Provider'} parentLabel="Discover" onParentPress={() => router.dismissTo('/ehub/discover' as Href)} />
   </>;
   if (resource.isLoading && !provider) {

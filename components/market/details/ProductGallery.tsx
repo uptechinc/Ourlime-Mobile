@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Image, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Film, Heart, ShoppingBag } from 'lucide-react-native';
+import { Film, ShoppingBag } from 'lucide-react-native';
+import SaveButton from '@/components/ui/SaveButton';
+import type { SaveTarget } from '@/lib/types/saved';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 type ProductGalleryProps = {
   title: string;
   media: string[];
-  favorite: boolean;
-  onToggleFavorite: () => void;
+  /** The listing as a saved item (the Save button on the image). */
+  saveTarget: SaveTarget;
   badges: string[];
 };
 
@@ -18,7 +20,7 @@ export const isMarketVideo = (uri: string): boolean => {
 };
 
 /** Web ProductDetailsContent gallery: a large preview (image or video) above a row of thumbnails. */
-export default function ProductGallery({ title, media, favorite, onToggleFavorite, badges }: ProductGalleryProps) {
+export default function ProductGallery({ title, media, saveTarget, badges }: ProductGalleryProps) {
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const [selected, setSelected] = useState(media[0] ?? '');
@@ -32,9 +34,7 @@ export default function ProductGallery({ title, media, favorite, onToggleFavorit
       <View style={{ position: 'absolute', left: 12, top: 12, gap: 6 }} pointerEvents="none">
         {badges.map((badge) => <View key={badge} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9, backgroundColor: badge.startsWith('Save') ? '#dc2626' : 'rgba(17,24,39,0.8)' }}><Text style={{ color: '#ffffff', fontSize: 11, fontWeight: '800', textTransform: 'capitalize' }}>{badge}</Text></View>)}
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={favorite ? 'Remove from favorites' : 'Add to favorites'} onPress={onToggleFavorite} hitSlop={6} style={{ position: 'absolute', right: 12, top: 12, width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.elevated, borderWidth: 1, borderColor: colors.border }}>
-        <Heart size={21} color={favorite ? '#dc2626' : colors.text} fill={favorite ? '#dc2626' : 'transparent'} />
-      </Pressable>
+      <SaveButton target={saveTarget} variant="overlay" iconSize={21} style={{ position: 'absolute', right: 12, top: 12, width: 46, height: 46, borderRadius: 23 }} />
     </View>
     {media.length > 1 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
       {media.map((uri, index) => <Pressable key={uri} accessibilityRole="button" accessibilityLabel={`Select product ${isMarketVideo(uri) ? 'video' : 'image'} ${index + 1}`} accessibilityState={{ selected: uri === current }} onPress={() => setSelected(uri)}

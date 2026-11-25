@@ -1,16 +1,15 @@
 import { useMemo } from 'react';
 import { Image, Pressable, Share, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
-import { Heart, ImageIcon, MapPin, Share2, ShoppingBag, Star, Truck } from 'lucide-react-native';
+import { ImageIcon, MapPin, Share2, ShoppingBag, Star, Truck } from 'lucide-react-native';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
+import SaveButton from '@/components/ui/SaveButton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import type { MarketProduct } from '@/lib/types/reliability';
 import { formatMarketPrice } from '@/lib/utils/formatMarketPrice';
 
 type MarketProductCardProps = {
   product: MarketProduct;
-  favorite: boolean;
   onOpen: (product: MarketProduct) => void;
-  onToggleFavorite: (productId: string) => void;
   onQuickAdd: (product: MarketProduct) => void;
   /** Web viewMode: 'grid' tiles two per row, 'list' is a full-width row. */
   layout?: 'grid' | 'list';
@@ -26,10 +25,9 @@ function priceLabel(product: MarketProduct): string {
   return `${prefix}${formatMarketPrice(currencies[0], minimum)}`;
 }
 
-export default function MarketProductCard({ product, favorite, onOpen, onToggleFavorite, onQuickAdd, layout = 'grid' }: MarketProductCardProps) {
+export default function MarketProductCard({ product, onOpen, onQuickAdd, layout = 'grid' }: MarketProductCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const handleFavorite = (event: GestureResponderEvent) => { event.stopPropagation(); onToggleFavorite(product.id); };
   const handleQuickAdd = (event: GestureResponderEvent) => { event.stopPropagation(); onQuickAdd(product); };
   // Web MarketProductCard share button: the listing's ourlime.com link.
   const handleShare = (event: GestureResponderEvent) => {
@@ -44,9 +42,7 @@ ${deepLinkService.getMarketProductShareUrl(product.id)}` }).catch((error: unknow
   return <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.title}`} onPress={() => onOpen(product)} style={isList ? styles.listCard : styles.card} android_ripple={{ color: colors.control }}>
     <View style={isList ? styles.listImageFrame : styles.imageFrame}>
       {product.images[0] ? <Image source={{ uri: product.images[0] }} resizeMode="cover" style={styles.image} /> : <View style={styles.imageFallback}><ImageIcon color={colors.mutedText} size={28} /><Text style={styles.fallbackText}>Image unavailable</Text></View>}
-      <Pressable accessibilityRole="button" accessibilityLabel={favorite ? `Remove ${product.title} from favorites` : `Save ${product.title} to favorites`} onPress={handleFavorite} hitSlop={8} style={styles.favoriteButton}>
-        <Heart size={19} color={favorite ? '#dc2626' : colors.text} fill={favorite ? '#dc2626' : 'transparent'} />
-      </Pressable>
+      <SaveButton target={{ type: 'market_product', itemId: product.id, snapshot: { title: product.title, thumbnail: product.images[0] ?? null, authorId: product.sellerId || null, subtitle: product.sellerName || null } }} variant="overlay" iconSize={19} style={styles.favoriteButton} />
       <Pressable accessibilityRole="button" accessibilityLabel={`Share ${product.title}`} onPress={handleShare} hitSlop={8} style={[styles.favoriteButton, styles.shareButton]}>
         <Share2 size={17} color={colors.text} />
       </Pressable>

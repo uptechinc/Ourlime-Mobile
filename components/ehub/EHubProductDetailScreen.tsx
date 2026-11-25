@@ -44,7 +44,7 @@ export default function EHubProductDetailScreen() {
   const [quantity, setQuantity] = useState(1);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isPastGallery, setIsPastGallery] = useState(false);
-  const { addToCart, addRecentlyViewed, isFavorite, toggleFavorite } = useEHubCommerce();
+  const { addToCart, addRecentlyViewed } = useEHubCommerce();
   const images = useMemo(() => detail ? [...new Set([detail.product.imageUrl, ...detail.product.imageUrls].filter((image): image is string => Boolean(image)))] : [], [detail]);
 
   // Recorded like the website (newest first, at most 10); not shown anywhere yet.
@@ -190,7 +190,7 @@ export default function EHubProductDetailScreen() {
   return (
     <View style={styles.screen}>
       {statusBar}
-      {isWide ? <ProductTopBar title={product.title} isSolid isFloating={false} isSaved={isFavorite(product.id)} onBack={() => router.back()} onShare={handleShare} onToggleSaved={() => toggleFavorite(product.id, product.title)} onOpenCart={() => setIsCartOpen(true)} /> : null}
+      {isWide ? <ProductTopBar title={product.title} isSolid isFloating={false} saveTarget={{ type: 'ehub_product', itemId: product.id, snapshot: { title: product.title, thumbnail: product.imageUrl ?? null } }} onBack={() => router.back()} onShare={handleShare} onOpenCart={() => setIsCartOpen(true)} /> : null}
       <ScrollView style={styles.flex} showsVerticalScrollIndicator={false} onScroll={handleScroll} scrollEventThrottle={32}
         refreshControl={<RefreshControl refreshing={resource.isRefreshing} onRefresh={() => void resource.refresh()} tintColor={colors.accent} progressViewOffset={isWide ? 0 : headerHeight} />}
         contentContainerStyle={styles.scrollContent}>
@@ -230,7 +230,7 @@ export default function EHubProductDetailScreen() {
           <ProductRail title="You may also like" products={detail.relatedProducts} cardWidth={railCardWidth} onOpen={handleOpenProduct} />
         </View>
       </ScrollView>
-      {isWide ? null : <ProductTopBar title={product.title} isSolid={isHeaderSolid} isFloating isSaved={isFavorite(product.id)} onBack={() => router.back()} onShare={handleShare} onToggleSaved={() => toggleFavorite(product.id, product.title)} onOpenCart={() => setIsCartOpen(true)} />}
+      {isWide ? null : <ProductTopBar title={product.title} isSolid={isHeaderSolid} isFloating saveTarget={{ type: 'ehub_product', itemId: product.id, snapshot: { title: product.title, thumbnail: product.imageUrl ?? null } }} onBack={() => router.back()} onShare={handleShare} onOpenCart={() => setIsCartOpen(true)} />}
       <ProductBottomBar price={currentPrice} originalPrice={originalPrice} isAvailable={isAvailable} onAddToCart={handleAddToCart} onMessage={handleEnquire} />
       {cartSheet}
     </View>

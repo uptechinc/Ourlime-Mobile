@@ -24,6 +24,7 @@ import {
   Lock,
   Share2,
 } from 'lucide-react-native';
+import SaveButton from '@/components/ui/SaveButton';
 import CachedImage from '@/components/ui/CachedImage';
 import UserAvatar from '@/components/ui/UserAvatar';
 import CourseReviews from '@/components/eLearning/CourseReviews';
@@ -276,9 +277,12 @@ export default function CourseDetailScreen() {
       <ELearningHeader
         title={course?.title || 'Course'}
         onBack={() => router.back()}
-        right={<ELearningHeaderButton accessibilityLabel="Share course" disabled={!course} onPress={() => void handleShare()}>
-          <Share2 size={20} color={course ? colors.icon : colors.disabledText} />
-        </ELearningHeaderButton>}
+        right={<View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {course ? <SaveButton target={{ type: 'course', itemId: course.id, snapshot: { title: course.title, thumbnail: course.image || course.thumbnail || null, authorId: course.instructor?.id || null, subtitle: course.instructor?.name || null } }} iconSize={20} /> : null}
+          <ELearningHeaderButton accessibilityLabel="Share course" disabled={!course} onPress={() => void handleShare()}>
+            <Share2 size={20} color={course ? colors.icon : colors.disabledText} />
+          </ELearningHeaderButton>
+        </View>}
       />
 
       {loading ? (

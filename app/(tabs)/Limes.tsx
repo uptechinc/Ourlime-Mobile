@@ -68,6 +68,7 @@ import { LimeVisualPlaceholder } from '@/components/limes/LimeVisualPlaceholder'
 import { useLimeFeedResource } from '@/lib/hooks/useLimeFeedResource';
 import { ensureMediaUrl } from '@/lib/helpers/mediaUrl';
 import AnimatedActionButton from '@/components/ui/AnimatedActionButton';
+import SaveButton from '@/components/ui/SaveButton';
 import Animated, { cancelAnimation, Easing, interpolate, useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components/ui/PlayfulFloatingHeart';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
@@ -1701,6 +1702,10 @@ export function ReelItem({
           <Send size={26} color="#ffffff" />
           <Text style={styles.actionCount}>{shareCount}</Text>
         </AnimatedActionButton>
+
+        <View style={styles.actionBtn}>
+          <SaveButton target={{ type: 'lime', itemId: reel.id, snapshot: { title: reel.caption || 'Lime', thumbnail: reel.thumbnailUrl || reel.media.thumbnailUrl || null, authorId: reel.userId || null } }} variant="overlay" iconSize={20} />
+        </View>
 
         <TouchableOpacity
           onPress={() => setShowOptionsMenu((prev) => !prev)}

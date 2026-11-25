@@ -26,7 +26,6 @@ const errorMessage = (error: unknown, fallback: string): string => (error instan
 export function useEventActions({ viewerId, requireDisclaimer, onRemoved }: UseEventActionsOptions) {
   const [attendance, setAttendance] = useState<{ [eventId: string]: EventAttendanceStatus }>({});
   const [liked, setLiked] = useState<{ [eventId: string]: boolean }>({});
-  const [bookmarked, setBookmarked] = useState<{ [eventId: string]: boolean }>({});
   const [likeCounts, setLikeCounts] = useState<{ [eventId: string]: number }>({});
   const [workingEventId, setWorkingEventId] = useState<string | null>(null);
   const [registrationEvent, setRegistrationEvent] = useState<Event | null>(null);
@@ -46,16 +45,14 @@ export function useEventActions({ viewerId, requireDisclaimer, onRemoved }: UseE
       const [attendanceByEvent, viewerState] = await Promise.all([eventService.getAttendanceForEvents(eventIds), eventEngagementService.fetchViewerState(eventIds)]);
       setAttendance((current) => ({ ...current, ...Object.fromEntries(attendanceByEvent) }));
       setLiked((current) => ({ ...current, ...viewerState.liked }));
-      setBookmarked((current) => ({ ...current, ...viewerState.bookmarked }));
     } catch (error: unknown) {
       console.error('[useEventActions.loadStates] Error:', errorMessage(error, 'Unknown error'));
     }
   }, []);
 
-  const setStates = useCallback((eventId: string, state: { attendance?: EventAttendanceStatus; liked?: boolean; bookmarked?: boolean; likeCount?: number }) => {
+  const setStates = useCallback((eventId: string, state: { attendance?: EventAttendanceStatus; liked?: boolean; likeCount?: number }) => {
     if (state.attendance) setAttendance((current) => ({ ...current, [eventId]: state.attendance as EventAttendanceStatus }));
     if (state.liked !== undefined) setLiked((current) => ({ ...current, [eventId]: Boolean(state.liked) }));
-    if (state.bookmarked !== undefined) setBookmarked((current) => ({ ...current, [eventId]: Boolean(state.bookmarked) }));
     if (state.likeCount !== undefined) setLikeCounts((current) => ({ ...current, [eventId]: state.likeCount as number }));
   }, []);
 
@@ -101,21 +98,6 @@ export function useEventActions({ viewerId, requireDisclaimer, onRemoved }: UseE
       setLiked((current) => ({ ...current, [eventId]: wasLiked }));
       setLikeCounts((current) => (current[eventId] === undefined ? current : { ...current, [eventId]: Math.max(0, current[eventId] + (wasLiked ? 1 : -1)) }));
       toast.error(errorMessage(error, 'Failed to update like. Please try again.'));
-    }
-  };
-
-  const toggleBookmark = async (event: Event) => {
-    if (!event.id) return;
-    if (!viewerId) { toast.error('Please sign in to bookmark this event'); return; }
-    const eventId = event.id;
-    const wasBookmarked = Boolean(bookmarked[eventId]);
-    setBookmarked((current) => ({ ...current, [eventId]: !wasBookmarked }));
-    try {
-      await eventEngagementService.toggleBookmark(eventId, wasBookmarked);
-      toast.success(wasBookmarked ? 'Event removed from bookmarks' : 'Event added to bookmarks');
-    } catch (error: unknown) {
-      setBookmarked((current) => ({ ...current, [eventId]: wasBookmarked }));
-      toast.error(errorMessage(error, 'Failed to update bookmark. Please try again.'));
     }
   };
 
@@ -210,9 +192,8 @@ export function useEventActions({ viewerId, requireDisclaimer, onRemoved }: UseE
   );
 
   return {
-    attendance, liked, bookmarked, likeCounts, workingEventId, loadStates, setStates, requestAttendance,
+    attendance, liked, likeCounts, workingEventId, loadStates, setStates, requestAttendance,
     toggleLike: (event: Event) => void toggleLike(event),
-    toggleBookmark: (event: Event) => void toggleBookmark(event),
     share: (event: Event) => { if (!viewerId) { toast.error('Please sign in to share this event'); return; } setShareEvent(event); },
     report: (event: Event) => { if (!viewerId) { toast.error('Please sign in to report this event'); return; } setReportEvent(event); },
     archive: (event: Event) => { setArchiveState('idle'); setArchiveEvent(event); },

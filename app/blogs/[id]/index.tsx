@@ -20,7 +20,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Archive,
   BadgeCheck,
-  Bookmark,
   ChevronDown,
   ChevronLeft,
   ChevronUp,
@@ -43,6 +42,7 @@ import ShareContentSheet from '@/components/sharing/ShareContentSheet';
 import RichBlogContent from '@/components/blog/RichBlogContent';
 import BlogAuthorCard from '@/components/blog/BlogAuthorCard';
 import BlogEngagementBar from '@/components/blog/BlogEngagementBar';
+import SaveButton from '@/components/ui/SaveButton';
 import BlogCommentsSection from '@/components/blog/BlogCommentsSection';
 import BlogDetailSkeleton from '@/components/blog/BlogDetailSkeleton';
 import CreateBlogModal from '@/components/blogs/CreateBlogModal';
@@ -133,7 +133,6 @@ export default function BlogDetailScreen() {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLiked, setIsLiked] = useState(false);
-  const [isBookmarked, setIsBookmarked] = useState(false);
   const [likesCount, setLikesCount] = useState(initialBlog?.engagement[0]?.likesCount ?? 0);
   const [shareVisible, setShareVisible] = useState(false);
   const [failedCoverImage, setFailedCoverImage] = useState<string | null>(null);
@@ -147,7 +146,6 @@ export default function BlogDetailScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminDeleteVisible, setAdminDeleteVisible] = useState(false);
   const likePending = useRef(false);
-  const bookmarkPending = useRef(false);
   const viewTracked = useRef(false);
   const loadGeneration = useRef(0);
   const [interactionsReady, setInteractionsReady] = useState(false);
@@ -185,7 +183,6 @@ export default function BlogDetailScreen() {
       setComments(commentsData);
       setLikesCount(blogData.engagement[0]?.likesCount ?? 0);
       setIsLiked(interactions.isLiked);
-      setIsBookmarked(interactions.isSaved);
       setInteractionsReady(true);
       // Web counts one view per signed-in user per mount.
       if (currentUserId && blogData.status === 'published' && !viewTracked.current) {
@@ -208,7 +205,6 @@ export default function BlogDetailScreen() {
 
   useEffect(() => {
     likePending.current = false;
-    bookmarkPending.current = false;
     void loadBlogData();
     return () => { loadGeneration.current += 1; };
   }, [loadBlogData]);
@@ -236,20 +232,6 @@ export default function BlogDetailScreen() {
     }
   };
 
-  const handleToggleBookmark = async () => {
-    if (!canMutate || !currentUserId || !blog || !interactionsReady || bookmarkPending.current) return;
-    bookmarkPending.current = true;
-    const nextState = !isBookmarked;
-    setIsBookmarked(nextState);
-    try {
-      await blogService.updateInteraction(blog.id, 'save', nextState);
-    } catch {
-      setIsBookmarked(!nextState);
-      showError('Bookmark not saved', 'Could not update your bookmark. Please try again.');
-    } finally {
-      bookmarkPending.current = false;
-    }
-  };
 
   const handleSubmitComment = async (text: string, replyToCommentId?: string) => {
     if (!canMutate || !currentUserId || !blog) throw new Error('Commenting is unavailable.');
@@ -368,9 +350,7 @@ export default function BlogDetailScreen() {
         <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>{blog?.category || 'Blog'}</Text>
         <View style={styles.headerRight}>
           {blog && !notFound ? (
-            <TouchableOpacity activeOpacity={0.7} onPress={handleToggleBookmark} style={styles.headerBtn} accessibilityLabel={isBookmarked ? 'Remove bookmark' : 'Bookmark'}>
-              <Bookmark size={20} color={isBookmarked ? '#10b981' : colors.text} fill={isBookmarked ? '#10b981' : 'transparent'} />
-            </TouchableOpacity>
+            <SaveButton target={{ type: 'blog', itemId: blog.id, snapshot: { title: stripHtml(blog.title), thumbnail: blog.coverImage || null, authorId: blog.userId, subtitle: blog.excerpt ? stripHtml(blog.excerpt) : null } }} iconSize={20} />
           ) : null}
           {blog && !notFound ? (
             <TouchableOpacity activeOpacity={0.7} onPress={() => setShareVisible(true)} style={styles.headerBtn} accessibilityLabel="Share">
@@ -532,9 +512,8 @@ export default function BlogDetailScreen() {
               likesCount={likesCount}
               commentsCount={comments.length}
               isLiked={isLiked}
-              isBookmarked={isBookmarked}
+              saveTarget={blog ? { type: 'blog', itemId: blog.id, snapshot: { title: stripHtml(blog.title), thumbnail: blog.coverImage || null, authorId: blog.userId, subtitle: blog.excerpt ? stripHtml(blog.excerpt) : null } } : null}
               onLikePress={handleToggleLike}
-              onBookmarkPress={handleToggleBookmark}
               onCommentPress={handleScrollToComments}
               interactionsReady={interactionsReady && canMutate}
               onSharePress={() => setShareVisible(true)}

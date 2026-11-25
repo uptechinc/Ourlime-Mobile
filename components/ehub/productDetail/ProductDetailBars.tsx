@@ -2,7 +2,9 @@ import { useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { ArrowLeft, Heart, MessageCircle, Share2, ShoppingCart } from 'lucide-react-native';
+import { ArrowLeft, MessageCircle, Share2, ShoppingCart } from 'lucide-react-native';
+import SaveButton from '@/components/ui/SaveButton';
+import type { SaveTarget } from '@/lib/types/saved';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { EHubHeaderActions } from '@/components/ehub/EHubCommerceParts';
 import { formatEHubPrice } from '@/components/ehub/EHubParts';
@@ -17,15 +19,15 @@ type ProductTopBarProps = {
   isSolid: boolean;
   /** Floats over the content (phones, under the gallery) instead of taking its own space. */
   isFloating: boolean;
-  isSaved?: boolean;
+  /** The product as a saved item; shows the Save button when given. */
+  saveTarget?: SaveTarget | null;
   onBack: () => void;
   onShare?: () => void;
-  onToggleSaved?: () => void;
   onOpenCart: () => void;
 };
 
 /** Back, title (once the gallery has scrolled away), share, save and cart with its count. */
-export function ProductTopBar({ title, isSolid, isFloating, isSaved = false, onBack, onShare, onToggleSaved, onOpenCart }: ProductTopBarProps) {
+export function ProductTopBar({ title, isSolid, isFloating, saveTarget = null, onBack, onShare, onOpenCart }: ProductTopBarProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const solidProgress = useSharedValue(isSolid ? 1 : 0);
@@ -44,9 +46,7 @@ export function ProductTopBar({ title, isSolid, isFloating, isSaved = false, onB
       {onShare ? <Pressable accessibilityRole="button" accessibilityLabel="Share product" onPress={onShare} hitSlop={4} style={styles.roundButton}>
         <Share2 size={20} color={colors.icon} />
       </Pressable> : null}
-      {onToggleSaved ? <Pressable accessibilityRole="button" accessibilityLabel={isSaved ? 'Remove from saved' : 'Save product'} accessibilityState={{ selected: isSaved }} onPress={onToggleSaved} hitSlop={4} style={styles.roundButton}>
-        <Heart size={20} color={isSaved ? '#e11d48' : colors.icon} fill={isSaved ? '#e11d48' : 'transparent'} />
-      </Pressable> : null}
+      {saveTarget ? <SaveButton target={saveTarget} iconSize={20} style={styles.roundButton} /> : null}
       <View style={styles.roundButton}><EHubHeaderActions onOpenCart={onOpenCart} /></View>
     </View>
   </SafeAreaView>;

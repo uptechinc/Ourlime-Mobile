@@ -185,7 +185,7 @@ export default function MarketplaceScreen({ entryPoint = 'market' }: Marketplace
         </View>
         {catalog.error ? <Pressable onPress={() => void catalog.refresh()} style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{catalog.error.message} Tap to retry.</Text></Pressable> : null}
         {isCatalogLoading ? <MarketCatalogSkeleton layout={savedSearches.viewMode} /> : !products.length && !catalog.error ? <View style={styles.empty}><ShoppingBag color={colors.mutedText} size={42} /><Text style={styles.emptyTitle}>No listings found</Text><Text style={styles.emptyText}>Try another search, category, or filter.</Text>{activeFilterCount ? <MarketButton label="Clear filters" onPress={() => setFilters(EMPTY_MARKET_FILTERS)} /> : null}</View>
-          : <View style={styles.grid}>{products.map((product) => <MarketProductCard key={product.id} layout={savedSearches.viewMode} product={product} favorite={preferences.favoriteIds.includes(product.id)} onOpen={openProduct} onToggleFavorite={(productId) => void preferences.toggleFavorite(productId)} onQuickAdd={handleQuickAdd} />)}</View>}
+          : <View style={styles.grid}>{products.map((product) => <MarketProductCard key={product.id} layout={savedSearches.viewMode} product={product} onOpen={openProduct} onQuickAdd={handleQuickAdd} />)}</View>}
         {catalog.data?.cursor ? <MarketButton label={catalog.status === 'refreshing' ? 'Loading listings…' : 'Load more listings'} disabled={catalog.status === 'refreshing'} onPress={() => void catalog.loadMore()} /> : null}
       </ScrollView>
     </KeyboardSafeView>

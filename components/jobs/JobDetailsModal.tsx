@@ -16,8 +16,6 @@ type JobDetailsModalProps = {
   onClose: () => void;
   job: JobRecord | null;
   isApplied?: boolean;
-  isSaved?: boolean;
-  onToggleSave?: (jobId: string) => void;
   /** Opens the application (the list checks identity verification first). */
   onApply: (job: JobRecord) => void;
 };
@@ -27,7 +25,7 @@ const jobsService = JobsService.getInstance();
 const AFTER_CLOSE_MS = 400;
 
 /** Job details sheet with Share, Report, Save and Apply (web components/jobs/JobDetailsModal.tsx). */
-export default function JobDetailsModal({ isOpen, onClose, job, isApplied = false, isSaved = false, onToggleSave, onApply }: JobDetailsModalProps) {
+export default function JobDetailsModal({ isOpen, onClose, job, isApplied = false, onApply }: JobDetailsModalProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
@@ -54,8 +52,6 @@ export default function JobDetailsModal({ isOpen, onClose, job, isApplied = fals
           isCreator={isCreator}
           isApplied={isApplied}
           isOpenForApplications={isOpenForApplications}
-          isSaved={isSaved}
-          onToggleSave={onToggleSave}
           onApply={() => closeThen(() => onApply(job))}
           onViewStatus={() => closeThen(() => router.push('/jobs/applications' as Href))}
           onManage={() => closeThen(() => router.push('/jobs/manage' as Href))}
