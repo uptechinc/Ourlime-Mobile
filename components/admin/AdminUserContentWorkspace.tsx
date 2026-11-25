@@ -1,41 +1,50 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Modal,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Modal, Pressable, ScrollView, Text, TextInput, View, type TextStyle } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
-import CachedImage from '@/components/ui/CachedImage';
-import AdminDeletionModal from '@/components/moderation/AdminDeletionModal';
+import AdminButton from '@/components/admin/AdminButton';
+import AdminDialog from '@/components/admin/AdminDialog';
+import AdminIconButton from '@/components/admin/AdminIconButton';
+import AdminOverflowMenu from '@/components/admin/AdminOverflowMenu';
 import { AdminUserContentListSkeleton } from '@/components/admin/AdminSkeletons';
-import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import AdminState from '@/components/admin/AdminState';
+import AdminStatusPill from '@/components/admin/AdminStatusPill';
+import AdminToolbar from '@/components/admin/AdminToolbar';
+import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
+import AdminDeletionModal from '@/components/moderation/AdminDeletionModal';
+import CachedImage from '@/components/ui/CachedImage';
+import { ADMIN_MIN_TOUCH, getAdminTone, radius, space, type, type AdminToneName } from '@/lib/admin/adminTokens';
+import type { AdminOverflowItem } from '@/lib/admin/adminTypes';
+import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { adminContentService } from '@/lib/services/AdminContentService';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
-import type {
-  AdminUserContentFilter,
-  AdminUserContentRecord,
-  AdminContentMediaPreview,
-} from '@/lib/types/adminContent';
+import type { AdminUserContentFilter, AdminUserContentRecord, AdminContentMediaPreview } from '@/lib/types/adminContent';
 import type { ModerationDeliveryResult } from '@/lib/types/moderationDelivery';
-import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
 
 type AdminUserContentWorkspaceProps = {
   userId: string;
   userDisplayName: string;
   onOpenContent: (content: AdminUserContentRecord) => void;
+  /** Bump to reload from the parent (e.g. its pull-to-refresh). */
+  refreshSignal?: number;
 };
 
 const FILTERS: { id: AdminUserContentFilter; label: string }[] = [
-  { id: 'all', label: 'All content' },
+  { id: 'all', label: 'All' },
   { id: 'active', label: 'Active' },
-  { id: 'deleted_by_admin', label: 'Deleted by admin' },
+  { id: 'deleted_by_admin', label: 'Removed' },
 ];
+
+const THUMB_SIZE = 120;
+
+/** Media viewer chrome sits on dark media in both themes, so it does not follow the app theme. */
+const MEDIA_OVERLAY = {
+  scrim: 'rgba(0,0,0,0.9)',
+  stage: 'black',
+  control: 'rgba(15,23,42,0.88)',
+  badge: 'rgba(0,0,0,0.62)',
+  icon: 'white',
+} as const;
 
 const formatDateTime = (value: string | null): string => {
   if (!value) return 'Unknown time';
@@ -52,6 +61,18 @@ const formatCategory = (value: string | null): string => {
     .join(' ');
 };
 
+const getInputStyle = (colors: AppThemeColors): TextStyle => ({
+  ...type.body,
+  minHeight: 88,
+  padding: space.md,
+  textAlignVertical: 'top',
+  borderRadius: radius.md,
+  borderWidth: 1,
+  borderColor: colors.border,
+  backgroundColor: colors.input,
+  color: colors.text,
+});
+
 type AdminVideoViewerProps = {
   url: string;
 };
@@ -64,6 +85,7 @@ export default function AdminUserContentWorkspace({
   userId,
   userDisplayName,
   onOpenContent,
+  refreshSignal = 0,
 }: AdminUserContentWorkspaceProps) {
   const { colors } = useAppTheme();
   const [filter, setFilter] = useState<AdminUserContentFilter>('all');
@@ -81,9 +103,7 @@ export default function AdminUserContentWorkspace({
   const [restoring, setRestoring] = useState(false);
   // Shown inside the restore dialog: the page-level error banner is hidden behind the open modal.
   const [restoreError, setRestoreError] = useState<string | null>(null);
-  // Transparent Modal: Android doesn't resize for the keyboard, so KeyboardSafeView keeps the restore form above it.
   const insets = useSafeAreaInsets();
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [mediaTarget, setMediaTarget] = useState<AdminContentMediaPreview | null>(null);
   const [delivery, setDelivery] = useState<ModerationDeliveryResult | null>(null);
 
@@ -101,6 +121,7 @@ export default function AdminUserContentWorkspace({
       setNextCursor(page.nextCursor);
       setHasMore(page.hasMore);
     } catch (loadError: unknown) {
+      console.error('[AdminUserContentWorkspace.loadContent] Error:', loadError);
       setError(loadError instanceof Error ? loadError.message : 'User content could not be loaded.');
     } finally {
       setLoading(false);
@@ -115,6 +136,14 @@ export default function AdminUserContentWorkspace({
     setHasMore(false);
     void loadContent(null, false);
   }, [loadContent]);
+
+  // The parent's pull-to-refresh reloads the first page (skips the initial render).
+  const lastSignalRef = useRef(refreshSignal);
+  useEffect(() => {
+    if (refreshSignal === lastSignalRef.current) return;
+    lastSignalRef.current = refreshSignal;
+    void loadContent(null, false);
+  }, [loadContent, refreshSignal]);
 
   const visibleContent = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -148,10 +177,10 @@ export default function AdminUserContentWorkspace({
       setRestoreTarget(null);
       setRestoreMessage('');
       await loadContent(null, false);
-    } catch (restoreError: unknown) {
-      console.error('[AdminUserContentWorkspace.handleRestore] Error:', restoreError);
+    } catch (restoreFailure: unknown) {
+      console.error('[AdminUserContentWorkspace.handleRestore] Error:', restoreFailure);
       void interactionFeedbackService.play('warning');
-      setRestoreError(restoreError instanceof Error ? restoreError.message : 'Content could not be restored.');
+      setRestoreError(restoreFailure instanceof Error ? restoreFailure.message : 'Content could not be restored.');
     } finally {
       setRestoring(false);
     }
@@ -163,307 +192,192 @@ export default function AdminUserContentWorkspace({
     try {
       setDelivery(await adminContentService.retryDelivery(delivery.eventId));
     } catch (deliveryError: unknown) {
+      console.error('[AdminUserContentWorkspace.handleRetryDelivery] Error:', deliveryError);
       setError(deliveryError instanceof Error ? deliveryError.message : 'Email retry failed.');
     } finally {
       setRestoring(false);
     }
   };
 
-  return (
-    <View>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '900' }}>
-            User content
-          </Text>
-          <Text style={{ marginTop: 4, color: colors.mutedText, lineHeight: 18 }}>
-            Review posts and Limes, audit administrator removals, and restore moderated content.
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={() => void loadContent(null, false)}
-          disabled={loading}
-          accessibilityLabel="Refresh user content"
-          style={{
-            marginLeft: 10,
-            width: 38,
-            height: 38,
-            borderRadius: 12,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: colors.control,
-            borderWidth: 1,
-            borderColor: colors.border,
-          }}
-        >
-          {loading ? <ActivityIndicator size="small" color={colors.accent} /> : <Icon name="refresh-cw" size={17} color={colors.icon} />}
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 14, flexGrow: 0 }}>
-        {FILTERS.map((option) => {
-          const selected = filter === option.id;
-          const destructive = option.id === 'deleted_by_admin';
-          return (
-            <TouchableOpacity
-              key={option.id}
-              onPress={() => setFilter(option.id)}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              style={{
-                marginRight: 8,
-                borderRadius: 999,
-                paddingHorizontal: 13,
-                paddingVertical: 9,
-                backgroundColor: selected
-                  ? destructive ? colors.destructiveSurface : colors.successSurface
-                  : colors.control,
-                borderWidth: 1,
-                borderColor: selected
-                  ? destructive ? colors.destructiveText : colors.successText
-                  : colors.border,
-              }}
-            >
-              <Text style={{
-                color: selected
-                  ? destructive ? colors.destructiveText : colors.successText
-                  : colors.secondaryText,
-                fontSize: 12,
-                fontWeight: '900',
-              }}>
-                {option.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      <View style={{
-        marginTop: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderRadius: 13,
-        borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.input,
-        paddingHorizontal: 11,
-      }}>
-        <Icon name="search" size={16} color={colors.icon} />
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search loaded content or audit details"
-          placeholderTextColor={colors.mutedText}
-          style={{ flex: 1, padding: 11, color: colors.text, fontSize: 13 }}
+  const renderBody = () => {
+    if (loading) return <AdminUserContentListSkeleton />;
+    if (visibleContent.length === 0) {
+      if (error && content.length === 0) return null;
+      return (
+        <AdminState
+          kind="empty"
+          icon="file-text"
+          title={filter === 'deleted_by_admin' ? 'No content removed by an administrator.' : 'No content in this view.'}
+          filtered={Boolean(search.trim())}
+          onClearFilters={() => setSearch('')}
         />
-      </View>
-
-      {error ? (
-        <View style={{ marginTop: 12, borderRadius: 13, padding: 12, backgroundColor: colors.destructiveSurface }}>
-          <Text style={{ color: colors.destructiveText, fontWeight: '700' }}>{error}</Text>
-          <TouchableOpacity onPress={() => void loadContent(null, false)} style={{ marginTop: 8 }}>
-            <Text style={{ color: colors.destructiveText, fontWeight: '900' }}>Try again</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
-      {delivery ? (
-        <View style={{ marginTop: 12, borderRadius: 13, padding: 12, backgroundColor: colors.elevated, borderWidth: 1, borderColor: colors.border }}>
-          <Text style={{ color: colors.text, fontWeight: '800' }}>
-            Notification {delivery.notificationStatus}. Email {delivery.emailStatus}.
-          </Text>
-          {delivery.emailStatus === 'queued' ? (
-            <Text style={{ marginTop: 4, color: colors.mutedText }}>Automatic retry is scheduled{delivery.nextAttemptAt ? ` for ${new Date(delivery.nextAttemptAt).toLocaleString()}` : ''}.</Text>
-          ) : null}
-          {delivery.emailStatus === 'failed' ? (
-            <TouchableOpacity onPress={() => void handleRetryDelivery()} disabled={restoring} style={{ marginTop: 8 }}>
-              <Text style={{ color: colors.accent, fontWeight: '900' }}>Retry email</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      ) : null}
-
-      {loading ? (
-        <AdminUserContentListSkeleton />
-      ) : visibleContent.length === 0 ? (
-        <View style={{ marginTop: 14, padding: 24, alignItems: 'center', borderRadius: 15, backgroundColor: colors.elevated, borderWidth: 1, borderColor: colors.border }}>
-          <Icon name="file-text" size={25} color={colors.icon} />
-          <Text style={{ marginTop: 8, color: colors.text, fontWeight: '900', textAlign: 'center' }}>
-            {search ? 'No loaded content matches your search.' : filter === 'deleted_by_admin' ? 'No content deleted by an administrator.' : 'No content in this view.'}
-          </Text>
-        </View>
-      ) : visibleContent.map((item) => {
-        const title = item.caption || item.description || `Untitled ${item.contentType}`;
-        const mediaPreviews = Array.isArray(item.mediaPreviews) && item.mediaPreviews.length > 0
-          ? item.mediaPreviews
-          : item.mediaPreviewUrl
-            ? [{
-                id: `${item.id}:legacy`,
-                url: item.mediaPreviewUrl,
-                type: item.mediaPreviewType === 'image' ? 'image' as const : item.mediaPreviewType === 'video' ? 'video' as const : 'media' as const,
-                thumbnailUrl: null,
-              }]
-            : [];
-        const statusLabel = item.deletedByAdmin ? 'Deleted by admin' : item.isDeleted ? 'Deleted by user' : 'Active';
-        return (
-          <View
-            key={`${item.contentType}:${item.id}`}
-            style={{
-              marginTop: 13,
-              overflow: 'hidden',
-              borderRadius: 16,
-              backgroundColor: colors.elevated,
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-          >
-            {mediaPreviews.length > 0 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: 8 }}>
-                {mediaPreviews.map((media) => {
-                  const imageUrl = media.type === 'image' ? media.url : media.thumbnailUrl;
-                  return (
-                    <TouchableOpacity
-                      key={media.id}
-                      onPress={() => setMediaTarget(media)}
-                      accessibilityLabel={`Open preserved ${media.type}`}
-                      style={{
-                        width: 138,
-                        height: 138,
-                        marginRight: 8,
-                        overflow: 'hidden',
-                        borderRadius: 13,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: colors.control,
-                      }}
-                    >
-                      {imageUrl ? (
-                        <CachedImage
-                          uri={imageUrl}
-                          recyclingKey={`${item.contentType}:${item.id}:${media.id}`}
-                          accessibilityLabel={`${item.contentType} media preview`}
-                          style={{ width: 138, height: 138 }}
-                        />
-                      ) : <Icon name={media.type === 'video' ? 'play-circle' : 'file'} size={30} color={colors.icon} />}
-                      {media.type === 'video' ? (
-                        <View style={{ position: 'absolute', width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.62)' }}>
-                          <Icon name="play" size={20} color="#ffffff" />
-                        </View>
-                      ) : null}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            ) : null}
-            <View style={{ padding: 14 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-                <View style={{
-                  marginRight: 7,
-                  marginBottom: 5,
-                  borderRadius: 999,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4,
-                  backgroundColor: item.deletedByAdmin
-                    ? colors.destructiveSurface
-                    : item.isDeleted ? colors.control : colors.successSurface,
-                }}>
-                  <Text style={{
-                    color: item.deletedByAdmin
-                      ? colors.destructiveText
-                      : item.isDeleted ? colors.mutedText : colors.successText,
-                    fontSize: 10,
-                    fontWeight: '900',
-                    textTransform: 'uppercase',
-                  }}>
-                    {statusLabel}
-                  </Text>
-                </View>
-                <Text style={{ marginBottom: 5, color: colors.mutedText, fontSize: 11, textTransform: 'capitalize' }}>
-                  {item.contentType} · Created {formatDateTime(item.createdAt)}
-                </Text>
-              </View>
-              <Text numberOfLines={4} style={{ marginTop: 4, color: colors.text, fontWeight: '800', lineHeight: 20 }}>
-                {title}
-              </Text>
-              <Text selectable style={{ marginTop: 5, color: colors.mutedText, fontSize: 10 }}>
-                {item.contentType === 'lime' ? 'Lime' : 'Post'} ID: {item.id} · {item.visibility}
-              </Text>
-
-              {item.deletedByAdmin ? (
-                <View style={{ marginTop: 11, padding: 12, borderRadius: 13, backgroundColor: colors.destructiveSurface }}>
-                  <Text style={{ color: colors.destructiveText, fontWeight: '900' }}>
-                    {formatCategory(item.deletionCategory)}
-                  </Text>
-                  <Text style={{ marginTop: 3, color: colors.mutedText, fontSize: 12 }}>
-                    Deleted {formatDateTime(item.deletedAt)}
-                  </Text>
-                  <Text style={{ marginTop: 7, color: colors.text, lineHeight: 18 }}>
-                    {item.deletionReason || 'No deletion reason recorded.'}
-                  </Text>
-                  {item.deletionNotes ? (
-                    <Text style={{ marginTop: 5, color: colors.mutedText, fontSize: 12 }}>
-                      Internal note: {item.deletionNotes}
-                    </Text>
-                  ) : null}
-                  <Text selectable style={{ marginTop: 7, color: colors.mutedText, fontSize: 11 }}>
-                    Removed by {item.adminName || 'Administrator'} · Admin ID: {item.adminId || 'Unavailable'}
-                  </Text>
-                  {item.deletionAuditId ? (
-                    <Text selectable style={{ marginTop: 2, color: colors.mutedText, fontSize: 10 }}>
-                      Audit ID: {item.deletionAuditId}
-                    </Text>
-                  ) : null}
-                </View>
-              ) : null}
-
-              <View style={{ marginTop: 12, flexDirection: 'row' }}>
-                {!item.isDeleted ? (
-                  <TouchableOpacity
-                    onPress={() => onOpenContent(item)}
-                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, padding: 10, backgroundColor: colors.control, borderWidth: 1, borderColor: colors.border }}
+      );
+    }
+    return visibleContent.map((item) => {
+      const title = item.caption || item.description || `Untitled ${item.contentType}`;
+      const mediaPreviews = Array.isArray(item.mediaPreviews) && item.mediaPreviews.length > 0
+        ? item.mediaPreviews
+        : item.mediaPreviewUrl
+          ? [{
+              id: `${item.id}:legacy`,
+              url: item.mediaPreviewUrl,
+              type: item.mediaPreviewType === 'image' ? 'image' as const : item.mediaPreviewType === 'video' ? 'video' as const : 'media' as const,
+              thumbnailUrl: null,
+            }]
+          : [];
+      const statusLabel = item.deletedByAdmin ? 'Removed by admin' : item.isDeleted ? 'Deleted by user' : 'Active';
+      const statusTone: AdminToneName = item.deletedByAdmin ? 'danger' : item.isDeleted ? 'neutral' : 'positive';
+      const danger = getAdminTone(colors, 'danger');
+      const overflowItems: AdminOverflowItem[] = !item.isDeleted
+        ? [{ key: 'view', label: `Open ${item.contentType === 'lime' ? 'Lime' : 'post'}`, icon: 'external-link', onPress: () => onOpenContent(item) }]
+        : [];
+      return (
+        <View
+          key={`${item.contentType}:${item.id}`}
+          style={{ overflow: 'hidden', borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}
+        >
+          {mediaPreviews.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, padding: space.sm }}>
+              {mediaPreviews.map((media) => {
+                const imageUrl = media.type === 'image' ? media.url : media.thumbnailUrl;
+                return (
+                  <Pressable
+                    key={media.id}
+                    onPress={() => setMediaTarget(media)}
+                    accessibilityRole="imagebutton"
+                    accessibilityLabel={`Open preserved ${media.type}`}
+                    style={({ pressed }) => ({
+                      width: THUMB_SIZE,
+                      height: THUMB_SIZE,
+                      overflow: 'hidden',
+                      borderRadius: radius.sm,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: colors.control,
+                      opacity: pressed ? 0.7 : 1,
+                    })}
                   >
-                    <Icon name="external-link" size={14} color={colors.icon} />
-                    <Text style={{ marginLeft: 6, color: colors.text, fontWeight: '800' }}>View</Text>
-                  </TouchableOpacity>
+                    {imageUrl ? (
+                      <CachedImage
+                        uri={imageUrl}
+                        recyclingKey={`${item.contentType}:${item.id}:${media.id}`}
+                        accessibilityLabel={`${item.contentType} media preview`}
+                        style={{ width: THUMB_SIZE, height: THUMB_SIZE }}
+                      />
+                    ) : <Icon name={media.type === 'video' ? 'play-circle' : 'file'} size={28} color={colors.icon} />}
+                    {media.type === 'video' ? (
+                      <View style={{ position: 'absolute', width: 40, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: MEDIA_OVERLAY.badge }}>
+                        <Icon name="play" size={20} color={MEDIA_OVERLAY.icon} />
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ) : null}
+          <View style={{ gap: space.sm, padding: space.lg }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.sm }}>
+              <AdminStatusPill label={statusLabel} tone={statusTone} />
+              <Text style={[type.meta, { color: colors.mutedText, textTransform: 'capitalize' }]}>
+                {item.contentType} · Created {formatDateTime(item.createdAt)}
+              </Text>
+            </View>
+            <Text numberOfLines={4} style={[type.bodyStrong, { color: colors.text }]}>
+              {title}
+            </Text>
+            <Text selectable style={[type.meta, { color: colors.mutedText }]}>
+              {item.contentType === 'lime' ? 'Lime' : 'Post'} ID: {item.id} · {item.visibility}
+            </Text>
+
+            {item.deletedByAdmin ? (
+              <View style={{ gap: space.xs, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: danger.border, backgroundColor: danger.soft }}>
+                <Text style={[type.bodyStrong, { color: danger.text }]}>{formatCategory(item.deletionCategory)}</Text>
+                <Text style={[type.meta, { color: colors.mutedText }]}>Removed {formatDateTime(item.deletedAt)}</Text>
+                <Text style={[type.body, { color: colors.text }]}>{item.deletionReason || 'No deletion reason recorded.'}</Text>
+                {item.deletionNotes ? (
+                  <Text style={[type.meta, { color: colors.mutedText }]}>Internal note: {item.deletionNotes}</Text>
                 ) : null}
+                <Text selectable style={[type.meta, { color: colors.mutedText }]}>
+                  Removed by {item.adminName || 'Administrator'} · Admin ID: {item.adminId || 'Unavailable'}
+                </Text>
+                {item.deletionAuditId ? (
+                  <Text selectable style={[type.meta, { color: colors.mutedText }]}>Audit ID: {item.deletionAuditId}</Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {item.deletedByAdmin || !item.isDeleted ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.xs }}>
                 {item.deletedByAdmin ? (
-                  <TouchableOpacity
+                  <AdminButton
+                    label="Restore"
+                    icon="rotate-ccw"
+                    tone="positive"
+                    style={{ flex: 1 }}
                     onPress={() => {
                       setRestoreReason('Restored after administrator review.');
                       setRestoreMessage('');
                       setRestoreError(null);
                       setRestoreTarget(item);
                     }}
-                    style={{ flex: 1, marginLeft: item.isDeleted ? 0 : 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, padding: 10, backgroundColor: colors.successSurface }}
-                  >
-                    <Icon name="rotate-ccw" size={14} color={colors.successText} />
-                    <Text style={{ marginLeft: 6, color: colors.successText, fontWeight: '900' }}>Restore</Text>
-                  </TouchableOpacity>
-                ) : !item.isDeleted ? (
-                  <TouchableOpacity
-                    onPress={() => setDeleteTarget(item)}
-                    style={{ flex: 1, marginLeft: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, padding: 10, backgroundColor: colors.destructiveSurface }}
-                  >
-                    <Icon name="trash-2" size={14} color={colors.destructiveText} />
-                    <Text style={{ marginLeft: 6, color: colors.destructiveText, fontWeight: '900' }}>Delete</Text>
-                  </TouchableOpacity>
-                ) : null}
+                  />
+                ) : (
+                  <AdminButton label="Delete" icon="trash-2" tone="danger" style={{ flex: 1 }} onPress={() => setDeleteTarget(item)} />
+                )}
+                {overflowItems.length ? <AdminOverflowMenu items={overflowItems} trigger="row" title={title} triggerLabel={`More actions for ${title}`} /> : null}
               </View>
-            </View>
+            ) : null}
           </View>
-        );
-      })}
+        </View>
+      );
+    });
+  };
 
-      {hasMore && !search ? (
-        <TouchableOpacity
-          disabled={loadingMore || !nextCursor}
+  return (
+    <View style={{ gap: space.md }}>
+      <View style={{ gap: space.xs }}>
+        <Text style={[type.section, { color: colors.text }]}>User content</Text>
+        <Text style={[type.body, { color: colors.mutedText }]}>
+          Review posts and Limes, audit administrator removals, and restore moderated content.
+        </Text>
+      </View>
+
+      <AdminToolbar
+        segments={{ value: filter, options: FILTERS.map((option) => ({ value: option.id, label: option.label })), onChange: (next) => {
+          const nextFilter = FILTERS.find((option) => option.id === next);
+          if (nextFilter) setFilter(nextFilter.id);
+        } }}
+        search={{ value: search, placeholder: 'Search loaded content or audit details', onChange: setSearch }}
+      />
+
+      {error ? <AdminState kind="inlineError" message={error} onRetry={() => void loadContent(null, false)} retrying={loading} /> : null}
+
+      {delivery ? (
+        <View style={{ gap: space.xs, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
+          <Text style={[type.bodyStrong, { color: colors.text }]}>
+            Notification {delivery.notificationStatus}. Email {delivery.emailStatus}.
+          </Text>
+          {delivery.emailStatus === 'queued' ? (
+            <Text style={[type.meta, { color: colors.mutedText }]}>Automatic retry is scheduled{delivery.nextAttemptAt ? ` for ${new Date(delivery.nextAttemptAt).toLocaleString()}` : ''}.</Text>
+          ) : null}
+          {delivery.emailStatus === 'failed' ? (
+            <AdminButton label="Retry email" icon="refresh-cw" emphasis="ghost" tone="positive" busy={restoring} onPress={() => void handleRetryDelivery()} style={{ alignSelf: 'flex-start' }} />
+          ) : null}
+        </View>
+      ) : null}
+
+      {renderBody()}
+
+      {hasMore && !search && !loading ? (
+        <AdminButton
+          label="Load more content"
+          icon="chevron-down"
+          tone="neutral"
+          fullWidth
+          busy={loadingMore}
+          disabled={!nextCursor}
           onPress={() => void loadContent(nextCursor, true)}
-          style={{ marginTop: 14, alignItems: 'center', borderRadius: 13, padding: 12, backgroundColor: colors.control, borderWidth: 1, borderColor: colors.border, opacity: loadingMore ? 0.65 : 1 }}
-        >
-          {loadingMore ? <ActivityIndicator size="small" color={colors.accent} /> : (
-            <Text style={{ color: colors.text, fontWeight: '900' }}>Load more content</Text>
-          )}
-        </TouchableOpacity>
+        />
       ) : null}
 
       <AdminDeletionModal
@@ -478,91 +392,55 @@ export default function AdminUserContentWorkspace({
           void loadContent(null, false);
         }}
       />
-      <Modal
+
+      <AdminDialog
         visible={Boolean(restoreTarget)}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => {
+        title={`Restore this ${restoreTarget?.contentType ?? 'content'}?`}
+        description="The content will be visible again. Its moderation history remains in the administrator audit log."
+        icon="rotate-ccw"
+        tone="positive"
+        confirmLabel={restoring ? 'Restoring…' : 'Restore'}
+        confirmDisabled={!restoreReason.trim()}
+        busy={restoring}
+        onConfirm={() => void handleRestore()}
+        onClose={() => {
           if (!restoring) setRestoreTarget(null);
         }}
       >
-        <KeyboardSafeView
-          onKeyboardChange={setIsKeyboardOpen}
-          style={{ flex: 1, justifyContent: 'center', padding: 20, paddingTop: isKeyboardOpen ? Math.max(20, insets.top) : 20, backgroundColor: 'rgba(2,6,23,0.72)' }}
-        >
-          <View style={{ maxHeight: isKeyboardOpen ? '100%' : '88%', flexShrink: 1, overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: 20, fontWeight: '900' }}>
-                    Restore this {restoreTarget?.contentType ?? 'content'}?
-                  </Text>
-                  <Text style={{ marginTop: 7, color: colors.mutedText, lineHeight: 20 }}>
-                    The content will be visible again. Its moderation history remains in the administrator audit log.
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  accessibilityLabel="Close restore form"
-                  disabled={restoring}
-                  onPress={() => setRestoreTarget(null)}
-                  hitSlop={10}
-                  style={{ marginLeft: 12, padding: 4 }}
-                >
-                  <Icon name="x" size={24} color={colors.icon} />
-                </TouchableOpacity>
-              </View>
-
-              <Text style={{ marginTop: 20, color: colors.text, fontWeight: '800' }}>Audit reason (required)</Text>
-              <TextInput
-                value={restoreReason}
-                onChangeText={setRestoreReason}
-                maxLength={500}
-                multiline
-                textAlignVertical="top"
-                placeholder="Why is this content being restored?"
-                placeholderTextColor={colors.mutedText}
-                style={{ minHeight: 90, marginTop: 8, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 13, color: colors.text, backgroundColor: colors.control }}
-              />
-
-              <Text style={{ marginTop: 16, color: colors.text, fontWeight: '800' }}>Message to the user (optional)</Text>
-              <Text style={{ marginTop: 4, color: colors.mutedText, fontSize: 12 }}>Included in their Ourlime notification and email.</Text>
-              <TextInput
-                value={restoreMessage}
-                onChangeText={setRestoreMessage}
-                maxLength={1000}
-                multiline
-                textAlignVertical="top"
-                placeholder="Add any helpful context."
-                placeholderTextColor={colors.mutedText}
-                style={{ minHeight: 100, marginTop: 8, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 13, color: colors.text, backgroundColor: colors.control }}
-              />
-
-              {restoreError ? (
-                <Text accessibilityRole="alert" style={{ marginTop: 14, color: colors.destructiveText, fontWeight: '700' }}>{restoreError}</Text>
-              ) : null}
-
-              <View style={{ marginTop: 20, flexDirection: 'row', gap: 10 }}>
-                <TouchableOpacity
-                  disabled={restoring}
-                  onPress={() => setRestoreTarget(null)}
-                  style={{ flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control }}
-                >
-                  <Text style={{ color: colors.text, fontWeight: '900' }}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  disabled={restoring || !restoreReason.trim()}
-                  onPress={() => void handleRestore()}
-                  style={{ flex: 1, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: colors.accent, opacity: restoring || !restoreReason.trim() ? 0.55 : 1 }}
-                >
-                  {restoring ? <ActivityIndicator size="small" color="#ffffff" /> : <Icon name="rotate-ccw" size={17} color="#ffffff" />}
-                  <Text style={{ color: '#ffffff', fontWeight: '900' }}>{restoring ? 'Restoring…' : 'Restore'}</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
+        <View style={{ gap: space.md }}>
+          <View style={{ gap: space.xs }}>
+            <Text style={[type.label, { color: colors.mutedText }]}>Audit reason (required)</Text>
+            <TextInput
+              value={restoreReason}
+              onChangeText={setRestoreReason}
+              maxLength={500}
+              multiline
+              editable={!restoring}
+              accessibilityLabel="Audit reason"
+              placeholder="Why is this content being restored?"
+              placeholderTextColor={colors.mutedText}
+              style={getInputStyle(colors)}
+            />
           </View>
-        </KeyboardSafeView>
-      </Modal>
+          <View style={{ gap: space.xs }}>
+            <Text style={[type.label, { color: colors.mutedText }]}>Message to the user (optional)</Text>
+            <Text style={[type.meta, { color: colors.mutedText }]}>Included in their Ourlime notification and email.</Text>
+            <TextInput
+              value={restoreMessage}
+              onChangeText={setRestoreMessage}
+              maxLength={1000}
+              multiline
+              editable={!restoring}
+              accessibilityLabel="Message to the user"
+              placeholder="Add any helpful context."
+              placeholderTextColor={colors.mutedText}
+              style={getInputStyle(colors)}
+            />
+          </View>
+          {restoreError ? <AdminState kind="inlineError" message={restoreError} /> : null}
+        </View>
+      </AdminDialog>
+
       <Modal
         visible={Boolean(mediaTarget)}
         transparent
@@ -570,15 +448,16 @@ export default function AdminUserContentWorkspace({
         statusBarTranslucent
         onRequestClose={() => setMediaTarget(null)}
       >
-        <View style={{ flex: 1, padding: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.9)' }}>
-          <TouchableOpacity
+        <View style={{ flex: 1, padding: space.lg, alignItems: 'center', justifyContent: 'center', backgroundColor: MEDIA_OVERLAY.scrim }}>
+          <AdminIconButton
+            icon="x"
+            label="Close media preview"
+            iconSize={22}
+            iconColor={MEDIA_OVERLAY.icon}
             onPress={() => setMediaTarget(null)}
-            accessibilityLabel="Close media preview"
-            style={{ position: 'absolute', right: 18, top: 52, zIndex: 2, width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.88)' }}
-          >
-            <Icon name="x" size={22} color="#ffffff" />
-          </TouchableOpacity>
-          <View style={{ width: '100%', height: '78%', overflow: 'hidden', borderRadius: 16, backgroundColor: '#000000' }}>
+            style={{ position: 'absolute', right: space.lg, top: insets.top + space.sm, zIndex: 2, width: ADMIN_MIN_TOUCH, height: ADMIN_MIN_TOUCH, borderRadius: radius.pill, backgroundColor: MEDIA_OVERLAY.control }}
+          />
+          <View style={{ width: '100%', height: '78%', overflow: 'hidden', borderRadius: radius.lg, backgroundColor: MEDIA_OVERLAY.stage }}>
             {mediaTarget?.type === 'video' ? (
               <AdminVideoViewer url={mediaTarget.url} />
             ) : mediaTarget ? (

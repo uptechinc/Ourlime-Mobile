@@ -1,60 +1,170 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  ScrollView,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Pressable, Switch, Text, TextInput, View, type TextStyle } from 'react-native';
+import Icon from 'react-native-vector-icons/Feather';
+import { toast } from 'sonner-native';
+import AdminButton from '@/components/admin/AdminButton';
+import AdminDialog from '@/components/admin/AdminDialog';
+import AdminListRow from '@/components/admin/AdminListRow';
+import AdminScreen, { type AdminHeaderAction, type AdminScreenState } from '@/components/admin/AdminScreen';
+import AdminSection from '@/components/admin/AdminSection';
+import { SecurityWorkspaceSkeleton } from '@/components/admin/AdminSkeletons';
+import { AdminStatGrid } from '@/components/admin/AdminStatCard';
+import AdminStatCard from '@/components/admin/AdminStatCard';
+import AdminState from '@/components/admin/AdminState';
+import AdminStatusPill from '@/components/admin/AdminStatusPill';
+import AdminToolbar from '@/components/admin/AdminToolbar';
 import CountryPickerModal from '@/components/ui/CountryPickerModal';
+import { ADMIN_MIN_TOUCH, getAdminTone, radius, space, type, type AdminToneName } from '@/lib/admin/adminTokens';
 import { getCountryFlagEmoji } from '@/lib/constants/countries';
+import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
+import { evaluateSecurityAccess, type SecurityEvaluationResult } from '@/lib/security/securityAccessEvaluator';
 import { adminSecurityService } from '@/lib/services/AdminSecurityService';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
-import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import CustomModal from '@/components/ui/CustomModal';
-import AdminDialog from '@/components/admin/AdminDialog';
-import { SecurityWorkspaceSkeleton } from '@/components/admin/AdminSkeletons';
-import { Skeleton } from '@/components/ui/Skeleton';
-import {
-  evaluateSecurityAccess,
-  type SecurityEvaluationResult,
-} from '@/lib/security/securityAccessEvaluator';
-import type {
-  SecurityAccessSettings,
-  RegionPolicyMode,
-  IpRule,
-  UserWhitelistEntry,
-  SecurityMonitoring,
-} from '@/lib/types/adminSecurity';
+import type { IpRule, RateLimitConfig, RegionPolicyMode, SecurityAccessSettings, SecurityMonitoring, UserWhitelistEntry } from '@/lib/types/adminSecurity';
 
 const REGIONS = [
-  { code: 'TT', name: 'Trinidad & Tobago 🇹🇹' },
-  { code: 'JM', name: 'Jamaica 🇯🇲' },
-  { code: 'BB', name: 'Barbados 🇧🇧' },
-  { code: 'GY', name: 'Guyana 🇬🇾' },
-  { code: 'LC', name: 'Saint Lucia 🇱🇨' },
-  { code: 'US', name: 'United States 🇺🇸' },
-  { code: 'CA', name: 'Canada 🇨🇦' },
-  { code: 'GB', name: 'United Kingdom 🇬🇧' },
+  { code: 'TT', name: 'Trinidad & Tobago' },
+  { code: 'JM', name: 'Jamaica' },
+  { code: 'BB', name: 'Barbados' },
+  { code: 'GY', name: 'Guyana' },
+  { code: 'LC', name: 'Saint Lucia' },
+  { code: 'US', name: 'United States' },
+  { code: 'CA', name: 'Canada' },
+  { code: 'GB', name: 'United Kingdom' },
 ];
 
+const REGION_MODES: { mode: RegionPolicyMode; title: string; description: string }[] = [
+  { mode: 'allow_all', title: 'Global access (allow all)', description: 'Access permitted from all countries.' },
+  { mode: 'allow_selected_only', title: 'Allow selected only', description: 'Restrict platform access to the selected countries (e.g. Trinidad & Tobago).' },
+  { mode: 'block_selected', title: 'Block selected countries', description: 'Allow all countries except those marked as blocked.' },
+];
+
+type SecurityTab = 'region' | 'ip' | 'whitelist' | 'ratelimit' | 'simulate' | 'monitoring';
 type PendingSecurityRemoval = { kind: 'ip' | 'whitelist'; id: string; label: string };
+type RateLimitField = Exclude<keyof RateLimitConfig, 'enabled'>;
+
+/** Six tabs do not fit one segmented row on a phone, so they sit in two rows of three. */
+const TAB_ROWS: { value: SecurityTab; label: string }[][] = [
+  [
+    { value: 'region', label: 'Region' },
+    { value: 'ip', label: 'IP rules' },
+    { value: 'whitelist', label: 'Whitelist' },
+  ],
+  [
+    { value: 'ratelimit', label: 'Limits' },
+    { value: 'simulate', label: 'Test rule' },
+    { value: 'monitoring', label: 'Monitor' },
+  ],
+];
+
+const RATE_LIMIT_FIELDS: { key: RateLimitField; label: string; fallback: number }[] = [
+  { key: 'authPerMinute', label: 'Auth requests (per min / IP)', fallback: 15 },
+  { key: 'postsPerMinute', label: 'Post creation (per min / user)', fallback: 30 },
+  { key: 'commentsPerMinute', label: 'Comment creation (per min / user)', fallback: 45 },
+  { key: 'generalPerMinute', label: 'General API (per min / IP)', fallback: 120 },
+];
+
+const getInputStyle = (colors: AppThemeColors): TextStyle => ({
+  ...type.body,
+  minHeight: ADMIN_MIN_TOUCH,
+  paddingHorizontal: space.md,
+  paddingVertical: 0,
+  borderRadius: radius.md,
+  borderWidth: 1,
+  borderColor: colors.border,
+  backgroundColor: colors.input,
+  color: colors.text,
+});
+
+type ChoiceRowProps = { label: string; description?: string; selected: boolean; tone?: AdminToneName; disabled?: boolean; onPress: () => void };
+
+/** 56pt single-choice row with a radio mark. */
+function ChoiceRow({ label, description, selected, tone = 'positive', disabled = false, onPress }: ChoiceRowProps) {
+  const { colors } = useAppTheme();
+  const toneColors = getAdminTone(colors, tone);
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="radio"
+      accessibilityLabel={label}
+      accessibilityHint={description}
+      accessibilityState={{ checked: selected, disabled }}
+      style={({ pressed }) => ({
+        minHeight: 56,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: space.md,
+        paddingHorizontal: space.md,
+        paddingVertical: space.sm,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: selected ? toneColors.border : colors.border,
+        backgroundColor: selected ? toneColors.soft : colors.surface,
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      <Icon name={selected ? 'check-circle' : 'circle'} size={20} color={selected ? toneColors.text : colors.mutedText} />
+      <View style={{ flex: 1 }}>
+        <Text style={[type.bodyStrong, { color: colors.text }]}>{label}</Text>
+        {description ? <Text style={[type.meta, { color: colors.mutedText }]}>{description}</Text> : null}
+      </View>
+    </Pressable>
+  );
+}
+
+type ChipProps = { label: string; tone: AdminToneName; icon: 'x' | 'plus' | 'check'; selected?: boolean; accessibilityLabel: string; onPress: () => void };
+
+/** 36pt chip with hitSlop to 44pt; soft tone when selected. */
+function Chip({ label, tone, icon, selected = true, accessibilityLabel, onPress }: ChipProps) {
+  const { colors } = useAppTheme();
+  const toneColors = getAdminTone(colors, selected ? tone : 'neutral');
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected }}
+      hitSlop={{ top: space.xs, bottom: space.xs }}
+      style={({ pressed }) => ({
+        minHeight: 36,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: space.xs,
+        paddingLeft: space.md,
+        paddingRight: space.sm,
+        borderRadius: radius.pill,
+        borderWidth: 1,
+        borderColor: toneColors.border,
+        backgroundColor: selected ? toneColors.soft : colors.surface,
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      <Text numberOfLines={1} style={[type.meta, { color: selected ? toneColors.text : colors.text }]}>
+        {label}
+      </Text>
+      <Icon name={icon} size={14} color={selected ? toneColors.text : colors.icon} />
+    </Pressable>
+  );
+}
 
 export default function AdminSecurityWorkspace() {
-  const { colors, isDark } = useAppTheme();
+  const { colors } = useAppTheme();
+  const pending = getAdminTone(colors, 'pending');
   const [settings, setSettings] = useState<SecurityAccessSettings | null>(null);
-  const [activeTab, setActiveTab] = useState<'region' | 'ip' | 'whitelist' | 'ratelimit' | 'simulate' | 'monitoring'>('region');
+  const [savedSettings, setSavedSettings] = useState<SecurityAccessSettings | null>(null);
+  const [activeTab, setActiveTab] = useState<SecurityTab>('region');
   const [monitoring, setMonitoring] = useState<SecurityMonitoring | null>(null);
   const [monitoringLoading, setMonitoringLoading] = useState(false);
+  const [monitoringError, setMonitoringError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<PendingSecurityRemoval | null>(null);
-  const [isCountryPickerVisible, setIsCountryPickerVisible] = useState(false);
+  const [countryPicker, setCountryPicker] = useState<'region' | 'simulate' | null>(null);
+  const [ipDialogOpen, setIpDialogOpen] = useState(false);
+  const [whitelistDialogOpen, setWhitelistDialogOpen] = useState(false);
 
   // Form states
   const [newIp, setNewIp] = useState('');
@@ -69,18 +179,22 @@ export default function AdminSecurityWorkspace() {
   const [simCountry, setSimCountry] = useState('TT');
   const [simResult, setSimResult] = useState<SecurityEvaluationResult | null>(null);
 
-
-  const loadSettings = useCallback(async () => {
+  const loadSettings = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setLoadError(null);
     try {
-      setLoading(true);
-      setLoadError(null);
       const data = await adminSecurityService.getSettings();
       setSettings(data);
+      setSavedSettings(data);
     } catch (err: unknown) {
       console.error('[AdminSecurityWorkspace.loadSettings] Error:', err);
-      setLoadError(err instanceof Error ? err.message : 'Could not load security settings');
+      const errorMessage = err instanceof Error ? err.message : 'Could not load security settings';
+      setLoadError(errorMessage);
+      if (isRefresh) toast.error(errorMessage);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -90,29 +204,32 @@ export default function AdminSecurityWorkspace() {
 
   const loadMonitoring = useCallback(async () => {
     setMonitoringLoading(true);
+    setMonitoringError(null);
     try {
       setMonitoring(await adminSecurityService.getMonitoring());
-    } catch (monitoringError: unknown) {
-      console.error('[AdminSecurityWorkspace.loadMonitoring] Error:', monitoringError instanceof Error ? monitoringError.message : monitoringError);
-      setMessage(monitoringError instanceof Error ? monitoringError.message : 'Could not load security monitoring');
+    } catch (monitoringFailure: unknown) {
+      console.error('[AdminSecurityWorkspace.loadMonitoring] Error:', monitoringFailure instanceof Error ? monitoringFailure.message : monitoringFailure);
+      setMonitoringError(monitoringFailure instanceof Error ? monitoringFailure.message : 'Could not load security monitoring');
     } finally {
       setMonitoringLoading(false);
     }
   }, []);
 
   /** Resolves true only when the settings were saved, so callers keep the admin's input on failure. */
-  const handleSave = async (updated: Partial<SecurityAccessSettings>): Promise<boolean> => {
+  const handleSave = async (updated: SecurityAccessSettings): Promise<boolean> => {
+    if (saving) return false;
     try {
       setSaving(true);
       void interactionFeedbackService.play('post');
       const saved = await adminSecurityService.updateSettings(updated);
       setSettings(saved);
+      setSavedSettings(saved);
       void interactionFeedbackService.play('success');
-      setMessage('Security and access settings updated successfully!');
+      toast.success('Security and access settings updated.');
       return true;
     } catch (err: unknown) {
       console.error('[AdminSecurityWorkspace.handleSave] Error:', err);
-      setMessage(err instanceof Error ? err.message : 'Failed to save settings');
+      toast.error(err instanceof Error ? err.message : 'Failed to save settings');
       void interactionFeedbackService.play('warning');
       return false;
     } finally {
@@ -123,1057 +240,510 @@ export default function AdminSecurityWorkspace() {
   const handleToggleCountry = (code: string) => {
     if (!settings) return;
     const current = settings.regionPolicy.countries;
-    const next = current.includes(code) ? current.filter((c) => c !== code) : [...current, code];
-    setSettings({
-      ...settings,
-      regionPolicy: { ...settings.regionPolicy, countries: next },
-    });
+    const next = current.includes(code) ? current.filter((countryCode) => countryCode !== code) : [...current, code];
+    setSettings({ ...settings, regionPolicy: { ...settings.regionPolicy, countries: next } });
   };
 
   const handleAddIpRule = async () => {
     if (!newIp.trim() || !settings) return;
-    try {
-      setSaving(true);
-      const newRule: IpRule = {
-        id: Date.now().toString(),
-        ip: newIp.trim(),
-        type: newIpType,
-        label: newIpLabel.trim() || undefined,
-        createdAt: new Date().toISOString(),
-        createdBy: 'Admin',
-      };
-      const updated = { ...settings, ipRules: [...settings.ipRules, newRule] };
-      if (await handleSave(updated)) {
-        setNewIp('');
-        setNewIpLabel('');
-      }
-    } catch (err: unknown) {
-      setMessage(err instanceof Error ? err.message : 'Failed to add IP rule');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleRemoveIpRule = async (id: string): Promise<boolean> => {
-    if (!settings) return false;
-    const updated = {
-      ...settings,
-      ipRules: settings.ipRules.filter((r) => r.id !== id),
+    const newRule: IpRule = {
+      id: Date.now().toString(),
+      ip: newIp.trim(),
+      type: newIpType,
+      label: newIpLabel.trim() || undefined,
+      createdAt: new Date().toISOString(),
+      createdBy: 'Admin',
     };
-    return handleSave(updated);
+    if (await handleSave({ ...settings, ipRules: [...settings.ipRules, newRule] })) {
+      setNewIp('');
+      setNewIpLabel('');
+      setIpDialogOpen(false);
+    }
   };
 
   const handleAddUserWhitelist = async () => {
     if ((!newUserId.trim() && !newUserEmail.trim()) || !settings) return;
-    try {
-      setSaving(true);
-      const newEntry: UserWhitelistEntry = {
-        userId: newUserId.trim() || Date.now().toString(),
-        email: newUserEmail.trim() || undefined,
-        reason: newUserReason.trim() || 'Admin whitelist exception',
-        addedAt: new Date().toISOString(),
-        addedBy: 'Admin',
-      };
-      const updated = { ...settings, userWhitelist: [...settings.userWhitelist, newEntry] };
-      if (await handleSave(updated)) {
-        setNewUserId('');
-        setNewUserEmail('');
-        setNewUserReason('');
-      }
-    } catch (err: unknown) {
-      setMessage(err instanceof Error ? err.message : 'Failed to add whitelist user');
-    } finally {
-      setSaving(false);
+    const newEntry: UserWhitelistEntry = {
+      userId: newUserId.trim() || Date.now().toString(),
+      email: newUserEmail.trim() || undefined,
+      reason: newUserReason.trim() || 'Admin whitelist exception',
+      addedAt: new Date().toISOString(),
+      addedBy: 'Admin',
+    };
+    if (await handleSave({ ...settings, userWhitelist: [...settings.userWhitelist, newEntry] })) {
+      setNewUserId('');
+      setNewUserEmail('');
+      setNewUserReason('');
+      setWhitelistDialogOpen(false);
     }
   };
 
-  const handleRemoveUserWhitelist = async (userId: string): Promise<boolean> => {
-    if (!settings) return false;
-    const updated = {
-      ...settings,
-      userWhitelist: settings.userWhitelist.filter((u) => u.userId !== userId),
-    };
-    return handleSave(updated);
-  };
-
+  // Removal is confirmed in a danger dialog that closes only once the save succeeds.
   const handleConfirmRemoval = async () => {
-    if (!pendingRemoval || saving) return;
-    const saved = pendingRemoval.kind === 'ip'
-      ? await handleRemoveIpRule(pendingRemoval.id)
-      : await handleRemoveUserWhitelist(pendingRemoval.id);
-    if (saved) setPendingRemoval(null);
+    if (!pendingRemoval || saving || !settings) return;
+    const updated = pendingRemoval.kind === 'ip'
+      ? { ...settings, ipRules: settings.ipRules.filter((rule) => rule.id !== pendingRemoval.id) }
+      : { ...settings, userWhitelist: settings.userWhitelist.filter((entry) => entry.userId !== pendingRemoval.id) };
+    if (await handleSave(updated)) setPendingRemoval(null);
   };
 
-  if (loading) return <SecurityWorkspaceSkeleton />;
+  const handleEvaluate = () => {
+    if (!simIp.trim() || !settings) return;
+    setSimResult(evaluateSecurityAccess(settings, { ip: simIp.trim(), countryCode: simCountry.trim() }));
+  };
 
-  if (!settings) {
+  const handleTabChange = (next: string) => {
+    const tab = TAB_ROWS.flat().find((option) => option.value === next)?.value;
+    if (!tab) return;
+    setActiveTab(tab);
+    if (tab === 'monitoring') void loadMonitoring();
+  };
+
+  const handleRefresh = async () => {
+    if (activeTab === 'monitoring') {
+      await loadMonitoring();
+      return;
+    }
+    await loadSettings(true);
+  };
+
+  const regionDirty = Boolean(settings && savedSettings && JSON.stringify(settings.regionPolicy) !== JSON.stringify(savedSettings.regionPolicy));
+  const rateDirty = Boolean(settings && savedSettings && JSON.stringify(settings.rateLimits) !== JSON.stringify(savedSettings.rateLimits));
+
+  const primaryAction: AdminHeaderAction | undefined = !settings
+    ? undefined
+    : activeTab === 'region'
+      ? { key: 'save-region', label: 'Save', icon: 'check', busy: saving, disabled: !regionDirty, onPress: () => void handleSave(settings) }
+      : activeTab === 'ratelimit'
+        ? { key: 'save-limits', label: 'Save', icon: 'check', busy: saving, disabled: !rateDirty, onPress: () => void handleSave(settings) }
+        : activeTab === 'ip'
+          ? { key: 'add-ip', label: 'Add rule', icon: 'plus', disabled: saving, onPress: () => setIpDialogOpen(true) }
+          : activeTab === 'whitelist'
+            ? { key: 'add-whitelist', label: 'Add', icon: 'user-plus', disabled: saving, onPress: () => setWhitelistDialogOpen(true) }
+            : activeTab === 'simulate'
+              ? { key: 'evaluate', label: 'Evaluate', icon: 'play', disabled: !simIp.trim(), onPress: handleEvaluate }
+              : undefined;
+
+  const screenState: AdminScreenState = loading
+    ? { kind: 'loading' }
+    : !settings
+      ? { kind: 'error', title: 'Security settings unavailable', message: loadError || 'Security settings could not be loaded.' }
+      : { kind: 'ready' };
+
+  const unsavedBanner = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: pending.border, backgroundColor: pending.soft }}>
+      <Icon name="alert-circle" size={16} color={pending.text} />
+      <Text style={[type.body, { flex: 1, color: pending.text }]}>Unsaved changes. Tap Save to apply them.</Text>
+    </View>
+  );
+
+  const renderRegion = (current: SecurityAccessSettings) => {
+    const isBlocklist = current.regionPolicy.mode === 'block_selected';
+    const presets = REGIONS.filter((region) => !current.regionPolicy.countries.includes(region.code));
     return (
-      <View style={{ alignItems: 'center', padding: 28 }}>
-        <Ionicons name="warning-outline" size={34} color={colors.destructive} />
-        <Text style={{ marginTop: 10, textAlign: 'center', color: colors.destructiveText }}>
-          {loadError || 'Security settings could not be loaded.'}
-        </Text>
-        <TouchableOpacity
-          accessibilityRole="button"
-          onPress={() => void loadSettings()}
-          style={{ marginTop: 14, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, backgroundColor: colors.accent }}
-        >
-          <Text style={{ color: colors.onAccent, fontWeight: '800' }}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+      <>
+        {regionDirty ? unsavedBanner : null}
+        <AdminSection title="Geographic enforcement policy">
+          <View accessibilityRole="radiogroup" style={{ gap: space.sm }}>
+            {REGION_MODES.map((option) => (
+              <ChoiceRow
+                key={option.mode}
+                label={option.title}
+                description={option.description}
+                selected={current.regionPolicy.mode === option.mode}
+                onPress={() => setSettings({ ...current, regionPolicy: { ...current.regionPolicy, mode: option.mode } })}
+              />
+            ))}
+          </View>
+        </AdminSection>
 
-  return (
-    <View className="space-y-4">
-      {/* Sub-tab navigation */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2">
-        {(
-          [
-            { id: 'region' as const, label: '🌍 Region Blocking' },
-            { id: 'ip' as const, label: '🔒 IP Rules' },
-            { id: 'whitelist' as const, label: '⭐ Whitelist Bypass' },
-            { id: 'ratelimit' as const, label: '⚡ Rate Limits' },
-            { id: 'simulate' as const, label: '🧪 Test Rule' },
-            { id: 'monitoring' as const, label: '🛡️ Monitoring' },
-          ]
-        ).map((tab) => (
-          <TouchableOpacity
-            key={tab.id}
-            onPress={() => {
-              setActiveTab(tab.id);
-              if (tab.id === 'monitoring') void loadMonitoring();
-            }}
-            style={{
-              marginRight: 8,
-              borderRadius: 14,
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              backgroundColor: activeTab === tab.id ? colors.accent : colors.control,
-            }}
+        {current.regionPolicy.mode !== 'allow_all' ? (
+          <AdminSection
+            title={isBlocklist ? 'Blocked countries' : 'Allowed countries'}
+            description={`${current.regionPolicy.countries.length} selected`}
+            action={{ label: 'Add country', onPress: () => setCountryPicker('region') }}
           >
-            <Text
-              style={{
-                color: activeTab === tab.id ? colors.onAccent : colors.secondaryText,
-                fontSize: 12,
-                fontWeight: '800',
-              }}
-            >
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* 1. Region Blocking */}
-      {activeTab === 'region' && (
-        <View className="space-y-4">
-          <View
-            style={{
-              backgroundColor: colors.elevated,
-              borderColor: colors.border,
-              borderWidth: 1,
-              borderRadius: 18,
-              padding: 16,
-            }}
-          >
-            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14, marginBottom: 10 }}>
-              Geographic Enforcement Policy
-            </Text>
-
-            {(
-              [
-                { mode: 'allow_all' as RegionPolicyMode, title: 'Global Access (Allow All)', desc: 'Access permitted from all countries.' },
-                { mode: 'allow_selected_only' as RegionPolicyMode, title: 'Allow Selected Only', desc: 'Strictly restrict platform access to selected countries (e.g. Trinidad & Tobago).' },
-                { mode: 'block_selected' as RegionPolicyMode, title: 'Block Selected Countries', desc: 'Allow all countries except those marked as blocked.' },
-              ]
-            ).map((opt) => {
-              const isSelected = settings.regionPolicy.mode === opt.mode;
-              return (
-                <TouchableOpacity
-                  key={opt.mode}
-                  onPress={() =>
-                    setSettings({
-                      ...settings,
-                      regionPolicy: { ...settings.regionPolicy, mode: opt.mode },
-                    })
-                  }
-                  style={{
-                    backgroundColor: isSelected
-                      ? (isDark ? '#064e3b' : '#ecfdf5')
-                      : (isDark ? '#18181b' : '#fafafa'),
-                    borderColor: isSelected ? '#10b981' : colors.border,
-                    borderWidth: 1,
-                    borderRadius: 14,
-                    padding: 12,
-                    marginBottom: 8,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View
-                      style={{
-                        width: 16,
-                        height: 16,
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: isSelected ? '#10b981' : colors.mutedText,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginRight: 10,
-                      }}
-                    >
-                      {isSelected && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#10b981' }} />}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
-                        {opt.title}
-                      </Text>
-                      <Text style={{ color: colors.mutedText, fontSize: 11, marginTop: 2 }}>
-                        {opt.desc}
-                      </Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-
-            {settings.regionPolicy.mode !== 'allow_all' && (
-              <View style={{ marginTop: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
-                {/* Custom Blocked Notice */}
-                <View style={{ marginBottom: 12 }}>
-                  <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
-                    CUSTOM BLOCKED NOTICE
-                  </Text>
-                  <TextInput
-                    value={settings.regionPolicy.blockedMessage || ''}
-                    onChangeText={(text) =>
-                      setSettings({
-                        ...settings,
-                        regionPolicy: { ...settings.regionPolicy, blockedMessage: text },
-                      })
-                    }
-                    placeholder="Access is currently restricted in your geographic region."
-                    placeholderTextColor={colors.mutedText}
-                    style={{
-                      backgroundColor: colors.input,
-                      borderColor: colors.border,
-                      borderWidth: 1,
-                      borderRadius: 12,
-                      padding: 10,
-                      color: colors.text,
-                      fontSize: 12,
-                    }}
+            {current.regionPolicy.countries.length ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+                {current.regionPolicy.countries.map((code) => (
+                  <Chip
+                    key={code}
+                    label={`${getCountryFlagEmoji(code)} ${code}`}
+                    tone={isBlocklist ? 'danger' : 'positive'}
+                    icon="x"
+                    accessibilityLabel={`Remove ${code}`}
+                    onPress={() => handleToggleCountry(code)}
                   />
-                </View>
-
-                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 12, marginBottom: 8, textTransform: 'uppercase' }}>
-                  Select Countries for {settings.regionPolicy.mode === 'allow_selected_only' ? 'Allowlist' : 'Blocklist'}:
-                </Text>
-
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                  {REGIONS.map((reg) => {
-                    const isSelected = settings.regionPolicy.countries.includes(reg.code);
-                    return (
-                      <TouchableOpacity
-                        key={reg.code}
-                        onPress={() => handleToggleCountry(reg.code)}
-                        style={{
-                          paddingHorizontal: 12,
-                          paddingVertical: 7,
-                          borderRadius: 12,
-                          backgroundColor: isSelected ? '#10b981' : colors.control,
-                          marginBottom: 6,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: isSelected ? '#ffffff' : colors.text,
-                            fontWeight: '700',
-                            fontSize: 12,
-                          }}
-                        >
-                          {reg.name} {isSelected ? '✓' : '+'}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-
-                  <TouchableOpacity
-                    onPress={() => setIsCountryPickerVisible(true)}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 7,
-                      borderRadius: 12,
-                      backgroundColor: colors.control,
-                      borderWidth: 1,
-                      borderColor: '#10b981',
-                      marginBottom: 6,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 4,
-                    }}
-                  >
-                    <Ionicons name="search-outline" size={13} color="#10b981" />
-                    <Text style={{ color: '#10b981', fontWeight: '700', fontSize: 12 }}>
-                      + Pick Any Country…
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* CountryPicker Modal Component */}
-                <CountryPickerModal
-                  visible={isCountryPickerVisible}
-                  onClose={() => setIsCountryPickerVisible(false)}
-                  selectedCountries={settings.regionPolicy.countries}
-                  onSelectCountry={(selectedCode) => {
-                    const normalized = selectedCode.toUpperCase();
-                    if (!settings.regionPolicy.countries.includes(normalized)) {
-                      setSettings({
-                        ...settings,
-                        regionPolicy: {
-                          ...settings.regionPolicy,
-                          countries: [...settings.regionPolicy.countries, normalized],
-                        },
-                      });
-                    }
-                  }}
-                />
-
-                {/* Active Selected Countries List */}
-                <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '700', marginBottom: 6 }}>
-                  ACTIVE REGIONS ({settings.regionPolicy.countries.length})
-                </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {settings.regionPolicy.countries.map((code) => (
-                    <View
-                      key={code}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6,
-                        paddingHorizontal: 10,
-                        paddingVertical: 5,
-                        borderRadius: 10,
-                        backgroundColor:
-                          settings.regionPolicy.mode === 'block_selected'
-                            ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#fee2e2')
-                            : (isDark ? 'rgba(16, 185, 129, 0.2)' : '#d1fae5'),
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: '700',
-                          color: settings.regionPolicy.mode === 'block_selected' ? '#ef4444' : '#10b981',
-                        }}
-                      >
-                        {getCountryFlagEmoji(code)} {code}
-                      </Text>
-                      <TouchableOpacity onPress={() => handleToggleCountry(code)}>
-                        <Ionicons
-                          name="close-circle"
-                          size={14}
-                          color={settings.regionPolicy.mode === 'block_selected' ? '#ef4444' : '#10b981'}
-                        />
-                      </TouchableOpacity>
-                    </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={[type.meta, { color: colors.mutedText }]}>No countries selected yet.</Text>
+            )}
+            {presets.length ? (
+              <View style={{ gap: space.sm }}>
+                <Text style={[type.label, { color: colors.mutedText }]}>Quick add</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+                  {presets.map((region) => (
+                    <Chip
+                      key={region.code}
+                      label={`${getCountryFlagEmoji(region.code)} ${region.name}`}
+                      tone="neutral"
+                      icon="plus"
+                      selected={false}
+                      accessibilityLabel={`Add ${region.name}`}
+                      onPress={() => handleToggleCountry(region.code)}
+                    />
                   ))}
                 </View>
               </View>
-            )}
-
-            <TouchableOpacity
-              onPress={() => void handleSave(settings)}
-              disabled={saving}
-              style={{
-                marginTop: 14,
-                backgroundColor: '#10b981',
-                paddingVertical: 12,
-                borderRadius: 14,
-                alignItems: 'center',
-              }}
-            >
-              {saving ? (
-                <ActivityIndicator color="#ffffff" size="small" />
-              ) : (
-                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13 }}>
-                  Save Region Settings
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* 2. IP Rules */}
-      {activeTab === 'ip' && (
-        <View className="space-y-4">
-          <View
-            style={{
-              backgroundColor: colors.elevated,
-              borderColor: colors.border,
-              borderWidth: 1,
-              borderRadius: 18,
-              padding: 16,
-            }}
-          >
-            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14, marginBottom: 8 }}>
-              Add IP Access Rule
-            </Text>
-
-            {/* Whitelist Override Explanatory Card */}
-            <View
-              style={{
-                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5',
-                borderColor: '#10b981',
-                borderWidth: 1,
-                borderRadius: 14,
-                padding: 12,
-                marginBottom: 10,
-              }}
-            >
-              <Text style={{ color: '#10b981', fontWeight: '800', fontSize: 11 }}>
-                ⭐ WHITELIST OVERRIDES REGION BLOCKING
-              </Text>
-              <Text style={{ color: colors.mutedText, fontSize: 11, marginTop: 2 }}>
-                Whitelisted IPs allow users to connect to Ourlime even if their country is blocked. Blocklist denies all traffic unconditionally.
-              </Text>
-            </View>
-
-            <TextInput
-              value={newIp}
-              onChangeText={setNewIp}
-              placeholder="IP Address (e.g. 190.58.12.44)"
-              placeholderTextColor={colors.mutedText}
-              style={{
-                backgroundColor: colors.input,
-                borderColor: colors.border,
-                borderWidth: 1,
-                borderRadius: 12,
-                padding: 10,
-                color: colors.text,
-                fontSize: 12,
-                marginBottom: 8,
-              }}
-            />
-
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-              <TouchableOpacity
-                onPress={() => setNewIpType('whitelist')}
-                style={{
-                  flex: 1,
-                  paddingVertical: 8,
-                  borderRadius: 10,
-                  alignItems: 'center',
-                  backgroundColor: newIpType === 'whitelist' ? '#10b981' : colors.control,
-                }}
-              >
-                <Text style={{ color: newIpType === 'whitelist' ? '#ffffff' : colors.text, fontWeight: '700', fontSize: 11 }}>
-                  Whitelist (Allow)
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setNewIpType('blocklist')}
-                style={{
-                  flex: 1,
-                  paddingVertical: 8,
-                  borderRadius: 10,
-                  alignItems: 'center',
-                  backgroundColor: newIpType === 'blocklist' ? '#ef4444' : colors.control,
-                }}
-              >
-                <Text style={{ color: newIpType === 'blocklist' ? '#ffffff' : colors.text, fontWeight: '700', fontSize: 11 }}>
-                  Blocklist (Deny)
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              value={newIpLabel}
-              onChangeText={setNewIpLabel}
-              placeholder="Label / Note (optional)"
-              placeholderTextColor={colors.mutedText}
-              style={{
-                backgroundColor: colors.input,
-                borderColor: colors.border,
-                borderWidth: 1,
-                borderRadius: 12,
-                padding: 10,
-                color: colors.text,
-                fontSize: 12,
-                marginBottom: 10,
-              }}
-            />
-
-            <TouchableOpacity
-              onPress={() => void handleAddIpRule()}
-              disabled={saving}
-              style={{
-                backgroundColor: colors.accent,
-                paddingVertical: 11,
-                borderRadius: 12,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: colors.onAccent, fontWeight: '800', fontSize: 12 }}>
-                Add Rule
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* IP Rules List */}
-          <View
-            style={{
-              backgroundColor: colors.elevated,
-              borderColor: colors.border,
-              borderWidth: 1,
-              borderRadius: 18,
-              padding: 16,
-            }}
-          >
-            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14, marginBottom: 8 }}>
-              Active IP Rules ({settings.ipRules.length})
-            </Text>
-            {settings.ipRules.length === 0 ? (
-              <Text style={{ color: colors.mutedText, fontSize: 12 }}>No custom IP rules added.</Text>
-            ) : (
-              settings.ipRules.map((rule) => (
-                <View
-                  key={rule.id}
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    paddingVertical: 8,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.border,
-                  }}
-                >
-                  <View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text
-                        style={{
-                          color: rule.type === 'whitelist' ? '#10b981' : '#ef4444',
-                          fontWeight: '800',
-                          fontSize: 10,
-                          textTransform: 'uppercase',
-                          marginRight: 6,
-                        }}
-                      >
-                        [{rule.type}]
-                      </Text>
-                      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
-                        {rule.ip}
-                      </Text>
-                    </View>
-                    {rule.label && (
-                      <Text style={{ color: colors.mutedText, fontSize: 11, marginTop: 1 }}>
-                        {rule.label}
-                      </Text>
-                    )}
-                  </View>
-                  <TouchableOpacity disabled={saving} accessibilityLabel={`Remove IP rule ${rule.ip}`} onPress={() => setPendingRemoval({ kind: 'ip', id: rule.id, label: rule.ip })}>
-                    <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                  </TouchableOpacity>
-                </View>
-              ))
-            )}
-          </View>
-        </View>
-      )}
-
-      {/* 3. Account Whitelist */}
-      {activeTab === 'whitelist' && (
-        <View className="space-y-4">
-          <View
-            style={{
-              backgroundColor: colors.elevated,
-              borderColor: colors.border,
-              borderWidth: 1,
-              borderRadius: 18,
-              padding: 16,
-            }}
-          >
-            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14, marginBottom: 4 }}>
-              Account Whitelist Bypass
-            </Text>
-            <Text style={{ color: colors.mutedText, fontSize: 11, marginBottom: 10 }}>
-              Whitelisted accounts can bypass all region and IP locks globally.
-            </Text>
-
-            <TextInput
-              value={newUserId}
-              onChangeText={setNewUserId}
-              placeholder="User ID (UID)"
-              placeholderTextColor={colors.mutedText}
-              style={{
-                backgroundColor: colors.input,
-                borderColor: colors.border,
-                borderWidth: 1,
-                borderRadius: 12,
-                padding: 10,
-                color: colors.text,
-                fontSize: 12,
-                marginBottom: 8,
-              }}
-            />
-
-            <TextInput
-              value={newUserEmail}
-              onChangeText={setNewUserEmail}
-              placeholder="User Email"
-              placeholderTextColor={colors.mutedText}
-              style={{
-                backgroundColor: colors.input,
-                borderColor: colors.border,
-                borderWidth: 1,
-                borderRadius: 12,
-                padding: 10,
-                color: colors.text,
-                fontSize: 12,
-                marginBottom: 8,
-              }}
-            />
-
-            <TextInput
-              value={newUserReason}
-              onChangeText={setNewUserReason}
-              placeholder="Reason for exception (e.g. Remote Admin)"
-              placeholderTextColor={colors.mutedText}
-              style={{
-                backgroundColor: colors.input,
-                borderColor: colors.border,
-                borderWidth: 1,
-                borderRadius: 12,
-                padding: 10,
-                color: colors.text,
-                fontSize: 12,
-                marginBottom: 10,
-              }}
-            />
-
-            <TouchableOpacity
-              onPress={() => void handleAddUserWhitelist()}
-              disabled={saving}
-              style={{
-                backgroundColor: '#10b981',
-                paddingVertical: 11,
-                borderRadius: 12,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 12 }}>
-                Add Whitelist Bypass
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* List */}
-          <View
-            style={{
-              backgroundColor: colors.elevated,
-              borderColor: colors.border,
-              borderWidth: 1,
-              borderRadius: 18,
-              padding: 16,
-            }}
-          >
-            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14, marginBottom: 8 }}>
-              Whitelisted Accounts ({settings.userWhitelist.length})
-            </Text>
-            {settings.userWhitelist.length === 0 ? (
-              <Text style={{ color: colors.mutedText, fontSize: 12 }}>No whitelisted accounts configured.</Text>
-            ) : (
-              settings.userWhitelist.map((entry) => (
-                <View
-                  key={entry.userId}
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    paddingVertical: 8,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.border,
-                  }}
-                >
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
-                      {entry.email || entry.userId}
-                    </Text>
-                    <Text style={{ color: colors.mutedText, fontSize: 11, marginTop: 1 }}>
-                      Reason: {entry.reason}
-                    </Text>
-                  </View>
-                  <TouchableOpacity disabled={saving} accessibilityLabel={`Remove ${entry.email || entry.userId} from the whitelist`} onPress={() => setPendingRemoval({ kind: 'whitelist', id: entry.userId, label: entry.email || entry.userId })}>
-                    <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                  </TouchableOpacity>
-                </View>
-              ))
-            )}
-          </View>
-        </View>
-      )}
-
-      {/* 4. Rate Limiting */}
-      {activeTab === 'ratelimit' && (
-        <View
-          style={{
-            backgroundColor: colors.elevated,
-            borderColor: colors.border,
-            borderWidth: 1,
-            borderRadius: 18,
-            padding: 16,
-          }}
-          className="space-y-4"
-        >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View>
-              <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>
-                API Rate Limiting Engine
-              </Text>
-              <Text style={{ color: colors.mutedText, fontSize: 11, marginTop: 2 }}>
-                Prevent automated brute-force attacks and abuse.
-              </Text>
-            </View>
-            <Switch
-              value={settings.rateLimits.enabled}
-              onValueChange={(val) =>
-                setSettings({
-                  ...settings,
-                  rateLimits: { ...settings.rateLimits, enabled: val },
-                })
-              }
-              trackColor={{ false: '#71717a', true: '#10b981' }}
-            />
-          </View>
-
-          <View style={{ gap: 12, marginTop: 10 }}>
-            <View>
-              <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
-                Auth Requests (per min / IP)
-              </Text>
+            ) : null}
+            <View style={{ gap: space.xs }}>
+              <Text style={[type.label, { color: colors.mutedText }]}>Custom blocked notice</Text>
               <TextInput
-                value={String(settings.rateLimits.authPerMinute)}
-                keyboardType="numeric"
-                onChangeText={(val) =>
-                  setSettings({
-                    ...settings,
-                    rateLimits: { ...settings.rateLimits, authPerMinute: parseInt(val) || 15 },
-                  })
-                }
-                style={{
-                  backgroundColor: colors.input,
-                  borderColor: colors.border,
-                  borderWidth: 1,
-                  borderRadius: 12,
-                  padding: 10,
-                  color: colors.text,
-                  fontSize: 12,
-                }}
+                value={current.regionPolicy.blockedMessage || ''}
+                onChangeText={(text) => setSettings({ ...current, regionPolicy: { ...current.regionPolicy, blockedMessage: text } })}
+                accessibilityLabel="Custom blocked notice"
+                placeholder="Access is currently restricted in your geographic region."
+                placeholderTextColor={colors.mutedText}
+                style={getInputStyle(colors)}
               />
             </View>
+          </AdminSection>
+        ) : null}
+      </>
+    );
+  };
 
-            <View>
-              <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
-                Post Creation (per min / User)
-              </Text>
-              <TextInput
-                value={String(settings.rateLimits.postsPerMinute)}
-                keyboardType="numeric"
-                onChangeText={(val) =>
-                  setSettings({
-                    ...settings,
-                    rateLimits: { ...settings.rateLimits, postsPerMinute: parseInt(val) || 30 },
-                  })
-                }
-                style={{
-                  backgroundColor: colors.input,
-                  borderColor: colors.border,
-                  borderWidth: 1,
-                  borderRadius: 12,
-                  padding: 10,
-                  color: colors.text,
-                  fontSize: 12,
-                }}
-              />
-            </View>
-
-            <View>
-              <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
-                Comment Creation (per min / User)
-              </Text>
-              <TextInput
-                value={String(settings.rateLimits.commentsPerMinute)}
-                keyboardType="numeric"
-                onChangeText={(val) =>
-                  setSettings({
-                    ...settings,
-                    rateLimits: { ...settings.rateLimits, commentsPerMinute: parseInt(val) || 45 },
-                  })
-                }
-                style={{
-                  backgroundColor: colors.input,
-                  borderColor: colors.border,
-                  borderWidth: 1,
-                  borderRadius: 12,
-                  padding: 10,
-                  color: colors.text,
-                  fontSize: 12,
-                }}
-              />
-            </View>
-
-            <View>
-              <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
-                General API (per min / IP)
-              </Text>
-              <TextInput
-                value={String(settings.rateLimits.generalPerMinute)}
-                keyboardType="numeric"
-                onChangeText={(val) =>
-                  setSettings({
-                    ...settings,
-                    rateLimits: { ...settings.rateLimits, generalPerMinute: parseInt(val) || 120 },
-                  })
-                }
-                style={{
-                  backgroundColor: colors.input,
-                  borderColor: colors.border,
-                  borderWidth: 1,
-                  borderRadius: 12,
-                  padding: 10,
-                  color: colors.text,
-                  fontSize: 12,
-                }}
-              />
-            </View>
-
-            <TouchableOpacity
-              onPress={() => void handleSave(settings)}
-              disabled={saving}
-              style={{
-                marginTop: 10,
-                backgroundColor: '#10b981',
-                paddingVertical: 12,
-                borderRadius: 14,
-                alignItems: 'center',
-              }}
-            >
-              {saving ? (
-                <ActivityIndicator color="#ffffff" size="small" />
-              ) : (
-                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13 }}>
-                  Save Rate Limit Configuration
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
+  const renderIpRules = (current: SecurityAccessSettings) => (
+    <>
+      <AdminSection title="Whitelist overrides region blocking" tone="positive">
+        <Text style={[type.body, { color: colors.secondaryText }]}>
+          Whitelisted IPs can connect to Ourlime even if their country is blocked. The blocklist denies all traffic unconditionally.
+        </Text>
+      </AdminSection>
+      <Text style={[type.label, { color: colors.mutedText }]}>Active IP rules ({current.ipRules.length})</Text>
+      {current.ipRules.length === 0 ? (
+        <AdminState kind="empty" icon="lock" title="No custom IP rules added." action={{ key: 'add', label: 'Add rule', icon: 'plus', onPress: () => setIpDialogOpen(true) }} />
+      ) : (
+        <View style={{ gap: space.sm }}>
+          {current.ipRules.map((rule) => (
+            <AdminListRow
+              key={rule.id}
+              title={rule.ip}
+              subtitle={rule.label}
+              leading={{ kind: 'icon', name: rule.type === 'whitelist' ? 'unlock' : 'lock', tone: rule.type === 'whitelist' ? 'positive' : 'danger' }}
+              status={{ label: rule.type === 'whitelist' ? 'Allow' : 'Deny', tone: rule.type === 'whitelist' ? 'positive' : 'danger' }}
+              overflowActions={[
+                { key: 'remove', label: 'Remove rule', icon: 'trash-2', tone: 'danger', disabled: saving, onPress: () => setPendingRemoval({ kind: 'ip', id: rule.id, label: rule.ip }) },
+              ]}
+            />
+          ))}
         </View>
       )}
+    </>
+  );
 
-      {/* 5. Access Rule Simulator */}
-      {activeTab === 'simulate' && (
-        <View className="space-y-4">
-          <View
-            style={{
-              backgroundColor: colors.elevated,
-              borderColor: colors.border,
-              borderWidth: 1,
-              borderRadius: 18,
-              padding: 16,
-            }}
-          >
-            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14, marginBottom: 4 }}>
-              Access Rule Simulator
-            </Text>
-            <Text style={{ color: colors.mutedText, fontSize: 11, marginBottom: 12 }}>
-              Test any IP and Country to see if access will be granted or blocked based on active rules.
-            </Text>
+  const renderWhitelist = (current: SecurityAccessSettings) => (
+    <>
+      <Text style={[type.body, { color: colors.secondaryText }]}>Whitelisted accounts can bypass all region and IP locks globally.</Text>
+      <Text style={[type.label, { color: colors.mutedText }]}>Whitelisted accounts ({current.userWhitelist.length})</Text>
+      {current.userWhitelist.length === 0 ? (
+        <AdminState kind="empty" icon="star" title="No whitelisted accounts configured." action={{ key: 'add', label: 'Add account', icon: 'user-plus', onPress: () => setWhitelistDialogOpen(true) }} />
+      ) : (
+        <View style={{ gap: space.sm }}>
+          {current.userWhitelist.map((entry) => {
+            const label = entry.email || entry.userId;
+            return (
+              <AdminListRow
+                key={entry.userId}
+                title={label}
+                subtitle={entry.reason ? `Reason: ${entry.reason}` : undefined}
+                meta={entry.email ? entry.userId : undefined}
+                leading={{ kind: 'icon', name: 'star', tone: 'positive' }}
+                overflowActions={[
+                  { key: 'remove', label: 'Remove from whitelist', icon: 'trash-2', tone: 'danger', disabled: saving, onPress: () => setPendingRemoval({ kind: 'whitelist', id: entry.userId, label }) },
+                ]}
+              />
+            );
+          })}
+        </View>
+      )}
+    </>
+  );
 
-            <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
-              TEST IP ADDRESS
-            </Text>
+  const renderRateLimits = (current: SecurityAccessSettings) => (
+    <>
+      {rateDirty ? unsavedBanner : null}
+      <AdminSection title="API rate limiting" description="Prevent automated brute-force attacks and abuse.">
+        <View style={{ minHeight: ADMIN_MIN_TOUCH, flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          <Text style={[type.bodyStrong, { flex: 1, color: colors.text }]}>Rate limiting enabled</Text>
+          <Switch
+            value={current.rateLimits.enabled}
+            accessibilityLabel="Rate limiting enabled"
+            onValueChange={(enabled) => setSettings({ ...current, rateLimits: { ...current.rateLimits, enabled } })}
+            trackColor={{ false: colors.border, true: colors.accent }}
+          />
+        </View>
+        {RATE_LIMIT_FIELDS.map((field) => (
+          <View key={field.key} style={{ gap: space.xs }}>
+            <Text style={[type.label, { color: colors.mutedText }]}>{field.label}</Text>
+            <TextInput
+              value={String(current.rateLimits[field.key])}
+              keyboardType="numeric"
+              accessibilityLabel={field.label}
+              onChangeText={(value) => setSettings({ ...current, rateLimits: { ...current.rateLimits, [field.key]: parseInt(value, 10) || field.fallback } })}
+              style={getInputStyle(colors)}
+            />
+          </View>
+        ))}
+      </AdminSection>
+    </>
+  );
+
+  const renderSimulator = () => {
+    const resultTone = simResult ? getAdminTone(colors, simResult.allowed ? 'positive' : 'danger') : null;
+    const isPreset = REGIONS.some((region) => region.code === simCountry);
+    return (
+      <>
+        <AdminSection title="Access rule simulator" description="Test any IP and country against the active rules. Unsaved region edits are included.">
+          <View style={{ gap: space.xs }}>
+            <Text style={[type.label, { color: colors.mutedText }]}>Test IP address</Text>
             <TextInput
               value={simIp}
               onChangeText={setSimIp}
+              onSubmitEditing={handleEvaluate}
+              returnKeyType="go"
+              autoCapitalize="none"
+              autoCorrect={false}
+              accessibilityLabel="Test IP address"
               placeholder="e.g. 190.58.12.44"
               placeholderTextColor={colors.mutedText}
-              style={{
-                backgroundColor: colors.input,
-                borderColor: colors.border,
-                borderWidth: 1,
-                borderRadius: 12,
-                padding: 10,
-                color: colors.text,
-                fontSize: 12,
-                marginBottom: 10,
-              }}
+              style={getInputStyle(colors)}
             />
-
-            <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
-              TEST COUNTRY CODE
-            </Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-              {REGIONS.map((reg) => {
-                const isSelected = simCountry === reg.code;
-                return (
-                  <TouchableOpacity
-                    key={reg.code}
-                    onPress={() => setSimCountry(reg.code)}
-                    style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                      borderRadius: 10,
-                      backgroundColor: isSelected ? colors.accent : colors.control,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: isSelected ? colors.onAccent : colors.text,
-                        fontWeight: '700',
-                        fontSize: 11,
-                      }}
-                    >
-                      {reg.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <TouchableOpacity
-              onPress={() => {
-                if (!simIp.trim() || !settings) return;
-                const result = evaluateSecurityAccess(settings, {
-                  ip: simIp.trim(),
-                  countryCode: simCountry.trim(),
-                });
-                setSimResult(result);
-              }}
-              style={{
-                backgroundColor: colors.accent,
-                paddingVertical: 12,
-                borderRadius: 14,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: colors.onAccent, fontWeight: '800', fontSize: 13 }}>
-                Evaluate Rule
-              </Text>
-            </TouchableOpacity>
-
-            {simResult && (
-              <View
-                style={{
-                  marginTop: 14,
-                  padding: 14,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  backgroundColor: simResult.allowed
-                    ? (isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5')
-                    : (isDark ? 'rgba(239, 68, 68, 0.15)' : '#fee2e2'),
-                  borderColor: simResult.allowed ? '#10b981' : '#ef4444',
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <Ionicons
-                    name={simResult.allowed ? 'checkmark-circle' : 'close-circle'}
-                    size={18}
-                    color={simResult.allowed ? '#10b981' : '#ef4444'}
-                  />
-                  <Text
-                    style={{
-                      fontWeight: '800',
-                      fontSize: 13,
-                      color: simResult.allowed ? '#10b981' : '#ef4444',
-                    }}
-                  >
-                    {simResult.allowed ? 'ACCESS GRANTED' : 'ACCESS BLOCKED'}
-                  </Text>
-                  {simResult.bypass && (
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        fontWeight: '700',
-                        color: '#10b981',
-                        backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#d1fae5',
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        borderRadius: 6,
-                      }}
-                    >
-                      WHITELIST OVERRIDE
-                    </Text>
-                  )}
-                </View>
-                <Text style={{ fontSize: 11, color: colors.text, marginTop: 2 }}>
-                  Matched Rule: {simResult.ruleMatched}
-                  {simResult.matchedRuleDetail ? ` — ${simResult.matchedRuleDetail}` : ''}
-                </Text>
-                {simResult.reason && (
-                  <Text style={{ fontSize: 11, color: colors.mutedText, marginTop: 2 }}>
-                    Reason: {simResult.reason}
-                  </Text>
-                )}
-              </View>
-            )}
           </View>
-        </View>
-      )}
-
-      {/* 6. Security Monitoring & Audit Log */}
-      {activeTab === 'monitoring' && (
-        <View style={{ backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 16 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>Security Monitoring & Audit Log</Text>
-            <TouchableOpacity onPress={() => void loadMonitoring()} accessibilityLabel="Refresh monitoring" style={{ padding: 6 }}>
-              <Ionicons name="refresh" size={18} color={colors.icon} />
-            </TouchableOpacity>
-          </View>
-          {monitoringLoading && !monitoring ? (
-            <View style={{ marginTop: 12 }}>
-              <Skeleton height={64} borderRadius={14} />
-              {[0, 1, 2].map((rowIndex) => (
-                <Skeleton key={rowIndex} height={52} borderRadius={12} style={{ marginTop: 8 }} />
+          <View style={{ gap: space.sm }}>
+            <Text style={[type.label, { color: colors.mutedText }]}>Test country</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+              {REGIONS.map((region) => (
+                <Chip
+                  key={region.code}
+                  label={`${getCountryFlagEmoji(region.code)} ${region.name}`}
+                  tone="positive"
+                  icon="check"
+                  selected={simCountry === region.code}
+                  accessibilityLabel={`Test from ${region.name}`}
+                  onPress={() => setSimCountry(region.code)}
+                />
               ))}
+              {!isPreset ? <Chip label={`${getCountryFlagEmoji(simCountry)} ${simCountry}`} tone="positive" icon="check" accessibilityLabel={`Test from ${simCountry}`} onPress={() => setCountryPicker('simulate')} /> : null}
             </View>
-          ) : (
-            <>
-              <View style={{ marginTop: 12, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
-                <Text style={{ color: colors.mutedText, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>Active distributed rate buckets</Text>
-                <Text style={{ marginTop: 4, color: colors.text, fontSize: 22, fontWeight: '900' }}>
-                  {monitoring?.activeRateBuckets ?? '—'}
-                </Text>
-                {monitoring && monitoring.activeRateBuckets === null ? (
-                  <Text style={{ marginTop: 2, color: colors.mutedText, fontSize: 11 }}>Bucket counts are only visible on ourlime.com.</Text>
-                ) : null}
-              </View>
-              <View style={{ marginTop: 10 }}>
-                {!monitoring || monitoring.recentAudit.length === 0 ? (
-                  <Text style={{ color: colors.mutedText, fontSize: 12 }}>No recent security audit events.</Text>
-                ) : (
-                  monitoring.recentAudit.map((entry) => (
-                    <View key={entry.id} style={{ marginBottom: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
-                      <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13, textTransform: 'capitalize' }}>{entry.action.replace(/_/g, ' ')}</Text>
-                      <Text style={{ marginTop: 2, color: colors.mutedText, fontSize: 11 }} selectable>
-                        Admin: {entry.adminId || 'system'}
-                        {entry.targetUserId ? ` · Target: ${entry.targetUserId}` : ''}
-                      </Text>
-                      <Text style={{ marginTop: 2, color: colors.mutedText, fontSize: 11 }}>
-                        {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : 'Pending timestamp'}
-                      </Text>
-                    </View>
-                  ))
-                )}
-              </View>
-            </>
-          )}
-        </View>
-      )}
+            <AdminButton label="Other country" icon="search" tone="neutral" emphasis="ghost" onPress={() => setCountryPicker('simulate')} style={{ alignSelf: 'flex-start' }} />
+          </View>
+          <AdminButton label="Evaluate rule" icon="play" tone="positive" emphasis="primary" fullWidth disabled={!simIp.trim()} onPress={handleEvaluate} />
+        </AdminSection>
+
+        {simResult && resultTone ? (
+          <View style={{ gap: space.sm, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: resultTone.border, backgroundColor: resultTone.soft }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.sm }}>
+              <Icon name={simResult.allowed ? 'check-circle' : 'x-circle'} size={18} color={resultTone.text} />
+              <Text style={[type.section, { color: resultTone.text }]}>{simResult.allowed ? 'Access granted' : 'Access blocked'}</Text>
+              {simResult.bypass ? <AdminStatusPill label="Whitelist override" tone="positive" /> : null}
+            </View>
+            <Text style={[type.body, { color: colors.text }]}>
+              Matched rule: {simResult.ruleMatched}
+              {simResult.matchedRuleDetail ? ` — ${simResult.matchedRuleDetail}` : ''}
+            </Text>
+            {simResult.reason ? <Text style={[type.meta, { color: colors.secondaryText }]}>Reason: {simResult.reason}</Text> : null}
+          </View>
+        ) : null}
+      </>
+    );
+  };
+
+  const renderMonitoring = () => {
+    if (monitoringError && !monitoring) {
+      return <AdminState kind="error" title="Monitoring unavailable" message={monitoringError} onRetry={() => void loadMonitoring()} retrying={monitoringLoading} />;
+    }
+    if (monitoringLoading && !monitoring) return <AdminState kind="loading" variant="list" rows={4} />;
+    return (
+      <>
+        {monitoringError ? <AdminState kind="inlineError" message={monitoringError} onRetry={() => void loadMonitoring()} retrying={monitoringLoading} /> : null}
+        <AdminStatGrid>
+          <AdminStatCard
+            label="Active rate buckets"
+            value={monitoring?.activeRateBuckets ?? '—'}
+            icon="activity"
+            hint={monitoring && monitoring.activeRateBuckets === null ? 'Bucket counts are only visible on ourlime.com.' : undefined}
+            loading={monitoringLoading && !monitoring}
+          />
+        </AdminStatGrid>
+        <Text style={[type.label, { color: colors.mutedText }]}>Recent security audit</Text>
+        {!monitoring || monitoring.recentAudit.length === 0 ? (
+          <AdminState kind="empty" icon="shield" title="No recent security audit events." />
+        ) : (
+          <View style={{ gap: space.sm }}>
+            {monitoring.recentAudit.map((entry) => (
+              <AdminListRow
+                key={entry.id}
+                title={entry.action.replace(/_/g, ' ').replace(/^\w/, (letter) => letter.toUpperCase())}
+                subtitle={`Admin: ${entry.adminId || 'system'}${entry.targetUserId ? ` · Target: ${entry.targetUserId}` : ''}`}
+                meta={entry.timestamp ? new Date(entry.timestamp).toLocaleString() : 'Pending timestamp'}
+                leading={{ kind: 'icon', name: 'shield' }}
+              />
+            ))}
+          </View>
+        )}
+      </>
+    );
+  };
+
+  const renderTab = (current: SecurityAccessSettings) => {
+    switch (activeTab) {
+      case 'region':
+        return renderRegion(current);
+      case 'ip':
+        return renderIpRules(current);
+      case 'whitelist':
+        return renderWhitelist(current);
+      case 'ratelimit':
+        return renderRateLimits(current);
+      case 'simulate':
+        return renderSimulator();
+      case 'monitoring':
+      default:
+        return renderMonitoring();
+    }
+  };
+
+  return (
+    <>
+      <AdminScreen
+        title="Security"
+        subtitle="Region, IP, whitelist and rate-limit controls"
+        state={screenState}
+        onRefresh={handleRefresh}
+        refreshing={refreshing || (activeTab === 'monitoring' && monitoringLoading && Boolean(monitoring))}
+        primaryAction={primaryAction}
+        keyboardAware
+        skeleton={<SecurityWorkspaceSkeleton />}
+        toolbar={
+          <View style={{ gap: space.sm }}>
+            {TAB_ROWS.map((row) => (
+              <AdminToolbar key={row[0].value} segments={{ value: activeTab, options: row, onChange: handleTabChange }} />
+            ))}
+          </View>
+        }
+      >
+        {settings ? <View style={{ gap: space.md }}>{renderTab(settings)}</View> : null}
+      </AdminScreen>
+
+      {settings ? (
+        <CountryPickerModal
+          visible={countryPicker !== null}
+          onClose={() => setCountryPicker(null)}
+          title={countryPicker === 'simulate' ? 'Test country' : undefined}
+          selectedCountries={countryPicker === 'simulate' ? [simCountry] : settings.regionPolicy.countries}
+          onSelectCountry={(selectedCode) => {
+            const normalized = selectedCode.toUpperCase();
+            if (countryPicker === 'simulate') {
+              setSimCountry(normalized);
+              setCountryPicker(null);
+              return;
+            }
+            if (!settings.regionPolicy.countries.includes(normalized)) {
+              setSettings({ ...settings, regionPolicy: { ...settings.regionPolicy, countries: [...settings.regionPolicy.countries, normalized] } });
+            }
+          }}
+        />
+      ) : null}
 
       <AdminDialog
-        visible={Boolean(pendingRemoval) && !message}
+        visible={ipDialogOpen}
+        title="Add IP access rule"
+        description="The rule applies to everyone straight away."
+        icon="lock"
+        confirmLabel="Add rule"
+        confirmDisabled={!newIp.trim()}
+        busy={saving}
+        onConfirm={() => void handleAddIpRule()}
+        onClose={() => {
+          if (!saving) setIpDialogOpen(false);
+        }}
+      >
+        <View style={{ gap: space.md }}>
+          <View style={{ gap: space.xs }}>
+            <Text style={[type.label, { color: colors.mutedText }]}>IP address</Text>
+            <TextInput
+              value={newIp}
+              onChangeText={setNewIp}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!saving}
+              accessibilityLabel="IP address"
+              placeholder="e.g. 190.58.12.44"
+              placeholderTextColor={colors.mutedText}
+              style={getInputStyle(colors)}
+            />
+          </View>
+          <View accessibilityRole="radiogroup" style={{ gap: space.sm }}>
+            <ChoiceRow label="Whitelist (allow)" description="Overrides region blocking" selected={newIpType === 'whitelist'} disabled={saving} onPress={() => setNewIpType('whitelist')} />
+            <ChoiceRow label="Blocklist (deny)" description="Denies all traffic from this IP" tone="danger" selected={newIpType === 'blocklist'} disabled={saving} onPress={() => setNewIpType('blocklist')} />
+          </View>
+          <View style={{ gap: space.xs }}>
+            <Text style={[type.label, { color: colors.mutedText }]}>Label or note (optional)</Text>
+            <TextInput value={newIpLabel} onChangeText={setNewIpLabel} editable={!saving} accessibilityLabel="Label or note" placeholderTextColor={colors.mutedText} style={getInputStyle(colors)} />
+          </View>
+        </View>
+      </AdminDialog>
+
+      <AdminDialog
+        visible={whitelistDialogOpen}
+        title="Add whitelist bypass"
+        description="The account bypasses all region and IP locks straight away."
+        icon="star"
+        confirmLabel="Add to whitelist"
+        confirmDisabled={!newUserId.trim() && !newUserEmail.trim()}
+        busy={saving}
+        onConfirm={() => void handleAddUserWhitelist()}
+        onClose={() => {
+          if (!saving) setWhitelistDialogOpen(false);
+        }}
+      >
+        <View style={{ gap: space.md }}>
+          <View style={{ gap: space.xs }}>
+            <Text style={[type.label, { color: colors.mutedText }]}>User ID (UID)</Text>
+            <TextInput value={newUserId} onChangeText={setNewUserId} autoCapitalize="none" autoCorrect={false} editable={!saving} accessibilityLabel="User ID" placeholderTextColor={colors.mutedText} style={getInputStyle(colors)} />
+          </View>
+          <View style={{ gap: space.xs }}>
+            <Text style={[type.label, { color: colors.mutedText }]}>User email</Text>
+            <TextInput
+              value={newUserEmail}
+              onChangeText={setNewUserEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              editable={!saving}
+              accessibilityLabel="User email"
+              placeholderTextColor={colors.mutedText}
+              style={getInputStyle(colors)}
+            />
+          </View>
+          <View style={{ gap: space.xs }}>
+            <Text style={[type.label, { color: colors.mutedText }]}>Reason for exception</Text>
+            <TextInput
+              value={newUserReason}
+              onChangeText={setNewUserReason}
+              editable={!saving}
+              accessibilityLabel="Reason for exception"
+              placeholder="e.g. Remote admin"
+              placeholderTextColor={colors.mutedText}
+              style={getInputStyle(colors)}
+            />
+          </View>
+        </View>
+      </AdminDialog>
+
+      <AdminDialog
+        visible={Boolean(pendingRemoval)}
         title={pendingRemoval?.kind === 'ip' ? 'Remove this IP rule?' : 'Remove this whitelist entry?'}
         description={pendingRemoval
           ? pendingRemoval.kind === 'ip'
@@ -1182,17 +752,13 @@ export default function AdminSecurityWorkspace() {
           : undefined}
         confirmLabel="Remove"
         tone="danger"
+        icon="trash-2"
         busy={saving}
         onConfirm={() => void handleConfirmRemoval()}
-        onClose={() => setPendingRemoval(null)}
+        onClose={() => {
+          if (!saving) setPendingRemoval(null);
+        }}
       />
-      <CustomModal
-        visible={Boolean(message)}
-        title="Security & Access Controls"
-        message={message ?? ''}
-        type="info"
-        onClose={() => setMessage(null)}
-      />
-    </View>
+    </>
   );
 }

@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { Skeleton, SkeletonCircle } from '@/components/ui/Skeleton';
 import { FilterBarSkeleton, SkeletonLine, SkeletonParagraph } from '@/components/ui/WorkspaceSkeletonParts';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { adminRadius, adminSpace, getAdminTone } from '@/lib/admin/adminTokens';
 
 type PercentWidth = `${number}%`;
 
@@ -218,27 +219,22 @@ export function PageAccessSectionSkeleton(): ReactNode {
   );
 }
 
-/** Security tab (components/admin/AdminSecurityWorkspace.tsx): sub-tab pills and the Region Blocking policy card. */
+/** Security (components/admin/AdminSecurityWorkspace.tsx): the Region policy card under the mounted tab toolbar. */
 export function SecurityWorkspaceSkeleton(): ReactNode {
-  const { colors, isDark } = useAppTheme();
+  // Body only: AdminScreen keeps the Security tab toolbar mounted above it while loading.
+  const { colors } = useAppTheme();
+  const positive = getAdminTone(colors, 'positive');
   return (
-    <View>
-      <View style={{ flexDirection: 'row', marginBottom: 8, overflow: 'hidden' }}>
-        {[122, 84, 132, 104, 96].map((labelWidth, tabIndex) => (
-          <View key={labelWidth} style={{ marginRight: 8, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: tabIndex === 0 ? colors.accent : colors.control }}>
-            <SkeletonLine fontSize={12} width={labelWidth - 28} barStyle={tabIndex === 0 ? activeBarStyle : undefined} />
-          </View>
-        ))}
-      </View>
-      <View style={{ marginTop: 16, backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 16 }}>
-        <SkeletonLine fontSize={14} width={210} style={{ marginBottom: 10 }} />
+    <View style={{ padding: adminSpace.lg }}>
+      <View style={{ gap: adminSpace.md, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: adminRadius.lg, padding: adminSpace.lg }}>
+        <SkeletonLine fontSize={16} width={210} />
         {[0, 1, 2].map((optionIndex) => (
-          <View key={optionIndex} style={{ backgroundColor: optionIndex === 0 ? (isDark ? '#064e3b' : '#ecfdf5') : (isDark ? '#18181b' : '#fafafa'), borderColor: optionIndex === 0 ? '#10b981' : colors.border, borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 8 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Skeleton width={16} height={16} borderRadius={8} style={{ marginRight: 10 }} />
-              <View style={{ flex: 1 }}>
-                <SkeletonLine fontSize={13} width="58%" />
-                <SkeletonLine fontSize={11} width="86%" style={{ marginTop: 2 }} />
+          <View key={optionIndex} style={{ minHeight: 56, justifyContent: 'center', backgroundColor: optionIndex === 0 ? positive.soft : colors.surface, borderColor: optionIndex === 0 ? positive.border : colors.border, borderWidth: 1, borderRadius: adminRadius.md, paddingHorizontal: adminSpace.md, paddingVertical: adminSpace.sm }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: adminSpace.md }}>
+              <Skeleton width={20} height={20} borderRadius={adminRadius.pill} />
+              <View style={{ flex: 1, gap: adminSpace.xs }}>
+                <SkeletonLine fontSize={14} width="58%" />
+                <SkeletonLine fontSize={12} width="86%" />
               </View>
             </View>
           </View>

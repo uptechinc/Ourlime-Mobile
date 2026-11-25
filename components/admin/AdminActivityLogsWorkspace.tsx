@@ -1,22 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Modal,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import Icon from 'react-native-vector-icons/Feather';
+import { useCallback, useRef, useState } from 'react';
+import { Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { toast } from 'sonner-native';
-import AdminDialog from './AdminDialog';
-import AdminWorkspaceShell from './AdminWorkspaceShell';
-import MobileAdminDateFilter, { type MobileDateRangeValue } from './MobileAdminDateFilter';
-import MobileAdminExportModal from './MobileAdminExportModal';
-import type { MobileExportColumn } from '@/lib/services/MobileExportService';
-import { adminWorkspaceService } from '@/lib/services/AdminWorkspaceService';
+import AdminDialog from '@/components/admin/AdminDialog';
+import { ADMIN_DATE_RANGE_LABELS, resolveAdminDateRange, type AdminDateRange, type AdminDateRangePreset } from '@/components/admin/AdminFilterSheet';
+import AdminListRow from '@/components/admin/AdminListRow';
+import AdminScreen, { type AdminScreenState } from '@/components/admin/AdminScreen';
+import AdminState from '@/components/admin/AdminState';
+import AdminToolbar from '@/components/admin/AdminToolbar';
+import MobileAdminExportModal from '@/components/admin/MobileAdminExportModal';
+import { readMultiFilter, type FilterValues, type MultiFilterGroup } from '@/components/ui/FilterSheet';
+import { getAdminTone, radius, space, type, type AdminToneName } from '@/lib/admin/adminTokens';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { adminWorkspaceService } from '@/lib/services/AdminWorkspaceService';
+import type { MobileExportColumn } from '@/lib/services/MobileExportService';
 
 const MOBILE_LOG_COLUMNS: MobileExportColumn[] = [
   {
@@ -50,15 +47,8 @@ const MOBILE_LOG_COLUMNS: MobileExportColumn[] = [
   { header: 'Details', key: 'details' },
 ];
 
-const ACTION_FILTERS = [
-  'all',
-  'create',
-  'update',
-  'delete',
-  'restore',
-  'login_success',
-  'login_failed',
-] as const;
+const ACTION_OPTIONS = ['create', 'update', 'delete', 'restore', 'login_success', 'login_failed'] as const;
+const DATE_PRESETS: AdminDateRangePreset[] = ['all', 'today', '24h', '7d', '30d', 'this_month'];
 
 type ActivityLogItem = {
   id: string;
@@ -76,6 +66,8 @@ type ActivityLogItem = {
   previousData?: Record<string, unknown>;
   newData?: Record<string, unknown>;
 };
+
+type LoadMode = 'initial' | 'refresh' | 'silent';
 
 const SEARCH_DEBOUNCE_MS = 350;
 
@@ -131,65 +123,84 @@ function formatLocationAndIp(location?: string, ipAddress?: string): string {
   return location || ipAddress || 'Unknown';
 }
 
+const formatActionLabel = (action: string): string => action.replace(/_/g, ' ');
+
+/** Delete and ban-like actions read as danger, approvals and restores as positive, role changes as pending. */
+function getActionTone(action: string): AdminToneName {
+  switch (action) {
+    case 'create':
+    case 'restore':
+    case 'approve':
+    case 'login_success':
+      return 'positive';
+    case 'delete':
+    case 'ban':
+    case 'login_failed':
+    case 'status_change':
+      return 'danger';
+    case 'role_change':
+      return 'pending';
+    default:
+      return 'neutral';
+  }
+}
+
 export default function AdminActivityLogsWorkspace() {
   const { colors } = useAppTheme();
+  const positive = getAdminTone(colors, 'positive');
+  const danger = getAdminTone(colors, 'danger');
   const [logs, setLogs] = useState<ActivityLogItem[]>([]);
-  const [selectedAction, setSelectedAction] = useState<string>('all');
-  const [query, setQuery] = useState('');
+  const [selectedActions, setSelectedActions] = useState<string[]>([]);
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [dateRange, setDateRange] = useState<AdminDateRange>({ preset: 'all' });
   const [restoreTarget, setRestoreTarget] = useState<ActivityLogItem | null>(null);
   const hasLoadedRef = useRef(false);
+  const requestIdRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [selectedLog, setSelectedLog] = useState<ActivityLogItem | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState<MobileDateRangeValue>({
-    preset: 'all',
-    startDate: null,
-    endDate: null,
-    label: 'All Time',
-  });
   const [exportModalVisible, setExportModalVisible] = useState(false);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [query]);
+  // One selected action is filtered on the server; several are fetched together and filtered here.
+  const serverAction = selectedActions.length === 1 ? selectedActions[0] : 'all';
 
-  // Only the first load shows the skeleton: the shell swaps its children for the skeleton while
-  // `loading`, which used to unmount the search box (and close the keyboard) on every keystroke.
+  // Only the first load shows the skeleton. Search, filter and focus reloads keep the toolbar mounted
+  // (the search box keeps focus and the keyboard stays open) and show an inline spinner instead.
   const load = useCallback(
-    async (isRefresh = false) => {
-      if (isRefresh || hasLoadedRef.current) setRefreshing(true);
-      else setLoading(true);
+    async (mode: LoadMode) => {
+      const requestId = ++requestIdRef.current;
+      if (mode === 'initial') setLoading(true);
+      else if (mode === 'refresh') setRefreshing(true);
+      else setListLoading(true);
       setError(null);
       try {
-        const rawLogs = await adminWorkspaceService.fetchActivityLogs(
-          debouncedQuery,
-          selectedAction,
-          'all'
-        );
+        const rawLogs = await adminWorkspaceService.fetchActivityLogs(debouncedQuery, serverAction, 'all');
+        if (requestId !== requestIdRef.current) return;
         setLogs(rawLogs.map(toActivityLogItem));
         hasLoadedRef.current = true;
       } catch (err) {
+        if (requestId !== requestIdRef.current) return;
         console.error('[AdminActivityLogsWorkspace.load] Error:', err);
         setError(err instanceof Error ? err.message : 'Failed to load activity logs');
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (requestId === requestIdRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+          setListLoading(false);
+        }
       }
     },
-    [debouncedQuery, selectedAction]
+    [debouncedQuery, serverAction]
   );
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(hasLoadedRef.current ? 'silent' : 'initial');
     }, [load])
   );
-
-  const handleRestore = (log: ActivityLogItem) => setRestoreTarget(log);
 
   const handleConfirmRestore = async () => {
     const log = restoreTarget;
@@ -199,7 +210,7 @@ export default function AdminActivityLogsWorkspace() {
       await adminWorkspaceService.restoreActivityLog(log.id);
       setRestoreTarget(null);
       toast.success(`Restored ${log.resourceName || log.resource}.`);
-      await load(true);
+      await load('silent');
     } catch (err) {
       console.error('[AdminActivityLogsWorkspace.handleConfirmRestore] Error:', err);
       toast.error(err instanceof Error ? err.message : 'Failed to restore');
@@ -208,336 +219,148 @@ export default function AdminActivityLogsWorkspace() {
     }
   };
 
-  const getActionColor = (action: string) => {
-    switch (action) {
-      case 'create':
-      case 'restore':
-      case 'login_success':
-        return '#16a34a';
-      case 'delete':
-      case 'login_failed':
-      case 'status_change':
-        return '#dc2626';
-      case 'update':
-        return '#2563eb';
-      case 'role_change':
-        return '#d97706';
-      default:
-        return '#64748b';
-    }
-  };
-
+  const { startDate, endDate } = resolveAdminDateRange(dateRange);
   const filteredLogs = logs.filter((log: ActivityLogItem) => {
-    if (!dateRange.startDate && !dateRange.endDate) return true;
+    if (selectedActions.length > 1 && !selectedActions.includes(log.action)) return false;
+    if (!startDate && !endDate) return true;
     const logMs = new Date(log.timestamp).getTime();
-    const startMs = dateRange.startDate ? dateRange.startDate.getTime() : 0;
-    const endMs = dateRange.endDate ? dateRange.endDate.getTime() : Infinity;
+    const startMs = startDate ? startDate.getTime() : 0;
+    const endMs = endDate ? endDate.getTime() : Infinity;
     return logMs >= startMs && logMs <= endMs;
   });
 
+  const actionGroup: MultiFilterGroup = {
+    kind: 'multiple',
+    key: 'action',
+    label: 'Action type',
+    options: ACTION_OPTIONS.map((action) => ({ value: action, label: formatActionLabel(action).replace(/^\w/, (letter) => letter.toUpperCase()) })),
+    values: selectedActions,
+  };
+
+  const isFiltered = Boolean(debouncedQuery) || selectedActions.length > 0 || dateRange.preset !== 'all';
+
+  const handleApplyFilters = (values: FilterValues) => {
+    setSelectedActions(readMultiFilter(values, 'action'));
+  };
+
+  const handleClearFilters = () => {
+    setSelectedActions([]);
+    setDateRange({ preset: 'all' });
+    setDebouncedQuery('');
+  };
+
+  const screenState: AdminScreenState = loading
+    ? { kind: 'loading', variant: 'list' }
+    : error && logs.length === 0
+      ? { kind: 'error', message: error }
+      : filteredLogs.length === 0
+        ? isFiltered
+          ? { kind: 'empty', title: 'No activity logs match these filters.', filtered: true, onClearFilters: handleClearFilters }
+          : { kind: 'empty', title: 'No activity logs recorded yet.', icon: 'clock' }
+        : { kind: 'ready' };
+
   return (
-    <AdminWorkspaceShell
-      title="Activity Logs & Audit"
-      subtitle="Immutable cross-platform audit trail of all actions and modifications"
-      loading={loading}
-      refreshing={refreshing}
-      error={error}
-      onRefresh={() => void load(true)}
-    >
-      <View style={{ gap: 12, paddingBottom: 24 }}>
-        {/* Search Input & Export Button */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View
-            style={{
-              flex: 1,
-              flexDirection: 'row',
-              alignItems: 'center',
-              backgroundColor: colors.surface,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: colors.border,
-              paddingHorizontal: 12,
-              minHeight: 44,
+    <>
+      <AdminScreen
+        title="Activity logs"
+        subtitle="Cross-platform audit trail of admin actions"
+        state={screenState}
+        onRefresh={() => load('refresh')}
+        refreshing={refreshing}
+        overflowActions={[{ key: 'export', label: 'Export', icon: 'download', description: `${filteredLogs.length} records · ${ADMIN_DATE_RANGE_LABELS[dateRange.preset]}`, onPress: () => setExportModalVisible(true) }]}
+        toolbar={
+          <AdminToolbar
+            search={{ value: debouncedQuery, placeholder: 'Search by actor or keyword', onChange: (next) => setDebouncedQuery(next.trim()), debounceMs: SEARCH_DEBOUNCE_MS, loading: listLoading }}
+            filters={{
+              title: 'Filter activity',
+              groups: [actionGroup],
+              onApply: handleApplyFilters,
+              dateRange: { value: dateRange, onChange: setDateRange, presets: DATE_PRESETS },
             }}
-          >
-            <Icon name="search" size={16} color={colors.mutedText} style={{ marginRight: 8 }} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search by actor or keyword..."
-              placeholderTextColor={colors.mutedText}
-              style={{ flex: 1, color: colors.text, fontSize: 13, padding: 0 }}
-            />
-          </View>
-          <TouchableOpacity
-            onPress={() => setExportModalVisible(true)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              paddingHorizontal: 14,
-              minHeight: 44,
-              borderRadius: 12,
-              backgroundColor: colors.surface,
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-          >
-            <Icon name="download" size={15} color={colors.accent} />
-            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>
-              Export
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Date Filter */}
-        <MobileAdminDateFilter value={dateRange} onChange={setDateRange} />
-
-        {/* Action Filter Chips */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-          {ACTION_FILTERS.map((action) => {
-            const active = selectedAction === action;
+            resultSummary={logs.length ? `${filteredLogs.length} of ${logs.length} entries` : undefined}
+          />
+        }
+      >
+        <View style={{ gap: space.sm }}>
+          {error ? <AdminState kind="inlineError" message={error} onRetry={() => void load('silent')} retrying={listLoading} /> : null}
+          {filteredLogs.map((log) => {
+            const canRestore = log.action === 'delete' && Boolean(log.previousData);
+            const meta = [formatLogTime(log.timestamp), log.resource, formatLocationAndIp(log.location, log.ipAddress), log.platform?.toUpperCase()].filter(Boolean).join(' · ');
             return (
-              <TouchableOpacity
-                key={action}
-                onPress={() => setSelectedAction(action)}
-                style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 20,
-                  backgroundColor: active ? colors.accent : colors.surface,
-                  borderWidth: 1,
-                  borderColor: active ? colors.accent : colors.border,
-                }}
-              >
-                <Text
-                  style={{
-                    color: active ? '#ffffff' : colors.text,
-                    fontSize: 11,
-                    fontWeight: '600',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {action.replace('_', ' ')}
-                </Text>
-              </TouchableOpacity>
+              <AdminListRow
+                key={log.id}
+                title={log.username || 'System actor'}
+                subtitle={log.details || undefined}
+                meta={meta}
+                status={{ label: formatActionLabel(log.action), tone: getActionTone(log.action) }}
+                onPress={() => setSelectedLog(log)}
+                accessibilityHint="Opens the change details"
+                inlineAction={{ key: 'inspect', label: 'Inspect', icon: 'file-text', tone: 'neutral', onPress: () => setSelectedLog(log) }}
+                overflowActions={canRestore
+                  ? [{ key: 'restore', label: restoringId === log.id ? 'Restoring…' : 'Restore', icon: 'rotate-ccw', disabled: Boolean(restoringId), description: 'Restores the item from its saved snapshot', onPress: () => setRestoreTarget(log) }]
+                  : undefined}
+              />
             );
           })}
-        </ScrollView>
+        </View>
+      </AdminScreen>
 
-        {/* Log Entries List */}
-        {filteredLogs.length === 0 && !loading ? (
-          <View
-            style={{
-              padding: 32,
-              alignItems: 'center',
-              backgroundColor: colors.surface,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-          >
-            <Icon name="clock" size={28} color={colors.mutedText} style={{ marginBottom: 8 }} />
-            <Text style={{ color: colors.mutedText, fontSize: 13, textAlign: 'center' }}>
-              {logs.length > 0 || debouncedQuery || selectedAction !== 'all'
-                ? 'No activity logs match these filters.'
-                : 'No activity logs recorded yet.'}
+      {/* Dialogs and the export sheet live outside the screen body so they also work in the empty and error states. */}
+      <AdminDialog
+        visible={Boolean(selectedLog)}
+        title="Activity details"
+        description={selectedLog?.details || undefined}
+        icon="file-text"
+        onClose={() => setSelectedLog(null)}
+      >
+        {selectedLog ? (
+          <View style={{ gap: space.md }}>
+            <Text style={[type.meta, { color: colors.mutedText }]}>
+              {formatLogTime(selectedLog.timestamp)} · {selectedLog.username || 'System actor'} · {selectedLog.resourceName || selectedLog.resource}
             </Text>
-          </View>
-        ) : (
-          filteredLogs.map((log) => {
-            const isDelete = log.action === 'delete';
-            const actionColor = getActionColor(log.action);
-            const isRestoringThis = restoringId === log.id;
-
-            return (
-              <View
-                key={log.id}
-                style={{
-                  backgroundColor: colors.surface,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  padding: 14,
-                  gap: 8,
-                }}
-              >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 11, color: colors.mutedText, fontFamily: 'monospace' }}>
-                    {formatLogTime(log.timestamp)}
-                  </Text>
-                  <View
-                    style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 2,
-                      borderRadius: 6,
-                      backgroundColor: `${actionColor}20`,
-                      borderWidth: 1,
-                      borderColor: `${actionColor}40`,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: actionColor,
-                        fontSize: 10,
-                        fontWeight: '700',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {log.action.replace('_', ' ')}
-                    </Text>
+            {selectedLog.changes && selectedLog.changes.length > 0 ? (
+              <View style={{ gap: space.sm }}>
+                <Text style={[type.label, { color: colors.mutedText }]}>Changes</Text>
+                {selectedLog.changes.map((change, changeIndex) => (
+                  <View key={`${change.field}-${changeIndex}`} style={{ gap: space.xs, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas }}>
+                    <Text style={[type.bodyStrong, { color: colors.text }]}>{change.field}</Text>
+                    <Text selectable style={[type.meta, { color: danger.text }]}>- {JSON.stringify(change.oldValue)}</Text>
+                    <Text selectable style={[type.meta, { color: positive.text }]}>+ {JSON.stringify(change.newValue)}</Text>
                   </View>
-                </View>
-
-                <View>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>
-                    {log.username || 'System Actor'}
+                ))}
+              </View>
+            ) : null}
+            {selectedLog.previousData ? (
+              <View style={{ gap: space.sm }}>
+                <Text style={[type.label, { color: colors.mutedText }]}>Previous snapshot</Text>
+                <View style={{ padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas }}>
+                  <Text selectable style={[type.meta, { fontFamily: 'monospace', color: colors.text }]}>
+                    {JSON.stringify(selectedLog.previousData, null, 2)}
                   </Text>
-                  <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 2 }}>{log.details}</Text>
-                </View>
-
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    gap: 8,
-                    paddingTop: 6,
-                    borderTopWidth: 1,
-                    borderTopColor: colors.border,
-                  }}
-                >
-                  <Text style={{ fontSize: 11, color: colors.mutedText }}>
-                    Resource: <Text style={{ fontWeight: '600', color: colors.text }}>{log.resource}</Text>
-                  </Text>
-                  <Text style={{ fontSize: 11, color: colors.mutedText }}>
-                    • {formatLocationAndIp(log.location, log.ipAddress)}
-                  </Text>
-                  {Boolean(log.platform) && (
-                    <Text style={{ fontSize: 11, color: colors.mutedText, textTransform: 'uppercase' }}>
-                      • {log.platform}
-                    </Text>
-                  )}
-                </View>
-
-                {/* Actions */}
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-                  {isDelete && Boolean(log.previousData) && (
-                    <TouchableOpacity
-                      onPress={() => handleRestore(log)}
-                      disabled={Boolean(restoringId)}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 4,
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
-                        borderRadius: 8,
-                        backgroundColor: '#16a34a20',
-                        borderWidth: 1,
-                        borderColor: '#16a34a50',
-                      }}
-                    >
-                      <Icon name="rotate-ccw" size={12} color="#16a34a" />
-                      <Text style={{ color: '#16a34a', fontSize: 11, fontWeight: '700' }}>
-                        {isRestoringThis ? 'Restoring...' : 'Restore'}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    onPress={() => setSelectedLog(log)}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 4,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                      borderRadius: 8,
-                      backgroundColor: colors.canvas,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                    }}
-                  >
-                    <Icon name="file-text" size={12} color={colors.text} />
-                    <Text style={{ color: colors.text, fontSize: 11, fontWeight: '600' }}>Inspect Diff</Text>
-                  </TouchableOpacity>
                 </View>
               </View>
-            );
-          })
-        )}
-      </View>
-
-      {/* Diff / Snapshot Modal */}
-      {selectedLog && (
-        <Modal
-          visible={true}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setSelectedLog(null)}
-        >
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
-            <View
-              style={{
-                backgroundColor: colors.surface,
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                maxHeight: '80%',
-                padding: 18,
-                gap: 12,
-              }}
-            >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Activity Details & Diff</Text>
-                <TouchableOpacity onPress={() => setSelectedLog(null)}>
-                  <Icon name="x" size={20} color={colors.mutedText} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView style={{ maxHeight: 400 }} contentContainerStyle={{ gap: 10 }}>
-                <Text style={{ fontSize: 12, color: colors.mutedText }}>{selectedLog.details}</Text>
-
-                {selectedLog.changes && selectedLog.changes.length > 0 && (
-                  <View style={{ gap: 6 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>Changes</Text>
-                    {selectedLog.changes.map((c, i) => (
-                      <View key={i} style={{ padding: 8, borderRadius: 8, backgroundColor: colors.canvas, borderWidth: 1, borderColor: colors.border }}>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: colors.accent }}>{c.field}</Text>
-                        <Text style={{ fontSize: 10, color: '#dc2626' }}>- {JSON.stringify(c.oldValue)}</Text>
-                        <Text style={{ fontSize: 10, color: '#16a34a' }}>+ {JSON.stringify(c.newValue)}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {selectedLog.previousData && (
-                  <View style={{ gap: 4 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>Previous Snapshot</Text>
-                    <View style={{ padding: 10, borderRadius: 8, backgroundColor: colors.canvas, borderWidth: 1, borderColor: colors.border }}>
-                      <Text style={{ fontFamily: 'monospace', fontSize: 10, color: colors.text }}>
-                        {JSON.stringify(selectedLog.previousData, null, 2)}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-              </ScrollView>
-            </View>
+            ) : null}
+            {!selectedLog.changes?.length && !selectedLog.previousData ? (
+              <Text style={[type.body, { color: colors.mutedText }]}>No field changes or snapshot were recorded for this entry.</Text>
+            ) : null}
           </View>
-        </Modal>
-      )}
+        ) : null}
+      </AdminDialog>
 
       <AdminDialog
         visible={Boolean(restoreTarget)}
         title="Restore deleted item?"
         description={restoreTarget ? `This restores the ${restoreTarget.resourceName || restoreTarget.resource} from its saved snapshot.` : undefined}
         confirmLabel="Restore"
-        tone="positive"
-        busy={Boolean(restoringId)}
+        tone="pending"
+        icon="rotate-ccw"
+        stage={restoringId ? 'busy' : 'idle'}
+        busyTitle="Restoring…"
+        busyMessage="Please wait while the item is restored."
         onConfirm={() => void handleConfirmRestore()}
         onClose={() => setRestoreTarget(null)}
       />
 
-      {/* Export Modal */}
       <MobileAdminExportModal
         visible={exportModalVisible}
         onClose={() => setExportModalVisible(false)}
@@ -545,9 +368,9 @@ export default function AdminActivityLogsWorkspace() {
         title="Activity Logs Audit Report"
         columns={MOBILE_LOG_COLUMNS}
         data={filteredLogs as unknown as Record<string, unknown>[]}
-        periodLabel={dateRange.label}
+        periodLabel={ADMIN_DATE_RANGE_LABELS[dateRange.preset]}
         sheetName="Activity Logs"
       />
-    </AdminWorkspaceShell>
+    </>
   );
 }

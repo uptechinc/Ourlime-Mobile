@@ -1,19 +1,14 @@
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  Modal,
-  Text,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { toast } from 'sonner-native';
+import AdminIconButton from '@/components/admin/AdminIconButton';
+import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import { getAdminTone, radius, space, type, type AdminIconName } from '@/lib/admin/adminTokens';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import {
-  mobileExportService,
-  type MobileExportColumn,
-} from '@/lib/services/MobileExportService';
+import { mobileExportService, type MobileExportColumn } from '@/lib/services/MobileExportService';
 
 type MobileAdminExportModalProps = {
   visible: boolean;
@@ -26,6 +21,15 @@ type MobileAdminExportModalProps = {
   sheetName?: string;
 };
 
+type ExportFormat = 'excel' | 'csv' | 'doc';
+
+const EXPORT_OPTIONS: { format: ExportFormat; label: string; description: string; icon: AdminIconName }[] = [
+  { format: 'excel', label: 'Excel spreadsheet', description: 'Standard .xlsx format', icon: 'grid' },
+  { format: 'csv', label: 'CSV file', description: 'Comma-separated values (.csv)', icon: 'file-text' },
+  { format: 'doc', label: 'Document report', description: 'Formatted text audit summary', icon: 'file' },
+];
+
+/** Admin export sheet: three format rows in an overflow-style bottom sheet. Stays open on error so the admin can retry. */
 export default function MobileAdminExportModal({
   visible,
   onClose,
@@ -37,9 +41,17 @@ export default function MobileAdminExportModal({
   sheetName = 'Data',
 }: MobileAdminExportModalProps) {
   const { colors } = useAppTheme();
-  const [exporting, setExporting] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const pending = getAdminTone(colors, 'pending');
+  const isEmpty = data.length === 0;
 
-  const handleExport = async (format: 'excel' | 'csv' | 'doc') => {
+  const handleClose = () => {
+    if (exporting) return;
+    onClose();
+  };
+
+  const handleExport = async (format: ExportFormat) => {
     if (exporting) return;
     if (data.length === 0) {
       toast.error('There are no records to export for this range.');
@@ -54,9 +66,10 @@ export default function MobileAdminExportModal({
         await mobileExportService.exportToExcel(fullFilename, sheetName, columns, data);
       } else if (format === 'csv') {
         await mobileExportService.exportToCsv(fullFilename, columns, data);
-      } else if (format === 'doc') {
+      } else {
         await mobileExportService.exportToDocument(fullFilename, title, periodLabel, columns, data);
       }
+      toast.success(`Exported ${data.length} record${data.length === 1 ? '' : 's'}.`);
       onClose();
     } catch (err) {
       // Keep the sheet open so the admin can retry or pick another format.
@@ -68,181 +81,99 @@ export default function MobileAdminExportModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={exporting ? undefined : onClose}>
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 24,
-          }}
-        >
-          {/* Backdrop is a sibling behind the card, so taps inside the card never reach it. */}
-          <TouchableWithoutFeedback onPress={exporting ? undefined : onClose} accessibilityLabel="Close export">
-            <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
-          </TouchableWithoutFeedback>
-            <View
-              style={{
-                width: '100%',
-                maxWidth: 360,
-                backgroundColor: colors.surface,
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: 20,
-                gap: 16,
-              }}
-            >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <View>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
-                    Export Data
-                  </Text>
-                  <Text style={{ fontSize: 12, color: colors.mutedText, marginTop: 2 }}>
-                    {data.length} records • {periodLabel}
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={onClose} disabled={exporting !== null} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Icon name="x" size={20} color={colors.mutedText} />
-                </TouchableOpacity>
+    <Modal
+      visible={visible}
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      animationType="none"
+      presentationStyle="overFullScreen"
+      onRequestClose={handleClose}
+    >
+      {/* Same Android full-screen workaround as FilterSheet, so the sheet sits on the bottom edge. */}
+      <View style={{ height: Dimensions.get('screen').height, justifyContent: 'flex-end' }}>
+        {/* The backdrop is a sibling behind the sheet, so taps inside the sheet never reach it. */}
+        <ModalBackdrop onPress={handleClose} accessibilityLabel="Close export" style={[StyleSheet.absoluteFill, { backgroundColor: colors.modalScrim }]} />
+        <ModalMotionSurface variant="sheet" style={{ maxHeight: '80%' }}>
+          <SwipeDismissSurface
+            visible={visible}
+            onDismiss={handleClose}
+            disabled={exporting !== null}
+            handleColor={colors.border}
+            accessibilityLabel="Swipe down to close export"
+            style={{
+              borderTopLeftRadius: radius.dialog,
+              borderTopRightRadius: radius.dialog,
+              backgroundColor: colors.surface,
+              paddingBottom: Math.max(insets.bottom, space.md) + space.sm,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: space.xl, paddingRight: space.sm }}>
+              <View style={{ flex: 1 }}>
+                <Text style={[type.title, { color: colors.text }]}>Export data</Text>
+                <Text style={[type.meta, { color: colors.mutedText }]}>
+                  {data.length} record{data.length === 1 ? '' : 's'} · {periodLabel}
+                </Text>
               </View>
-
-              <View style={{ gap: 10 }}>
-                {/* Excel Option */}
-                <TouchableOpacity
-                  onPress={() => void handleExport('excel')}
-                  disabled={exporting !== null}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: 14,
-                    borderRadius: 14,
-                    backgroundColor: colors.canvas,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        backgroundColor: '#10b98120',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Icon name="grid" size={18} color="#10b981" />
-                    </View>
-                    <View>
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>
-                        Excel Spreadsheet
-                      </Text>
-                      <Text style={{ fontSize: 11, color: colors.mutedText }}>
-                        Standard .xlsx format
-                      </Text>
-                    </View>
-                  </View>
-                  {exporting === 'excel' ? (
-                    <ActivityIndicator size="small" color={colors.accent} />
-                  ) : (
-                    <Icon name="download" size={16} color={colors.mutedText} />
-                  )}
-                </TouchableOpacity>
-
-                {/* CSV Option */}
-                <TouchableOpacity
-                  onPress={() => void handleExport('csv')}
-                  disabled={exporting !== null}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: 14,
-                    borderRadius: 14,
-                    backgroundColor: colors.canvas,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        backgroundColor: '#3b82f620',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Icon name="file-text" size={18} color="#3b82f6" />
-                    </View>
-                    <View>
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>
-                        CSV File
-                      </Text>
-                      <Text style={{ fontSize: 11, color: colors.mutedText }}>
-                        Comma-separated values (.csv)
-                      </Text>
-                    </View>
-                  </View>
-                  {exporting === 'csv' ? (
-                    <ActivityIndicator size="small" color={colors.accent} />
-                  ) : (
-                    <Icon name="download" size={16} color={colors.mutedText} />
-                  )}
-                </TouchableOpacity>
-
-                {/* Document Report Option */}
-                <TouchableOpacity
-                  onPress={() => void handleExport('doc')}
-                  disabled={exporting !== null}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: 14,
-                    borderRadius: 14,
-                    backgroundColor: colors.canvas,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        backgroundColor: '#f43f5e20',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Icon name="file" size={18} color="#f43f5e" />
-                    </View>
-                    <View>
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>
-                        Document Report
-                      </Text>
-                      <Text style={{ fontSize: 11, color: colors.mutedText }}>
-                        Formatted text/audit summary
-                      </Text>
-                    </View>
-                  </View>
-                  {exporting === 'doc' ? (
-                    <ActivityIndicator size="small" color={colors.accent} />
-                  ) : (
-                    <Icon name="download" size={16} color={colors.mutedText} />
-                  )}
-                </TouchableOpacity>
-              </View>
+              <AdminIconButton icon="x" label="Close export" disabled={exporting !== null} onPress={handleClose} />
             </View>
-        </View>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.md }} showsVerticalScrollIndicator={false}>
+              {isEmpty ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: space.sm,
+                    marginHorizontal: space.md,
+                    marginBottom: space.sm,
+                    padding: space.md,
+                    borderRadius: radius.md,
+                    borderWidth: 1,
+                    borderColor: pending.border,
+                    backgroundColor: pending.soft,
+                  }}
+                >
+                  <Icon name="info" size={16} color={pending.text} />
+                  <Text style={[type.body, { flex: 1, color: pending.text }]}>There are no records in this range. Change the filters to export.</Text>
+                </View>
+              ) : null}
+              {EXPORT_OPTIONS.map((option) => {
+                const isBusy = exporting === option.format;
+                const isLocked = exporting !== null && !isBusy;
+                return (
+                  <Pressable
+                    key={option.format}
+                    onPress={() => void handleExport(option.format)}
+                    disabled={exporting !== null}
+                    accessibilityRole="menuitem"
+                    accessibilityLabel={option.label}
+                    accessibilityHint={option.description}
+                    accessibilityState={{ disabled: isEmpty || exporting !== null, busy: isBusy }}
+                    style={({ pressed }) => ({
+                      minHeight: 52,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: space.md,
+                      paddingHorizontal: space.md,
+                      paddingVertical: space.sm,
+                      borderRadius: radius.md,
+                      backgroundColor: pressed ? colors.control : 'transparent',
+                      opacity: isEmpty || isLocked ? 0.5 : 1,
+                    })}
+                  >
+                    <Icon name={option.icon} size={18} color={colors.icon} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[type.bodyStrong, { color: colors.text }]}>{option.label}</Text>
+                      <Text style={[type.meta, { color: colors.mutedText }]}>{option.description}</Text>
+                    </View>
+                    {isBusy ? <ActivityIndicator size="small" color={colors.icon} /> : <Icon name="download" size={16} color={colors.mutedText} />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </SwipeDismissSurface>
+        </ModalMotionSurface>
+      </View>
     </Modal>
   );
 }

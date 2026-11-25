@@ -1,23 +1,27 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
-import {
-	ActivityIndicator,
-	Image,
-	Modal,
-	ScrollView,
-	Share,
-	Text,
-	TextInput,
-	TouchableOpacity,
-	View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Image, Modal, Pressable, RefreshControl, ScrollView, Share, Text, TextInput, View, type TextStyle } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
+import { toast } from 'sonner-native';
+import AdminButton from '@/components/admin/AdminButton';
+import AdminDialog from '@/components/admin/AdminDialog';
+import AdminIconButton from '@/components/admin/AdminIconButton';
+import AdminListRow from '@/components/admin/AdminListRow';
+import AdminOverflowMenu from '@/components/admin/AdminOverflowMenu';
+import AdminScreen, { type AdminScreenState } from '@/components/admin/AdminScreen';
+import AdminSection from '@/components/admin/AdminSection';
+import AdminState from '@/components/admin/AdminState';
+import AdminStatusPill from '@/components/admin/AdminStatusPill';
+import AdminToolbar from '@/components/admin/AdminToolbar';
 import AdminUserContentWorkspace from '@/components/admin/AdminUserContentWorkspace';
-import UserAvatar from '@/components/ui/UserAvatar';
-import { UserManagementSectionSkeleton } from '@/components/admin/AdminSkeletons';
-import CustomModal from '@/components/ui/CustomModal';
+import { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
+import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
+import UserAvatar from '@/components/ui/UserAvatar';
+import { ADMIN_MIN_TOUCH, getAdminTone, radius, space, type, type AdminIconName, type AdminToneName } from '@/lib/admin/adminTokens';
+import type { AdminOverflowItem } from '@/lib/admin/adminTypes';
+import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import {
 	AdminUserService,
 	type AdminAccountStatus,
@@ -26,35 +30,48 @@ import {
 	type AuthenticationDocumentRecord,
 	type UserLifecycleOperation,
 } from '@/lib/services/AdminUserService';
-import { relationshipResourceService } from '@/lib/services/RelationshipResourceService';
-import { relationshipRequestResourceService } from '@/lib/services/RelationshipRequestResourceService';
 import { conversationResourceService } from '@/lib/services/ConversationResourceService';
-import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
-import FilterBar from '@/components/ui/FilterBar';
-import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
+import { relationshipRequestResourceService } from '@/lib/services/RelationshipRequestResourceService';
+import { relationshipResourceService } from '@/lib/services/RelationshipResourceService';
 
 const adminUserService = AdminUserService.getInstance();
-const ROLES: readonly AdminUserRole[] = [
-	'user',
-	'premium',
-	'moderator',
-	'tester',
-	'admin',
-	'developer',
-];
-const STATUSES = [
-	'all',
-	'active',
-	'pending',
-	'suspended',
-	'banned',
-	'archived',
-] as const;
+const ROLES: readonly AdminUserRole[] = ['user', 'premium', 'moderator', 'tester', 'admin', 'developer'];
+const STATUSES = ['all', 'active', 'pending', 'suspended', 'banned', 'archived'] as const;
+const ACCOUNT_STATUSES: readonly AdminAccountStatus[] = ['active', 'pending', 'suspended', 'banned'];
 const PAGE_SIZE = 20;
 type UserStatusFilter = (typeof STATUSES)[number];
-type UserDetailTab =
-	'overview' | 'content' | 'role' | 'status' | 'verification' | 'lifecycle';
+type LifecycleAction = 'archive' | 'unarchive' | 'delete_permanently';
+type Notice = { tone: 'positive' | 'danger'; message: string };
+
+const ROLE_DESCRIPTIONS: { [role in AdminUserRole]: string } = {
+	admin: 'Full administration access',
+	moderator: 'Content reports and moderation',
+	developer: 'Developer previews and tools',
+	tester: 'Development previews without admin access',
+	premium: 'Premium product capabilities',
+	user: 'Standard member access',
+};
+
+const STATUS_DESCRIPTIONS: { [status in AdminAccountStatus]: string } = {
+	active: 'Full access to the account',
+	pending: 'Waiting for review before full access',
+	suspended: 'Temporarily locked for the number of days below',
+	banned: 'Permanently locked out of the account',
+};
+
+/** Document previews sit on a near-black stage in both themes, so their chrome does not follow the app theme. */
+const MEDIA_OVERLAY = { scrim: 'rgba(0,0,0,0.96)', icon: 'white' } as const;
+
+const capitalize = (value: string): string => (value ? value.charAt(0).toUpperCase() + value.slice(1) : value);
+const getDisplayName = (user: AdminUserRecord): string => `${user.firstName} ${user.lastName}`.trim() || user.userName || user.email;
+const getUserStatus = (user: AdminUserRecord): string => (user.archived ? 'archived' : user.accountStatus);
+
+function getUserStatusTone(status: string): AdminToneName {
+	if (status === 'active') return 'positive';
+	if (status === 'banned') return 'danger';
+	if (status === 'pending' || status === 'suspended') return 'pending';
+	return 'neutral';
+}
 
 function formatDeliveryStatus(operation: UserLifecycleOperation): string {
 	if (!operation.delivery) return 'The notification delivery is still being recorded.';
@@ -63,84 +80,222 @@ function formatDeliveryStatus(operation: UserLifecycleOperation): string {
 	return `Email delivery failed${operation.delivery.errorCode ? ` (${operation.delivery.errorCode})` : ''}.`;
 }
 
+const getInputStyle = (colors: AppThemeColors, multiline = false, invalid = false): TextStyle => ({
+	...type.body,
+	minHeight: multiline ? 88 : ADMIN_MIN_TOUCH,
+	paddingHorizontal: space.md,
+	paddingVertical: multiline ? space.md : 0,
+	textAlignVertical: multiline ? 'top' : 'center',
+	borderRadius: radius.md,
+	borderWidth: 1,
+	borderColor: invalid ? getAdminTone(colors, 'danger').border : colors.border,
+	backgroundColor: colors.input,
+	color: colors.text,
+});
+
+type ChoiceRowProps = {
+	label: string;
+	description?: string;
+	selected: boolean;
+	disabled?: boolean;
+	onPress: () => void;
+};
+
+/** 44pt+ single-choice row with a radio mark (role and status lists). */
+function ChoiceRow({ label, description, selected, disabled = false, onPress }: ChoiceRowProps) {
+	const { colors } = useAppTheme();
+	const positive = getAdminTone(colors, 'positive');
+	return (
+		<Pressable
+			onPress={onPress}
+			disabled={disabled}
+			accessibilityRole="radio"
+			accessibilityLabel={label}
+			accessibilityHint={description}
+			accessibilityState={{ checked: selected, disabled }}
+			style={({ pressed }) => ({
+				minHeight: 56,
+				flexDirection: 'row',
+				alignItems: 'center',
+				gap: space.md,
+				paddingHorizontal: space.md,
+				paddingVertical: space.sm,
+				borderRadius: radius.md,
+				borderWidth: 1,
+				borderColor: selected ? positive.border : colors.border,
+				backgroundColor: selected ? positive.soft : colors.surface,
+				opacity: disabled && !selected ? 0.55 : pressed ? 0.7 : 1,
+			})}
+		>
+			<Icon name={selected ? 'check-circle' : 'circle'} size={20} color={selected ? positive.text : colors.mutedText} />
+			<View style={{ flex: 1 }}>
+				<Text style={[type.bodyStrong, { color: colors.text }]}>{label}</Text>
+				{description ? <Text style={[type.meta, { color: colors.mutedText }]}>{description}</Text> : null}
+			</View>
+		</Pressable>
+	);
+}
+
+function NoticeBanner({ notice, onDismiss }: { notice: Notice; onDismiss: () => void }) {
+	const { colors } = useAppTheme();
+	const tone = getAdminTone(colors, notice.tone);
+	const icon: AdminIconName = notice.tone === 'danger' ? 'alert-circle' : 'check-circle';
+	return (
+		<View
+			accessibilityRole="alert"
+			style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingLeft: space.lg, paddingRight: space.xs, paddingVertical: space.xs, borderRadius: radius.md, borderWidth: 1, borderColor: tone.border, backgroundColor: tone.soft }}
+		>
+			<Icon name={icon} size={18} color={tone.text} />
+			<Text style={[type.body, { flex: 1, color: tone.text }]}>{notice.message}</Text>
+			<AdminIconButton icon="x" label="Dismiss message" tone={notice.tone} onPress={onDismiss} />
+		</View>
+	);
+}
+
+type IdentityDocumentsProps = {
+	userId: string;
+	refreshSignal: number;
+	onPreview: (url: string) => void;
+};
+
+/** Loads the identity documents when the Verification section opens (it mounts only while open). */
+function IdentityDocuments({ userId, refreshSignal, onPreview }: IdentityDocumentsProps) {
+	const { colors } = useAppTheme();
+	const [documents, setDocuments] = useState<AuthenticationDocumentRecord[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState('');
+
+	const loadDocuments = useCallback(async () => {
+		setLoading(true);
+		setError('');
+		try {
+			setDocuments(await adminUserService.getAuthenticationDocuments(userId));
+		} catch (loadError: unknown) {
+			console.error('[IdentityDocuments.loadDocuments] Error:', loadError);
+			setError(loadError instanceof Error ? loadError.message : 'Unable to load identity documents.');
+		} finally {
+			setLoading(false);
+		}
+	}, [userId]);
+
+	useEffect(() => {
+		void loadDocuments();
+	}, [loadDocuments, refreshSignal]);
+
+	if (loading) return <ActivityIndicator color={colors.accent} style={{ marginVertical: space.lg }} />;
+	if (error) return <AdminState kind="inlineError" message={error} onRetry={() => void loadDocuments()} />;
+	return (
+		<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.md }}>
+			{(['faceID', 'frontID', 'backID'] as const).map((documentType) => {
+				const identityDocument = documents.find((document) => document.type === documentType);
+				const label = documentType === 'faceID' ? 'Selfie' : documentType === 'frontID' ? 'Front ID' : 'Back ID';
+				return (
+					<View key={documentType} style={{ width: 176, gap: space.xs }}>
+						<Text style={[type.label, { color: colors.mutedText }]}>{label}</Text>
+						{identityDocument?.imageUrl ? (
+							<Pressable
+								onPress={() => onPreview(identityDocument.imageUrl)}
+								accessibilityRole="imagebutton"
+								accessibilityLabel={`Open ${label}`}
+								style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+							>
+								<Image source={{ uri: identityDocument.imageUrl }} resizeMode="contain" style={{ width: 176, height: 128, borderRadius: radius.md, backgroundColor: colors.input }} />
+							</Pressable>
+						) : (
+							<View style={{ width: 176, height: 128, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input }}>
+								<Text style={[type.meta, { color: colors.mutedText }]}>Not provided</Text>
+							</View>
+						)}
+					</View>
+				);
+			})}
+		</ScrollView>
+	);
+}
+
 export default function UserManagementSection() {
 	const { colors } = useAppTheme();
 	const router = useRouter();
+	const insets = useSafeAreaInsets();
 	const [users, setUsers] = useState<AdminUserRecord[]>([]);
 	const [search, setSearch] = useState('');
 	const [statusFilter, setStatusFilter] = useState<UserStatusFilter>('all');
 	const [roleFilter, setRoleFilter] = useState<AdminUserRole | 'all'>('all');
-	const [accountFilter, setAccountFilter] = useState<
-		'all' | 'regular' | 'student'
-	>('all');
-	const [filtersOpen, setFiltersOpen] = useState(false);
-	const [page, setPage] = useState(1);
-	const [selectedUser, setSelectedUser] = useState<AdminUserRecord | null>(
-		null
-	);
-	const [detailTab, setDetailTab] = useState<UserDetailTab>('overview');
+	const [accountFilter, setAccountFilter] = useState<'all' | 'regular' | 'student'>('all');
+	const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+	const [selectedUser, setSelectedUser] = useState<AdminUserRecord | null>(null);
+	const [draftRole, setDraftRole] = useState<AdminUserRole>('user');
 	const [newStatus, setNewStatus] = useState<AdminAccountStatus>('active');
 	const [statusReason, setStatusReason] = useState('');
 	const [suspensionDays, setSuspensionDays] = useState('7');
-	const [deleteConfirmation, setDeleteConfirmation] = useState('');
 	const [lifecycleReason, setLifecycleReason] = useState('');
+	const [lifecycleDialog, setLifecycleDialog] = useState<LifecycleAction | null>(null);
+	const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+	const [statusConfirmOpen, setStatusConfirmOpen] = useState(false);
 	const [loading, setLoading] = useState(true);
+	const [refreshing, setRefreshing] = useState(false);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [nextCursor, setNextCursor] = useState<string | null>(null);
 	const [hasMoreUsers, setHasMoreUsers] = useState(false);
 	const [loadingMore, setLoadingMore] = useState(false);
 	const [busy, setBusy] = useState(false);
-	const [message, setMessage] = useState<string | null>(null);
+	const [notice, setNotice] = useState<Notice | null>(null);
 	const [lifecycleOperation, setLifecycleOperation] = useState<UserLifecycleOperation | null>(null);
 	const [pendingRole, setPendingRole] = useState<AdminUserRole | null>(null);
-	const [authenticationDocuments, setAuthenticationDocuments] = useState<AuthenticationDocumentRecord[]>([]);
-	const [authenticationDocumentsLoading, setAuthenticationDocumentsLoading] = useState(false);
-	const [authenticationDocumentsError, setAuthenticationDocumentsError] = useState('');
 	const [previewDocumentUrl, setPreviewDocumentUrl] = useState<string | null>(null);
+	const [detailRefreshSignal, setDetailRefreshSignal] = useState(0);
+	const busyRef = useRef(false);
 
-	const loadAuthenticationDocuments = useCallback(async () => {
-		if (!selectedUser) return;
-		setAuthenticationDocumentsLoading(true);
-		setAuthenticationDocumentsError('');
-		try {
-			setAuthenticationDocuments(await adminUserService.getAuthenticationDocuments(selectedUser.id));
-		} catch (error: unknown) {
-			setAuthenticationDocumentsError(error instanceof Error ? error.message : 'Unable to load identity documents.');
-		} finally {
-			setAuthenticationDocumentsLoading(false);
-		}
-	}, [selectedUser]);
+	const currentAdminId = adminUserService.getCurrentUserId();
+	const isSelf = Boolean(selectedUser && selectedUser.id === currentAdminId);
 
-	useEffect(() => {
-		if (detailTab === 'verification' && selectedUser) void loadAuthenticationDocuments();
-	}, [detailTab, selectedUser, loadAuthenticationDocuments]);
-
-	const loadUsers = useCallback(async () => {
-		setLoading(true);
+	const loadUsers = useCallback(async (isRefresh = false) => {
+		if (isRefresh) setRefreshing(true);
+		else setLoading(true);
 		setLoadError(null);
 		try {
 			const firstPage = await adminUserService.fetchUsers();
 			setUsers(firstPage.items);
 			setNextCursor(firstPage.nextCursor);
 			setHasMoreUsers(firstPage.hasMore && Boolean(firstPage.nextCursor));
+			setVisibleCount(PAGE_SIZE);
 		} catch (error: unknown) {
 			console.error('[UserManagementSection.loadUsers] Error:', error);
-			setLoadError(
-				error instanceof Error
-					? error.message
-					: 'Users could not be loaded'
-			);
+			setLoadError(error instanceof Error ? error.message : 'Users could not be loaded');
 		} finally {
 			setLoading(false);
+			setRefreshing(false);
 		}
 	}, []);
 	useEffect(() => {
 		void loadUsers();
 	}, [loadUsers]);
 
-	// The service pages 50 users at a time; search and filters only cover loaded users, so the
-	// admin can keep loading pages instead of the list silently stopping at the first 50.
+	const filteredUsers = useMemo(() => {
+		const normalizedQuery = search.trim().toLowerCase();
+		return users.filter((user) => {
+			const userStatus = getUserStatus(user);
+			return (
+				(!normalizedQuery || `${user.firstName} ${user.lastName} ${user.userName} ${user.email}`.toLowerCase().includes(normalizedQuery)) &&
+				(statusFilter === 'all' || userStatus === statusFilter) &&
+				(roleFilter === 'all' || user.role === roleFilter) &&
+				(accountFilter === 'all' || user.accountType === accountFilter)
+			);
+		});
+	}, [accountFilter, roleFilter, search, statusFilter, users]);
+	const visibleUsers = filteredUsers.slice(0, visibleCount);
+
+	useEffect(() => {
+		setVisibleCount(PAGE_SIZE);
+	}, [accountFilter, roleFilter, search, statusFilter]);
+
+	// The service pages 50 users at a time; search and filters only cover loaded users, so "Load more" first
+	// reveals more of the loaded matches, then fetches the next page (de-duplicated) instead of stopping at 50.
 	const handleLoadMoreUsers = async () => {
+		if (visibleCount < filteredUsers.length) {
+			setVisibleCount((current) => current + PAGE_SIZE);
+			return;
+		}
 		if (loadingMore || !hasMoreUsers || !nextCursor) return;
 		setLoadingMore(true);
 		try {
@@ -151,158 +306,128 @@ export default function UserManagementSection() {
 			});
 			setNextCursor(nextPage.nextCursor);
 			setHasMoreUsers(nextPage.hasMore && Boolean(nextPage.nextCursor));
+			setVisibleCount((current) => current + PAGE_SIZE);
 		} catch (error: unknown) {
 			console.error('[UserManagementSection.handleLoadMoreUsers] Error:', error);
-			setMessage(error instanceof Error ? error.message : 'More users could not be loaded.');
+			toast.error(error instanceof Error ? error.message : 'More users could not be loaded.');
 		} finally {
 			setLoadingMore(false);
 		}
 	};
 
-	const filteredUsers = useMemo(() => {
-		const normalizedQuery = search.trim().toLowerCase();
-		return users.filter((user) => {
-			const userStatus = user.archived ? 'archived' : user.accountStatus;
-			return (
-				(!normalizedQuery ||
-					`${user.firstName} ${user.lastName} ${user.userName} ${user.email}`
-						.toLowerCase()
-						.includes(normalizedQuery)) &&
-				(statusFilter === 'all' || userStatus === statusFilter) &&
-				(roleFilter === 'all' || user.role === roleFilter) &&
-				(accountFilter === 'all' || user.accountType === accountFilter)
-			);
-		});
-	}, [accountFilter, roleFilter, search, statusFilter, users]);
-	const pageCount = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
-	const visibleUsers = filteredUsers.slice(
-		(Math.min(page, pageCount) - 1) * PAGE_SIZE,
-		Math.min(page, pageCount) * PAGE_SIZE
-	);
-
-	useEffect(() => {
-		setPage(1);
-	}, [accountFilter, roleFilter, search, statusFilter]);
 	const patchSelected = (update: Partial<AdminUserRecord>) => {
 		if (!selectedUser) return;
-		setUsers((current) =>
-			current.map((user) =>
-				user.id === selectedUser.id ? { ...user, ...update } : user
-			)
-		);
+		setUsers((current) => current.map((user) => (user.id === selectedUser.id ? { ...user, ...update } : user)));
 		setSelectedUser((current) => (current ? { ...current, ...update } : null));
 	};
-	const runMutation = async (
-		mutation: () => Promise<void>,
-		successMessage: string | (() => string)
-	) => {
-		if (busy) return;
+
+	/** Runs one admin write at a time; resolves true on success. Feedback shows inside the user modal (toasts sit behind it on iOS). */
+	const runMutation = async (mutation: () => Promise<void>, successMessage: string | (() => string)): Promise<boolean> => {
+		if (busyRef.current) return false;
+		busyRef.current = true;
 		setBusy(true);
+		setNotice(null);
 		try {
 			await mutation();
-			setMessage(typeof successMessage === 'function' ? successMessage() : successMessage);
+			setNotice({ tone: 'positive', message: typeof successMessage === 'function' ? successMessage() : successMessage });
+			return true;
 		} catch (mutationError: unknown) {
-			setMessage(
-				mutationError instanceof Error
-					? mutationError.message
-					: 'The admin action failed.'
-			);
+			console.error('[UserManagementSection.runMutation] Error:', mutationError);
+			setNotice({ tone: 'danger', message: mutationError instanceof Error ? mutationError.message : 'The admin action failed.' });
+			return false;
 		} finally {
+			busyRef.current = false;
 			setBusy(false);
 		}
 	};
-	const handleRole = async (role: AdminUserRole) => {
-		if (
-			!selectedUser ||
-			selectedUser.id === adminUserService.getCurrentUserId()
-		)
-			return;
-		await runMutation(
-			async () => {
-				await adminUserService.updateRole(selectedUser.id, role);
-				patchSelected({ role, isAdmin: role === 'admin' });
-			},
-			`@${selectedUser.userName || selectedUser.email}'s role is now ${role}.`
-		);
+
+	const handleOpenUser = (user: AdminUserRecord) => {
+		setSelectedUser(user);
+		setDraftRole(user.role);
+		setNewStatus(ACCOUNT_STATUSES.find((status) => status === user.accountStatus) ?? 'active');
+		setStatusReason(user.statusReason);
+		setLifecycleReason('');
+		setLifecycleError(null);
+		setLifecycleOperation(null);
+		setNotice(null);
 	};
+
+	const handleCloseUser = () => {
+		if (busy) return;
+		setSelectedUser(null);
+	};
+
+	const handleRole = async (role: AdminUserRole) => {
+		if (!selectedUser || selectedUser.id === currentAdminId) return;
+		await runMutation(async () => {
+			await adminUserService.updateRole(selectedUser.id, role);
+			patchSelected({ role, isAdmin: role === 'admin' });
+		}, `@${selectedUser.userName || selectedUser.email}'s role is now ${role}.`);
+	};
+
 	const handleStatus = async () => {
-		if (
-			!selectedUser ||
-			selectedUser.id === adminUserService.getCurrentUserId()
-		)
-			return;
+		if (!selectedUser || selectedUser.id === currentAdminId) return;
 		const duration = Number(suspensionDays);
-		const suspendedUntil =
-			newStatus === 'suspended' && Number.isFinite(duration)
-				? new Date(Date.now() + Math.max(1, duration) * 86_400_000)
-				: null;
+		const suspendedUntil = newStatus === 'suspended' && Number.isFinite(duration) ? new Date(Date.now() + Math.max(1, duration) * 86_400_000) : null;
 		let completionMessage = `Account status changed to ${newStatus}.`;
 		await runMutation(async () => {
-			const operation = await adminUserService.updateAccountStatus(
-				selectedUser.id,
-				newStatus,
-				statusReason,
-				suspendedUntil,
-				setLifecycleOperation,
-			);
+			const operation = await adminUserService.updateAccountStatus(selectedUser.id, newStatus, statusReason, suspendedUntil, setLifecycleOperation);
 			completionMessage = `${completionMessage} ${formatDeliveryStatus(operation)}`;
-			patchSelected({
-				accountStatus: newStatus,
-				statusReason,
-				banned: newStatus === 'banned',
-				archived: false,
-			});
+			patchSelected({ accountStatus: newStatus, statusReason, banned: newStatus === 'banned', archived: false });
 		}, () => completionMessage);
+		setStatusConfirmOpen(false);
 	};
-	const handleLifecycle = async (
-		action: 'archive' | 'unarchive' | 'delete_permanently'
-	) => {
-		if (
-			!selectedUser ||
-			selectedUser.id === adminUserService.getCurrentUserId()
-		)
-			return;
-		if (action === 'delete_permanently' && deleteConfirmation !== 'DELETE') {
-			setMessage('Type DELETE to confirm permanent account deletion.');
+
+	const handleRequestStatus = () => {
+		// Locking an account out is confirmed first; restoring access applies straight away.
+		if (newStatus === 'banned' || newStatus === 'suspended') {
+			setStatusConfirmOpen(true);
 			return;
 		}
+		void handleStatus();
+	};
+
+	const handleLifecycle = async (action: LifecycleAction) => {
+		if (!selectedUser || selectedUser.id === currentAdminId) return;
 		const normalizedReason = lifecycleReason.trim();
 		if (!normalizedReason) {
-			setMessage('Enter a lifecycle reason before continuing.');
+			setLifecycleError('Enter a lifecycle reason before continuing.');
 			return;
 		}
-		let completionMessage = action === 'archive'
-			? 'Account archived.'
-			: action === 'unarchive'
-				? 'Account restored and activated.'
-				: 'Account permanently deleted.';
-		await runMutation(
-			async () => {
-				const operation = await adminUserService.updateLifecycle(
-					selectedUser.id,
-					action,
-					normalizedReason,
-					setLifecycleOperation,
-				);
+		setLifecycleError(null);
+		const targetUser = selectedUser;
+		let completionMessage = action === 'archive' ? 'Account archived.' : action === 'unarchive' ? 'Account restored and activated.' : 'Account permanently deleted.';
+		let failure: string | null = null;
+		const succeeded = await runMutation(async () => {
+			try {
+				const operation = await adminUserService.updateLifecycle(targetUser.id, action, normalizedReason, setLifecycleOperation);
 				completionMessage = `${completionMessage} ${formatDeliveryStatus(operation)}`;
-				if (action === 'delete_permanently') {
-					setUsers((current) =>
-						current.filter((user) => user.id !== selectedUser.id)
-					);
-					const currentAdminId = adminUserService.getCurrentUserId();
-					if (currentAdminId) {
-						relationshipResourceService.removeUserFromCachedRelationships(currentAdminId, selectedUser.id);
-						relationshipRequestResourceService.removeUserFromCachedRequests(selectedUser.id);
-						void conversationResourceService.removeConversation(currentAdminId, selectedUser.id);
-					}
-					setSelectedUser(null);
-				} else patchSelected({ archived: action === 'archive' });
-				setLifecycleReason('');
-				setDeleteConfirmation('');
-			},
-			() => completionMessage,
-		);
+			} catch (lifecycleFailure: unknown) {
+				failure = lifecycleFailure instanceof Error ? lifecycleFailure.message : 'The admin action failed.';
+				throw lifecycleFailure;
+			}
+			if (action === 'delete_permanently') {
+				setUsers((current) => current.filter((user) => user.id !== targetUser.id));
+				if (currentAdminId) {
+					relationshipResourceService.removeUserFromCachedRelationships(currentAdminId, targetUser.id);
+					relationshipRequestResourceService.removeUserFromCachedRequests(targetUser.id);
+					void conversationResourceService.removeConversation(currentAdminId, targetUser.id);
+				}
+			} else patchSelected({ archived: action === 'archive' });
+			setLifecycleReason('');
+		}, () => completionMessage);
+		if (!succeeded) {
+			// Keep the dialog open with the reason so the admin can retry.
+			setLifecycleError(failure ?? 'The admin action failed.');
+			return;
+		}
+		setLifecycleDialog(null);
+		if (action === 'delete_permanently') {
+			setSelectedUser(null);
+			toast.success(completionMessage);
+		}
 	};
+
 	const handleLifecycleRetry = async () => {
 		if (!selectedUser || !lifecycleOperation || lifecycleOperation.phase !== 'failed') return;
 		await runMutation(async () => {
@@ -310,65 +435,42 @@ export default function UserManagementSection() {
 			setLifecycleOperation(operation);
 		}, 'Lifecycle job completed after retry.');
 	};
+
 	const handleDeliveryRetry = async () => {
-		if (!lifecycleOperation?.delivery) return;
+		const eventId = lifecycleOperation?.delivery?.eventId;
+		if (!eventId) return;
 		await runMutation(async () => {
-			const delivery = await adminUserService.retryModerationDelivery(lifecycleOperation.delivery!.eventId);
-			setLifecycleOperation((current) => current ? { ...current, delivery } : current);
+			const delivery = await adminUserService.retryModerationDelivery(eventId);
+			setLifecycleOperation((current) => (current ? { ...current, delivery } : current));
 		}, 'Email delivery retry completed.');
 	};
+
 	const handleEmailVerification = async () => {
 		if (!selectedUser) return;
+		// verifyEmail writes the user flag and the audit entry in one batch.
 		await runMutation(async () => {
 			await adminUserService.verifyEmail(selectedUser.id);
 			patchSelected({ emailVerified: true });
 		}, 'Email marked as verified.');
 	};
-	const handleIdentity = async (
-		verificationStatus: 'verified' | 'rejected'
-	) => {
+
+	const handleIdentity = async (verificationStatus: 'verified' | 'rejected') => {
 		if (!selectedUser) return;
-		await runMutation(
-			async () => {
-				await adminUserService.updateIdentityVerification(
-					selectedUser.id,
-					verificationStatus,
-					statusReason
-				);
-				patchSelected({
-					verificationStatus,
-					isAuthenticated: verificationStatus === 'verified',
-				});
-			},
-			verificationStatus === 'verified'
-				? 'Identity approved.'
-				: 'Identity verification rejected.'
-		);
-	};
-	const handleExport = async () => {
-		await Share.share({
-			title: 'Ourlime user export',
-			message: adminUserService.createCsv(filteredUsers),
-		});
+		await runMutation(async () => {
+			await adminUserService.updateIdentityVerification(selectedUser.id, verificationStatus, statusReason);
+			patchSelected({ verificationStatus, isAuthenticated: verificationStatus === 'verified' });
+		}, verificationStatus === 'verified' ? 'Identity approved.' : 'Identity verification rejected.');
 	};
 
-	if (loading) return <UserManagementSectionSkeleton />;
-	if (loadError && users.length === 0) {
-		return (
-			<View style={{ alignItems: 'center', padding: 28 }}>
-				<Icon name="alert-triangle" size={34} color={colors.destructive} />
-				<Text style={{ marginTop: 10, textAlign: 'center', color: colors.destructiveText }}>{loadError}</Text>
-				<TouchableOpacity
-					accessibilityRole="button"
-					onPress={() => void loadUsers()}
-					style={{ marginTop: 14, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, backgroundColor: colors.accent }}
-				>
-					<Text style={{ color: colors.onAccent, fontWeight: '800' }}>Retry</Text>
-				</TouchableOpacity>
-			</View>
-		);
-	}
-	const capitalize = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
+	const handleExport = async () => {
+		try {
+			await Share.share({ title: 'Ourlime user export', message: adminUserService.createCsv(filteredUsers) });
+		} catch (error: unknown) {
+			console.error('[UserManagementSection.handleExport] Error:', error);
+			toast.error(error instanceof Error ? error.message : 'The export could not be shared.');
+		}
+	};
+
 	const filterGroups: FilterGroup[] = [
 		{ key: 'status', label: 'Status', options: STATUSES.map((status) => ({ value: status, label: status === 'all' ? 'Any status' : capitalize(status) })), value: statusFilter, defaultValue: 'all' },
 		{ key: 'role', label: 'Role', options: [{ value: 'all', label: 'Any role' }, ...ROLES.map((role) => ({ value: role, label: capitalize(role) }))], value: roleFilter, defaultValue: 'all' },
@@ -382,196 +484,265 @@ export default function UserManagementSection() {
 		const nextAccount = readSingleFilter(values, 'account');
 		setAccountFilter(nextAccount === 'regular' || nextAccount === 'student' ? nextAccount : 'all');
 	};
-	const handleClearFilter = (groupKey: string): void => {
-		if (groupKey === 'status') setStatusFilter('all');
-		if (groupKey === 'role') setRoleFilter('all');
-		if (groupKey === 'account') setAccountFilter('all');
+	const handleClearFilters = () => {
+		setStatusFilter('all');
+		setRoleFilter('all');
+		setAccountFilter('all');
+		setSearch('');
+	};
+
+	const canLoadMore = visibleCount < filteredUsers.length || hasMoreUsers;
+	const loadMoreAction = { key: 'load-more', label: 'Load more users', icon: 'chevron-down' as const, tone: 'neutral' as const, busy: loadingMore, onPress: () => void handleLoadMoreUsers() };
+
+	const screenState: AdminScreenState = loading
+		? { kind: 'loading', variant: 'list' }
+		: loadError && users.length === 0
+			? { kind: 'error', message: loadError, title: 'Users could not be loaded' }
+			: users.length === 0
+				? { kind: 'empty', title: 'No users found.', icon: 'users' }
+				: filteredUsers.length === 0
+					? hasMoreUsers
+						? { kind: 'empty', title: 'No loaded users match', description: 'Load more users to keep searching.', icon: 'search', action: loadMoreAction }
+						: { kind: 'empty', title: 'No users match these filters.', filtered: true, onClearFilters: handleClearFilters }
+					: { kind: 'ready' };
+
+	const userOverflowItems: AdminOverflowItem[] = selectedUser && !isSelf
+		? [
+				selectedUser.archived
+					? { key: 'unarchive', label: 'Restore account', icon: 'rotate-ccw', description: 'Reactivates the archived account', onPress: () => { setLifecycleError(null); setLifecycleDialog('unarchive'); } }
+					: { key: 'archive', label: 'Archive account', icon: 'archive', description: 'Reversible; hides the account', onPress: () => { setLifecycleError(null); setLifecycleDialog('archive'); } },
+				{ key: 'delete', label: 'Delete permanently', icon: 'trash-2', tone: 'danger', description: 'Cannot be undone', onPress: () => { setLifecycleError(null); setLifecycleDialog('delete_permanently'); } },
+			]
+		: [];
+
+	const selectedName = selectedUser ? getDisplayName(selectedUser) : '';
+	const selectedHandle = selectedUser ? `@${selectedUser.userName || selectedUser.email || 'this user'}` : '';
+	const lifecycleCopy: { [action in LifecycleAction]: { title: string; description: string; confirm: string; tone: 'pending' | 'positive' | 'danger'; icon: AdminIconName } } = {
+		archive: { title: 'Archive this account?', description: `${selectedHandle} loses access until the account is restored. This is reversible.`, confirm: 'Archive account', tone: 'pending', icon: 'archive' },
+		unarchive: { title: 'Restore this account?', description: `${selectedHandle} gets access again and the account is activated.`, confirm: 'Restore account', tone: 'positive', icon: 'rotate-ccw' },
+		delete_permanently: { title: 'Delete this account permanently?', description: `${selectedHandle} is removed through the secure server lifecycle workflow. This cannot be undone.`, confirm: 'Delete permanently', tone: 'danger', icon: 'trash-2' },
+	};
+	const activeLifecycle = lifecycleDialog ? lifecycleCopy[lifecycleDialog] : null;
+
+	const renderDetail = (user: AdminUserRecord) => {
+		const userStatus = getUserStatus(user);
+		const overviewRows: [string, string][] = [
+			['Username', `@${user.userName || 'unknown'}`],
+			['Email', user.email || 'None'],
+			['Account', capitalize(user.accountType)],
+			['Role', capitalize(user.role)],
+			['Status', capitalize(userStatus)],
+			['Email verified', user.emailVerified ? 'Yes' : 'No'],
+			['Identity verified', user.isAuthenticated ? 'Yes' : capitalize(user.verificationStatus)],
+			['Online status', capitalize(user.onlineStatus)],
+		];
+		return (
+			<View style={{ gap: space.md }}>
+				{notice ? <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} /> : null}
+				{isSelf ? <AdminState kind="inlineError" message="This is your own account. Role, status and lifecycle changes are disabled." /> : null}
+
+				<AdminSection title="Overview" collapsible={{ initiallyOpen: true }}>
+					<View style={{ gap: space.sm }}>
+						{overviewRows.map(([label, value]) => (
+							<View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 32 }}>
+								<Text style={[type.label, { width: 120, color: colors.mutedText }]}>{label}</Text>
+								<Text selectable numberOfLines={2} style={[type.bodyStrong, { flex: 1, color: colors.text }]}>
+									{value}
+								</Text>
+							</View>
+						))}
+					</View>
+				</AdminSection>
+
+				<AdminSection title="Content" description="Posts and Limes, with administrator removals" collapsible={{ initiallyOpen: false }}>
+					<AdminUserContentWorkspace
+						userId={user.id}
+						userDisplayName={getDisplayName(user)}
+						refreshSignal={detailRefreshSignal}
+						onOpenContent={(content) => {
+							setSelectedUser(null);
+							if (content.contentType === 'lime') {
+								router.push({ pathname: '/limes/viewer', params: { limeId: content.id, viewer: '1' } });
+								return;
+							}
+							router.push({ pathname: '/post/[id]', params: { id: content.id } });
+						}}
+					/>
+				</AdminSection>
+
+				<AdminSection title="Role" description={`Current role: ${capitalize(user.role)}`} collapsible={{ initiallyOpen: false }}>
+					<View accessibilityRole="radiogroup" style={{ gap: space.sm }}>
+						{ROLES.map((role) => (
+							<ChoiceRow key={role} label={capitalize(role)} description={ROLE_DESCRIPTIONS[role]} selected={draftRole === role} disabled={busy || isSelf} onPress={() => setDraftRole(role)} />
+						))}
+					</View>
+					<AdminButton
+						label="Change role"
+						icon="shield"
+						tone={draftRole === 'admin' ? 'danger' : 'positive'}
+						emphasis="primary"
+						fullWidth
+						disabled={busy || isSelf || draftRole === user.role}
+						onPress={() => setPendingRole(draftRole)}
+					/>
+				</AdminSection>
+
+				<AdminSection title="Account status" description={`Current status: ${capitalize(userStatus)}`} collapsible={{ initiallyOpen: false }}>
+					<View accessibilityRole="radiogroup" style={{ gap: space.sm }}>
+						{ACCOUNT_STATUSES.map((status) => (
+							<ChoiceRow key={status} label={capitalize(status)} description={STATUS_DESCRIPTIONS[status]} selected={newStatus === status} disabled={busy || isSelf} onPress={() => setNewStatus(status)} />
+						))}
+					</View>
+					{newStatus === 'suspended' ? (
+						<View style={{ gap: space.xs }}>
+							<Text style={[type.label, { color: colors.mutedText }]}>Suspension days</Text>
+							<TextInput
+								value={suspensionDays}
+								onChangeText={setSuspensionDays}
+								keyboardType="number-pad"
+								accessibilityLabel="Suspension days"
+								placeholder="Suspension days"
+								placeholderTextColor={colors.mutedText}
+								style={getInputStyle(colors)}
+							/>
+						</View>
+					) : null}
+					<View style={{ gap: space.xs }}>
+						<Text style={[type.label, { color: colors.mutedText }]}>Reason shown to the user</Text>
+						<TextInput
+							value={statusReason}
+							onChangeText={setStatusReason}
+							multiline
+							accessibilityLabel="Administrative reason shown to the user"
+							placeholder="Administrative reason shown to the user"
+							placeholderTextColor={colors.mutedText}
+							style={getInputStyle(colors, true)}
+						/>
+					</View>
+					<AdminButton
+						label="Apply status"
+						icon="check"
+						tone={newStatus === 'banned' ? 'danger' : newStatus === 'suspended' ? 'pending' : 'positive'}
+						emphasis="primary"
+						fullWidth
+						busy={busy && !statusConfirmOpen}
+						disabled={busy || isSelf}
+						onPress={handleRequestStatus}
+					/>
+				</AdminSection>
+
+				<AdminSection title="Verification" collapsible={{ initiallyOpen: false }}>
+					<View style={{ gap: space.sm }}>
+						<Text style={[type.bodyStrong, { color: colors.text }]}>Email verification</Text>
+						<AdminStatusPill label={user.emailVerified ? 'Verified' : 'Not verified'} tone={user.emailVerified ? 'positive' : 'pending'} />
+						{!user.emailVerified ? (
+							<AdminButton label="Verify email manually" icon="mail" tone="positive" fullWidth disabled={busy} onPress={() => void handleEmailVerification()} />
+						) : null}
+					</View>
+					<View style={{ height: 1, backgroundColor: colors.border }} />
+					<View style={{ gap: space.sm }}>
+						<Text style={[type.bodyStrong, { color: colors.text }]}>Identity authentication</Text>
+						<AdminStatusPill
+							label={user.verificationStatus}
+							tone={user.verificationStatus === 'verified' ? 'positive' : user.verificationStatus === 'rejected' ? 'danger' : user.verificationStatus === 'pending' ? 'pending' : 'neutral'}
+						/>
+						<IdentityDocuments userId={user.id} refreshSignal={detailRefreshSignal} onPreview={setPreviewDocumentUrl} />
+						<TextInput
+							value={statusReason}
+							onChangeText={setStatusReason}
+							multiline
+							accessibilityLabel="Review notes or rejection reason"
+							placeholder="Review notes or rejection reason"
+							placeholderTextColor={colors.mutedText}
+							style={getInputStyle(colors, true)}
+						/>
+						<View style={{ flexDirection: 'row', gap: space.sm }}>
+							<AdminButton label="Approve" icon="check" tone="positive" disabled={busy} onPress={() => void handleIdentity('verified')} style={{ flex: 1 }} />
+							<AdminButton label="Reject" icon="x" tone="danger" disabled={busy} onPress={() => void handleIdentity('rejected')} style={{ flex: 1 }} />
+						</View>
+					</View>
+				</AdminSection>
+
+				<AdminSection
+					title="Lifecycle"
+					description="Archive is reversible. Permanent deletion removes the user through the secure server lifecycle workflow and cannot be undone. Both are in the ⋯ menu."
+					collapsible={{ initiallyOpen: Boolean(lifecycleOperation) }}
+				>
+					{lifecycleOperation ? (
+						<View style={{ gap: space.sm }}>
+							<View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+								<Text style={[type.bodyStrong, { color: colors.text }]}>Lifecycle job</Text>
+								<AdminStatusPill
+									label={lifecycleOperation.phase}
+									tone={lifecycleOperation.phase === 'failed' ? 'danger' : lifecycleOperation.phase === 'completed' ? 'positive' : 'pending'}
+								/>
+							</View>
+							<Text style={[type.meta, { color: colors.mutedText }]}>
+								{lifecycleOperation.processedDocuments}/{lifecycleOperation.totalDocuments || '?'} records · Email {lifecycleOperation.delivery?.emailStatus ?? 'pending'}
+							</Text>
+							{lifecycleOperation.phase === 'failed' ? (
+								<AdminButton label="Retry safely" icon="refresh-cw" tone="pending" disabled={busy} onPress={() => void handleLifecycleRetry()} style={{ alignSelf: 'flex-start' }} />
+							) : null}
+							{lifecycleOperation.delivery?.emailStatus === 'failed' ? (
+								<AdminButton label="Retry email" icon="mail" tone="neutral" disabled={busy} onPress={() => void handleDeliveryRetry()} style={{ alignSelf: 'flex-start' }} />
+							) : null}
+						</View>
+					) : (
+						<Text style={[type.meta, { color: colors.mutedText }]}>No lifecycle job has run in this session.</Text>
+					)}
+				</AdminSection>
+			</View>
+		);
 	};
 
 	return (
 		<>
-			<View style={{ flexDirection: 'row', marginBottom: 10 }}>
-				<View
-					style={{
-						flex: 1,
-						flexDirection: 'row',
-						alignItems: 'center',
-						borderRadius: 14,
-						backgroundColor: colors.control,
-						borderWidth: 1,
-						borderColor: colors.border,
-						paddingHorizontal: 12,
-					}}
-				>
-					<Icon name="search" size={18} color={colors.icon} />
-					<TextInput
-						value={search}
-						onChangeText={setSearch}
-						placeholder="Search name, username, or email"
-						placeholderTextColor={colors.mutedText}
-						style={{ flex: 1, padding: 11, color: colors.text }}
+			<AdminScreen
+				title="Users"
+				subtitle="Accounts, roles, status and verification"
+				state={screenState}
+				onRefresh={() => loadUsers(true)}
+				refreshing={refreshing}
+				overflowActions={[
+					{ key: 'export', label: 'Export CSV', icon: 'download', description: `${filteredUsers.length} users in the current view`, onPress: () => void handleExport() },
+					{
+						key: 'import',
+						label: 'Import CSV',
+						icon: 'upload',
+						description: 'Needs the secure provisioning endpoint',
+						onPress: () => toast('CSV import requires the secure server user-provisioning endpoint so Firebase Auth and Firestore stay consistent.'),
+					},
+				]}
+				toolbar={
+					<AdminToolbar
+						search={{ value: search, placeholder: 'Search name, username or email', onChange: setSearch }}
+						filters={{ title: 'Filter users', groups: filterGroups, onApply: handleApplyFilters }}
+						resultSummary={users.length ? `Showing ${visibleUsers.length} of ${filteredUsers.length} ${hasMoreUsers ? 'loaded ' : ''}users` : undefined}
 					/>
-				</View>
-				<TouchableOpacity
-					onPress={() => void handleExport()}
-					style={{
-						marginLeft: 8,
-						width: 45,
-						alignItems: 'center',
-						justifyContent: 'center',
-						borderRadius: 14,
-						backgroundColor: '#10b981',
-					}}
-				>
-					<Icon name="download" size={19} color="#ffffff" />
-				</TouchableOpacity>
-				<TouchableOpacity
-					onPress={() =>
-						setMessage(
-							'CSV import requires the secure server user-provisioning endpoint so Firebase Auth and Firestore stay consistent.'
-						)
-					}
-					style={{
-						marginLeft: 7,
-						width: 45,
-						alignItems: 'center',
-						justifyContent: 'center',
-						borderRadius: 14,
-						backgroundColor: colors.control,
-						borderWidth: 1,
-						borderColor: colors.border,
-					}}
-				>
-					<Icon name="upload" size={19} color={colors.icon} />
-				</TouchableOpacity>
-			</View>
-			<FilterBar groups={filterGroups} onOpen={() => setFiltersOpen(true)} onClear={handleClearFilter} />
-			<FilterSheet visible={filtersOpen} title="Filter users" groups={filterGroups} applyLabel="Show users" onApply={handleApplyFilters} onClose={() => setFiltersOpen(false)} />
-			<Text
-				style={{ marginVertical: 10, color: colors.mutedText, fontSize: 12 }}
+				}
 			>
-				Showing {visibleUsers.length} of {filteredUsers.length} {hasMoreUsers ? 'loaded ' : ''}users
-			</Text>
-			{visibleUsers.length === 0 ? (
-				<Text style={{ marginVertical: 18, textAlign: 'center', color: colors.mutedText }}>
-					{users.length === 0 ? 'No users found.' : hasMoreUsers ? 'No loaded users match. Load more users to keep searching.' : 'No users match these filters.'}
-				</Text>
-			) : null}
-			{visibleUsers.map((user) => (
-				<TouchableOpacity
-					key={user.id}
-					onPress={() => {
-						setSelectedUser(user);
-						setDetailTab('overview');
-						setNewStatus(
-							user.accountStatus === 'active' ||
-								user.accountStatus === 'pending' ||
-								user.accountStatus === 'suspended' ||
-								user.accountStatus === 'banned'
-								? user.accountStatus
-								: 'active'
+				<View style={{ gap: space.sm }}>
+					{loadError ? <AdminState kind="inlineError" message={loadError} onRetry={() => void loadUsers(true)} retrying={refreshing} /> : null}
+					{visibleUsers.map((user) => {
+						const userStatus = getUserStatus(user);
+						return (
+							<AdminListRow
+								key={user.id}
+								title={getDisplayName(user)}
+								subtitle={`@${user.userName || 'unknown'} · ${user.role} · ${user.accountType}`}
+								leading={{ kind: 'avatar', uri: user.profilePicture ?? undefined, name: user.firstName || user.userName || user.email }}
+								status={{ label: userStatus, tone: getUserStatusTone(userStatus) }}
+								accessibilityHint="Opens user management"
+								onPress={() => handleOpenUser(user)}
+							/>
 						);
-						setStatusReason(user.statusReason);
-						setDeleteConfirmation('');
-						setLifecycleReason('');
-					}}
-					style={{
-						flexDirection: 'row',
-						alignItems: 'center',
-						padding: 13,
-						marginBottom: 9,
-						borderRadius: 15,
-						backgroundColor: colors.elevated,
-						borderWidth: 1,
-						borderColor: colors.border,
-					}}
-				>
-					<UserAvatar
-						profileImage={user.profilePicture}
-						firstName={user.firstName || user.userName || user.email}
-						size={44}
-					/>
-					<View style={{ flex: 1, marginLeft: 11 }}>
-						<Text
-							numberOfLines={1}
-							style={{ fontWeight: '900', color: colors.text }}
-						>
-							{`${user.firstName} ${user.lastName}`.trim() ||
-								user.userName ||
-								user.email}
-						</Text>
-						<Text
-							numberOfLines={1}
-							style={{ marginTop: 2, color: colors.mutedText, fontSize: 12 }}
-						>
-							@{user.userName || 'unknown'} · {user.role} · {user.accountType}
-						</Text>
-						<Text
-							style={{
-								marginTop: 4,
-								color:
-									user.archived || user.banned
-										? colors.destructiveText
-										: colors.successText,
-								fontSize: 10,
-								fontWeight: '900',
-								textTransform: 'uppercase',
-							}}
-						>
-							{user.archived ? 'archived' : user.accountStatus}
-						</Text>
-					</View>
-					<Icon name="chevron-right" size={18} color={colors.icon} />
-				</TouchableOpacity>
-			))}
-			{pageCount > 1 ? (
-				<View
-					style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center' }}
-				>
-					<TouchableOpacity
-						disabled={page <= 1}
-						onPress={() => setPage((current) => Math.max(1, current - 1))}
-						style={{ padding: 10 }}
-					>
-						<Icon
-							name="chevron-left"
-							size={20}
-							color={page <= 1 ? colors.disabledText : colors.accentText}
-						/>
-					</TouchableOpacity>
-					<Text
-						style={{ flex: 1, textAlign: 'center', color: colors.mutedText }}
-					>
-						Page {Math.min(page, pageCount)} of {pageCount}
-					</Text>
-					<TouchableOpacity
-						disabled={page >= pageCount}
-						onPress={() =>
-							setPage((current) => Math.min(pageCount, current + 1))
-						}
-						style={{ padding: 10 }}
-					>
-						<Icon
-							name="chevron-right"
-							size={20}
-							color={
-								page >= pageCount ? colors.disabledText : colors.accentText
-							}
-						/>
-					</TouchableOpacity>
+					})}
+					{canLoadMore ? (
+						<AdminButton label="Load more users" icon="chevron-down" tone="neutral" fullWidth busy={loadingMore} onPress={() => void handleLoadMoreUsers()} style={{ marginTop: space.sm }} />
+					) : null}
 				</View>
-			) : null}
-			{hasMoreUsers ? (
-				<TouchableOpacity
-					accessibilityRole="button"
-					accessibilityState={{ busy: loadingMore, disabled: loadingMore }}
-					disabled={loadingMore}
-					onPress={() => void handleLoadMoreUsers()}
-					style={{ marginTop: 8, alignItems: 'center', paddingVertical: 12, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.elevated }}
-				>
-					{loadingMore ? <ActivityIndicator size="small" color={colors.accent} /> : <Text style={{ color: colors.accentText, fontWeight: '800' }}>Load more users</Text>}
-				</TouchableOpacity>
-			) : null}
+			</AdminScreen>
+
 			<Modal
 				visible={Boolean(selectedUser)}
 				transparent
@@ -579,686 +750,143 @@ export default function UserManagementSection() {
 				navigationBarTranslucent
 				animationType="none"
 				presentationStyle="overFullScreen"
-				onRequestClose={() => setSelectedUser(null)}
+				onRequestClose={handleCloseUser}
 			>
 				<SwipeDismissSurface
 					visible={Boolean(selectedUser)}
-					onDismiss={() => setSelectedUser(null)}
+					onDismiss={handleCloseUser}
 					handleColor={colors.border}
 					disabled={busy}
 					accessibilityLabel="Swipe down to close user management"
 					style={{ flex: 1, backgroundColor: colors.canvas }}
 				>
-					<SafeAreaView
-						edges={['top', 'left', 'right']}
-						style={{ flex: 1, backgroundColor: colors.canvas }}
-					>
-						<View
-							style={{
-								flexDirection: 'row',
-								alignItems: 'center',
-								padding: 16,
-								backgroundColor: colors.surface,
-							}}
-						>
-							<Text
+					<SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+						{selectedUser ? (
+							<View
 								style={{
-									flex: 1,
-									fontSize: 19,
-									fontWeight: '900',
-									color: colors.text,
+									minHeight: 64,
+									flexDirection: 'row',
+									alignItems: 'center',
+									gap: space.md,
+									paddingLeft: space.lg,
+									paddingRight: space.xs,
+									paddingVertical: space.sm,
+									borderBottomWidth: 1,
+									borderBottomColor: colors.border,
+									backgroundColor: colors.navigation,
 								}}
 							>
-								Manage user
-							</Text>
-							<TouchableOpacity onPress={() => setSelectedUser(null)}>
-								<Icon name="x" size={24} color={colors.icon} />
-							</TouchableOpacity>
-						</View>
-						<ScrollView
-							horizontal
-							showsHorizontalScrollIndicator={false}
-							style={{
-								flexGrow: 0,
-								backgroundColor: colors.surface,
-								paddingHorizontal: 12,
-							}}
-						>
-							{(
-								[
-									'overview',
-									'content',
-									'role',
-									'status',
-									'verification',
-									'lifecycle',
-								] as const
-							).map((tab) => (
-								<TouchableOpacity
-									key={tab}
-									onPress={() => setDetailTab(tab)}
-									style={{
-										marginRight: 7,
-										marginBottom: 10,
-										borderRadius: 999,
-										paddingHorizontal: 12,
-										paddingVertical: 8,
-										backgroundColor:
-											detailTab === tab
-												? colors.selectedControl
-												: colors.control,
-									}}
-								>
-									<Text
-										style={{
-											textTransform: 'capitalize',
-											color:
-												detailTab === tab
-													? colors.selectedText
-													: colors.secondaryText,
-											fontSize: 12,
-											fontWeight: '800',
-										}}
-									>
-										{tab}
+								<UserAvatar profileImage={selectedUser.profilePicture} firstName={selectedUser.firstName || selectedUser.userName} size={40} />
+								<View style={{ flex: 1, gap: space.xs }}>
+									<Text numberOfLines={1} accessibilityRole="header" style={[type.section, { color: colors.text }]}>
+										{selectedName}
 									</Text>
-								</TouchableOpacity>
-							))}
-						</ScrollView>
+									<AdminStatusPill label={getUserStatus(selectedUser)} tone={getUserStatusTone(getUserStatus(selectedUser))} />
+								</View>
+								{userOverflowItems.length ? <AdminOverflowMenu items={userOverflowItems} trigger="header" title={selectedName} triggerLabel="More account actions" disabled={busy} /> : null}
+								<AdminIconButton icon="x" label="Close user management" iconSize={22} disabled={busy} onPress={handleCloseUser} />
+							</View>
+						) : null}
 						{/* Full-screen Modal: Android doesn't resize for the keyboard, so shrink the form above it. */}
 						<KeyboardSafeView style={{ flex: 1 }}>
 							{selectedUser ? (
 								<ScrollView
 									keyboardShouldPersistTaps="handled"
-									contentContainerStyle={{ padding: 18, paddingBottom: 55 }}
+									contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl + insets.bottom }}
+									refreshControl={
+										<RefreshControl refreshing={false} onRefresh={() => setDetailRefreshSignal((current) => current + 1)} tintColor={colors.accent} colors={[colors.accent]} />
+									}
 								>
-									{detailTab === 'overview' ? (
-										<>
-											<View style={{ alignItems: 'center' }}>
-												<UserAvatar
-													profileImage={selectedUser.profilePicture}
-													firstName={
-														selectedUser.firstName || selectedUser.userName
-													}
-													size={72}
-												/>
-												<Text
-													style={{
-														marginTop: 10,
-														fontSize: 20,
-														fontWeight: '900',
-														color: colors.text,
-													}}
-												>
-													{`${selectedUser.firstName} ${selectedUser.lastName}`.trim()}
-												</Text>
-												<Text style={{ color: colors.mutedText }}>
-													{selectedUser.email}
-												</Text>
-											</View>
-											{[
-												['Username', `@${selectedUser.userName || 'unknown'}`],
-												['Account', selectedUser.accountType],
-												['Role', selectedUser.role],
-												[
-													'Status',
-													selectedUser.archived
-														? 'archived'
-														: selectedUser.accountStatus,
-												],
-												[
-													'Email verified',
-													selectedUser.emailVerified ? 'Yes' : 'No',
-												],
-												[
-													'Identity verified',
-													selectedUser.isAuthenticated
-														? 'Yes'
-														: selectedUser.verificationStatus,
-												],
-												['Online status', selectedUser.onlineStatus],
-											].map(([label, value]) => (
-												<View
-													key={label}
-													style={{
-														marginTop: 11,
-														padding: 13,
-														borderRadius: 13,
-														backgroundColor: colors.elevated,
-														borderWidth: 1,
-														borderColor: colors.border,
-													}}
-												>
-													<Text
-														style={{
-															color: colors.mutedText,
-															fontSize: 11,
-															fontWeight: '800',
-														}}
-													>
-														{label}
-													</Text>
-													<Text
-														style={{
-															marginTop: 3,
-															color: colors.text,
-															fontWeight: '800',
-															textTransform: 'capitalize',
-														}}
-													>
-														{value}
-													</Text>
-												</View>
-											))}
-										</>
-									) : null}
-									{detailTab === 'content' ? (
-										<AdminUserContentWorkspace
-											userId={selectedUser.id}
-											userDisplayName={
-												`${selectedUser.firstName} ${selectedUser.lastName}`.trim()
-												|| selectedUser.userName
-												|| selectedUser.email
-											}
-											onOpenContent={(content) => {
-												setSelectedUser(null);
-												if (content.contentType === 'lime') {
-													router.push({
-														pathname: '/limes/viewer',
-														params: { limeId: content.id, viewer: '1' },
-													});
-													return;
-												}
-												router.push({
-													pathname: '/post/[id]',
-													params: { id: content.id },
-												});
-											}}
-										/>
-									) : null}
-									{detailTab === 'role' ? (
-										<>
-											<Text
-												style={{
-													marginBottom: 10,
-													color: colors.text,
-													fontWeight: '900',
-												}}
-											>
-												Platform role
-											</Text>
-											{ROLES.map((role) => (
-												<TouchableOpacity
-													key={role}
-													disabled={
-														busy ||
-														selectedUser.role === role ||
-														selectedUser.id ===
-															adminUserService.getCurrentUserId()
-													}
-													onPress={() => setPendingRole(role)}
-													style={{
-														flexDirection: 'row',
-														alignItems: 'center',
-														padding: 14,
-														marginBottom: 7,
-														borderRadius: 13,
-														backgroundColor:
-															selectedUser.role === role
-																? colors.successSurface
-																: colors.elevated,
-													}}
-												>
-													<View style={{ flex: 1 }}>
-														<Text
-															style={{
-																textTransform: 'capitalize',
-																color:
-																	selectedUser.role === role
-																		? colors.successText
-																		: colors.secondaryText,
-																fontWeight: '900',
-															}}
-														>
-															{role}
-														</Text>
-														<Text
-															style={{
-																marginTop: 2,
-																color: colors.mutedText,
-																fontSize: 11,
-															}}
-														>
-															{role === 'admin'
-																? 'Full administration access'
-																: role === 'moderator'
-																	? 'Content reports and moderation'
-																	: role === 'developer'
-																		? 'Developer previews and tools'
-																		: role === 'tester'
-																			? 'Development previews without admin access'
-																			: role === 'premium'
-																				? 'Premium product capabilities'
-																				: 'Standard member access'}
-														</Text>
-													</View>
-													{selectedUser.role === role ? (
-														<Icon
-															name="check"
-															size={18}
-															color={colors.successText}
-														/>
-													) : null}
-												</TouchableOpacity>
-											))}
-										</>
-									) : null}
-									{detailTab === 'status' ? (
-										<>
-											<Text
-												style={{
-													marginBottom: 10,
-													color: colors.text,
-													fontWeight: '900',
-												}}
-											>
-												Account access status
-											</Text>
-											{(
-												['active', 'pending', 'suspended', 'banned'] as const
-											).map((status) => (
-												<TouchableOpacity
-													key={status}
-													onPress={() => setNewStatus(status)}
-													style={{
-														marginBottom: 7,
-														padding: 13,
-														borderRadius: 13,
-														backgroundColor:
-															newStatus === status
-																? colors.successSurface
-																: colors.elevated,
-													}}
-												>
-													<Text
-														style={{
-															color:
-																newStatus === status
-																	? colors.successText
-																	: colors.secondaryText,
-															textTransform: 'capitalize',
-															fontWeight: '900',
-														}}
-													>
-														{status}
-													</Text>
-												</TouchableOpacity>
-											))}
-											{newStatus === 'suspended' ? (
-												<TextInput
-													value={suspensionDays}
-													onChangeText={setSuspensionDays}
-													keyboardType="number-pad"
-													placeholder="Suspension days"
-													placeholderTextColor={colors.mutedText}
-													style={{
-														marginTop: 7,
-														borderRadius: 13,
-														borderWidth: 1,
-														borderColor: colors.border,
-														padding: 12,
-														backgroundColor: colors.input,
-														color: colors.text,
-													}}
-												/>
-											) : null}
-											<TextInput
-												value={statusReason}
-												onChangeText={setStatusReason}
-												multiline
-												placeholder="Administrative reason shown to the user"
-												placeholderTextColor={colors.mutedText}
-												style={{
-													minHeight: 86,
-													marginTop: 9,
-													textAlignVertical: 'top',
-													borderRadius: 13,
-													borderWidth: 1,
-													borderColor: colors.border,
-													padding: 12,
-													backgroundColor: colors.input,
-													color: colors.text,
-												}}
-											/>
-											<TouchableOpacity
-												disabled={
-													busy ||
-													selectedUser.id === adminUserService.getCurrentUserId()
-												}
-												onPress={() => void handleStatus()}
-												style={{
-													marginTop: 12,
-													alignItems: 'center',
-													borderRadius: 14,
-													backgroundColor:
-														newStatus === 'banned'
-															? colors.destructive
-															: colors.accent,
-													padding: 13,
-												}}
-											>
-												<Text
-													style={{ color: colors.onAccent, fontWeight: '900' }}
-												>
-													Apply status
-												</Text>
-											</TouchableOpacity>
-										</>
-									) : null}
-									{detailTab === 'verification' ? (
-										<>
-											<View
-												style={{
-													padding: 14,
-													borderRadius: 14,
-													backgroundColor: colors.surface,
-												}}
-											>
-												<Text style={{ color: colors.text, fontWeight: '900' }}>
-													Email verification
-												</Text>
-												<Text style={{ marginTop: 4, color: colors.mutedText }}>
-													{selectedUser.emailVerified
-														? 'Verified'
-														: 'Not verified'}
-												</Text>
-												{!selectedUser.emailVerified ? (
-													<TouchableOpacity
-														disabled={busy}
-														onPress={() => void handleEmailVerification()}
-														style={{
-															marginTop: 11,
-															alignItems: 'center',
-															borderRadius: 13,
-															backgroundColor: '#10b981',
-															padding: 11,
-														}}
-													>
-														<Text style={{ color: '#fff', fontWeight: '900' }}>
-															Verify email manually
-														</Text>
-													</TouchableOpacity>
-												) : null}
-											</View>
-											<View
-												style={{
-													marginTop: 11,
-													padding: 14,
-													borderRadius: 14,
-													backgroundColor: colors.surface,
-												}}
-											>
-												<Text style={{ color: colors.text, fontWeight: '900' }}>
-													Identity authentication
-												</Text>
-												{authenticationDocumentsLoading ? <ActivityIndicator color={colors.accent} style={{ marginVertical: 18 }} /> : null}
-												{authenticationDocumentsError ? (
-													<View style={{ marginTop: 10 }}><Text style={{ color: colors.destructiveText }}>{authenticationDocumentsError}</Text><TouchableOpacity onPress={() => void loadAuthenticationDocuments()} style={{ marginTop: 8, alignSelf: 'flex-start', borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 7 }}><Text style={{ color: colors.text, fontWeight: '800' }}>Retry</Text></TouchableOpacity></View>
-												) : null}
-												{!authenticationDocumentsLoading && !authenticationDocumentsError ? (
-													<ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }} contentContainerStyle={{ paddingRight: 8 }}>
-														{(['faceID', 'frontID', 'backID'] as const).map((documentType) => {
-															const identityDocument = authenticationDocuments.find((document) => document.type === documentType);
-															const label = documentType === 'faceID' ? 'Selfie' : documentType === 'frontID' ? 'Front ID' : 'Back ID';
-															return <View key={documentType} style={{ width: 180, marginRight: 10 }}><Text style={{ color: colors.mutedText, fontSize: 12, fontWeight: '800', marginBottom: 6 }}>{label}</Text>{identityDocument?.imageUrl ? <TouchableOpacity onPress={() => setPreviewDocumentUrl(identityDocument.imageUrl)}><Image source={{ uri: identityDocument.imageUrl }} resizeMode="contain" style={{ width: 180, height: 130, borderRadius: 12, backgroundColor: colors.input }} /></TouchableOpacity> : <View style={{ width: 180, height: 130, borderRadius: 12, backgroundColor: colors.input, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.mutedText }}>Not provided</Text></View>}</View>;
-														})}
-													</ScrollView>
-												) : null}
-												<Text
-													style={{
-														marginTop: 4,
-														color: colors.mutedText,
-														textTransform: 'capitalize',
-													}}
-												>
-													{selectedUser.verificationStatus}
-												</Text>
-												<TextInput
-													value={statusReason}
-													onChangeText={setStatusReason}
-													multiline
-													placeholder="Review notes or rejection reason"
-													placeholderTextColor={colors.mutedText}
-													style={{
-														minHeight: 75,
-														marginTop: 10,
-														textAlignVertical: 'top',
-														borderRadius: 12,
-														borderWidth: 1,
-														borderColor: colors.border,
-														backgroundColor: colors.input,
-														color: colors.text,
-														padding: 10,
-													}}
-												/>
-												<View style={{ flexDirection: 'row', marginTop: 10 }}>
-													<TouchableOpacity
-														disabled={busy}
-														onPress={() => void handleIdentity('verified')}
-														style={{
-															flex: 1,
-															alignItems: 'center',
-															borderRadius: 12,
-															backgroundColor: '#10b981',
-															padding: 11,
-														}}
-													>
-														<Text style={{ color: '#fff', fontWeight: '900' }}>
-															Approve
-														</Text>
-													</TouchableOpacity>
-													<TouchableOpacity
-														disabled={busy}
-														onPress={() => void handleIdentity('rejected')}
-														style={{
-															flex: 1,
-															marginLeft: 8,
-															alignItems: 'center',
-															borderRadius: 12,
-															backgroundColor: colors.destructiveSurface,
-															padding: 11,
-														}}
-													>
-														<Text
-															style={{
-																color: colors.destructiveText,
-																fontWeight: '900',
-															}}
-														>
-															Reject
-														</Text>
-													</TouchableOpacity>
-												</View>
-											</View>
-										</>
-									) : null}
-									{detailTab === 'lifecycle' ? (
-										<>
-											<Text style={{ color: colors.text, fontWeight: '900' }}>
-												Account lifecycle
-											</Text>
-											<Text
-												style={{
-													marginTop: 5,
-													color: colors.mutedText,
-													lineHeight: 19,
-												}}
-							>
-								Archive is reversible. Permanent deletion removes the user
-								through the secure server lifecycle workflow and cannot be
-								undone.
-											</Text>
-											{lifecycleOperation ? (
-												<View style={{ marginTop: 12, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 12 }}>
-													<Text style={{ color: colors.text, fontWeight: '800' }}>
-														Lifecycle job: {lifecycleOperation.phase}
-													</Text>
-													<Text style={{ marginTop: 4, color: colors.mutedText }}>
-														{lifecycleOperation.processedDocuments}/{lifecycleOperation.totalDocuments || '?'} records · Email {lifecycleOperation.delivery?.emailStatus ?? 'pending'}
-													</Text>
-													{lifecycleOperation.phase === 'failed' ? (
-														<TouchableOpacity onPress={() => void handleLifecycleRetry()} style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 10, backgroundColor: colors.accent, paddingHorizontal: 14, paddingVertical: 9 }}>
-															<Text style={{ color: '#fff', fontWeight: '800' }}>Retry safely</Text>
-														</TouchableOpacity>
-													) : null}
-													{lifecycleOperation.delivery?.emailStatus === 'failed' ? (
-														<TouchableOpacity onPress={() => void handleDeliveryRetry()} style={{ marginTop: 10, alignSelf: 'flex-start', borderRadius: 10, backgroundColor: colors.accent, paddingHorizontal: 14, paddingVertical: 9 }}>
-															<Text style={{ color: '#fff', fontWeight: '800' }}>Retry email</Text>
-														</TouchableOpacity>
-													) : null}
-												</View>
-											) : null}
-							<Text style={{ marginTop: 16, color: colors.text, fontWeight: '900' }}>
-								Reason <Text style={{ color: colors.destructiveText }}>*</Text>
-							</Text>
-							<Text style={{ marginTop: 4, color: colors.mutedText, fontSize: 12, lineHeight: 17 }}>
-								This reason is recorded in the audit history and included in the email sent to the user.
-							</Text>
-							<TextInput
-								value={lifecycleReason}
-								onChangeText={setLifecycleReason}
-								multiline
-								maxLength={500}
-								textAlignVertical="top"
-								placeholder={selectedUser.archived
-									? 'Explain why this account is being restored'
-									: 'Explain why this account is being archived or deleted'}
-								placeholderTextColor={colors.mutedText}
-								style={{
-									marginTop: 9,
-									minHeight: 96,
-									borderRadius: 13,
-									borderWidth: 1,
-									borderColor: lifecycleReason.trim()
-										? colors.border
-										: colors.destructiveText,
-									padding: 12,
-									backgroundColor: colors.input,
-									color: colors.text,
-								}}
-							/>
-							<Text style={{ marginTop: 4, color: colors.mutedText, fontSize: 10, textAlign: 'right' }}>
-								{lifecycleReason.length}/500
-							</Text>
-							<TouchableOpacity
-								disabled={
-									busy ||
-									!lifecycleReason.trim() ||
-									selectedUser.id === adminUserService.getCurrentUserId()
-								}
-												onPress={() =>
-													void handleLifecycle(
-														selectedUser.archived ? 'unarchive' : 'archive'
-													)
-												}
-												style={{
-													marginTop: 16,
-													alignItems: 'center',
-													borderRadius: 14,
-									backgroundColor: selectedUser.archived
-										? '#10b981'
-										: '#f59e0b',
-									opacity: lifecycleReason.trim() ? 1 : 0.55,
-													padding: 13,
-												}}
-											>
-												<Text style={{ color: '#fff', fontWeight: '900' }}>
-													{selectedUser.archived
-														? 'Restore account'
-														: 'Archive account'}
-												</Text>
-											</TouchableOpacity>
-											<TextInput
-												value={deleteConfirmation}
-												onChangeText={setDeleteConfirmation}
-												autoCapitalize="characters"
-												placeholder="Type DELETE"
-												placeholderTextColor={colors.mutedText}
-												style={{
-													marginTop: 20,
-													borderRadius: 13,
-													borderWidth: 1,
-													borderColor: '#fecaca',
-													padding: 12,
-													backgroundColor: colors.input,
-													color: colors.text,
-												}}
-											/>
-											<TouchableOpacity
-												disabled={
-									busy ||
-									!lifecycleReason.trim() ||
-									deleteConfirmation !== 'DELETE' ||
-													selectedUser.id === adminUserService.getCurrentUserId()
-												}
-												onPress={() => void handleLifecycle('delete_permanently')}
-												style={{
-													marginTop: 9,
-													alignItems: 'center',
-													borderRadius: 14,
-													backgroundColor:
-									deleteConfirmation === 'DELETE' && lifecycleReason.trim()
-															? colors.destructive
-															: colors.disabled,
-													padding: 13,
-												}}
-											>
-												<Text style={{ color: '#fff', fontWeight: '900' }}>
-													Delete permanently
-												</Text>
-											</TouchableOpacity>
-										</>
-									) : null}
+									{renderDetail(selectedUser)}
 								</ScrollView>
 							) : null}
 						</KeyboardSafeView>
 					</SafeAreaView>
 				</SwipeDismissSurface>
+
+				{/* Dialogs render inside the user modal so they stack above it on iOS. */}
+				<AdminDialog
+					visible={pendingRole !== null}
+					title={pendingRole === 'admin' ? 'Confirm administrator role' : 'Confirm role change'}
+					description={
+						pendingRole === 'tester'
+							? `Give ${selectedHandle} access to coming-soon, maintenance, beta, developer-only, and disabled pages? Tester access does not include administration or moderation permissions.`
+							: pendingRole === 'admin'
+								? `Give ${selectedHandle} full administrator access? Only trusted users should receive this role.`
+								: `Change ${selectedHandle} from ${selectedUser?.role || 'user'} to ${pendingRole || 'user'}? This removes the permissions of the current role.`
+					}
+					tone={pendingRole === 'admin' ? 'danger' : 'pending'}
+					icon="shield"
+					confirmLabel="Change role"
+					busy={busy}
+					onConfirm={() => {
+						if (!pendingRole) return;
+						void handleRole(pendingRole).then(() => setPendingRole(null));
+					}}
+					onClose={() => setPendingRole(null)}
+				/>
+				<AdminDialog
+					visible={statusConfirmOpen}
+					title={newStatus === 'banned' ? 'Ban this account?' : 'Suspend this account?'}
+					description={
+						newStatus === 'banned'
+							? `${selectedHandle} is locked out of the account until an administrator changes the status again.`
+							: `${selectedHandle} is locked out for ${Math.max(1, Number(suspensionDays) || 1)} day(s).`
+					}
+					tone={newStatus === 'banned' ? 'danger' : 'pending'}
+					icon={newStatus === 'banned' ? 'slash' : 'pause-circle'}
+					confirmLabel={newStatus === 'banned' ? 'Ban account' : 'Suspend account'}
+					busy={busy}
+					onConfirm={() => void handleStatus()}
+					onClose={() => setStatusConfirmOpen(false)}
+				/>
+				<AdminDialog
+					visible={Boolean(activeLifecycle)}
+					title={activeLifecycle?.title ?? ''}
+					description={activeLifecycle?.description}
+					tone={activeLifecycle?.tone ?? 'pending'}
+					icon={activeLifecycle?.icon}
+					confirmLabel={activeLifecycle?.confirm}
+					requireText={lifecycleDialog === 'delete_permanently' ? 'DELETE' : undefined}
+					confirmDisabled={!lifecycleReason.trim()}
+					busy={busy}
+					onConfirm={() => {
+						if (lifecycleDialog) void handleLifecycle(lifecycleDialog);
+					}}
+					onClose={() => setLifecycleDialog(null)}
+				>
+					<View style={{ gap: space.xs }}>
+						<Text style={[type.label, { color: colors.mutedText }]}>Reason (required)</Text>
+						<Text style={[type.meta, { color: colors.mutedText }]}>Recorded in the audit history and included in the email sent to the user.</Text>
+						<TextInput
+							value={lifecycleReason}
+							onChangeText={setLifecycleReason}
+							multiline
+							maxLength={500}
+							editable={!busy}
+							accessibilityLabel="Lifecycle reason"
+							placeholder={lifecycleDialog === 'unarchive' ? 'Explain why this account is being restored' : 'Explain why this account is being archived or deleted'}
+							placeholderTextColor={colors.mutedText}
+							style={getInputStyle(colors, true, !lifecycleReason.trim())}
+						/>
+						<Text style={[type.meta, { color: colors.mutedText, textAlign: 'right' }]}>{lifecycleReason.length}/500</Text>
+						{lifecycleError ? <AdminState kind="inlineError" message={lifecycleError} /> : null}
+					</View>
+				</AdminDialog>
+				<Modal visible={Boolean(previewDocumentUrl)} transparent animationType="fade" onRequestClose={() => setPreviewDocumentUrl(null)}>
+					<SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={{ flex: 1, backgroundColor: MEDIA_OVERLAY.scrim }}>
+						<AdminIconButton
+							icon="x"
+							label="Close identity document preview"
+							iconSize={24}
+							iconColor={MEDIA_OVERLAY.icon}
+							onPress={() => setPreviewDocumentUrl(null)}
+							style={{ alignSelf: 'flex-end', margin: space.lg }}
+						/>
+						{previewDocumentUrl ? <Image source={{ uri: previewDocumentUrl }} resizeMode="contain" style={{ flex: 1, width: '100%' }} /> : null}
+					</SafeAreaView>
+				</Modal>
 			</Modal>
-			<Modal visible={Boolean(previewDocumentUrl)} transparent animationType="fade" onRequestClose={() => setPreviewDocumentUrl(null)}>
-				<SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' }}>
-					<TouchableOpacity onPress={() => setPreviewDocumentUrl(null)} style={{ alignSelf: 'flex-end', margin: 16, padding: 10 }} accessibilityLabel="Close identity document preview"><Icon name="x" size={26} color="#ffffff" /></TouchableOpacity>
-					{previewDocumentUrl ? <Image source={{ uri: previewDocumentUrl }} resizeMode="contain" style={{ flex: 1, width: '100%' }} /> : null}
-				</SafeAreaView>
-			</Modal>
-			<CustomModal
-				visible={pendingRole !== null}
-				title={pendingRole === 'admin' ? 'Confirm administrator role' : 'Confirm role change'}
-				message={
-					pendingRole === 'tester'
-						? `Give @${selectedUser?.userName || selectedUser?.email || 'this user'} access to coming-soon, maintenance, beta, developer-only, and disabled pages? Tester access does not include administration or moderation permissions.`
-						: pendingRole === 'admin'
-							? `Give @${selectedUser?.userName || selectedUser?.email || 'this user'} full administrator access? Only trusted users should receive this role.`
-							: `Change @${selectedUser?.userName || selectedUser?.email || 'this user'} from ${selectedUser?.role || 'user'} to ${pendingRole || 'user'}? This removes the permissions of the current role.`
-				}
-				type={pendingRole === 'admin' ? 'danger' : 'warning'}
-				confirmText="Change role"
-				cancelText="Cancel"
-				isLoading={busy}
-				onConfirm={() => {
-					if (!pendingRole) return;
-					void handleRole(pendingRole).then(() => setPendingRole(null));
-				}}
-				onCancel={() => setPendingRole(null)}
-				onClose={() => setPendingRole(null)}
-			/>
-			<CustomModal
-				visible={Boolean(message)}
-				title="User management"
-				message={message ?? ''}
-				type="info"
-				onClose={() => setMessage(null)}
-			/>
 		</>
 	);
 }
