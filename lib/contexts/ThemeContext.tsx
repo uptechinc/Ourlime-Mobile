@@ -40,6 +40,14 @@ export type AppThemeColors = {
   warningText: string;
   successSurface: string;
   successText: string;
+  /** 1px border that pairs with successSurface (admin soft tones). */
+  successBorder: string;
+  /** 1px border that pairs with warningSurface (admin soft tones). */
+  warningBorder: string;
+  /** 1px border that pairs with destructiveSurface (admin soft tones). */
+  destructiveBorder: string;
+  /** Saturated amber for tiny status dots and chart marks only (admin pending tone). */
+  warning: string;
 };
 
 const LIGHT_COLORS: AppThemeColors = {
@@ -49,6 +57,7 @@ const LIGHT_COLORS: AppThemeColors = {
   destructive: '#dc2626', destructiveSurface: '#fef2f2', destructiveText: '#b91c1c', disabled: '#e2e8f0', disabledText: '#94a3b8',
   modalScrim: 'rgba(15,23,42,0.55)', navigation: '#ffffff', navigationBorder: '#e2e8f0',
   warningSurface: '#fffbeb', warningText: '#92400e', successSurface: '#ecfdf5', successText: '#047857',
+  successBorder: '#a7f3d0', warningBorder: '#fde68a', destructiveBorder: '#fecaca', warning: '#d97706',
 };
 const DARK_COLORS: AppThemeColors = {
   canvas: '#020617', surface: '#0f172a', elevated: '#111c31', control: '#1e293b', input: '#0f172a',
@@ -57,6 +66,7 @@ const DARK_COLORS: AppThemeColors = {
   destructive: '#ef4444', destructiveSurface: '#3f161d', destructiveText: '#fca5a5', disabled: '#1e293b', disabledText: '#64748b',
   modalScrim: 'rgba(0,0,0,0.78)', navigation: '#0f172a', navigationBorder: '#334155',
   warningSurface: '#3b2f10', warningText: '#fcd34d', successSurface: '#053b31', successText: '#6ee7b7',
+  successBorder: '#065f46', warningBorder: '#78350f', destructiveBorder: '#7f1d1d', warning: '#f59e0b',
 };
 
 const getSystemTheme = (): ResolvedSettingsTheme => Appearance.getColorScheme() === 'dark' ? 'dark' : 'light';
