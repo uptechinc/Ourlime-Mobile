@@ -118,6 +118,12 @@ Line numbers point to roughly where the change is; they move as files change.
 
 I checked every direct client write against `firestore.rules`. Admins are allowed to make each one, and none is open to non-admins. Products, pets, couriers, child safety, support, games and seller verification only write through server functions or APIs. **No admin action is protected only by hiding the UI.**
 
+## Resolved after the report (2026-11-25)
+
+- **Item 3:** the support conversation screen now uses custom modals instead of native alerts, hides the status until it has loaded, and asks for confirmation before Resolve and Close.
+- **Item 4:** web reject now writes `basic_info.rejectionReason` and `rejectedAt`, and web approve clears them, the same as mobile. Web still fills in a default reason when the field is empty, and neither platform shows the reason to the poster yet.
+- Items 1 and 2 keep the current behaviour: report screens stay admin-only, and web still accepts `super_admin`.
+
 ## Needs decision
 
 1. **Moderators and reports.** The rules let moderators read and update `reports` (`firestore.rules:~1696-1734`), and `AdminModerationService` uses `requireReviewer`. But the mobile report screens and the new `/admin` gate require admin. Decide whether to open them to moderators.

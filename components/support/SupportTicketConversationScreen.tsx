@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
 	ActivityIndicator,
-	Alert,
 	Text,
 	TextInput,
 	TouchableOpacity,
@@ -26,7 +25,11 @@ import type {
 	SupportTicketMessage,
 } from '@/lib/types/support';
 import PrivateCaseAttachmentImage from './PrivateCaseAttachmentImage';
+import CustomModal, { type CustomModalType } from '@/components/ui/CustomModal';
 import { SupportConversationSkeleton } from '@/components/help/HelpSkeletons';
+
+type SupportNotice = { title: string; message: string; type: CustomModalType };
+type ConfirmableAction = 'resolve' | 'close';
 
 type SupportTicketConversationScreenProps = {
 	ticketId: string;
@@ -50,6 +53,8 @@ export default function SupportTicketConversationScreen({
 	const [busy, setBusy] = useState(false);
 	const [reason, setReason] = useState('');
 	const [transferUserId, setTransferUserId] = useState('');
+	const [notice, setNotice] = useState<SupportNotice | null>(null);
+	const [pendingAction, setPendingAction] = useState<ConfirmableAction | null>(null);
 	const load = useCallback(async () => {
 		await supportTicketResourceService.hydrateConversation(ticketId);
 		await supportTicketResourceService.refreshConversation(ticketId);
@@ -65,10 +70,7 @@ export default function SupportTicketConversationScreen({
 	const handlePickImages = async () => {
 		const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 		if (!permission.granted)
-			return Alert.alert(
-				'Photo permission needed',
-				'Allow photo access to attach images.'
-			);
+			return setNotice({ title: 'Photo permission needed', message: 'Allow photo access to attach images.', type: 'error' });
 		const result = await ImagePicker.launchImageLibraryAsync({
 			mediaTypes: ['images'],
 			allowsMultipleSelection: true,
@@ -83,10 +85,7 @@ export default function SupportTicketConversationScreen({
 			byteSize: asset.fileSize || 0,
 		}));
 		if (drafts.some((draft) => draft.byteSize <= 0))
-			return Alert.alert(
-				'Image unavailable',
-				'One or more selected images did not provide a valid size.'
-			);
+			return setNotice({ title: 'Image unavailable', message: 'One or more selected images did not provide a valid size.', type: 'error' });
 		setImages(drafts);
 	};
 	const handleSend = async () => {
@@ -105,10 +104,7 @@ export default function SupportTicketConversationScreen({
 			setText('');
 			setImages([]);
 		} catch (error: unknown) {
-			Alert.alert(
-				'Message not sent',
-				error instanceof Error ? error.message : 'Please try again.'
-			);
+			setNotice({ title: 'Message not sent', message: error instanceof Error ? error.message : 'Please try again.', type: 'error' });
 		} finally {
 			setBusy(false);
 		}
@@ -124,7 +120,7 @@ export default function SupportTicketConversationScreen({
 					? 'Requester reopened the ticket.'
 					: reason;
 		if (actionReason.trim().length < 3)
-			return Alert.alert('Reason required', 'Enter an internal reason first.');
+			return setNotice({ title: 'Reason required', message: 'Enter an internal reason first.', type: 'error' });
 		setBusy(true);
 		try {
 			const updated = await supportTicketService.applyAction(ticketId, {
@@ -135,10 +131,7 @@ export default function SupportTicketConversationScreen({
 			useSupportTicketStore.getState().setSelectedTicket(updated);
 			setReason('');
 		} catch (error: unknown) {
-			Alert.alert(
-				'Ticket not updated',
-				error instanceof Error ? error.message : 'Please try again.'
-			);
+			setNotice({ title: 'Ticket not updated', message: error instanceof Error ? error.message : 'Please try again.', type: 'error' });
 		} finally {
 			setBusy(false);
 		}
@@ -216,8 +209,8 @@ export default function SupportTicketConversationScreen({
 						{ticket?.subject || 'Support ticket'}
 					</Text>
 					<Text style={{ marginTop: 1, color: colors.mutedText, fontSize: 11 }}>
-						{ticket?.reference || 'Loading…'} ·{' '}
-						{ticket?.status.replaceAll('_', ' ')}
+						{ticket?.reference || 'Loading…'}
+						{ticket?.status ? ` · ${ticket.status.replaceAll('_', ' ')}` : ''}
 					</Text>
 				</View>
 			</View>
@@ -409,13 +402,13 @@ export default function SupportTicketConversationScreen({
 						<View style={{ flexDirection: 'row', gap: 6, marginTop: 7 }}>
 							<SmallAction
 								label="Resolve"
-								onPress={() => void handleAction('resolve')}
+								onPress={() => setPendingAction('resolve')}
 								colors={colors}
 								disabled={busy}
 							/>
 							<SmallAction
 								label="Close"
-								onPress={() => void handleAction('close')}
+								onPress={() => setPendingAction('close')}
 								colors={colors}
 								disabled={busy}
 							/>
@@ -542,6 +535,35 @@ export default function SupportTicketConversationScreen({
 					</View>
 				) : null}
 			</KeyboardSafeView>
+			<CustomModal
+				visible={pendingAction !== null}
+				type={pendingAction === 'close' ? 'danger' : 'warning'}
+				title={pendingAction === 'close' ? 'Close this ticket?' : 'Resolve this ticket?'}
+				message={
+					pendingAction === 'close'
+						? 'The requester can no longer reply once the ticket is closed. Your internal reason is saved with it.'
+						: 'The requester is told the ticket is resolved and can reopen it if the problem continues.'
+				}
+				confirmText={pendingAction === 'close' ? 'Close ticket' : 'Resolve'}
+				cancelText="Cancel"
+				isLoading={busy}
+				onConfirm={() => {
+					const action = pendingAction;
+					setPendingAction(null);
+					if (action) void handleAction(action);
+				}}
+				onCancel={() => setPendingAction(null)}
+				onClose={() => setPendingAction(null)}
+			/>
+			<CustomModal
+				visible={notice !== null}
+				type={notice?.type ?? 'error'}
+				title={notice?.title ?? ''}
+				message={notice?.message ?? ''}
+				confirmText="OK"
+				onConfirm={() => setNotice(null)}
+				onClose={() => setNotice(null)}
+			/>
 		</SafeAreaView>
 	);
 }

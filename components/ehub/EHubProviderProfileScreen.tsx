@@ -143,7 +143,7 @@ export default function EHubProviderProfileScreen() {
   const header = <>
     <PageHeader title={provider?.name ?? 'Provider'} onBackPress={() => router.back()}
       rightComponent={provider ? <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <SaveButton target={{ type: 'ehub_provider', itemId: provider.id, snapshot: { title: provider.name, thumbnail: provider.logoUrl ?? provider.coverUrl ?? null, subtitle: provider.location || null } }} iconSize={21} />
+        <SaveButton target={{ type: 'ehub_provider', itemId: provider.id, snapshot: { title: provider.name, thumbnail: provider.logoUrl ?? provider.coverUrl ?? null, subtitle: provider.location || null, authorId: provider.ownerId || null } }} iconSize={21} />
         <Pressable accessibilityRole="button" accessibilityLabel={`Share ${provider.name}`} onPress={handleShare} hitSlop={8} style={styles.headerButton}><Share2 size={21} color={colors.icon} /></Pressable>
       </View> : undefined} />
     <EHubSectionNav currentLabel={provider?.name ?? 'Provider'} parentLabel="Discover" onParentPress={() => router.dismissTo('/ehub/discover' as Href)} />
