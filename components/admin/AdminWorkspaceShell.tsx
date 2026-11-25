@@ -1,17 +1,5 @@
 import type { ReactNode } from 'react';
-import {
-	RefreshControl,
-	ScrollView,
-	Text,
-	TouchableOpacity,
-	View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import Icon from 'react-native-vector-icons/Feather';
-import { AdminWorkspaceBodySkeleton } from '@/components/admin/AdminSkeletons';
-import { usePageAccess } from '@/lib/contexts/PageAccessContext';
-import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import AdminScreen, { type AdminScreenState } from '@/components/admin/AdminScreen';
 
 type AdminWorkspaceShellProps = {
 	title: string;
@@ -23,171 +11,16 @@ type AdminWorkspaceShellProps = {
 	onRefresh: () => void;
 };
 
-export default function AdminWorkspaceShell({
-	title,
-	subtitle,
-	children,
-	loading,
-	refreshing,
-	error,
-	onRefresh,
-}: AdminWorkspaceShellProps) {
-	const router = useRouter();
-	const { authorization, loading: accessLoading } = usePageAccess();
-	const { colors } = useAppTheme();
-	const handleBack = () => {
-		if (router.canGoBack()) {
-			router.back();
-			return;
-		}
-		router.replace('/(tabs)');
-	};
-	// Header back: a workspace opened from a deep link or notification has no history, so fall back
-	// to the admin hub instead of doing nothing.
-	const handleHeaderBack = () => {
-		if (router.canGoBack()) {
-			router.back();
-			return;
-		}
-		router.replace('/admin');
-	};
-
+/**
+ * Legacy admin workspace frame, now a thin wrapper over AdminScreen so existing workspaces keep working until they
+ * migrate. Same props and behaviour: admin gate and lock screen, skeleton while `loading` (first load only), full
+ * error with Retry, pull-to-refresh, and the canGoBack fallback to /admin. Delete once every caller uses AdminScreen.
+ */
+export default function AdminWorkspaceShell({ title, subtitle, children, loading, refreshing, error, onRefresh }: AdminWorkspaceShellProps) {
+	const state: AdminScreenState = loading ? { kind: 'loading' } : error ? { kind: 'error', message: error } : { kind: 'ready' };
 	return (
-		<SafeAreaView
-			edges={['top', 'left', 'right']}
-			style={{ flex: 1, backgroundColor: colors.canvas }}
-		>
-			<View
-				style={{
-					minHeight: 62,
-					flexDirection: 'row',
-					alignItems: 'center',
-					paddingHorizontal: 14,
-					backgroundColor: colors.navigation,
-					borderBottomWidth: 1,
-					borderBottomColor: colors.border,
-				}}
-			>
-				<TouchableOpacity
-					onPress={handleHeaderBack}
-					accessibilityRole="button"
-					accessibilityLabel="Go back"
-					style={{ padding: 7 }}
-				>
-					<Icon name="arrow-left" size={23} color={colors.icon} />
-				</TouchableOpacity>
-				<View style={{ flex: 1, marginLeft: 8 }}>
-					<Text style={{ fontSize: 19, fontWeight: '900', color: colors.text }}>
-						{title}
-					</Text>
-					<Text
-						numberOfLines={1}
-						style={{ marginTop: 1, fontSize: 11, color: colors.mutedText }}
-					>
-						{subtitle}
-					</Text>
-				</View>
-				<TouchableOpacity
-					onPress={() => router.push('/admin')}
-					accessibilityRole="button"
-					accessibilityLabel="Admin overview"
-					style={{ padding: 7 }}
-				>
-					<Icon name="grid" size={21} color="#10b981" />
-				</TouchableOpacity>
-			</View>
-
-			{accessLoading ? (
-				<AdminWorkspaceBodySkeleton />
-			) : !authorization.isAdmin ? (
-				<View
-					style={{
-						flex: 1,
-						alignItems: 'center',
-						justifyContent: 'center',
-						padding: 28,
-					}}
-				>
-					<Icon name="lock" size={38} color="#c64d53" />
-					<Text
-						style={{
-							marginTop: 14,
-							fontSize: 20,
-							fontWeight: '900',
-							color: colors.text,
-						}}
-					>
-						Admin access required
-					</Text>
-					<TouchableOpacity
-						onPress={handleBack}
-						style={{
-							marginTop: 20,
-							borderRadius: 999,
-							backgroundColor: '#10b981',
-							paddingHorizontal: 20,
-							paddingVertical: 11,
-						}}
-					>
-						<Text style={{ color: '#ffffff', fontWeight: '800' }}>Go Back</Text>
-					</TouchableOpacity>
-				</View>
-			) : loading ? (
-				<AdminWorkspaceBodySkeleton />
-			) : error ? (
-				<View
-					style={{
-						flex: 1,
-						alignItems: 'center',
-						justifyContent: 'center',
-						padding: 28,
-					}}
-				>
-					<Icon name="alert-triangle" size={36} color={colors.destructive} />
-					<Text
-						style={{
-							marginTop: 12,
-							textAlign: 'center',
-							lineHeight: 20,
-							color: colors.destructiveText,
-						}}
-					>
-						{error}
-					</Text>
-					<TouchableOpacity
-						accessibilityRole="button"
-						accessibilityState={{ busy: refreshing, disabled: refreshing }}
-						disabled={refreshing}
-						onPress={onRefresh}
-						style={{
-							opacity: refreshing ? 0.6 : 1,
-							marginTop: 16,
-							borderRadius: 999,
-							backgroundColor: colors.accent,
-							paddingHorizontal: 20,
-							paddingVertical: 11,
-						}}
-					>
-						<Text style={{ color: colors.onAccent, fontWeight: '800' }}>
-							{refreshing ? 'Retrying…' : 'Retry'}
-						</Text>
-					</TouchableOpacity>
-				</View>
-			) : (
-				<ScrollView
-					style={{ flex: 1 }}
-					contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
-					refreshControl={
-						<RefreshControl
-							refreshing={refreshing}
-							onRefresh={onRefresh}
-							tintColor={colors.accent}
-						/>
-					}
-				>
-					{children}
-				</ScrollView>
-			)}
-		</SafeAreaView>
+		<AdminScreen title={title} subtitle={subtitle} state={state} refreshing={refreshing} onRefresh={onRefresh}>
+			{children}
+		</AdminScreen>
 	);
 }
