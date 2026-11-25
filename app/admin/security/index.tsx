@@ -1,5 +1,6 @@
-import { Redirect } from 'expo-router';
+import AdminSecurityWorkspace from '@/components/admin/AdminSecurityWorkspace';
 
+/** Security settings; the component renders its own AdminScreen. */
 export default function AdminSecurityRoute() {
-  return <Redirect href={{ pathname: '/admin', params: { section: 'security' } }} />;
+	return <AdminSecurityWorkspace />;
 }

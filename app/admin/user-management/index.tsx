@@ -1,5 +1,6 @@
-import { Redirect } from 'expo-router';
+import UserManagementSection from '@/components/admin/UserManagementSection';
 
+/** Users is a standalone admin screen; the component renders its own AdminScreen. */
 export default function AdminUserManagementRoute() {
-  return <Redirect href={{ pathname: '/admin', params: { section: 'users' } }} />;
+	return <UserManagementSection />;
 }

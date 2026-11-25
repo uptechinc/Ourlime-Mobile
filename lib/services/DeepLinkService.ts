@@ -200,7 +200,10 @@ export class DeepLinkService {
     const profileScreen = first === 'profile' ? PROFILE_SCREEN_ROUTES[segments[1]?.toLowerCase() ?? ''] : undefined;
     if (profileScreen) {
       // /profile/admin/<page> on the website is /admin/<page> in the app.
-      const rest = profileScreen === '/admin' ? segments.slice(2) : [];
+      // The website's seller-verification page is the app's seller-review screen.
+      const rest = profileScreen === '/admin'
+        ? segments.slice(2).map((segment, index) => (index === 0 && segment.toLowerCase() === 'seller-verification' ? 'seller-review' : segment))
+        : [];
       // /profile/friends?tab=requests keeps its tab.
       const query = profileScreen === '/profile/friends' ? this.pickQuery(url, ['tab']) : '';
       return this.screen(`/${segments.join('/')}${query}`, [profileScreen, ...rest].join('/') + query);

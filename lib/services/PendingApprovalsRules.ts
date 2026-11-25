@@ -30,16 +30,16 @@ export const PENDING_SECTION_ORDER: readonly PendingApprovalSection[] = ['market
 
 export const PENDING_APPROVAL_CATEGORIES: readonly PendingApprovalCategory[] = [
   { key: 'couriers', label: 'Courier registrations', section: 'market', icon: 'truck', reviewRoute: '/admin/couriers' as Href },
-  { key: 'sellers', label: 'Seller verification', section: 'market', icon: 'user-check', reviewRoute: '/admin?section=seller_review' as Href },
+  { key: 'sellers', label: 'Seller verification', section: 'market', icon: 'user-check', reviewRoute: '/admin/seller-review' as Href },
   { key: 'products', label: 'Market listings', section: 'market', icon: 'shopping-bag', reviewRoute: '/admin/products' as Href },
   { key: 'pets', label: 'Pet adoption listings', section: 'market', icon: 'heart', reviewRoute: '/admin/pet-adoption' as Href },
   { key: 'jobs', label: 'Job listings', section: 'jobs', icon: 'briefcase', reviewRoute: '/admin/jobs' as Href },
   { key: 'courses', label: 'Courses', section: 'learning', icon: 'book-open', reviewRoute: '/admin/elearning-review?tab=courses' as Href },
   { key: 'instructors', label: 'Instructor applications', section: 'learning', icon: 'award', reviewRoute: '/admin/elearning-review' as Href },
-  { key: 'identity', label: 'Identity checks', section: 'members', icon: 'credit-card', reviewRoute: '/admin?section=users' as Href },
+  { key: 'identity', label: 'Identity checks', section: 'members', icon: 'credit-card', reviewRoute: '/admin/user-management' as Href },
   { key: 'beta', label: 'Beta tester applications', section: 'members', icon: 'user-plus', reviewRoute: '/admin/testers' as Href },
-  { key: 'reports', label: 'Reports', section: 'safety', icon: 'flag', reviewRoute: '/admin?section=moderation' as Href },
-  { key: 'appeals', label: 'Appeals', section: 'safety', icon: 'rotate-ccw', reviewRoute: '/admin?section=moderation' as Href },
+  { key: 'reports', label: 'Reports', section: 'safety', icon: 'flag', reviewRoute: '/admin/moderation' as Href },
+  { key: 'appeals', label: 'Appeals', section: 'safety', icon: 'rotate-ccw', reviewRoute: '/admin/moderation' as Href },
   { key: 'childSafety', label: 'Child-safety cases', section: 'safety', icon: 'shield', reviewRoute: '/admin/child-safety' as Href },
   { key: 'support', label: 'Support tickets (unassigned)', section: 'support', icon: 'life-buoy', reviewRoute: '/admin/support' as Href },
 ];

@@ -1,5 +1,6 @@
-import { Redirect } from 'expo-router';
+import PageAccessAdminSection from '@/components/admin/PageAccessAdminSection';
 
+/** Page availability controls; the component renders its own AdminScreen. */
 export default function AdminPageAccessRoute() {
-  return <Redirect href={{ pathname: '/admin', params: { section: 'page_access' } }} />;
+	return <PageAccessAdminSection />;
 }

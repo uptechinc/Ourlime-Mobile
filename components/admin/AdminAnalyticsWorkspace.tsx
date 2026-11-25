@@ -1,33 +1,53 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import Icon from 'react-native-vector-icons/Feather';
-import AdminWorkspaceShell from './AdminWorkspaceShell';
-import {
-	AdminWorkspaceService,
-	type AdminAnalyticsSnapshot,
-} from '@/lib/services/AdminWorkspaceService';
+import { Text, View } from 'react-native';
+import AdminScreen, { type AdminScreenState } from '@/components/admin/AdminScreen';
+import AdminSection from '@/components/admin/AdminSection';
+import AdminStatCard, { AdminStatGrid } from '@/components/admin/AdminStatCard';
+import AdminState from '@/components/admin/AdminState';
+import AdminToolbar from '@/components/admin/AdminToolbar';
+import type { AnyFilterGroup, FilterValues } from '@/components/ui/FilterSheet';
+import { readSingleFilter } from '@/components/ui/FilterSheet';
+import { getAdminTone, space, type, type AdminIconName } from '@/lib/admin/adminTokens';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { AdminWorkspaceService, type AdminAnalyticsSnapshot } from '@/lib/services/AdminWorkspaceService';
 
 const workspaceService = AdminWorkspaceService.getInstance();
-const DOMAINS: readonly (
-	AdminAnalyticsSnapshot['metrics'][number]['domain'] | 'all'
-)[] = [
-	'all',
-	'audience',
-	'social',
-	'communities',
-	'events',
-	'marketplace',
-	'administration',
-];
+
+type AnalyticsDomain = AdminAnalyticsSnapshot['metrics'][number]['domain'];
+type DomainFilter = AnalyticsDomain | 'all';
+
+const DOMAIN_LABELS: { readonly [domain in DomainFilter]: string } = {
+	all: 'All domains',
+	audience: 'Audience',
+	social: 'Social',
+	communities: 'Communities',
+	events: 'Events',
+	marketplace: 'Marketplace',
+	administration: 'Administration',
+};
+
+const DOMAIN_ICONS: { readonly [domain in AnalyticsDomain]: AdminIconName } = {
+	audience: 'users',
+	social: 'message-circle',
+	communities: 'layers',
+	events: 'calendar',
+	marketplace: 'shopping-bag',
+	administration: 'shield',
+};
+
+const DOMAIN_OPTIONS = (Object.keys(DOMAIN_LABELS) as DomainFilter[]).map((value) => ({ value, label: DOMAIN_LABELS[value] }));
+
+const isDomainFilter = (value: string | undefined): value is DomainFilter => value !== undefined && value in DOMAIN_LABELS;
 
 export default function AdminAnalyticsWorkspace() {
 	const { colors } = useAppTheme();
+	const pending = getAdminTone(colors, 'pending');
 	const [snapshot, setSnapshot] = useState<AdminAnalyticsSnapshot>({
 		metrics: [],
 		unavailableCollections: [],
 	});
-	const [domain, setDomain] = useState<(typeof DOMAINS)[number]>('all');
+	const [hasLoaded, setHasLoaded] = useState(false);
+	const [domain, setDomain] = useState<DomainFilter>('all');
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -38,12 +58,10 @@ export default function AdminAnalyticsWorkspace() {
 		setError(null);
 		try {
 			setSnapshot(await workspaceService.fetchAnalytics());
+			setHasLoaded(true);
 		} catch (loadError: unknown) {
-			setError(
-				loadError instanceof Error
-					? loadError.message
-					: 'Analytics could not be loaded.'
-			);
+			console.error('[AdminAnalyticsWorkspace.load] Error:', loadError);
+			setError(loadError instanceof Error ? loadError.message : 'Analytics could not be loaded.');
 		} finally {
 			setLoading(false);
 			setRefreshing(false);
@@ -53,155 +71,80 @@ export default function AdminAnalyticsWorkspace() {
 	useEffect(() => {
 		void load();
 	}, [load]);
+
 	const metrics = useMemo(
-		() =>
-			domain === 'all'
-				? snapshot.metrics
-				: snapshot.metrics.filter((metric) => metric.domain === domain),
+		() => (domain === 'all' ? snapshot.metrics : snapshot.metrics.filter((metric) => metric.domain === domain)),
 		[domain, snapshot.metrics]
 	);
-	const totalActivity = snapshot.metrics.reduce(
-		(sum, metric) => sum + metric.count,
-		0
-	);
+	const totalActivity = metrics.reduce((sum, metric) => sum + metric.count, 0);
+
+	const filterGroups: AnyFilterGroup[] = [
+		{ key: 'domain', label: 'Domain', options: DOMAIN_OPTIONS, value: domain, defaultValue: 'all' },
+	];
+	const handleApplyFilters = (next: FilterValues) => {
+		const nextDomain = readSingleFilter(next, 'domain');
+		setDomain(isDomainFilter(nextDomain) ? nextDomain : 'all');
+	};
+
+	const screenState: AdminScreenState =
+		loading && !hasLoaded
+			? { kind: 'loading', variant: 'cards' }
+			: error && !hasLoaded
+				? { kind: 'error', message: error }
+				: metrics.length === 0
+					? domain === 'all'
+						? { kind: 'empty', title: 'No analytics yet', description: 'No collection totals were returned. Pull down to refresh.', icon: 'bar-chart-2' }
+						: {
+								kind: 'empty',
+								title: `No data for ${DOMAIN_LABELS[domain]} yet`,
+								description: 'Try another domain, or show every domain.',
+								icon: 'bar-chart-2',
+								filtered: true,
+								onClearFilters: () => setDomain('all'),
+							}
+					: { kind: 'ready' };
 
 	return (
-		<AdminWorkspaceShell
-			title="Admin Analytics"
-			subtitle="Live platform collection and engagement signals"
-			loading={loading}
+		<AdminScreen
+			title="Analytics"
+			subtitle="Live platform collection totals"
+			state={screenState}
+			onRefresh={() => load(true)}
 			refreshing={refreshing}
-			error={error}
-			onRefresh={() => void load(true)}
+			toolbar={
+				<AdminToolbar
+					filters={{ groups: filterGroups, onApply: handleApplyFilters, title: 'Analytics filters' }}
+					resultSummary={hasLoaded ? `${metrics.length} of ${snapshot.metrics.length} metrics` : undefined}
+				/>
+			}
 		>
-			<View
-				style={{ padding: 17, borderRadius: 18, backgroundColor: '#0f172a' }}
-			>
-				<Text
-					style={{
-						color: '#94a3b8',
-						fontSize: 11,
-						fontWeight: '800',
-						textTransform: 'uppercase',
-					}}
-				>
-					Tracked platform activity
-				</Text>
-				<Text
-					style={{
-						marginTop: 5,
-						color: '#ffffff',
-						fontSize: 30,
-						fontWeight: '900',
-					}}
-				>
-					{totalActivity.toLocaleString()}
-				</Text>
-				<Text style={{ marginTop: 4, color: '#cbd5e1', fontSize: 12 }}>
-					Live canonical collection totals. Pull down to refresh.
-				</Text>
-			</View>
-			<ScrollView
-				horizontal
-				showsHorizontalScrollIndicator={false}
-				style={{ marginVertical: 14 }}
-			>
-				{DOMAINS.map((domainOption) => (
-					<TouchableOpacity
-						key={domainOption}
-						onPress={() => setDomain(domainOption)}
-						style={{
-							marginRight: 8,
-							borderRadius: 999,
-							paddingHorizontal: 12,
-							paddingVertical: 8,
-							backgroundColor:
-								domain === domainOption ? colors.accent : colors.control,
-						}}
-					>
-						<Text
-							style={{
-								color:
-									domain === domainOption
-										? colors.onAccent
-										: colors.secondaryText,
-								textTransform: 'capitalize',
-								fontSize: 12,
-								fontWeight: '800',
-							}}
-						>
-							{domainOption}
-						</Text>
-					</TouchableOpacity>
-				))}
-			</ScrollView>
-			<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-				{metrics.map((metric) => (
-					<View
-						key={metric.id}
-						style={{
-							width: '48%',
-							minHeight: 112,
-							padding: 15,
-							borderRadius: 17,
-							backgroundColor: colors.surface,
-							borderWidth: 1,
-							borderColor: colors.border,
-						}}
-					>
-						<Icon
-							name={
-								metric.domain === 'audience'
-									? 'users'
-									: metric.domain === 'administration'
-										? 'shield'
-										: metric.domain === 'marketplace'
-											? 'shopping-bag'
-											: 'activity'
-							}
-							size={20}
-							color={colors.accent}
+			<View style={{ gap: space.xl }}>
+				{error ? <AdminState kind="inlineError" message={error} onRetry={() => void load(true)} retrying={refreshing} /> : null}
+				<AdminStatCard
+					label="Tracked platform activity"
+					value={totalActivity.toLocaleString()}
+					hint={domain === 'all' ? 'Every domain. Pull down to refresh.' : `${DOMAIN_LABELS[domain]} only`}
+					icon="activity"
+				/>
+				<AdminStatGrid>
+					{metrics.map((metric) => (
+						<AdminStatCard
+							key={metric.id}
+							label={metric.label}
+							value={metric.count.toLocaleString()}
+							hint={DOMAIN_LABELS[metric.domain]}
+							icon={DOMAIN_ICONS[metric.domain]}
 						/>
-						<Text
-							style={{
-								marginTop: 9,
-								fontSize: 23,
-								fontWeight: '900',
-								color: colors.text,
-							}}
-						>
-							{metric.count.toLocaleString()}
+					))}
+				</AdminStatGrid>
+				{snapshot.unavailableCollections.length ? (
+					<AdminSection tone="pending" title="Some totals are missing">
+						<Text style={[type.body, { color: pending.text }]}>
+							These collections could not be counted: {snapshot.unavailableCollections.join(', ')}.
 						</Text>
-						<Text
-							style={{
-								marginTop: 3,
-								color: colors.mutedText,
-								fontSize: 12,
-								fontWeight: '700',
-							}}
-						>
-							{metric.label}
-						</Text>
-					</View>
-				))}
+					</AdminSection>
+				) : null}
 			</View>
-			{snapshot.unavailableCollections.length ? (
-				<View
-					style={{
-						marginTop: 14,
-						padding: 13,
-						borderRadius: 14,
-						backgroundColor: colors.warningSurface,
-					}}
-				>
-					<Text
-						style={{ color: colors.warningText, fontSize: 12, lineHeight: 18 }}
-					>
-						Some collections could not be counted:{' '}
-						{snapshot.unavailableCollections.join(', ')}.
-					</Text>
-				</View>
-			) : null}
-		</AdminWorkspaceShell>
+		</AdminScreen>
 	);
 }

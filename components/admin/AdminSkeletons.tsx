@@ -9,76 +9,82 @@ type PercentWidth = `${number}%`;
 /** Translucent bars for skeleton text placed on the active green tab. */
 const activeBarStyle = { backgroundColor: 'rgba(255,255,255,0.55)' };
 
-const SECTION_TAB_LABEL_WIDTHS = [44, 30, 38, 32, 36, 42];
-const METRIC_LABEL_WIDTHS = [64, 62, 66, 42, 46];
-/** One row per entry in REMAINING_ADMIN_WORKSPACES (app/admin/index.tsx). */
-const WORKSPACE_ROW_WIDTHS: PercentWidth[] = ['46%', '40%', '52%', '38%', '56%', '34%', '48%', '42%', '50%', '36%', '30%', '44%', '40%', '54%', '36%', '46%'];
+/** Rows per workspace group in WORKSPACE_GROUPS (app/admin/index.tsx): People, Content, Commerce, Safety and support, System. */
+const HUB_GROUP_ROW_COUNTS = [2, 6, 6, 2, 4] as const;
+const HUB_GROUP_TITLE_WIDTHS = [56, 64, 84, 132, 60] as const;
+const HUB_ROW_TITLE_WIDTHS: PercentWidth[] = ['46%', '40%', '52%', '38%', '56%', '34%'];
 
 /* ------------------------------------------------------------------ */
-/* Admin portal (app/admin/index.tsx)                                  */
+/* Admin hub (app/admin/index.tsx)                                     */
 /* ------------------------------------------------------------------ */
 
-/** The six-way section switcher under the Admin Portal header (Overview active). */
-function AdminSectionTabsSkeleton(): ReactNode {
+type HubSectionSkeletonProps = { titleWidth: number; children: ReactNode };
+
+/** An AdminSection card placeholder: surface, 1px border, radius 16, padding 16, section title. */
+function HubSectionSkeleton({ titleWidth, children }: HubSectionSkeletonProps): ReactNode {
   const { colors } = useAppTheme();
   return (
-    <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingVertical: 10, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-      {SECTION_TAB_LABEL_WIDTHS.map((labelWidth, tabIndex) => (
-        <View key={tabIndex} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 13, paddingVertical: 10, backgroundColor: tabIndex === 0 ? '#10b981' : 'transparent', overflow: 'hidden' }}>
-          <Skeleton width={15} height={15} borderRadius={4} style={tabIndex === 0 ? activeBarStyle : undefined} />
-          <SkeletonLine fontSize={11} width={labelWidth} style={{ marginLeft: 5 }} barStyle={tabIndex === 0 ? activeBarStyle : undefined} />
-        </View>
-      ))}
+    <View style={{ padding: 16, gap: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
+      <SkeletonLine fontSize={16} lineHeight={22} width={titleWidth} />
+      {children}
     </View>
   );
 }
 
-export type AdminOverviewSkeletonProps = {
-  /** True while page access is still resolving, before the real section switcher renders. */
-  withSectionTabs?: boolean;
-};
-
-/** Overview & Metrics: title, five metric cards (47% grid), notice banner, and the Additional Workspaces list. */
-export function AdminOverviewSkeleton({ withSectionTabs = false }: AdminOverviewSkeletonProps): ReactNode {
+/** An AdminListRow placeholder (minHeight 56, icon, title and subtitle, chevron). */
+function HubRowSkeleton({ titleWidth }: { titleWidth: PercentWidth }): ReactNode {
   const { colors } = useAppTheme();
   return (
-    <View style={{ flex: 1 }}>
-      {withSectionTabs ? <AdminSectionTabsSkeleton /> : null}
-      <View style={{ flex: 1, overflow: 'hidden' }}>
-        <View style={{ padding: 20, gap: 16 }}>
-          <SkeletonLine fontSize={16} width={156} />
-
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            {METRIC_LABEL_WIDTHS.map((labelWidth, metricIndex) => (
-              <View key={metricIndex} style={{ width: '47%', padding: 16, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
-                <Skeleton width={22} height={22} borderRadius={6} />
-                <SkeletonLine fontSize={24} width={48} style={{ marginTop: 8 }} />
-                <SkeletonLine fontSize={12} width={labelWidth} style={{ marginTop: 2 }} />
-              </View>
-            ))}
-          </View>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, borderRadius: 16, backgroundColor: colors.successSurface }}>
-            <Skeleton width={20} height={20} borderRadius={6} />
-            <SkeletonParagraph fontSize={13} lineHeight={19} lines={2} lastLineWidth="62%" style={{ flex: 1 }} />
-          </View>
-
-          <View style={{ padding: 16, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
-            <SkeletonLine fontSize={16} width={176} />
-            <SkeletonParagraph fontSize={12} lineHeight={18} lines={2} lastLineWidth="70%" style={{ marginTop: 6, marginBottom: 8 }} />
-            {WORKSPACE_ROW_WIDTHS.map((titleWidth, rowIndex) => (
-              <View key={rowIndex} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.border }}>
-                <Skeleton width={19} height={19} borderRadius={5} />
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <SkeletonLine fontSize={14} width={titleWidth} />
-                </View>
-                <Skeleton width={34} height={19} borderRadius={999} style={{ marginRight: 8 }} />
-                <Skeleton width={18} height={18} borderRadius={5} />
-              </View>
-            ))}
-          </View>
-        </View>
+    <View style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
+      <SkeletonCircle size={40} />
+      <View style={{ flex: 1, gap: 4 }}>
+        <SkeletonLine fontSize={14} lineHeight={20} width={titleWidth} />
+        <SkeletonLine fontSize={14} lineHeight={20} width="70%" />
       </View>
+      <Skeleton width={18} height={18} borderRadius={4} />
+    </View>
+  );
+}
+
+/** An AdminStatCard placeholder in a two-column AdminStatGrid cell. */
+function HubStatSkeleton({ compact = false }: { compact?: boolean }): ReactNode {
+  const { colors } = useAppTheme();
+  return (
+    <View style={{ flexBasis: '40%', flexGrow: 1, gap: 4, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
+      <SkeletonLine fontSize={11} lineHeight={14} width={64} />
+      <Skeleton width="45%" height={compact ? 26 : 34} borderRadius={8} />
+    </View>
+  );
+}
+
+/** The hub: Needs attention (approvals row + 3 cards), Metrics (5 cards) and the five workspace groups. */
+export function AdminOverviewSkeleton(): ReactNode {
+  return (
+    <View style={{ padding: 16, gap: 24 }}>
+      <HubSectionSkeleton titleWidth={120}>
+        <HubRowSkeleton titleWidth="44%" />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          {[0, 1, 2].map((cardIndex) => (
+            <HubStatSkeleton key={cardIndex} compact />
+          ))}
+        </View>
+      </HubSectionSkeleton>
+      <HubSectionSkeleton titleWidth={64}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          {[0, 1, 2, 3, 4].map((cardIndex) => (
+            <HubStatSkeleton key={cardIndex} />
+          ))}
+        </View>
+      </HubSectionSkeleton>
+      {HUB_GROUP_ROW_COUNTS.map((rowCount, groupIndex) => (
+        <HubSectionSkeleton key={groupIndex} titleWidth={HUB_GROUP_TITLE_WIDTHS[groupIndex]}>
+          <View style={{ gap: 8 }}>
+            {Array.from({ length: rowCount }, (_unused, rowIndex) => (
+              <HubRowSkeleton key={rowIndex} titleWidth={HUB_ROW_TITLE_WIDTHS[rowIndex % HUB_ROW_TITLE_WIDTHS.length]} />
+            ))}
+          </View>
+        </HubSectionSkeleton>
+      ))}
     </View>
   );
 }

@@ -1,141 +1,129 @@
-import SellerReviewSection from '@/components/admin/SellerReviewSection';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-	View,
-	Text,
-	TouchableOpacity,
-	ScrollView,
-	StyleSheet,
-	RefreshControl,
-} from 'react-native';
+import { View } from 'react-native';
+import { Redirect, useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import AdminListRow from '@/components/admin/AdminListRow';
+import AdminScreen, { type AdminOverflowItem } from '@/components/admin/AdminScreen';
+import AdminSection from '@/components/admin/AdminSection';
+import AdminStatCard, { AdminStatGrid } from '@/components/admin/AdminStatCard';
+import AdminState from '@/components/admin/AdminState';
 import { AdminOverviewSkeleton } from '@/components/admin/AdminSkeletons';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/Feather';
-import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import {
-	AdminMetricsService,
-	type AdminMetrics,
-} from '@/lib/services/AdminMetricsService';
-import PageAccessAdminSection from '@/components/admin/PageAccessAdminSection';
-import UserManagementSection from '@/components/admin/UserManagementSection';
-import ModerationSection from '@/components/admin/ModerationSection';
-import AdminSecurityWorkspace from '@/components/admin/AdminSecurityWorkspace';
+import { space, type AdminIconName, type AdminToneName } from '@/lib/admin/adminTokens';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
-import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { usePendingApprovalsCount } from '@/lib/hooks/usePendingApprovalsCount';
+import { AdminMetricsService, type AdminMetrics } from '@/lib/services/AdminMetricsService';
 import { formatPendingCount } from '@/lib/services/PendingApprovalsRules';
+import { pendingApprovalsService } from '@/lib/services/PendingApprovalsService';
+import type { PendingApprovalCategoryKey, PendingApprovalsSnapshot } from '@/lib/types/pendingApprovals';
 
 const adminMetricsService = AdminMetricsService.getInstance();
 
-const REMAINING_ADMIN_WORKSPACES = [
+/**
+ * Old `/admin?section=<x>` links (profile tab, notifications, bookmarks) open the standalone screens that replaced
+ * the hub's tab bar. `overview` (and no section) stays on the hub.
+ */
+const SECTION_ROUTES: { readonly [section: string]: Href } = {
+	users: '/admin/user-management',
+	'user-management': '/admin/user-management',
+	moderation: '/admin/moderation',
+	reports: '/admin/moderation',
+	page_access: '/admin/page-access',
+	'page-access': '/admin/page-access',
+	security: '/admin/security',
+	seller_review: '/admin/seller-review' as Href,
+	'seller-review': '/admin/seller-review' as Href,
+};
+
+type WorkspaceLink = {
+	id: string;
+	title: string;
+	description: string;
+	icon: AdminIconName;
+	route: Href;
+	/** Only for beta or restricted entries. */
+	badge?: { label: string; tone: AdminToneName };
+};
+
+type WorkspaceGroup = { id: string; title: string; links: readonly WorkspaceLink[] };
+
+const WORKSPACE_GROUPS: readonly WorkspaceGroup[] = [
 	{
-		id: 'activity-logs',
-		title: 'Activity Logs & Audit',
-		icon: 'clock' as const,
-		route: '/admin/activity-logs' as Href,
+		id: 'people',
+		title: 'People',
+		links: [
+			{ id: 'user-management', title: 'User management', description: 'Roles, account status, archive and restore', icon: 'users', route: '/admin/user-management' },
+			{ id: 'testers', title: 'Testers', description: 'Beta applications and registration mode', icon: 'user-check', route: '/admin/testers' },
+		],
 	},
 	{
-		id: 'support',
-		title: 'Support Tickets',
-		icon: 'help-circle' as const,
-		route: '/admin/support' as Href,
+		id: 'content',
+		title: 'Content',
+		links: [
+			{ id: 'moderation', title: 'Moderation', description: 'Reports, appeals and deleted content', icon: 'flag', route: '/admin/moderation' },
+			{ id: 'communities', title: 'Communities', description: 'Community records and status', icon: 'users', route: '/admin/communities' },
+			{ id: 'community-categories', title: 'Community categories', description: 'Categories shown in the directory', icon: 'layers', route: '/admin/community-categories' },
+			{ id: 'stickers', title: 'Stickers', description: 'Sticker packs and review', icon: 'smile', route: '/admin/stickers' },
+			{ id: 'elearning-review', title: 'E-Learning review', description: 'Instructor applications and courses', icon: 'book-open', route: '/admin/elearning-review' },
+			{ id: 'game-content', title: 'Game content', description: 'Locations and words for games', icon: 'map-pin', route: '/admin/game-content' },
+		],
 	},
 	{
-		id: 'child-safety',
-		title: 'Child Safety',
-		icon: 'shield' as const,
-		route: '/admin/child-safety' as Href,
+		id: 'commerce',
+		title: 'Commerce',
+		links: [
+			{ id: 'seller-review', title: 'Seller review', description: 'Seller verification applications', icon: 'shopping-cart', route: '/admin/seller-review' as Href },
+			{ id: 'products', title: 'Products', description: 'Market listings and status', icon: 'shopping-bag', route: '/admin/products' },
+			{ id: 'categories', title: 'Categories', description: 'Market categories', icon: 'tag', route: '/admin/categories' },
+			{ id: 'couriers', title: 'Couriers', description: 'Courier registrations', icon: 'truck', route: '/admin/couriers' },
+			{ id: 'pet-adoption', title: 'Pet adoption', description: 'Adoption listings', icon: 'heart', route: '/admin/pet-adoption' },
+			{ id: 'jobs', title: 'Jobs', description: 'Job listings and approvals', icon: 'briefcase', route: '/admin/jobs' },
+		],
 	},
 	{
-		id: 'analytics',
-		title: 'Analytics',
-		icon: 'bar-chart-2' as const,
-		route: '/admin/analytics' as Href,
+		id: 'safety',
+		title: 'Safety and support',
+		links: [
+			{ id: 'child-safety', title: 'Child safety', description: 'Restricted case review', icon: 'shield', route: '/admin/child-safety', badge: { label: 'Restricted', tone: 'pending' } },
+			{ id: 'support', title: 'Support tickets', description: 'Member help requests', icon: 'life-buoy', route: '/admin/support' },
+		],
 	},
 	{
-		id: 'testers',
-		title: 'Testers',
-		icon: 'user-check' as const,
-		route: '/admin/testers' as Href,
+		id: 'system',
+		title: 'System',
+		links: [
+			{ id: 'page-access', title: 'Page access', description: 'Availability, maintenance and Coming Soon', icon: 'layers', route: '/admin/page-access' },
+			{ id: 'security', title: 'Security', description: 'IP rules, whitelist and access settings', icon: 'lock', route: '/admin/security' },
+			{ id: 'analytics', title: 'Analytics', description: 'Platform collection totals', icon: 'bar-chart-2', route: '/admin/analytics' },
+			{ id: 'activity-logs', title: 'Activity logs', description: 'Audit trail and restores', icon: 'clock', route: '/admin/activity-logs' },
+		],
 	},
-	{
-		id: 'stickers',
-		title: 'Stickers',
-		icon: 'smile' as const,
-		route: '/admin/stickers' as Href,
-	},
-	{
-		id: 'products',
-		title: 'Products',
-		icon: 'shopping-bag' as const,
-		route: '/admin/products' as Href,
-	},
-	{
-		id: 'categories',
-		title: 'Categories',
-		icon: 'tag' as const,
-		route: '/admin/categories' as Href,
-	},
-	{
-		id: 'community-categories',
-		title: 'Community Categories',
-		icon: 'layers' as const,
-		route: '/admin/community-categories' as Href,
-	},
-	{
-		id: 'communities',
-		title: 'Communities',
-		icon: 'users' as const,
-		route: '/admin/communities' as Href,
-	},
-	{
-		id: 'couriers',
-		title: 'Couriers',
-		icon: 'truck' as const,
-		route: '/admin/couriers' as Href,
-	},
-	{
-		id: 'pet-adoption',
-		title: 'Pet Adoption',
-		icon: 'heart' as const,
-		route: '/admin/pet-adoption' as Href,
-	},
-	{
-		id: 'jobs',
-		title: 'Jobs',
-		icon: 'briefcase' as const,
-		route: '/admin/jobs' as Href,
-	},
-	{
-		id: 'elearning-review',
-		title: 'E-Learning Review',
-		icon: 'book-open' as const,
-		route: '/admin/elearning-review' as Href,
-	},
-	{
-		id: 'game-content',
-		title: 'Game Content',
-		icon: 'map-pin' as const,
-		route: '/admin/game-content' as Href,
-	},
-	{
-		id: 'seed-stickers',
-		title: 'Seed Stickers',
-		icon: 'download-cloud' as const,
-		route: '/admin/seed-stickers' as Href,
-	},
-] as const;
+];
+
+type AttentionCard = { key: PendingApprovalCategoryKey; label: string; icon: AdminIconName; route: Href };
+
+const ATTENTION_CARDS: readonly AttentionCard[] = [
+	{ key: 'reports', label: 'Open reports', icon: 'flag', route: '/admin/moderation' },
+	{ key: 'childSafety', label: 'Child safety', icon: 'shield', route: '/admin/child-safety' },
+	{ key: 'support', label: 'Support tickets', icon: 'life-buoy', route: '/admin/support' },
+];
+
+/** Per-queue counts from the snapshot the pending-approvals badge already loads (no extra fetch). */
+function usePendingSnapshot(): PendingApprovalsSnapshot | null {
+	const [snapshot, setSnapshot] = useState<PendingApprovalsSnapshot | null>(() => pendingApprovalsService.peek());
+	useEffect(() => {
+		const unsubscribe = pendingApprovalsService.subscribe(setSnapshot);
+		const cached = pendingApprovalsService.peek();
+		if (cached) setSnapshot(cached);
+		return unsubscribe;
+	}, []);
+	return snapshot;
+}
 
 export default function AdminPortalScreen() {
 	const router = useRouter();
 	const { section } = useLocalSearchParams<{ section?: string }>();
 	const { authorization, loading: accessLoading } = usePageAccess();
-	const { colors } = useAppTheme();
 	const pendingApprovals = usePendingApprovalsCount();
-	const [activeSection, setActiveSection] = useState<
-		'overview' | 'users' | 'moderation' | 'page_access' | 'security' | 'seller_review'
-	>('overview');
+	const pendingSnapshot = usePendingSnapshot();
 	const [loading, setLoading] = useState(true);
 	const [stats, setStats] = useState<AdminMetrics>({
 		usersCount: 0,
@@ -147,18 +135,9 @@ export default function AdminPortalScreen() {
 	const [error, setError] = useState<string | null>(null);
 	const [refreshing, setRefreshing] = useState(false);
 	const hasStatsRef = useRef(false);
+	const [hasStats, setHasStats] = useState(false);
 	const { refresh: refreshPendingApprovals } = pendingApprovals;
-
-	useEffect(() => {
-		if (
-			section === 'users' ||
-			section === 'moderation' ||
-			section === 'page_access' ||
-			section === 'security' || section === 'seller_review' ||
-			section === 'overview'
-		)
-			setActiveSection(section);
-	}, [section]);
+	const redirectTarget = section ? SECTION_ROUTES[section] : undefined;
 
 	// `force` bypasses the service's 5-minute cache (pull-to-refresh, Retry). The skeleton only shows
 	// before the first successful load, so refetching on focus does not blank the overview.
@@ -168,11 +147,10 @@ export default function AdminPortalScreen() {
 			setError(null);
 			setStats(await adminMetricsService.fetchMetrics(force));
 			hasStatsRef.current = true;
+			setHasStats(true);
 		} catch (err: unknown) {
 			console.error('[AdminPortal.fetchAdminStats] Error:', err);
-			setError(
-				err instanceof Error ? err.message : 'Could not load admin metrics.'
-			);
+			setError(err instanceof Error ? err.message : 'Could not load admin metrics.');
 		} finally {
 			setLoading(false);
 		}
@@ -182,549 +160,111 @@ export default function AdminPortalScreen() {
 	// counts and the pending-approvals badge do not stay stale.
 	useFocusEffect(
 		useCallback(() => {
-			if (accessLoading || !authorization.isAdmin) return;
+			if (redirectTarget || accessLoading || !authorization.isAdmin) return;
 			void fetchAdminStats();
 			refreshPendingApprovals();
-		}, [accessLoading, authorization.isAdmin, fetchAdminStats, refreshPendingApprovals])
+		}, [redirectTarget, accessLoading, authorization.isAdmin, fetchAdminStats, refreshPendingApprovals])
 	);
 
-	const handleRefreshOverview = async () => {
+	const handleRefresh = async () => {
 		setRefreshing(true);
-		refreshPendingApprovals();
+		// The badge and the attention cards follow this snapshot through the service's subscribers.
+		pendingApprovalsService.fetchSummary(true).catch((refreshError: unknown) => {
+			console.warn(`[AdminPortal.handleRefresh] Error: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`);
+		});
 		await fetchAdminStats(true);
 		setRefreshing(false);
 	};
 
-	const handleBack = () => {
-		if (router.canGoBack()) {
-			router.back();
-			return;
-		}
-		router.replace('/(tabs)');
+	if (redirectTarget) return <Redirect href={redirectTarget} />;
+
+	const overflowActions: AdminOverflowItem[] = [
+		{ key: 'activity-logs', label: 'Activity logs', icon: 'clock', onPress: () => router.push('/admin/activity-logs' as Href) },
+		{ key: 'seed-stickers', label: 'Seed stickers', icon: 'download-cloud', description: 'Developer tool: import the default sticker packs', onPress: () => router.push('/admin/seed-stickers' as Href) },
+	];
+
+	const pendingLabel = formatPendingCount(pendingApprovals.total, pendingApprovals.totalIsLowerBound);
+	const showFullError = Boolean(error) && !hasStats;
+
+	const renderAttentionCard = (card: AttentionCard) => {
+		const queue = pendingSnapshot?.queues.find((entry) => entry.key === card.key);
+		const isReady = queue?.status === 'ready';
+		const count = isReady ? queue.count : 0;
+		return (
+			<AdminStatCard
+				key={card.key}
+				label={card.label}
+				icon={card.icon}
+				value={isReady ? formatPendingCount(queue.count, queue.countIsLowerBound) : '—'}
+				hint={queue?.status === 'error' ? "Couldn't load" : undefined}
+				tone={count > 0 ? 'pending' : 'neutral'}
+				loading={!pendingSnapshot}
+				compact
+				onPress={() => router.push(card.route)}
+			/>
+		);
 	};
 
 	return (
-		<SafeAreaView
-			edges={['top', 'left', 'right']}
-			style={[styles.container, { backgroundColor: colors.canvas }]}
+		<AdminScreen
+			title="Admin"
+			subtitle="Platform overview and workspaces"
+			showHubShortcut={false}
+			backFallback="/(tabs)"
+			state={
+				loading && !hasStats
+					? { kind: 'loading' }
+					: showFullError
+						? { kind: 'error', message: error ?? 'Could not load admin metrics.' }
+						: { kind: 'ready' }
+			}
+			skeleton={<AdminOverviewSkeleton />}
+			onRefresh={handleRefresh}
+			refreshing={refreshing}
+			overflowActions={overflowActions}
 		>
-			{/* Header */}
-			<View
-				style={[
-					styles.header,
-					{ backgroundColor: colors.surface, borderBottomColor: colors.border },
-				]}
-			>
-				<TouchableOpacity onPress={handleBack} style={styles.backBtn}>
-					<Icon name="arrow-left" size={24} color={colors.icon} />
-				</TouchableOpacity>
-				<Text style={[styles.headerTitle, { color: colors.text }]}>
-					Admin Portal
-				</Text>
-				<View style={{ width: 32 }} />
+			<View style={{ gap: space.xl }}>
+				{error && hasStats ? <AdminState kind="inlineError" message={error} onRetry={() => void fetchAdminStats(true)} /> : null}
+
+				<AdminSection title="Needs attention">
+					<AdminListRow
+						title="Pending approvals"
+						subtitle={pendingApprovals.total > 0 ? 'Registrations, listings, reports and more' : 'Nothing waiting for approval'}
+						leading={{ kind: 'icon', name: 'check-square', tone: pendingApprovals.total > 0 ? 'pending' : 'neutral' }}
+						status={pendingApprovals.total > 0 ? { label: `${pendingLabel} waiting`, tone: 'pending' } : undefined}
+						accessibilityHint="Opens the pending approvals queue"
+						onPress={() => router.push('/admin/approvals' as Href)}
+					/>
+					<AdminStatGrid>{ATTENTION_CARDS.map(renderAttentionCard)}</AdminStatGrid>
+				</AdminSection>
+
+				<AdminSection title="Metrics" description="Live platform totals. Pull down to refresh.">
+					<AdminStatGrid>
+						<AdminStatCard label="Users" icon="users" value={stats.usersCount.toLocaleString()} />
+						<AdminStatCard label="Posts" icon="file-text" value={stats.postsCount.toLocaleString()} />
+						<AdminStatCard label="Limes" icon="video" value={stats.reelsCount.toLocaleString()} />
+						<AdminStatCard label="Events" icon="calendar" value={stats.eventsCount.toLocaleString()} />
+						<AdminStatCard label="Reports" icon="flag" value={stats.reportsCount.toLocaleString()} onPress={() => router.push('/admin/moderation' as Href)} />
+					</AdminStatGrid>
+				</AdminSection>
+
+				{WORKSPACE_GROUPS.map((group) => (
+					<AdminSection key={group.id} title={group.title}>
+						<View style={{ gap: space.sm }}>
+							{group.links.map((link) => (
+								<AdminListRow
+									key={link.id}
+									title={link.title}
+									subtitle={link.description}
+									leading={{ kind: 'icon', name: link.icon }}
+									status={link.badge}
+									onPress={() => router.push(link.route)}
+								/>
+							))}
+						</View>
+					</AdminSection>
+				))}
 			</View>
-
-			{accessLoading ? (
-				<AdminOverviewSkeleton withSectionTabs />
-			) : !authorization.isAdmin ? (
-				<View style={styles.center}>
-					<Icon name="lock" size={38} color="#c64d53" />
-					<Text style={[styles.deniedTitle, { color: colors.text }]}>
-						Admin access required
-					</Text>
-					<Text style={[styles.deniedText, { color: colors.mutedText }]}>
-						Your account does not have permission to open the administration
-						workspace.
-					</Text>
-					<TouchableOpacity onPress={handleBack} style={styles.deniedButton}>
-						<Text style={styles.deniedButtonText}>Go Back</Text>
-					</TouchableOpacity>
-				</View>
-			) : (
-				<>
-					<View
-						style={{
-							flexDirection: 'row',
-							paddingHorizontal: 10,
-							paddingVertical: 10,
-							backgroundColor: colors.surface,
-							borderBottomWidth: 1,
-							borderBottomColor: colors.border,
-						}}
-					>
-						{(
-							[
-								{ key: 'overview', label: 'Overview', icon: 'grid' },
-								{ key: 'users', label: 'Users', icon: 'users' },
-								{ key: 'moderation', label: 'Reports', icon: 'flag' },
-								{ key: 'page_access', label: 'Pages', icon: 'layers' },
-                { key: 'seller_review', label: 'Sellers', icon: 'user-check' },
-								{ key: 'security', label: 'Security', icon: 'shield' },
-							] as const
-						).map((section) => (
-							<TouchableOpacity
-								key={section.key}
-								onPress={() => setActiveSection(section.key)}
-								style={{
-									flex: 1,
-									flexDirection: 'row',
-									alignItems: 'center',
-									justifyContent: 'center',
-									borderRadius: 13,
-									paddingVertical: 10,
-									backgroundColor:
-										activeSection === section.key ? '#10b981' : 'transparent',
-								}}
-							>
-								<Icon
-									name={section.icon}
-									size={15}
-									color={
-										activeSection === section.key ? '#ffffff' : colors.icon
-									}
-								/>
-								<Text
-									style={{
-										marginLeft: 5,
-										color:
-											activeSection === section.key
-												? '#ffffff'
-												: colors.mutedText,
-										fontWeight: '800',
-										fontSize: 11,
-									}}
-								>
-									{section.label}
-								</Text>
-							</TouchableOpacity>
-						))}
-					</View>
-					{/* Edge-to-edge Android doesn't resize for the keyboard: shrink the section's ScrollView so inputs stay above it. */}
-					<KeyboardSafeView style={{ flex: 1 }}>
-						{activeSection === 'seller_review' ? (
-							<ScrollView
-								style={{ flex: 1 }}
-								keyboardShouldPersistTaps="handled"
-								contentContainerStyle={{ paddingBottom: 50 }}
-							>
-								<SellerReviewSection />
-							</ScrollView>
-						) : activeSection === 'security' ? (
-							<ScrollView
-								style={{ flex: 1 }}
-								keyboardShouldPersistTaps="handled"
-								contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
-							>
-								<AdminSecurityWorkspace />
-							</ScrollView>
-						) : activeSection === 'page_access' ? (
-							<ScrollView
-								style={{ flex: 1 }}
-								keyboardShouldPersistTaps="handled"
-								contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
-							>
-								<PageAccessAdminSection />
-							</ScrollView>
-						) : activeSection === 'users' ? (
-							<ScrollView
-								style={{ flex: 1 }}
-								keyboardShouldPersistTaps="handled"
-								contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
-							>
-								<UserManagementSection />
-							</ScrollView>
-						) : activeSection === 'moderation' ? (
-							<ScrollView
-								style={{ flex: 1 }}
-								keyboardShouldPersistTaps="handled"
-								contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
-							>
-								<ModerationSection />
-							</ScrollView>
-						) : loading ? (
-						<AdminOverviewSkeleton />
-					) : error ? (
-							<View style={styles.center}>
-								<Icon
-									name="alert-triangle"
-									size={34}
-									color={colors.destructive}
-								/>
-								<Text style={{ marginTop: 10, color: colors.destructiveText }}>
-									{error}
-								</Text>
-								<TouchableOpacity
-									onPress={() => void fetchAdminStats(true)}
-									style={{
-										marginTop: 14,
-										paddingHorizontal: 18,
-										paddingVertical: 10,
-										borderRadius: 999,
-										backgroundColor: colors.accent,
-									}}
-								>
-									<Text style={{ color: colors.onAccent, fontWeight: '700' }}>
-										Retry
-									</Text>
-								</TouchableOpacity>
-							</View>
-						) : (
-							<ScrollView
-								style={{ flex: 1 }}
-								contentContainerStyle={{ padding: 20, gap: 16 }}
-								refreshControl={
-									<RefreshControl
-										refreshing={refreshing}
-										onRefresh={() => void handleRefreshOverview()}
-										tintColor={colors.accent}
-									/>
-								}
-							>
-								<TouchableOpacity
-									accessibilityRole="button"
-									accessibilityLabel={`Pending approvals, ${formatPendingCount(pendingApprovals.total, pendingApprovals.totalIsLowerBound)} waiting`}
-									onPress={() => router.push('/admin/approvals' as Href)}
-									activeOpacity={0.8}
-									style={[
-										styles.approvalsTile,
-										{ backgroundColor: colors.surface, borderColor: pendingApprovals.total > 0 ? '#047857' : colors.border },
-									]}
-								>
-									<View style={[styles.approvalsIcon, { backgroundColor: colors.successSurface }]}>
-										<Icon name="check-square" size={20} color={colors.successText} />
-									</View>
-									<View style={{ flex: 1 }}>
-										<Text style={[styles.pendingRowTitle, { marginLeft: 0, color: colors.text }]}>
-											Pending approvals
-										</Text>
-										<Text style={{ marginTop: 2, fontSize: 12, color: colors.mutedText }}>
-											{pendingApprovals.total > 0
-												? 'Registrations, listings, reports and more waiting for review'
-												: 'Nothing waiting for approval'}
-										</Text>
-									</View>
-									{pendingApprovals.total > 0 ? (
-										<Text style={styles.approvalsCount}>
-											{formatPendingCount(pendingApprovals.total, pendingApprovals.totalIsLowerBound)}
-										</Text>
-									) : null}
-									<Icon name="chevron-right" size={18} color={colors.mutedText} />
-								</TouchableOpacity>
-								<Text style={[styles.sectionTitle, { color: colors.text }]}>
-									Overview & Metrics
-								</Text>
-
-								{/* Metric Cards */}
-								<View style={styles.grid}>
-									<View
-										style={[
-											styles.metricCard,
-											{
-												backgroundColor: colors.surface,
-												borderColor: colors.border,
-											},
-										]}
-									>
-										<Icon name="users" size={22} color="#10b981" />
-										<Text style={[styles.metricVal, { color: colors.text }]}>
-											{stats.usersCount}
-										</Text>
-										<Text
-											style={[styles.metricLabel, { color: colors.mutedText }]}
-										>
-											Total Users
-										</Text>
-									</View>
-									<View
-										style={[
-											styles.metricCard,
-											{
-												backgroundColor: colors.surface,
-												borderColor: colors.border,
-											},
-										]}
-									>
-										<Icon name="file-text" size={22} color="#3b82f6" />
-										<Text style={[styles.metricVal, { color: colors.text }]}>
-											{stats.postsCount}
-										</Text>
-										<Text
-											style={[styles.metricLabel, { color: colors.mutedText }]}
-										>
-											Total Posts
-										</Text>
-									</View>
-									<View
-										style={[
-											styles.metricCard,
-											{
-												backgroundColor: colors.surface,
-												borderColor: colors.border,
-											},
-										]}
-									>
-										<Icon name="video" size={22} color="#8b5cf6" />
-										<Text style={[styles.metricVal, { color: colors.text }]}>
-											{stats.reelsCount}
-										</Text>
-										<Text
-											style={[styles.metricLabel, { color: colors.mutedText }]}
-										>
-											Total Limes
-										</Text>
-									</View>
-									<View
-										style={[
-											styles.metricCard,
-											{
-												backgroundColor: colors.surface,
-												borderColor: colors.border,
-											},
-										]}
-									>
-										<Icon name="calendar" size={22} color="#f59e0b" />
-										<Text style={[styles.metricVal, { color: colors.text }]}>
-											{stats.eventsCount}
-										</Text>
-										<Text
-											style={[styles.metricLabel, { color: colors.mutedText }]}
-										>
-											Events
-										</Text>
-									</View>
-									<View
-										style={[
-											styles.metricCard,
-											{
-												backgroundColor: colors.surface,
-												borderColor: colors.border,
-											},
-										]}
-									>
-										<Icon name="flag" size={22} color="#c64d53" />
-										<Text style={[styles.metricVal, { color: colors.text }]}>
-											{stats.reportsCount}
-										</Text>
-										<Text
-											style={[styles.metricLabel, { color: colors.mutedText }]}
-										>
-											Reports
-										</Text>
-									</View>
-								</View>
-
-								<View
-									style={[
-										styles.notice,
-										{ backgroundColor: colors.successSurface },
-									]}
-								>
-									<Icon name="shield" size={20} color={colors.accent} />
-									<Text
-										style={[styles.noticeText, { color: colors.successText }]}
-									>
-										Admin tools are role-gated and use authenticated server
-										operations.
-									</Text>
-								</View>
-								<View
-									style={[
-										styles.pendingSection,
-										{
-											backgroundColor: colors.surface,
-											borderColor: colors.border,
-										},
-									]}
-								>
-									<Text style={[styles.sectionTitle, { color: colors.text }]}>
-										Additional Workspaces
-									</Text>
-									<Text
-										style={[styles.pendingIntro, { color: colors.mutedText }]}
-									>
-										Open native administration workspaces for live platform
-										records and role-gated controls.
-									</Text>
-									{REMAINING_ADMIN_WORKSPACES.map((workspace) => (
-										<TouchableOpacity
-											key={workspace.id}
-											onPress={() => router.push(workspace.route)}
-											style={[
-												styles.pendingRow,
-												{ borderTopColor: colors.border },
-											]}
-										>
-											<Icon name={workspace.icon} size={19} color={colors.icon} />
-											<Text
-												style={[styles.pendingRowTitle, { color: colors.text }]}
-											>
-												{workspace.title}
-											</Text>
-											<Text
-												style={[
-													styles.webBadge,
-													{
-														backgroundColor: colors.control,
-														color: colors.secondaryText,
-													},
-												]}
-											>
-												LIVE
-											</Text>
-											<Icon
-												name="chevron-right"
-												size={18}
-												color={colors.mutedText}
-											/>
-										</TouchableOpacity>
-									))}
-								</View>
-							</ScrollView>
-						)}
-					</KeyboardSafeView>
-				</>
-			)}
-		</SafeAreaView>
+		</AdminScreen>
 	);
 }
-
-const styles = StyleSheet.create({
-	container: { flex: 1, backgroundColor: '#f8fafc' },
-	center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-	header: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		paddingHorizontal: 16,
-		paddingVertical: 14,
-		backgroundColor: '#ffffff',
-		borderBottomWidth: 1,
-		borderBottomColor: '#e2e8f0',
-	},
-	backBtn: { padding: 4 },
-	approvalsTile: {
-		minHeight: 68,
-		flexDirection: 'row',
-		alignItems: 'center',
-		gap: 12,
-		padding: 14,
-		borderRadius: 16,
-		borderWidth: 1,
-	},
-	approvalsIcon: {
-		width: 40,
-		height: 40,
-		borderRadius: 12,
-		alignItems: 'center',
-		justifyContent: 'center',
-	},
-	approvalsCount: {
-		minWidth: 28,
-		paddingHorizontal: 9,
-		paddingVertical: 4,
-		borderRadius: 999,
-		overflow: 'hidden',
-		textAlign: 'center',
-		backgroundColor: '#047857',
-		color: '#ffffff',
-		fontSize: 12,
-		fontWeight: '900',
-	},
-	headerTitle: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
-	sectionTitle: { fontSize: 16, fontWeight: '800', color: '#0f172a' },
-	grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-	metricCard: {
-		width: '47%',
-		padding: 16,
-		borderRadius: 16,
-		backgroundColor: '#ffffff',
-		borderWidth: 1,
-		borderColor: '#e2e8f0',
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 0.04,
-		shadowRadius: 6,
-		elevation: 2,
-	},
-	metricVal: {
-		fontSize: 24,
-		fontWeight: '800',
-		color: '#0f172a',
-		marginTop: 8,
-	},
-	metricLabel: {
-		fontSize: 12,
-		color: '#64748b',
-		fontWeight: '600',
-		marginTop: 2,
-	},
-	notice: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		gap: 10,
-		padding: 16,
-		borderRadius: 16,
-		backgroundColor: '#ecfdf5',
-	},
-	noticeText: { flex: 1, fontSize: 13, color: '#047857', lineHeight: 19 },
-	deniedTitle: {
-		marginTop: 14,
-		fontSize: 20,
-		fontWeight: '900',
-		color: '#0f172a',
-	},
-	deniedText: {
-		maxWidth: 320,
-		marginTop: 8,
-		paddingHorizontal: 18,
-		textAlign: 'center',
-		lineHeight: 20,
-		color: '#64748b',
-	},
-	deniedButton: {
-		marginTop: 20,
-		borderRadius: 999,
-		backgroundColor: '#10b981',
-		paddingHorizontal: 20,
-		paddingVertical: 11,
-	},
-	deniedButtonText: { color: '#ffffff', fontWeight: '800' },
-	pendingSection: {
-		padding: 16,
-		borderRadius: 16,
-		backgroundColor: '#ffffff',
-		borderWidth: 1,
-		borderColor: '#e2e8f0',
-	},
-	pendingIntro: {
-		marginTop: 6,
-		marginBottom: 8,
-		fontSize: 12,
-		lineHeight: 18,
-		color: '#64748b',
-	},
-	pendingRow: {
-		minHeight: 48,
-		flexDirection: 'row',
-		alignItems: 'center',
-		borderTopWidth: 1,
-		borderTopColor: '#f1f5f9',
-	},
-	pendingRowTitle: {
-		flex: 1,
-		marginLeft: 10,
-		color: '#334155',
-		fontWeight: '700',
-	},
-	webBadge: {
-		marginRight: 8,
-		borderRadius: 999,
-		paddingHorizontal: 7,
-		paddingVertical: 3,
-		overflow: 'hidden',
-		backgroundColor: '#e2e8f0',
-		color: '#475569',
-		fontSize: 10,
-		fontWeight: '900',
-	},
-});
