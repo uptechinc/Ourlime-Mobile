@@ -1,234 +1,326 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import Icon from 'react-native-vector-icons/Feather';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Text, TextInput, View } from 'react-native';
+import { toast } from 'sonner-native';
 import AdminDialog from './AdminDialog';
-import { Skeleton } from '@/components/ui/Skeleton';
+import AdminListRow from './AdminListRow';
+import AdminState from './AdminState';
+import { readSingleFilter, type AnyFilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
 import { adminContentService, DELETABLE_CONTENT_TYPES } from '@/lib/services/AdminContentService';
 import { adminUserService } from '@/lib/services/AdminUserService';
 import type { DeletableContentType, DeletedContentRecord } from '@/lib/types/adminContent';
+import { ADMIN_MIN_TOUCH, radius, space, type } from '@/lib/admin/adminTokens';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
-const TYPE_LABELS: { [type in DeletableContentType]: string } = {
-  post: 'Posts',
-  comment: 'Comments',
-  product: 'Products',
-  blog: 'Blogs',
-  project: 'Projects',
-  community: 'Communities',
-  lime: 'Limes',
+const TYPE_LABELS: { [contentType in DeletableContentType]: string } = {
+	post: 'Posts',
+	comment: 'Comments',
+	product: 'Products',
+	blog: 'Blogs',
+	project: 'Projects',
+	community: 'Communities',
+	lime: 'Limes',
 };
 const DEFAULT_RESTORE_REASON = 'Restored after administrator review.';
 
+export type DeletedContentTypeFilter = 'all' | DeletableContentType;
+
+export type DeletedContentController = {
+	records: DeletedContentRecord[];
+	filteredRecords: DeletedContentRecord[];
+	loading: boolean;
+	refreshing: boolean;
+	error: string;
+	searchQuery: string;
+	setSearchQuery: (next: string) => void;
+	selectedType: DeletedContentTypeFilter;
+	/** The Type group for the toolbar's Filters sheet. */
+	filterGroups: AnyFilterGroup[];
+	applyFilters: (values: FilterValues) => void;
+	clearFilters: () => void;
+	reload: (mode?: 'initial' | 'refresh') => Promise<void>;
+	setRecords: (updater: (current: DeletedContentRecord[]) => DeletedContentRecord[]) => void;
+};
+
+/**
+ * Data and filters for the Deleted tab. Loads lazily the first time `enabled` is true (the tab opens), so the
+ * Moderation screen can build its toolbar and pull-to-refresh around it.
+ */
+export function useDeletedContent(enabled: boolean): DeletedContentController {
+	const [records, setRecords] = useState<DeletedContentRecord[]>([]);
+	const [selectedType, setSelectedType] = useState<DeletedContentTypeFilter>('all');
+	const [searchQuery, setSearchQuery] = useState('');
+	const [loading, setLoading] = useState(true);
+	const [refreshing, setRefreshing] = useState(false);
+	const [error, setError] = useState('');
+	const hasLoadedRef = useRef(false);
+	/** Ignores a slower, older response so it cannot overwrite a newer one. */
+	const requestRef = useRef(0);
+
+	const reload = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+		const requestId = requestRef.current + 1;
+		requestRef.current = requestId;
+		if (mode === 'refresh') setRefreshing(true);
+		else setLoading(true);
+		try {
+			const next = await adminContentService.getDeletedContent();
+			if (requestRef.current !== requestId) return;
+			setRecords(next);
+			setError('');
+		} catch (loadError: unknown) {
+			if (requestRef.current !== requestId) return;
+			console.error('[AdminDeletedContentPanel.fetchDeletedContent] Error:', loadError instanceof Error ? loadError.message : loadError);
+			setError(loadError instanceof Error ? loadError.message : 'Unable to load deleted content');
+		} finally {
+			if (requestRef.current === requestId) {
+				setLoading(false);
+				setRefreshing(false);
+			}
+		}
+	}, []);
+
+	useEffect(() => {
+		if (!enabled || hasLoadedRef.current) return;
+		hasLoadedRef.current = true;
+		void reload('initial');
+	}, [enabled, reload]);
+
+	const filteredRecords = useMemo(() => {
+		const normalizedQuery = searchQuery.trim().toLowerCase();
+		return records.filter((record) => {
+			if (selectedType !== 'all' && record.contentType !== selectedType) return false;
+			if (!normalizedQuery) return true;
+			return [record.contentTitle, record.reason, record.authorId, record.contentId].some((value) => value.toLowerCase().includes(normalizedQuery));
+		});
+	}, [records, searchQuery, selectedType]);
+
+	const filterGroups: AnyFilterGroup[] = [
+		{
+			key: 'type',
+			label: 'Type',
+			options: [{ value: 'all', label: 'All types' }, ...DELETABLE_CONTENT_TYPES.map((contentType) => ({ value: contentType, label: TYPE_LABELS[contentType] }))],
+			value: selectedType,
+			defaultValue: 'all',
+		},
+	];
+
+	const applyFilters = (values: FilterValues) => {
+		const nextType = readSingleFilter(values, 'type');
+		setSelectedType(DELETABLE_CONTENT_TYPES.find((contentType) => contentType === nextType) ?? 'all');
+	};
+
+	const clearFilters = () => {
+		setSelectedType('all');
+		setSearchQuery('');
+	};
+
+	return {
+		records,
+		filteredRecords,
+		loading,
+		refreshing,
+		error,
+		searchQuery,
+		setSearchQuery,
+		selectedType,
+		filterGroups,
+		applyFilters,
+		clearFilters,
+		reload,
+		setRecords,
+	};
+}
+
+type AdminDeletedContentPanelProps = {
+	controller: DeletedContentController;
+};
+
+const formatDeletedAt = (deletedAt: string | null): string => {
+	if (!deletedAt) return 'Unknown deletion date';
+	const parsed = new Date(deletedAt);
+	return Number.isNaN(parsed.getTime()) ? 'Unknown deletion date' : parsed.toLocaleString();
+};
+
 /** The website's "Deleted Content" moderation tab: every current admin deletion, with restore and ban-author actions. */
-export default function AdminDeletedContentPanel() {
-  const { colors } = useAppTheme();
-  const [records, setRecords] = useState<DeletedContentRecord[]>([]);
-  const [selectedType, setSelectedType] = useState<'all' | DeletableContentType>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
-  const [restoreTarget, setRestoreTarget] = useState<DeletedContentRecord | null>(null);
-  const [restoreReason, setRestoreReason] = useState(DEFAULT_RESTORE_REASON);
-  const [restoreMessage, setRestoreMessage] = useState('');
-  const [banTarget, setBanTarget] = useState<DeletedContentRecord | null>(null);
-  const [banReason, setBanReason] = useState('');
-  const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+export default function AdminDeletedContentPanel({ controller }: AdminDeletedContentPanelProps) {
+	const { colors } = useAppTheme();
+	const { filteredRecords, records, error, reload, refreshing, setRecords } = controller;
+	const [processing, setProcessing] = useState(false);
+	const [restoreTarget, setRestoreTarget] = useState<DeletedContentRecord | null>(null);
+	const [restoreReason, setRestoreReason] = useState(DEFAULT_RESTORE_REASON);
+	const [restoreMessage, setRestoreMessage] = useState('');
+	const [banTarget, setBanTarget] = useState<DeletedContentRecord | null>(null);
+	const [banReason, setBanReason] = useState('');
+	const [actionError, setActionError] = useState('');
+	/** Synchronous double-submit guard (state updates land a frame later). */
+	const processingRef = useRef(false);
 
-  const fetchDeletedContent = useCallback(async () => {
-    setLoading(true);
-    try {
-      setRecords(await adminContentService.getDeletedContent());
-      setError('');
-    } catch (loadError: unknown) {
-      console.error('[AdminDeletedContentPanel.fetchDeletedContent] Error:', loadError instanceof Error ? loadError.message : loadError);
-      setError(loadError instanceof Error ? loadError.message : 'Unable to load deleted content');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+	const openRestore = (record: DeletedContentRecord) => {
+		setActionError('');
+		setRestoreTarget(record);
+		setRestoreReason(DEFAULT_RESTORE_REASON);
+		setRestoreMessage('');
+	};
 
-  useEffect(() => {
-    void fetchDeletedContent();
-  }, [fetchDeletedContent]);
+	const openBan = (record: DeletedContentRecord) => {
+		setActionError('');
+		setBanTarget(record);
+		setBanReason(`Repeated or serious violation connected to deleted ${record.contentType}: ${record.reason}`);
+	};
 
-  const filteredRecords = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    return records.filter((record) => {
-      if (selectedType !== 'all' && record.contentType !== selectedType) return false;
-      if (!normalizedQuery) return true;
-      return [record.contentTitle, record.reason, record.authorId, record.contentId].some((value) => value.toLowerCase().includes(normalizedQuery));
-    });
-  }, [records, searchQuery, selectedType]);
+	const handleRestore = async (): Promise<void> => {
+		if (!restoreTarget || !restoreReason.trim() || processingRef.current) return;
+		processingRef.current = true;
+		setProcessing(true);
+		setActionError('');
+		try {
+			const result = await adminContentService.restoreContent({
+				contentType: restoreTarget.contentType,
+				contentId: restoreTarget.contentId,
+				restoreReason: restoreReason.trim(),
+				message: restoreMessage.trim() || undefined,
+			});
+			if (!result.success) throw new Error(result.error || 'Unable to restore content');
+			const restoredId = restoreTarget.id;
+			setRecords((current) => current.filter((record) => record.id !== restoredId));
+			setRestoreTarget(null);
+			setRestoreMessage('');
+			toast.success('Content restored. The user was notified in Ourlime and by email.');
+		} catch (restoreError: unknown) {
+			console.error('[AdminDeletedContentPanel.handleRestore] Error:', restoreError instanceof Error ? restoreError.message : restoreError);
+			setActionError(restoreError instanceof Error ? restoreError.message : 'Unable to restore content');
+		} finally {
+			processingRef.current = false;
+			setProcessing(false);
+		}
+	};
 
-  const handleRestore = async (): Promise<void> => {
-    if (!restoreTarget || !restoreReason.trim() || processing) return;
-    setProcessing(true);
-    setError('');
-    setSuccessMessage('');
-    try {
-      const result = await adminContentService.restoreContent({
-        contentType: restoreTarget.contentType,
-        contentId: restoreTarget.contentId,
-        restoreReason: restoreReason.trim(),
-        message: restoreMessage.trim() || undefined,
-      });
-      if (!result.success) throw new Error(result.error || 'Unable to restore content');
-      const restoredId = restoreTarget.id;
-      setRecords((current) => current.filter((record) => record.id !== restoredId));
-      setRestoreTarget(null);
-      setRestoreMessage('');
-      setSuccessMessage('Content restored. The user was notified in Ourlime and by email.');
-    } catch (restoreError: unknown) {
-      console.error('[AdminDeletedContentPanel.handleRestore] Error:', restoreError instanceof Error ? restoreError.message : restoreError);
-      setError(restoreError instanceof Error ? restoreError.message : 'Unable to restore content');
-    } finally {
-      setProcessing(false);
-    }
-  };
+	const handleBanAuthor = async (): Promise<void> => {
+		if (!banTarget?.authorId || !banReason.trim()) {
+			setActionError('A user and ban reason are required.');
+			return;
+		}
+		if (processingRef.current) return;
+		processingRef.current = true;
+		setProcessing(true);
+		setActionError('');
+		try {
+			await adminUserService.updateAccountStatus(banTarget.authorId, 'banned', banReason.trim(), null);
+			const bannedAuthorId = banTarget.authorId;
+			setRecords((current) => current.map((record) => (record.authorId === bannedAuthorId ? { ...record, authorStatus: 'banned', isAuthorBanned: true } : record)));
+			setBanTarget(null);
+			setBanReason('');
+			toast.success('Author banned. Their account is now blocked.');
+		} catch (banError: unknown) {
+			console.error('[AdminDeletedContentPanel.handleBanAuthor] Error:', banError instanceof Error ? banError.message : banError);
+			setActionError(banError instanceof Error ? banError.message : 'Unable to ban the author');
+		} finally {
+			processingRef.current = false;
+			setProcessing(false);
+		}
+	};
 
-  const handleBanAuthor = async (): Promise<void> => {
-    if (!banTarget?.authorId || !banReason.trim()) {
-      setError('A user and ban reason are required.');
-      return;
-    }
-    if (processing) return;
-    setProcessing(true);
-    setError('');
-    setSuccessMessage('');
-    try {
-      await adminUserService.updateAccountStatus(banTarget.authorId, 'banned', banReason.trim(), null);
-      const bannedAuthorId = banTarget.authorId;
-      setRecords((current) => current.map((record) => (record.authorId === bannedAuthorId ? { ...record, authorStatus: 'banned', isAuthorBanned: true } : record)));
-      setSuccessMessage('Author banned successfully. Their account is now blocked.');
-      setBanTarget(null);
-      setBanReason('');
-    } catch (banError: unknown) {
-      console.error('[AdminDeletedContentPanel.handleBanAuthor] Error:', banError instanceof Error ? banError.message : banError);
-      setError(banError instanceof Error ? banError.message : 'Unable to ban the author');
-    } finally {
-      setProcessing(false);
-    }
-  };
+	const textAreaStyle = [
+		type.body,
+		{ minHeight: 88, textAlignVertical: 'top' as const, paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text },
+	];
+	const isFiltered = Boolean(controller.searchQuery.trim()) || controller.selectedType !== 'all';
 
-  const textAreaStyle = { minHeight: 80, textAlignVertical: 'top' as const, padding: 11, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text };
+	return (
+		<View style={{ gap: space.md }}>
+			<Text style={[type.meta, { color: colors.mutedText }]}>Every current deletion appears here, even when no appeal was submitted.</Text>
+			{error ? <AdminState kind="inlineError" message={error} onRetry={() => void reload('refresh')} retrying={refreshing} /> : null}
 
-  return (
-    <View>
-      <View style={{ padding: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.elevated, marginBottom: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Icon name="shield" size={17} color={colors.destructive} />
-              <Text style={{ marginLeft: 7, color: colors.text, fontWeight: '900', fontSize: 15 }}>All Deleted Content</Text>
-            </View>
-            <Text style={{ marginTop: 4, color: colors.mutedText, fontSize: 12 }}>Every current deletion appears here, even when no appeal was submitted.</Text>
-          </View>
-          <TouchableOpacity onPress={() => void fetchDeletedContent()} accessibilityLabel="Refresh deleted content" style={{ padding: 6 }}>
-            <Icon name="refresh-cw" size={17} color={colors.icon} />
-          </TouchableOpacity>
-        </View>
-        <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, paddingHorizontal: 11 }}>
-          <Icon name="search" size={16} color={colors.mutedText} />
-          <TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Search title, reason, user, or content ID" placeholderTextColor={colors.mutedText} style={{ flex: 1, padding: 10, color: colors.text }} />
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
-          {(['all', ...DELETABLE_CONTENT_TYPES] as const).map((type) => (
-            <TouchableOpacity key={type} onPress={() => setSelectedType(type)} style={{ marginRight: 7, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: selectedType === type ? colors.accent : colors.control }}>
-              <Text style={{ color: selectedType === type ? colors.onAccent : colors.secondaryText, fontSize: 12, fontWeight: '800' }}>{type === 'all' ? 'All types' : TYPE_LABELS[type]}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+			{filteredRecords.length ? (
+				<View style={{ gap: space.sm }}>
+					{filteredRecords.map((record) => (
+						<AdminListRow
+							key={record.id}
+							title={record.contentTitle}
+							subtitle={record.reason}
+							meta={`${TYPE_LABELS[record.contentType] ?? record.contentType} · ${formatDeletedAt(record.deletedAt)} · by ${record.adminName}`}
+							leading={{ kind: 'icon', name: 'trash-2', tone: 'danger' }}
+							status={record.isAuthorBanned ? { label: 'Author banned', tone: 'danger' } : undefined}
+							inlineAction={{ key: 'restore', label: 'Restore', icon: 'rotate-ccw', tone: 'positive', disabled: processing, onPress: () => openRestore(record) }}
+							overflowActions={[
+								{
+									key: 'ban',
+									label: record.isAuthorBanned ? 'Author already banned' : 'Ban author',
+									icon: 'slash',
+									tone: 'danger',
+									disabled: !record.authorId || record.isAuthorBanned || processing,
+									description: `Author ${record.authorId || 'unknown'} · Content ${record.contentId}`,
+									onPress: () => openBan(record),
+								},
+							]}
+						/>
+					))}
+				</View>
+			) : records.length && isFiltered ? (
+				<AdminState kind="empty" title="" filtered onClearFilters={controller.clearFilters} />
+			) : error ? null : (
+				<AdminState kind="empty" icon="check-circle" title="No deleted content" description="Nothing has been removed by an administrator." />
+			)}
 
-      {error ? <Text style={{ marginBottom: 10, padding: 11, borderRadius: 12, overflow: 'hidden', color: colors.destructiveText, backgroundColor: colors.destructiveSurface }}>{error}</Text> : null}
-      {successMessage ? <Text style={{ marginBottom: 10, padding: 11, borderRadius: 12, overflow: 'hidden', color: colors.successText, backgroundColor: colors.successSurface }}>{successMessage}</Text> : null}
+			<AdminDialog
+				visible={Boolean(restoreTarget)}
+				icon="rotate-ccw"
+				title="Restore content"
+				description={restoreTarget ? `Restore "${restoreTarget.contentTitle}"? The author is notified in Ourlime and by email.` : ''}
+				confirmLabel={processing ? 'Restoring…' : 'Restore'}
+				busy={processing}
+				confirmDisabled={!restoreReason.trim()}
+				onConfirm={() => void handleRestore()}
+				onClose={() => {
+					setRestoreTarget(null);
+					setRestoreMessage('');
+				}}
+			>
+				<View style={{ gap: space.md }}>
+					{actionError ? <AdminState kind="inlineError" message={actionError} /> : null}
+					<View style={{ gap: space.xs }}>
+						<Text style={[type.label, { color: colors.mutedText }]}>Audit reason (required)</Text>
+						<TextInput value={restoreReason} onChangeText={setRestoreReason} editable={!processing} maxLength={500} multiline accessibilityLabel="Audit reason" style={textAreaStyle} />
+					</View>
+					<View style={{ gap: space.xs }}>
+						<Text style={[type.label, { color: colors.mutedText }]}>Message to the user (optional)</Text>
+						<TextInput
+							value={restoreMessage}
+							onChangeText={setRestoreMessage}
+							editable={!processing}
+							maxLength={1000}
+							multiline
+							placeholder="Included in their Ourlime notification and email."
+							placeholderTextColor={colors.mutedText}
+							accessibilityLabel="Message to the user"
+							style={textAreaStyle}
+						/>
+					</View>
+				</View>
+			</AdminDialog>
 
-      {loading ? (
-        [0, 1, 2].map((rowIndex) => (
-          <View key={rowIndex} style={{ marginBottom: 10, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.elevated }}>
-            <Skeleton width={120} height={11} />
-            <Skeleton width="70%" height={15} style={{ marginTop: 10 }} />
-            <Skeleton width="90%" height={12} style={{ marginTop: 8 }} />
-            <Skeleton width="55%" height={11} style={{ marginTop: 8 }} />
-            <View style={{ flexDirection: 'row', marginTop: 12 }}>
-              <Skeleton width={90} height={32} borderRadius={11} />
-              <Skeleton width={110} height={32} borderRadius={11} style={{ marginLeft: 8 }} />
-            </View>
-          </View>
-        ))
-      ) : filteredRecords.length === 0 ? (
-        <Text style={{ padding: 30, textAlign: 'center', color: colors.mutedText }}>No deleted content matches these filters.</Text>
-      ) : (
-        filteredRecords.map((record) => (
-          <View key={record.id} style={{ marginBottom: 10, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.elevated }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-              <Text style={{ overflow: 'hidden', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', color: colors.destructiveText, backgroundColor: colors.destructiveSurface }}>{record.contentType}</Text>
-              <Text style={{ marginLeft: 8, color: colors.mutedText, fontSize: 11 }}>{record.deletedAt ? new Date(record.deletedAt).toLocaleString() : 'Unknown deletion date'}</Text>
-            </View>
-            <Text style={{ marginTop: 8, color: colors.text, fontWeight: '900', fontSize: 15 }}>{record.contentTitle}</Text>
-            <Text style={{ marginTop: 4, color: colors.secondaryText, fontSize: 13 }}>{record.reason}</Text>
-            <Text selectable style={{ marginTop: 6, color: colors.mutedText, fontSize: 11 }}>Author: {record.authorId || 'Unknown'} · Removed by {record.adminName}</Text>
-            <Text selectable style={{ marginTop: 2, color: colors.mutedText, fontSize: 11 }}>Content ID: {record.contentId}</Text>
-            <View style={{ flexDirection: 'row', marginTop: 12 }}>
-              <TouchableOpacity
-                disabled={processing}
-                onPress={() => { setRestoreTarget(record); setRestoreReason(DEFAULT_RESTORE_REASON); setRestoreMessage(''); }}
-                style={{ flexDirection: 'row', alignItems: 'center', marginRight: 8, borderRadius: 11, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.successSurface }}
-              >
-                <Icon name="rotate-ccw" size={14} color={colors.successText} />
-                <Text style={{ marginLeft: 6, color: colors.successText, fontWeight: '800', fontSize: 12 }}>Restore</Text>
-              </TouchableOpacity>
-              {record.isAuthorBanned ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 11, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.control }}>
-                  <Icon name="slash" size={14} color={colors.mutedText} />
-                  <Text style={{ marginLeft: 6, color: colors.mutedText, fontWeight: '800', fontSize: 12 }}>Author Banned</Text>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  disabled={!record.authorId || processing}
-                  onPress={() => { setBanTarget(record); setBanReason(`Repeated or serious violation connected to deleted ${record.contentType}: ${record.reason}`); }}
-                  style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 11, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.destructiveSurface, opacity: record.authorId ? 1 : 0.5 }}
-                >
-                  <Icon name="slash" size={14} color={colors.destructiveText} />
-                  <Text style={{ marginLeft: 6, color: colors.destructiveText, fontWeight: '800', fontSize: 12 }}>Ban Author</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        ))
-      )}
-
-      <AdminDialog
-        visible={Boolean(restoreTarget)}
-        title="Restore content"
-        description={restoreTarget ? `Restore "${restoreTarget.contentTitle}"? The author is notified in Ourlime and by email.` : ''}
-        confirmLabel={processing ? 'Restoring…' : 'Confirm Restore'}
-        busy={processing}
-        confirmDisabled={!restoreReason.trim()}
-        onConfirm={() => void handleRestore()}
-        onClose={() => { setRestoreTarget(null); setRestoreMessage(''); }}
-      >
-        <Text style={{ marginBottom: 6, color: colors.text, fontWeight: '700' }}>Audit reason (required)</Text>
-        <TextInput value={restoreReason} onChangeText={setRestoreReason} maxLength={500} multiline style={textAreaStyle} />
-        <Text style={{ marginTop: 12, marginBottom: 6, color: colors.text, fontWeight: '700' }}>Message to the user <Text style={{ color: colors.mutedText, fontWeight: '400' }}>(optional)</Text></Text>
-        <TextInput value={restoreMessage} onChangeText={setRestoreMessage} maxLength={1000} multiline placeholder="Included in their Ourlime notification and email." placeholderTextColor={colors.mutedText} style={textAreaStyle} />
-      </AdminDialog>
-
-      <AdminDialog
-        visible={Boolean(banTarget)}
-        title="Ban author"
-        description={banTarget ? `Ban the author of "${banTarget.contentTitle}"? Their account is blocked.` : ''}
-        confirmLabel={processing ? 'Banning…' : 'Confirm Ban'}
-        tone="danger"
-        busy={processing}
-        confirmDisabled={!banReason.trim()}
-        onConfirm={() => void handleBanAuthor()}
-        onClose={() => { setBanTarget(null); setBanReason(''); }}
-      >
-        <Text style={{ marginBottom: 6, color: colors.text, fontWeight: '700' }}>Required ban reason</Text>
-        <TextInput value={banReason} onChangeText={setBanReason} multiline style={textAreaStyle} />
-      </AdminDialog>
-    </View>
-  );
+			<AdminDialog
+				visible={Boolean(banTarget)}
+				icon="slash"
+				title="Ban author"
+				description={banTarget ? `Ban the author of "${banTarget.contentTitle}"? Their account is blocked.` : ''}
+				confirmLabel={processing ? 'Banning…' : 'Ban author'}
+				tone="danger"
+				busy={processing}
+				confirmDisabled={!banReason.trim()}
+				onConfirm={() => void handleBanAuthor()}
+				onClose={() => {
+					setBanTarget(null);
+					setBanReason('');
+				}}
+			>
+				<View style={{ gap: space.md }}>
+					{actionError ? <AdminState kind="inlineError" message={actionError} /> : null}
+					<View style={{ gap: space.xs }}>
+						<Text style={[type.label, { color: colors.mutedText }]}>Ban reason (required)</Text>
+						<TextInput value={banReason} onChangeText={setBanReason} editable={!processing} multiline accessibilityLabel="Ban reason" style={[textAreaStyle, { minHeight: ADMIN_MIN_TOUCH * 2 }]} />
+					</View>
+				</View>
+			</AdminDialog>
+		</View>
+	);
 }

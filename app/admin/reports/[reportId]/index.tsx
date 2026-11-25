@@ -1,104 +1,176 @@
-import { useCallback, useEffect, useState } from 'react';
-import {
-	Modal,
-	ScrollView,
-	Text,
-	TextInput,
-	TouchableOpacity,
-	View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Dimensions, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
-import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { doc, getDoc } from 'firebase/firestore';
+import { toast } from 'sonner-native';
 import { db } from '@/lib/firebaseConfig';
-import CustomModal from '@/components/ui/CustomModal';
+import AdminScreen, { type AdminScreenState } from '@/components/admin/AdminScreen';
+import AdminSection from '@/components/admin/AdminSection';
+import AdminListRow from '@/components/admin/AdminListRow';
+import AdminStatusPill from '@/components/admin/AdminStatusPill';
+import AdminState from '@/components/admin/AdminState';
+import AdminButton from '@/components/admin/AdminButton';
+import AdminIconButton from '@/components/admin/AdminIconButton';
 import AdminDialog from '@/components/admin/AdminDialog';
-import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
-import UserAvatar from '@/components/ui/UserAvatar';
-import {
-	AdminReportReviewSkeleton,
-	ReportedContentPreviewSkeleton,
-} from '@/components/admin/AdminSkeletons';
+import type { AdminOverflowItem } from '@/lib/admin/adminTypes';
+import { ReportedContentPreviewSkeleton } from '@/components/admin/AdminSkeletons';
+import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
+import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import CommentsModal from '@/components/home/MiddleSection/MiddleSectionComponent/CommentsModal/CommentsModal';
 import { PostService, type PostItem } from '@/lib/services/PostService';
 import { AuthService } from '@/lib/services/AuthService';
-import {
-	AdminModerationService,
-	type AdminModerationAction,
-	type AdminModerationReport,
-} from '@/lib/services/AdminModerationService';
+import { AdminModerationService, type AdminModerationAction, type AdminModerationReport } from '@/lib/services/AdminModerationService';
+import { ADMIN_MIN_TOUCH, getAdminTone, radius, space, type, type AdminIconName, type AdminToneName } from '@/lib/admin/adminTokens';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const moderationService = AdminModerationService.getInstance();
 const postService = PostService.getInstance();
 const authService = AuthService.getInstance();
-const ACTIONS: readonly {
-	id: AdminModerationAction;
-	label: string;
-	group: 'resolution' | 'content' | 'account' | 'escalation';
-}[] = [
+
+type ActionGroup = 'resolution' | 'content' | 'account' | 'escalation';
+
+const ACTIONS: readonly { id: AdminModerationAction; label: string; group: ActionGroup }[] = [
 	{ id: 'dismiss', label: 'Dismiss report', group: 'resolution' },
-	{
-		id: 'resolved_no_violation',
-		label: 'Resolve — no violation',
-		group: 'resolution',
-	},
+	{ id: 'resolved_no_violation', label: 'Resolve — no violation', group: 'resolution' },
 	{ id: 'content_removed', label: 'Remove content', group: 'content' },
 	{ id: 'content_hidden', label: 'Hide content temporarily', group: 'content' },
 	{ id: 'content_restored', label: 'Restore content', group: 'content' },
 	{ id: 'content_restricted', label: 'Restrict visibility', group: 'content' },
 	{ id: 'commenting_disabled', label: 'Disable commenting', group: 'content' },
-	{
-		id: 'advertisement_removed',
-		label: 'Delete advertisement',
-		group: 'content',
-	},
+	{ id: 'advertisement_removed', label: 'Delete advertisement', group: 'content' },
 	{ id: 'warning_issued', label: 'Issue warning', group: 'account' },
 	{ id: 'posting_disabled', label: 'Disable posting', group: 'account' },
 	{ id: 'messaging_disabled', label: 'Disable messaging', group: 'account' },
 	{ id: 'account_suspended', label: 'Suspend account', group: 'account' },
-	{
-		id: 'account_temp_banned',
-		label: 'Temporarily ban account',
-		group: 'account',
-	},
-	{
-		id: 'account_perma_banned',
-		label: 'Permanently ban account',
-		group: 'account',
-	},
-	{
-		id: 'account_restricted',
-		label: 'Restrict account features',
-		group: 'account',
-	},
-	{
-		id: 'profile_picture_removed',
-		label: 'Remove profile picture',
-		group: 'account',
-	},
+	{ id: 'account_temp_banned', label: 'Temporarily ban account', group: 'account' },
+	{ id: 'account_perma_banned', label: 'Permanently ban account', group: 'account' },
+	{ id: 'account_restricted', label: 'Restrict account features', group: 'account' },
+	{ id: 'profile_picture_removed', label: 'Remove profile picture', group: 'account' },
 	{ id: 'username_removed', label: 'Remove username', group: 'account' },
 	{ id: 'bio_removed', label: 'Remove bio', group: 'account' },
-	{
-		id: 'escalated_senior_review',
-		label: 'Escalate to senior review',
-		group: 'escalation',
-	},
-	{
-		id: 'requested_info',
-		label: 'Request more information',
-		group: 'escalation',
-	},
-	{
-		id: 'referred_legal',
-		label: 'Refer to legal / safety',
-		group: 'escalation',
-	},
+	{ id: 'escalated_senior_review', label: 'Escalate to senior review', group: 'escalation' },
+	{ id: 'requested_info', label: 'Request more information', group: 'escalation' },
+	{ id: 'referred_legal', label: 'Refer to legal / safety', group: 'escalation' },
 ];
+
+/** The four "Take action" categories. Account sanctions are danger-toned, never styled like "Resolve". */
+const ACTION_GROUPS: readonly { id: ActionGroup; label: string; description: string; icon: AdminIconName; tone: AdminToneName }[] = [
+	{ id: 'resolution', label: 'Resolve', description: 'Close the report', icon: 'check-circle', tone: 'positive' },
+	{ id: 'content', label: 'Content', description: 'Remove, hide or restrict the content', icon: 'file-text', tone: 'pending' },
+	{ id: 'account', label: 'Account', description: 'Warn, restrict, suspend or ban the user', icon: 'user-x', tone: 'danger' },
+	{ id: 'escalation', label: 'Escalate', description: 'Senior review, more info or legal', icon: 'arrow-up-circle', tone: 'neutral' },
+];
+
+/** Actions that take a duration in days. */
+const DURATION_ACTIONS: readonly AdminModerationAction[] = ['content_hidden', 'commenting_disabled', 'messaging_disabled', 'posting_disabled', 'account_suspended', 'account_temp_banned'];
+const RESOLVE_NO_ACTION: AdminModerationAction = 'resolved_no_violation';
+
+/** Image-overlay colours (the media viewer and the video play badge sit on photos, not on theme surfaces). */
+const MEDIA_VIEWER_SCRIM = 'rgba(0,0,0,0.92)';
+const VIDEO_BADGE_SCRIM = 'rgba(0,0,0,0.3)';
+
+const toLabel = (value: string): string => {
+	const words = value.replaceAll('_', ' ');
+	return words.charAt(0).toUpperCase() + words.slice(1);
+};
+const severityTone = (severity: AdminModerationReport['severity']): AdminToneName =>
+	severity === 'critical' || severity === 'high' ? 'danger' : severity === 'medium' ? 'pending' : 'neutral';
+const reportStatusTone = (status: AdminModerationReport['status']): AdminToneName => {
+	if (status === 'pending' || status === 'under_review' || status === 'escalated') return 'pending';
+	if (status === 'action_taken' || status === 'resolved') return 'positive';
+	return 'neutral';
+};
+const actionGroupOf = (actionId: AdminModerationAction | null): ActionGroup | null => ACTIONS.find((action) => action.id === actionId)?.group ?? null;
+const groupTone = (group: ActionGroup | null): AdminToneName => ACTION_GROUPS.find((item) => item.id === group)?.tone ?? 'neutral';
+
+type ActionPickerSheetProps = {
+	visible: boolean;
+	onClose: () => void;
+	/** Called once the sheet has fully closed, so the action dialog can open (iOS cannot stack a closing Modal). */
+	onPick: (actionId: AdminModerationAction) => void;
+};
+
+/** "Take action": step 1 picks a category, step 2 an action in it. */
+function ActionPickerSheet({ visible, onClose, onPick }: ActionPickerSheetProps) {
+	const { colors } = useAppTheme();
+	const insets = useSafeAreaInsets();
+	const [step, setStep] = useState<ActionGroup | null>(null);
+	const pendingPickRef = useRef<AdminModerationAction | null>(null);
+	const activeGroup = ACTION_GROUPS.find((group) => group.id === step) ?? null;
+
+	useEffect(() => {
+		if (visible) setStep(null);
+	}, [visible]);
+
+	const runPendingPick = () => {
+		const picked = pendingPickRef.current;
+		pendingPickRef.current = null;
+		if (picked) onPick(picked);
+	};
+
+	const handlePick = (actionId: AdminModerationAction) => {
+		pendingPickRef.current = actionId;
+		onClose();
+		if (Platform.OS !== 'ios') runPendingPick();
+	};
+
+	const title = activeGroup ? activeGroup.label : 'Take action';
+
+	return (
+		<Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="none" presentationStyle="overFullScreen" onRequestClose={onClose} onDismiss={runPendingPick}>
+			{/* Same Android full-screen workaround as FilterSheet, so the sheet sits on the bottom edge. */}
+			<View style={{ height: Dimensions.get('screen').height, justifyContent: 'flex-end' }}>
+				<ModalBackdrop onPress={onClose} accessibilityLabel="Close actions" style={[StyleSheet.absoluteFill, { backgroundColor: colors.modalScrim }]} />
+				<ModalMotionSurface variant="sheet" style={{ maxHeight: '85%' }}>
+					<SwipeDismissSurface
+						visible={visible}
+						onDismiss={onClose}
+						handleColor={colors.border}
+						accessibilityLabel="Swipe down to close actions"
+						style={{ borderTopLeftRadius: radius.dialog, borderTopRightRadius: radius.dialog, backgroundColor: colors.surface, paddingBottom: Math.max(insets.bottom, space.md) + space.sm }}
+					>
+						<View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: activeGroup ? space.xs : space.xl, paddingRight: space.sm }}>
+							{activeGroup ? <AdminIconButton icon="arrow-left" label="Back to categories" onPress={() => setStep(null)} /> : null}
+							<Text accessibilityRole="header" style={[type.title, { flex: 1, color: colors.text }]}>
+								{title}
+							</Text>
+							<AdminIconButton icon="x" label="Close actions" onPress={onClose} />
+						</View>
+						<ScrollView contentContainerStyle={{ gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: space.md }} showsVerticalScrollIndicator={false}>
+							{activeGroup
+								? ACTIONS.filter((action) => action.group === activeGroup.id).map((action) => (
+										<AdminListRow
+											key={action.id}
+											title={action.label}
+											leading={{ kind: 'icon', name: activeGroup.icon, tone: activeGroup.tone }}
+											onPress={() => handlePick(action.id)}
+											accessibilityHint="Opens the reason form"
+										/>
+									))
+								: ACTION_GROUPS.map((group) => {
+										const count = ACTIONS.filter((action) => action.group === group.id).length;
+										return (
+											<AdminListRow
+												key={group.id}
+												title={group.label}
+												subtitle={group.description}
+												meta={`${count} ${count === 1 ? 'action' : 'actions'}`}
+												leading={{ kind: 'icon', name: group.icon, tone: group.tone }}
+												onPress={() => setStep(group.id)}
+											/>
+										);
+									})}
+						</ScrollView>
+					</SwipeDismissSurface>
+				</ModalMotionSurface>
+			</View>
+		</Modal>
+	);
+}
 
 type TargetContentState = {
 	loading: boolean;
@@ -136,6 +208,7 @@ type UserSummary = {
 	profileImage?: string | null;
 };
 
+
 export default function AdminReportDetailRoute() {
 	const router = useRouter();
 	const { colors } = useAppTheme();
@@ -143,19 +216,21 @@ export default function AdminReportDetailRoute() {
 	const { authorization, loading: accessLoading } = usePageAccess();
 	const [report, setReport] = useState<AdminModerationReport | null>(null);
 	const [loading, setLoading] = useState(true);
+	const [refreshing, setRefreshing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [targetContent, setTargetContent] = useState<TargetContentState | null>(null);
 	const [reportedUserData, setReportedUserData] = useState<UserSummary | null>(null);
 	const [reporterUserData, setReporterUserData] = useState<UserSummary | null>(null);
 	const [commentsModalOpen, setCommentsModalOpen] = useState(false);
 	const [selectedEvidenceUrl, setSelectedEvidenceUrl] = useState<string | null>(null);
-	const [selectedAction, setSelectedAction] =
-		useState<AdminModerationAction | null>(null);
+	const [actionSheetOpen, setActionSheetOpen] = useState(false);
+	const [selectedAction, setSelectedAction] = useState<AdminModerationAction | null>(null);
 	const [reason, setReason] = useState('');
 	const [durationDays, setDurationDays] = useState('7');
 	const [busy, setBusy] = useState(false);
-	const [message, setMessage] = useState<string | null>(null);
+	const [actionError, setActionError] = useState<string | null>(null);
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
+	const [deleteError, setDeleteError] = useState<string | null>(null);
 
 	const loadTargetDetails = useCallback(async (reportItem: AdminModerationReport) => {
 		const { contentType, targetId, parentContentId, targetSnapshot, routePath, reportedUserId, reporterId } = reportItem;
@@ -579,973 +654,387 @@ export default function AdminReportDetailRoute() {
 		}
 	}, []);
 
-	const load = useCallback(async () => {
-		if (!reportId) {
-			setError('Report ID is missing.');
-			setLoading(false);
-			return;
-		}
-		setLoading(true);
-		setError(null);
-		try {
-			const fetchedReport = await moderationService.fetchReport(reportId);
-			setReport(fetchedReport);
-			void loadTargetDetails(fetchedReport);
-		} catch (loadError: unknown) {
-			setError(
-				loadError instanceof Error
-					? loadError.message
-					: 'Report could not be loaded.'
-			);
-		} finally {
-			setLoading(false);
-		}
-	}, [loadTargetDetails, reportId]);
+	/** 'initial' shows the skeleton; 'refresh' (pull, and after an action) keeps the report on screen. */
+	const load = useCallback(
+		async (mode: 'initial' | 'refresh' = 'initial') => {
+			if (!reportId) {
+				setError('Report ID is missing.');
+				setLoading(false);
+				return;
+			}
+			if (mode === 'refresh') setRefreshing(true);
+			else setLoading(true);
+			setError(null);
+			try {
+				const fetchedReport = await moderationService.fetchReport(reportId);
+				setReport(fetchedReport);
+				void loadTargetDetails(fetchedReport);
+			} catch (loadError: unknown) {
+				console.error('[AdminReportDetailRoute.load] Error:', loadError instanceof Error ? loadError.message : loadError);
+				setError(loadError instanceof Error ? loadError.message : 'Report could not be loaded.');
+			} finally {
+				setLoading(false);
+				setRefreshing(false);
+			}
+		},
+		[loadTargetDetails, reportId]
+	);
 	useEffect(() => {
 		if (!accessLoading && authorization.isAdmin) void load();
 	}, [accessLoading, authorization.isAdmin, load]);
+
+	const openAction = (actionId: AdminModerationAction) => {
+		setActionError(null);
+		setSelectedAction(actionId);
+		setReason(report?.moderatorNotes ?? '');
+	};
+
+	const needsDuration = selectedAction !== null && DURATION_ACTIONS.includes(selectedAction);
+	const parsedDays = Number(durationDays);
+	const isDurationValid = !needsDuration || (Number.isFinite(parsedDays) && parsedDays > 0);
+	const canApplyAction = Boolean(report && selectedAction && reason.trim()) && isDurationValid && !busy;
+
 	const handleAction = async () => {
-		if (!report || !selectedAction || !reason.trim() || busy) return;
-		const days = Number(durationDays);
-		const durationMs =
-			Number.isFinite(days) && days > 0 ? days * 86_400_000 : undefined;
+		if (!report || !selectedAction || !reason.trim() || busy || !isDurationValid) return;
+		const durationMs = needsDuration && Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays * 86_400_000 : undefined;
 		setBusy(true);
+		setActionError(null);
 		try {
-			await moderationService.takeAction(
-				report.id,
-				selectedAction,
-				reason,
-				durationMs
-			);
-			setMessage(
-				'Moderation action applied through the secure server workflow.'
-			);
+			await moderationService.takeAction(report.id, selectedAction, reason, durationMs);
 			setSelectedAction(null);
-			await load();
-		} catch (actionError: unknown) {
-			setMessage(
-				actionError instanceof Error
-					? actionError.message
-					: 'Moderation action failed.'
-			);
+			toast.success('Moderation action applied through the secure server workflow.');
+			await load('refresh');
+		} catch (takeActionError: unknown) {
+			console.error('[AdminReportDetailRoute.handleAction] Error:', takeActionError instanceof Error ? takeActionError.message : takeActionError);
+			// The dialog stays open with the reason intact.
+			setActionError(takeActionError instanceof Error ? takeActionError.message : 'Moderation action failed.');
 		} finally {
 			setBusy(false);
 		}
 	};
+
 	const handleDelete = async () => {
 		if (!report || busy) return;
 		setBusy(true);
+		setDeleteError(null);
 		try {
 			await moderationService.deleteReport(report.id);
 			setConfirmingDelete(false);
-			router.back();
-		} catch (deleteError: unknown) {
-			setConfirmingDelete(false);
-			setMessage(
-				deleteError instanceof Error
-					? deleteError.message
-					: 'Report could not be deleted.'
-			);
+			toast.success('Report deleted.');
+			if (router.canGoBack()) router.back();
+			else router.replace('/admin/moderation' as Href);
+		} catch (removeError: unknown) {
+			console.error('[AdminReportDetailRoute.handleDelete] Error:', removeError instanceof Error ? removeError.message : removeError);
+			setDeleteError(removeError instanceof Error ? removeError.message : 'Report could not be deleted.');
 		} finally {
 			setBusy(false);
 		}
 	};
 
-	return (
-		<SafeAreaView
-			edges={['top', 'left', 'right']}
-			style={{ flex: 1, backgroundColor: colors.canvas }}
-		>
-			<View
-				style={{
-					flexDirection: 'row',
-					alignItems: 'center',
-					padding: 15,
-					backgroundColor: colors.navigation,
-					borderBottomWidth: 1,
-					borderBottomColor: colors.border,
-				}}
-			>
-				<TouchableOpacity onPress={() => router.back()}>
-					<Icon name="arrow-left" size={23} color={colors.icon} />
-				</TouchableOpacity>
-				<Text
-					style={{
-						flex: 1,
-						marginLeft: 12,
-						fontSize: 19,
-						fontWeight: '900',
-						color: colors.text,
-					}}
+	const openProfile = (usernameOrId: string | null | undefined) => {
+		if (usernameOrId) router.push(`/profile/${usernameOrId}` as Href);
+	};
+
+	const openComments = () => {
+		if (!report || !targetContent) return;
+		if (targetContent.rawPost) {
+			setCommentsModalOpen(true);
+			return;
+		}
+		const postId = targetContent.parentPostId || report.targetId;
+		router.push({ pathname: '/post/[id]', params: { id: postId, openComments: 'true' } } as Href);
+	};
+
+	const destinationRoute = targetContent?.destinationRoute;
+	const canViewComments = Boolean(targetContent?.found && (targetContent.kind === 'post' || targetContent.kind === 'lime' || targetContent.parentPostId));
+	const openContentLabel = !targetContent?.found
+		? 'Try opening the content'
+		: targetContent.kind === 'post'
+			? 'Open live post'
+			: targetContent.kind === 'comment' || targetContent.kind === 'reply'
+				? 'Open parent post and comment'
+				: targetContent.kind === 'user'
+					? 'Open profile'
+					: targetContent.kind === 'community'
+						? 'Open community'
+						: 'Open content';
+
+	const overflowActions: AdminOverflowItem[] = [
+		...(destinationRoute ? [{ key: 'open', label: openContentLabel, icon: 'external-link' as const, onPress: () => router.push(destinationRoute as Href) }] : []),
+		...(canViewComments
+			? [{ key: 'comments', label: typeof targetContent?.stats?.comments === 'number' ? `View comments (${targetContent.stats.comments})` : 'View comments', icon: 'message-circle' as const, onPress: openComments }]
+			: []),
+		{
+			key: 'delete',
+			label: 'Delete report',
+			icon: 'trash-2',
+			tone: 'danger',
+			disabled: !report || busy,
+			description: 'Removes it from the queue; actions taken stay',
+			onPress: () => {
+				setDeleteError(null);
+				setConfirmingDelete(true);
+			},
+		},
+	];
+
+	const screenState: AdminScreenState = loading ? { kind: 'loading', variant: 'detail' } : error ? { kind: 'error', message: error } : report ? { kind: 'ready' } : { kind: 'loading', variant: 'detail' };
+	const selectedActionMeta = ACTIONS.find((action) => action.id === selectedAction) ?? null;
+	const selectedTone = groupTone(actionGroupOf(selectedAction));
+	const dialogTone: 'positive' | 'pending' | 'danger' = selectedTone === 'danger' ? 'danger' : selectedTone === 'pending' ? 'pending' : 'positive';
+
+	const inputStyle = [
+		type.body,
+		{ minHeight: ADMIN_MIN_TOUCH, paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text },
+	];
+
+	const renderField = (label: string, value: string) => (
+		<View key={label} style={{ gap: space.xs }}>
+			<Text style={[type.label, { color: colors.mutedText }]}>{label}</Text>
+			<Text selectable style={[type.body, { color: colors.text }]}>
+				{value || 'Not supplied'}
+			</Text>
+		</View>
+	);
+
+	const renderMediaStrip = (media: NonNullable<TargetContentState['media']>, size: number) => (
+		<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm }}>
+			{media.map((mediaItem, mediaIndex) => (
+				<Pressable
+					key={`${mediaItem.url}-${mediaIndex}`}
+					onPress={() => setSelectedEvidenceUrl(mediaItem.url)}
+					accessibilityRole="imagebutton"
+					accessibilityLabel={mediaItem.type === 'video' ? `Open video ${mediaIndex + 1}` : `Open image ${mediaIndex + 1}`}
+					style={({ pressed }) => ({ width: size, height: size, borderRadius: radius.sm, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.control, opacity: pressed ? 0.7 : 1 })}
 				>
-					Report Review
-				</Text>
-				<TouchableOpacity
-					disabled={!report || busy}
-					onPress={() => setConfirmingDelete(true)}
-					accessibilityLabel="Delete report"
-				>
-					<Icon name="trash-2" size={20} color={colors.destructive} />
-				</TouchableOpacity>
-			</View>
-			{accessLoading || loading ? (
-				<AdminReportReviewSkeleton />
-			) : !authorization.isAdmin ? (
-				<View
-					style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-				>
-					<Icon name="lock" size={38} color={colors.destructive} />
-					<Text
-						style={{ marginTop: 12, fontWeight: '900', color: colors.text }}
-					>
-						Admin access required
-					</Text>
-				</View>
-			) : error ? (
-				<View
-					style={{
-						flex: 1,
-						alignItems: 'center',
-						justifyContent: 'center',
-						padding: 24,
-					}}
-				>
-					<Text style={{ color: colors.destructiveText, textAlign: 'center' }}>
-						{error}
-					</Text>
-					<TouchableOpacity
-						onPress={() => void load()}
-						style={{
-							marginTop: 14,
-							borderRadius: 999,
-							backgroundColor: colors.accent,
-							paddingHorizontal: 18,
-							paddingVertical: 10,
-						}}
-					>
-						<Text style={{ color: colors.onAccent, fontWeight: '800' }}>
-							Retry
-						</Text>
-					</TouchableOpacity>
-				</View>
-			) : report ? (
-				<ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 50 }}>
-					{/* REPORTED CONTENT PREVIEW CARD */}
-					<View
-						style={{
-							marginBottom: 14,
-							padding: 16,
-							borderRadius: 18,
-							backgroundColor: colors.surface,
-							borderWidth: 1,
-							borderColor: colors.border,
-						}}
-					>
-						{/* Header: Label + Content Type Badge */}
-						<View
-							style={{
-								flexDirection: 'row',
-								alignItems: 'center',
-								justifyContent: 'space-between',
-								marginBottom: 12,
-							}}
-						>
-							<View style={{ flexDirection: 'row', alignItems: 'center' }}>
-								<Icon
-									name={
-										targetContent?.kind === 'user' ? 'user' :
-										targetContent?.kind === 'community' ? 'users' :
-										targetContent?.kind === 'comment' || targetContent?.kind === 'reply' ? 'message-circle' :
-										targetContent?.kind === 'blog' ? 'book-open' :
-										targetContent?.kind === 'event' ? 'calendar' :
-										targetContent?.kind === 'marketplace_listing' ? 'shopping-bag' :
-										'file-text'
-									}
-									size={16}
-									color={colors.accent}
-								/>
-								<Text
-									style={{
-										marginLeft: 6,
-										fontSize: 13,
-										fontWeight: '900',
-										color: colors.text,
-										textTransform: 'uppercase',
-										letterSpacing: 0.5,
-									}}
-								>
-									Reported Content
-								</Text>
-							</View>
-							<View
-								style={{
-									paddingHorizontal: 8,
-									paddingVertical: 3,
-									borderRadius: 8,
-									backgroundColor: colors.control,
-								}}
-							>
-								<Text
-									style={{
-										fontSize: 10,
-										fontWeight: '900',
-										color: colors.secondaryText,
-										textTransform: 'uppercase',
-									}}
-								>
-									{report.contentType}
-								</Text>
-							</View>
-						</View>
-
-						{/* Loading indicator */}
-						{targetContent?.loading ? (
-							<ReportedContentPreviewSkeleton />
-						) : targetContent?.found ? (
-							<>
-								{/* Author Header Row */}
-								{targetContent.author ? (
-									<View
-										style={{
-											flexDirection: 'row',
-											alignItems: 'center',
-											marginBottom: 12,
-											paddingBottom: 10,
-											borderBottomWidth: 1,
-											borderBottomColor: colors.border,
-										}}
-									>
-										<TouchableOpacity
-											onPress={() => {
-												if (targetContent.author?.username) {
-													router.push(`/profile/${targetContent.author.username}` as Href);
-												} else if (targetContent.author?.id) {
-													router.push(`/profile/${targetContent.author.id}` as Href);
-												}
-											}}
-											style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-										>
-											<UserAvatar
-												profileImage={targetContent.author.profileImage}
-												firstName={targetContent.author.name}
-												size={38}
-											/>
-											<View style={{ marginLeft: 10, flex: 1 }}>
-												<Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
-													{targetContent.author.name}
-												</Text>
-												{targetContent.author.username ? (
-													<Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText }}>
-														@{targetContent.author.username}
-													</Text>
-												) : null}
-											</View>
-										</TouchableOpacity>
-										<TouchableOpacity
-											onPress={() => {
-												if (targetContent.author?.username) {
-													router.push(`/profile/${targetContent.author.username}` as Href);
-												} else if (targetContent.author?.id) {
-													router.push(`/profile/${targetContent.author.id}` as Href);
-												}
-											}}
-											style={{
-												paddingHorizontal: 10,
-												paddingVertical: 6,
-												borderRadius: 8,
-												backgroundColor: colors.control,
-											}}
-										>
-											<Text style={{ fontSize: 11, fontWeight: '800', color: colors.secondaryText }}>
-												View Profile
-											</Text>
-										</TouchableOpacity>
-									</View>
-								) : null}
-
-								{/* Title if present (e.g. blog title, product name, community name) */}
-								{targetContent.title ? (
-									<Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 6 }}>
-										{targetContent.title}
-									</Text>
-								) : null}
-
-								{/* Main Text Content / Caption */}
-								{targetContent.content ? (
-									<Text
-										selectable
-										style={{
-											fontSize: 14,
-											color: colors.text,
-											lineHeight: 20,
-											marginBottom: 10,
-										}}
-									>
-										{targetContent.content}
-									</Text>
-								) : null}
-
-								{/* Poll options if present */}
-								{targetContent.pollOptions && targetContent.pollOptions.length > 0 ? (
-									<View style={{ marginBottom: 12, gap: 6 }}>
-										{targetContent.pollOptions.map((opt, index) => (
-											<View
-												key={index}
-												style={{
-													padding: 10,
-													borderRadius: 10,
-													backgroundColor: colors.control,
-													flexDirection: 'row',
-													justifyContent: 'space-between',
-												}}
-											>
-												<Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' }}>{opt.text}</Text>
-												<Text style={{ fontSize: 12, color: colors.mutedText, fontWeight: '700' }}>{opt.votes} votes</Text>
-											</View>
-										))}
-									</View>
-								) : null}
-
-								{/* Media Gallery (Images / Video thumbnails) */}
-								{targetContent.media && targetContent.media.length > 0 ? (
-									<View style={{ marginBottom: 12 }}>
-										<ScrollView horizontal showsHorizontalScrollIndicator={false}>
-											{targetContent.media.map((med, index) => (
-												<TouchableOpacity
-													key={index}
-													onPress={() => setSelectedEvidenceUrl(med.url)}
-													style={{
-														marginRight: 8,
-														borderRadius: 12,
-														overflow: 'hidden',
-														backgroundColor: colors.control,
-														borderWidth: 1,
-														borderColor: colors.border,
-														width: 140,
-														height: 140,
-														position: 'relative',
-													}}
-												>
-													<Image
-														source={{ uri: med.thumbnailUrl || med.url }}
-														style={{ width: '100%', height: '100%' }}
-														contentFit="cover"
-													/>
-													{med.type === 'video' ? (
-														<View
-															style={{
-																position: 'absolute',
-																inset: 0,
-																alignItems: 'center',
-																justifyContent: 'center',
-																backgroundColor: 'rgba(0,0,0,0.3)',
-															}}
-														>
-															<Icon name="play" size={24} color="#ffffff" />
-														</View>
-													) : null}
-												</TouchableOpacity>
-											))}
-										</ScrollView>
-									</View>
-								) : null}
-
-								{/* Stats Bar */}
-								{targetContent.stats && (typeof targetContent.stats.likes === 'number' || typeof targetContent.stats.comments === 'number') ? (
-									<View
-										style={{
-											flexDirection: 'row',
-											alignItems: 'center',
-											gap: 16,
-											paddingVertical: 8,
-											borderTopWidth: 1,
-											borderTopColor: colors.border,
-											marginBottom: 10,
-										}}
-									>
-										{typeof targetContent.stats.likes === 'number' ? (
-											<View style={{ flexDirection: 'row', alignItems: 'center' }}>
-												<Icon name="heart" size={13} color={colors.mutedText} />
-												<Text style={{ marginLeft: 5, fontSize: 12, fontWeight: '700', color: colors.mutedText }}>
-													{targetContent.stats.likes} {targetContent.kind === 'community' ? 'members' : 'likes'}
-												</Text>
-											</View>
-										) : null}
-										{typeof targetContent.stats.comments === 'number' ? (
-											<View style={{ flexDirection: 'row', alignItems: 'center' }}>
-												<Icon name="message-square" size={13} color={colors.mutedText} />
-												<Text style={{ marginLeft: 5, fontSize: 12, fontWeight: '700', color: colors.mutedText }}>
-													{targetContent.stats.comments} {targetContent.stats.comments === 1 ? 'comment' : 'comments'}
-												</Text>
-											</View>
-										) : null}
-										{typeof targetContent.stats.shares === 'number' && targetContent.stats.shares > 0 ? (
-											<View style={{ flexDirection: 'row', alignItems: 'center' }}>
-												<Icon name="share-2" size={13} color={colors.mutedText} />
-												<Text style={{ marginLeft: 5, fontSize: 12, fontWeight: '700', color: colors.mutedText }}>
-													{targetContent.stats.shares}
-												</Text>
-											</View>
-										) : null}
-									</View>
-								) : null}
-
-								{/* Action Buttons */}
-								<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-									{/* 1. Open Live Post / Content Button */}
-									{targetContent.destinationRoute ? (
-										<TouchableOpacity
-											onPress={() => {
-												if (targetContent.destinationRoute) {
-													router.push(targetContent.destinationRoute as Href);
-												}
-											}}
-											style={{
-												flexDirection: 'row',
-												alignItems: 'center',
-												paddingHorizontal: 12,
-												paddingVertical: 9,
-												borderRadius: 10,
-												backgroundColor: colors.accent,
-											}}
-										>
-											<Icon name="external-link" size={14} color={colors.onAccent} />
-											<Text style={{ marginLeft: 6, fontSize: 12, fontWeight: '900', color: colors.onAccent }}>
-												{targetContent.kind === 'post' ? 'Open Live Post' :
-												 targetContent.kind === 'comment' || targetContent.kind === 'reply' ? 'Open Parent Post & Comment' :
-												 targetContent.kind === 'user' ? 'Open Profile' :
-												 targetContent.kind === 'community' ? 'Open Community' :
-												 'Open Content'}
-											</Text>
-										</TouchableOpacity>
-									) : null}
-
-									{/* 2. View Comments Button */}
-									{(targetContent.kind === 'post' || targetContent.kind === 'lime' || targetContent.parentPostId) ? (
-										<TouchableOpacity
-											onPress={() => {
-												if (targetContent.rawPost) {
-													setCommentsModalOpen(true);
-												} else {
-													const postId = targetContent.parentPostId || report.targetId;
-													router.push({
-														pathname: '/post/[id]',
-														params: { id: postId, openComments: 'true' },
-													} as Href);
-												}
-											}}
-											style={{
-												flexDirection: 'row',
-												alignItems: 'center',
-												paddingHorizontal: 12,
-												paddingVertical: 9,
-												borderRadius: 10,
-												backgroundColor: colors.control,
-												borderWidth: 1,
-												borderColor: colors.border,
-											}}
-										>
-											<Icon name="message-circle" size={14} color={colors.text} />
-											<Text style={{ marginLeft: 6, fontSize: 12, fontWeight: '800', color: colors.text }}>
-												View Comments {typeof targetContent.stats?.comments === 'number' ? `(${targetContent.stats.comments})` : ''}
-											</Text>
-										</TouchableOpacity>
-									) : null}
-								</View>
-							</>
-						) : (
-							/* Fallback: Content Missing or Deleted */
-							<View style={{ paddingVertical: 10 }}>
-								<View
-									style={{
-										flexDirection: 'row',
-										alignItems: 'center',
-										padding: 12,
-										borderRadius: 12,
-										backgroundColor: colors.warningSurface,
-										marginBottom: 10,
-									}}
-								>
-									<Icon name="alert-triangle" size={18} color={colors.warningText} />
-									<Text style={{ marginLeft: 8, fontSize: 12, fontWeight: '700', color: colors.warningText, flex: 1 }}>
-										Reported content could not be found live or has already been removed.
-									</Text>
-								</View>
-
-								{/* Show snapshot if available */}
-								{targetContent?.content ? (
-									<View style={{ padding: 10, borderRadius: 10, backgroundColor: colors.control, marginTop: 4 }}>
-										<Text style={{ fontSize: 11, fontWeight: '800', color: colors.mutedText, textTransform: 'uppercase', marginBottom: 4 }}>
-											Snapshot at time of report:
-										</Text>
-										<Text selectable style={{ fontSize: 13, color: colors.text, lineHeight: 18 }}>
-											{targetContent.content}
-										</Text>
-									</View>
-								) : null}
-
-								{targetContent?.destinationRoute ? (
-									<TouchableOpacity
-										onPress={() => {
-											if (targetContent.destinationRoute) {
-												router.push(targetContent.destinationRoute as Href);
-											}
-										}}
-										style={{
-											flexDirection: 'row',
-											alignItems: 'center',
-											alignSelf: 'flex-start',
-											marginTop: 10,
-											paddingHorizontal: 12,
-											paddingVertical: 8,
-											borderRadius: 10,
-											backgroundColor: colors.control,
-										}}
-									>
-										<Icon name="external-link" size={13} color={colors.secondaryText} />
-										<Text style={{ marginLeft: 6, fontSize: 11, fontWeight: '800', color: colors.secondaryText }}>
-											Attempt Navigation
-										</Text>
-									</TouchableOpacity>
-								) : null}
-							</View>
-						)}
-					</View>
-
-					{/* REPORT METADATA & REASON CARD */}
-					<View
-						style={{
-							padding: 16,
-							borderRadius: 18,
-							backgroundColor: colors.surface,
-							borderWidth: 1,
-							borderColor: colors.border,
-						}}
-					>
-						<View style={{ flexDirection: 'row' }}>
-							<Text
-								style={{
-									flex: 1,
-									fontSize: 18,
-									fontWeight: '900',
-									color: colors.text,
-								}}
-							>
-								{report.reason}
-							</Text>
-							<Text
-								style={{
-									color:
-										report.severity === 'critical' || report.severity === 'high'
-											? colors.destructiveText
-											: colors.warningText,
-									fontSize: 10,
-									fontWeight: '900',
-									textTransform: 'uppercase',
-								}}
-							>
-								{report.severity}
-							</Text>
-						</View>
-						<Text
-							style={{
-								marginTop: 8,
-								color: colors.secondaryText,
-								lineHeight: 20,
-							}}
-						>
-							{report.description || 'No reporter description.'}
-						</Text>
-
-						{/* Basic Status and IDs */}
-						{[
-							['Status', report.status],
-							['Content type', report.contentType],
-							['Target ID', report.targetId],
-						].map(([label, value]) => (
-							<View key={label} style={{ marginTop: 12 }}>
-								<Text
-									style={{
-										color: colors.mutedText,
-										fontSize: 10,
-										fontWeight: '900',
-										textTransform: 'uppercase',
-									}}
-								>
-									{label}
-								</Text>
-								<Text selectable style={{ marginTop: 2, color: colors.text }}>
-									{value}
-								</Text>
-							</View>
-						))}
-
-						{/* Interactive Reporter Row */}
-						<View style={{ marginTop: 12 }}>
-							<Text
-								style={{
-									color: colors.mutedText,
-									fontSize: 10,
-									fontWeight: '900',
-									textTransform: 'uppercase',
-								}}
-							>
-								Reporter
-							</Text>
-							<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-								<View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-									{reporterUserData ? (
-										<UserAvatar
-											profileImage={reporterUserData.profileImage}
-											firstName={reporterUserData.name}
-											size={26}
-										/>
-									) : null}
-									<View style={{ marginLeft: reporterUserData ? 8 : 0, flex: 1 }}>
-										<Text selectable style={{ color: colors.text, fontWeight: '700' }}>
-											{report.reporterName}
-										</Text>
-										{reporterUserData?.username ? (
-											<Text style={{ fontSize: 11, color: colors.mutedText }}>
-												@{reporterUserData.username}
-											</Text>
-										) : null}
-									</View>
-								</View>
-								{report.reporterId ? (
-									<TouchableOpacity
-										onPress={() => {
-											router.push(`/profile/${reporterUserData?.username || report.reporterId}` as Href);
-										}}
-										style={{
-											paddingHorizontal: 8,
-											paddingVertical: 4,
-											borderRadius: 6,
-											backgroundColor: colors.control,
-										}}
-									>
-										<Text style={{ fontSize: 10, fontWeight: '800', color: colors.secondaryText }}>
-											View Profile
-										</Text>
-									</TouchableOpacity>
-								) : null}
-							</View>
-						</View>
-
-						{/* Reporter ID */}
-						<View style={{ marginTop: 12 }}>
-							<Text
-								style={{
-									color: colors.mutedText,
-									fontSize: 10,
-									fontWeight: '900',
-									textTransform: 'uppercase',
-								}}
-							>
-								Reporter ID
-							</Text>
-							<Text selectable style={{ marginTop: 2, color: colors.text }}>
-								{report.reporterId}
-							</Text>
-						</View>
-
-						{/* Interactive Reported User Row */}
-						<View style={{ marginTop: 12 }}>
-							<Text
-								style={{
-									color: colors.mutedText,
-									fontSize: 10,
-									fontWeight: '900',
-									textTransform: 'uppercase',
-								}}
-							>
-								Reported User
-							</Text>
-							<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-								<View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-									{reportedUserData ? (
-										<UserAvatar
-											profileImage={reportedUserData.profileImage}
-											firstName={reportedUserData.name}
-											size={26}
-										/>
-									) : null}
-									<View style={{ marginLeft: reportedUserData ? 8 : 0, flex: 1 }}>
-										<Text selectable style={{ color: colors.text, fontWeight: '700' }}>
-											{reportedUserData?.name || report.reportedUserId || 'Not supplied'}
-										</Text>
-										{reportedUserData?.username ? (
-											<Text style={{ fontSize: 11, color: colors.mutedText }}>
-												@{reportedUserData.username}
-											</Text>
-										) : null}
-									</View>
-								</View>
-								{report.reportedUserId ? (
-									<TouchableOpacity
-										onPress={() => {
-											router.push(`/profile/${reportedUserData?.username || report.reportedUserId}` as Href);
-										}}
-										style={{
-											paddingHorizontal: 8,
-											paddingVertical: 4,
-											borderRadius: 6,
-											backgroundColor: colors.control,
-										}}
-									>
-										<Text style={{ fontSize: 10, fontWeight: '800', color: colors.secondaryText }}>
-											View Profile
-										</Text>
-									</TouchableOpacity>
-								) : null}
-							</View>
-						</View>
-					</View>
-
-					{/* EVIDENCE GALLERY (IF UPLOADED BY REPORTER) */}
-					{report.evidence && report.evidence.length > 0 ? (
-						<View
-							style={{
-								marginTop: 14,
-								padding: 16,
-								borderRadius: 18,
-								backgroundColor: colors.surface,
-								borderWidth: 1,
-								borderColor: colors.border,
-							}}
-						>
-							<Text
-								style={{
-									fontSize: 13,
-									fontWeight: '900',
-									color: colors.text,
-									textTransform: 'uppercase',
-									letterSpacing: 0.5,
-									marginBottom: 10,
-								}}
-							>
-								Attached Evidence ({report.evidence.length})
-							</Text>
-							<ScrollView horizontal showsHorizontalScrollIndicator={false}>
-								{report.evidence.map((url, idx) => (
-									<TouchableOpacity
-										key={idx}
-										onPress={() => setSelectedEvidenceUrl(url)}
-										style={{
-											marginRight: 8,
-											borderRadius: 12,
-											overflow: 'hidden',
-											borderWidth: 1,
-											borderColor: colors.border,
-											width: 100,
-											height: 100,
-										}}
-									>
-										<Image
-											source={{ uri: url }}
-											style={{ width: '100%', height: '100%' }}
-											contentFit="cover"
-										/>
-									</TouchableOpacity>
-								))}
-							</ScrollView>
+					<Image source={{ uri: mediaItem.thumbnailUrl || mediaItem.url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+					{mediaItem.type === 'video' ? (
+						<View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: VIDEO_BADGE_SCRIM }}>
+							<Icon name="play" size={24} color={colors.onAccent} />
 						</View>
 					) : null}
-					<Text
-						style={{
-							marginTop: 18,
-							marginBottom: 10,
-							fontSize: 16,
-							fontWeight: '900',
-							color: colors.text,
-						}}
-					>
-						Available actions
-					</Text>
-					{(['resolution', 'content', 'account', 'escalation'] as const).map(
-						(group) => (
-							<View key={group} style={{ marginBottom: 13 }}>
-								<Text
-									style={{
-										marginBottom: 7,
-										color: colors.mutedText,
-										fontSize: 11,
-										fontWeight: '900',
-										textTransform: 'uppercase',
-									}}
-								>
-									{group}
-								</Text>
-								<View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-									{ACTIONS.filter((action) => action.group === group).map(
-										(action) => (
-											<TouchableOpacity
-												key={action.id}
-												onPress={() => {
-													setSelectedAction(action.id);
-													setReason(report.moderatorNotes);
-												}}
-												style={{
-													marginRight: 7,
-													marginBottom: 7,
-													borderRadius: 12,
-													paddingHorizontal: 11,
-													paddingVertical: 9,
-													backgroundColor:
-														group === 'account'
-															? colors.destructiveSurface
-															: group === 'content'
-																? colors.warningSurface
-																: group === 'escalation'
-																	? colors.control
-																	: colors.successSurface,
-												}}
-											>
-												<Text
-													style={{
-														color:
-															group === 'account'
-																? colors.destructiveText
-																: group === 'content'
-																	? colors.warningText
-																	: group === 'escalation'
-																		? colors.secondaryText
-																		: colors.successText,
-														fontSize: 11,
-														fontWeight: '800',
-													}}
-												>
-													{action.label}
-												</Text>
-											</TouchableOpacity>
-										)
-									)}
-								</View>
-							</View>
-						)
-					)}
-				</ScrollView>
-			) : null}
-			<Modal
-				visible={Boolean(selectedAction)}
-				transparent
-				animationType="fade"
-				onRequestClose={() => setSelectedAction(null)}
-			>
-				<SafeAreaView
-					edges={['top', 'left', 'right']}
-					style={{
-						flex: 1,
-						justifyContent: 'center',
-						padding: 20,
-						backgroundColor: 'rgba(15,23,42,0.72)',
-					}}
-				>
-					{/* Transparent Modal: Android doesn't resize for the keyboard, so center the dialog above it. */}
-					<KeyboardSafeView style={{ flex: 1, justifyContent: 'center' }}>
-						<View
-							style={{
-								borderRadius: 22,
-								backgroundColor: colors.elevated,
-								padding: 18,
-							}}
-						>
-							<View style={{ flexDirection: 'row' }}>
-								<Text
-									style={{
-										flex: 1,
-										fontSize: 18,
-										fontWeight: '900',
-										color: colors.text,
-									}}
-								>
-									{ACTIONS.find((action) => action.id === selectedAction)?.label}
-								</Text>
-								<TouchableOpacity onPress={() => setSelectedAction(null)}>
-									<Icon name="x" size={22} color={colors.icon} />
-								</TouchableOpacity>
-							</View>
-							<TextInput
-								value={reason}
-								onChangeText={setReason}
-								multiline
-								placeholder="Required moderation reason"
-								placeholderTextColor={colors.mutedText}
-								style={{
-									minHeight: 90,
-									marginTop: 14,
-									textAlignVertical: 'top',
-									borderRadius: 13,
-									borderWidth: 1,
-									borderColor: colors.border,
-									backgroundColor: colors.input,
-									color: colors.text,
-									padding: 11,
-								}}
-							/>
-							{selectedAction &&
-							[
-								'content_hidden',
-								'commenting_disabled',
-								'messaging_disabled',
-								'posting_disabled',
-								'account_suspended',
-								'account_temp_banned',
-							].includes(selectedAction) ? (
-								<TextInput
-									value={durationDays}
-									onChangeText={setDurationDays}
-									keyboardType="number-pad"
-									placeholder="Duration in days"
-									placeholderTextColor={colors.mutedText}
-									style={{
-										marginTop: 9,
-										borderRadius: 13,
-										borderWidth: 1,
-										borderColor: colors.border,
-										backgroundColor: colors.input,
-										color: colors.text,
-										padding: 11,
-									}}
-								/>
-							) : null}
-							<TouchableOpacity
-								disabled={busy || !reason.trim()}
-								onPress={() => void handleAction()}
-								style={{
-									marginTop: 14,
-									alignItems: 'center',
-									borderRadius: 14,
-									backgroundColor: colors.accent,
-									padding: 13,
-								}}
-							>
-								<Text style={{ color: colors.onAccent, fontWeight: '900' }}>
-									{busy ? 'Applying…' : 'Apply action'}
-								</Text>
-							</TouchableOpacity>
+				</Pressable>
+			))}
+		</ScrollView>
+	);
+
+	const renderReportedContent = () => {
+		if (!report) return null;
+		if (!targetContent || targetContent.loading) return <ReportedContentPreviewSkeleton />;
+		if (!targetContent.found) {
+			const pending = getAdminTone(colors, 'pending');
+			return (
+				<>
+					{targetContent.error ? <AdminState kind="inlineError" message={targetContent.error} /> : null}
+					<View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: pending.border, backgroundColor: pending.soft }}>
+						<Icon name="alert-triangle" size={18} color={pending.text} />
+						<Text style={[type.body, { flex: 1, color: pending.text }]}>Reported content could not be found live or has already been removed.</Text>
+					</View>
+					{targetContent.content ? (
+						<View style={{ gap: space.xs }}>
+							<Text style={[type.label, { color: colors.mutedText }]}>Snapshot at time of report</Text>
+							<Text selectable style={[type.body, { color: colors.text }]}>
+								{targetContent.content}
+							</Text>
 						</View>
-					</KeyboardSafeView>
-				</SafeAreaView>
-			</Modal>
+					) : null}
+				</>
+			);
+		}
+		const author = targetContent.author;
+		return (
+			<>
+				{author ? (
+					<AdminListRow
+						title={author.name}
+						subtitle={author.username ? `@${author.username}` : undefined}
+						leading={{ kind: 'avatar', uri: author.profileImage ?? undefined, name: author.name }}
+						onPress={author.username || author.id ? () => openProfile(author.username || author.id) : undefined}
+						accessibilityHint="Opens the profile"
+					/>
+				) : null}
+				{targetContent.title ? <Text style={[type.section, { color: colors.text }]}>{targetContent.title}</Text> : null}
+				{targetContent.content ? (
+					<Text selectable style={[type.body, { color: colors.text }]}>
+						{targetContent.content}
+					</Text>
+				) : null}
+				{targetContent.pollOptions && targetContent.pollOptions.length > 0 ? (
+					<View style={{ gap: space.sm }}>
+						{targetContent.pollOptions.map((option, optionIndex) => (
+							<View key={optionIndex} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: space.sm, padding: space.md, borderRadius: radius.md, backgroundColor: colors.control }}>
+								<Text style={[type.bodyStrong, { flex: 1, color: colors.text }]}>{option.text}</Text>
+								<Text style={[type.meta, { color: colors.mutedText }]}>{option.votes} votes</Text>
+							</View>
+						))}
+					</View>
+				) : null}
+				{targetContent.media && targetContent.media.length > 0 ? renderMediaStrip(targetContent.media, 120) : null}
+				{targetContent.stats && (typeof targetContent.stats.likes === 'number' || typeof targetContent.stats.comments === 'number') ? (
+					<View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.lg, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: colors.border }}>
+						{typeof targetContent.stats.likes === 'number' ? (
+							<View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+								<Icon name={targetContent.kind === 'community' ? 'users' : 'heart'} size={14} color={colors.mutedText} />
+								<Text style={[type.meta, { color: colors.mutedText }]}>
+									{targetContent.stats.likes} {targetContent.kind === 'community' ? 'members' : 'likes'}
+								</Text>
+							</View>
+						) : null}
+						{typeof targetContent.stats.comments === 'number' ? (
+							<View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+								<Icon name="message-square" size={14} color={colors.mutedText} />
+								<Text style={[type.meta, { color: colors.mutedText }]}>
+									{targetContent.stats.comments} {targetContent.stats.comments === 1 ? 'comment' : 'comments'}
+								</Text>
+							</View>
+						) : null}
+						{typeof targetContent.stats.shares === 'number' && targetContent.stats.shares > 0 ? (
+							<View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+								<Icon name="share-2" size={14} color={colors.mutedText} />
+								<Text style={[type.meta, { color: colors.mutedText }]}>{targetContent.stats.shares} shares</Text>
+							</View>
+						) : null}
+					</View>
+				) : null}
+			</>
+		);
+	};
+
+	return (
+		<>
+			<AdminScreen
+				title="Report"
+				subtitle={report ? `${toLabel(report.status)} · ${report.contentType}` : undefined}
+				state={screenState}
+				onRefresh={() => load('refresh')}
+				refreshing={refreshing}
+				backFallback={'/admin/moderation' as Href}
+				overflowActions={report ? overflowActions : undefined}
+				footer={
+					report ? (
+						<>
+							<AdminButton label="Resolve, no action" tone="neutral" disabled={busy} onPress={() => openAction(RESOLVE_NO_ACTION)} style={{ flex: 1 }} />
+							<AdminButton label="Take action" icon="zap" tone="positive" emphasis="primary" disabled={busy} onPress={() => setActionSheetOpen(true)} style={{ flex: 1 }} />
+						</>
+					) : undefined
+				}
+			>
+				{report ? (
+					<View style={{ gap: space.xl }}>
+						<AdminSection title="Reported content" description={toLabel(report.contentType)} collapsible={{ initiallyOpen: true }}>
+							{renderReportedContent()}
+						</AdminSection>
+
+						<AdminSection title="Report">
+							<Text style={[type.section, { color: colors.text }]}>{report.reason}</Text>
+							<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+								<AdminStatusPill label={report.severity} tone={severityTone(report.severity)} />
+								<AdminStatusPill label={toLabel(report.status)} tone={reportStatusTone(report.status)} />
+							</View>
+							<Text style={[type.body, { color: colors.secondaryText }]}>{report.description || 'No reporter description.'}</Text>
+							{renderField('Content type', report.contentType)}
+							{renderField('Target ID', report.targetId)}
+							<View style={{ gap: space.xs }}>
+								<Text style={[type.label, { color: colors.mutedText }]}>Reporter</Text>
+								<AdminListRow
+									title={report.reporterName}
+									subtitle={reporterUserData?.username ? `@${reporterUserData.username}` : undefined}
+									meta={report.reporterId ? `ID ${report.reporterId}` : undefined}
+									leading={{ kind: 'avatar', uri: reporterUserData?.profileImage ?? undefined, name: reporterUserData?.name ?? report.reporterName }}
+									onPress={report.reporterId ? () => openProfile(reporterUserData?.username || report.reporterId) : undefined}
+									accessibilityHint="Opens the reporter's profile"
+								/>
+							</View>
+							<View style={{ gap: space.xs }}>
+								<Text style={[type.label, { color: colors.mutedText }]}>Reported user</Text>
+								<AdminListRow
+									title={reportedUserData?.name || report.reportedUserId || 'Not supplied'}
+									subtitle={reportedUserData?.username ? `@${reportedUserData.username}` : undefined}
+									meta={report.reportedUserId ? `ID ${report.reportedUserId}` : undefined}
+									leading={{ kind: 'avatar', uri: reportedUserData?.profileImage ?? undefined, name: reportedUserData?.name ?? 'User' }}
+									onPress={report.reportedUserId ? () => openProfile(reportedUserData?.username || report.reportedUserId) : undefined}
+									accessibilityHint="Opens the reported user's profile"
+								/>
+							</View>
+						</AdminSection>
+
+						{report.evidence && report.evidence.length > 0 ? (
+							<AdminSection title={`Evidence (${report.evidence.length})`} description="Attached by the reporter">
+								{renderMediaStrip(
+									report.evidence.map((url) => ({ url, type: 'image' as const })),
+									100
+								)}
+							</AdminSection>
+						) : null}
+					</View>
+				) : null}
+			</AdminScreen>
+
+			<ActionPickerSheet visible={actionSheetOpen} onClose={() => setActionSheetOpen(false)} onPick={openAction} />
+
+			<AdminDialog
+				visible={Boolean(selectedAction)}
+				tone={dialogTone}
+				icon={ACTION_GROUPS.find((group) => group.id === selectedActionMeta?.group)?.icon ?? null}
+				title={selectedActionMeta?.label ?? 'Moderation action'}
+				description="The reason is saved with the report and the audit log."
+				confirmLabel={busy ? 'Applying…' : 'Apply'}
+				busy={busy}
+				confirmDisabled={!canApplyAction}
+				onConfirm={() => void handleAction()}
+				onClose={() => setSelectedAction(null)}
+			>
+				<View style={{ gap: space.md }}>
+					{actionError ? <AdminState kind="inlineError" message={actionError} /> : null}
+					<View style={{ gap: space.xs }}>
+						<Text style={[type.label, { color: colors.mutedText }]}>Reason (required)</Text>
+						<TextInput
+							value={reason}
+							onChangeText={setReason}
+							editable={!busy}
+							multiline
+							placeholder="Required moderation reason"
+							placeholderTextColor={colors.mutedText}
+							accessibilityLabel="Moderation reason"
+							style={[inputStyle, { minHeight: 88, textAlignVertical: 'top' }]}
+						/>
+					</View>
+					{needsDuration ? (
+						<View style={{ gap: space.xs }}>
+							<Text style={[type.label, { color: colors.mutedText }]}>Duration in days</Text>
+							<TextInput
+								value={durationDays}
+								onChangeText={setDurationDays}
+								editable={!busy}
+								keyboardType="number-pad"
+								placeholder="Duration in days"
+								placeholderTextColor={colors.mutedText}
+								accessibilityLabel="Duration in days"
+								style={inputStyle}
+							/>
+							{!isDurationValid ? <Text style={[type.meta, { color: getAdminTone(colors, 'danger').text }]}>Enter a number of days above 0.</Text> : null}
+						</View>
+					) : null}
+				</View>
+			</AdminDialog>
+
 			<AdminDialog
 				visible={confirmingDelete}
 				tone="danger"
+				icon="trash-2"
 				title="Delete this report?"
 				description="The report is removed from the moderation queue. Any action already taken on the content stays in place. This cannot be undone."
 				confirmLabel="Delete"
-				busy={busy}
+				stage={busy ? 'busy' : 'idle'}
+				busyTitle="Deleting report…"
+				busyMessage="Please wait while the report is removed."
 				onConfirm={() => void handleDelete()}
 				onClose={() => setConfirmingDelete(false)}
-			/>
-			<CustomModal
-				visible={Boolean(message)}
-				title="Report moderation"
-				message={message ?? ''}
-				type="info"
-				onClose={() => setMessage(null)}
-			/>
-			{/* Embedded Comments Inspection Modal */}
+			>
+				{deleteError ? <AdminState kind="inlineError" message={deleteError} /> : null}
+			</AdminDialog>
+
+			{/* Embedded comments inspection */}
 			{commentsModalOpen && targetContent?.rawPost && (
 				<CommentsModal
 					post={targetContent.rawPost}
@@ -1569,46 +1058,14 @@ export default function AdminReportDetailRoute() {
 					}}
 				/>
 			)}
-			{/* Evidence Fullscreen Viewer Modal */}
-			<Modal
-				visible={Boolean(selectedEvidenceUrl)}
-				transparent
-				animationType="fade"
-				onRequestClose={() => setSelectedEvidenceUrl(null)}
-			>
-				<SafeAreaView
-					edges={['top', 'bottom', 'left', 'right']}
-					style={{
-						flex: 1,
-						backgroundColor: 'rgba(0,0,0,0.92)',
-						justifyContent: 'center',
-						alignItems: 'center',
-						padding: 16,
-					}}
-				>
-					<TouchableOpacity
-						onPress={() => setSelectedEvidenceUrl(null)}
-						style={{
-							position: 'absolute',
-							top: 48,
-							right: 20,
-							zIndex: 10,
-							padding: 8,
-							borderRadius: 999,
-							backgroundColor: 'rgba(255,255,255,0.2)',
-						}}
-					>
-						<Ionicons name="close" size={26} color="#ffffff" />
-					</TouchableOpacity>
-					{selectedEvidenceUrl ? (
-						<Image
-							source={{ uri: selectedEvidenceUrl }}
-							style={{ width: '100%', height: '80%' }}
-							contentFit="contain"
-						/>
-					) : null}
+
+			{/* Full-screen media and evidence viewer */}
+			<Modal visible={Boolean(selectedEvidenceUrl)} transparent animationType="fade" onRequestClose={() => setSelectedEvidenceUrl(null)}>
+				<SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={{ flex: 1, backgroundColor: MEDIA_VIEWER_SCRIM, justifyContent: 'center', alignItems: 'center', padding: space.lg }}>
+					<AdminIconButton icon="x" label="Close viewer" variant="soft" iconSize={24} onPress={() => setSelectedEvidenceUrl(null)} style={{ position: 'absolute', top: space.xxl + space.lg, right: space.lg, zIndex: 10 }} />
+					{selectedEvidenceUrl ? <Image source={{ uri: selectedEvidenceUrl }} style={{ width: '100%', height: '80%' }} contentFit="contain" /> : null}
 				</SafeAreaView>
 			</Modal>
-		</SafeAreaView>
+		</>
 	);
 }

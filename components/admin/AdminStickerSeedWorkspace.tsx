@@ -1,77 +1,94 @@
-import { useState } from 'react';
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
-import Icon from 'react-native-vector-icons/Feather';
-import AdminWorkspaceShell from './AdminWorkspaceShell';
-import AdminDialog from './AdminDialog';
+import { useRef, useState } from 'react';
+import { Text, View } from 'react-native';
+import AdminScreen from './AdminScreen';
+import AdminSection from './AdminSection';
+import AdminButton from './AdminButton';
+import AdminState from './AdminState';
+import AdminDialog, { type AdminDialogStage } from './AdminDialog';
 import { AdminWorkspaceService } from '@/lib/services/AdminWorkspaceService';
+import { getAdminTone, radius, space, type } from '@/lib/admin/adminTokens';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const workspaceService = AdminWorkspaceService.getInstance();
 
+type SeedResult = { tone: 'positive' | 'danger'; message: string } | null;
+
 /** The website's /admin/seed-stickers tool: populates Firestore with the default sticker packs and stickers. */
 export default function AdminStickerSeedWorkspace() {
-  const { colors } = useAppTheme();
-  const [status, setStatus] = useState('');
-  const [running, setRunning] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+	const { colors } = useAppTheme();
+	const positive = getAdminTone(colors, 'positive');
+	const [result, setResult] = useState<SeedResult>(null);
+	const [running, setRunning] = useState(false);
+	const [confirming, setConfirming] = useState(false);
+	const [dialogStage, setDialogStage] = useState<AdminDialogStage>('idle');
+	/** Synchronous guard: a second tap before the state update lands cannot start a second run. */
+	const runningRef = useRef(false);
 
-  const handleSeed = async (): Promise<void> => {
-    if (running) return;
-    setConfirming(false);
-    setRunning(true);
-    setStatus('Seeding...');
-    try {
-      setStatus(await workspaceService.seedStickers());
-    } catch (seedError: unknown) {
-      console.error('[AdminStickerSeedWorkspace.handleSeed] Error:', seedError instanceof Error ? seedError.message : seedError);
-      setStatus(`Error: ${seedError instanceof Error ? seedError.message : 'unknown'}`);
-    } finally {
-      setRunning(false);
-    }
-  };
+	const openConfirm = () => {
+		if (runningRef.current) return;
+		setDialogStage('idle');
+		setConfirming(true);
+	};
 
-  return (
-    <AdminWorkspaceShell
-      title="Seed Stickers"
-      subtitle="Default sticker packs and stickers"
-      loading={false}
-      refreshing={false}
-      error={null}
-      // The page loads no data; pulling only clears the last result, and never while a seed is still running.
-      onRefresh={() => {
-        if (!running) setStatus('');
-      }}
-    >
-      <View style={{ alignItems: 'center', padding: 24, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
-        <View style={{ width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.successSurface }}>
-          <Icon name="smile" size={26} color={colors.successText} />
-        </View>
-        <Text style={{ marginTop: 14, color: colors.text, fontSize: 19, fontWeight: '900' }}>Seed Stickers</Text>
-        <Text style={{ marginTop: 6, textAlign: 'center', color: colors.mutedText, lineHeight: 19 }}>
-          Click below to populate Firestore with 5 packs and 29 stickers.
-        </Text>
-        <TouchableOpacity
-          disabled={running}
-          onPress={() => setConfirming(true)}
-          style={{ marginTop: 18, minWidth: 150, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, paddingVertical: 12, borderRadius: 14, backgroundColor: '#10b981', opacity: running ? 0.55 : 1 }}
-        >
-          {running ? <ActivityIndicator size="small" color="#ffffff" /> : null}
-          <Text style={{ marginLeft: running ? 8 : 0, color: '#ffffff', fontWeight: '900' }}>{running ? 'Seeding...' : 'Run Seed'}</Text>
-        </TouchableOpacity>
-        {status ? (
-          <Text style={{ marginTop: 16, alignSelf: 'stretch', padding: 12, borderRadius: 12, overflow: 'hidden', color: colors.secondaryText, backgroundColor: colors.control, textAlign: 'center' }}>
-            {status}
-          </Text>
-        ) : null}
-      </View>
-      <AdminDialog
-        visible={confirming}
-        title="Run sticker seed?"
-        description="This upserts the 5 default sticker packs and adds any of the 29 default stickers that are missing. Existing stickers are not duplicated."
-        confirmLabel="Run Seed"
-        onConfirm={() => void handleSeed()}
-        onClose={() => setConfirming(false)}
-      />
-    </AdminWorkspaceShell>
-  );
+	const handleSeed = async (): Promise<void> => {
+		if (runningRef.current) return;
+		runningRef.current = true;
+		setRunning(true);
+		setDialogStage('busy');
+		setResult(null);
+		try {
+			const summary = await workspaceService.seedStickers();
+			setResult({ tone: 'positive', message: summary });
+			setDialogStage('success');
+		} catch (seedError: unknown) {
+			console.error('[AdminStickerSeedWorkspace.handleSeed] Error:', seedError instanceof Error ? seedError.message : seedError);
+			setResult({ tone: 'danger', message: seedError instanceof Error ? seedError.message : 'The sticker seed failed.' });
+			setConfirming(false);
+			setDialogStage('idle');
+		} finally {
+			runningRef.current = false;
+			setRunning(false);
+		}
+	};
+
+	const handleCloseDialog = () => {
+		if (runningRef.current) return;
+		setConfirming(false);
+		setDialogStage('idle');
+	};
+
+	// No data loads here, so there is no pull-to-refresh.
+	return (
+		<AdminScreen title="Seed Stickers" subtitle="Default sticker packs and stickers" state={{ kind: 'ready' }}>
+			<View style={{ gap: space.lg }}>
+				<AdminSection title="Seed default stickers" description="Populates Firestore with 5 packs and 29 stickers. Existing stickers are not duplicated.">
+					<AdminButton label={running ? 'Seeding…' : 'Run seed'} icon="play" tone="positive" emphasis="primary" busy={running} disabled={running} onPress={openConfirm} fullWidth />
+				</AdminSection>
+				{result ? (
+					result.tone === 'danger' ? (
+						<AdminState kind="inlineError" message={result.message} onRetry={running ? undefined : openConfirm} />
+					) : (
+						<View accessibilityRole="alert" style={{ padding: space.lg, borderRadius: radius.md, borderWidth: 1, borderColor: positive.border, backgroundColor: positive.soft }}>
+							<Text style={[type.body, { color: positive.text }]}>{result.message}</Text>
+						</View>
+					)
+				) : null}
+			</View>
+			<AdminDialog
+				visible={confirming}
+				tone="pending"
+				icon="database"
+				title="Run sticker seed?"
+				description="This upserts the 5 default sticker packs and adds any of the 29 default stickers that are missing. Existing stickers are not duplicated."
+				confirmLabel="Run seed"
+				stage={dialogStage}
+				busyTitle="Seeding stickers…"
+				busyMessage="Please wait while the packs and stickers are written."
+				successTitle="Seed complete"
+				successMessage={result?.tone === 'positive' ? result.message : undefined}
+				onConfirm={() => void handleSeed()}
+				onClose={handleCloseDialog}
+			/>
+		</AdminScreen>
+	);
 }

@@ -1,63 +1,75 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import {
-	Text,
-	TextInput,
-	TouchableOpacity,
-	View,
-} from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
-import Icon from 'react-native-vector-icons/Feather';
-import { Ionicons } from '@expo/vector-icons';
-import CustomModal from '@/components/ui/CustomModal';
-import { ModerationSectionSkeleton } from '@/components/admin/AdminSkeletons';
-import AdminDeletedContentPanel from '@/components/admin/AdminDeletedContentPanel';
+import { Text, View } from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { toast } from 'sonner-native';
+import AdminScreen, { type AdminScreenState } from '@/components/admin/AdminScreen';
+import AdminToolbar, { type AdminToolbarProps } from '@/components/admin/AdminToolbar';
+import AdminListRow from '@/components/admin/AdminListRow';
+import AdminState from '@/components/admin/AdminState';
+import AdminDialog from '@/components/admin/AdminDialog';
+import AdminDeletedContentPanel, { useDeletedContent } from '@/components/admin/AdminDeletedContentPanel';
 import AdminBulkDeletionPanel from '@/components/admin/AdminBulkDeletionPanel';
-import {
-	AdminModerationService,
-	type AdminModerationReport,
-	type AdminReportStatus,
-} from '@/lib/services/AdminModerationService';
+import { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
+import { AdminModerationService, type AdminModerationReport, type AdminReportStatus } from '@/lib/services/AdminModerationService';
 import { adminContentService } from '@/lib/services/AdminContentService';
 import type { ContentAppealRecord } from '@/lib/types/adminContent';
+import { getAdminTone, radius, space, type, type AdminToneName } from '@/lib/admin/adminTokens';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import FilterSheet, { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
-import FilterBar from '@/components/ui/FilterBar';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 
 const moderationService = AdminModerationService.getInstance();
 
-const STATUS_FILTERS: readonly (AdminReportStatus | 'all')[] = [
-	'all',
-	'pending',
-	'under_review',
-	'action_taken',
-	'resolved',
-	'dismissed',
-	'escalated',
-];
+const STATUS_FILTERS: readonly (AdminReportStatus | 'all')[] = ['all', 'pending', 'under_review', 'action_taken', 'resolved', 'dismissed', 'escalated'];
 const SEVERITY_FILTERS = ['all', 'low', 'medium', 'high', 'critical'] as const;
+
+type ModerationTab = 'reports' | 'appeals' | 'deleted';
+const MODERATION_TABS: readonly ModerationTab[] = ['reports', 'appeals', 'deleted'];
+const isModerationTab = (value: string | undefined): value is ModerationTab => MODERATION_TABS.some((tab) => tab === value);
+
 const toFilterLabel = (value: string, allLabel: string): string => {
 	if (value === 'all') return allLabel;
 	const words = value.replaceAll('_', ' ');
 	return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
+const severityTone = (severity: AdminModerationReport['severity']): AdminToneName =>
+	severity === 'critical' || severity === 'high' ? 'danger' : severity === 'medium' ? 'pending' : 'neutral';
+
+type LoadMode = 'initial' | 'refresh' | 'silent';
+
+/**
+ * Moderation screen (/admin/moderation): Reports, Appeals and Deleted as segments; "Bulk delete" in the overflow
+ * menu opens /admin/moderation?view=bulk. `?tab=reports|appeals|deleted` picks the starting segment.
+ */
 export default function ModerationSection() {
+	const { view, tab } = useLocalSearchParams<{ view?: string; tab?: string }>();
+	if (view === 'bulk') return <AdminBulkDeletionPanel />;
+	return <ModerationQueues initialTab={isModerationTab(tab) ? tab : 'reports'} />;
+}
+
+function ModerationQueues({ initialTab }: { initialTab: ModerationTab }) {
 	const router = useRouter();
-	const { colors, isDark } = useAppTheme();
-	const [activeSubTab, setActiveSubTab] = useState<'reports' | 'deleted' | 'appeals' | 'bulk'>('reports');
+	const [activeTab, setActiveTab] = useState<ModerationTab>(initialTab);
 	const [reports, setReports] = useState<AdminModerationReport[]>([]);
 	const [appeals, setAppeals] = useState<ContentAppealRecord[]>([]);
 	const [search, setSearch] = useState('');
 	const [status, setStatus] = useState<AdminReportStatus | 'all'>('all');
-	const [severity, setSeverity] =
-		useState<(typeof SEVERITY_FILTERS)[number]>('all');
+	const [severity, setSeverity] = useState<(typeof SEVERITY_FILTERS)[number]>('all');
 	const [loading, setLoading] = useState(true);
-	const [appealsLoading, setAppealsLoading] = useState(false);
-	const [message, setMessage] = useState<string | null>(null);
-	const [loadError, setLoadError] = useState<string | null>(null);
+	const [refreshing, setRefreshing] = useState(false);
+	const [reportsError, setReportsError] = useState<string | null>(null);
+	const [appealsError, setAppealsError] = useState<string | null>(null);
+	const [reviewingAppealId, setReviewingAppealId] = useState<string | null>(null);
+	const [expandedAppealId, setExpandedAppealId] = useState<string | null>(null);
+	const [rejectTarget, setRejectTarget] = useState<ContentAppealRecord | null>(null);
+	const [rejectError, setRejectError] = useState<string | null>(null);
 	const hasFocusedRef = useRef(false);
-	const [filtersOpen, setFiltersOpen] = useState(false);
+	/** Ignores an older load's response so it cannot overwrite a newer one. */
+	const loadRequestRef = useRef(0);
+	/** Synchronous double-submit guard for appeal decisions (state updates land a frame later). */
+	const reviewingRef = useRef(false);
+	const deleted = useDeletedContent(activeTab === 'deleted');
+
 	const filterGroups: FilterGroup[] = [
 		{ key: 'status', label: 'Status', options: STATUS_FILTERS.map((filter) => ({ value: filter, label: toFilterLabel(filter, 'Any status') })), value: status, defaultValue: 'all' },
 		{ key: 'severity', label: 'Severity', options: SEVERITY_FILTERS.map((filter) => ({ value: filter, label: toFilterLabel(filter, 'Any severity') })), value: severity, defaultValue: 'all' },
@@ -66,34 +78,42 @@ export default function ModerationSection() {
 		setStatus(STATUS_FILTERS.find((filter) => filter === readSingleFilter(values, 'status')) ?? 'all');
 		setSeverity(SEVERITY_FILTERS.find((filter) => filter === readSingleFilter(values, 'severity')) ?? 'all');
 	};
-	const handleClearFilter = (groupKey: string): void => {
-		if (groupKey === 'status') setStatus('all');
-		if (groupKey === 'severity') setSeverity('all');
+	const handleClearReportFilters = () => {
+		setSearch('');
+		setStatus('all');
+		setSeverity('all');
 	};
 
-	/** 'silent' refreshes on return to the screen (e.g. after acting on a report) without the skeleton. */
-	const load = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
+	/** 'silent' refreshes on return to the screen (e.g. after acting on a report) without the skeleton or new errors. */
+	const load = useCallback(async (mode: LoadMode = 'initial') => {
+		const requestId = loadRequestRef.current + 1;
+		loadRequestRef.current = requestId;
 		if (mode === 'initial') setLoading(true);
+		if (mode === 'refresh') setRefreshing(true);
 		try {
-			const [reportsResult, appealsResult] = await Promise.allSettled([
-				moderationService.fetchReports(),
-				adminContentService.getPendingAppeals(),
-			]);
-			const failures: string[] = [];
-			if (reportsResult.status === 'fulfilled') setReports(reportsResult.value);
-			else {
+			// One source failing must not hide the other, and must never be swallowed.
+			const [reportsResult, appealsResult] = await Promise.allSettled([moderationService.fetchReports(), adminContentService.getPendingAppeals()]);
+			if (loadRequestRef.current !== requestId) return;
+			if (reportsResult.status === 'fulfilled') {
+				setReports(reportsResult.value);
+				setReportsError(null);
+			} else {
 				console.error('[ModerationSection.load] Error:', reportsResult.reason instanceof Error ? reportsResult.reason.message : reportsResult.reason);
-				failures.push(reportsResult.reason instanceof Error ? `Reports: ${reportsResult.reason.message}` : 'Reports could not be loaded.');
+				// A failed background refresh keeps what is already on screen and says nothing new.
+				if (mode !== 'silent') setReportsError(reportsResult.reason instanceof Error ? `Reports: ${reportsResult.reason.message}` : 'Reports could not be loaded.');
 			}
-			if (appealsResult.status === 'fulfilled') setAppeals(appealsResult.value);
-			else {
+			if (appealsResult.status === 'fulfilled') {
+				setAppeals(appealsResult.value);
+				setAppealsError(null);
+			} else {
 				console.error('[ModerationSection.load] Error:', appealsResult.reason instanceof Error ? appealsResult.reason.message : appealsResult.reason);
-				failures.push(appealsResult.reason instanceof Error ? `Appeals: ${appealsResult.reason.message}` : 'Appeals could not be loaded.');
+				if (mode !== 'silent') setAppealsError(appealsResult.reason instanceof Error ? `Appeals: ${appealsResult.reason.message}` : 'Appeals could not be loaded.');
 			}
-			// A failed background refresh keeps what is already on screen and says nothing new.
-			if (mode === 'initial' || failures.length === 0) setLoadError(failures.length ? failures.join('\n') : null);
 		} finally {
-			setLoading(false);
+			if (loadRequestRef.current === requestId) {
+				setLoading(false);
+				setRefreshing(false);
+			}
 		}
 	}, []);
 
@@ -104,348 +124,215 @@ export default function ModerationSection() {
 		}, [load])
 	);
 
-	const handleReviewAppeal = async (appealId: string, decision: 'approved' | 'rejected') => {
-		if (appealsLoading) return;
+	const handleReviewAppeal = async (appeal: ContentAppealRecord, decision: 'approved' | 'rejected'): Promise<boolean> => {
+		if (reviewingRef.current) return false;
+		reviewingRef.current = true;
+		setReviewingAppealId(appeal.id);
 		try {
-			setAppealsLoading(true);
 			void interactionFeedbackService.play('post');
-			const res = await adminContentService.reviewAppeal(appealId, decision);
-			if (res.success) {
-				void interactionFeedbackService.play('success');
-				setAppeals((prev) => prev.filter((a) => a.id !== appealId));
-				setMessage(
-					decision === 'approved'
-						? 'Appeal approved and content restored successfully.'
-						: 'Appeal rejected.'
-				);
-			} else {
-				throw new Error(res.error || 'Failed to update appeal');
-			}
+			const res = await adminContentService.reviewAppeal(appeal.id, decision);
+			if (!res.success) throw new Error(res.error || 'Failed to update appeal');
+			void interactionFeedbackService.play('success');
+			setAppeals((prev) => prev.filter((item) => item.id !== appeal.id));
+			toast.success(decision === 'approved' ? 'Appeal approved and content restored.' : 'Appeal rejected.');
+			return true;
 		} catch (err: unknown) {
-			setMessage(err instanceof Error ? err.message : 'Failed to review appeal');
+			console.error('[ModerationSection.handleReviewAppeal] Error:', err instanceof Error ? err.message : err);
 			void interactionFeedbackService.play('warning');
+			const message = err instanceof Error ? err.message : 'Failed to review appeal';
+			if (decision === 'rejected') setRejectError(message);
+			else toast.error(message);
+			return false;
 		} finally {
-			setAppealsLoading(false);
+			reviewingRef.current = false;
+			setReviewingAppealId(null);
 		}
 	};
 
-	const visible = useMemo(() => {
+	const handleConfirmReject = async () => {
+		if (!rejectTarget) return;
+		setRejectError(null);
+		const done = await handleReviewAppeal(rejectTarget, 'rejected');
+		if (done) setRejectTarget(null);
+	};
+
+	const visibleReports = useMemo(() => {
 		const normalized = search.trim().toLowerCase();
 		return reports.filter(
 			(report) =>
 				(status === 'all' || report.status === status) &&
 				(severity === 'all' || report.severity === severity) &&
-				(!normalized ||
-					`${report.reason} ${report.contentType} ${report.reporterName} ${report.status} ${report.targetId}`
-						.toLowerCase()
-						.includes(normalized))
+				(!normalized || `${report.reason} ${report.contentType} ${report.reporterName} ${report.status} ${report.targetId}`.toLowerCase().includes(normalized))
 		);
 	}, [reports, search, severity, status]);
 
-	if (loading) return <ModerationSectionSkeleton />;
+	const handleRefresh = (): Promise<void> => (activeTab === 'deleted' ? deleted.reload('refresh') : load('refresh'));
+
+	const toolbarProps: AdminToolbarProps = {
+		segments: {
+			value: activeTab,
+			options: [
+				{ value: 'reports', label: 'Reports', count: loading ? undefined : reports.length },
+				{ value: 'appeals', label: 'Appeals', count: loading ? undefined : appeals.length },
+				{ value: 'deleted', label: 'Deleted' },
+			],
+			onChange: (next) => {
+				if (isModerationTab(next)) setActiveTab(next);
+			},
+		},
+	};
+	if (activeTab === 'reports') {
+		toolbarProps.search = { value: search, placeholder: 'Search reports, people, content IDs', onChange: setSearch };
+		toolbarProps.filters = { groups: filterGroups, onApply: handleApplyFilters, title: 'Filter reports' };
+		toolbarProps.resultSummary = loading ? undefined : `${visibleReports.length} of ${reports.length} reports`;
+	} else if (activeTab === 'deleted') {
+		toolbarProps.search = { value: deleted.searchQuery, placeholder: 'Search title, reason, user, or content ID', onChange: deleted.setSearchQuery };
+		toolbarProps.filters = { groups: deleted.filterGroups, onApply: deleted.applyFilters, title: 'Filter deleted content' };
+		toolbarProps.resultSummary = deleted.loading ? undefined : `${deleted.filteredRecords.length} of ${deleted.records.length} deletions`;
+	} else {
+		toolbarProps.resultSummary = loading ? undefined : `${appeals.length} pending ${appeals.length === 1 ? 'appeal' : 'appeals'}`;
+	}
+
+	const isTabLoading = activeTab === 'deleted' ? deleted.loading : loading;
+	const screenState: AdminScreenState = isTabLoading ? { kind: 'loading', variant: 'list' } : { kind: 'ready' };
+
+	const renderReports = () => (
+		<View style={{ gap: space.md }}>
+			{reportsError ? <AdminState kind="inlineError" message={reportsError} onRetry={() => void load('refresh')} retrying={refreshing} /> : null}
+			{visibleReports.length ? (
+				<View style={{ gap: space.sm }}>
+					{visibleReports.map((report) => (
+						<AdminListRow
+							key={report.id}
+							title={report.reason}
+							subtitle={`${report.contentType} · reported by ${report.reporterName}`}
+							meta={`${toFilterLabel(report.status, '')}${report.description ? ` · ${report.description}` : ''}`}
+							status={{ label: report.severity, tone: severityTone(report.severity) }}
+							onPress={() => router.push({ pathname: '/admin/reports/[reportId]', params: { reportId: report.id } })}
+							accessibilityHint="Opens the report"
+						/>
+					))}
+				</View>
+			) : reports.length && (search.trim() || status !== 'all' || severity !== 'all') ? (
+				<AdminState kind="empty" title="" filtered onClearFilters={handleClearReportFilters} />
+			) : reportsError ? null : (
+				<AdminState kind="empty" icon="shield" title="No reports" description="New member reports appear here." />
+			)}
+		</View>
+	);
+
+	const renderAppeals = () => (
+		<View style={{ gap: space.md }}>
+			{appealsError ? <AdminState kind="inlineError" message={appealsError} onRetry={() => void load('refresh')} retrying={refreshing} /> : null}
+			{appeals.length ? (
+				<View style={{ gap: space.sm }}>
+					{appeals.map((appeal) => {
+						const isExpanded = expandedAppealId === appeal.id;
+						const isReviewing = reviewingAppealId === appeal.id;
+						return (
+							<View key={appeal.id} style={{ gap: space.xs }}>
+								<AdminListRow
+									title={`${toFilterLabel(appeal.contentType, '')} appeal`}
+									subtitle={`By ${appeal.authorName || appeal.authorId}`}
+									meta={`Deleted for: ${appeal.deletionReason}`}
+									leading={{ kind: 'icon', name: 'rotate-ccw', tone: 'pending' }}
+									onPress={() => setExpandedAppealId(isExpanded ? null : appeal.id)}
+									accessibilityHint={isExpanded ? 'Hides the appeal text' : 'Shows the appeal text'}
+									inlineAction={{
+										key: 'approve',
+										label: 'Approve & restore',
+										icon: 'check',
+										tone: 'positive',
+										busy: isReviewing && !rejectTarget,
+										disabled: Boolean(reviewingAppealId),
+										onPress: () => void handleReviewAppeal(appeal, 'approved'),
+									}}
+									overflowActions={[
+										{
+											key: 'reject',
+											label: 'Reject appeal',
+											icon: 'x-circle',
+											tone: 'danger',
+											disabled: Boolean(reviewingAppealId),
+											onPress: () => {
+												setRejectError(null);
+												setRejectTarget(appeal);
+											},
+										},
+									]}
+								/>
+								{isExpanded ? <AppealDetail appeal={appeal} /> : null}
+							</View>
+						);
+					})}
+				</View>
+			) : appealsError ? null : (
+				<AdminState kind="empty" icon="check-circle" title="No pending appeals" description="All content restoration appeals have been reviewed." />
+			)}
+		</View>
+	);
 
 	return (
-		<>
-			{/* Sub-tab switcher: the website's Reports / Deleted Content / Appeals / Bulk Actions */}
-			<View style={{ flexDirection: 'row', marginBottom: 14, backgroundColor: colors.control, borderRadius: 14, padding: 3 }}>
-				{(
-					[
-						{ key: 'reports', label: `Reports (${reports.length})` },
-						{ key: 'deleted', label: 'Deleted' },
-						{ key: 'appeals', label: `Appeals (${appeals.length})` },
-						{ key: 'bulk', label: 'Bulk' },
-					] as const
-				).map((tab) => (
-					<TouchableOpacity
-						key={tab.key}
-						onPress={() => setActiveSubTab(tab.key)}
-						accessibilityRole="tab"
-						accessibilityState={{ selected: activeSubTab === tab.key }}
-						style={{
-							flex: 1,
-							paddingVertical: 9,
-							alignItems: 'center',
-							borderRadius: 12,
-							backgroundColor: activeSubTab === tab.key ? colors.elevated : 'transparent',
-						}}
-					>
-						<Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '800', color: activeSubTab === tab.key ? colors.text : colors.mutedText }}>
-							{tab.label}
-						</Text>
-					</TouchableOpacity>
-				))}
+		<AdminScreen
+			title="Moderation"
+			subtitle="Reports, appeals and deleted content"
+			state={screenState}
+			onRefresh={handleRefresh}
+			refreshing={activeTab === 'deleted' ? deleted.refreshing : refreshing}
+			toolbar={<AdminToolbar {...toolbarProps} />}
+			overflowActions={[
+				{
+					key: 'bulk',
+					label: 'Bulk delete',
+					icon: 'trash-2',
+					description: 'Delete many items of one type',
+					onPress: () => router.push({ pathname: '/admin/moderation', params: { view: 'bulk' } } as Href),
+				},
+			]}
+		>
+			{activeTab === 'deleted' ? <AdminDeletedContentPanel controller={deleted} /> : activeTab === 'appeals' ? renderAppeals() : renderReports()}
+
+			<AdminDialog
+				visible={Boolean(rejectTarget)}
+				tone="danger"
+				icon="x-circle"
+				title="Reject this appeal?"
+				description={rejectTarget ? `The ${rejectTarget.contentType} stays deleted and ${rejectTarget.authorName || 'the author'} is told the appeal was rejected.` : ''}
+				confirmLabel="Reject"
+				busy={Boolean(reviewingAppealId)}
+				onConfirm={() => void handleConfirmReject()}
+				onClose={() => setRejectTarget(null)}
+			>
+				{rejectError ? <AdminState kind="inlineError" message={rejectError} /> : null}
+			</AdminDialog>
+		</AdminScreen>
+	);
+}
+
+/** The expanded part of an appeal row: the user's explanation and the original deletion reason. */
+function AppealDetail({ appeal }: { appeal: ContentAppealRecord }) {
+	const { colors } = useAppTheme();
+	const danger = getAdminTone(colors, 'danger');
+	return (
+		<View
+			style={{ gap: space.sm, padding: space.lg, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}
+		>
+			<View style={{ gap: space.xs }}>
+				<Text style={[type.label, { color: colors.mutedText }]}>Appeal explanation</Text>
+				<Text selectable style={[type.body, { color: colors.text }]}>
+					“{appeal.appealReason}”
+				</Text>
 			</View>
-
-			{loadError && (activeSubTab === 'reports' || activeSubTab === 'appeals') ? (
-				<View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.destructiveSurface }}>
-					<Icon name="alert-circle" size={17} color={colors.destructiveText} />
-					<Text style={{ flex: 1, marginLeft: 8, color: colors.destructiveText, fontSize: 12 }}>{loadError}</Text>
-					<TouchableOpacity onPress={() => void load()} accessibilityLabel="Retry loading moderation" style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
-						<Text style={{ color: colors.destructiveText, fontWeight: '900' }}>Retry</Text>
-					</TouchableOpacity>
-				</View>
-			) : null}
-			{activeSubTab === 'deleted' ? (
-				<AdminDeletedContentPanel />
-			) : activeSubTab === 'bulk' ? (
-				<AdminBulkDeletionPanel />
-			) : activeSubTab === 'appeals' ? (
-				<View className="space-y-3">
-					{appeals.length === 0 ? (
-						<View style={{ padding: 40, alignItems: 'center' }}>
-							<Ionicons name="checkmark-done-circle-outline" size={44} color={colors.mutedText} />
-							<Text style={{ color: colors.text, fontWeight: '700', fontSize: 14, marginTop: 10 }}>
-								No Pending Appeals
-							</Text>
-							<Text style={{ color: colors.mutedText, fontSize: 12, textAlign: 'center', marginTop: 4 }}>
-								All user content restoration appeals have been reviewed.
-							</Text>
-						</View>
-					) : (
-						appeals.map((appeal) => (
-							<View
-								key={appeal.id}
-								style={{
-									backgroundColor: colors.elevated,
-									borderColor: colors.border,
-									borderWidth: 1,
-									borderRadius: 16,
-									padding: 14,
-									marginBottom: 10,
-								}}
-							>
-								<View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-									<View style={{ flexDirection: 'row', alignItems: 'center' }}>
-										<View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(239, 68, 68, 0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
-											<Ionicons name="trash" size={13} color="#ef4444" />
-										</View>
-										<Text style={{ color: colors.text, fontWeight: '800', fontSize: 13, textTransform: 'capitalize' }}>
-											{appeal.contentType} Appeal
-										</Text>
-									</View>
-									<Text style={{ color: colors.warningText, fontSize: 10, fontWeight: '900', textTransform: 'uppercase' }}>
-										{appeal.status}
-									</Text>
-								</View>
-
-								<View style={{ marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: isDark ? '#27272a' : '#f4f4f5' }}>
-									<Text style={{ color: colors.mutedText, fontSize: 11 }}>
-										<Text style={{ fontWeight: '700', color: colors.text }}>Author: </Text>
-										{appeal.authorName || appeal.authorId}
-									</Text>
-									<Text style={{ color: '#ef4444', fontSize: 11, marginTop: 2 }}>
-										<Text style={{ fontWeight: '700' }}>Original Deletion Reason: </Text>
-										{appeal.deletionReason}
-									</Text>
-								</View>
-
-								<View style={{ marginTop: 8 }}>
-									<Text style={{ color: colors.text, fontSize: 11, fontWeight: '700' }}>
-										User's Appeal Explanation:
-									</Text>
-									<Text style={{ color: colors.secondaryText, fontSize: 12, lineHeight: 18, marginTop: 2 }}>
-										"{appeal.appealReason}"
-									</Text>
-								</View>
-
-								<View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
-									<TouchableOpacity
-										disabled={appealsLoading}
-										onPress={() => void handleReviewAppeal(appeal.id, 'rejected')}
-										style={{
-											paddingHorizontal: 12,
-											paddingVertical: 7,
-											borderRadius: 10,
-											backgroundColor: isDark ? '#27272a' : '#e4e4e7',
-											marginRight: 8,
-										}}
-									>
-										<Text style={{ color: colors.text, fontSize: 11, fontWeight: '700' }}>
-											Reject Appeal
-										</Text>
-									</TouchableOpacity>
-
-									<TouchableOpacity
-										disabled={appealsLoading}
-										onPress={() => void handleReviewAppeal(appeal.id, 'approved')}
-										style={{
-											paddingHorizontal: 14,
-											paddingVertical: 7,
-											borderRadius: 10,
-											backgroundColor: '#10b981',
-											flexDirection: 'row',
-											alignItems: 'center',
-										}}
-									>
-										<Ionicons name="refresh" size={13} color="#ffffff" style={{ marginRight: 4 }} />
-										<Text style={{ color: '#ffffff', fontSize: 11, fontWeight: '800' }}>
-											Approve & Restore
-										</Text>
-									</TouchableOpacity>
-								</View>
-							</View>
-						))
-					)}
-				</View>
-			) : (
-				<>
-					<View
-						style={{
-							flexDirection: 'row',
-							alignItems: 'center',
-							paddingHorizontal: 12,
-							marginBottom: 10,
-							borderRadius: 14,
-							borderWidth: 1,
-							borderColor: colors.border,
-							backgroundColor: colors.input,
-						}}
-					>
-						<Icon name="search" size={18} color={colors.mutedText} />
-						<TextInput
-							value={search}
-							onChangeText={setSearch}
-							placeholder="Search reports, people, content IDs"
-							placeholderTextColor={colors.mutedText}
-							style={{ flex: 1, padding: 11, color: colors.text }}
-						/>
-						<TouchableOpacity onPress={() => void load()}>
-							<Icon name="refresh-cw" size={17} color={colors.accent} />
-						</TouchableOpacity>
-					</View>
-					<View style={{ marginBottom: 12 }}>
-						<FilterBar groups={filterGroups} onOpen={() => setFiltersOpen(true)} onClear={handleClearFilter} />
-					</View>
-					<FilterSheet visible={filtersOpen} title="Filter reports" groups={filterGroups} applyLabel="Show reports" onApply={handleApplyFilters} onClose={() => setFiltersOpen(false)} />
-					{visible.length === 0 ? (
-						<View
-							style={{
-								paddingVertical: 40,
-								alignItems: 'center',
-								backgroundColor: colors.surface,
-								borderRadius: 16,
-								borderWidth: 1,
-								borderColor: colors.border,
-							}}
-						>
-							<Icon name="shield" size={36} color={colors.mutedText} />
-							<Text
-								style={{
-									marginTop: 10,
-									color: colors.text,
-									fontWeight: '800',
-								}}
-							>
-								No matching reports found
-							</Text>
-							<Text
-								style={{
-									marginTop: 4,
-									color: colors.mutedText,
-									fontSize: 12,
-								}}
-							>
-								Try clearing filters or search keywords
-							</Text>
-						</View>
-					) : (
-						visible.map((report) => (
-							<TouchableOpacity
-								key={report.id}
-								onPress={() =>
-									router.push({
-										pathname: '/admin/reports/[reportId]',
-										params: { reportId: report.id },
-									})
-								}
-								style={{
-									padding: 15,
-									borderRadius: 16,
-									borderWidth: 1,
-									borderColor: colors.border,
-									backgroundColor: colors.surface,
-									marginBottom: 10,
-								}}
-							>
-								<View style={{ flexDirection: 'row' }}>
-									<Text style={{ flex: 1, color: colors.text, fontWeight: '900' }}>
-										{report.reason}
-									</Text>
-									<Text
-										style={{
-											color:
-												report.status === 'pending'
-													? colors.warningText
-													: colors.mutedText,
-											fontSize: 10,
-											fontWeight: '900',
-											textTransform: 'uppercase',
-										}}
-									>
-										{report.status.replace('_', ' ')}
-									</Text>
-								</View>
-								<Text
-									style={{ marginTop: 5, color: colors.mutedText, fontSize: 12 }}
-								>
-									{report.contentType} · reported by {report.reporterName}
-								</Text>
-								{report.description ? (
-									<Text
-										numberOfLines={2}
-										style={{
-											marginTop: 8,
-											color: colors.secondaryText,
-											lineHeight: 19,
-										}}
-									>
-										{report.description}
-									</Text>
-								) : null}
-								<View
-									style={{
-										marginTop: 10,
-										flexDirection: 'row',
-										alignItems: 'center',
-									}}
-								>
-									<Text
-										style={{
-											flex: 1,
-											color:
-												report.severity === 'critical' || report.severity === 'high'
-													? colors.destructiveText
-													: colors.mutedText,
-											fontSize: 10,
-											fontWeight: '900',
-											textTransform: 'uppercase',
-										}}
-									>
-										{report.severity}
-									</Text>
-									<Text
-										style={{
-											color: colors.accent,
-											fontSize: 12,
-											fontWeight: '800',
-										}}
-									>
-										Review
-									</Text>
-									<Icon name="chevron-right" size={16} color={colors.accent} />
-								</View>
-							</TouchableOpacity>
-						))
-					)}
-				</>
-			)}
-			<CustomModal
-				visible={Boolean(message)}
-				title="Content moderation"
-				message={message ?? ''}
-				type="info"
-				onClose={() => setMessage(null)}
-			/>
-		</>
+			<View style={{ gap: space.xs }}>
+				<Text style={[type.label, { color: colors.mutedText }]}>Original deletion reason</Text>
+				<Text selectable style={[type.body, { color: danger.text }]}>
+					{appeal.deletionReason}
+				</Text>
+			</View>
+			<Text selectable style={[type.meta, { color: colors.mutedText }]}>
+				Author {appeal.authorName ? `${appeal.authorName} · ` : ''}
+				{appeal.authorId} · Content {appeal.contentId}
+			</Text>
+		</View>
 	);
 }

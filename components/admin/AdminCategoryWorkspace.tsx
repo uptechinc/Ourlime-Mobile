@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/Feather';
-import CustomModal from '@/components/ui/CustomModal';
-import AdminWorkspaceShell from './AdminWorkspaceShell';
+import { Text, TextInput, View } from 'react-native';
+import { toast } from 'sonner-native';
+import AdminScreen, { type AdminScreenState } from './AdminScreen';
+import AdminToolbar from './AdminToolbar';
+import AdminListRow from './AdminListRow';
+import AdminState from './AdminState';
 import AdminDialog from './AdminDialog';
-import {
-	AdminWorkspaceService,
-	type AdminCategoryKind,
-	type AdminCategoryRecord,
-} from '@/lib/services/AdminWorkspaceService';
+import { AdminWorkspaceService, type AdminCategoryKind, type AdminCategoryRecord } from '@/lib/services/AdminWorkspaceService';
+import { ADMIN_MIN_TOUCH, radius, space, type } from '@/lib/admin/adminTokens';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
-import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 
 type AdminCategoryWorkspaceProps = {
 	kind: AdminCategoryKind;
@@ -20,23 +17,21 @@ type AdminCategoryWorkspaceProps = {
 
 const workspaceService = AdminWorkspaceService.getInstance();
 
-export default function AdminCategoryWorkspace({
-	kind,
-	title,
-}: AdminCategoryWorkspaceProps) {
+export default function AdminCategoryWorkspace({ kind, title }: AdminCategoryWorkspaceProps) {
 	const { colors } = useAppTheme();
 	const [categories, setCategories] = useState<AdminCategoryRecord[]>([]);
 	const [query, setQuery] = useState('');
 	const [editing, setEditing] = useState<AdminCategoryRecord | null>(null);
-	const [isCreating, setIsCreating] = useState(false);
+	const [isFormOpen, setIsFormOpen] = useState(false);
 	const [name, setName] = useState('');
 	const [description, setDescription] = useState('');
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [message, setMessage] = useState<string | null>(null);
-	const [confirmingDelete, setConfirmingDelete] = useState(false);
+	const [formError, setFormError] = useState<string | null>(null);
+	const [deleteTarget, setDeleteTarget] = useState<AdminCategoryRecord | null>(null);
+	const [deleteError, setDeleteError] = useState<string | null>(null);
 
 	const load = useCallback(
 		async (isRefresh = false) => {
@@ -46,11 +41,8 @@ export default function AdminCategoryWorkspace({
 			try {
 				setCategories(await workspaceService.fetchCategories(kind));
 			} catch (loadError: unknown) {
-				setError(
-					loadError instanceof Error
-						? loadError.message
-						: 'Categories could not be loaded.'
-				);
+				console.error('[AdminCategoryWorkspace.load] Error:', loadError instanceof Error ? loadError.message : loadError);
+				setError(loadError instanceof Error ? loadError.message : 'Categories could not be loaded.');
 			} finally {
 				setLoading(false);
 				setRefreshing(false);
@@ -62,339 +54,167 @@ export default function AdminCategoryWorkspace({
 	useEffect(() => {
 		void load();
 	}, [load]);
+
 	const visible = useMemo(() => {
 		const normalized = query.trim().toLowerCase();
-		return normalized
-			? categories.filter((category) =>
-					`${category.name} ${category.description}`
-						.toLowerCase()
-						.includes(normalized)
-				)
-			: categories;
+		return normalized ? categories.filter((category) => `${category.name} ${category.description}`.toLowerCase().includes(normalized)) : categories;
 	}, [categories, query]);
+
 	const openCreate = () => {
 		setEditing(null);
 		setName('');
 		setDescription('');
-		setIsCreating(true);
+		setFormError(null);
+		setIsFormOpen(true);
 	};
 	const openEdit = (category: AdminCategoryRecord) => {
 		setEditing(category);
 		setName(category.name);
 		setDescription(category.description);
-		setIsCreating(true);
+		setFormError(null);
+		setIsFormOpen(true);
+	};
+	const openDelete = (category: AdminCategoryRecord) => {
+		setDeleteError(null);
+		setDeleteTarget(category);
 	};
 
 	const handleSave = async () => {
-		if (saving) return;
+		if (saving || !name.trim()) return;
 		setSaving(true);
+		setFormError(null);
 		try {
 			if (editing) {
-				await workspaceService.updateCategory(
-					kind,
-					editing.id,
-					name,
-					description
-				);
+				await workspaceService.updateCategory(kind, editing.id, name, description);
 				setCategories((current) =>
-					current.map((category) =>
-						category.id === editing.id
-							? {
-									...category,
-									name: name.trim(),
-									description: description.trim(),
-								}
-							: category
-					)
+					current.map((category) => (category.id === editing.id ? { ...category, name: name.trim(), description: description.trim() } : category))
 				);
-				setMessage('Category updated.');
+				toast.success('Category updated.');
 			} else {
-				const created = await workspaceService.createCategory(
-					kind,
-					name,
-					description
-				);
-				setCategories((current) =>
-					[...current, created].sort((first, second) =>
-						first.name.localeCompare(second.name)
-					)
-				);
-				setMessage('Category created.');
+				const created = await workspaceService.createCategory(kind, name, description);
+				setCategories((current) => [...current, created].sort((first, second) => first.name.localeCompare(second.name)));
+				toast.success('Category created.');
 			}
-			setIsCreating(false);
+			setIsFormOpen(false);
 		} catch (saveError: unknown) {
-			setMessage(
-				saveError instanceof Error
-					? saveError.message
-					: 'Category could not be saved.'
-			);
+			console.error('[AdminCategoryWorkspace.handleSave] Error:', saveError instanceof Error ? saveError.message : saveError);
+			// The dialog stays open so nothing typed is lost; the error shows inside it.
+			setFormError(saveError instanceof Error ? saveError.message : 'Category could not be saved.');
 		} finally {
 			setSaving(false);
 		}
 	};
 
 	const handleDelete = async () => {
-		if (!editing || saving) return;
+		if (!deleteTarget || saving) return;
 		setSaving(true);
+		setDeleteError(null);
 		try {
-			await workspaceService.deleteCategory(kind, editing.id);
-			setCategories((current) =>
-				current.filter((category) => category.id !== editing.id)
-			);
-			setConfirmingDelete(false);
-			setIsCreating(false);
-			setMessage('Category deleted.');
-		} catch (deleteError: unknown) {
-			setConfirmingDelete(false);
-			setMessage(
-				deleteError instanceof Error
-					? deleteError.message
-					: 'Category could not be deleted.'
-			);
+			await workspaceService.deleteCategory(kind, deleteTarget.id);
+			const deletedId = deleteTarget.id;
+			setCategories((current) => current.filter((category) => category.id !== deletedId));
+			setDeleteTarget(null);
+			toast.success('Category deleted.');
+		} catch (removeError: unknown) {
+			console.error('[AdminCategoryWorkspace.handleDelete] Error:', removeError instanceof Error ? removeError.message : removeError);
+			setDeleteError(removeError instanceof Error ? removeError.message : 'Category could not be deleted.');
 		} finally {
 			setSaving(false);
 		}
 	};
 
+	const inputStyle = [
+		type.body,
+		{ minHeight: ADMIN_MIN_TOUCH, paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.text },
+	];
+
+	const screenState: AdminScreenState = loading ? { kind: 'loading', variant: 'list' } : error ? { kind: 'error', message: error } : { kind: 'ready' };
+
 	return (
-		<AdminWorkspaceShell
+		<AdminScreen
 			title={title}
 			subtitle="Create, edit, search, and remove canonical categories"
-			loading={loading}
+			state={screenState}
 			refreshing={refreshing}
-			error={error}
-			onRefresh={() => void load(true)}
-		>
-			<View style={{ flexDirection: 'row', marginBottom: 14 }}>
-				<View
-					style={{
-						flex: 1,
-						flexDirection: 'row',
-						alignItems: 'center',
-						borderRadius: 14,
-						backgroundColor: colors.input,
-						borderWidth: 1,
-						borderColor: colors.border,
-						paddingHorizontal: 12,
-					}}
-				>
-					<Icon name="search" size={17} color={colors.mutedText} />
-					<TextInput
-						value={query}
-						onChangeText={setQuery}
-						placeholder="Search categories"
-						placeholderTextColor={colors.mutedText}
-						style={{ flex: 1, padding: 11, color: colors.text }}
-					/>
-				</View>
-				<TouchableOpacity
-					onPress={openCreate}
-					style={{
-						marginLeft: 9,
-						width: 46,
-						alignItems: 'center',
-						justifyContent: 'center',
-						borderRadius: 14,
-						backgroundColor: colors.accent,
-					}}
-				>
-					<Icon name="plus" size={22} color={colors.onAccent} />
-				</TouchableOpacity>
-			</View>
-			{visible.map((category) => (
-				<TouchableOpacity
-					key={category.id}
-					onPress={() => openEdit(category)}
-					style={{
-						marginBottom: 9,
-						padding: 15,
-						borderRadius: 16,
-						backgroundColor: colors.surface,
-						borderWidth: 1,
-						borderColor: colors.border,
-						flexDirection: 'row',
-						alignItems: 'center',
-					}}
-				>
-					<View
-						style={{
-							width: 42,
-							height: 42,
-							borderRadius: 13,
-							backgroundColor: colors.successSurface,
-							alignItems: 'center',
-							justifyContent: 'center',
-						}}
-					>
-						<Icon name="tag" size={19} color={colors.accent} />
-					</View>
-					<View style={{ flex: 1, marginLeft: 11 }}>
-						<Text style={{ color: colors.text, fontWeight: '900' }}>
-							{category.name}
-						</Text>
-						<Text
-							numberOfLines={1}
-							style={{ marginTop: 3, color: colors.mutedText, fontSize: 12 }}
-						>
-							{category.description || 'No description'}
-						</Text>
-					</View>
-					<Icon name="edit-2" size={17} color={colors.mutedText} />
-				</TouchableOpacity>
-			))}
-			{!visible.length ? (
-				<View style={{ paddingVertical: 55, alignItems: 'center' }}>
-					<Icon name="tag" size={34} color={colors.mutedText} />
-					<Text style={{ marginTop: 10, color: colors.mutedText }}>
-						No matching categories.
-					</Text>
-				</View>
-			) : null}
-			<Modal
-				visible={isCreating}
-				transparent
-				animationType="fade"
-				onRequestClose={() => setIsCreating(false)}
-			>
-				<SafeAreaView
-					edges={['top', 'left', 'right']}
-					style={{
-						flex: 1,
-						justifyContent: 'center',
-						padding: 20,
-						backgroundColor: 'rgba(15,23,42,0.72)',
-					}}
-				>
-					{/* Transparent Modal: Android doesn't resize for the keyboard, so center the dialog above it. */}
-					<KeyboardSafeView style={{ flex: 1, justifyContent: 'center' }}>
-						<View
-							style={{
-								borderRadius: 22,
-								backgroundColor: colors.elevated,
-								padding: 18,
-							}}
-						>
-							<View style={{ flexDirection: 'row', alignItems: 'center' }}>
-								<Text
-									style={{
-										flex: 1,
-										fontSize: 19,
-										fontWeight: '900',
-										color: colors.text,
-									}}
-								>
-									{editing ? 'Edit category' : 'New category'}
-								</Text>
-								<TouchableOpacity onPress={() => setIsCreating(false)}>
-									<Icon name="x" size={22} color={colors.icon} />
-								</TouchableOpacity>
-							</View>
-							<Text
-								style={{
-									marginTop: 16,
-									marginBottom: 6,
-									color: colors.secondaryText,
-									fontWeight: '800',
-								}}
-							>
-								Name
-							</Text>
-							<TextInput
-								value={name}
-								onChangeText={setName}
-								placeholder="Category name"
-								placeholderTextColor={colors.mutedText}
-								style={{
-									borderRadius: 13,
-									borderWidth: 1,
-									borderColor: colors.border,
-									backgroundColor: colors.input,
-									padding: 12,
-									color: colors.text,
-								}}
-							/>
-							<Text
-								style={{
-									marginTop: 14,
-									marginBottom: 6,
-									color: colors.secondaryText,
-									fontWeight: '800',
-								}}
-							>
-								Description
-							</Text>
-							<TextInput
-								value={description}
-								onChangeText={setDescription}
-								placeholder="Category description"
-								placeholderTextColor={colors.mutedText}
-								multiline
-								style={{
-									minHeight: 88,
-									textAlignVertical: 'top',
-									borderRadius: 13,
-									borderWidth: 1,
-									borderColor: colors.border,
-									backgroundColor: colors.input,
-									padding: 12,
-									color: colors.text,
-								}}
-							/>
-							<TouchableOpacity
-								disabled={saving || !name.trim()}
-								onPress={() => void handleSave()}
-								style={{
-									marginTop: 17,
-									alignItems: 'center',
-									borderRadius: 14,
-									backgroundColor: colors.accent,
-									padding: 13,
-								}}
-							>
-								<Text style={{ color: colors.onAccent, fontWeight: '900' }}>
-									{saving ? 'Saving…' : 'Save category'}
-								</Text>
-							</TouchableOpacity>
-							{editing ? (
-								<TouchableOpacity
-									disabled={saving}
-									onPress={() => setConfirmingDelete(true)}
-									style={{
-										marginTop: 9,
-										alignItems: 'center',
-										borderRadius: 14,
-										backgroundColor: colors.destructiveSurface,
-										padding: 13,
-									}}
-								>
-									<Text
-										style={{ color: colors.destructiveText, fontWeight: '900' }}
-									>
-										Delete category
-									</Text>
-								</TouchableOpacity>
-							) : null}
-						</View>
-					</KeyboardSafeView>
-				</SafeAreaView>
-				<AdminDialog
-					visible={confirmingDelete && Boolean(editing)}
-					tone="danger"
-					title={`Delete ${editing?.name ?? 'this category'}?`}
-					description="This permanently removes the category. Records already using it keep their category name. It cannot be undone."
-					confirmLabel="Delete"
-					busy={saving}
-					onConfirm={() => void handleDelete()}
-					onClose={() => setConfirmingDelete(false)}
+			onRefresh={() => load(true)}
+			primaryAction={{ key: 'new', label: 'New', icon: 'plus', onPress: openCreate }}
+			toolbar={
+				<AdminToolbar
+					search={{ value: query, placeholder: 'Search categories', onChange: setQuery }}
+					resultSummary={loading ? undefined : `${visible.length} of ${categories.length} categories`}
 				/>
-			</Modal>
-			<CustomModal
-				visible={Boolean(message)}
-				type="info"
-				title={title}
-				message={message ?? ''}
-				onClose={() => setMessage(null)}
-			/>
-		</AdminWorkspaceShell>
+			}
+		>
+			{visible.length ? (
+				<View style={{ gap: space.sm }}>
+					{visible.map((category) => (
+						<AdminListRow
+							key={category.id}
+							title={category.name}
+							subtitle={category.description || 'No description'}
+							leading={{ kind: 'icon', name: 'tag', tone: 'positive' }}
+							onPress={() => openEdit(category)}
+							accessibilityHint="Edits the category"
+							overflowActions={[
+								{ key: 'edit', label: 'Edit', icon: 'edit-2', onPress: () => openEdit(category) },
+								{ key: 'delete', label: 'Delete', icon: 'trash-2', tone: 'danger', onPress: () => openDelete(category) },
+							]}
+						/>
+					))}
+				</View>
+			) : query.trim() ? (
+				<AdminState kind="empty" title="" filtered onClearFilters={() => setQuery('')} />
+			) : (
+				<AdminState kind="empty" icon="tag" title="No categories yet" description="Create the first one with New." action={{ key: 'new', label: 'New category', icon: 'plus', onPress: openCreate }} />
+			)}
+
+			<AdminDialog
+				visible={isFormOpen}
+				icon={editing ? 'edit-2' : 'tag'}
+				title={editing ? 'Edit category' : 'New category'}
+				confirmLabel={editing ? 'Save' : 'Create'}
+				busy={saving}
+				confirmDisabled={!name.trim()}
+				onConfirm={() => void handleSave()}
+				onClose={() => setIsFormOpen(false)}
+			>
+				<View style={{ gap: space.md }}>
+					{formError ? <AdminState kind="inlineError" message={formError} /> : null}
+					<View style={{ gap: space.xs }}>
+						<Text style={[type.label, { color: colors.mutedText }]}>Name</Text>
+						<TextInput value={name} onChangeText={setName} editable={!saving} placeholder="Category name" placeholderTextColor={colors.mutedText} accessibilityLabel="Category name" style={inputStyle} />
+					</View>
+					<View style={{ gap: space.xs }}>
+						<Text style={[type.label, { color: colors.mutedText }]}>Description</Text>
+						<TextInput
+							value={description}
+							onChangeText={setDescription}
+							editable={!saving}
+							placeholder="Category description"
+							placeholderTextColor={colors.mutedText}
+							accessibilityLabel="Category description"
+							multiline
+							style={[inputStyle, { minHeight: 88, textAlignVertical: 'top' }]}
+						/>
+					</View>
+				</View>
+			</AdminDialog>
+
+			<AdminDialog
+				visible={Boolean(deleteTarget)}
+				tone="danger"
+				icon="trash-2"
+				title={`Delete ${deleteTarget?.name ?? 'this category'}?`}
+				description="This permanently removes the category. Records already using it keep their category name. It cannot be undone."
+				confirmLabel="Delete"
+				stage={saving ? 'busy' : 'idle'}
+				busyTitle="Deleting category…"
+				busyMessage="Please wait while the category is removed."
+				onConfirm={() => void handleDelete()}
+				onClose={() => setDeleteTarget(null)}
+			>
+				{deleteError ? <AdminState kind="inlineError" message={deleteError} /> : null}
+			</AdminDialog>
+		</AdminScreen>
 	);
 }
