@@ -883,6 +883,24 @@ Copy this into each screen's commit description and tick every item.
 10. **Support transfer.** Is there a staff directory to back a picker, or does transfer stay as a UID field for now?
 11. **Reports and moderators.** RECON notes that the rules allow moderators on `reports` while the UI requires an admin. Should the redesigned Moderation screen support a moderator gate?
 
+### Decisions (2026-11-24, redesign approved)
+
+The user approved the proposal. These defaults settle the open questions above:
+
+1. **Primary action style:** soft tint with a strong border. This matches the web rule; no solid fills.
+2. **Danger hue:** stays mobile red. The tones are admin-only, and `ThemeContext` keeps its app-wide colours.
+3. **Dialog radius:** 24, following `custom-modals.md`. No rule exception.
+4. **Hub structure:** Users, Moderation, Page access, Security and Seller review become their own routes, and the 6-tab bar goes. `?section=` links redirect. Security's internal tabs stay as tabs.
+5. **Gating:** `app/admin/_layout.tsx` (from the bug sweep) stays the admin gate. No separate staff gate.
+6. **Pagination:** "Load more" everywhere.
+7. **Activity log dates:** presets only.
+8. **Icons:** Feather for admin, since most admin files already use it.
+9. **Report detail:** "Take action" is the primary button; "Resolve, no action" is a secondary footer button.
+10. **Support transfer:** stays a UID field.
+11. **Moderator gate:** not added. This stays a decision for the user, listed in the bug report.
+
+The redesign leaves `components/support/SupportTicketConversationScreen.tsx` alone, because the member support flow uses it too. It stays in the bug report's *Needs decision* list.
+
 ---
 
 ## Appendix A: bugs seen during the audit (hand to the bug sweep)
