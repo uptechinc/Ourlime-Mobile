@@ -147,7 +147,7 @@ export const MOBILE_PAGE_REGISTRY: readonly PageRegistryEntry[] = [
 		name: 'Saved Items',
 		route: '/saved',
 		description: 'Saved content',
-		defaultStatus: 'coming_soon',
+		defaultStatus: 'enabled',
 	},
 	{
 		id: 'ewallet',

@@ -5,6 +5,8 @@ import { RequestTimeoutService } from './RequestTimeoutService';
 import { useResourceStore, type FeedResourceData } from '@/lib/store/useResourceStore';
 import type { ResourceState } from '@/lib/types/resourceState';
 import { communityFeedResourceService } from './CommunityFeedResourceService';
+import { savedService } from './SavedService';
+import { useSavedStore } from '@/lib/store/useSavedStore';
 
 const FEED_NAMESPACE = 'feeds-friend-reposts-v3';
 const FEED_STALE_MS = 60_000;
@@ -92,7 +94,7 @@ export class FeedResourceService {
     const operation = (async () => {
       try {
         const page = await this.timeoutService.run(
-          this.postService.fetchFeedPage({ limit: 20, cursor: current.data!.nextCursor, filter: query.filter, scope: query.scope, authorId: query.authorId }),
+          this.fetchPage(query, current.data!.nextCursor),
           'Feed pagination request',
         );
         const posts = this.dedupe([...current.data!.posts, ...page.posts]).slice(0, FEED_MAX_LOADED_POSTS);
@@ -265,7 +267,7 @@ export class FeedResourceService {
     if (!options.force && current?.data && !current.isStale && current.updatedAt && Date.now() - current.updatedAt < FEED_STALE_MS) return;
     useResourceStore.getState().setFeed(key, this.withState(current, { status: current?.data ? 'refreshing' : 'hydrating', error: null }));
     try {
-      const page = await this.timeoutService.run(this.postService.fetchFeedPage({ limit: 20, filter: query.filter, scope: query.scope, authorId: query.authorId }), 'Feed request');
+      const page = await this.timeoutService.run(this.fetchPage(query), 'Feed request');
       const currentData = useResourceStore.getState().feeds[key]?.data;
       const existingIds = new Set(currentData?.posts.map((post) => post.id) ?? []);
       const newPosts = page.posts.filter((post) => !existingIds.has(post.id));
@@ -299,6 +301,17 @@ export class FeedResourceService {
     return { data: current?.data ?? null, status: current?.status ?? 'idle', source: current?.source ?? 'memory', updatedAt: current?.updatedAt ?? null, isStale: current?.isStale ?? true, error: current?.error ?? null, ...changes };
   }
 
+  /**
+   * One feed page. The Saved filter keeps only the member's saved posts (users/{uid}/saved, type post); PostService
+   * returns every visible post for it, so the saved set is applied here.
+   */
+  private async fetchPage(query: FeedResourceQuery, cursor?: string | null) {
+    const page = await this.postService.fetchFeedPage({ limit: 20, cursor: cursor ?? undefined, filter: query.filter, scope: query.scope, authorId: query.authorId });
+    if (query.filter !== 'saved') return page;
+    const savedIds = new Set(await savedService.getSavedIds('post', 1000));
+    return { ...page, posts: page.posts.filter((post) => savedIds.has(post.id)) };
+  }
+
   private dedupe(posts: PostItem[]): PostItem[] {
     return Array.from(new Map(posts.map((post) => [post.id, post])).values());
   }
@@ -310,7 +323,7 @@ export class FeedResourceService {
     if (filter === 'link') return /https?:\/\/[^\s]+/i.test(`${post.caption} ${post.description}`);
     if (filter === 'document') return post.media.some((media) => media.fileName?.endsWith('.pdf') || media.fileName?.endsWith('.doc'));
     if (filter === 'trending') return (post.stats.likes + post.stats.comments + post.stats.shares) > 0;
-    if (filter === 'saved') return post.isSaved === true;
+    if (filter === 'saved') return useSavedStore.getState().isSaved('post', post.id);
     return false;
   }
 }
