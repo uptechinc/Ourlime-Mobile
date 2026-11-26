@@ -323,11 +323,13 @@ export class AppUpdateService {
       if (isNewBuild) void nativeAppUpdateService.clearDownloads();
       // The newest entry in lib/releaseHistory.json for this version ships inside this bundle, so it describes what is
       // running, OTA included; siteConfig/mobileApp's notes are the fallback for bundles published without them.
-      const bundledNotes = releaseHistoryService.getLatestFor(this.installed.version)?.notes ?? [];
+      const bundledEntry = releaseHistoryService.getLatestFor(this.installed.version);
+      const bundledNotes = bundledEntry?.notes ?? [];
       const notesMatchThisBuild = release !== null
         && ((release.versionCode !== null && release.versionCode === this.installed.versionCode) || release.version === this.installed.version);
       useAppUpdateStore.setState({
-        whatsNewVersion: this.installed.version,
+        // A quick update keeps the app's version number, so repeating it ("What's new in Ourlime 1.3.2" every time) says nothing new.
+        whatsNewVersion: bundledEntry?.kind === 'ota' ? '' : this.installed.version,
         whatsNewNotes: bundledNotes.length > 0 ? bundledNotes : notesMatchThisBuild ? release.releaseNotes : [],
       });
       this.logger.info('AppUpdateService', 'whats-new', { build: buildKey, isNewOta });

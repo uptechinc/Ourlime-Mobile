@@ -30,8 +30,8 @@ export default function ReleaseNotesScreen() {
             return <View key={release.id} style={[styles.card, isRunning ? styles.cardRunning : null]}>
               <View style={styles.cardTop}>
                 <View style={styles.flex}>
-                  <Text style={styles.version}>Version {release.version}</Text>
-                  <Text style={styles.meta}>{releaseHistoryService.kindLabel(release.kind)} · {releaseHistoryService.formatDate(release.date)}</Text>
+                  <Text style={styles.version}>{release.kind === 'ota' ? releaseHistoryService.formatDate(release.date) : `Version ${release.version}`}</Text>
+                  <Text style={styles.meta}>{release.kind === 'ota' ? releaseHistoryService.kindLabel(release.kind) : `${releaseHistoryService.kindLabel(release.kind)} · ${releaseHistoryService.formatDate(release.date)}`}</Text>
                 </View>
                 {isRunning ? <Text style={styles.badge}>On this phone</Text> : null}
               </View>
