@@ -8,7 +8,8 @@
       "date": "2026-11-26",
       "notes": [
         "Admins: product, pet and listing reviews open like a store page, with a large photo you can flip through, thumbnails underneath and the price up top.",
-        "Admins: product lists show bigger photos."
+        "Admins: product lists show bigger photos.",
+        "Admins: the overview shows what's waiting in each queue, so the total and the report count no longer look like they disagree."
       ]
     },
     {
