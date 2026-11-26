@@ -1,5 +1,6 @@
 import type { StyleProp, ViewStyle } from 'react-native';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import Icon from 'react-native-vector-icons/Feather';
 import { ADMIN_MIN_TOUCH, getAdminTone, radius, space, type, type AdminIconName, type AdminToneName } from '@/lib/admin/adminTokens';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -45,7 +46,7 @@ export default function AdminButton({
 	const textColor = tone === 'neutral' && !isGhost ? colors.text : toneColors.text;
 
 	return (
-		<Pressable
+		<AdminPressable
 			onPress={onPress}
 			disabled={isDisabled}
 			accessibilityRole="button"
@@ -81,6 +82,6 @@ export default function AdminButton({
 					</Text>
 				</View>
 			)}
-		</Pressable>
+		</AdminPressable>
 	);
 }

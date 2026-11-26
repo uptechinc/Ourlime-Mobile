@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, Switch, Text, TextInput, View, type TextStyle } from 'react-native';
+import { Modal, ScrollView, Switch, Text, TextInput, View, type TextStyle } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { toast } from 'sonner-native';
@@ -109,7 +110,7 @@ function StatusChoice({ status, selected, disabled = false, onPress }: StatusCho
 	const positive = getAdminTone(colors, 'positive');
 	const label = getStatusLabel(status);
 	return (
-		<Pressable
+		<AdminPressable
 			onPress={onPress}
 			disabled={disabled}
 			accessibilityRole="radio"
@@ -135,7 +136,7 @@ function StatusChoice({ status, selected, disabled = false, onPress }: StatusCho
 				<Text style={[type.bodyStrong, { color: colors.text }]}>{label}</Text>
 				<Text style={[type.meta, { color: colors.mutedText }]}>{STATUS_DESCRIPTIONS[status]}</Text>
 			</View>
-		</Pressable>
+		</AdminPressable>
 	);
 }
 

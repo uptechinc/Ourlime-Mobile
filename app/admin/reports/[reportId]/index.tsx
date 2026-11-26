@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Dimensions, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Dimensions, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import Icon from 'react-native-vector-icons/Feather';
@@ -800,7 +801,7 @@ export default function AdminReportDetailRoute() {
 	const renderMediaStrip = (media: NonNullable<TargetContentState['media']>, size: number) => (
 		<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm }}>
 			{media.map((mediaItem, mediaIndex) => (
-				<Pressable
+				<AdminPressable
 					key={`${mediaItem.url}-${mediaIndex}`}
 					onPress={() => setSelectedEvidenceUrl(mediaItem.url)}
 					accessibilityRole="imagebutton"
@@ -813,7 +814,7 @@ export default function AdminReportDetailRoute() {
 							<Icon name="play" size={24} color={colors.onAccent} />
 						</View>
 					) : null}
-				</Pressable>
+				</AdminPressable>
 			))}
 		</ScrollView>
 	);

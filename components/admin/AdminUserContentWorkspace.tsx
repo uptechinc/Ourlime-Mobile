@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, TextInput, View, type TextStyle } from 'react-native';
+import { Modal, ScrollView, Text, TextInput, View, type TextStyle } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import Icon from 'react-native-vector-icons/Feather';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminButton from '@/components/admin/AdminButton';
@@ -241,7 +242,7 @@ export default function AdminUserContentWorkspace({
               {mediaPreviews.map((media) => {
                 const imageUrl = media.type === 'image' ? media.url : media.thumbnailUrl;
                 return (
-                  <Pressable
+                  <AdminPressable
                     key={media.id}
                     onPress={() => setMediaTarget(media)}
                     accessibilityRole="imagebutton"
@@ -270,7 +271,7 @@ export default function AdminUserContentWorkspace({
                         <Icon name="play" size={20} color={MEDIA_OVERLAY.icon} />
                       </View>
                     ) : null}
-                  </Pressable>
+                  </AdminPressable>
                 );
               })}
             </ScrollView>

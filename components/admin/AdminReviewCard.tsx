@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import { Image } from 'expo-image';
 import Icon from 'react-native-vector-icons/Feather';
 import AdminButton from '@/components/admin/AdminButton';
@@ -130,7 +131,7 @@ export default function AdminReviewCard({
 		<View style={[{ gap: space.md, padding: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, style]}>
 			{media ? <CardMedia media={media} /> : null}
 			{onPress ? (
-				<Pressable
+				<AdminPressable
 					onPress={onPress}
 					accessibilityRole="button"
 					accessibilityLabel={[title, subtitle, status?.label].filter(Boolean).join(', ')}
@@ -138,7 +139,7 @@ export default function AdminReviewCard({
 					style={({ pressed }) => [headerStyle, { opacity: pressed ? 0.7 : 1 }]}
 				>
 					{header}
-				</Pressable>
+				</AdminPressable>
 			) : (
 				<View style={headerStyle}>{header}</View>
 			)}
@@ -264,7 +265,7 @@ export function AdminChoiceList<Value extends string | number>({ label, options,
 			{options.map((option) => {
 				const selected = option.value === value;
 				return (
-					<Pressable
+					<AdminPressable
 						key={String(option.value)}
 						onPress={() => onChange(option.value)}
 						disabled={disabled}
@@ -292,7 +293,7 @@ export function AdminChoiceList<Value extends string | number>({ label, options,
 							{option.description ? <Text style={[type.meta, { color: colors.mutedText }]}>{option.description}</Text> : null}
 						</View>
 						{currentValue !== undefined && option.value === currentValue ? <Text style={[type.meta, { color: colors.mutedText }]}>Current</Text> : null}
-					</Pressable>
+					</AdminPressable>
 				);
 			})}
 		</View>

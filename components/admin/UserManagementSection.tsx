@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Image, Modal, Pressable, RefreshControl, ScrollView, Share, Text, TextInput, View, type TextStyle } from 'react-native';
+import { ActivityIndicator, Image, Modal, RefreshControl, ScrollView, Share, Text, TextInput, View, type TextStyle } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { toast } from 'sonner-native';
@@ -106,7 +107,7 @@ function ChoiceRow({ label, description, selected, disabled = false, onPress }: 
 	const { colors } = useAppTheme();
 	const positive = getAdminTone(colors, 'positive');
 	return (
-		<Pressable
+		<AdminPressable
 			onPress={onPress}
 			disabled={disabled}
 			accessibilityRole="radio"
@@ -132,7 +133,7 @@ function ChoiceRow({ label, description, selected, disabled = false, onPress }: 
 				<Text style={[type.bodyStrong, { color: colors.text }]}>{label}</Text>
 				{description ? <Text style={[type.meta, { color: colors.mutedText }]}>{description}</Text> : null}
 			</View>
-		</Pressable>
+		</AdminPressable>
 	);
 }
 
@@ -193,14 +194,14 @@ function IdentityDocuments({ userId, refreshSignal, onPreview }: IdentityDocumen
 					<View key={documentType} style={{ width: 176, gap: space.xs }}>
 						<Text style={[type.label, { color: colors.mutedText }]}>{label}</Text>
 						{identityDocument?.imageUrl ? (
-							<Pressable
+							<AdminPressable
 								onPress={() => onPreview(identityDocument.imageUrl)}
 								accessibilityRole="imagebutton"
 								accessibilityLabel={`Open ${label}`}
 								style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
 							>
 								<Image source={{ uri: identityDocument.imageUrl }} resizeMode="contain" style={{ width: 176, height: 128, borderRadius: radius.md, backgroundColor: colors.input }} />
-							</Pressable>
+							</AdminPressable>
 						) : (
 							<View style={{ width: 176, height: 128, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input }}>
 								<Text style={[type.meta, { color: colors.mutedText }]}>Not provided</Text>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Text, TextInput, View } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import Icon from 'react-native-vector-icons/Feather';
 import AdminButton from '@/components/admin/AdminButton';
 import AdminFilterSheet, { ADMIN_DATE_RANGE_LABELS, type AdminFilterSheetDateRange } from '@/components/admin/AdminFilterSheet';
@@ -136,14 +137,14 @@ function ToolbarSearch({ search }: { search: AdminToolbarSearch }) {
 			/>
 			{search.loading ? <ActivityIndicator size="small" color={colors.mutedText} style={{ marginRight: text ? 0 : space.md }} /> : null}
 			{text ? (
-				<Pressable
+				<AdminPressable
 					onPress={handleClear}
 					accessibilityRole="button"
 					accessibilityLabel="Clear search"
 					style={({ pressed }) => ({ width: ADMIN_MIN_TOUCH - 2, height: ADMIN_MIN_TOUCH - 2, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}
 				>
 					<Icon name="x" size={16} color={colors.icon} />
-				</Pressable>
+				</AdminPressable>
 			) : null}
 		</View>
 	);
@@ -158,7 +159,7 @@ function ToolbarSegments({ segments }: { segments: AdminToolbarSegments }) {
 				const selected = option.value === segments.value;
 				const label = option.count === undefined ? option.label : `${option.label} · ${option.count}`;
 				return (
-					<Pressable
+					<AdminPressable
 						key={option.value}
 						onPress={() => segments.onChange(option.value)}
 						accessibilityRole="tab"
@@ -181,7 +182,7 @@ function ToolbarSegments({ segments }: { segments: AdminToolbarSegments }) {
 						<Text numberOfLines={1} ellipsizeMode="tail" style={[type.bodyStrong, { color: selected ? positive.text : colors.secondaryText }]}>
 							{label}
 						</Text>
-					</Pressable>
+					</AdminPressable>
 				);
 			})}
 		</View>
@@ -244,7 +245,7 @@ export default function AdminToolbar({ search, filters, segments, resultSummary,
 				<View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
 					{search ? <ToolbarSearch search={search} /> : <View style={{ flex: 1 }} />}
 					{filters ? (
-						<Pressable
+						<AdminPressable
 							onPress={() => setSheetVisible(true)}
 							accessibilityRole="button"
 							accessibilityLabel={activeCount ? `Filters, ${activeCount} active` : 'Filters'}
@@ -268,7 +269,7 @@ export default function AdminToolbar({ search, filters, segments, resultSummary,
 									<Text style={[type.meta, { color: positive.text }]}>{activeCount}</Text>
 								</View>
 							) : null}
-						</Pressable>
+						</AdminPressable>
 					) : null}
 					{trailing}
 				</View>
@@ -277,7 +278,7 @@ export default function AdminToolbar({ search, filters, segments, resultSummary,
 			{chips.length ? (
 				<View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm }}>
 					{chips.map((chip) => (
-						<Pressable
+						<AdminPressable
 							key={chip.key}
 							onPress={chip.next}
 							accessibilityRole="button"
@@ -301,7 +302,7 @@ export default function AdminToolbar({ search, filters, segments, resultSummary,
 								{chip.label}
 							</Text>
 							<Icon name="x" size={14} color={positive.text} />
-						</Pressable>
+						</AdminPressable>
 					))}
 					<AdminButton label="Clear all" emphasis="ghost" tone="neutral" onPress={handleClearAll} />
 				</View>

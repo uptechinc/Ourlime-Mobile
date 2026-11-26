@@ -1,6 +1,7 @@
 import { Children, type ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import Icon from 'react-native-vector-icons/Feather';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { getAdminTone, radius, space, type, type AdminIconName, type AdminToneName } from '@/lib/admin/adminTokens';
@@ -40,19 +41,22 @@ export default function AdminStatCard({ label, value, hint, icon, tone = 'neutra
 
 	const content = (
 		<>
-			<View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-				<Text numberOfLines={1} style={[type.label, { flex: 1, color: isToned ? toneColors.text : colors.mutedText }]}>
+			<View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.sm }}>
+				<Text numberOfLines={2} style={[type.label, { flex: 1, color: isToned ? toneColors.text : colors.mutedText }]}>
 					{label}
 				</Text>
 				{icon ? <Icon name={icon} size={16} color={isToned ? toneColors.text : colors.icon} /> : null}
-				{onPress ? <Icon name="chevron-right" size={16} color={colors.mutedText} /> : null}
 			</View>
 			{loading ? (
 				<Skeleton width="45%" height={compact ? 26 : 34} borderRadius={radius.sm} />
 			) : (
-				<Text numberOfLines={1} adjustsFontSizeToFit style={[compact ? type.title : type.display, { color: colors.text }]}>
-					{value}
-				</Text>
+				// The chevron sits beside the value, so a tappable card's label keeps the full width.
+				<View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+					<Text numberOfLines={1} adjustsFontSizeToFit style={[compact ? type.title : type.display, { flex: 1, color: colors.text }]}>
+						{value}
+					</Text>
+					{onPress ? <Icon name="chevron-right" size={18} color={colors.mutedText} /> : null}
+				</View>
 			)}
 			{hint ? <Text numberOfLines={2} style={[type.meta, { color: colors.mutedText }]}>{hint}</Text> : null}
 		</>
@@ -67,7 +71,7 @@ export default function AdminStatCard({ label, value, hint, icon, tone = 'neutra
 	}
 
 	return (
-		<Pressable
+		<AdminPressable
 			onPress={onPress}
 			accessibilityRole="button"
 			accessibilityLabel={`${label}: ${loading ? 'loading' : value}`}
@@ -75,7 +79,7 @@ export default function AdminStatCard({ label, value, hint, icon, tone = 'neutra
 			style={({ pressed }) => [cardStyle, { opacity: pressed ? 0.7 : 1 }, style]}
 		>
 			{content}
-		</Pressable>
+		</AdminPressable>
 	);
 }
 

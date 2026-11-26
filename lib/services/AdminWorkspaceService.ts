@@ -24,6 +24,7 @@ import { db } from '@/lib/firebaseConfig';
 import { adminAccessService } from './AdminAccessService';
 import { adminApiService } from './AdminApiService';
 import { appServerService } from './AppServerService';
+import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import { privateProfileService } from './PrivateProfileService';
 import {
   ADMIN_WORKSPACE_PAGE_SIZE,
@@ -201,10 +202,30 @@ export class AdminWorkspaceService {
       ? query(source, orderBy(documentId()), startAfter(cursor), limit(size + 1))
       : query(source, orderBy(documentId()), limit(size + 1)));
     const page = buildWorkspacePage(snapshot.docs.map((document) => ({ id: document.id, data: document.data() as AdminDocumentData })), size);
+    const memberCounts = kind === 'communities' ? await this.readCommunityMemberCounts(page.visible.map((document) => document.id)) : null;
     return {
-      items: page.visible.map((document) => this.normalizeWorkspaceItem(kind, document.id, document.data)),
+      items: page.visible.map((document) => {
+        const item = this.normalizeWorkspaceItem(kind, document.id, document.data);
+        const memberCount = memberCounts?.get(document.id);
+        return memberCount === undefined ? item : { ...item, memberCount, metricLabel: `${memberCount} ${memberCount === 1 ? 'member' : 'members'}` };
+      }),
       nextCursor: page.nextCursor,
     };
+  }
+
+  /**
+   * Community documents carry no member count; the app keeps it in communityVariantMembershipAndLikeCount/{communityId}
+   * (CommunityDataService). A failed read leaves the rows without counts instead of failing the list.
+   */
+  private async readCommunityMemberCounts(communityIds: string[]): Promise<Map<string, number>> {
+    if (communityIds.length === 0) return new Map();
+    try {
+      const counts = await firestoreBatchReadService.getDocumentsByIds('communityVariantMembershipAndLikeCount', communityIds);
+      return new Map(communityIds.map((communityId) => [communityId, Math.max(0, readNumber(counts.get(communityId)?.membershipCount))]));
+    } catch (error: unknown) {
+      console.warn('[AdminWorkspaceService.readCommunityMemberCounts] Error:', error instanceof Error ? error.message : error);
+      return new Map();
+    }
   }
 
   /** Server-side totals for the product and community stat cards, without soft-deleted records. Null for stickers. */
@@ -225,19 +246,21 @@ export class AdminWorkspaceService {
       ]);
       return { kind, total: Math.max(0, all - deleted), pending, approved, rejected };
     }
-    const aggregateSpec = { total: count(), memberships: sum('membershipCount') };
-    const [totals, deletedTotals, privateCount] = await Promise.all([
-      getAggregateFromServer(source, aggregateSpec),
-      getAggregateFromServer(query(source, where('isDeleted', '==', true)), aggregateSpec),
+    // Members are summed from the count documents (communities have no count of their own). Plain count/sum queries
+    // need no composite index; the old sum over communityVariant with an isDeleted filter did, and always failed.
+    const [all, deleted, privateCount, membershipTotals] = await Promise.all([
+      countOf(),
+      countOf(where('isDeleted', '==', true)),
       countOf(where('isPrivate', '==', true)),
+      getAggregateFromServer(collection(db, 'communityVariantMembershipAndLikeCount'), { memberships: sum('membershipCount') }),
     ]);
-    const total = Math.max(0, totals.data().total - deletedTotals.data().total);
+    const total = Math.max(0, all - deleted);
     return {
       kind,
       total,
       privateCount: Math.min(total, privateCount),
       publicCount: Math.max(0, total - privateCount),
-      memberships: Math.max(0, (totals.data().memberships || 0) - (deletedTotals.data().memberships || 0)),
+      memberships: Math.max(0, membershipTotals.data().memberships || 0),
     };
   }
 

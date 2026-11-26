@@ -1,5 +1,6 @@
 import type { StyleProp, ViewStyle } from 'react-native';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import Icon from 'react-native-vector-icons/Feather';
 import AdminButton from '@/components/admin/AdminButton';
 import AdminOverflowMenu from '@/components/admin/AdminOverflowMenu';
@@ -119,7 +120,7 @@ export default function AdminListRow({
 			]}
 		>
 			{selectable ? (
-				<Pressable
+				<AdminPressable
 					onPress={selectable.onToggle}
 					accessibilityRole="checkbox"
 					accessibilityLabel={`Select ${title}`}
@@ -140,11 +141,11 @@ export default function AdminListRow({
 					>
 						{selectable.selected ? <Icon name="check" size={14} color={positive.text} /> : null}
 					</View>
-				</Pressable>
+				</AdminPressable>
 			) : null}
 
 			{onPress ? (
-				<Pressable
+				<AdminPressable
 					onPress={onPress}
 					accessibilityRole="button"
 					accessibilityLabel={[title, subtitle, status?.label].filter(Boolean).join(', ')}
@@ -152,7 +153,7 @@ export default function AdminListRow({
 					style={({ pressed }) => [bodyStyle, { opacity: pressed ? 0.7 : 1 }]}
 				>
 					{body}
-				</Pressable>
+				</AdminPressable>
 			) : (
 				<View style={bodyStyle}>{body}</View>
 			)}

@@ -15,6 +15,7 @@ import { adminContentService } from '@/lib/services/AdminContentService';
 import type { ContentAppealRecord } from '@/lib/types/adminContent';
 import { getAdminTone, radius, space, type, type AdminToneName } from '@/lib/admin/adminTokens';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
+import { settleAll } from '@/lib/utils/settleAll';
 import { interactionFeedbackService } from '@/lib/services/InteractionFeedbackService';
 
 const moderationService = AdminModerationService.getInstance();
@@ -92,7 +93,7 @@ function ModerationQueues({ initialTab }: { initialTab: ModerationTab }) {
 		if (mode === 'refresh') setRefreshing(true);
 		try {
 			// One source failing must not hide the other, and must never be swallowed.
-			const [reportsResult, appealsResult] = await Promise.allSettled([moderationService.fetchReports(), adminContentService.getPendingAppeals()]);
+			const [reportsResult, appealsResult] = await settleAll([moderationService.fetchReports(), adminContentService.getPendingAppeals()]);
 			if (loadRequestRef.current !== requestId) return;
 			if (reportsResult.status === 'fulfilled') {
 				setReports(reportsResult.value);

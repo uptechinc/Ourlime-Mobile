@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import Icon from 'react-native-vector-icons/Feather';
 import { ADMIN_MIN_TOUCH, getAdminTone, radius, space, type, type AdminToneName } from '@/lib/admin/adminTokens';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
@@ -51,7 +52,7 @@ export default function AdminSection({ title, description, action, tone = 'neutr
 		>
 			<View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
 				{collapsible ? (
-					<Pressable
+					<AdminPressable
 						onPress={() => setOpen((current) => !current)}
 						accessibilityRole="button"
 						accessibilityLabel={title}
@@ -60,12 +61,12 @@ export default function AdminSection({ title, description, action, tone = 'neutr
 					>
 						{heading}
 						<Icon name={open ? 'chevron-up' : 'chevron-down'} size={20} color={colors.icon} />
-					</Pressable>
+					</AdminPressable>
 				) : (
 					heading
 				)}
 				{action ? (
-					<Pressable
+					<AdminPressable
 						onPress={action.onPress}
 						accessibilityRole="button"
 						accessibilityLabel={action.label}
@@ -73,7 +74,7 @@ export default function AdminSection({ title, description, action, tone = 'neutr
 						style={({ pressed }) => ({ minHeight: ADMIN_MIN_TOUCH, justifyContent: 'center', paddingHorizontal: space.xs, opacity: pressed ? 0.7 : 1 })}
 					>
 						<Text style={[type.bodyStrong, { color: colors.accentText }]}>{action.label}</Text>
-					</Pressable>
+					</AdminPressable>
 				) : null}
 			</View>
 			{showBody && children ? <View style={{ gap: space.md }}>{children}</View> : null}

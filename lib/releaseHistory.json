@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-26",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-26",
+      "notes": [
+        "Admins: lists, cards and buttons across the admin area lay out properly again. Rows had been stacking their icon, text and arrow on top of each other.",
+        "Admins: Moderation shows member reports again, and Communities shows each community's real member count and total memberships.",
+        "Admins: screen titles no longer get cut off by the action button at the top.",
+        "Quick updates no longer repeat the app version in What's new; Release notes lists them by date."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-25",
       "version": "1.3.2",
       "versionCode": 11,

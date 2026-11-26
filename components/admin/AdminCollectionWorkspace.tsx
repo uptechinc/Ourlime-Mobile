@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Modal, ScrollView, Text, TextInput, View } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
@@ -310,7 +311,7 @@ function CollectionRecordSheet({ kind, record, busy, onClose, onApplyStatus, onS
 											const isCurrent = record.status === option;
 											const optionTone = getAdminTone(colors, statusTone(option));
 											return (
-												<Pressable
+												<AdminPressable
 													key={option}
 													disabled={busy}
 													onPress={() => setDraftStatus(option)}
@@ -335,7 +336,7 @@ function CollectionRecordSheet({ kind, record, busy, onClose, onApplyStatus, onS
 													</View>
 													<Text style={[type.bodyStrong, { flex: 1, color: isSelected ? positive.text : colors.text }]}>{capitalize(option)}</Text>
 													{isCurrent ? <Text style={[type.label, { color: optionTone.text }]}>Current</Text> : null}
-												</Pressable>
+												</AdminPressable>
 											);
 										})}
 									</View>

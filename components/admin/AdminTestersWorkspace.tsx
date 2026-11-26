@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, Text, TextInput, View, type TextStyle } from 'react-native';
+import { Text, TextInput, View, type TextStyle } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import Icon from 'react-native-vector-icons/Feather';
 import { toast } from 'sonner-native';
 import AdminButton from '@/components/admin/AdminButton';
@@ -359,7 +360,7 @@ export default function AdminTestersWorkspace() {
 					{REGISTRATION_MODES.map((option) => {
 						const isSelected = draftMode === option.mode;
 						return (
-							<Pressable
+							<AdminPressable
 								key={option.mode}
 								onPress={() => setDraftMode(option.mode)}
 								disabled={modeSaving}
@@ -386,7 +387,7 @@ export default function AdminTestersWorkspace() {
 									<Text style={[type.bodyStrong, { color: colors.text }]}>{option.label}</Text>
 									<Text style={[type.meta, { color: colors.mutedText }]}>{option.description}</Text>
 								</View>
-							</Pressable>
+							</AdminPressable>
 						);
 					})}
 				</View>

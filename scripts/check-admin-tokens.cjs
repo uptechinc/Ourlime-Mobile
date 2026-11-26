@@ -8,6 +8,10 @@ const ROOTS = ['components/admin', 'app/admin'];
 const RULES = [
   { name: 'raw-hex', pattern: /#[0-9a-fA-F]{3,8}\b/ },
   { name: 'heavy-weight', pattern: /fontWeight:\s*['"]?(800|900)/ },
+  // NativeWind drops a style function on react-native's Pressable, so rows lose their whole layout. Use AdminPressable.
+  { name: 'raw-pressable (use AdminPressable)', pattern: /<Pressable[\s>]/, skip: /AdminPressable\.tsx$/ },
+  // The app's Promise has no allSettled ("undefined is not a function"). Use settleAll from lib/utils/settleAll.
+  { name: 'Promise.allSettled (use settleAll)', pattern: /Promise\.allSettled/ },
 ];
 
 function listFiles(dir) {
@@ -23,6 +27,7 @@ const violations = [];
 for (const file of ROOTS.flatMap((root) => listFiles(path.join(__dirname, '..', root)))) {
   fs.readFileSync(file, 'utf8').split(/\r?\n/).forEach((line, index) => {
     for (const rule of RULES) {
+      if (rule.skip && rule.skip.test(file)) continue;
       if (rule.pattern.test(line)) violations.push(`${path.relative(process.cwd(), file)}:${index + 1} ${rule.name}`);
     }
   });

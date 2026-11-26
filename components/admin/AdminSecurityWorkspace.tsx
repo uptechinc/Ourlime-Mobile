@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Switch, Text, TextInput, View, type TextStyle } from 'react-native';
+import { Switch, Text, TextInput, View, type TextStyle } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import Icon from 'react-native-vector-icons/Feather';
 import { toast } from 'sonner-native';
 import AdminButton from '@/components/admin/AdminButton';
@@ -83,7 +84,7 @@ function ChoiceRow({ label, description, selected, tone = 'positive', disabled =
   const { colors } = useAppTheme();
   const toneColors = getAdminTone(colors, tone);
   return (
-    <Pressable
+    <AdminPressable
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="radio"
@@ -109,7 +110,7 @@ function ChoiceRow({ label, description, selected, tone = 'positive', disabled =
         <Text style={[type.bodyStrong, { color: colors.text }]}>{label}</Text>
         {description ? <Text style={[type.meta, { color: colors.mutedText }]}>{description}</Text> : null}
       </View>
-    </Pressable>
+    </AdminPressable>
   );
 }
 
@@ -120,7 +121,7 @@ function Chip({ label, tone, icon, selected = true, accessibilityLabel, onPress 
   const { colors } = useAppTheme();
   const toneColors = getAdminTone(colors, selected ? tone : 'neutral');
   return (
-    <Pressable
+    <AdminPressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
@@ -144,7 +145,7 @@ function Chip({ label, tone, icon, selected = true, accessibilityLabel, onPress 
         {label}
       </Text>
       <Icon name={icon} size={14} color={selected ? toneColors.text : colors.icon} />
-    </Pressable>
+    </AdminPressable>
   );
 }
 

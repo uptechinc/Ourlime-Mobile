@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import Icon from 'react-native-vector-icons/Feather';
 import { toast } from 'sonner-native';
 import AdminScreen from './AdminScreen';
@@ -151,7 +152,7 @@ export default function AdminBulkDeletionPanel() {
 				) : null}
 
 				<AdminSection title="1. Content type">
-					<Pressable
+					<AdminPressable
 						onPress={() => setTypeSheetOpen(true)}
 						disabled={submitting}
 						accessibilityRole="button"
@@ -172,7 +173,7 @@ export default function AdminBulkDeletionPanel() {
 					>
 						<Text style={[type.bodyStrong, { flex: 1, color: colors.text }]}>{TYPE_LABELS[contentType]}</Text>
 						<Icon name="chevron-down" size={18} color={colors.icon} />
-					</Pressable>
+					</AdminPressable>
 				</AdminSection>
 
 				<AdminSection title="2. Content IDs" description="One per line or comma-separated. Duplicates are ignored.">
@@ -196,7 +197,7 @@ export default function AdminBulkDeletionPanel() {
 						{REASONS.map((reason) => {
 							const isSelected = category === reason.value;
 							return (
-								<Pressable
+								<AdminPressable
 									key={reason.value}
 									disabled={submitting}
 									onPress={() => setCategory(reason.value)}
@@ -220,7 +221,7 @@ export default function AdminBulkDeletionPanel() {
 										{isSelected ? <View style={{ width: 10, height: 10, borderRadius: radius.pill, backgroundColor: positive.text }} /> : null}
 									</View>
 									<Text style={[type.bodyStrong, { flex: 1, color: isSelected ? positive.text : colors.text }]}>{reason.label}</Text>
-								</Pressable>
+								</AdminPressable>
 							);
 						})}
 					</View>

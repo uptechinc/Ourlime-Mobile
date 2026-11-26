@@ -155,7 +155,17 @@ export default function AdminScreen({
 					</Text>
 				) : null}
 			</View>
-			{primaryAction && isReady ? (
+			{primaryAction && isReady && primaryAction.icon ? (
+				// Icon-only in the header: a labelled button left no room for the title on phones ("Game cont…").
+				<AdminIconButton
+					icon={primaryAction.icon}
+					label={primaryAction.label}
+					tone={primaryAction.tone ?? 'positive'}
+					variant="soft"
+					disabled={primaryAction.disabled || primaryAction.busy}
+					onPress={primaryAction.onPress}
+				/>
+			) : primaryAction && isReady ? (
 				<AdminButton
 					label={primaryAction.label}
 					icon={primaryAction.icon}

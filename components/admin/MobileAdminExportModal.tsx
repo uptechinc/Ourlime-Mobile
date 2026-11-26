@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ActivityIndicator, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { toast } from 'sonner-native';
@@ -141,7 +142,7 @@ export default function MobileAdminExportModal({
                 const isBusy = exporting === option.format;
                 const isLocked = exporting !== null && !isBusy;
                 return (
-                  <Pressable
+                  <AdminPressable
                     key={option.format}
                     onPress={() => void handleExport(option.format)}
                     disabled={exporting !== null}
@@ -167,7 +168,7 @@ export default function MobileAdminExportModal({
                       <Text style={[type.meta, { color: colors.mutedText }]}>{option.description}</Text>
                     </View>
                     {isBusy ? <ActivityIndicator size="small" color={colors.icon} /> : <Icon name="download" size={16} color={colors.mutedText} />}
-                  </Pressable>
+                  </AdminPressable>
                 );
               })}
             </ScrollView>

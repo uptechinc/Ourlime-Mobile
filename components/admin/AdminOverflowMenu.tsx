@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { Dimensions, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import AdminIconButton from '@/components/admin/AdminIconButton';
@@ -61,7 +62,7 @@ export default function AdminOverflowMenu({ items, trigger = 'header', title = '
 		const isDanger = item.tone === 'danger';
 		const color = isDanger ? danger.text : colors.text;
 		return (
-			<Pressable
+			<AdminPressable
 				key={item.key}
 				onPress={() => handleSelect(item)}
 				disabled={item.disabled}
@@ -86,7 +87,7 @@ export default function AdminOverflowMenu({ items, trigger = 'header', title = '
 					<Text style={[type.bodyStrong, { color }]}>{item.label}</Text>
 					{item.description ? <Text style={[type.meta, { color: colors.mutedText }]}>{item.description}</Text> : null}
 				</View>
-			</Pressable>
+			</AdminPressable>
 		);
 	};
 

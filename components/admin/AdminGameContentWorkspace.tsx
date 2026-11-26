@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Image, Modal, Pressable, ScrollView, Text, TextInput, View, type TextStyle } from 'react-native';
+import { Image, Modal, ScrollView, Text, TextInput, View, type TextStyle } from 'react-native';
+import AdminPressable from '@/components/admin/AdminPressable';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
@@ -310,7 +311,7 @@ export default function AdminGameContentWorkspace() {
       <AdminSection title="Image" description="Upload a landmark image, or paste an image URL.">
         {/* The picker and the remove control are siblings, never nested touchables. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-          <Pressable
+          <AdminPressable
             onPress={() => void handlePickImage()}
             accessibilityRole="button"
             accessibilityLabel={pickedImage ? 'Change image' : 'Upload image'}
@@ -332,7 +333,7 @@ export default function AdminGameContentWorkspace() {
           >
             {pickedImage ? <Image source={{ uri: pickedImage.previewUri }} style={{ width: 44, height: 44, borderRadius: radius.sm }} /> : <Icon name="image" size={20} color={colors.accentText} />}
             <Text style={[type.bodyStrong, { color: colors.text }]}>{pickedImage ? 'Change image' : 'Upload image'}</Text>
-          </Pressable>
+          </AdminPressable>
           {pickedImage ? <AdminIconButton icon="x" label="Remove picked image" tone="danger" variant="soft" onPress={() => setPickedImage(null)} /> : null}
         </View>
         {renderField('Or image URL', <TextInput value={imageUrl} onChangeText={setImageUrl} placeholder="https://…" placeholderTextColor={colors.mutedText} autoCapitalize="none" keyboardType="url" accessibilityLabel="Image URL" style={inputStyle} />)}
