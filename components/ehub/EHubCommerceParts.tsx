@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import CachedImage from '@/components/ui/CachedImage';
+import BumpOnIncrease from '@/components/ui/BumpOnIncrease';
 import { ModalBackdrop, ModalMotionSurface } from '@/components/ui/ModalMotion';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
@@ -30,7 +31,7 @@ export function EHubHeaderActions({ onOpenCart, onOpenSaved }: HeaderActionsProp
     </Pressable> : null}
     <Pressable accessibilityRole="button" accessibilityLabel={`Open E-Hub cart with ${cartCount} items`} onPress={onOpenCart} style={styles.headerButton}>
       <ShoppingCart size={21} color={colors.icon} />
-      {cartCount ? <View style={styles.badge}><Text style={styles.badgeText}>{cartCount > 99 ? '99+' : cartCount}</Text></View> : null}
+      <BumpOnIncrease value={cartCount} style={cartCount ? styles.badge : styles.badgeHidden}>{cartCount ? <Text style={styles.badgeText}>{cartCount > 99 ? '99+' : cartCount}</Text> : null}</BumpOnIncrease>
     </Pressable>
   </View>;
 }
@@ -147,6 +148,7 @@ function createStyles(colors: AppThemeColors) {
     muted: { color: colors.mutedText, fontSize: 12, lineHeight: 17 },
     headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
     headerButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    badgeHidden: { position: 'absolute' },
     badge: { position: 'absolute', top: 4, right: 2, minWidth: 18, height: 18, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: EHUB_ACTION_GREEN },
     badgeRose: { backgroundColor: '#f43f5e' },
     badgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },

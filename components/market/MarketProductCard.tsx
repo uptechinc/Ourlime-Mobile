@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Image, Pressable, Share, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
-import { ImageIcon, MapPin, Share2, ShoppingBag, Star, Truck } from 'lucide-react-native';
+import { ImageIcon, MapPin, Plus, Share2, ShoppingBag, Star, Truck } from 'lucide-react-native';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
 import SaveButton from '@/components/ui/SaveButton';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
@@ -13,6 +13,8 @@ type MarketProductCardProps = {
   onQuickAdd: (product: MarketProduct) => void;
   /** Web viewMode: 'grid' tiles two per row, 'list' is a full-width row. */
   layout?: 'grid' | 'list';
+  /** Units already in the cart: the quick-add button shows "+" with the count, since tapping again adds one more. */
+  quantityInCart?: number;
 };
 
 function priceLabel(product: MarketProduct): string {
@@ -25,7 +27,7 @@ function priceLabel(product: MarketProduct): string {
   return `${prefix}${formatMarketPrice(currencies[0], minimum)}`;
 }
 
-export default function MarketProductCard({ product, onOpen, onQuickAdd, layout = 'grid' }: MarketProductCardProps) {
+export default function MarketProductCard({ product, onOpen, onQuickAdd, layout = 'grid', quantityInCart = 0 }: MarketProductCardProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const handleQuickAdd = (event: GestureResponderEvent) => { event.stopPropagation(); onQuickAdd(product); };
@@ -61,7 +63,9 @@ ${deepLinkService.getMarketProductShareUrl(product.id)}` }).catch((error: unknow
       </View>
       <View style={styles.footer}>
         <View style={{ flex: 1 }}><Text style={styles.price}>{priceLabel(product)}</Text>{product.isOnSale && product.originalPrice !== null ? <Text style={styles.originalPrice}>{product.originalPrice.toFixed(2)}</Text> : null}</View>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Add ${product.title} to cart`} disabled={!product.available} onPress={handleQuickAdd} style={[styles.cartButton, !product.available && styles.disabled]}><ShoppingBag size={18} color="#ffffff" /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={quantityInCart ? `${quantityInCart} ${product.title} in your cart. Add one more` : `Add ${product.title} to cart`} accessibilityState={{ disabled: !product.available }} disabled={!product.available} onPress={handleQuickAdd} hitSlop={4} style={[styles.cartButton, !product.available && styles.disabled]}>
+          {quantityInCart > 0 ? <><Plus size={20} color="#ffffff" strokeWidth={2.6} /><View style={styles.inCartCount}><Text style={styles.inCartCountText}>{quantityInCart > 99 ? '99+' : quantityInCart}</Text></View></> : <ShoppingBag size={18} color="#ffffff" />}
+        </Pressable>
       </View>
     </View>
   </Pressable>;
@@ -95,5 +99,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   price: { color: colors.text, fontSize: 13, fontWeight: '900' },
   originalPrice: { color: colors.mutedText, fontSize: 10, textDecorationLine: 'line-through' },
   cartButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.accent },
+  inCartCount: { position: 'absolute', right: -6, top: -6, minWidth: 18, height: 18, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 9, borderWidth: 1.5, borderColor: colors.surface, backgroundColor: colors.accentText },
+  inCartCountText: { color: colors.surface, fontSize: 10, fontWeight: '900' },
   disabled: { backgroundColor: colors.disabled },
 });

@@ -309,7 +309,7 @@ export default function EHubScreen() {
         </View>
       </EHubScrollView>
       <EHubCompareBar products={comparedProducts} bottomInset={insets.bottom} onOpen={() => setIsCompareOpen(true)} onRemove={handleRemoveCompare} onClear={handleClearCompare} />
-      <EHubCompareSheet visible={isCompareOpen} onClose={() => setIsCompareOpen(false)} onClear={handleClearCompare} products={comparedProducts} getStoreRating={getStoreRating} onOpenProduct={handleOpenProduct} />
+      <EHubCompareSheet visible={isCompareOpen} onClose={() => setIsCompareOpen(false)} onClear={handleClearCompare} products={comparedProducts} getStoreRating={getStoreRating} onOpenProduct={handleOpenProduct} onOpenCart={handleOpenCart} />
       <EHubCartSheet visible={isCartOpen} onClose={() => setIsCartOpen(false)} onOpenProduct={handleOpenProduct} />
     </View>
   );

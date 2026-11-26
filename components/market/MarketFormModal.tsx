@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, TextInput } from 'react-native';
+import { createContext, useContext, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { Modal, View, Text, TouchableOpacity, ScrollView, TextInput, type RefreshControlProps } from 'react-native';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import type { KeyboardTypeOptions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,8 +8,12 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 const FormBusyContext = createContext(false);
 
-type MarketFormModalProps = { visible: boolean; title: string; onClose: () => void; children: ReactNode; busy?: boolean };
-export default function MarketFormModal({ visible, title, onClose, children, busy = false }: MarketFormModalProps) {
+type MarketFormModalProps = {
+  visible: boolean; title: string; onClose: () => void; children: ReactNode; busy?: boolean;
+  /** Pull-to-refresh for the form's scroll view (e.g. a status screen). */
+  refreshControl?: ReactElement<RefreshControlProps>;
+};
+export default function MarketFormModal({ visible, title, onClose, children, busy = false, refreshControl }: MarketFormModalProps) {
   const { colors } = useAppTheme();
   return <FormBusyContext.Provider value={busy}><Modal visible={visible} animationType="slide" onRequestClose={onClose}>
     <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}>
@@ -18,7 +22,7 @@ export default function MarketFormModal({ visible, title, onClose, children, bus
         <TouchableOpacity onPress={onClose} accessibilityLabel="Close" style={{ padding: 8 }}><X color={colors.text} size={24} /></TouchableOpacity>
       </View>
       <KeyboardSafeView style={{ flex: 1 }}>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}>{children}</ScrollView>
+        <ScrollView keyboardShouldPersistTaps="handled" refreshControl={refreshControl} contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}>{children}</ScrollView>
       </KeyboardSafeView>
     </SafeAreaView>
   </Modal></FormBusyContext.Provider>;
@@ -44,7 +48,7 @@ export function MarketButton({ label, onPress, disabled }: MarketButtonProps) {
   disabled = disabled || formBusy;
   return <TouchableOpacity accessibilityRole="button" onPress={onPress} disabled={disabled}
     style={{ backgroundColor: colors.accent, borderRadius: 12, padding: 15, alignItems: 'center', opacity: disabled ? 0.5 : 1 }}>
-    <Text style={{ color: colors.onAccent, fontWeight: '800' }}>{label}</Text>
+    <Text style={{ color: colors.onAccent, fontWeight: '800', textAlign: 'center' }}>{label}</Text>
   </TouchableOpacity>;
 }
 

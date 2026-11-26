@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
@@ -6,6 +6,8 @@ import { Bookmark, ChevronDown, ChevronRight, Heart, HelpCircle, LayoutGrid, Lis
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAccountCart } from '@/lib/hooks/useAccountCart';
+import { cartFeedbackService } from '@/lib/services/CartFeedbackService';
+import BumpOnIncrease from '@/components/ui/BumpOnIncrease';
 import { useMarketplaceCatalog } from '@/lib/hooks/useMarketplaceCatalog';
 import { useMarketplacePreferences } from '@/lib/hooks/useMarketplacePreferences';
 import { useMarketSavedSearches } from '@/lib/hooks/useMarketSavedSearches';
@@ -15,6 +17,7 @@ import { EMPTY_MARKET_FILTERS, MARKET_PRICE_CEILING, marketCatalogFilterService,
 import { useMarketplaceStore } from '@/lib/store/useMarketplaceStore';
 import type { MarketProduct } from '@/lib/types/reliability';
 import { formatMarketPrice } from '@/lib/utils/formatMarketPrice';
+import { withCleanup } from '@/lib/utils/withCleanup';
 import { MarketButton } from './MarketFormModal';
 import MarketProductCard from './MarketProductCard';
 import SellerApplicationModal from './SellerApplicationModal';
@@ -92,14 +95,31 @@ export default function MarketplaceScreen({ entryPoint = 'market' }: Marketplace
   }, [params.id, params.product, params.productId, router]);
 
   const openProduct = (product: MarketProduct) => router.push(`/market/${encodeURIComponent(product.id)}` as Href);
+  // Product+variant keys with a quick-add still saving: extra taps meanwhile are ignored, so two fast taps add one item and one toast.
+  const quickAddsInFlight = useRef(new Set<string>());
   const handleQuickAdd = (product: MarketProduct) => {
     const availableVariants = product.variants.filter((variant) => variant.available);
-    if (!ownerId || !canMutate) { setError('Sign in to save products to your cart.'); return; }
+    if (!ownerId || !canMutate) { setError('Sign in to save products to your cart.'); cartFeedbackService.failed('Sign in to save products to your cart.'); return; }
     if (availableVariants.length !== 1) { openProduct(product); return; }
     const variant = availableVariants[0];
-    const quantity = (visibleLines.find((line) => line.productId === product.id && line.variantId === variant.id)?.quantity ?? 0) + 1;
-    void cart.setQuantity(product, variant, quantity).catch((failure: unknown) => setError(failure instanceof Error ? failure.message : 'This item could not be added.'));
+    const key = `${product.id}|${variant.id}`;
+    if (quickAddsInFlight.current.has(key)) return;
+    // Read the cart from the store at tap time, not from the last render.
+    const lines = useMarketplaceStore.getState().cart.lines.filter((line) => !line.removed);
+    const existing = lines.find((line) => line.productId === product.id && line.variantId === variant.id)?.quantity ?? 0;
+    const quantity = Math.min(variant.stock, 99, existing + 1);
+    const links = { onViewCart: () => setCartOpen(true), onCheckout: () => router.push('/market/checkout' as Href) };
+    if (quantity <= existing) { cartFeedbackService.atLimit(existing, links); return; }
+    quickAddsInFlight.current.add(key);
+    // withCleanup, not .finally(): the runtime Promise can lack finally.
+    withCleanup(cart.setQuantity(product, variant, quantity), () => { quickAddsInFlight.current.delete(key); })
+      .then(() => cartFeedbackService.added({ title: product.title, quantityInCart: quantity, wasInCart: existing > 0, ...links }))
+      .catch((failure: unknown) => {
+        console.error('[MarketplaceScreen.handleQuickAdd] Error:', failure instanceof Error ? failure.message : 'Unknown error');
+        cartFeedbackService.failed(failure instanceof Error ? failure.message : 'Check your connection and try again.');
+      });
   };
+  const quantityInCart = (productId: string) => visibleLines.filter((line) => line.productId === productId).reduce((total, line) => total + line.quantity, 0);
   const handleSupport = async () => {
     try {
       const destination = marketplaceService.supportDestination(await marketplaceService.support(ownerId));
@@ -141,7 +161,7 @@ export default function MarketplaceScreen({ entryPoint = 'market' }: Marketplace
       <Pressable accessibilityLabel="Back" onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')} style={styles.iconButton}><Text style={styles.backText}>‹</Text></Pressable>
       <View style={styles.headerTitle}><Text style={styles.title}>{entryPoint === 'ehub' ? 'E-Hub Market' : 'Lime Market'}</Text><Text style={styles.subtitle}>Shop Ourlime sellers</Text></View>
       {ownerId ? <Pressable accessibilityRole="button" accessibilityLabel="My orders" onPress={() => router.push('/market/orders' as Href)} style={styles.cartHeaderButton}><Package color={colors.text} size={21} /></Pressable> : null}
-      <Pressable accessibilityRole="button" accessibilityLabel={`Cart with ${cartUnits} items`} onPress={() => setCartOpen(true)} style={styles.cartHeaderButton}><ShoppingBag color={colors.text} size={22} />{cartUnits ? <View style={styles.cartBadge}><Text style={styles.cartBadgeText}>{cartUnits > 99 ? '99+' : cartUnits}</Text></View> : null}</Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Cart with ${cartUnits} items`} onPress={() => setCartOpen(true)} style={styles.cartHeaderButton}><ShoppingBag color={colors.text} size={22} /><BumpOnIncrease value={cartUnits} style={cartUnits ? styles.cartBadge : styles.cartBadgeHidden}>{cartUnits ? <Text style={styles.cartBadgeText}>{cartUnits > 99 ? '99+' : cartUnits}</Text> : null}</BumpOnIncrease></Pressable>
     </View>
     <KeyboardSafeView style={{ flex: 1 }}>
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={catalog.status === 'refreshing'} onRefresh={() => void catalog.refresh()} tintColor={colors.accent} />} contentContainerStyle={styles.content}>
@@ -185,7 +205,7 @@ export default function MarketplaceScreen({ entryPoint = 'market' }: Marketplace
         </View>
         {catalog.error ? <Pressable onPress={() => void catalog.refresh()} style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{catalog.error.message} Tap to retry.</Text></Pressable> : null}
         {isCatalogLoading ? <MarketCatalogSkeleton layout={savedSearches.viewMode} /> : !products.length && !catalog.error ? <View style={styles.empty}><ShoppingBag color={colors.mutedText} size={42} /><Text style={styles.emptyTitle}>No listings found</Text><Text style={styles.emptyText}>Try another search, category, or filter.</Text>{activeFilterCount ? <MarketButton label="Clear filters" onPress={() => setFilters(EMPTY_MARKET_FILTERS)} /> : null}</View>
-          : <View style={styles.grid}>{products.map((product) => <MarketProductCard key={product.id} layout={savedSearches.viewMode} product={product} onOpen={openProduct} onQuickAdd={handleQuickAdd} />)}</View>}
+          : <View style={styles.grid}>{products.map((product) => <MarketProductCard key={product.id} layout={savedSearches.viewMode} product={product} onOpen={openProduct} onQuickAdd={handleQuickAdd} quantityInCart={quantityInCart(product.id)} />)}</View>}
         {catalog.data?.cursor ? <MarketButton label={catalog.status === 'refreshing' ? 'Loading listings…' : 'Load more listings'} disabled={catalog.status === 'refreshing'} onPress={() => void catalog.loadMore()} /> : null}
       </ScrollView>
     </KeyboardSafeView>
@@ -197,7 +217,7 @@ export default function MarketplaceScreen({ entryPoint = 'market' }: Marketplace
 }
 
 const createStyles = (colors: AppThemeColors) => StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.canvas }, header: { minHeight: 68, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.navigation, borderBottomWidth: 1, borderBottomColor: colors.navigationBorder }, iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, backText: { color: colors.text, fontSize: 32, lineHeight: 35 }, headerTitle: { flex: 1 }, title: { color: colors.text, fontSize: 21, fontWeight: '900' }, subtitle: { color: colors.mutedText, fontSize: 11, marginTop: 1 }, cartHeaderButton: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control }, cartBadge: { position: 'absolute', right: -2, top: -4, minWidth: 20, height: 20, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#dc2626' }, cartBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
+  safeArea: { flex: 1, backgroundColor: colors.canvas }, header: { minHeight: 68, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.navigation, borderBottomWidth: 1, borderBottomColor: colors.navigationBorder }, iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, backText: { color: colors.text, fontSize: 32, lineHeight: 35 }, headerTitle: { flex: 1 }, title: { color: colors.text, fontSize: 21, fontWeight: '900' }, subtitle: { color: colors.mutedText, fontSize: 11, marginTop: 1 }, cartHeaderButton: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control }, cartBadge: { position: 'absolute', right: -2, top: -4, minWidth: 20, height: 20, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#dc2626' }, cartBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' }, cartBadgeHidden: { position: 'absolute' },
   content: { padding: 14, paddingBottom: 36, gap: 16 }, releaseNotice: { padding: 11, borderRadius: 13, flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: colors.successSurface, borderWidth: 1, borderColor: colors.accent }, releaseNoticeText: { flex: 1, color: colors.accentText, fontSize: 11, lineHeight: 16, fontWeight: '600' },
   searchRow: { flexDirection: 'row', gap: 10 }, searchBox: { flex: 1, minHeight: 50, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, searchInput: { flex: 1, color: colors.text, fontSize: 15 }, filterButton: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, filterButtonActive: { backgroundColor: colors.accent, borderColor: colors.accent }, filterCount: { position: 'absolute', right: -3, top: -5, minWidth: 19, height: 19, borderRadius: 10, textAlign: 'center', color: '#ffffff', backgroundColor: '#dc2626', fontSize: 10, fontWeight: '900', lineHeight: 19 },
   activeFilterChip: { flexDirection: 'row', gap: 6, backgroundColor: colors.successSurface, borderColor: colors.accent },

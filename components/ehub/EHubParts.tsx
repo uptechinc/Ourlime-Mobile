@@ -127,7 +127,7 @@ export function EHubProductCard({ product, width, onOpen, isCompact = false, isC
       originalPrice: isOnSale ? product.price : null, quantity: 1, availableQuantity: product.inventory,
       sellerId: product.storeId, sellerName: product.storeName, deliveryAvailable: product.deliveryAvailable,
       pickupAvailable: product.pickupAvailable, selectedVariant: null, selectedSize: null, selectedColour: null,
-    });
+    }, { onViewCart: onOpenCart });
     if (isAdded) onAddedToCart?.();
   };
   const priceLabel = isOnSale ? `${formatEHubPrice(currentPrice)}, was ${formatEHubPrice(product.price)}` : formatEHubPrice(currentPrice);

@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
-import { ArrowRight, BadgeCheck, ChevronRight, Flag, Globe, Mail, MapPin, Phone, RotateCcw, Share2, ShieldCheck, ShoppingBag, Store, Truck } from 'lucide-react-native';
+import { ArrowRight, BadgeCheck, Check, ChevronRight, Flag, Globe, Mail, MapPin, Phone, RotateCcw, Share2, ShieldCheck, ShoppingBag, Store, Truck } from 'lucide-react-native';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useAccountCart } from '@/lib/hooks/useAccountCart';
+import { useAddedFlash } from '@/lib/hooks/useAddedFlash';
+import { cartFeedbackService } from '@/lib/services/CartFeedbackService';
+import BumpOnIncrease from '@/components/ui/BumpOnIncrease';
 import { useMarketplacePreferences } from '@/lib/hooks/useMarketplacePreferences';
 import { useMarketProductDetail } from '@/lib/hooks/useMarketProductDetail';
 import { deepLinkService } from '@/lib/services/DeepLinkService';
@@ -65,7 +68,9 @@ export default function ProductDetailsScreen({ productId }: ProductDetailsScreen
   const [flatId, setFlatId] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+  // Only problems stay on screen; a successful add is confirmed by the button, the cart badge and a toast.
+  const [message, setMessage] = useState<{ tone: 'error' | 'info'; text: string } | null>(null);
+  const added = useAddedFlash();
   const [cartOpen, setCartOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
 
@@ -93,22 +98,31 @@ export default function ProductDetailsScreen({ productId }: ProductDetailsScreen
 
   useEffect(() => { setQuantity((current) => Math.max(1, Math.min(current, Math.max(1, availableStock)))); }, [availableStock]);
 
-  const addToCart = async (): Promise<boolean> => {
+  /** Adds the chosen quantity on top of what is already in the cart. `isQuiet` skips the toast (Buy Now goes straight to checkout). */
+  const addToCart = async (isQuiet = false): Promise<boolean> => {
     if (!product) return false;
     if (!ownerId) { router.push('/(auth)/login'); return false; }
-    if (!canMutate) { setMessage({ tone: 'error', text: 'Your account cannot change the cart right now.' }); return false; }
-    if (!activeVariant || isOutOfStock) { setMessage({ tone: 'error', text: 'This product is out of stock.' }); return false; }
+    // On this screen problems show inline, next to the button (lists use a toast instead).
+    const fail = (text: string) => { setMessage({ tone: 'error', text }); AccessibilityInfo.announceForAccessibility(`Couldn't add to cart. ${text}`); return false; };
+    if (!canMutate) return fail('Your account cannot change the cart right now.');
+    if (!activeVariant || isOutOfStock) return fail('This product is out of stock.');
+    const nextQuantity = Math.min(availableStock, 99, inCart + quantity);
+    // Already at the stock limit: say so instead of "adding" nothing.
+    if (inCart > 0 && nextQuantity <= inCart) { setMessage({ tone: 'info', text: `Already in your cart · All ${inCart} available are in your cart` }); AccessibilityInfo.announceForAccessibility(`Already in your cart. All ${inCart} available are in your cart`); return false; }
     setBusy(true); setMessage(null);
     try {
-      await cart.setQuantity(product, activeVariant, Math.min(availableStock, 99, inCart + quantity));
-      setMessage({ tone: 'success', text: `Added ${quantity} to your cart.` });
+      await cart.setQuantity(product, activeVariant, nextQuantity);
+      if (!isQuiet) {
+        added.flash();
+        cartFeedbackService.added({ title: product.title, quantityInCart: nextQuantity, wasInCart: inCart > 0, onViewCart: () => setCartOpen(true), onCheckout: () => router.push('/market/checkout' as Href) });
+      }
       return true;
     } catch (failure: unknown) {
-      setMessage({ tone: 'error', text: failure instanceof Error ? failure.message : 'This item could not be added.' });
-      return false;
+      console.error('[ProductDetailsScreen.addToCart] Error:', failure instanceof Error ? failure.message : 'Unknown error');
+      return fail(failure instanceof Error ? failure.message : 'This item could not be added. Check your connection and try again.');
     } finally { setBusy(false); }
   };
-  const handleBuyNow = async () => { if (await addToCart()) router.push('/market/checkout' as Href); };
+  const handleBuyNow = async () => { if (inCart >= Math.min(availableStock, 99) || await addToCart(true)) router.push('/market/checkout' as Href); };
   const handleShare = () => { if (product) void Share.share({ message: `${product.title}\n${deepLinkService.getMarketProductShareUrl(product.id)}` }); };
   const openContact = (contact: MarketContactItem) => {
     const url = contact.type === 'phone' ? `tel:${contact.value.replace(/[^\d+]/g, '')}` : contact.type === 'email' ? `mailto:${contact.value}` : /^https?:\/\//i.test(contact.value) ? contact.value : `https://${contact.value}`;
@@ -118,7 +132,7 @@ export default function ProductDetailsScreen({ productId }: ProductDetailsScreen
   const header = <View style={styles.header}>
     <Pressable accessibilityLabel="Back" onPress={() => router.canGoBack() ? router.back() : router.replace('/market')} style={styles.iconButton}><Text style={styles.backText}>‹</Text></Pressable>
     <View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.headerTitle}>{product?.title ?? 'Listing'}</Text><Text numberOfLines={1} style={styles.headerSubtitle}>{product?.category || 'Lime Market'}</Text></View>
-    <Pressable accessibilityRole="button" accessibilityLabel={`Cart with ${cartUnits} items`} onPress={() => setCartOpen(true)} style={styles.cartButton}><ShoppingBag color={colors.text} size={22} />{cartUnits ? <View style={styles.cartBadge}><Text style={styles.cartBadgeText}>{cartUnits > 99 ? '99+' : cartUnits}</Text></View> : null}</Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Cart with ${cartUnits} items`} onPress={() => setCartOpen(true)} style={styles.cartButton}><ShoppingBag color={colors.text} size={22} /><BumpOnIncrease value={cartUnits} style={cartUnits ? styles.cartBadge : styles.cartBadgeHidden}>{cartUnits ? <Text style={styles.cartBadgeText}>{cartUnits > 99 ? '99+' : cartUnits}</Text> : null}</BumpOnIncrease></Pressable>
   </View>;
 
   if (!product) {
@@ -226,10 +240,16 @@ export default function ProductDetailsScreen({ productId }: ProductDetailsScreen
       <View style={{ gap: 10 }}>
         <Text style={styles.label}>Quantity</Text>
         <QuantityStepper value={quantity} canDecrease={quantity > 1 && !isOutOfStock} canIncrease={quantity < Math.min(availableStock, 99) && !isOutOfStock} onDecrease={() => setQuantity((value) => Math.max(1, value - 1))} onIncrease={() => setQuantity((value) => Math.min(availableStock, 99, value + 1))} />
-        {inCart ? <Text style={styles.meta}>{inCart} already in your cart.</Text> : null}
-        {message ? <Text accessibilityRole="alert" style={{ color: message.tone === 'error' ? colors.destructiveText : colors.accentText, fontWeight: '700' }}>{message.text}</Text> : null}
-        <Pressable accessibilityRole="button" disabled={busy || (Boolean(ownerId) && isOutOfStock)} onPress={() => void addToCart()} style={[styles.secondaryButton, (busy || (Boolean(ownerId) && isOutOfStock)) && { opacity: 0.5 }]}>
-          <ShoppingBag size={18} color={colors.text} /><Text style={styles.secondaryButtonText}>{!ownerId ? 'Sign in to add to cart' : busy ? 'Adding…' : 'Add to Cart'}</Text>
+        {inCart ? <Pressable accessibilityRole="button" accessibilityLabel={`${inCart} of this item in your cart. View cart`} onPress={() => setCartOpen(true)} hitSlop={8} style={styles.inCartRow}>
+          <Check size={14} color={colors.successText} strokeWidth={3} />
+          <Text style={styles.inCartText}>{inCart} in your cart</Text><Text style={styles.inCartLink}>View cart</Text>
+        </Pressable> : null}
+        {message ? <Text accessibilityRole={message.tone === 'error' ? 'alert' : 'text'} accessibilityLiveRegion="polite" style={message.tone === 'error' ? styles.errorText : styles.limitText}>{message.text}</Text> : null}
+        <Pressable accessibilityRole="button" accessibilityLabel={!ownerId ? 'Sign in to add to cart' : busy ? 'Adding to cart' : added.isFlashing ? 'Added to cart' : 'Add to cart'}
+          accessibilityState={{ busy, disabled: busy || (Boolean(ownerId) && isOutOfStock) }} disabled={busy || (Boolean(ownerId) && isOutOfStock)} onPress={() => void addToCart()}
+          style={[styles.secondaryButton, added.isFlashing && styles.addedButton, (Boolean(ownerId) && isOutOfStock) && { opacity: 0.5 }]}>
+          {busy ? <ActivityIndicator size="small" color={colors.text} /> : added.isFlashing ? <Check size={18} color={colors.successText} strokeWidth={3} /> : <ShoppingBag size={18} color={colors.text} />}
+          <Text style={[styles.secondaryButtonText, added.isFlashing && { color: colors.successText }]}>{!ownerId ? 'Sign in to add to cart' : busy ? 'Adding…' : added.isFlashing ? 'Added to cart' : 'Add to Cart'}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" disabled={busy || isOutOfStock} onPress={() => void handleBuyNow()} style={[styles.primaryButton, (busy || isOutOfStock) && { opacity: 0.5 }]}>
           <Text style={styles.primaryButtonText}>Buy Now</Text><ArrowRight size={18} color={colors.onAccent} />
@@ -316,7 +336,7 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, backText: { color: colors.text, fontSize: 32, lineHeight: 35 },
   headerTitle: { color: colors.text, fontSize: 17, fontWeight: '900' }, headerSubtitle: { color: colors.mutedText, fontSize: 11 },
   cartButton: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control },
-  cartBadge: { position: 'absolute', right: -2, top: -4, minWidth: 20, height: 20, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#dc2626' }, cartBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
+  cartBadge: { position: 'absolute', right: -2, top: -4, minWidth: 20, height: 20, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#dc2626' }, cartBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' }, cartBadgeHidden: { position: 'absolute' },
   content: { padding: 14, paddingBottom: 40, gap: 18 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   categoryChip: { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.successSurface, borderWidth: 1, borderColor: colors.accent }, categoryText: { color: colors.accentText, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
@@ -332,6 +352,10 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   swatch: { width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
   primaryButton: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: colors.accent }, primaryButtonText: { color: colors.onAccent, fontSize: 15, fontWeight: '900' },
   secondaryButton: { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, borderWidth: 2, borderColor: colors.text }, secondaryButtonText: { color: colors.text, fontSize: 15, fontWeight: '900' },
+  addedButton: { borderColor: colors.successBorder, backgroundColor: colors.successSurface },
+  inCartRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
+  inCartText: { color: colors.secondaryText, fontSize: 13, fontWeight: '700' }, inCartLink: { color: colors.accentText, fontSize: 13, fontWeight: '800', textDecorationLine: 'underline' },
+  errorText: { color: colors.destructiveText, fontWeight: '700' }, limitText: { color: colors.secondaryText, fontWeight: '700' },
   infoTile: { flex: 1, padding: 12, flexDirection: 'row', gap: 9, borderRadius: 16, backgroundColor: colors.surface },
   infoTitle: { color: colors.text, fontSize: 12, fontWeight: '900' }, infoText: { color: colors.mutedText, fontSize: 12, lineHeight: 17, flexShrink: 1 },
   inlineRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },

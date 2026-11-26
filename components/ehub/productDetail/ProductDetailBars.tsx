@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { ArrowLeft, MessageCircle, Share2, ShoppingCart } from 'lucide-react-native';
+import { ArrowLeft, Check, MessageCircle, Share2, ShoppingCart } from 'lucide-react-native';
 import SaveButton from '@/components/ui/SaveButton';
 import type { SaveTarget } from '@/lib/types/saved';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
@@ -56,12 +56,14 @@ type ProductBottomBarProps = {
   price: number;
   originalPrice: number | null;
   isAvailable: boolean;
+  /** Just added: the button briefly reads "Added" with a check. */
+  isAdded?: boolean;
   onAddToCart: () => void;
   onMessage: () => void;
 };
 
 /** The sticky buying bar: price on the left, "Message seller" (icon) and the one primary "Add to cart". */
-export function ProductBottomBar({ price, originalPrice, isAvailable, onAddToCart, onMessage }: ProductBottomBarProps) {
+export function ProductBottomBar({ price, originalPrice, isAvailable, isAdded = false, onAddToCart, onMessage }: ProductBottomBarProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   // Narrow phones (360dp) drop the cart icon so the label never truncates next to the price.
@@ -75,9 +77,9 @@ export function ProductBottomBar({ price, originalPrice, isAvailable, onAddToCar
       <Pressable accessibilityRole="button" accessibilityLabel="Message the seller" onPress={onMessage} style={styles.iconButton}>
         <MessageCircle size={22} color={colors.text} />
       </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={isAvailable ? 'Add to cart' : 'Out of stock'} accessibilityState={{ disabled: !isAvailable }} disabled={!isAvailable} onPress={onAddToCart} style={[styles.primaryButton, !isAvailable && styles.primaryDisabled]}>
-        {isAvailable && isRoomy ? <ShoppingCart size={18} color="#ffffff" /> : null}
-        <Text numberOfLines={1} style={[styles.primaryText, !isAvailable && styles.primaryTextDisabled]}>{isAvailable ? 'Add to cart' : 'Out of stock'}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={!isAvailable ? 'Out of stock' : isAdded ? 'Added to cart. Tap to add another' : 'Add to cart'} accessibilityState={{ disabled: !isAvailable }} disabled={!isAvailable} onPress={onAddToCart} style={[styles.primaryButton, isAdded && styles.primaryAdded, !isAvailable && styles.primaryDisabled]}>
+        {isAvailable && isAdded ? <Check size={18} color={colors.successText} strokeWidth={3} /> : isAvailable && isRoomy ? <ShoppingCart size={18} color="#ffffff" /> : null}
+        <Text numberOfLines={1} style={[styles.primaryText, isAdded && styles.primaryTextAdded, !isAvailable && styles.primaryTextDisabled]}>{!isAvailable ? 'Out of stock' : isAdded ? 'Added' : 'Add to cart'}</Text>
       </Pressable>
     </View>
   </SafeAreaView>;
@@ -100,6 +102,8 @@ function createStyles(colors: AppThemeColors) {
     iconButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border },
     primaryButton: { flex: 1, minWidth: 0, height: 48, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, backgroundColor: '#047857' },
     primaryDisabled: { backgroundColor: colors.disabled },
+    primaryAdded: { backgroundColor: colors.successSurface, borderWidth: 1, borderColor: colors.successBorder },
+    primaryTextAdded: { color: colors.successText },
     primaryText: { flexShrink: 1, color: '#ffffff', fontSize: 15, fontWeight: '800' },
     primaryTextDisabled: { color: colors.disabledText },
   });

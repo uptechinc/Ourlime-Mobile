@@ -9,6 +9,7 @@ import { useEHubProduct } from '@/lib/hooks/useEHub';
 import { getEHubTermsRoute } from '@/lib/services/EHubService';
 import { getEHubCurrentPrice, normalizeEHubSalePrice } from '@/lib/services/EHubCommerceService';
 import { useEHubCommerce } from '@/lib/hooks/useEHubCommerce';
+import { useAddedFlash } from '@/lib/hooks/useAddedFlash';
 import { EHubCartSheet } from '@/components/ehub/EHubCommerceParts';
 import { EHubEmptyState, EHubNotice, formatEHubPrice, useEHubLayout } from '@/components/ehub/EHubParts';
 import { EHubProductDetailSkeleton } from '@/components/ehub/EHubSkeletons';
@@ -45,6 +46,8 @@ export default function EHubProductDetailScreen() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isPastGallery, setIsPastGallery] = useState(false);
   const { addToCart, addRecentlyViewed } = useEHubCommerce();
+  // Adding confirms in place (button, badge, toast with "View cart") instead of covering the product with the cart.
+  const added = useAddedFlash();
   const images = useMemo(() => detail ? [...new Set([detail.product.imageUrl, ...detail.product.imageUrls].filter((image): image is string => Boolean(image)))] : [], [detail]);
 
   // Recorded like the website (newest first, at most 10); not shown anywhere yet.
@@ -88,8 +91,8 @@ export default function EHubProductDetailScreen() {
       originalPrice: normalizeEHubSalePrice(product.salePrice, product.price) !== null ? product.price : null, quantity,
       availableQuantity: product.inventory, sellerId: product.storeId, sellerName: store.storeName, deliveryAvailable: product.deliveryAvailable,
       pickupAvailable: product.pickupAvailable, selectedVariant: selectedVariant || null, selectedSize: selectedSize || null, selectedColour: selectedColour || null,
-    });
-    if (isAdded) setIsCartOpen(true);
+    }, { onViewCart: () => setIsCartOpen(true) });
+    if (isAdded) added.flash();
   };
   const handleShare = () => {
     if (!detail) return;
@@ -231,7 +234,7 @@ export default function EHubProductDetailScreen() {
         </View>
       </ScrollView>
       {isWide ? null : <ProductTopBar title={product.title} isSolid={isHeaderSolid} isFloating saveTarget={{ type: 'ehub_product', itemId: product.id, snapshot: { title: product.title, thumbnail: product.imageUrl ?? null } }} onBack={() => router.back()} onShare={handleShare} onOpenCart={() => setIsCartOpen(true)} />}
-      <ProductBottomBar price={currentPrice} originalPrice={originalPrice} isAvailable={isAvailable} onAddToCart={handleAddToCart} onMessage={handleEnquire} />
+      <ProductBottomBar price={currentPrice} originalPrice={originalPrice} isAvailable={isAvailable} isAdded={added.isFlashing} onAddToCart={handleAddToCart} onMessage={handleEnquire} />
       {cartSheet}
     </View>
   );

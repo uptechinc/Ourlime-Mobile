@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-26-7",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-26",
+      "notes": [
+        "Add to cart confirms every tap: the button shows Added, and a message offers View cart and Checkout.",
+        "Seller application: each document shows its upload progress, with Retry if it fails, and after submitting you see your review status and timeline. Approved sellers get a List a product button."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-26-6",
       "version": "1.3.2",
       "versionCode": 11,

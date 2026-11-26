@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
-import { toast } from 'sonner-native';
 import { useSavedIds } from '@/lib/hooks/useSavedItems';
 import { useSavedStore } from '@/lib/store/useSavedStore';
 import { EHubCommerceService, eHubCommerceService } from '@/lib/services/EHubCommerceService';
+import { cartFeedbackService } from '@/lib/services/CartFeedbackService';
 import type { EHubCartItem, EHubCartItemInput, EHubCartSellerGroup, EHubRecentlyViewedItem } from '@/lib/types/ehubCommerce';
 
 export type EHubCommerce = {
@@ -14,7 +14,8 @@ export type EHubCommerce = {
   /** Saved eHub product ids (users/{uid}/saved, type ehub_product). */
   favorites: string[];
   recentlyViewed: EHubRecentlyViewedItem[];
-  addToCart: (item: EHubCartItemInput) => boolean;
+  /** Adds (or raises the quantity of) a line and confirms it with a toast; `onViewCart` adds a "View cart" button to it. */
+  addToCart: (item: EHubCartItemInput, options?: EHubAddToCartOptions) => boolean;
   removeFromCart: (itemId: string) => void;
   removeManyFromCart: (itemIds: string[]) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
@@ -23,6 +24,8 @@ export type EHubCommerce = {
   addRecentlyViewed: (item: Omit<EHubRecentlyViewedItem, 'viewedAt'>) => void;
 };
 
+export type EHubAddToCartOptions = { onViewCart?: () => void };
+
 const subscribe = (listener: () => void) => eHubCommerceService.subscribe(listener);
 const getSnapshot = () => eHubCommerceService.getState();
 
@@ -30,10 +33,18 @@ const getSnapshot = () => eHubCommerceService.getState();
 export function useEHubCommerce(): EHubCommerce {
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-  const addToCart = useCallback((item: EHubCartItemInput) => {
+  const addToCart = useCallback((item: EHubCartItemInput, options?: EHubAddToCartOptions) => {
+    const existing = eHubCommerceService.getState().cart.find((cartItem) => EHubCommerceService.isSameCartLine(cartItem, item));
+    if (item.availableQuantity <= 0) { cartFeedbackService.failed('This product is out of stock.'); return false; }
+    if (existing && existing.quantity >= item.availableQuantity) {
+      cartFeedbackService.atLimit(existing.quantity, { onViewCart: options?.onViewCart });
+      return false;
+    }
     const isAdded = eHubCommerceService.addToCart(item);
-    if (isAdded) toast.success(`Added "${item.title}" to your E-Hub cart`);
-    return isAdded;
+    if (!isAdded) { cartFeedbackService.failed('This product could not be added. Try again.'); return false; }
+    const line = eHubCommerceService.getState().cart.find((cartItem) => EHubCommerceService.isSameCartLine(cartItem, item));
+    cartFeedbackService.added({ title: item.title, quantityInCart: line?.quantity ?? item.quantity, wasInCart: Boolean(existing), onViewCart: options?.onViewCart });
+    return true;
   }, []);
   const removeFromCart = useCallback((itemId: string) => eHubCommerceService.removeFromCart(itemId), []);
   const removeManyFromCart = useCallback((itemIds: string[]) => eHubCommerceService.removeManyFromCart(itemIds), []);

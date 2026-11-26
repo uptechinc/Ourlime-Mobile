@@ -73,6 +73,8 @@ export type SellerApplication = {
   name: string; email: string; phone: string; storeName: string; description: string;
   categories: string[]; isBusiness: boolean; acceptedTerms: boolean; files: SellerFile[];
 };
+/** When the application was submitted and decided, and the reviewer's note: read from the server copy, never saved in the draft. */
+export type SellerApplicationReview = { submittedAtMs: number | null; decidedAtMs: number | null; reason: string | null };
 export type SellerReviewDecision = {
   id: string; ownerId: string; applicationRevision: number; reviewerId: string;
   status: 'changes_requested' | 'approved' | 'rejected' | 'suspended'; reason: string; decidedAt: string;

@@ -6,7 +6,7 @@ import { reliabilityDecoder as decode } from './ReliabilityDecoderService';
 import { contentDraftService } from './ContentDraftService';
 import { pageAccessService } from './PageAccessService';
 import { contentDateService } from './ContentDateService';
-import type { SellerApplication, SellerFile, SellerFileKind, SellerReviewDecision } from '@/lib/types/reliability';
+import type { SellerApplication, SellerApplicationReview, SellerFile, SellerFileKind, SellerReviewDecision } from '@/lib/types/reliability';
 
 type PendingSellerUpload = { kind: SellerFileKind; uri: string; name: string; size: number; contentType: string; id: string | null; path: string | null; uploaded: boolean };
 type SavedApplication = { application: SellerApplication; operationId: string };
@@ -45,10 +45,24 @@ export class SellerVerificationService {
     await durableWorkService.write(application.ownerId, 'seller', 'application', { application, operationId: stored?.value.operationId ?? await contentDraftService.newId() }, stored?.revision ?? 0);
   }
   public async remote(ownerId: string): Promise<SellerApplication | null> {
+    return (await this.remoteWithReview(ownerId))?.application ?? null;
+  }
+  /** The server copy plus its review dates and the reviewer's note, for the status screen. */
+  public async remoteWithReview(ownerId: string): Promise<{ application: SellerApplication; review: SellerApplicationReview } | null> {
     await nativeSessionService.ensure(ownerId);
     const snapshot = await getDoc(doc(db, 'sellerApplications', ownerId));
     nativeSessionService.assertOwner(ownerId);
-    return snapshot.exists() ? this.decodeApplication(snapshot.data()) : null;
+    if (!snapshot.exists()) return null;
+    const data = snapshot.data();
+    const reason = typeof data.reason === 'string' && data.reason.trim() ? data.reason.trim() : null;
+    return { application: this.decodeApplication(data), review: { submittedAtMs: this.timestampMs(data.submittedAt), decidedAtMs: this.timestampMs(data.decidedAt), reason } };
+  }
+  private timestampMs(value: unknown): number | null {
+    if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') {
+      const millis: unknown = value.toMillis();
+      return typeof millis === 'number' && Number.isFinite(millis) ? millis : null;
+    }
+    return null;
   }
   public shouldAdoptRemote(local: SellerApplication, remote: SellerApplication): boolean {
     if (local.ownerId !== remote.ownerId || remote.revision < local.revision) return false;

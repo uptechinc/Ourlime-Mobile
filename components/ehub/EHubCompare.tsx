@@ -65,6 +65,8 @@ type CompareTableProps = {
   onOpenProduct: (productId: string) => void;
   /** Called after "Add to cart" put a product in the cart. */
   onAddedToCart?: () => void;
+  /** Opens the E-Hub cart from the confirmation toast's "View cart". */
+  onOpenCart?: () => void;
 };
 
 type CompareRow = { label: string; render: (product: EHubCatalogProduct) => ReactNode };
@@ -73,7 +75,7 @@ type CompareRow = { label: string; render: (product: EHubCatalogProduct) => Reac
  * Two products side by side, one row per attribute (price, store, stock, delivery, pickup, store rating, brand,
  * category, warranty), each value with its label so it reads well in a screen reader too. The lower price is marked.
  */
-export function EHubCompareTable({ products, getStoreRating, onOpenProduct, onAddedToCart }: CompareTableProps) {
+export function EHubCompareTable({ products, getStoreRating, onOpenProduct, onAddedToCart, onOpenCart }: CompareTableProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { cart, addToCart } = useEHubCommerce();
@@ -121,7 +123,7 @@ export function EHubCompareTable({ products, getStoreRating, onOpenProduct, onAd
       originalPrice: isOnSale ? product.price : null, quantity: 1, availableQuantity: product.inventory,
       sellerId: product.storeId, sellerName: product.storeName, deliveryAvailable: product.deliveryAvailable,
       pickupAvailable: product.pickupAvailable, selectedVariant: null, selectedSize: null, selectedColour: null,
-    });
+    }, { onViewCart: onOpenCart });
     if (isAdded) onAddedToCart?.();
   };
 
@@ -143,9 +145,9 @@ export function EHubCompareTable({ products, getStoreRating, onOpenProduct, onAd
         const isInCart = cart.some((item) => item.productId === product.id);
         const isAvailable = product.inventory > 0;
         return <View key={product.id} style={styles.actionCell}>
-          <Pressable accessibilityRole="button" accessibilityLabel={!isAvailable ? `${product.title} is out of stock` : isInCart ? `${product.title} is in your cart` : `Add ${product.title} to cart`} accessibilityState={{ disabled: !isAvailable || isInCart }} disabled={!isAvailable || isInCart} onPress={() => handleAdd(product)} android_ripple={{ color: 'rgba(15,23,42,0.12)' }} style={[styles.addButton, (isInCart || !isAvailable) && styles.addButtonQuiet]}>
+          <Pressable accessibilityRole="button" accessibilityLabel={!isAvailable ? `${product.title} is out of stock` : isInCart ? `${product.title} is in your cart` : `Add ${product.title} to cart`} accessibilityState={{ disabled: !isAvailable || isInCart }} disabled={!isAvailable || isInCart} onPress={() => handleAdd(product)} android_ripple={{ color: 'rgba(15,23,42,0.12)' }} style={[styles.addButton, isInCart && styles.addButtonInCart, !isAvailable && styles.addButtonQuiet]}>
             {isInCart ? <Check size={16} color={colors.successText} /> : <ShoppingCart size={16} color={isAvailable ? '#ffffff' : colors.disabledText} />}
-            <Text numberOfLines={1} style={[styles.addButtonText, (isInCart || !isAvailable) && styles.addButtonTextQuiet]}>{!isAvailable ? 'Sold out' : isInCart ? 'In cart' : 'Add'}</Text>
+            <Text numberOfLines={1} style={[styles.addButtonText, isInCart && styles.addButtonTextInCart, !isAvailable && styles.addButtonTextQuiet]}>{!isAvailable ? 'Sold out' : isInCart ? 'In cart' : 'Add'}</Text>
           </Pressable>
           <Pressable accessibilityRole="link" accessibilityLabel={`View details of ${product.title}`} onPress={() => onOpenProduct(product.id)} style={styles.detailsLink}>
             <Text numberOfLines={1} style={styles.detailsLinkText}>Details</Text><ArrowRight size={14} color={colors.accentText} />
@@ -159,7 +161,7 @@ export function EHubCompareTable({ products, getStoreRating, onOpenProduct, onAd
 type CompareSheetProps = CompareTableProps & { visible: boolean; onClose: () => void; onClear: () => void };
 
 /** The comparison as a bottom sheet over the E-Hub home, opened from the compare bar. */
-export function EHubCompareSheet({ visible, onClose, onClear, products, getStoreRating, onOpenProduct, onAddedToCart }: CompareSheetProps) {
+export function EHubCompareSheet({ visible, onClose, onClear, products, getStoreRating, onOpenProduct, onAddedToCart, onOpenCart }: CompareSheetProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -177,7 +179,7 @@ export function EHubCompareSheet({ visible, onClose, onClear, products, getStore
           </View>
           <ScrollView contentContainerStyle={styles.sheetBody} showsVerticalScrollIndicator={false}>
             {products.length >= EHUB_COMPARE_LIMIT
-              ? <EHubCompareTable products={products} getStoreRating={getStoreRating} onOpenProduct={handleOpenProduct} onAddedToCart={onAddedToCart} />
+              ? <EHubCompareTable products={products} getStoreRating={getStoreRating} onOpenProduct={handleOpenProduct} onAddedToCart={onAddedToCart} onOpenCart={onOpenCart ? () => { onClose(); onOpenCart(); } : undefined} />
               : <Text style={styles.value}>Tick Compare on two products to see them side by side.</Text>}
             <Text style={styles.footnote}>Details are as listed by each seller. Confirm price, stock and delivery with the seller before you buy.</Text>
           </ScrollView>
@@ -233,6 +235,9 @@ function createStyles(colors: AppThemeColors) {
     actionCell: { flex: 1, minWidth: 0, gap: 4 },
     addButton: { minHeight: 44, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, backgroundColor: EHUB_ACTION_GREEN },
     addButtonQuiet: { backgroundColor: colors.control },
+    // In the cart reads as done (green tint and a check), not as switched off.
+    addButtonInCart: { backgroundColor: colors.successSurface, borderWidth: 1, borderColor: colors.successBorder },
+    addButtonTextInCart: { color: colors.successText },
     addButtonText: { flexShrink: 1, color: '#ffffff', fontSize: 14, fontWeight: '800' },
     addButtonTextQuiet: { color: colors.secondaryText },
     detailsLink: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
